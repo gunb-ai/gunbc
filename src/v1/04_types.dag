@@ -1337,23 +1337,25 @@ fn applied_argument_declared_agrees(left: Node, right: Node, source_indices: Map
   }
 }
 
+// A JOIN OPERAND WHOSE ELEMENT IS THE UNIT PLACEHOLDER says nothing about its element: `none` (a
+// unit-like node carrying CardOptional) and a collection whose element is unit-like. Such an operand
+// yields to any sibling of its kind in prefer_specific_type, and a fold carrier that is one is open
+// (v1.compiler.infer fold_carrier_is_open); both read this one fact.
+fn join_operand_element_is_unit(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let is_optional = n.return_cardinality == CardOptional
+  if node_is_element_collection(n: n, source_indices: source_indices) {
+    match n.children |> first {
+      Present { value: ch } => is_unit_like(n: child_type_node(ch: ch))
+      Absent => false
+    }
+  } else { is_optional && is_unit_like(n: n) }
+}
+
 fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
   let left_is_optional = left.return_cardinality == CardOptional
-  let left_first_child = left.children |> first
   let left_norm_name = authored_name_at(source_indices: source_indices, node: left)
-  let left_is_unit_inner = if left_is_container {
-    match left_first_child {
-      Present { value: ch } =>
-        let el = child_type_node(ch: ch)
-        let el_is_unit = is_unit_like(n: el)
-        el_is_unit
-      Absent => false
-    }
-  } else if left_is_optional {
-    let left_is_unit = is_unit_like(n: left)
-    left_is_unit
-  } else { false }
+  let left_is_unit_inner = join_operand_element_is_unit(n: left, source_indices: source_indices)
   let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
   let right_is_optional = right.return_cardinality == CardOptional
   let same_kind = if left_is_container && right_is_container {

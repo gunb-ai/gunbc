@@ -1,0 +1,40 @@
+module test.claim.fold_carrier_closes_at_step_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXECUTING EVIDENCE for v1.compiler.infer fold_carrier_is_open / fold_carrier_closed_at_step: an open fold
+// carrier closes at the type its step produces. The red is gunbc.durable_cas_file_store cas_observe_window's
+// shape. The init is `none`, one arm re-wraps the accumulator's own payload and the other is another call's
+// Optional. Before the seed judged `none` open, the call's result stayed a unit optional, the emitter wrote
+// `|acc: _, ..|`, and rustc refused the closure's first use of acc (E0282 in the emitted
+// durable_cas_file_store). The control is a concrete init. Its carrier was always closed, is judged as
+// written, and must keep its annotation. The bare-arm control is the census regression an earlier cut of
+// the change introduced at v2.std.compilers.target_model target_primitive_realization_lookup. The init
+// is a nullary arm of a generic coproduct (`NoPick`), and the step returns a callee's declared
+// application (`Pick<Tally>`). The carrier must close at that application, which the branch join
+// recognizes by its head's minted DeclarationRef (v1.compiler.infer type_applies_declaration). When it
+// did not, the result stayed the bare `Pick`, `c.hits` refused "no field 'hits' on type 'T'", and the
+// module did not compile.
+
+data absent_init_source: String = "module fold_carrier_witness.absent_init\n\nimport std.types { List, Int }\n\ntype Probe = ProbeHit { n: Int } | ProbeMiss\n\nfn probe_once(x: Int) -> Probe? {\n  if x > 0 { Present { value: ProbeHit { n: x } } } else { none }\n}\n\nfn first_probe(xs: List<Int>) -> Probe? {\n  fold(xs, init: none, f: (acc, x) => match acc {\n    Present { value: p } => Present { value: p }\n    Absent => probe_once(x: x)\n  })\n}\n"
+
+data concrete_init_source: String = "module fold_carrier_witness.concrete_init\n\nimport std.types { List, Int }\n\ntype Tally {\n  hits: Int\n  misses: Int\n}\n\nfn tally(xs: List<Int>) -> Tally {\n  fold(xs, init: Tally { hits: 0, misses: 0 }, f: (acc, x) => if x > 0 { Tally { hits: acc.hits + 1, misses: acc.misses } } else { Tally { hits: acc.hits, misses: acc.misses + 1 } })\n}\n"
+
+data bare_arm_init_source: String = "module fold_carrier_witness.bare_arm_init\n\nimport std.types { List, Int }\n\ntype Tally {\n  hits: Int\n  misses: Int\n}\n\ntype Pick<T>\n  = NoPick\n  | OnePick { candidate: T }\n  | ManyPicks\n\nfn pick_step(acc: Pick<Tally>, row: Tally) -> Pick<Tally> {\n  match acc {\n    NoPick => OnePick { candidate: row }\n    OnePick { candidate: _ } => ManyPicks\n    ManyPicks => ManyPicks\n  }\n}\n\nfn pick_one(rows: List<Tally>) -> Int {\n  match fold(rows, init: NoPick, f: fn(acc, row) { pick_step(acc: acc, row: row) }) {\n    NoPick => 0\n    OnePick { candidate: c } => c.hits\n    ManyPicks => 2\n  }\n}\n"
+
+// DISCRIMINATING RED: false on the parent of the change (the accumulator is emitted `_`), true after it.
+test fn absent_init_carrier_closes_at_the_step() -> Bool {
+  compile_dag_rust_emit_check(absent_init_source, "src/fold_carrier_witness_absent_init.rs", ["|acc: Option<Rc<Probe>>"], ["|acc: _"])
+}
+
+// ACCEPTED POSITIVE CONTROL: a closed carrier keeps the annotation it always had.
+test fn concrete_init_carrier_is_judged_as_written() -> Bool {
+  compile_dag_rust_emit_check(concrete_init_source, "src/fold_carrier_witness_concrete_init.rs", ["|acc: Tally, x: i64|"], ["|acc: _"])
+}
+
+// ACCEPTED CONTROL for the bare-arm shape: the module compiles clean and no accumulator is emitted `_`.
+test fn bare_arm_init_carrier_closes_at_the_declared_application() -> Bool {
+  compile_dag_rust_emit_check(bare_arm_init_source, "src/fold_carrier_witness_bare_arm_init.rs", [], ["|acc: _"])
+}
