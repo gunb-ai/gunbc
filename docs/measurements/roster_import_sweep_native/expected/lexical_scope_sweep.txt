@@ -1,0 +1,1 @@
+EDIT src/v2/test/claim/lexical_scope.dag 907 960 import std.algebra { fold_list, list_head, list_map, collection_concat_shape, collection_join_shape }
