@@ -5,6 +5,9 @@ import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 import std.algebra { collection_concat_shape, collection_count_shape }
+import std.integer { Signedness, Signed, Unsigned }
+import std.measure { BitWidth, bit_width, bit_width_count }
+import std.machine_width_range { machine_width_admits }
 
 // THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (DESIGN section 4: one
 // decision procedure, emission and ingestion are the same homomorphism check read in two directions).
@@ -243,10 +246,13 @@ type KernelGrounding {
 
 // THE INTEGERS A GROUNDED CARRIER DENOTES. Every arm is a set closed under the comparison the crossing rule
 // needs, so inclusion between two extents is decided from the arms alone (integer_extent_within) and no bound
-// is ever materialized. The machine widths join as a further arm with their rows.
+// is ever materialized. A machine width is the signedness and bit count std.integer and std.measure already
+// declare, and its members are std.machine_width_range's, the one width-range authority; its first value is
+// the kernel Int's own extent (kernel_integer_extent).
 type IntegerExtent
   = UnboundedIntegers
   | UnboundedNaturals
+  | FixedWidthExtent { signedness: Signedness, bits: BitWidth }
 
 // How a grounded carrier's constructors denote kernel values (above). An arm names a constructor of the
 // carrier declaration and the field that carries its payload; the carrier's own DeclarationRef scopes it.
@@ -384,11 +390,13 @@ fn integer_extent_admits(extent: IntegerExtent, value: Int) -> Bool {
   match extent {
     UnboundedIntegers => true
     UnboundedNaturals => value >= 0
+    FixedWidthExtent { signedness: s, bits: b } => machine_width_admits(signedness: s, bits: b, value: value)
   }
 }
 
 // Whether every integer of `inner` is an integer of `outer`. Decided from the arms: the naturals are inside
-// the integers, each extent is inside itself, and the integers are inside nothing narrower.
+// the integers, each extent is inside itself, the integers are inside nothing narrower, and a width is inside
+// the unbounded extents its signedness allows and inside another width by the bit counts alone.
 fn integer_extent_within(inner: IntegerExtent, outer: IntegerExtent) -> Bool {
   match outer {
     UnboundedIntegers => true
@@ -396,8 +404,45 @@ fn integer_extent_within(inner: IntegerExtent, outer: IntegerExtent) -> Bool {
       match inner {
         UnboundedNaturals => true
         UnboundedIntegers => false
+        FixedWidthExtent { signedness: s, bits: b } => !signedness_is_signed(s: s) || bit_width_count(b: b) == 0
+      }
+    FixedWidthExtent { signedness: so, bits: bo } =>
+      match inner {
+        UnboundedNaturals => false
+        UnboundedIntegers => false
+        FixedWidthExtent { signedness: si, bits: bi } => fixed_width_within(inner_signedness: si, inner_bits: bi, outer_signedness: so, outer_bits: bo)
       }
   }
+}
+
+// Width inside width, from std.machine_width_range's ranges: signed N is [-2^(N-1), 2^(N-1) - 1] (empty at
+// N = 0) and unsigned N is [0, 2^N - 1]. So a signed width is inside a signed one at least as wide and inside
+// no unsigned one unless it is empty; an unsigned width is inside an unsigned one at least as wide and inside
+// a signed one strictly wider.
+fn fixed_width_within(inner_signedness: Signedness, inner_bits: BitWidth, outer_signedness: Signedness, outer_bits: BitWidth) -> Bool {
+  let ni = bit_width_count(b: inner_bits)
+  let no = bit_width_count(b: outer_bits)
+  if signedness_is_signed(s: inner_signedness) {
+    ni == 0 || (signedness_is_signed(s: outer_signedness) && ni <= no)
+  } else if signedness_is_signed(s: outer_signedness) {
+    ni < no
+  } else {
+    ni <= no
+  }
+}
+
+fn signedness_is_signed(s: Signedness) -> Bool {
+  match s {
+    Signed => true
+    Unsigned => false
+  }
+}
+
+// THE KERNEL INT'S EXTENT. The kernel Int (std.types Int) is the 64-bit signed integer the parser mints for an
+// integer literal and every kernel arithmetic result; it has no declaration, so it carries no KernelGrounding
+// row, and a crossing names it as its own endpoint (KernelIntegerEndpoint) whose extent is this.
+fn kernel_integer_extent() -> IntegerExtent {
+  FixedWidthExtent { signedness: Signed, bits: bit_width(count: 64) }
 }
 
 // A CROSSING BETWEEN GROUNDED CARRIERS IS DERIVED, NEVER LISTED (tidy-raven-397's ruling, 2026-10-24; the
@@ -408,6 +453,15 @@ fn integer_extent_within(inner: IntegerExtent, outer: IntegerExtent) -> Bool {
 // user type spelled Nat or Int has no row and no crossing. A crossing that is not an inclusion refuses here;
 // the partial direction is a declared, named checked constructor, which joins this rule as an arm with its
 // first row.
+//
+// THE KERNEL INT IS AN ENDPOINT OF THE SAME RULE, not a second one. It realizes as the kernel integer by
+// definition, so a route between it and a grounded carrier is that carrier's grounding alone, decided by the
+// same inclusion over kernel_integer_extent: the kernel Int widens into std.integer Int, and neither std.nat Nat
+// nor std.integer Int is inside it.
+type CrossingEndpoint
+  = CarrierEndpoint { carrier: DeclarationRef }
+  | KernelIntegerEndpoint
+
 type KernelGroundingCrossing
   = CrossingTotalWidening
   | CrossingRefused { cause: KernelCrossingRefusal }
@@ -415,7 +469,7 @@ type KernelGroundingCrossing
 type KernelCrossingRefusal
   = CarrierNotGrounded { carrier: DeclarationRef }
   | CarrierGroundedTwice { carrier: DeclarationRef }
-  | ExtentNotIncluded { from: DeclarationRef, to: DeclarationRef }
+  | ExtentNotIncluded { from: CrossingEndpoint, to: CrossingEndpoint }
 
 type CarrierGroundingLookup
   = CarrierGroundingFound { row: KernelGrounding }
@@ -433,14 +487,29 @@ fn carrier_grounding(rows: List<KernelGrounding>, carrier: DeclarationRef) -> Ca
   }
 }
 
-fn kernel_grounding_crossing(rows: List<KernelGrounding>, from: DeclarationRef, to: DeclarationRef) -> KernelGroundingCrossing {
-  match carrier_grounding(rows: rows, carrier: from) {
-    CarrierGroundingRefused { cause: c } => CrossingRefused { cause: c }
-    CarrierGroundingFound { row: source } =>
-      match carrier_grounding(rows: rows, carrier: to) {
-        CarrierGroundingRefused { cause: c } => CrossingRefused { cause: c }
-        CarrierGroundingFound { row: target } =>
-          if integer_extent_within(inner: source.extent, outer: target.extent) {
+type EndpointExtentLookup
+  = EndpointExtentFound { extent: IntegerExtent }
+  | EndpointExtentRefused { cause: KernelCrossingRefusal }
+
+fn endpoint_extent(rows: List<KernelGrounding>, endpoint: CrossingEndpoint) -> EndpointExtentLookup {
+  match endpoint {
+    KernelIntegerEndpoint => EndpointExtentFound { extent: kernel_integer_extent() }
+    CarrierEndpoint { carrier: c } =>
+      match carrier_grounding(rows: rows, carrier: c) {
+        CarrierGroundingFound { row: r } => EndpointExtentFound { extent: r.extent }
+        CarrierGroundingRefused { cause: cause } => EndpointExtentRefused { cause: cause }
+      }
+  }
+}
+
+fn kernel_grounding_crossing(rows: List<KernelGrounding>, from: CrossingEndpoint, to: CrossingEndpoint) -> KernelGroundingCrossing {
+  match endpoint_extent(rows: rows, endpoint: from) {
+    EndpointExtentRefused { cause: c } => CrossingRefused { cause: c }
+    EndpointExtentFound { extent: source } =>
+      match endpoint_extent(rows: rows, endpoint: to) {
+        EndpointExtentRefused { cause: c } => CrossingRefused { cause: c }
+        EndpointExtentFound { extent: target } =>
+          if integer_extent_within(inner: source, outer: target) {
             CrossingTotalWidening
           } else {
             CrossingRefused { cause: ExtentNotIncluded { from: from, to: to } }
@@ -449,11 +518,18 @@ fn kernel_grounding_crossing(rows: List<KernelGrounding>, from: DeclarationRef, 
   }
 }
 
+fn crossing_endpoint_display(endpoint: CrossingEndpoint) -> String {
+  match endpoint {
+    KernelIntegerEndpoint => "the kernel Int"
+    CarrierEndpoint { carrier: c } => concat(concat(c.module_path as String, "."), c.decl_name as String)
+  }
+}
+
 fn kernel_crossing_refusal_message(cause: KernelCrossingRefusal) -> String {
   match cause {
-    CarrierNotGrounded { carrier: c } => concat(concat(c.module_path as String, "."), c.decl_name as String)
-    CarrierGroundedTwice { carrier: c } => concat(concat(c.module_path as String, "."), concat(c.decl_name as String, " is grounded by more than one row, so the route is not unique"))
-    ExtentNotIncluded { from: f, to: t } => concat(concat(concat(f.module_path as String, "."), f.decl_name as String), concat(" is not inside ", concat(concat(t.module_path as String, "."), t.decl_name as String)))
+    CarrierNotGrounded { carrier: c } => crossing_endpoint_display(endpoint: CarrierEndpoint { carrier: c })
+    CarrierGroundedTwice { carrier: c } => concat(crossing_endpoint_display(endpoint: CarrierEndpoint { carrier: c }), " is grounded by more than one row, so the route is not unique")
+    ExtentNotIncluded { from: f, to: t } => concat(crossing_endpoint_display(endpoint: f), concat(" is not inside ", crossing_endpoint_display(endpoint: t)))
   }
 }
 

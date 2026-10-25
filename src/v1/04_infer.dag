@@ -24,7 +24,8 @@ import std.literal_elaboration {
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CarrierNotGrounded,
-  kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message,
+  kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message, CarrierEndpoint, KernelIntegerEndpoint,
+  CrossingEndpoint, crossing_endpoint_display,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
@@ -4371,6 +4372,7 @@ type InhabitanceRefusalReason
   | RefusedOptionalAtRequired
   | RefusedProductAtScalar
   | RefusedValueAtNever
+  | RefusedNoDeclaredCrossing { cause: String }
 
 
 type InhabitanceVerdict
@@ -4590,31 +4592,139 @@ fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> 
 // THE SINGLE DECISION PROCEDURE. It CONSUMES the established predicates rather than restating
 // them: alias identity is decided by the one relation (alias_identity_in_judgment over settled_type / alias_settled_agree),
 // at the node level and, for a seam holding only spellings, through its name entry.
-// A KERNEL-GROUNDED CARRIER IS INHABITED BY ITSELF AND BY ITS TRANSPARENT ALIASES. The carrier is
-// declared as a coproduct (std.nat Nat = Zero | Succ) and realized as the kernel integer, so the
-// structural judgments below -- which exist to tell a payload from its parent, a kernel value from a
-// structure, one nominal from another -- have no distinction to find between it and an alias that
-// names it: `type NonNegativeInt = Nat` IS Nat on every route. Measured on the Nat de-fork: without
-// this arm std.integer NonNegativeInt refused at every std.nat call (dag/extdeps/version/semver.dag,
-// dag/std/citation.dag); the same admission guards the call-argument check (direct_call_arg_type_mismatch),
-// whose nominal-brand arm refused the same pair. Both sides are read by declaration, not spelling: the declared name must
-// resolve to the grounded declaration, and the produced name must too, directly or through the one
-// alias hop an alias binding records in its `name` (see kernel_value_declared_type_mismatch). A
-// REFINEMENT of the carrier (PositiveInt = Nat where gt_zero) is not this arm's: it stays with
-// refinement_inhabitance, which decides the widen and the narrow.
-fn produced_is_kernel_grounded_carrier_or_its_alias(declared_name: String, produced_name: String, env: TypeEnv) -> Bool {
-  if !env_name_is_kernel_grounded_carrier(name: declared_name, env: env) {
-    false
-  } else if env_name_is_kernel_grounded_carrier(name: produced_name, env: env) {
-    true
-  } else {
-    match lookup_type_by_name(env: env, name: produced_name) {
-      Present { value: bound } =>
-        bound.connective == NoConnective && (bound.children |> count) == 0 && bound.type_annotation == none
-          && bound.name != "" && qualified_last_segment(name: bound.name) != qualified_last_segment(name: produced_name)
-          && env_name_is_kernel_grounded_carrier(name: bound.name, env: env)
-      Absent => false
+// A GROUNDED CARRIER'S IMPLICIT POSITIONS ARE DECIDED BY THE DERIVED CROSSING, ON BOTH SIDES' DECLARATIONS
+// (std.literal_elaboration kernel_grounding_crossing over gunbc.structural_realization_bindings kernel_grounding_rows).
+// Each side is settled to the declaration it names, through its aliases (settled_type), or read as the kernel
+// Int, which no declaration names; neither is ever read from a spelling. A carrier is inhabited by itself and its
+// transparent aliases (`type NonNegativeInt = Nat` IS Nat on every route), and by any endpoint whose extent lies
+// inside its own: the kernel Int at a std.integer Int position, std.nat Nat at a std.integer Int position. A
+// grounded carrier at the kernel Int, or std.integer Int at a std.nat Nat, has no implicit route (DESIGN section 4:
+// coercion is the implicit-safe subset; the partial direction is a named checked conversion), and neither does a
+// declaration no row grounds at a carrier position (a user `type Int`). Two pairs are left to the chain below, as
+// before, each a declared class: a kernel Int at a std.nat Nat position (the literal is judged by the row's extent
+// at elaboration; a computed kernel Int has no checked route yet) and a std.nat Nat at a kernel Int position
+// (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged, the same residual
+// for the implicit position). A REFINEMENT of a carrier (PositiveInt = Nat where gt_zero) settles to no carrier
+// here and stays with refinement_inhabitance.
+type GroundedPairSide
+  = GroundedSideCarrier { carrier: DeclarationRef }
+  | GroundedSideKernelInt
+  | GroundedSideUngrounded { declaration: DeclarationRef }
+  | GroundedSideUnread
+
+type GroundedPairVerdict
+  = GroundedPairAdmitted
+  | GroundedPairRefused { cause: String }
+  | GroundedPairNotDecided
+
+fn grounded_pair_side(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> GroundedPairSide {
+  if position_is_a_refinement(n: n, env: env) { GroundedSideUnread }
+  else {
+  match settled_type(n: n, source_indices: source_indices, env: env, fuel: 16) {
+    Present { value: st } =>
+      if (st.args |> count) > 0 { GroundedSideUnread }
+      else {
+        match carrier_grounding(rows: kernel_grounding_rows, carrier: st.head) {
+          CarrierGroundingFound { row: _ } => GroundedSideCarrier { carrier: st.head }
+          CarrierGroundingRefused { cause: CarrierNotGrounded { carrier: _ } } => GroundedSideUngrounded { declaration: st.head }
+          CarrierGroundingRefused { cause: _ } => GroundedSideCarrier { carrier: st.head }
+        }
+      }
+    Absent =>
+      match type_reference_declaration_reading(n: n, source_indices: source_indices, env: env) {
+        TypeReferenceIsKernelType { name: k } => if k == "Int" { GroundedSideKernelInt } else { GroundedSideUnread }
+        _ => GroundedSideUnread
+      }
+  }
+  }
+}
+
+// The same subject test refinement_inhabitance makes (a where-refinement chain longer than the declaration
+// itself), so a refined position is that relation's and never this one's.
+fn position_is_a_refinement(n: Node, env: TypeEnv) -> Bool {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: declaration } => (where_refinement_chain(ty: declaration, type_env: env) |> count) > 1
+    Absent => false
+  }
+}
+
+fn grounded_pair_refused(v: GroundedPairVerdict) -> Bool {
+  match v {
+    GroundedPairRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+fn grounded_pair_refusal_cause(v: GroundedPairVerdict) -> String {
+  match v {
+    GroundedPairRefused { cause: c } => c
+    _ => ""
+  }
+}
+
+fn grounded_pair_admitted(v: GroundedPairVerdict) -> Bool {
+  match v {
+    GroundedPairAdmitted => true
+    _ => false
+  }
+}
+
+fn grounded_side_endpoint(side: GroundedPairSide) -> CrossingEndpoint? {
+  match side {
+    GroundedSideCarrier { carrier: c } => Present { value: CarrierEndpoint { carrier: c } }
+    GroundedSideKernelInt => Present { value: KernelIntegerEndpoint }
+    _ => none
+  }
+}
+
+fn grounded_pair_verdict(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> GroundedPairVerdict {
+  let d = grounded_pair_side(n: declared, source_indices: source_indices, env: env)
+  let p = grounded_pair_side(n: produced, source_indices: source_indices, env: env)
+  let carrier_involved = match d {
+    GroundedSideCarrier { carrier: _ } => true
+    _ => match p {
+      GroundedSideCarrier { carrier: _ } => true
+      _ => false
     }
+  }
+  if !carrier_involved { GroundedPairNotDecided }
+  else {
+    match grounded_side_endpoint(side: d) {
+      Absent => GroundedPairNotDecided
+      Present { value: to } =>
+        match grounded_side_endpoint(side: p) {
+          Absent =>
+            match p {
+              GroundedSideUngrounded { declaration: u } =>
+                GroundedPairRefused { cause: concat(declaration_ref_display_key(ref: u), concat(" has no declared conversion route onto ", crossing_endpoint_display(endpoint: to))) }
+              _ => GroundedPairNotDecided
+            }
+          Present { value: from } =>
+            match kernel_grounding_crossing(rows: kernel_grounding_rows, from: from, to: to) {
+              CrossingTotalWidening => GroundedPairAdmitted
+              CrossingRefused { cause: c } =>
+                if crossing_is_a_declared_residual(from: from, to: to) { GroundedPairNotDecided }
+                else { GroundedPairRefused { cause: kernel_crossing_refusal_message(cause: c) } }
+            }
+        }
+    }
+  }
+}
+
+// THE TWO PAIRS THE RULE DOES NOT YET DECIDE (above), read from the rows by identity: a grounded NATURAL against
+// the kernel Int, in either direction.
+fn crossing_is_a_declared_residual(from: CrossingEndpoint, to: CrossingEndpoint) -> Bool {
+  match from {
+    KernelIntegerEndpoint =>
+      match to {
+        CarrierEndpoint { carrier: c } => declaration_is_grounded_natural(rows: kernel_grounding_rows, d: c)
+        KernelIntegerEndpoint => false
+      }
+    CarrierEndpoint { carrier: c } =>
+      match to {
+        KernelIntegerEndpoint => declaration_is_grounded_natural(rows: kernel_grounding_rows, d: c)
+        CarrierEndpoint { carrier: _ } => false
+      }
   }
 }
 
@@ -4633,6 +4743,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
       scope: scope)
   } else { none }
   let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
+  let grounded_verdict = grounded_pair_verdict(declared: declared, produced: produced, source_indices: source_indices, env: scope.type_env)
   let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
     Present { value: TypeVariable { id: _ } } => true
     _ => false
@@ -4649,13 +4760,15 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if grounded_pair_admitted(v: grounded_verdict) {
+    Inhabits
+  } else if grounded_pair_refused(v: grounded_verdict) {
+    InhabitanceRefused { reason: RefusedNoDeclaredCrossing { cause: grounded_pair_refusal_cause(v: grounded_verdict) } }
   } else if alias_identity_in_judgment(
       left: declared, right: produced, source_indices: source_indices,
       text: TextJudgedIn { env: scope.type_env }) {
     Inhabits
   } else if carrier_verdict == Present { value: true } {
-    Inhabits
-  } else if produced_is_kernel_grounded_carrier_or_its_alias(declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
     Inhabits
   } else if carrier_verdict == Present { value: false } {
     InhabitanceRefused { reason: RefusedDistinctProductConstructor }
@@ -5513,6 +5626,8 @@ fn inhabitance_refusal_position_label(
       concat(base, " [RefusedProductCoproductHeadMismatch]")
     RefusedValueAtNever =>
       concat(base, " [RefusedValueAtNever]")
+    RefusedNoDeclaredCrossing { cause: c } =>
+      concat(base, concat(" [RefusedNoDeclaredCrossing: ", concat(c, "]")))
     _ => base
   }
 }
@@ -6768,17 +6883,18 @@ fn direct_call_arg_type_mismatch(
   }
   else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
-  else if produced_is_kernel_grounded_carrier_or_its_alias(
-      declared_name: authored_name_at(source_indices: source_indices, node: formal),
-      produced_name: authored_name_at(source_indices: source_indices, node: actual),
-      env: type_env) { false }
   else {
-    text_crossing_by_identity(left: formal, right: actual, env: type_env)
-      || nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
-      || container_element_nominal_brand_mismatch(
-        formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
-      || kernel_value_declared_type_mismatch(
-        formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
+    match grounded_pair_verdict(declared: formal, produced: actual, source_indices: source_indices, env: type_env) {
+      GroundedPairAdmitted => false
+      GroundedPairRefused { cause: _ } => true
+      GroundedPairNotDecided =>
+        text_crossing_by_identity(left: formal, right: actual, env: type_env)
+          || nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
+          || container_element_nominal_brand_mismatch(
+            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
+          || kernel_value_declared_type_mismatch(
+            formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
+    }
   }
 }
 
@@ -7842,7 +7958,7 @@ fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclaratio
         TypeReferenceNamesDeclaration { declaration: t } =>
           match carrier_grounding(rows: kernel_grounding_rows, carrier: t) {
             CarrierGroundingFound { row: _ } =>
-              match kernel_grounding_crossing(rows: kernel_grounding_rows, from: source, to: t) {
+              match kernel_grounding_crossing(rows: kernel_grounding_rows, from: CarrierEndpoint { carrier: source }, to: CarrierEndpoint { carrier: t }) {
                 CrossingTotalWidening => GroundedCastAdmitted
                 CrossingRefused { cause: c } => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
               }

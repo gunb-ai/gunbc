@@ -8,7 +8,7 @@ import std.compiler_entry {
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision }
-import std.literal_elaboration { declaration_is_grounded_natural, kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused }
+import std.literal_elaboration { declaration_is_grounded_natural, kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, CarrierEndpoint }
 import gunbc.structural_realization_bindings { kernel_grounding_rows }
 import std.unicode.scalar { ascii_lowercase }
 
@@ -3405,7 +3405,7 @@ fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, 
         Present { value: d } =>
           match type_reference_declaration_reading(n: cast_target_node, source_indices: source_indices, env: env) {
             TypeReferenceNamesDeclaration { declaration: t } =>
-              match kernel_grounding_crossing(rows: kernel_grounding_rows, from: d, to: t) {
+              match kernel_grounding_crossing(rows: kernel_grounding_rows, from: CarrierEndpoint { carrier: d }, to: CarrierEndpoint { carrier: t }) {
                 CrossingTotalWidening => true
                 CrossingRefused { cause: _ } => false
               }

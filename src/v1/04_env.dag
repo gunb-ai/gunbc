@@ -1767,6 +1767,13 @@ type TypeReferenceDeclarationReading
   | TypeReferenceIsTypeVariable { id: String }
   | TypeReferenceUnidentified { authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause? }
 
+// A KERNEL SPELLING IS THE KERNEL TYPE ONLY WHERE THE AUTHORING SCOPE BINDS NO DECLARATION TO IT. A reference
+// spelled `Int` in a module that imports std.integer { Int }, or that declares its own `type Int`, names that
+// declaration, wherever the node is later read: a formal's type is read at every call site, in the caller's
+// env, and reading its spelling there (or classifying it as the kernel Int by spelling alone) admitted a
+// std.integer Int where the kernel Int is declared and a foreign `type Int` where std.integer Int is. So an
+// unidentified reference is first resolved in the module of the file that authored it, the one lexical scope
+// its spelling was written in, and only a spelling that scope leaves unbound falls back to the kernel.
 fn type_reference_declaration_reading(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeReferenceDeclarationReading {
   match declaration_reading_of_type_node(rt: n, source_indices: source_indices, env: env) {
     TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
@@ -1777,10 +1784,24 @@ fn type_reference_declaration_reading(n: Node, source_indices: Map<String, Newli
           match declaration_reading_of_type_node(rt: r, source_indices: source_indices, env: env) {
             TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
             TypeNodeUnidentified { cause: resolved_cause } =>
-              kernel_or_unidentified(n: r, source_indices: source_indices, authored: authored_cause, resolved: Present { value: resolved_cause })
+              match reference_declaration_in_authoring_scope(n: n, source_indices: source_indices, env: env) {
+                Present { value: d } => TypeReferenceNamesDeclaration { declaration: d }
+                Absent => kernel_or_unidentified(n: r, source_indices: source_indices, authored: authored_cause, resolved: Present { value: resolved_cause })
+              }
           }
-        _ => kernel_or_unidentified(n: n, source_indices: source_indices, authored: authored_cause, resolved: none)
+        _ =>
+          match reference_declaration_in_authoring_scope(n: n, source_indices: source_indices, env: env) {
+            Present { value: d } => TypeReferenceNamesDeclaration { declaration: d }
+            Absent => kernel_or_unidentified(n: n, source_indices: source_indices, authored: authored_cause, resolved: none)
+          }
       }
+  }
+}
+
+fn reference_declaration_in_authoring_scope(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match map_get(env.symbol_index.file_modules, n.span.file) {
+    Present { value: authoring } => declaration_named_in_module(name: authored_name_at(source_indices: source_indices, node: n), module_path: authoring, env: env)
+    Absent => none
   }
 }
 
@@ -2077,23 +2098,11 @@ type SettledType {
 }
 
 fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
-  let read = match n.declaration {
+  // A reference read through another module's declaration (a record field typed by an alias this module never imported) is
+  // resolved in the module of the file that authored it, by the reading itself (type_reference_declaration_reading).
+  let reading = match n.declaration {
     Present { value: dn } => TypeReferenceNamesDeclaration { declaration: dn }
     Absent => type_reference_declaration_reading(n: n, source_indices: source_indices, env: env)
-  }
-  // A reference read through another module's declaration (a record field typed by an alias this module never imported) carries no
-  // identity here; its spelling is then resolved in the module of the file that authored it, which names the declaration exactly or answers none.
-  let reading = match read {
-    TypeReferenceUnidentified { authored: _, resolved: _ } =>
-      match map_get(env.symbol_index.file_modules, n.span.file) {
-        Present { value: authoring } =>
-          match declaration_named_in_module(name: authored_name_at(source_indices: source_indices, node: n), module_path: authoring, env: env) {
-            Present { value: d } => TypeReferenceNamesDeclaration { declaration: d }
-            Absent => read
-          }
-        Absent => read
-      }
-    _ => read
   }
   match reading {
     TypeReferenceNamesDeclaration { declaration: d } =>
