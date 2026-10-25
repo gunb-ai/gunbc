@@ -206,8 +206,11 @@ fn session_attempt_name_of(identity: String) -> SessionAttemptName? {
 // WHERE A SESSION'S DURABLE FACTS LIVE, resolved once from the instance and then passed as a value,
 // so the settlement pass and its witnesses run the same fold over any store (the compute recovery
 // door's own row names an instance-derived root as what kept its control unwritable).
+//
+// The slot store is the ONE root of the session slots: setup (belt_session_slots_ensure) creates the
+// directory the lifecycle writes to by reading it off this store, so no second field can name a
+// directory that is set up while the writes go elsewhere.
 type SessionPlacementStores {
-  slots_root: NonEmptyStr
   slots: SlotStore
   records_dir: String
   store: FabricStorageBinding
@@ -234,7 +237,6 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
         ComputeSubjectHostUnresolved { host } => SessionStoresUnresolved { detail: join(["no dashboard instance is declared for host ", host as String, ", so it has no session ledger"], "") }
         ComputeSubjectResolved { subject } =>
           SessionStoresResolved { stores: SessionPlacementStores {
-            slots_root: session_placement_slots_root(instance: instance),
             slots: file_slot_store(root: session_placement_slots_root(instance: instance)),
             records_dir: session_placement_records_dir(instance: instance),
             store: compute_capacity_store(subject: subject),
