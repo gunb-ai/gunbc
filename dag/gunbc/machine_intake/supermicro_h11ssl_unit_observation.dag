@@ -384,15 +384,22 @@ data supermicro_h11ssl_cpu_history_attestation: H11sslOperatorAttestation = H11s
   attested_by: "the operator, answering the open question on gunbc#14975, relayed by merry-fox-82",
   attested_on: "2026-10-24",
   statement: "Both H11SSL units now carry two NEW EPYC 7702P parts. The earlier CPUs were locked ('locked / don't work'): vendor-locked parts that would not run in these boards. The 0x22 hold on unit 1 was with its original, locked CPU.",
-  unread: "Per-part identity and lock state are the operator's attestation, not a read: SMBIOS reads each serial as Unknown and no PSB fuse state was read. The package marking or the PSP serial would ground identity; a PSP or BIOS PSB status read would ground the lock.",
+  unread: "Per-part identity, and the earlier parts' lock, are the operator's account, not a read: SMBIOS reads each serial as Unknown and no PSB fuse state was read. The package marking or the PSP serial would ground identity; a PSP or BIOS PSB status read would ground a lock state.",
 }
 
-// Whether the operator reports a part locked to a vendor or not. Neither arm is a fuse read. Two
-// folds consume it. supermicro_h11ssl_psb_inference_under refuses a PSB link whose fitted part is
+// What the operator said about a part's vendor lock. No arm is a fuse read. The attestation called
+// the replacements NEW, not unlocked, so their lock is PartLockNotAttested. A successful POST shows
+// the board accepts the part, not its fuse state, and that is the PSB inference's bet, not an
+// attestation. PartAttestedUnlocked is for an explicit "unlocked" from the operator. Two folds
+// consume the lock. supermicro_h11ssl_psb_inference_under refuses a PSB link whose fitted part is
 // attested locked while its trace POSTed, since the account and the trace then disagree.
 // supermicro_h11ssl_prior_stall_lock_losses carries the "locked is a diagnosis" loss only when
 // the removed part is attested locked.
-type H11sslCpuPartLock = PartAttestedVendorLocked | PartAttestedUnlocked
+type H11sslCpuPartLock = PartAttestedVendorLocked | PartAttestedUnlocked | PartLockNotAttested { read_obligation: NonEmptyStr }
+
+data supermicro_h11ssl_replacement_lock_not_attested: H11sslCpuPartLock = PartLockNotAttested {
+  read_obligation: "The operator called these parts new, not unlocked; a successful POST shows board compatibility, not fuse state. An explicit statement from the operator, or a PSP or BIOS PSB status read, grounds it.",
+}
 
 type H11sslCpuPartTenure = PartFittedNow | PartRemoved
 
@@ -413,8 +420,8 @@ type H11sslAttestedCpuPart {
 // stated for one, so none is rowed: a row is added when its placement is attested.
 data supermicro_h11ssl_attested_cpu_parts: List<H11sslAttestedCpuPart> = [
   H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: PartAttestedVendorLocked, tenure: PartRemoved, attestation: supermicro_h11ssl_cpu_history_attestation },
-  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: PartAttestedUnlocked, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
-  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit2_bmc_mac, model: epyc_7702p_catalog, lock: PartAttestedUnlocked, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: supermicro_h11ssl_replacement_lock_not_attested, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit2_bmc_mac, model: epyc_7702p_catalog, lock: supermicro_h11ssl_replacement_lock_not_attested, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
 ]
 
 fn supermicro_h11ssl_attested_part(parts: List<H11sslAttestedCpuPart>, bmc_mac: Eui48Address, tenure: H11sslCpuPartTenure) -> H11sslAttestedCpuPart? {
@@ -573,17 +580,18 @@ data supermicro_h11ssl_attested_lock_is_a_diagnosis_loss: NonEmptyStr = "That th
 
 // The lock attestation of the removed part shapes the prior-stall link's losses. If it is attested
 // locked, a reader could take the hold as the lock's signature, so the link says that the lock is
-// a diagnosis. If it is attested unlocked, no lock was claimed, and the loss is not carried.
+// a diagnosis. If it is attested unlocked, or its lock is not attested, no lock was claimed, and the loss is not carried.
 fn supermicro_h11ssl_prior_stall_lock_losses(removed: H11sslAttestedCpuPart?) -> List<NonEmptyStr> {
   match removed {
-    Present { value: p } => match p.lock { PartAttestedVendorLocked => [supermicro_h11ssl_attested_lock_is_a_diagnosis_loss]  PartAttestedUnlocked => [] }
+    Present { value: p } => match p.lock { PartAttestedVendorLocked => [supermicro_h11ssl_attested_lock_is_a_diagnosis_loss]  PartAttestedUnlocked => []  PartLockNotAttested { read_obligation: _ } => [] }
     Absent => []
   }
 }
 
 // The PSB link for one trace takes the fitted part's attestation as its premise, since the
 // operator's lock account bears on the proposition. If no part is attested fitted, the premise is
-// owed. A part attested UNLOCKED admits the link, and the attestation's unread is carried. A part
+// owed. A part attested UNLOCKED, or one whose lock is NOT ATTESTED, admits the link: the premise is
+// which part is fitted, and its lock is what the link infers. The attestation's unread is carried. A part
 // attested VENDOR-LOCKED that nevertheless POSTed is a disagreement between the account and the
 // trace, and the link is insufficient until the two are reconciled. It is never a Supports link
 // over a contradicted premise.
@@ -592,6 +600,7 @@ fn supermicro_h11ssl_psb_inference_under(t: H11sslPostTrace, parts: List<H11sslA
   let premise = match fitted {
     Present { value: p } => match p.lock {
       PartAttestedUnlocked => PremiseOperatorAttested { attestation: p.attestation }
+      PartLockNotAttested { read_obligation: _ } => PremiseOperatorAttested { attestation: p.attestation }
       PartAttestedVendorLocked => PremiseFigure { standing: TranscribedUncited { read_obligation: "The fitted part is attested vendor-locked, yet this trace POSTed on Supermicro firmware: the account and the trace disagree. Reconcile them (re-ask the operator, or read the PSB status) before inferring." } }
     }
     Absent => part_premise(part: fitted, owed: "No attested part is recorded as fitted in this unit; the operator's account of the fitted part grounds it.")

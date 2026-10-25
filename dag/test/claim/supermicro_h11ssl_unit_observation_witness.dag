@@ -27,7 +27,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation {
   PartNotPsbLockedToANonSupermicroVendor, PriorStallFollowedTheFirstCpu, supermicro_h11ssl_psb_losses,
   supermicro_h11ssl_attested_cpu_parts, supermicro_h11ssl_cpu_history_attestation, H11sslAttestedCpuPart,
   supermicro_h11ssl_psb_inference_under, supermicro_h11ssl_attested_lock_is_a_diagnosis_loss,
-  PartAttestedVendorLocked, PartAttestedUnlocked, PartFittedNow, PartRemoved, PremiseFigure, PremiseOperatorAttested,
+  PartAttestedVendorLocked, PartAttestedUnlocked, PartLockNotAttested, PartFittedNow, PartRemoved, PremiseFigure, PremiseOperatorAttested,
 }
 
 fn trace_of(mac_is_unit1: Bool) -> H11sslPostTrace? {
@@ -133,7 +133,8 @@ test fn w_psb_inferences_are_supporting_bets_with_losses() -> Bool {
 }
 
 // The operator's CPU history is rowed as attestation: unit 1's original part removed and recorded
-// as vendor-locked, and one new part reported unlocked fitted in each unit, every row carrying the
+// as vendor-locked, and one new part fitted in each unit whose lock is NOT attested (the operator said
+// new, not unlocked), every row carrying the
 // 2026-10-24 attestation. No unit has two parts fitted now. Every model is the upstream 7702P catalog
 // row, and the original part's model number agrees with the 2026-10-17 first-contact attestation.
 test fn w_cpu_history_is_attested_with_the_original_part_locked() -> Bool {
@@ -142,7 +143,7 @@ test fn w_cpu_history_is_attested_with_the_original_part_locked() -> Bool {
   (u1_removed |> count) == 1 && all(u1_removed, p => p.lock == PartAttestedVendorLocked)
     && ((ps |> filter(p => p.bmc_mac == supermicro_h11ssl_unit1_bmc_mac && p.tenure == PartFittedNow)) |> count) == 1
     && ((ps |> filter(p => p.bmc_mac == supermicro_h11ssl_unit2_bmc_mac && p.tenure == PartFittedNow)) |> count) == 1
-    && all(ps, p => p.model == epyc_7702p_catalog && ((p.tenure == PartRemoved) || p.lock == PartAttestedUnlocked))
+    && all(ps, p => p.model == epyc_7702p_catalog && ((p.tenure == PartRemoved) || (match p.lock { PartLockNotAttested { read_obligation: o } => string_contains(s: o, pattern: "not unlocked")  _ => false })))
     && all(u1_removed, p => string_contains(s: supermicro_h11ssl_attested_hardware.cpu_installed, pattern: p.model.model_number))
     && all(ps, p => p.attestation == supermicro_h11ssl_cpu_history_attestation && string_contains(s: p.attestation.unread, pattern: "Unknown"))
 }
