@@ -42,7 +42,6 @@ module test.claim.compute.compute_principal_admission_witness
 
 import std.types { Bool, String }
 import std.optional { Present, Absent }
-import std.algebra { join, string_contains }
 import std.materialization_store_grant {
   PersistentInstanceWorkspace, materialization_store_root_path, materialization_store_staging_root_path,
   materialization_store_workspace_leaf,
