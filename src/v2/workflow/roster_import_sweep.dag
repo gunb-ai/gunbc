@@ -191,6 +191,12 @@ type RosterRefusalReason
   // reference with no call. The file is left untouched and the cause names the call spelling.
   | RefusalRenameCallArity { call: String }
   | RefusalRenameCallNamedArgument { call: String }
+  // A `|>` whose right operand starts at the renamed call but extends past it: the call is not the pipe's target, so its
+  // operand cannot be taken cleanly as slot 0.
+  | RefusalRenamePipeOperandUnclean { call: String }
+  // A head relocation whose written text does not begin with the home name: the head occurrence would not be where the
+  // relocation says it is, so neither the planner nor the splice admits it.
+  | RefusalRelocationTextNotHeaded { call: String }
   // A RenameHead row whose companion import cannot be derived (the home, the callee, its declared return type, the
   // module that declares that type, or the type's variants did not read): a file whose renamed call it would govern
   // refuses rather than leaving the result matched by ambient tags that bind it untyped.
@@ -245,6 +251,8 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalCompanionTagUndecided { call: c, tag: t } => "companion-tag-undecided call=" + c + " tag=" + t
     RefusalEditsCoincide { at: a } => "edits-coincide at=" + int_to_decimal_string(value: a)
     RefusalRenameCallNamedArgument { call: c } => "rename-call-named-argument call=" + c
+    RefusalRenamePipeOperandUnclean { call: c } => "rename-pipe-operand-unclean call=" + c
+    RefusalRelocationTextNotHeaded { call: c } => "relocation-text-not-headed call=" + c
     RefusalCompanionUnderivable { call: c, detail: d } => "companion-underivable call=" + c + " " + d
   }
 }
@@ -327,11 +335,26 @@ type RosterOutcome
 // AN ARGUMENT-LABEL RENAME, its own edit kind (tidy-ant-251's wave-1 ruling): a call to a row's home declaration
 // whose authored label is the old parameter name gets the home's parameter name. One edit replaces exactly one label
 // token; the apply re-checks that the bytes at the extent are still `from`.
+// THE ONE TYPED FACT OF A PIPE SITE'S HEAD (agreed with wise-moth-707 and tidy-ant-251 for #15083 RelocateHeadStep): the edit
+// carrying it removes exactly the base head (its own start and `from`, not restated here), and the splice writes `text` at
+// insert_at -- the only write at that offset -- whose first len(to) bytes are the head occurrence `to` and the rest a plain
+// insertion. `text` begins with `to` or the relocation is not admitted (roster_relocation_admitted, a typed refusal).
+type RosterHeadRelocation {
+  insert_at: Int
+  text: String
+  to: String
+}
+
 type RosterLabelEdit {
   start: Int
   end: Int
   from: String
   to: String
+  // A PIPE SITE'S HEAD RELOCATION, on the edit that removes exactly the base head: see RosterHeadRelocation. The occurrence
+  // join (#15083 RelocateHeadStep) maps the one by the other instead of refusing a covered head. Absent on every other edit.
+  // DISSOLVES WITH A3 (gunbc.recurring_failure_mode pipe_into_a_declared_function_resolves_as_a_method): once a pipe into a
+  // declared function resolves natively, a pipe site keeps its pipe, the head is renamed in place, and nothing relocates.
+  relocation: Optional<RosterHeadRelocation>
 }
 
 fn roster_head_rows() -> List<RosterHeadRow> {
@@ -829,10 +852,50 @@ fn roster_labels_below(labels: List<RosterLabelEdit>, at: Int) -> Bool {
   fold_list(xs: labels, empty: true, cons: fn(ok, e) { ok && e.start >= at })
 }
 
+// A RELOCATION EDIT AS ITS TWO WRITES: the removal of exactly the base head, and the insertion of `inserted` at insert_at.
+// The disjointness check and the splice both read the plan through this, so the relocated name is an insertion point like
+// any other (a second insert there refuses as coincident) and is written exactly once.
+fn roster_expand_relocations(edits: List<RosterLabelEdit>) -> List<RosterLabelEdit> {
+  let expanded = fold_list(xs: edits, empty: [], cons: fn(acc, e) { roster_expand_relocation_step(acc: acc, e: e) })
+  list_sort_by_key(xs: expanded, key: roster_label_edit_order_key, order: int_total_order())
+}
+
+fn roster_expand_relocation_step(acc: List<RosterLabelEdit>, e: RosterLabelEdit) -> List<RosterLabelEdit> {
+  match e.relocation {
+    Absent => list_snoc_item(xs: acc, item: e)
+    Present { value: r } =>
+      list_snoc_item(xs: list_snoc_item(xs: acc, item: RosterLabelEdit { start: e.start, end: e.end, from: e.from, to: e.to, relocation: Absent }), item: RosterLabelEdit { start: r.insert_at, end: r.insert_at, from: "", to: r.text, relocation: Absent })
+  }
+}
+
+// THE RELOCATION INVARIANT, one predicate for the planner and the splice: the written text begins with the home name.
+fn roster_relocation_text_headed(text: String, to: String) -> Bool {
+  (to != "") && starts_with(s: text, prefix: to)
+}
+
+fn roster_relocations_admitted(edits: List<RosterLabelEdit>) -> Bool {
+  fold_list(xs: edits, empty: true, cons: fn(ok, e) { ok && roster_relocation_edit_admitted(e: e) })
+}
+
+fn roster_relocation_edit_admitted(e: RosterLabelEdit) -> Bool {
+  match e.relocation {
+    Absent => true
+    Present { value: r } => roster_relocation_text_headed(text: r.text, to: r.to)
+  }
+}
+
 fn roster_label_splices(before: String, edits: List<RosterLabelEdit>) -> RosterApplied {
+  if !roster_relocations_admitted(edits: edits) {
+    RosterApplyRefused { reason: RefusalRelocationTextNotHeaded { call: "*" } }
+  } else {
+    roster_label_splices_admitted(before: before, edits: edits)
+  }
+}
+
+fn roster_label_splices_admitted(before: String, edits: List<RosterLabelEdit>) -> RosterApplied {
   let octets = bytes_octets(b: utf8_encode_bytes(s: before))
   fold_list(
-    xs: list_reverse(xs: edits),
+    xs: list_reverse(xs: roster_expand_relocations(edits: edits)),
     empty: RosterApplyWritten { content: before },
     cons: fn(acc, e) {
       match acc {
@@ -1063,7 +1126,7 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterC
                     candidates: candidates,
                     closures: closures
                   ) {
-                    RosterClean => roster_label_outcome(sides: sides, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates)
+                    RosterClean => roster_label_outcome(sides: sides, text: text, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates)
                     other => other
                   }
                   let converged = match outcome {
@@ -1165,7 +1228,7 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
                       Present { value: label } =>
                         if symbol_lexeme(sym: label) == rename.from {
                           match roster_node_byte_range(node: name_node, spans: spans) {
-                            Present { value: r } => LabelsSelected { edits: list_snoc_item(xs: es2, item: RosterLabelEdit { start: r.start, end: r.end, from: rename.from, to: rename.to }) }
+                            Present { value: r } => LabelsSelected { edits: list_snoc_item(xs: es2, item: RosterLabelEdit { start: r.start, end: r.end, from: rename.from, to: rename.to, relocation: Absent }) }
                             Absent => LabelsAmbiguous
                           }
                         } else {
@@ -1303,6 +1366,7 @@ fn roster_primary_heads(parse_root: Node, call: String) -> List<Node> {
 
 // THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold.
 fn roster_rows_label_plan(sides: List<RosterHomeSide>, 
+  text: Optional<String>,
   parse_root: Node,
   spans: SpanIndex,
   normalized_root: Node,
@@ -1319,7 +1383,7 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
           RenameHead { to: to, positional: positional } =>
             match roster_row_label_edits(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es) {
               LabelsSelected { edits: es3 } =>
-                match roster_rename_plan(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to, positional: positional) {
+                match roster_rename_plan(sides: sides, text: text, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to, positional: positional) {
                   LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es3, right: more) }
                   other => other
                 }
@@ -1335,7 +1399,12 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
   // The sorted plan must then be pairwise disjoint (roster_label_edits_disjoint), or it refuses: the order alone does not
   // make two edits of the same bytes safe.
   match planned {
-    LabelsSelected { edits: es } => roster_label_edits_disjoint(edits: list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order()))
+    LabelsSelected { edits: es } =>
+      let sorted = list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order())
+      match roster_label_edits_disjoint(edits: roster_expand_relocations(edits: sorted)) {
+        LabelsSelected { edits: _ } => LabelsSelected { edits: sorted }
+        other => other
+      }
     other => other
   }
 }
@@ -1406,6 +1475,7 @@ fn roster_row_label_edits(sides: List<RosterHomeSide>, parse_root: Node, spans: 
 // zero-width insertion of `<label>: ` before each positional argument, in the row's declared order.
 fn roster_rename_plan(
   sides: List<RosterHomeSide>,
+  text: Optional<String>,
   parse_root: Node,
   spans: SpanIndex,
   normalized_root: Node,
@@ -1417,10 +1487,12 @@ fn roster_rename_plan(
   match roster_free_heads(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row) {
     FreeHeadsAmbiguous => LabelsAmbiguous
     FreeHeads { heads: heads } =>
-    fold_list(xs: heads, empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
+    // INNERMOST FIRST: a pipe whose left operand holds another of this row's selected calls waits for the next pass, after
+    // the inner call is rewritten (a chain `a |> f() |> join(s)` converges stage by stage).
+    fold_list(xs: roster_heads_innermost_first(parse_root: parse_root, spans: spans, heads: heads), empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
       match acc {
         LabelsSelected { edits: es } =>
-          match roster_rename_call_edits(head: head, spans: spans, row: row, to: to, positional: positional) {
+          match roster_rename_call_edits(text: text, parse_root: parse_root, head: head, spans: spans, row: row, to: to, positional: positional) {
             LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es, right: more) }
             other => other
           }
@@ -1430,7 +1502,244 @@ fn roster_rename_plan(
   }
 }
 
-fn roster_rename_call_edits(head: Node, spans: SpanIndex, row: RosterHeadRow, to: String, positional: List<String>) -> RosterLabelPlan {
+// A PIPE SITE (`lhs |> call(args)`) is the same rename with the pipe's left operand as positional slot 0: arity counts it, a
+// named argument still refuses with the existing causes, and the site becomes ONE replacement from the left operand's start to
+// the call's end, `to(label0: <lhs>, label1: <arg1>, ...)`, the operand and arguments copied byte for byte (a nested or
+// multi-line operand stays intact). A declared home cannot keep the pipe (gunbc.recurring_failure_mode
+// pipe_into_a_declared_function_resolves_as_a_method). A pipe whose right operand is more than the call refuses typed.
+fn roster_rename_call_edits(text: Optional<String>, parse_root: Node, head: Node, spans: SpanIndex, row: RosterHeadRow, to: String, positional: List<String>) -> RosterLabelPlan {
+  match roster_pipe_read(parse_root: parse_root, spans: spans, head: head) {
+    NotPiped => roster_rename_direct_call_edits(head: head, spans: spans, row: row, to: to, positional: positional)
+    PipeOperandUnclean => LabelsRenameRefused { reason: RefusalRenamePipeOperandUnclean { call: row.call } }
+    PipedFrom { left: lr, call: cr } =>
+      // Arity and labels are read without the text, so the import pass refuses a bad pipe site exactly as the label pass
+      // would; only the edit itself waits for the text.
+      match roster_pipe_site_refusal(head: head, row: row, positional: positional) {
+        Present { value: r } => LabelsRenameRefused { reason: r }
+        Absent =>
+          match text {
+            Absent => LabelsSelected { edits: [] }
+            Present { value: t } => roster_rename_pipe_edit(text: t, head: head, spans: spans, row: row, to: to, positional: positional, left: lr, call: cr)
+          }
+      }
+  }
+}
+
+fn roster_pipe_site_refusal(head: Node, row: RosterHeadRow, positional: List<String>) -> Optional<RosterRefusalReason> {
+  let slots = dag_call_direct_arg_slots(node: head)
+  if length(xs: slots) + 1 != length(xs: positional) {
+    Present { value: RefusalRenameCallArity { call: row.call } }
+  } else {
+    fold_list(xs: roster_zip_slots(slots: slots, labels: roster_drop_first(xs: positional)), empty: Absent, cons: fn(acc, pair) { roster_pipe_label_refusal(acc: acc, pair: pair, call: row.call) })
+  }
+}
+
+fn roster_pipe_label_refusal(acc: Optional<RosterRefusalReason>, pair: RosterSlotLabel, call: String) -> Optional<RosterRefusalReason> {
+  match acc {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match pair.slot {
+        Absent => Absent
+        Present { value: arg } =>
+          if roster_arg_is_named(arg: arg) && !roster_named_arg_label_is(arg: arg, label: pair.label) { Present { value: RefusalRenameCallNamedArgument { call: call } } } else { Absent }
+      }
+  }
+}
+
+// THE PIPE AS STEPS, NO OPERAND MOVED (tidy-ant-251's ruling for #15101): `lhs |> call(a1, ..)` becomes an INSERT of
+// `to(label0: ` at the left operand's start, a REPLACE of the span from the operand's end to the first remaining argument's
+// start (` |> call(`) by `, label1: ` (or by nothing when the call has no remaining argument), and the ordinary label
+// inserts before each later positional argument. Every operand and argument byte stays where it was and only shifts, so a
+// reader that joins occurrences across the edit (#15083) maps the operand by offset and the head by its rename.
+fn roster_rename_pipe_edit(text: String, head: Node, spans: SpanIndex, row: RosterHeadRow, to: String, positional: List<String>, left: RosterByteRange, call: RosterByteRange) -> RosterLabelPlan {
+  let slots = dag_call_direct_arg_slots(node: head)
+  let label0 = roster_field_or_empty(xs: positional, index: 0)
+  match find_named_child(root: head, name: ^grammar_sequence_left_node_projection) {
+    Rejected { diagnostics: _ } => LabelsAmbiguous
+    Accepted { value: atom, diagnostics: _ } =>
+      match roster_node_byte_range(node: atom, spans: spans) {
+        Absent => LabelsAmbiguous
+        Present { value: hr } =>
+          match roster_text_between(text: text, start: left.end, end: hr.start) {
+            Absent => LabelsAmbiguous
+            Present { value: connector } =>
+              match roster_text_between(text: text, start: hr.end, end: hr.end + 1) {
+                Absent => LabelsAmbiguous
+                Present { value: paren } =>
+                  if paren != "(" {
+                    LabelsAmbiguous
+                  } else if !roster_relocation_text_headed(text: to + "(" + label0 + ": ", to: to) {
+                    LabelsRenameRefused { reason: RefusalRelocationTextNotHeaded { call: row.call } }
+                  } else {
+                    let relocation = RosterLabelEdit { start: hr.start, end: hr.end, from: row.call, to: "", relocation: Present { value: RosterHeadRelocation { insert_at: left.start, text: to + "(" + label0 + ": ", to: to } } }
+                    let drop_connector = RosterLabelEdit { start: left.end, end: hr.start, from: connector, to: "", relocation: Absent }
+                    match list_head(xs: slots) {
+                      // `lhs |> call()`: the head's `(` goes, its `)` closes the rewritten call.
+                      Absent => LabelsSelected { edits: [relocation, drop_connector, RosterLabelEdit { start: hr.end, end: hr.end + 1, from: "(", to: "", relocation: Absent }] }
+                      Present { value: first_slot } =>
+                        match first_slot {
+                          Absent => LabelsAmbiguous
+                          Present { value: first_arg } =>
+                            let label1 = roster_field_or_empty(xs: positional, index: 1)
+                            // An argument the author already labelled with the row's label keeps its label.
+                            let joiner = if roster_arg_is_named(arg: first_arg) { ", " } else { ", " + label1 + ": " }
+                            fold_list(
+                              xs: roster_drop_first_slot_labels(pairs: roster_zip_slots(slots: slots, labels: roster_drop_first(xs: positional))),
+                              empty: LabelsSelected { edits: [relocation, drop_connector, RosterLabelEdit { start: hr.end, end: hr.end + 1, from: "(", to: joiner, relocation: Absent }] },
+                              cons: fn(acc, pair) {
+                                match acc {
+                                  LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
+                                  other => other
+                                }
+                              }
+                            )
+                        }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn roster_drop_first_slot_labels(pairs: List<RosterSlotLabel>) -> List<RosterSlotLabel> {
+  match pairs {
+    Empty => pairs
+    Cons { head: _, tail: t } => t
+  }
+}
+
+fn roster_field_or_empty(xs: List<String>, index: Int) -> String {
+  match list_at_optional(xs: xs, index: index) {
+    Present { value: t } => t
+    Absent => ""
+  }
+}
+
+fn roster_drop_first(xs: List<String>) -> List<String> {
+  match xs {
+    Empty => xs
+    Cons { head: _, tail: t } => t
+  }
+}
+
+fn roster_arg_is_named(arg: Node) -> Bool {
+  match dag_named_arg_value_optional(arg_capture: arg) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn roster_named_arg_label_is(arg: Node, label: String) -> Bool {
+  match dag_named_arg_name_node_optional(arg_capture: arg) {
+    Absent => false
+    Present { value: name_node } =>
+      match node_atom_identity_optional(node: name_node) {
+        Present { value: sym } => symbol_lexeme(sym: sym) == label
+        Absent => false
+      }
+  }
+}
+
+// WHERE A CALL HEAD SITS RELATIVE TO A PIPE, read off the parse tree's binary infix nodes (the operator at
+// grammar_infix_operator_node_projection, operands at its left/right projections). PipedFrom: some `|>` infix node's right
+// operand is exactly the call (same byte extent), and its left operand is the pipe's input. PipeOperandUnclean: a `|>` right
+// operand STARTS at the call but extends past it (`lhs |> call(..) + x`), so the call is not the pipe's target. Otherwise
+// NotPiped.
+type RosterPipeRead
+  = NotPiped
+  | PipedFrom { left: RosterByteRange, call: RosterByteRange }
+  | PipeOperandUnclean
+
+fn roster_pipe_read(parse_root: Node, spans: SpanIndex, head: Node) -> RosterPipeRead {
+  match roster_node_byte_range(node: head, spans: spans) {
+    Absent => NotPiped
+    Present { value: hr } =>
+      fold_list(xs: node_subtree_nodes(root: parse_root), empty: NotPiped, cons: fn(acc, n) {
+        match acc {
+          NotPiped => roster_pipe_read_at(node: n, spans: spans, call: hr)
+          other => other
+        }
+      })
+  }
+}
+
+fn roster_pipe_read_at(node: Node, spans: SpanIndex, call: RosterByteRange) -> RosterPipeRead {
+  match find_named_child(root: node, name: ^grammar_infix_operator_node_projection) {
+    Rejected { diagnostics: _ } => NotPiped
+    Accepted { value: op, diagnostics: _ } =>
+      if !roster_is_pipe_operator(op: op) {
+        NotPiped
+      } else {
+        match find_named_child(root: node, name: ^grammar_infix_right_node_projection) {
+          Rejected { diagnostics: _ } => NotPiped
+          Accepted { value: right, diagnostics: _ } =>
+            match roster_node_byte_range(node: right, spans: spans) {
+              Absent => NotPiped
+              Present { value: rr } =>
+                if (rr.start == call.start) && (rr.end == call.end) {
+                  match find_named_child(root: node, name: ^grammar_infix_left_node_projection) {
+                    Rejected { diagnostics: _ } => PipeOperandUnclean
+                    Accepted { value: left, diagnostics: _ } =>
+                      match roster_node_byte_range(node: left, spans: spans) {
+                        Absent => PipeOperandUnclean
+                        Present { value: lr } => PipedFrom { left: lr, call: call }
+                      }
+                  }
+                } else if (rr.start == call.start) && (rr.end > call.end) {
+                  PipeOperandUnclean
+                } else {
+                  NotPiped
+                }
+            }
+        }
+      }
+  }
+}
+
+fn roster_is_pipe_operator(op: Node) -> Bool {
+  match node_atom_identity_optional(node: op) {
+    Present { value: id } => id == ^dag_token_pipe_gt
+    Absent => false
+  }
+}
+
+fn roster_heads_innermost_first(parse_root: Node, spans: SpanIndex, heads: List<Node>) -> List<Node> {
+  let ranges = fold_list(xs: heads, empty: roster_no_ranges(), cons: fn(acc, h) { roster_range_snoc(acc: acc, node: h, spans: spans) })
+  fold_list(xs: heads, empty: [], cons: fn(acc, h) {
+    match roster_pipe_read(parse_root: parse_root, spans: spans, head: h) {
+      PipedFrom { left: lr, call: _ } => if roster_any_range_within(ranges: ranges, outer: lr) { acc } else { list_snoc_item(xs: acc, item: h) }
+      _ => list_snoc_item(xs: acc, item: h)
+    }
+  })
+}
+
+fn roster_no_ranges() -> List<RosterByteRange> { [] }
+
+fn roster_range_snoc(acc: List<RosterByteRange>, node: Node, spans: SpanIndex) -> List<RosterByteRange> {
+  match roster_node_byte_range(node: node, spans: spans) {
+    Present { value: r } => list_snoc_item(xs: acc, item: r)
+    Absent => acc
+  }
+}
+
+fn roster_any_range_within(ranges: List<RosterByteRange>, outer: RosterByteRange) -> Bool {
+  fold_list(xs: ranges, empty: false, cons: fn(found, r) { found || roster_range_within(inner: r, outer: outer) })
+}
+
+fn roster_range_within(inner: RosterByteRange, outer: RosterByteRange) -> Bool {
+  (outer.start <= inner.start) && (inner.end <= outer.end)
+}
+
+// The source text between two BYTE offsets, through the scalar-boundary reading the apply uses, or Absent.
+fn roster_text_between(text: String, start: Int, end: Int) -> String? {
+  let octets = bytes_octets(b: utf8_encode_bytes(s: text))
+  let from = roster_scalar_boundary(octets: octets, byte: start)
+  let to = roster_scalar_boundary(octets: octets, byte: end)
+  if from < 0 || to < from { Absent } else { Present { value: substring(s: text, start: from, end: to) } }
+}
+
+fn roster_rename_direct_call_edits(head: Node, spans: SpanIndex, row: RosterHeadRow, to: String, positional: List<String>) -> RosterLabelPlan {
   match find_named_child(root: head, name: ^grammar_sequence_left_node_projection) {
     Rejected { diagnostics: _ } => LabelsAmbiguous
     Accepted { value: atom, diagnostics: _ } =>
@@ -1443,7 +1752,7 @@ fn roster_rename_call_edits(head: Node, spans: SpanIndex, row: RosterHeadRow, to
           } else {
             fold_list(
               xs: roster_zip_slots(slots: slots, labels: positional),
-              empty: LabelsSelected { edits: [RosterLabelEdit { start: r.start, end: r.end, from: row.call, to: to }] },
+              empty: LabelsSelected { edits: [RosterLabelEdit { start: r.start, end: r.end, from: row.call, to: to, relocation: Absent }] },
               cons: fn(acc, pair) {
                 match acc {
                   LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
@@ -1479,11 +1788,19 @@ fn roster_positional_label_edit(edits: List<RosterLabelEdit>, pair: RosterSlotLa
     Absent => LabelsAmbiguous
     Present { value: arg } =>
       match dag_named_arg_value_optional(arg_capture: arg) {
-        Present { value: _ } => LabelsRenameRefused { reason: RefusalRenameCallNamedArgument { call: call } }
+        // THE NAMED-ARGUMENT RULE: a named argument whose label IS the row's label at its position already binds, so it is
+        // left as authored; any other label refuses typed. A reordered named argument therefore refuses (its label is not the
+        // one at its position): the rewrite never reorders arguments, which would reorder their evaluation.
+        Present { value: _ } =>
+          if roster_named_arg_label_is(arg: arg, label: pair.label) {
+            LabelsSelected { edits: edits }
+          } else {
+            LabelsRenameRefused { reason: RefusalRenameCallNamedArgument { call: call } }
+          }
         Absent =>
           match roster_node_byte_range(node: arg, spans: spans) {
             Absent => LabelsAmbiguous
-            Present { value: r } => LabelsSelected { edits: list_snoc_item(xs: edits, item: RosterLabelEdit { start: r.start, end: r.start, from: "", to: pair.label + ": " }) }
+            Present { value: r } => LabelsSelected { edits: list_snoc_item(xs: edits, item: RosterLabelEdit { start: r.start, end: r.start, from: "", to: pair.label + ": ", relocation: Absent }) }
           }
       }
   }
@@ -1491,6 +1808,7 @@ fn roster_positional_label_edit(edits: List<RosterLabelEdit>, pair: RosterSlotLa
 
 // THE LABEL PASS for a file whose imports are already converged: the in-scope rows whose call is import-visible from their home.
 fn roster_label_outcome(sides: List<RosterHomeSide>, 
+  text: String,
   parse_root: Node,
   spans: SpanIndex,
   normalized_root: Node,
@@ -1500,7 +1818,7 @@ fn roster_label_outcome(sides: List<RosterHomeSide>,
   let rows = fold_list(xs: candidates, empty: [], cons: fn(acc, row) {
     if roster_symbol_imported(imported: imported, row: row) { list_snoc_item(xs: acc, item: row) } else { acc }
   })
-  match roster_rows_label_plan(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
+  match roster_rows_label_plan(sides: sides, text: Present { value: text }, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
     LabelsAmbiguous => RosterRefused { reason: RefusalLabelSitesAmbiguous }
     LabelsRenameRefused { reason: rr } => RosterRefused { reason: rr }
     LabelsSelected { edits: es } => if is_empty(xs: es) { RosterClean } else { RosterLabelEdits { edits: es } }
@@ -1517,7 +1835,9 @@ fn roster_with_pending_labels(sides: List<RosterHomeSide>,
   rows: List<RosterHeadRow>,
   edit: RosterOutcome
 ) -> RosterOutcome {
-  match roster_rows_label_plan(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
+  // THE IMPORT PASS PLANS NO PIPE SITE (no source text reaches it): a pipe call is rewritten by the label pass that follows
+  // the import, so the convergence loop takes it one pass later.
+  match roster_rows_label_plan(sides: sides, text: Absent, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
     LabelsAmbiguous => RosterRefused { reason: RefusalLabelSitesAmbiguous }
     LabelsRenameRefused { reason: rr } => RosterRefused { reason: rr }
     LabelsSelected { edits: labels } =>
@@ -2045,11 +2365,32 @@ fn roster_rename_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> S
     + roster_rename_expect_text(companions: companions, name: "companion imports only the tags used", before: only_present, after: only_present_after, prepared: prepared, lex: lex)
     + roster_rename_expect_text(companions: companions, name: "companion tags already imported", before: tags_imported, after: tags_imported_after, prepared: prepared, lex: lex)
     + roster_rename_expect_text(companions: companions, name: "no renamed call: ambient tags left for their own wave", before: unrenamed, after: unrenamed, prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
+    // THE NAMED-ARGUMENT RULE: a label equal to the row's label at its position binds as authored; a mismatched label refuses;
+    // a reordered pair refuses (never remapped, which would reorder evaluation).
+    + roster_rename_expect_text(companions: companions, name: "rename-named-argument-matching", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-named-argument-mixed", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m, key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument-mismatched", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, k: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument-reordered", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(key: k, m: m)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
     + roster_rename_expect_refusal(companions: companions, name: "rename-companion-tag-undecided", text: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String, o: Optional<String>) -> String {\n  match o {\n    Present { value: Present } => match map_lookup(m: m, key: k) {\n      Present { value: v } => v\n      Absent => k\n    }\n    Absent => k\n  }\n}\n", want: "companion-tag-undecided call=map_get tag=Present", prepared: prepared, lex: lex)
     + roster_rename_expect_refusal(companions: companions, name: "rename-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
     + roster_rename_expect_text(companions: companions, name: "rename-parameter-bound", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", prepared: prepared, lex: lex)
     + roster_rename_expect_text(companions: companions, name: "rename-method-spelling", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", prepared: prepared, lex: lex)
+    // THE PIPE FORM (sunny-bee-153, tidy-ant-251's ruling): a piped call is the same rename with the pipe's left operand as slot 0,
+    // one replacement, the operand copied byte for byte.
+    + roster_rename_expect_text(companions: companions, name: "rename-pipe", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-pipe-multiline-operand", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  g(\n    x: m\n  ) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: g(\n    x: m\n  ), key: k)\n}\n", prepared: prepared, lex: lex)
+    // A CHAIN and a NESTED operand: the outer pipe replacement holds the inner renamed call, which is deferred to the next pass
+    // and converges there, never planned as an overlapping edit.
+    + roster_rename_expect_text(companions: companions, name: "rename-pipe-chain", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: map_lookup(m: m, key: k), key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-pipe-nested-operand", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m, k) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: map_lookup(m: m, key: k), key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-pipe-into-a-chain-step", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k) |> h()\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k) |> h()\n}\n", prepared: prepared, lex: lex)
+    // A PIPE INTO A PARAMETER-BOUND name stays untouched: selection is the one binding-sensitive classifier.
+    + roster_rename_expect_text(companions: companions, name: "rename-pipe-parameter-bound", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String, String) -> String, m: String, k: String) -> String {\n  m |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String, String) -> String, m: String, k: String) -> String {\n  m |> map_get(k)\n}\n", prepared: prepared, lex: lex)
+    // REDs: an operand the pipe does not cleanly hand to the call, a pipe arity mismatch, and a named argument after the pipe.
+    + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-operand-unclean", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Int {\n  m |> map_get(k) + 1\n}\n", want: "rename-pipe-operand-unclean call=map_get", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k, k)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-pipe-named-argument-matching", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-named-argument-mismatched", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k2: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
     + roster_companion_underivable_control(prepared: prepared, lex: lex)
 }
 
@@ -2320,14 +2661,37 @@ fn roster_control_edits_disjoint() -> String {
     + roster_edits_disjoint_expect(name: "edits-insert-inside-replacement", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_insert(at: 5)], want: "edits-overlap start=5 end=5 covered-to=9")
     + roster_edits_disjoint_expect(name: "edits-rename-shape", edits: [roster_edit_insert(at: 3), roster_edit_replace(start: 3, end: 10), roster_edit_insert(at: 11), roster_edit_insert(at: 15)], want: "")
     + roster_edits_disjoint_expect(name: "edits-adjacent-replacements", edits: [roster_edit_replace(start: 0, end: 4), roster_edit_replace(start: 4, end: 8)], want: "")
+    // THE PIPE SITE'S THREE EDITS are half-open neighbours: the connector [l, h) ends where the relocated head [h, h+n) starts,
+    // which ends where the paren [h+n, h+n+1) starts. Adjacency is admitted; an overlap of one byte refuses.
+    + roster_edits_disjoint_expect(name: "edits-pipe-three-adjacent", edits: [roster_edit_replace(start: 2, end: 6), roster_edit_replace(start: 6, end: 13), roster_edit_replace(start: 13, end: 14)], want: "")
+    + roster_edits_disjoint_expect(name: "edits-connector-overlaps-head-by-one", edits: [roster_edit_replace(start: 2, end: 7), roster_edit_replace(start: 6, end: 13)], want: "edits-overlap start=6 end=13 covered-to=7")
+    + roster_relocation_splice_controls()
+}
+
+// THE RELOCATION AT THE SPLICE: a head relocation whose text begins with the home name applies (head removed, text written at
+// insert_at, operands untouched); one whose text does not refuses typed.
+fn roster_relocation_splice_controls() -> String {
+  let before = "m |> map_get(k)"
+  let good = [RosterLabelEdit { start: 5, end: 12, from: "map_get", to: "", relocation: Present { value: RosterHeadRelocation { insert_at: 0, text: "map_lookup(m: ", to: "map_lookup" } } }, RosterLabelEdit { start: 1, end: 5, from: " |> ", to: "", relocation: Absent }, RosterLabelEdit { start: 12, end: 13, from: "(", to: ", key: ", relocation: Absent }]
+  let bad = [RosterLabelEdit { start: 5, end: 12, from: "map_get", to: "", relocation: Present { value: RosterHeadRelocation { insert_at: 0, text: "(m: map_lookup", to: "map_lookup" } } }]
+  let sorted = list_sort_by_key(xs: good, key: roster_label_edit_order_key, order: int_total_order())
+  let good_text = match roster_label_splices(before: before, edits: sorted) {
+    RosterApplyWritten { content: c } => if c == "map_lookup(m: m, key: k)" { "" } else { "CONTROL-FAIL relocation-splice: wrote " + c + "\n" }
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL relocation-splice: refused " + roster_refusal_text(reason: r) + "\n"
+  }
+  let bad_text = match roster_label_splices(before: before, edits: bad) {
+    RosterApplyRefused { reason: r } => if roster_refusal_text(reason: r) == "relocation-text-not-headed call=*" { "" } else { "CONTROL-FAIL relocation-text-not-headed: refused " + roster_refusal_text(reason: r) + "\n" }
+    RosterApplyWritten { content: c } => "CONTROL-FAIL relocation-text-not-headed: wrote " + c + "\n"
+  }
+  good_text + bad_text
 }
 
 fn roster_edit_insert(at: Int) -> RosterLabelEdit {
-  RosterLabelEdit { start: at, end: at, from: "", to: "k: " }
+  RosterLabelEdit { start: at, end: at, from: "", to: "k: ", relocation: Absent }
 }
 
 fn roster_edit_replace(start: Int, end: Int) -> RosterLabelEdit {
-  RosterLabelEdit { start: start, end: end, from: "x", to: "y" }
+  RosterLabelEdit { start: start, end: end, from: "x", to: "y", relocation: Absent }
 }
 
 fn roster_edits_disjoint_expect(name: String, edits: List<RosterLabelEdit>, want: String) -> String {
@@ -3311,5 +3675,14 @@ fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, 
             }
         }
       }
+  }
+}
+
+// The rename controls alone (RenameHead, its pipe form and the named-argument rule), for a run that does not need the whole
+// control report: empty when every control holds.
+fn roster_rename_controls_report() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } => roster_rename_controls(prepared: prepared, lex: dag_prepared_lex()) + roster_control_edits_disjoint()
   }
 }
