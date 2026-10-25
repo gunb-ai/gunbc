@@ -81,8 +81,9 @@ struct InboxView: View {
                         Image(systemName: "checkmark.circle").font(.system(size: 72)).foregroundStyle(.secondary)
                         Text("Nothing needs your attention").font(.title2).foregroundStyle(.secondary)
                         Spacer(minLength: 0)
+                        // With a card on screen, these errors render in the card's status block instead.
+                        ForEach(Array(state.errors.shown.enumerated()), id: \.offset) { Text($0.element).foregroundStyle(.red) }
                     }
-                    ForEach(Array(state.errors.shown.enumerated()), id: \.offset) { Text($0.element).foregroundStyle(.red) }
                 }
                 .padding()
                 .frame(minHeight: geo.size.height)
@@ -106,6 +107,7 @@ struct RequestCard: View {
     @State private var errors = OperationErrors()
     @State private var busy = false
     @State private var drag: CGFloat = 0
+    @State private var expanded = false
     private let threshold: CGFloat = 120
 
     private var decidable: Bool { fetched != nil && summary != nil && !busy }
@@ -114,7 +116,8 @@ struct RequestCard: View {
         VStack(spacing: 20) {
             VStack(alignment: .leading, spacing: 12) {
                 if let s = summary {
-                    Text(s.purpose).font(.title2.bold())
+                    Text(s.purpose).font(.title3.bold()).lineLimit(expanded ? nil : 4)
+                    Button(expanded ? "Show less" : "Show full request") { expanded.toggle() }.font(.footnote)
                     Label("requested by \(s.requester)", systemImage: "person.crop.circle")
                     Label(s.destructive ? "Destructive" : "Not destructive", systemImage: s.destructive ? "exclamationmark.triangle.fill" : "checkmark.shield")
                         .foregroundStyle(s.destructive ? .red : .secondary)
@@ -133,16 +136,9 @@ struct RequestCard: View {
                             .textSelection(.enabled)
                     }
                 }
-                if let o = outcome {
-                    VStack(alignment: .leading) {
-                        Text(o.outcome).font(.headline)
-                        Text(o.message)
-                    }
-                }
-                ForEach(Array(errors.shown.enumerated()), id: \.offset) { Text($0.element).foregroundStyle(.red) }
             }
             .padding(24)
-            .frame(maxWidth: .infinity, minHeight: 360, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .background(RoundedRectangle(cornerRadius: 24).fill(Color(uiColor: .secondarySystemBackground)))
             .overlay(alignment: .top) {
                 if drag > 0 { Text("APPROVE").font(.title.bold()).foregroundStyle(.green).opacity(Double(min(drag / threshold, 1))).padding() }
@@ -150,16 +146,34 @@ struct RequestCard: View {
             }
             .offset(x: drag)
             .rotationEffect(.degrees(Double(drag / 20)))
-            .gesture(
-                DragGesture()
-                    .onChanged { v in if decidable { drag = v.translation.width } }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 24)
+                    .onChanged { v in
+                        if decidable, abs(v.translation.width) > abs(v.translation.height) { drag = v.translation.width }
+                    }
                     .onEnded { v in
                         let w = v.translation.width
+                        let horizontal = abs(w) > abs(v.translation.height)
                         withAnimation(.spring()) { drag = 0 }
-                        guard decidable, let f = fetched else { return }
+                        guard decidable, horizontal, let f = fetched else { return }
                         if w > threshold { decide(f, .approve) } else if w < -threshold { decide(f, .deny) }
                     }
             )
+            // Status sits directly above the buttons so a decision's result is always on screen.
+            if busy {
+                HStack(spacing: 8) { ProgressView(); Text("Sending decision…") }.frame(maxWidth: .infinity)
+            }
+            if let o = outcome {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(o.outcome).font(.headline)
+                    Text(o.message)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // One status block: this card's errors, then the app's (push forwarding, inbox refresh).
+            ForEach(Array((errors.shown + state.errors.shown).enumerated()), id: \.offset) {
+                Text($0.element).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack(spacing: 16) {
                 Button(role: .destructive) { if let f = fetched { decide(f, .deny) } } label: {
                     Label("Deny", systemImage: "xmark").frame(maxWidth: .infinity, minHeight: 64)
