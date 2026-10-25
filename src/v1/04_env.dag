@@ -2270,9 +2270,24 @@ fn settled_type_of_declaration(d: DeclarationRef, source_indices: Map<String, Ne
   }
 }
 
+// THE CHAIN WALK DISPATCHES ON BOTH ALIAS KINDS AT EVERY HOP. A next head that is a parameterized alias (no retained alias_rhs;
+// transparent_alias_rhs refuses parameterized items) re-enters settled_parameterized_alias with the ARGUMENTS this hop carries, so
+// `type A<T> = B<T>; type B<U> = C<U>` settles A<X> to C<X> exactly as B<X> does, and an intermediate alias that renames its
+// parameter is substituted by position, not by spelling. Without it A<X> stopped at B<X>: one relation, two answers.
 fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
   match alias_rhs_of_declaration(item_ref: head, env: env) {
-    Absent => Present { value: SettledType { head: head, args: rhs.children } }
+    Absent =>
+      match parameterized_alias_of_declaration(item_ref: head, source_indices: source_indices, env: env) {
+        Absent => Present { value: SettledType { head: head, args: rhs.children } }
+        Present { value: pa } =>
+          if fuel <= 0 { none }
+          else {
+            match settled_parameterized_alias(alias: pa, use_args: rhs.children, source_indices: source_indices, env: env, fuel: fuel - 1) {
+              Present { value: through } => Present { value: through }
+              Absent => Present { value: SettledType { head: head, args: rhs.children } }
+            }
+          }
+      }
     Present { value: next } =>
       match next.declaration {
         Present { value: next_head } =>
