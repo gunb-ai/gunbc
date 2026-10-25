@@ -3,12 +3,12 @@ module test.claim.host.managed_host_boot_witness
 import std.algebra { string_contains }
 import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.access_profile {
   BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity,
 }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label, ipmi_boot_flags_parameter_hex }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_bootparam5_cdrom_efi_next_boot }
 import extdeps.bmc.capability {
   bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq,
   BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity,
@@ -72,7 +72,7 @@ import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
   healthy_census_world, healthy_census_world_with_a_stopped_fan,
 }
 import gunbc.machine_intake.post_power_fan_gate_outcome {
-  PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused,
+  PostPowerFanGatePowered, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused,
 }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MediaAttachAttempted,
@@ -203,7 +203,10 @@ test fn w_the_real_row_admits_a_boot_with_its_medium_and_the_boot_selection() ->
         && (s.medium.export.dir as String) == "/srv/bmc"
         && (boot_subject_machine(subject: s) as String) == "mtcollins1"
         && (s.execution_revision as String) == (revision as String)
-        && s.selection.architecture == Aarch64
+        && (match ipmi_boot_flags_parameter_hex(selection: s.selection) {
+          Present { value: hex } => string_contains(s: ipmitool_bootparam5_cdrom_efi_next_boot, pattern: concat("Boot parameter data: ", hex))
+          Absent => false
+        })
         && s.selection.firmware_mode == IpmiBootEfi
         && s.selection.persistence == IpmiBootOnce
         && s.selection.device == IpmiBootCdrom
@@ -238,7 +241,7 @@ test fn w_a_boot_of_an_unbound_host_is_refused() -> Bool {
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, smpro: h.smpro)
     }
     match admit_boot_subject(evidence: committed_evidence(), host: crossed, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
       BootSubjectRefused { host: _, cause: BootSubjectHostUnbound { standing: BmcControlEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
@@ -312,7 +315,7 @@ test fn w_the_reset_and_boot_arms_each_decide_their_own_selection() -> Bool {
 // needed; the code path is the same fn.
 test fn w_a_second_machine_with_the_same_profile_gets_the_same_selection() -> Bool {
   managed_hosts() |> all(h => {
-    let second = managed_host_fixture(host: "fixture-second-machine", access: h.access, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let second = managed_host_fixture(host: "fixture-second-machine", access: h.access, secure: h.secure, smpro: h.smpro)
     match boot_selection(evidence: committed_evidence(), host: second) {
       VirtualMediaBootSelectionRefused { cause: _ } => false
       VirtualMediaBootSelectionAdmitted { selection: second_sel, capability_row: _ } => match boot_selection(evidence: committed_evidence(), host: h) {
@@ -436,7 +439,7 @@ test fn w_the_handoff_admission_discriminates_on_every_managed_hosts_rows() -> B
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, smpro: h.smpro)
     }
     let red = match boot_handoff_admission_probe_of(host: crossed) { Present { value: why } => string_contains(s: why, pattern: "observed and secured controllers differ")  Absent => false }
     real && red
@@ -636,7 +639,7 @@ test fn w_the_0_45_3_row_is_attested_and_never_rendered_as_machine_read() -> Boo
           host: h.host,
           access: h.access,
           secure: h.secure,
-          unit_hold: h.unit_hold,
+         
           // THE PLATFORM STANDING IS CARRIED FORWARD UNCHANGED: this claim is about the release, and a
           // total match that rebuilt the arms by hand would be a place to smuggle a change in.
           smpro: match h.smpro {
@@ -903,7 +906,7 @@ test fn w_the_identity_the_executed_route_reported_came_from_writing_the_control
 test fn w_the_fan_gate_admits_the_executed_boot_route_on_a_healthy_reading() -> Bool {
   match run_attempt(world: healthy_census_world()) {
     WitnessReturned { value: a, route: _, state: _ } => match a.fan_gate {
-      PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } => match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: _ } => false }
+      PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } } => match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: _ } => false }
       _ => false
     }
     _ => false
@@ -920,7 +923,7 @@ test fn w_a_refused_fan_reading_stops_the_executed_boot_route_at_the_gate() -> B
   match run_attempt(world: healthy_census_world_with_a_stopped_fan()) {
     WitnessReturned { value: a, route: _, state: _ } =>
       (match a.fan_gate {
-        PostPowerFanGateReached { fitted: _, outcome: PostPowerFanRefused { cause: _, observation: _, stop: _, manager: _, evidence: _ } } => true
+        PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: _, outcome: PostPowerFanRefused { cause: _, observation: _, stop: _, manager: _, evidence: _ } } } => true
         _ => false
       })
         && (match a.outcome {

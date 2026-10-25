@@ -168,7 +168,7 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
                 __result
             })
         };
-        v1_union_bound_param_names(bare_match.clone(), compound_match.clone())
+        v1_union_bound_param_names(bare_match, compound_match)
     }
 }
 

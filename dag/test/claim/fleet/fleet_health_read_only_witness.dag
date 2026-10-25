@@ -41,6 +41,7 @@ data health_closure_modules: List<String> = [
   "extdeps.bmc.redfish_telemetry",
   "extdeps.bmc.openbmc_message_registry",
   "gunbc.auth.netrc_binding",
+  "gunbc.auth.private_secret_file",
   "gunbc.auth.access_token_source",
 ]
 
@@ -55,6 +56,7 @@ data health_pool_files: List<String> = [
   "dag/extdeps/bmc/redfish_telemetry.dag",
   "dag/extdeps/bmc/openbmc_message_registry.dag",
   "dag/gunbc/auth/netrc_binding.dag",
+  "dag/gunbc/auth/private_secret_file.dag",
   "dag/gunbc/auth/access_token_source.dag",
 ]
 
@@ -134,16 +136,18 @@ test fn the_same_derivation_finds_the_fixtures_bare_call_mutations() -> Bool {
 // witness reported the closure clean while the two modules that actually touch the filesystem,
 // gunbc.auth.netrc_binding (mktemp, owner-only write, remove) and gunbc.auth.access_token_source
 // (token file read, gcloud token print), sat outside its pool. Both are in the pool now, and this
-// control asserts the walk reaches a declaration in each: place_netrc_binding_privately is where the
-// reader credential is written, shred_netrc_binding is where it is removed, and ensure_access_token
+// control asserts the walk reaches a declaration in each: with_private_netrc_binding is where the
+// reader credential is placed, gunbc.auth.private_secret_file with_private_secret_file writes it and
+// remove_private_secret_file removes it with its directory, and ensure_access_token
 // is where the run obtains its Secret Manager token. A pool that loses one of them fails here
 // instead of silently narrowing the claim above.
 test fn the_walk_reaches_the_collector_and_the_credential_modules() -> Bool {
   let names = map(reached_decls(entry_module: health_entry_module, closure_modules: health_closure_modules, pool_files: health_pool_files), d => d.name)
   any(names, n => n == "observe_host_health")
     && any(names, n => n == "health_redfish_read")
-    && any(names, n => n == "place_netrc_binding_privately")
-    && any(names, n => n == "shred_netrc_binding")
+    && any(names, n => n == "with_private_netrc_binding")
+    && any(names, n => n == "with_private_secret_file")
+    && any(names, n => n == "remove_private_secret_file")
     && any(names, n => n == "ensure_access_token")
 }
 
