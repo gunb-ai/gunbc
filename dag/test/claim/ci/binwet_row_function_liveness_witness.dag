@@ -131,13 +131,13 @@ test fn the_binwet_roster_join_reads_real_inputs() -> ProcessExit {
 }
 
 // THE MANAGER'S RED (review 85702): a name appearing ONLY in a comment or a string literal of the
-// entry file must NOT satisfy the join. dag/test/fixture/binwet_row_liveness/decoys.dag plants
+// entry file must NOT satisfy the join. dag/test/fixture/binwet_row_liveness_decoys.dag plants
 // exactly those decoys -- a commented-out fn, a fn spelling inside a string literal -- plus one
 // REAL fn as the positive control. The synthetic rows are the same typed ScheduleWitnessEntry
 // carriers the roster holds and go through the same row_is_executable fold, so if a decoy name
 // were ever accepted this claim fails the way the roster claim would. The positive control proves
 // the fixture path is really indexed, so the two refusals cannot be vacuous on a wrong path.
-data decoy_fixture_path: String = "dag/test/fixture/binwet_row_liveness/decoys.dag"
+data decoy_fixture_path: String = "dag/test/fixture/binwet_row_liveness_decoys.dag"
 
 fn decoy_rows() -> List<ScheduleWitnessEntry> {
   [
