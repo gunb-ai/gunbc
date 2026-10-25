@@ -123,7 +123,6 @@ import gunbc.host.boot_attempt {
   power_after_attempt, PowerAfterAttempt, PoweredOffAfterTerminal,
   TerminalObserved, TerminalMarker, TerminalNotObserved,
   OverrideNotHandedOff,
-  EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release, megarac_boot_build_reading, megarac_build_reading_receipt_line,
 }
 import gunbc.machine_intake.mtcollins1_boot_row {
   mtcollins1_boot_console, mtcollins1_boot_row_value, mtcollins1_boot_account_receipt, mtcollins1_kvm_observer_dir
@@ -136,6 +135,8 @@ import gunbc.host.smpro_platform_capability {
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
+  EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release, megarac_boot_build_reading, megarac_build_reading_receipt_line,
+}
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
