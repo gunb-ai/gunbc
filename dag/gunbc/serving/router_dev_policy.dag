@@ -3,6 +3,7 @@ module gunbc.serving.router_dev_policy
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
 import std.measure { second }
+import gunbc.serving.router_proxy_config { router_request_body_limit }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.proxy.openresty {
@@ -11,7 +12,7 @@ import extdeps.proxy.openresty {
   ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxyReadTimeout, ProxySetHeader, HeaderFromVariable,
   HeaderPrefixedVariable, ProxySslServerNameOn, ProxySslName, ProxySslVerifyOn, ProxySslVerifyDepth, ProxySslTrustedCertificate,
   ProxyPassSchemeAndHostVariables, LuaPhaseBlock, InitPhase, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ProxyBufferingOff,
-  ProxyRequestBufferingOff, ProxyNextUpstreamOff, nginx_token, nginx_variable, render_nginx_directives,
+  ProxyRequestBufferingOff, ProxyNextUpstreamOff, ClientMaxBodySize, ClientBodyBufferSize, nginx_token, nginx_variable, render_nginx_directives,
 }
 
 // THE SRV1 DEV DEPLOYMENT'S ROUTING POLICY, A DECLARED SCAFFOLD (operator decision 2026-10-25, option B,
@@ -187,6 +188,8 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
       EventsBlock,
       HttpBlock { body: [
         AccessLogOff,
+        ClientMaxBodySize { size: router_request_body_limit() },
+        ClientBodyBufferSize { size: router_request_body_limit() },
         LuaSharedDict { name: dict, size: dict_size },
         LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, alias: site.alias) },
         ServerBlock { body: [

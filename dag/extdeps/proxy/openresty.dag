@@ -2,7 +2,7 @@ module extdeps.proxy.openresty
 
 import std.optional { Optional, Present, Absent }
 import std.types { NonEmptyStr, brand, String, Int, List, Bool, Port }
-import std.measure { Second, second_count }
+import std.measure { Second, second_count, ByteSize, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -123,6 +123,8 @@ type NginxDirective
   | ProxySslVerifyDepth { depth: Int }
   | ProxySslTrustedCertificate { path: NginxToken }
   | ProxyPassSchemeAndHostVariables { scheme: NginxVariable, host: NginxVariable }
+  | ClientMaxBodySize { size: ByteSize }
+  | ClientBodyBufferSize { size: ByteSize }
 
 fn nginx_text_is_safe(t: String) -> Bool {
   !(string_contains(t, "'") || string_contains(t, "\\") || string_contains(t, "\n") || string_contains(t, "\r")
@@ -184,6 +186,8 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ProxyPassToHost { host: hs, port: p, path: pa } => nginx_line(text: "proxy_pass http://" + (hs as String) + ":" + to_string(p as Int) + (pa as String), indent: indent)
     InternalLocationOnly => nginx_line(text: "internal", indent: indent)
     ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
+    ClientMaxBodySize { size: z } => nginx_line(text: "client_max_body_size " + to_string(byte_size_count(b: z)), indent: indent)
+    ClientBodyBufferSize { size: z } => nginx_line(text: "client_body_buffer_size " + to_string(byte_size_count(b: z)), indent: indent)
     LuaPhaseBlock { phase: ph, lines: ls } =>
       indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(ls, "\n" + indent + "  ") + "\n" + indent + "}\n"
     EnvPassthrough { name: n } => nginx_line(text: "env " + (n as String), indent: indent)

@@ -3,13 +3,14 @@ module gunbc.instruments.router_proxy_falsifier
 import std.types { Int, List, String, Bool, NonEmptyStr, Port }
 import std.optional { Optional, Present, Absent }
 import std.algebra { skip }
+import std.measure { byte_size }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.docker.cli_service { DockerCli }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
-  LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
+  ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
 import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config }
@@ -128,8 +129,13 @@ fn fixture_directives() -> List<NginxDirective> {
     "ngx.req.read_body()",
     "local model = string.match(ngx.req.get_body_data() or '', '\"model\":\"([%w%-]+)\"') or 'nobody'",
     "local case = ngx.var.http_x_case or 'none'",
-    "if case ~= 'noupstream' then ngx.header['x-upstream'] = (case == 'badupstream') and 'not an address' or '127.0.0.1:19003' end",
-    "if case ~= 'nopermit' then ngx.header['x-seat-permit'] = 'p-' .. case .. '-' .. model end",
+    "local upstream = '127.0.0.1:19003'",
+    "if case == 'badupstream' then upstream = 'not an address' elseif case == 'badport0' then upstream = '127.0.0.1:0' elseif case == 'badporthigh' then upstream = '127.0.0.1:70000' end",
+    "if case ~= 'noupstream' then ngx.header['x-upstream'] = upstream end",
+    "local body = ngx.req.get_body_data() or ''",
+    "local permit = 'p-' .. case .. '-' .. model",
+    "if case == 'large' then permit = permit .. '-' .. #body .. '-' .. ngx.md5(body) end",
+    "if case ~= 'nopermit' then ngx.header['x-seat-permit'] = permit end",
     "ngx.say('ok')",
   ])
   let stream_end = fixture_location(path: "/stream-end", exact: true, lines: [
@@ -146,7 +152,9 @@ fn fixture_directives() -> List<NginxDirective> {
   let upstream = fixture_location(path: "/v1/", exact: false, lines: [
     "ngx.shared.seen:incr('hits', 1, 0)",
     "ngx.req.read_body()",
-    "ngx.say('body: ', ngx.req.get_body_data() or '')",
+    "local b = ngx.req.get_body_data() or ''",
+    "local pm = string.match(ngx.var.http_x_seat_permit or '', '%-(%x+)$')",
+    "if #b > 4096 then ngx.say('same_body=', tostring(pm == ngx.md5(b)), ' len=', #b) else ngx.say('body: ', b) end",
     "ngx.say('data: one') ngx.say('') ngx.flush(true)",
     "if ngx.var.arg_reset then return ngx.exit(ngx.ERROR) end",
     "if ngx.var.arg_slow then ngx.sleep(4) end",
@@ -159,7 +167,7 @@ fn fixture_directives() -> List<NginxDirective> {
   [
     WorkerProcesses { count: 1 },
     EventsBlock,
-    HttpBlock { body: concat(concat(concat(concat(concat([AccessLogOff], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)), dev_upstreams()) },
+    HttpBlock { body: concat(concat(concat(concat(concat([AccessLogOff, ClientMaxBodySize { size: byte_size(count: 16777216) }, ClientBodyBufferSize { size: byte_size(count: 16777216) }], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)), dev_upstreams()) },
   ]
 }
 
@@ -372,6 +380,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let no_upstream = request(port: "18443", case_header: "x-case: noupstream", query: "", max_seconds: "10")
   let no_permit = request(port: "18443", case_header: "x-case: nopermit", query: "", max_seconds: "10")
   let bad_upstream = request(port: "18443", case_header: "x-case: badupstream", query: "", max_seconds: "10")
+  let bad_port_zero = request(port: "18443", case_header: "x-case: badport0", query: "", max_seconds: "10")
+  let bad_port_high = request(port: "18443", case_header: "x-case: badporthigh", query: "", max_seconds: "10")
   let no_authz = request(port: "18444", case_header: "x-case: noauthz", query: "", max_seconds: "10")
   let after_refusals = sink(n: "0")
   let w5 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev.conf", content: dev_text())
@@ -396,6 +406,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let alias2 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
   let alias3 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
   let alias_other = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "m-b"), path: "/v1/chat/completions")
+  let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
+  let after_large = sink(n: "5")
   let removed = remove_all()
   [
     case_of(identity: "daemon_red_absent_daemon_reads_unavailable", held: match daemon_control { DaemonUnavailable { stderr: _ } => true DaemonAnswered => false }, observed: match daemon_control { DaemonUnavailable { stderr: _ } => "unavailable" DaemonAnswered => "answered" }),
@@ -415,6 +427,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "an_answer_without_upstream_answers_503", held: contains(s: no_upstream, p: "\n503 exit=0"), observed: no_upstream),
     case_of(identity: "an_answer_without_permit_answers_503", held: contains(s: no_permit, p: "\n503 exit=0"), observed: no_permit),
     case_of(identity: "an_answer_with_a_malformed_upstream_answers_503", held: contains(s: bad_upstream, p: "\n503 exit=0"), observed: bad_upstream),
+    case_of(identity: "an_answer_with_port_zero_answers_503", held: contains(s: bad_port_zero, p: "\n503 exit=0"), observed: bad_port_zero),
+    case_of(identity: "an_answer_with_a_port_above_65535_answers_503", held: contains(s: bad_port_high, p: "\n503 exit=0"), observed: bad_port_high),
     case_of(identity: "unreachable_authz_answers_503", held: contains(s: no_authz, p: "\n503 exit=0"), observed: no_authz),
     case_of(identity: "no_refusal_forwarded_or_fired_stream_end", held: contains(s: after_refusals, p: "ends=4 last=p-reset-alpha hits=4"), observed: after_refusals),
     case_of(identity: "dev_world_starts", held: w5.success && w6.success && w7.success && dev_text() != "" && pinned.exit_code == 0 && started_dev == 0 && contains(s: dev_ready, p: "404"), observed: dev_ready),
@@ -427,6 +441,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_red_unknown_model_answers_404", held: contains(s: dev_unknown, p: "\n404 exit=0"), observed: dev_unknown),
     case_of(identity: "dev_alias_is_sticky_and_rewritten_to_the_upstream_model", held: contains(s: alias1, p: "upstream=a") && contains(s: alias2, p: "upstream=a") && contains(s: alias3, p: "upstream=a") && contains(s: alias1, p: "m-a") && !contains(s: alias1, p: "flash-next"), observed: alias3),
     case_of(identity: "dev_red_bound_session_on_another_model_answers_409", held: contains(s: alias_other, p: "\n409 exit=0") && !contains(s: alias_other, p: "upstream="), observed: alias_other),
+    case_of(identity: "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically", held: contains(s: large, p: "same_body=true len=4139216") && contains(s: large, p: "\n200 exit=0"), observed: large),
+    case_of(identity: "stream_end_fires_for_the_large_body", held: contains(s: after_large, p: "ends=5 last=p-large-nobody-4139216-") && contains(s: after_large, p: "hits=5"), observed: after_large),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
@@ -454,6 +470,8 @@ fn falsifier_expected_identities() -> List<String> {
     "an_answer_without_upstream_answers_503",
     "an_answer_without_permit_answers_503",
     "an_answer_with_a_malformed_upstream_answers_503",
+    "an_answer_with_port_zero_answers_503",
+    "an_answer_with_a_port_above_65535_answers_503",
     "unreachable_authz_answers_503",
     "no_refusal_forwarded_or_fired_stream_end",
     "dev_world_starts",
@@ -466,6 +484,8 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_red_unknown_model_answers_404",
     "dev_alias_is_sticky_and_rewritten_to_the_upstream_model",
     "dev_red_bound_session_on_another_model_answers_409",
+    "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically",
+    "stream_end_fires_for_the_large_body",
     "world_is_removed",
   ]
 }
