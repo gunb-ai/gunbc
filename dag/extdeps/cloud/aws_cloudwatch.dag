@@ -2,6 +2,7 @@ module extdeps.cloud.aws_cloudwatch
 
 import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.decimal { ExactDecimal }
+import std.measure { Second }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -52,11 +53,11 @@ type AwsCloudWatchMetric {
   dimensions: List<AwsCloudWatchDimension>
 }
 
-// MetricStat: the metric, the period in seconds and the statistic (the quota's
+// MetricStat: the metric, the period (std.measure Second; seconds on the wire) and the statistic (the quota's
 // metric_statistic_recommendation, e.g. Maximum).
 type AwsCloudWatchMetricStat {
   metric: AwsCloudWatchMetric
-  period: Int
+  period: Second
   stat: NonEmptyStr
 }
 
