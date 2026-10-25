@@ -271,7 +271,11 @@ fn upstream_scheme_text(s: RouterUpstreamScheme) -> String {
   match s { UpstreamHttp => "http" UpstreamHttps => "https" }
 }
 
-fn json_string(s: String) -> String { "\"" + s + "\"" }
+// A JSON string literal (RFC 8259 section 7): the backslash and the quote are escaped; a control
+// character has no place in a name, host or model id, so a row carrying one is a defect upstream of here.
+fn json_string(s: String) -> String {
+  "\"" + join(split(s: join(split(s: s, delimiter: "\\"), "\\\\"), delimiter: "\""), "\\\"") + "\""
+}
 
 fn router_dev_upstream_json(u: RouterDevUpstream) -> String {
   let tls = match u.tls_name { Present { value: n } => ",\"sni\":" + json_string(s: n) Absent => "" }
