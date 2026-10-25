@@ -13,7 +13,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model, dag_type_atom_node }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, node_locus }
 import std.optional { Absent, Present }
 import std.nat { Succ, Zero }
 import v2.std.optional_layers { wrap_type_node_occupancy }
@@ -38,6 +38,8 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   RcfInferRefused,
   RcfResolveRefused,
   rcf_refuses_with,
+  rcf_refusal,
+  rcf_construct_field_value,
   rcf_member_accepted_and_decided,
   rcf_member_arrow,
   rcf_verdict,
@@ -86,6 +88,8 @@ data oar_alias_ok_source: String = "module v2.test.oar_alias_ok\n\nimport std.op
 
 data oar_alias_bad_source: String = "module v2.test.oar_alias_bad\n\nimport std.optional { Optional, Present }\n\ntype OarMaybe = Optional<Int>\n\nfn oar_f() -> OarMaybe { Present { value: \"s\" } }\n"
 
+data oar_plain_bad_source: String = "module v2.test.oar_plain_bad\n\nimport std.optional { Optional, Present }\n\nfn oar_f() -> Optional<Int> { Present { value: \"s\" } }\n"
+
 data oar_field_bad_source: String = "module v2.test.oar_field_bad\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Int?) -> OarR { OarR { n: x } }\n"
 
 // A FN PARAMETER REFERENCED AS A RECORD FIELD VALUE, two refusing shapes and the accepted control
@@ -120,6 +124,7 @@ data oar_ingest: SourceRootIngest = [
   oar_read(source: oar_lift_source, id: ^oar_lift_read, unit: ^oar_lift_cu, path: "src/v2/test/oar_lift.dag"),
   oar_read(source: oar_alias_ok_source, id: ^oar_alias_ok_read, unit: ^oar_alias_ok_cu, path: "src/v2/test/oar_alias_ok.dag"),
   oar_read(source: oar_alias_bad_source, id: ^oar_alias_bad_read, unit: ^oar_alias_bad_cu, path: "src/v2/test/oar_alias_bad.dag"),
+  oar_read(source: oar_plain_bad_source, id: ^oar_plain_bad_read, unit: ^oar_plain_bad_cu, path: "src/v2/test/oar_plain_bad.dag"),
   oar_read(source: oar_field_bad_source, id: ^oar_field_bad_read, unit: ^oar_field_bad_cu, path: "src/v2/test/oar_field_bad.dag"),
   oar_read(source: oar_field_bool_source, id: ^oar_field_bool_read, unit: ^oar_field_bool_cu, path: "src/v2/test/oar_field_bool.dag"),
   oar_read(source: oar_field_ok_source, id: ^oar_field_ok_read, unit: ^oar_field_ok_cu, path: "src/v2/test/oar_field_ok.dag"),
@@ -156,6 +161,7 @@ fn oar_resolved_alias_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(subjec
 fn oar_resolved_alias_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_alias_bad") }
 fn oar_resolved_lift() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_lift") }
 fn oar_resolved_field_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_bad") }
+fn oar_resolved_plain_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_plain_bad") }
 fn oar_resolved_field_bool() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_bool") }
 fn oar_resolved_field_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_ok") }
 
@@ -232,8 +238,29 @@ test fn oar_an_optional_value_at_an_optional_alias_is_accepted_holds() -> Bool {
   }
 }
 
+// A STRING PAYLOAD AT AN OPTIONAL INT IS REFUSED AT THE PAYLOAD, ALIASED OR NOT. Since gunbc#15006 (Rule A:
+// v2.compiler.infer infer_expected_return_seed seeds a construct's type variable from the alias-normalized
+// declared type) `Present { value: "s" }` at `OarMaybe = Optional<Int>` and at `Optional<Int>` both seed T=Int
+// and judge the payload as its own record-field position, so the refusal is record_field_value_does_not_inhabit
+// located at the `"s"` value -- no longer arrow_body_does_not_inhabit_declared_return at the body. The two
+// claims pin that the alias and the plain spelling refuse at the same reason and the same position.
+fn oar_refuses_at_the_payload(resolved: Outcome<ResolvedTree>) -> Bool {
+  match rcf_refusal(resolved: resolved, reason: ^record_field_value_does_not_inhabit) {
+    Absent => false
+    Present { value: d } =>
+      match rcf_construct_field_value(resolved: resolved, field: ^value) {
+        Absent => false
+        Present { value: payload } => d.at == node_locus(node: payload)
+      }
+  }
+}
+
 test fn oar_a_string_present_at_an_optional_int_alias_refuses_at_the_payload_holds() -> Bool {
-  rcf_refuses_with(resolved: oar_resolved_alias_bad(), reason: ^arrow_body_does_not_inhabit_declared_return)
+  oar_refuses_at_the_payload(resolved: oar_resolved_alias_bad())
+}
+
+test fn oar_a_string_present_at_a_plain_optional_int_refuses_at_the_payload_holds() -> Bool {
+  oar_refuses_at_the_payload(resolved: oar_resolved_plain_bad())
 }
 
 // A type variable instantiable at an optional is not refused at the relation (the generic formal it is).
