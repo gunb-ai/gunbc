@@ -786,54 +786,41 @@ pub fn has_nested_records_node(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        let is_product = (n.connective.clone() == Connective::Conj);
-        let is_coproduct = (n.connective.clone() == Connective::Disj);
-        if is_product.clone() {
-            break true;
-        } else {
-            if is_coproduct.clone() {
-                let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-                if is_optional.clone() {
-                    {
-                        let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
-                        let __tco_1 = source_indices;
-                        __tco_loop_n = __tco_0;
-                        __tco_loop_source_indices = __tco_1;
-                        continue;
-                    }
-                } else {
-                    break false;
-                }
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            let is_product = (n.connective.clone() == Connective::Conj);
+            let is_coproduct = (n.connective.clone() == Connective::Disj);
+            if is_product.clone() {
+                break true;
             } else {
-                let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
-                    n.clone(),
-                    source_indices.clone(),
-                );
-                if is_map.clone() {
-                    match n.children.clone().get((1) as usize).cloned() {
-                        Some(val_child) => {
-                            let __tco_0 =
-                                crate::v1_compiler_infer_types::child_type_node(val_child.clone());
+                if is_coproduct.clone() {
+                    let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                    if is_optional.clone() {
+                        {
+                            let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
                             let __tco_1 = source_indices;
                             __tco_loop_n = __tco_0;
                             __tco_loop_source_indices = __tco_1;
                             continue;
                         }
-                        std::option::Option::None => {
-                            break false;
-                        }
+                    } else {
+                        break false;
                     }
                 } else {
-                    if ((n.children.clone().len() as i64) == 1) {
-                        match n.children.clone().first().cloned() {
-                            Some(el) => {
-                                let __tco_0 =
-                                    crate::v1_compiler_infer_types::child_type_node(el.clone());
+                    let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
+                        n.clone(),
+                        source_indices.clone(),
+                    );
+                    if is_map.clone() {
+                        match n.children.clone().get((1) as usize).cloned() {
+                            Some(val_child) => {
+                                let __tco_0 = crate::v1_compiler_infer_types::child_type_node(
+                                    val_child.clone(),
+                                );
                                 let __tco_1 = source_indices;
                                 __tco_loop_n = __tco_0;
                                 __tco_loop_source_indices = __tco_1;
@@ -844,7 +831,23 @@ pub fn has_nested_records_node(
                             }
                         }
                     } else {
-                        break false;
+                        if ((n.children.clone().len() as i64) == 1) {
+                            match n.children.clone().first().cloned() {
+                                Some(el) => {
+                                    let __tco_0 =
+                                        crate::v1_compiler_infer_types::child_type_node(el.clone());
+                                    let __tco_1 = source_indices;
+                                    __tco_loop_n = __tco_0;
+                                    __tco_loop_source_indices = __tco_1;
+                                    continue;
+                                }
+                                std::option::Option::None => {
+                                    break false;
+                                }
+                            }
+                        } else {
+                            break false;
+                        }
                     }
                 }
             }
@@ -4036,82 +4039,84 @@ pub fn emit_shared_tco_expr(
     mut __tco_loop_emit_block: impl Fn(Rc<TcoFrame>) -> String + Clone,
     mut __tco_loop_emit_default_return: impl Fn(Rc<TcoFrame>) -> String + Clone,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut frame = __tco_loop_frame;
-        #[allow(unused_mut)]
-        let mut fn_name = __tco_loop_fn_name;
-        #[allow(unused_mut)]
-        let mut emit_self_call_reassign = __tco_loop_emit_self_call_reassign;
-        #[allow(unused_mut)]
-        let mut emit_non_self_call = __tco_loop_emit_non_self_call;
-        #[allow(unused_mut)]
-        let mut emit_if = __tco_loop_emit_if;
-        #[allow(unused_mut)]
-        let mut emit_match = __tco_loop_emit_match;
-        #[allow(unused_mut)]
-        let mut emit_let = __tco_loop_emit_let;
-        #[allow(unused_mut)]
-        let mut emit_block = __tco_loop_emit_block;
-        #[allow(unused_mut)]
-        let mut emit_default_return = __tco_loop_emit_default_return;
-        let si = frame.scope.type_env.source_indices.clone();
-        match (*frame.expr.expr_data.clone()).clone() {
-            ExprData::ExprCall { .. } => {
-                if (crate::v1_std_core::expr_call_func_at(frame.expr.clone(), si)
-                    == fn_name.clone())
-                {
-                    break emit_self_call_reassign(Rc::new(TcoReassignInput {
-                        args: frame.expr.children.clone(),
-                        scope: frame.scope.clone(),
-                        depth: frame.depth.clone(),
-                    }));
-                } else {
-                    break emit_non_self_call(frame.clone());
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut frame = __tco_loop_frame;
+            #[allow(unused_mut)]
+            let mut fn_name = __tco_loop_fn_name;
+            #[allow(unused_mut)]
+            let mut emit_self_call_reassign = __tco_loop_emit_self_call_reassign;
+            #[allow(unused_mut)]
+            let mut emit_non_self_call = __tco_loop_emit_non_self_call;
+            #[allow(unused_mut)]
+            let mut emit_if = __tco_loop_emit_if;
+            #[allow(unused_mut)]
+            let mut emit_match = __tco_loop_emit_match;
+            #[allow(unused_mut)]
+            let mut emit_let = __tco_loop_emit_let;
+            #[allow(unused_mut)]
+            let mut emit_block = __tco_loop_emit_block;
+            #[allow(unused_mut)]
+            let mut emit_default_return = __tco_loop_emit_default_return;
+            let si = frame.scope.type_env.source_indices.clone();
+            match (*frame.expr.expr_data.clone()).clone() {
+                ExprData::ExprCall { .. } => {
+                    if (crate::v1_std_core::expr_call_func_at(frame.expr.clone(), si)
+                        == fn_name.clone())
+                    {
+                        break emit_self_call_reassign(Rc::new(TcoReassignInput {
+                            args: frame.expr.children.clone(),
+                            scope: frame.scope.clone(),
+                            depth: frame.depth.clone(),
+                        }));
+                    } else {
+                        break emit_non_self_call(frame.clone());
+                    }
                 }
-            }
-            ExprData::ExprReturn => {
-                let inner = crate::v1_std_core::return_value(frame.expr.clone());
-                {
-                    let __tco_0 = Rc::new(TcoFrame {
-                        expr: inner.clone(),
-                        scope: frame.scope.clone(),
-                        depth: frame.depth.clone(),
-                    });
-                    let __tco_1 = fn_name;
-                    let __tco_2 = emit_self_call_reassign;
-                    let __tco_3 = emit_non_self_call;
-                    let __tco_4 = emit_if;
-                    let __tco_5 = emit_match;
-                    let __tco_6 = emit_let;
-                    let __tco_7 = emit_block;
-                    let __tco_8 = emit_default_return;
-                    __tco_loop_frame = __tco_0;
-                    __tco_loop_fn_name = __tco_1;
-                    __tco_loop_emit_self_call_reassign = __tco_2;
-                    __tco_loop_emit_non_self_call = __tco_3;
-                    __tco_loop_emit_if = __tco_4;
-                    __tco_loop_emit_match = __tco_5;
-                    __tco_loop_emit_let = __tco_6;
-                    __tco_loop_emit_block = __tco_7;
-                    __tco_loop_emit_default_return = __tco_8;
-                    continue;
+                ExprData::ExprReturn => {
+                    let inner = crate::v1_std_core::return_value(frame.expr.clone());
+                    {
+                        let __tco_0 = Rc::new(TcoFrame {
+                            expr: inner.clone(),
+                            scope: frame.scope.clone(),
+                            depth: frame.depth.clone(),
+                        });
+                        let __tco_1 = fn_name;
+                        let __tco_2 = emit_self_call_reassign;
+                        let __tco_3 = emit_non_self_call;
+                        let __tco_4 = emit_if;
+                        let __tco_5 = emit_match;
+                        let __tco_6 = emit_let;
+                        let __tco_7 = emit_block;
+                        let __tco_8 = emit_default_return;
+                        __tco_loop_frame = __tco_0;
+                        __tco_loop_fn_name = __tco_1;
+                        __tco_loop_emit_self_call_reassign = __tco_2;
+                        __tco_loop_emit_non_self_call = __tco_3;
+                        __tco_loop_emit_if = __tco_4;
+                        __tco_loop_emit_match = __tco_5;
+                        __tco_loop_emit_let = __tco_6;
+                        __tco_loop_emit_block = __tco_7;
+                        __tco_loop_emit_default_return = __tco_8;
+                        continue;
+                    }
                 }
-            }
-            ExprData::ExprIf => {
-                break emit_if(frame.clone());
-            }
-            ExprData::ExprMatch => {
-                break emit_match(frame.clone());
-            }
-            ExprData::ExprLet => {
-                break emit_let(frame.clone());
-            }
-            ExprData::ExprBlock => {
-                break emit_block(frame.clone());
-            }
-            _ => {
-                break emit_default_return(frame.clone());
+                ExprData::ExprIf => {
+                    break emit_if(frame.clone());
+                }
+                ExprData::ExprMatch => {
+                    break emit_match(frame.clone());
+                }
+                ExprData::ExprLet => {
+                    break emit_let(frame.clone());
+                }
+                ExprData::ExprBlock => {
+                    break emit_block(frame.clone());
+                }
+                _ => {
+                    break emit_default_return(frame.clone());
+                }
             }
         }
     }
@@ -5175,51 +5180,53 @@ pub fn suffix_escape_collides_with_reserved_chain(
     mut __tco_loop_suffix: String,
     mut __tco_loop_keywords: Rc<Vec<String>>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut name = __tco_loop_name;
-        #[allow(unused_mut)]
-        let mut suffix = __tco_loop_suffix;
-        #[allow(unused_mut)]
-        let mut keywords = __tco_loop_keywords;
-        let suffix_len = v1_rt::string_length(&suffix);
-        let name_len = v1_rt::string_length(&name);
-        if ((suffix_len.clone() == 0) || (name_len.clone() < suffix_len.clone())) {
-            break false;
-        } else {
-            if (v1_rt::substring(
-                &name,
-                v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
-                name_len.clone(),
-            ) != suffix.clone())
-            {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut suffix = __tco_loop_suffix;
+            #[allow(unused_mut)]
+            let mut keywords = __tco_loop_keywords;
+            let suffix_len = v1_rt::string_length(&suffix);
+            let name_len = v1_rt::string_length(&name);
+            if ((suffix_len.clone() == 0) || (name_len.clone() < suffix_len.clone())) {
                 break false;
             } else {
-                let base = v1_rt::substring(
+                if (v1_rt::substring(
                     &name,
-                    0,
                     v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
-                );
-                if {
-                    let mut __found = false;
-                    for r in keywords.iter().cloned() {
-                        if (r.clone() == base.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
-                    break true;
+                    name_len.clone(),
+                ) != suffix.clone())
+                {
+                    break false;
                 } else {
-                    {
-                        let __tco_0 = base.clone();
-                        let __tco_1 = suffix;
-                        let __tco_2 = keywords;
-                        __tco_loop_name = __tco_0;
-                        __tco_loop_suffix = __tco_1;
-                        __tco_loop_keywords = __tco_2;
-                        continue;
+                    let base = v1_rt::substring(
+                        &name,
+                        0,
+                        v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
+                    );
+                    if {
+                        let mut __found = false;
+                        for r in keywords.iter().cloned() {
+                            if (r.clone() == base.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        break true;
+                    } else {
+                        {
+                            let __tco_0 = base.clone();
+                            let __tco_1 = suffix;
+                            let __tco_2 = keywords;
+                            __tco_loop_name = __tco_0;
+                            __tco_loop_suffix = __tco_1;
+                            __tco_loop_keywords = __tco_2;
+                            continue;
+                        }
                     }
                 }
             }
@@ -5266,20 +5273,22 @@ pub fn hex_digit_char(d: i64) -> String {
 }
 
 pub fn int_to_upper_hex_inner(mut __tco_loop_n: i64, mut __tco_loop_acc: String) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        if (n.clone() == 0) {
-            break acc.clone();
-        } else {
-            {
-                let __tco_0 = v1_rt::int_div(n.clone(), 16);
-                let __tco_1 = v1_rt::concat(hex_digit_char(v1_rt::int_rem(n.clone(), 16)), acc);
-                __tco_loop_n = __tco_0;
-                __tco_loop_acc = __tco_1;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            if (n.clone() == 0) {
+                break acc.clone();
+            } else {
+                {
+                    let __tco_0 = v1_rt::int_div(n.clone(), 16);
+                    let __tco_1 = v1_rt::concat(hex_digit_char(v1_rt::int_rem(n.clone(), 16)), acc);
+                    __tco_loop_n = __tco_0;
+                    __tco_loop_acc = __tco_1;
+                    continue;
+                }
             }
         }
     }
@@ -5301,49 +5310,51 @@ pub fn escape_emoji_codepoints_inner(
     mut __tco_loop_prefix: String,
     mut __tco_loop_suffix: String,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut s = __tco_loop_s;
-        #[allow(unused_mut)]
-        let mut pos = __tco_loop_pos;
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        #[allow(unused_mut)]
-        let mut prefix = __tco_loop_prefix;
-        #[allow(unused_mut)]
-        let mut suffix = __tco_loop_suffix;
-        if (pos.clone() >= n.clone()) {
-            break acc.clone();
-        } else {
-            let ch_str = v1_rt::char_at(&s, pos.clone());
-            let cp = v1_rt::code_point(ch_str.clone());
-            let next_acc = if v1_rt::is_emoji_ident(cp.clone()) {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(acc.clone(), prefix.clone()),
-                        int_to_upper_hex(cp.clone()),
-                    ),
-                    suffix.clone(),
-                )
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut s = __tco_loop_s;
+            #[allow(unused_mut)]
+            let mut pos = __tco_loop_pos;
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut prefix = __tco_loop_prefix;
+            #[allow(unused_mut)]
+            let mut suffix = __tco_loop_suffix;
+            if (pos.clone() >= n.clone()) {
+                break acc.clone();
             } else {
-                v1_rt::concat(acc.clone(), ch_str.clone())
-            };
-            {
-                let __tco_0 = s;
-                let __tco_1 = v1_rt::int_add(pos, 1);
-                let __tco_2 = n;
-                let __tco_3 = next_acc;
-                let __tco_4 = prefix;
-                let __tco_5 = suffix;
-                __tco_loop_s = __tco_0;
-                __tco_loop_pos = __tco_1;
-                __tco_loop_n = __tco_2;
-                __tco_loop_acc = __tco_3;
-                __tco_loop_prefix = __tco_4;
-                __tco_loop_suffix = __tco_5;
-                continue;
+                let ch_str = v1_rt::char_at(&s, pos.clone());
+                let cp = v1_rt::code_point(ch_str.clone());
+                let next_acc = if v1_rt::is_emoji_ident(cp.clone()) {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(acc.clone(), prefix.clone()),
+                            int_to_upper_hex(cp.clone()),
+                        ),
+                        suffix.clone(),
+                    )
+                } else {
+                    v1_rt::concat(acc.clone(), ch_str.clone())
+                };
+                {
+                    let __tco_0 = s;
+                    let __tco_1 = v1_rt::int_add(pos, 1);
+                    let __tco_2 = n;
+                    let __tco_3 = next_acc;
+                    let __tco_4 = prefix;
+                    let __tco_5 = suffix;
+                    __tco_loop_s = __tco_0;
+                    __tco_loop_pos = __tco_1;
+                    __tco_loop_n = __tco_2;
+                    __tco_loop_acc = __tco_3;
+                    __tco_loop_prefix = __tco_4;
+                    __tco_loop_suffix = __tco_5;
+                    continue;
+                }
             }
         }
     }
@@ -6574,46 +6585,26 @@ pub fn transparent_representation_root(
     mut __tco_loop_target: RenderTarget,
     mut __tco_loop_fuel: i64,
 ) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        #[allow(unused_mut)]
-        let mut target = __tco_loop_target;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() <= 0) {
-            break n.clone();
-        } else {
-            if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut target = __tco_loop_target;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
                 break n.clone();
             } else {
-                if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
-                    match n.children.clone().first().cloned() {
-                        Some(base) => {
-                            let __tco_0 = base.clone();
-                            let __tco_1 = env;
-                            let __tco_2 = target;
-                            let __tco_3 = v1_rt::int_sub(fuel, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_env = __tco_1;
-                            __tco_loop_target = __tco_2;
-                            __tco_loop_fuel = __tco_3;
-                            continue;
-                        }
-                        std::option::Option::None => {
-                            break n.clone();
-                        }
-                    }
+                if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+                    break n.clone();
                 } else {
-                    if (((n.connective.clone() == Connective::NoConnective)
-                        && ((n.children.clone().len() as i64) == 0))
-                        && ((n.params.clone().len() as i64) == 0))
-                    {
-                        match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                let __tco_0 = rt.clone();
+                    if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
+                        match n.children.clone().first().cloned() {
+                            Some(base) => {
+                                let __tco_0 = base.clone();
                                 let __tco_1 = env;
                                 let __tco_2 = target;
                                 let __tco_3 = v1_rt::int_sub(fuel, 1);
@@ -6623,17 +6614,39 @@ pub fn transparent_representation_root(
                                 __tco_loop_fuel = __tco_3;
                                 continue;
                             }
-                            _ => {
-                                break transparent_named_carrier_root(
-                                    n.clone(),
-                                    env.clone(),
-                                    target.clone(),
-                                    fuel.clone(),
-                                );
+                            std::option::Option::None => {
+                                break n.clone();
                             }
                         }
                     } else {
-                        break n.clone();
+                        if (((n.connective.clone() == Connective::NoConnective)
+                            && ((n.children.clone().len() as i64) == 0))
+                            && ((n.params.clone().len() as i64) == 0))
+                        {
+                            match n.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: rt, .. }) => {
+                                    let __tco_0 = rt.clone();
+                                    let __tco_1 = env;
+                                    let __tco_2 = target;
+                                    let __tco_3 = v1_rt::int_sub(fuel, 1);
+                                    __tco_loop_n = __tco_0;
+                                    __tco_loop_env = __tco_1;
+                                    __tco_loop_target = __tco_2;
+                                    __tco_loop_fuel = __tco_3;
+                                    continue;
+                                }
+                                _ => {
+                                    break transparent_named_carrier_root(
+                                        n.clone(),
+                                        env.clone(),
+                                        target.clone(),
+                                        fuel.clone(),
+                                    );
+                                }
+                            }
+                        } else {
+                            break n.clone();
+                        }
                     }
                 }
             }
@@ -7187,51 +7200,53 @@ pub fn emit_block_stmts_shared(
     mut __tco_loop_prepend_indent: bool,
     mut __tco_loop_emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        #[allow(unused_mut)]
-        let mut prepend_indent = __tco_loop_prepend_indent;
-        #[allow(unused_mut)]
-        let mut emit_expr = __tco_loop_emit_expr;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break Rc::new(BlockEmitState {
-                    text: text.clone(),
-                    scope: scope.clone(),
-                });
-            }
-            Some(stmt) => {
-                let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
-                let line = if prepend_indent.clone() {
-                    v1_rt::concat(
-                        crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
-                        raw.clone(),
-                    )
-                } else {
-                    raw.clone()
-                };
-                let next_scope = scope_after_expr(stmt.clone(), scope.clone());
-                {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
-                    let __tco_1 = v1_rt::rc_list_push(text, line.clone());
-                    let __tco_2 = next_scope;
-                    let __tco_3 = depth;
-                    let __tco_4 = prepend_indent;
-                    let __tco_5 = emit_expr;
-                    __tco_loop_remaining = __tco_0;
-                    __tco_loop_text = __tco_1;
-                    __tco_loop_scope = __tco_2;
-                    __tco_loop_depth = __tco_3;
-                    __tco_loop_prepend_indent = __tco_4;
-                    __tco_loop_emit_expr = __tco_5;
-                    continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            #[allow(unused_mut)]
+            let mut prepend_indent = __tco_loop_prepend_indent;
+            #[allow(unused_mut)]
+            let mut emit_expr = __tco_loop_emit_expr;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Rc::new(BlockEmitState {
+                        text: text.clone(),
+                        scope: scope.clone(),
+                    });
+                }
+                Some(stmt) => {
+                    let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
+                    let line = if prepend_indent.clone() {
+                        v1_rt::concat(
+                            crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
+                            raw.clone(),
+                        )
+                    } else {
+                        raw.clone()
+                    };
+                    let next_scope = scope_after_expr(stmt.clone(), scope.clone());
+                    {
+                        let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                        let __tco_1 = v1_rt::rc_list_push(text, line.clone());
+                        let __tco_2 = next_scope;
+                        let __tco_3 = depth;
+                        let __tco_4 = prepend_indent;
+                        let __tco_5 = emit_expr;
+                        __tco_loop_remaining = __tco_0;
+                        __tco_loop_text = __tco_1;
+                        __tco_loop_scope = __tco_2;
+                        __tco_loop_depth = __tco_3;
+                        __tco_loop_prepend_indent = __tco_4;
+                        __tco_loop_emit_expr = __tco_5;
+                        continue;
+                    }
                 }
             }
         }
@@ -7246,60 +7261,64 @@ pub fn emit_init_block_stmts_shared(
     mut __tco_loop_prepend_indent: bool,
     mut __tco_loop_emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        #[allow(unused_mut)]
-        let mut prepend_indent = __tco_loop_prepend_indent;
-        #[allow(unused_mut)]
-        let mut emit_expr = __tco_loop_emit_expr;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break Rc::new(BlockEmitState {
-                    text: text.clone(),
-                    scope: scope.clone(),
-                });
-            }
-            Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
-                match rest.clone().first().cloned() {
-                    std::option::Option::None => {
-                        break Rc::new(BlockEmitState {
-                            text: text.clone(),
-                            scope: scope.clone(),
-                        });
-                    }
-                    Some(_) => {
-                        let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
-                        let line = if prepend_indent.clone() {
-                            v1_rt::concat(
-                                crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
-                                raw.clone(),
-                            )
-                        } else {
-                            raw.clone()
-                        };
-                        let next_scope = scope_after_expr(stmt.clone(), scope.clone());
-                        {
-                            let __tco_0 = rest.clone();
-                            let __tco_1 = v1_rt::rc_list_push(text, line.clone());
-                            let __tco_2 = next_scope;
-                            let __tco_3 = depth;
-                            let __tco_4 = prepend_indent;
-                            let __tco_5 = emit_expr;
-                            __tco_loop_remaining = __tco_0;
-                            __tco_loop_text = __tco_1;
-                            __tco_loop_scope = __tco_2;
-                            __tco_loop_depth = __tco_3;
-                            __tco_loop_prepend_indent = __tco_4;
-                            __tco_loop_emit_expr = __tco_5;
-                            continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            #[allow(unused_mut)]
+            let mut prepend_indent = __tco_loop_prepend_indent;
+            #[allow(unused_mut)]
+            let mut emit_expr = __tco_loop_emit_expr;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Rc::new(BlockEmitState {
+                        text: text.clone(),
+                        scope: scope.clone(),
+                    });
+                }
+                Some(stmt) => {
+                    let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                    match rest.clone().first().cloned() {
+                        std::option::Option::None => {
+                            break Rc::new(BlockEmitState {
+                                text: text.clone(),
+                                scope: scope.clone(),
+                            });
+                        }
+                        Some(_) => {
+                            let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
+                            let line = if prepend_indent.clone() {
+                                v1_rt::concat(
+                                    crate::v1_compiler_emit_core_support::make_indent(
+                                        depth.clone(),
+                                    ),
+                                    raw.clone(),
+                                )
+                            } else {
+                                raw.clone()
+                            };
+                            let next_scope = scope_after_expr(stmt.clone(), scope.clone());
+                            {
+                                let __tco_0 = rest.clone();
+                                let __tco_1 = v1_rt::rc_list_push(text, line.clone());
+                                let __tco_2 = next_scope;
+                                let __tco_3 = depth;
+                                let __tco_4 = prepend_indent;
+                                let __tco_5 = emit_expr;
+                                __tco_loop_remaining = __tco_0;
+                                __tco_loop_text = __tco_1;
+                                __tco_loop_scope = __tco_2;
+                                __tco_loop_depth = __tco_3;
+                                __tco_loop_prepend_indent = __tco_4;
+                                __tco_loop_emit_expr = __tco_5;
+                                continue;
+                            }
                         }
                     }
                 }
