@@ -158,10 +158,15 @@ data home_serving_applied_rung_watts: List<Watt> = [watt(count: 200), watt(count
 
 // WHAT THE BUYER STATES, not what the catalog knows. A home tower has one PSU; that ceiling is the
 // buyer's own constraint, so it enters as an input carrying its reason rather than as a constant
-// hidden in this module. max_applied_watts is a plain Nat because it is a stated intent, not a
-// measured figure — the moment it comes from a read, it must arrive as a Watt with a standing.
+// hidden in this module. It is a Watt, NOT a bare Nat, and for the same reason the rungs above are:
+// the watt has one authority, std.measure::Watt, and a Nat field named for watts carries that same
+// fact outside it (§3, "Minimization holds only if each fact lives in exactly one place"). A stated
+// intent and a measured figure differ in STANDING, not in unit — the distinction is carried by
+// HomeServingPowerStanding, so it never needed to be paid for by dropping the carrier. A Nat here
+// would also be handed straight to bound_micro at the constraint boundary with nothing typed saying
+// which scale applies (review 86420).
 type HomeServingBuyerTerms {
-  max_applied_watts: Nat
+  max_applied_watts: Watt
 }
 
 // THE APPLIED ARM'S WARRANT. An applied limit is a PLANNED setting: standing it CitedToAuthority
@@ -435,7 +440,7 @@ fn home_serving_candidate_field() -> List<ParetoEntry> {
 fn home_serving_buyer_ceiling_constraint(terms: HomeServingBuyerTerms) -> HardConstraint = HardConstraint {
   identity: home_serving_buyer_psu_ceiling,
   axis: ax_applied_draw_watts,
-  bound_micro: terms.max_applied_watts as Int,
+  bound_micro: watt_count(w: terms.max_applied_watts) as Int,
   denomination: NonMoneyConstraint,
 }
 

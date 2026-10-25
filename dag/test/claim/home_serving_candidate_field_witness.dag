@@ -38,7 +38,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { string_contains }
-import std.measure { watt_count }
+import std.measure { watt, watt_count }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, ParetoEntry }
@@ -63,9 +63,9 @@ import gunbc.serving.home_serving_candidate_field {
 import gunbc.serving.home_serving_accelerator_field { home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows }
 
 // ── FIXTURES (test.claim.* may state buyer terms the production module must not hard-code) ─────
-data hscf_roomy: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: 600 }
-data hscf_ceiling_350: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: 350 }
-data hscf_ceiling_100: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: 100 }
+data hscf_roomy: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: watt(count: 600) }
+data hscf_ceiling_350: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: watt(count: 350) }
+data hscf_ceiling_100: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: watt(count: 100) }
 
 fn hscf_live() -> List<ParetoEntry> = home_serving_candidate_field()
 
