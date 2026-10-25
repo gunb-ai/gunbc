@@ -102,9 +102,19 @@ fn witness_owner() -> AttemptOwner { DirectInvocation { why: "test.claim.compute
 fn witness_commit() -> String { "0000000000000000000000000000000000000000" }
 
 fn demands_include(demands: List<OwnedDirectoryTarget>, path: String, member: String) -> Bool {
-  any(demands, t =>
+  demands.any(t =>
     (owned_directory_path(t: t) as String) == path
       && (owned_directory_member(t: t) as String) == member)
+}
+
+// THE TWO PATHS THE LAB'S STORE MUST LAND ON, spelled from the ONE scope authority. Module-level
+// functions, because a `let` in a claim body may not be built from a sibling `let`.
+fn lab_store_root() -> String {
+  join([persistent_instance_scope_root(scope: Srv1Lab), "/", materialization_store_workspace_leaf], "")
+}
+
+fn lab_store_staging_root() -> String {
+  join([lab_store_root(), "-staging"], "")
 }
 
 // (a) THE STORE HANGS UNDER THE LAB ROOT, AND THE LAB ROOT HAS ONE AUTHORITY.
@@ -115,35 +125,34 @@ fn demands_include(demands: List<OwnedDirectoryTarget>, path: String, member: St
 // condition that made acceptance permanently unavailable on 2026-10-25).
 test fn the_lab_store_hangs_under_the_single_lab_root_the_deploy_declares() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  let scope_root = persistent_instance_scope_root(scope: Srv1Lab)
-  let expected_root = join([scope_root, "/", materialization_store_workspace_leaf], "")
-  let expected_staging = join([expected_root, "-staging"], "")
-  // ONE AUTHORITY: the lab root is the scope root, not a literal beside it.
-  && (srv1_dashboard_lab_root as String) == scope_root
-  // THE LAB DECLARES ITS STORE AS THE Srv1Lab PERSISTENT WORKSPACE.
-  && match lab.materialization_store_root {
-    Present { value: PersistentInstanceWorkspace { scope: Srv1Lab } } => true
-    _ => false
-  }
-  // THE DECLARED PATH IS UNDER THAT ROOT, and it is the path compute_store opens.
-  && match lab.materialization_store_root {
-    Present { value: store } =>
-      (materialization_store_root_path(root: store) as String) == expected_root
-        && (materialization_store_staging_root_path(root: store) as String) == expected_staging
-        && match compute_store(instance: lab) {
-          Absent => false
-          Present { value: s } => materialization_store_root_path(root: s.root) == expected_root
-        }
-    Absent => false
-  }
-  // THE DEPLOY DECLARES BOTH DIRECTORIES, under the member names the compute store's own module picks.
-  && demands_include(
-    demands: dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab),
-    path: expected_root, member: "compute-materialization-store",
-  )
-  && demands_include(
-    demands: dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab),
-    path: expected_staging, member: "compute-materialization-store-staging",
+  (
+    // ONE AUTHORITY: the lab root is the scope root, not a literal beside it.
+    ((srv1_dashboard_lab_root as String) == persistent_instance_scope_root(scope: Srv1Lab))
+    // THE LAB DECLARES ITS STORE AS THE Srv1Lab PERSISTENT WORKSPACE.
+    && match lab.materialization_store_root {
+      Present { value: PersistentInstanceWorkspace { scope: Srv1Lab } } => true
+      _ => false
+    }
+    // THE DECLARED PATH IS UNDER THAT ROOT, and it is the path compute_store opens.
+    && match lab.materialization_store_root {
+      Present { value: store } =>
+        (materialization_store_root_path(root: store) as String) == lab_store_root()
+          && (materialization_store_staging_root_path(root: store) as String) == lab_store_staging_root()
+          && match compute_store(instance: lab) {
+            Absent => false
+            Present { value: s } => materialization_store_root_path(root: s.root) == lab_store_root()
+          }
+      Absent => false
+    }
+    // THE DEPLOY DECLARES BOTH DIRECTORIES, under the member names the compute store's own module picks.
+    && demands_include(
+      demands: dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab),
+      path: lab_store_root(), member: "compute-materialization-store",
+    )
+    && demands_include(
+      demands: dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab),
+      path: lab_store_staging_root(), member: "compute-materialization-store-staging",
+    )
   )
 }
 
@@ -155,29 +164,31 @@ test fn the_lab_store_hangs_under_the_single_lab_root_the_deploy_declares() -> B
 // goes red.
 test fn the_lab_store_is_demanded_owner_only_and_the_attempt_group_gets_nothing() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  let rows = compute_store_owned_directories(instance: lab)
-  && count(rows) == 2
-  && all(rows, t =>
-    // owner = the instance's directory owner, which IS the service user the verification obligation runs as.
-    (owned_directory_owner(t: t).user as String) == service_account(instance: lab)
-      && (owned_directory_owner(t: t).group as String) == service_account(instance: lab)
-      // THE SHARED ATTEMPT GROUP IS NOT IN THE OWNERSHIP AT ALL.
-      && (owned_directory_owner(t: t).group as String) != (fleet_posix_worker_shared_group_name as String)
-      // 0700 spelled through the one octal authority, and the group/other bits checked as BITS,
-      // not only as the string, so a re-spelled digit layout cannot pass on the string alone.
-      && match owned_directory_mode(t: t) {
-        OwnedDirectoryModeResolved { mode: m } =>
-          file_mode_octal(mode: m) == "0700"
-            && !m.group.read && !m.group.write && !m.group.execute
-            && !m.other.read && !m.other.write && !m.other.execute
-            && m.owner.read && m.owner.write && m.owner.execute
-        OwnedDirectoryModeRefused { reason: _ } => false
-      }
+  let store_rows = compute_store_owned_directories(instance: lab)
+  (
+    count(store_rows) == 2
+    && store_rows.all(t =>
+      // owner = the instance's directory owner, which IS the service user the verification obligation runs as.
+      (owned_directory_owner(t: t).user as String) == service_account(instance: lab)
+        && (owned_directory_owner(t: t).group as String) == service_account(instance: lab)
+        // THE SHARED ATTEMPT GROUP IS NOT IN THE OWNERSHIP AT ALL.
+        && (owned_directory_owner(t: t).group as String) != (fleet_posix_worker_shared_group_name as String)
+        // 0700 spelled through the one octal authority, and the group/other bits checked as BITS,
+        // not only as the string, so a re-spelled digit layout cannot pass on the string alone.
+        && match owned_directory_mode(t: t) {
+          OwnedDirectoryModeResolved { mode: m } =>
+            file_mode_octal(mode: m) == "0700"
+              && !m.group.read && !m.group.write && !m.group.execute
+              && !m.other.read && !m.other.write && !m.other.execute
+              && m.owner.read && m.owner.write && m.owner.execute
+          OwnedDirectoryModeRefused { reason: _ } => false
+        }
+    )
+    // And the two rows ARE the instance's demands, member for member -- not a second list.
+    && store_rows.all(t => dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab).any(d =>
+      (owned_directory_path(t: d) as String) == (owned_directory_path(t: t) as String)
+        && (owned_directory_member(t: d) as String) == (owned_directory_member(t: t) as String)))
   )
-  // And the two rows ARE the instance's demands, member for member -- not a second list.
-  && all(rows, t => any(dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab), d =>
-    (owned_directory_path(t: d) as String) == (owned_directory_path(t: t) as String)
-      && (owned_directory_member(t: d) as String) == (owned_directory_member(t: t) as String)))
 }
 
 // (c, THE STANDING DECISION) THE DEDICATED WORKER IS REFUSED AT ADMISSION, WITH ITS ACCOUNT NAMED.
@@ -194,29 +205,31 @@ test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bo
     instance: lab, principal: worker_account(), owner: witness_owner(),
     commit: witness_commit(), op: work_default_build(),
   )
-  && match provide_result_principal_refusal(r: refused) {
-    Absent => false
-    Present { value: ComputePrincipalNotServiceUser { instance_id: instance_id, principal: principal } } =>
-      instance_id == (lab.instance_id as String)
-        && principal == worker_account()
-        && any([
-          "materialization store", "capacity ledger", "compute root", "service user",
-        ], phrase => string_contains(s: work_refusal_detail(r: ComputePrincipalNotServiceUser { instance_id: instance_id, principal: principal }), pattern: phrase))
-    Present { value: _ } => false
-  }
-  // THE UNOBSERVABLE ACCOUNT REFUSES TOO -- fail-closed: a process whose account cannot be read is
-  // not the service user either, so it never reaches the store. Making the stand-in pass, or making
-  // it fall through to the toolchain arm, goes red here.
-  && match compute_principal_refusal(instance: lab, principal: compute_unobservable_principal) {
-    Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
-    _ => false
-  }
-  // AND A THIRD ACCOUNT -- neither the worker nor the service user -- is refused: the gate is the
-  // instance's owner, not "not the worker".
-  && match compute_principal_refusal(instance: lab, principal: "some-other-account") {
-    Present { value: _ } => true
-    Absent => false
-  }
+  (
+    match provide_result_principal_refusal(r: refused) {
+      Absent => false
+      Present { value: ComputePrincipalNotServiceUser { instance_id: instance_id, principal: principal } } =>
+        instance_id == (lab.instance_id as String)
+          && principal == worker_account()
+          && [
+            "materialization store", "capacity ledger", "compute root", "service user",
+          ].all(phrase => string_contains(s: work_refusal_detail(r: ComputePrincipalNotServiceUser { instance_id: instance_id, principal: principal }), pattern: phrase))
+      Present { value: _ } => false
+    }
+    // THE UNOBSERVABLE ACCOUNT REFUSES TOO -- fail-closed: a process whose account cannot be read is
+    // not the service user either, so it never reaches the store. Making the stand-in pass, or making
+    // it fall through to the toolchain arm, goes red here.
+    && match compute_principal_refusal(instance: lab, principal: compute_unobservable_principal) {
+      Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
+      _ => false
+    }
+    // AND A THIRD ACCOUNT -- neither the worker nor the service user -- is refused: the gate is the
+    // instance's owner, not "not the worker".
+    && match compute_principal_refusal(instance: lab, principal: "some-other-account") {
+      Present { value: _ } => true
+      Absent => false
+    }
+  )
 }
 
 // (c, THE RED CONTROL) THE PRINCIPAL CAUSE, NOT THE STORE'S ABSENCE, IS WHAT KEEPS THE WORKER OUT.
@@ -229,20 +242,22 @@ test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bo
 // which is the point: the worker's exclusion is no longer allowed to depend on an absent store.
 test fn an_absent_store_is_not_the_workers_exclusion_anymore() -> Bool {
   let store_less = srv2_lab_dashboard_instance()
-  // The premise: this instance declares no store, so the OLD exclusion would name the store.
-  && match store_less.materialization_store_root {
-    Absent => true
-    Present { value: _ } => false
-  }
-  // Yet the worker is refused by WHO IT IS, not by the missing store.
-  && match provide_result_cause(r: compute_provide_admitted_as(
-    instance: store_less, principal: worker_account(), owner: witness_owner(),
-    commit: witness_commit(), op: work_default_build(),
-  )) {
-    Absent => false
-    Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
-    Present { value: _ } => false
-  }
+  (
+    // The premise: this instance declares no store, so the OLD exclusion would name the store.
+    match store_less.materialization_store_root {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // Yet the worker is refused by WHO IT IS, not by the missing store.
+    && match provide_result_cause(r: compute_provide_admitted_as(
+      instance: store_less, principal: worker_account(), owner: witness_owner(),
+      commit: witness_commit(), op: work_default_build(),
+    )) {
+      Absent => false
+      Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
+      Present { value: _ } => false
+    }
+  )
 }
 
 // (d, POSITIVE CONTROL) THE SERVICE USER'S PATH STILL REACHES THE STORE. The belt's verification
@@ -253,32 +268,34 @@ test fn an_absent_store_is_not_the_workers_exclusion_anymore() -> Bool {
 // is what pins "the worker out, the service user in" rather than "nothing runs compute".
 test fn the_service_users_path_reaches_the_store() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  // The gate answers nothing for the instance's own service user -- no refusal of any kind.
-  && match compute_principal_refusal(instance: lab, principal: service_account(instance: lab)) {
-    Absent => true
-    Present { value: _ } => false
-  }
-  // The store resolves Present at the declared path, so past the gate the verification route has
-  // somewhere to commit and read.
-  && match compute_store(instance: lab) {
-    Absent => false
-    Present { value: s } =>
-      materialization_store_root_path(root: s.root) == join([persistent_instance_scope_root(scope: Srv1Lab), "/", materialization_store_workspace_leaf], "")
-  }
-  // PROD IS UNDISTURBED: srv1's live worker IS the service user (the staged arm), so its own
-  // account -- derived from the same two-arm sum the worker unit's User= reads -- passes the gate.
-  // A gate that refused prod's own dispatches goes red here.
-  && match compute_principal_refusal(
-    instance: srv1_live_dashboard_instance(),
-    principal: dashboard_instance_worker_user(instance: srv1_live_dashboard_instance()) as String,
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-  // THE TWO ACCOUNTS THE GATE CONTRASTS ARE REALLY DIFFERENT ON THE LAB: the dedicated worker's
-  // derived name is not the service user's. If the lab flipped to WorkerIsServiceUser (the cutover)
-  // both derivations coincide and (c) would no longer describe it -- which is exactly the state the
-  // cutover note in gunbc.roadmap.roadmap_dashboard_instance says an operator decides.
-  && (dashboard_instance_worker_user(instance: lab) as String) == worker_account()
-  && (dashboard_instance_worker_user(instance: lab) as String) != service_account(instance: lab)
+  (
+    // The gate answers nothing for the instance's own service user -- no refusal of any kind.
+    match compute_principal_refusal(instance: lab, principal: service_account(instance: lab)) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // The store resolves Present at the declared path, so past the gate the verification route has
+    // somewhere to commit and read.
+    && match compute_store(instance: lab) {
+      Absent => false
+      Present { value: s } =>
+        materialization_store_root_path(root: s.root) == lab_store_root()
+    }
+    // PROD IS UNDISTURBED: srv1's live worker IS the service user (the staged arm), so its own
+    // account -- derived from the same two-arm sum the worker unit's User= reads -- passes the gate.
+    // A gate that refused prod's own dispatches goes red here.
+    && match compute_principal_refusal(
+      instance: srv1_live_dashboard_instance(),
+      principal: dashboard_instance_worker_user(instance: srv1_live_dashboard_instance()) as String,
+    ) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // THE TWO ACCOUNTS THE GATE CONTRASTS ARE REALLY DIFFERENT ON THE LAB: the dedicated worker's
+    // derived name is not the service user's. If the lab flipped to WorkerIsServiceUser (the cutover)
+    // both derivations coincide and (c) would no longer describe it -- which is exactly the state the
+    // cutover note in gunbc.roadmap.roadmap_dashboard_instance says an operator decides.
+    && (dashboard_instance_worker_user(instance: lab) as String) == worker_account()
+    && (dashboard_instance_worker_user(instance: lab) as String) != service_account(instance: lab)
+  )
 }
