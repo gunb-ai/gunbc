@@ -1,6 +1,7 @@
 module extdeps.apple.apns
 
 import std.types { NonEmptyStr, String, Int, Bool, List, brand }
+import std.optional { Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.measure { Second, second, ByteSize, byte_size }
@@ -117,9 +118,11 @@ fn apns_interruption_level_wire(l: ApnsInterruptionLevel) -> NonEmptyStr {
   }
 }
 
+// subtitle and category are OPTIONAL keys, and absent is a different wire fact from empty: Apple
+// reads an empty category as a category named "". So their absence is the Optional's, never "".
 type ApnsAlert {
   title: NonEmptyStr
-  subtitle: String
+  subtitle: NonEmptyStr?
   body: NonEmptyStr
 }
 
@@ -127,7 +130,7 @@ type ApnsAps {
   alert: ApnsAlert
   mutable_content: Bool
   interruption_level: ApnsInterruptionLevel
-  category: String
+  category: NonEmptyStr?
 }
 
 // Apple's limit for a non-VoIP remote notification payload.
@@ -187,14 +190,13 @@ fn apns_authorization_header(token: JwtCompactSerialization) -> ApnsHeader {
 // The response header that names an accepted notification.
 data apns_id_header_name: NonEmptyStr = "apns-id"
 
-// The JSON body. aps holds Apple's keys; an optional key Apple documents (subtitle, category,
-// mutable-content) is OMITTED when it carries nothing rather than sent empty, because Apple reads an
-// empty category as a category named "". Custom keys sit beside aps at the top level.
+// The JSON body. aps holds Apple's keys; an optional key Apple documents is sent exactly when it is
+// Present (subtitle, category) or true (mutable-content). Custom keys sit beside aps at the top level.
 fn apns_alert_json(a: ApnsAlert) -> JsonValue {
   json_object(members: concat(
     [json_kv(key: "title", value: json_string(s: a.title as String))],
     concat(
-      if a.subtitle == "" { [] } else { [json_kv(key: "subtitle", value: json_string(s: a.subtitle))] },
+      match a.subtitle { Absent => []  Present { value: st } => [json_kv(key: "subtitle", value: json_string(s: st as String))] },
       [json_kv(key: "body", value: json_string(s: a.body as String))],
     ),
   ))
@@ -207,7 +209,7 @@ fn apns_aps_json(aps: ApnsAps) -> JsonValue {
       if aps.mutable_content { [json_kv(key: "mutable-content", value: json_int(n: 1))] } else { [] },
       concat(
         [json_kv(key: "interruption-level", value: json_string(s: apns_interruption_level_wire(l: aps.interruption_level) as String))],
-        if aps.category == "" { [] } else { [json_kv(key: "category", value: json_string(s: aps.category))] },
+        match aps.category { Absent => []  Present { value: c } => [json_kv(key: "category", value: json_string(s: c as String))] },
       ),
     ),
   ))

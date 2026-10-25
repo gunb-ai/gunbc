@@ -415,10 +415,14 @@ fn approval_push_request(registration: PushRegistration, notice: DevicePushNotic
           priority: PriorityImmediate,
           collapse_id: notice.locator as ApnsCollapseId,
           aps: ApnsAps {
-            alert: ApnsAlert { title: notice.title, subtitle: "", body: notice.body },
+<<<<<<< HEAD
+            alert: ApnsAlert { title: notice.title, subtitle: none, body: notice.body },
+=======
+            alert: ApnsAlert { title: approval_push_alert_title, subtitle: none, body: approval_push_alert_body },
+>>>>>>> session/lively-newt-806
             mutable_content: false,
             interruption_level: InterruptionActive,
-            category: "",
+            category: none,
           },
           custom: approval_push_custom_keys(h: ApprovalPushHint { notification_id: notice.locator }),
         }
