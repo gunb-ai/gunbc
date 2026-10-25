@@ -3,9 +3,7 @@ module gunbc.review_sheet_batch_actuator
 import std.optional { Absent, Present }
 import std.types { NonEmptyStr, String, Bool, List, Int, HttpStatus }
 import std.resources { Network }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
-import std.dissolution { unbound_dissolution }
 import extdeps.transports.rest {
   RestResult,
   RestAnswered,
@@ -336,38 +334,3 @@ fn review_sheet_write_receipt_text(receipt: ReviewSheetWriteReceipt) -> String {
   }
 }
 
-// THE CONSUMER IS PRIVATE AND LATER. The named consumer is the private transaction
-// strategy.buyer_review_live (H2), whose write permit wraps perform_batch_write; it cannot live in
-// this repository because the buyer roster is private. Until it lands, every declaration on the
-// network route below is a declared frontier: consumed by a named consumer in a named later
-// change. The pure folds -- lower_write_plan, batch_values_request, write_dispatch, review_sheet_write_receipt --
-// are executed by test.claim.review_sheet_converge_witness and are not rows here.
-//
-// WHY review_sheet_converge_cli DOES NOT CONSUME THIS TODAY. That entry point converges the
-// ESTATE -- API enablement, the writer account, drive membership, the spreadsheet, its format --
-// and holds no ReviewSheetProjection: the listings a projection is built from come from the
-// private eBay lane, so nothing public can produce a TabBoundWritePlan for it to lower. Wiring the
-// lowering there would mean inventing a projection to have something to write, which is the
-// dangling consumption §3c refuses dressed as its opposite.
-data review_sheet_batch_write_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "perform_batch_write"),
-    reason: "the single-call values.batchUpdate over an admitted TabBoundWritePlan; its caller is the private write permit in strategy.buyer_review_live (H2), which holds the buyer roster this repository cannot see",
-    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_batch_actuator write_and_verify_review_sheet with a plan admitted by review_sheet_ensure and consumes the receipt on that route; a witness over batch_values_request or review_sheet_write_receipt does not fire this"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "write_and_verify_review_sheet"),
-    reason: "lower, issue once, re-read the whole tab, reassess: the route strategy.buyer_review_live (H2) takes after review_sheet_ensure admits a plan",
-    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_batch_actuator write_and_verify_review_sheet with a plan admitted by review_sheet_ensure and consumes the receipt on that route; a witness over batch_values_request or review_sheet_write_receipt does not fire this"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "reassess_after_write"),
-    reason: "the fresh whole-tab FORMATTED_VALUE read and reassessment, reached only through write_and_verify_review_sheet",
-    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_batch_actuator write_and_verify_review_sheet with a plan admitted by review_sheet_ensure and consumes the receipt on that route; a witness over batch_values_request or review_sheet_write_receipt does not fire this"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "review_sheet_write_receipt_text"),
-    reason: "the operator rendering of a receipt, consumed by the same private transaction's report",
-    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_batch_actuator write_and_verify_review_sheet with a plan admitted by review_sheet_ensure and consumes the receipt on that route; a witness over batch_values_request or review_sheet_write_receipt does not fire this"),
-  )
-]
