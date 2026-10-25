@@ -118,34 +118,29 @@ fn hold_taken_and_released(root: NonEmptyStr) -> Bool {
 fn attempt_slot_controls(tree: HostStateTree) -> Bool {
   match boot_attempt_store(tree: tree) {
     BootAttemptStoreUnready { detail: _ } => false
-    BootAttemptStoreReady { store: s } =>
-      match unit_hold_store_opened(tree: tree) {
-        none => false
-        Present { value: hold_root } => {
-          let a = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-a")
-          let b = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-b")
-          let first_a = consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
-          let repeated_a = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
-          let then_b = consumed(c: consume_attempt_slot(store: s, key: b, payload: "consumed by receipt-b"))
-          let a_after_b = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
-          let released = hold_taken_and_released(root: hold_root)
-          let a_after_release = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
-          first_a && repeated_a && then_b && a_after_b && released && a_after_release
+    BootAttemptStoreReady { store: s } => {
+      // The hold sibling: created, then minted through the SEALED hold mint. No refusal projects to an
+      // empty value -- mkdir failure, hold-store Unready, and hold release all fail this claim directly,
+      // so the five controls can go green only when BOTH stores are truly Ready.
+      let made = shell.Mkdir.Parents(path: unit_hold_store_path(tree: tree) as FilePath)
+      if made.success {
+        match unit_hold_store(tree: tree) {
+          UnitHoldStoreUnready { detail: _ } => false
+          UnitHoldStoreReady { store: h } => {
+            let a = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-a")
+            let b = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-b")
+            let first_a = consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
+            let repeated_a = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
+            let then_b = consumed(c: consume_attempt_slot(store: s, key: b, payload: "consumed by receipt-b"))
+            let a_after_b = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
+            let released = hold_taken_and_released(root: h.root)
+            let a_after_release = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
+            first_a && repeated_a && then_b && a_after_b && released && a_after_release
+          }
         }
-      }
-  }
-}
-
-// The hold directory is created, then the hold store is minted through the sealed mint; the root the
-// hold library runs on is the mint's, never a path assembled here.
-fn unit_hold_store_opened(tree: HostStateTree) -> NonEmptyStr? {
-  let made = shell.Mkdir.Parents(path: unit_hold_store_path(tree: tree) as FilePath)
-  if made.success {
-    match unit_hold_store(tree: tree) {
-      UnitHoldStoreUnready { detail: _ } => none
-      UnitHoldStoreReady { store: h } => Present { value: h.root }
+      } else false
     }
-  } else { none }
+  }
 }
 
 test fn an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_releases_by_real_execution() -> Bool {
