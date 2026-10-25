@@ -89,8 +89,8 @@ import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
-import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
-import gunbc.auth.approval_device_redemption { approval_device_store_directory, approval_jwks_cache_directory }
+import gunbc.managed_directory { managed_directory_admit, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
+import gunbc.auth.approval_broker_state_directories { approval_broker_state_directories, broker_state_directory_install_argv }
 import gunbc.fleet.fleet_posix_accounts { GroundedPosixPrincipal, grounded_posix_principal_name, fleet_rm_binary_path, fleet_posix_nologin_shell_path }
 import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
@@ -6907,25 +6907,65 @@ fn approval_broker_dark_install(
   }
 }
 
-// THE BROKER'S STATE DIRECTORIES: the device store and the JWKS cache, each converged to its managed
-// declaration (owner, group, derived mode) before the broker's tree is staged.
-fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
-  match dark_managed_state_directory(i: i, d: approval_device_store_directory()) {
-    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-    DarkOk => dark_managed_state_directory(i: i, d: approval_jwks_cache_directory())
+// ONE CENSUS ROW AS ITS CONVERGING LEG: `sudo install -d -m <derived> -o <owner> -g <group> <path>` —
+// the same single-step ownership install as before, spelled from the row's own declaration (mode derived
+// by gunbc.managed_directory managed_directory_permissions, never a literal). Pure, like dark_unit_legs:
+// the witness can name the emitted leg without running a transport, which is what makes the census's
+// contents a CLAIM rather than a hope.
+fn dark_state_directory_leg(d: ManagedDirectory) -> DarkLeg {
+  DarkLegArgv {
+    step: DarkStepDeviceStore,
+    command: sudo_elevate_command(command: broker_state_directory_install_argv(d: d)),
   }
 }
 
-fn dark_managed_state_directory(i: DarkInstallInputs, d: ManagedDirectory) -> DarkState {
-  match managed_directory_admit(d: d) {
-    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
-      DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
-    ManagedDirectoryAdmitted { dir: d } =>
-      dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
-        step: DarkStepDeviceStore,
-        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
-          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
-      })
+// THE EMITTED STATE-DIRECTORY LEGS FOR A SET OF CENSUS ROWS, in census order. THE POSITIVE CONTROL:
+// called with the census (dark_state_directory_legs below), this list carries the assertion-counter
+// root's argv — delete a row from gunbc.auth.approval_broker_state_directories
+// approval_broker_state_directories and the dark-install witness's claim over this list fails.
+fn dark_state_directory_legs_for(directories: List<ManagedDirectory>) -> List<DarkLeg> {
+  list_map(xs: directories, f: fn(d) { dark_state_directory_leg(d: d) })
+}
+
+// THE EMITTED STATE-DIRECTORY LEGS, at the census.
+fn dark_state_directory_legs() -> List<DarkLeg> {
+  dark_state_directory_legs_for(directories: approval_broker_state_directories())
+}
+
+// ONE ADMIT STEP: refuse on the first row whose dependents fail to cover their writes
+// (gunbc.managed_directory managed_directory_admit); carry any earlier refusal forward unchanged.
+fn dark_state_directory_admit_step(st: DarkState, d: ManagedDirectory) -> DarkState {
+  match st {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk => match managed_directory_admit(d: d) {
+      ManagedDirectoryRefused { member: m, path: p, writer: w } =>
+        DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
+      ManagedDirectoryAdmitted { dir: _ } => DarkOk
+    }
+  }
+}
+
+// THE GATE RUNS BEFORE ANY MUTATION: every census row must admit (no uncovered writer) BEFORE a single
+// install -d touches the host. The fold this replaces admitted lazily per row, so a malformed row FIVE
+// refused AFTER rows one through four had already mutated the host; fail-closed means nothing is written
+// when the plan is bad.
+fn dark_state_directories_admit(directories: List<ManagedDirectory>) -> DarkState {
+  fold(directories, init: DarkOk, f: (st, d) => dark_state_directory_admit_step(st: st, d: d))
+}
+
+// THE BROKER'S STATE DIRECTORIES: EVERY root the census (gunbc.auth.approval_broker_state_directories
+// approval_broker_state_directories) declares, each converged to its managed declaration (owner, group,
+// derived mode) before the broker's tree is staged. DESIGN 6b root generalization: this was a nested
+// match over the device store and the JWKS cache — two roots named by hand — and the assertion-counter
+// root 503'd on srv1 for exactly that reason: a new state root could only be provisioned by editing a
+// branch here, and nobody edited one. A root now joins by being a row of the census; the fold is the
+// only shape, and `install -d` Noops on a directory that already stands at its declaration (the srv1
+// counter root the operator created by hand converges as a no-op, not a fight).
+fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
+  let directories = approval_broker_state_directories()
+  match dark_state_directories_admit(directories: directories) {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk => dark_run_legs(legs: dark_state_directory_legs_for(directories: directories), transport: i.transport)
   }
 }
 

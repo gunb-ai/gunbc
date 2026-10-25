@@ -45,6 +45,22 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
 // carry it: its job account is the deploy principal, not the CI job user the row lingers. Its first selector is
 // a declared frontier (DESIGN 3c): gunbc#14972's instrument-dispatch label credential-acquisition-systemd-rows,
 // whose runs-on names this label; trigger: this change lands and the srv4 converge readback holds.
+//
+// DERIVED FROM THE ROW, NOT GRANTED BY THE CONVERGE'S READBACK -- a stated divergence from
+// gunbc_browser_ready_label, which its converge writes as a drop-in when its readback holds and removes when it
+// does not. Three reasons:
+//   * That route is not available on the fleet today. The drop-in write needs argv plus stdin over FleetSsh,
+//     which the shared host-effect runner still refuses before any leg
+//     (gunbc.guarantee_stall browser_ready_labels_fleet_route_stall). A readback-granted label would therefore
+//     never be granted anywhere.
+//   * The operator decision relayed on gunbc#14972 (2026-10-25) was to derive the label from the row.
+//   * The cost of the gap is a refusal, never a silent wrong answer. A job selecting this label on a host whose
+//     converge has not held reaches no user bus: the client says "Failed to connect to bus", and the first
+//     consumer's wire answers no observation (exit 2) before running any row.
+// The ordering that keeps the gap closed in practice: the converge readback holds on the host before any job
+// selects the label.
+// THE CLIMB: when the FleetSsh stdin route is admitted (that stall's trigger), this label moves to the
+// browser-ready model: granted by runner_user_session's readback and removed when the readback fails.
 data gunbc_user_session_label: String = "gunbc-user-session"
 
 fn runner_host_capability_labels(host: HostIdentity) -> List<String> {
