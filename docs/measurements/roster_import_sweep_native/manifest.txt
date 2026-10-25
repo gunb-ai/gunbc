@@ -5,13 +5,15 @@
 # Each id's expected bytes live at expected/<id>.txt beside this file, committed ONCE from the
 # interpreter as the offline differential oracle (the interpreter never runs on this route).
 # The two sweep cases are the NAMESPACE-XL-wave subjects named in the work item: src/v2/std/node.dag
-# (138,516 B, about 16m per interpreted pass at sunny-bee-153's measurement) and
-# src/v2/compiler/infer.dag (585,795 B, about 50m, past the runner's 1h cap).
-# The last case is the seeded RED: a path the admission refuses before any read, so its expected
-# file IS the REFUSE row -- if the emitted program ever routes it as a success, the case goes not
-# held by itself.
+# (138,516 B -- the interpreted oracle pass measured 1197 s, the ==NODE_T0/T1== pair in the README)
+# and src/v2/compiler/infer.dag (585,795 B), whose interpreted oracle could not be produced inside
+# the runner's hard 1 h cap (three timed dispatches killed past 50 min with no rows; README), so its
+# expected file does not exist and the case stays COMMENTED OUT -- a manifest row whose oracle
+# cannot exist is a permanently-red control, and a silent vacuous one is worse. Re-enable
+# `infer_dag_sweep|src/v2/compiler/infer.dag` by committing expected/infer_dag_sweep.txt from the
+# interpreter as soon as a front-end speed-up (or a chunked oracle) fits one pass under the cap.
 node_dag_sweep|src/v2/std/node.dag
-infer_dag_sweep|src/v2/compiler/infer.dag
+# infer_dag_sweep|src/v2/compiler/infer.dag
 refuse_escaped_path|../outside_repository.dag
 # lexical_scope_sweep exercises the EDIT-row shape: the file's std.algebra import binds none of the
 # ruling-B shapes its bare concat/join calls need, so the sweep must emit EDIT rows recomputing that

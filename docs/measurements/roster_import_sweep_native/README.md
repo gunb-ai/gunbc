@@ -21,8 +21,9 @@ The seeded RED is `refuse_escaped_path`: its expected file IS the `REFUSE ../out
 
 ## Measuring the before/after, by the instrument itself
 
-Before (interpreted, the displaced cost -- one dispatch per module; node.dag measured ~16m,
-infer.dag ~50m at sunny-bee-153's measurement, past the runner's 1h cap):
+Before (interpreted, the displaced cost -- one dispatch per module; node.dag measured 1197 s by
+the dispatch's own `==NODE_T0==`/`==NODE_T1==` pair, infer.dag never completed inside the runner's
+hard 1 h cap -- see Executed results):
 
     gunbc run --source-root dag --source-root src/v2 \
       --entry dag/gunbc/instruments/roster_import_sweep_native.dag \
@@ -42,3 +43,39 @@ The controls that go red when the route is removed or falls back are
 NativeClaimProgramProducer) and the Rust test
 `roster_import_sweep_native_is_bound_to_the_native_claim_program_producer` in
 `src/v1/stage0/src/target_invocation_host.rs`.
+
+## Executed results (remote runner, per-module dispatches, 2026-10-25)
+
+BEFORE (the displaced cost, named by its instrument -- the interpreted oracle dispatch's wall):
+`==NODE_T0=1792899699== ... ==NODE_T1=1792900896==` = **1197 s** for one interpreted pass over
+`src/v2/std/node.dag` (138,516 B), from the `run_case` dispatch around the
+`roster_sweep_oracle_wire` call. For `src/v2/compiler/infer.dag` (585,795 B) the interpreted pass
+could not be completed inside the runner's hard 1 h cap at all: three dispatches carrying the
+`==INFER_T0==`/`==INFERONLY_T0==` timer (started 1792901399, 1792913545, 1792919886) were each
+killed past 50 min with no rows printed. The consumer's
+second subject therefore has NO committed expected file and is listed only in the manifest
+comment below -- a missing oracle must not become a silent vacuous case.
+
+AFTER (the native route's own instrument): the baseline `gunbc test` run did not reach the child
+-- the emitted crate's cargo build refuses with the exact emission refusal recorded in
+`dag/gunbc/instruments/roster_import_sweep_native.dag`'s header:
+`V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed first_error=error[E0204]: the trait `Copy`
+cannot be implemented for this type @ .../std_bit.rs:40:12` (Word64 leaf collision between
+`dag/std/bit.dag` and `dag/std/machine_word.dag`; the documented still-leaf-keyed `shared_types`
+RFM `emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer`). So `child_wall_ms` rows print
+only after that emitter gap closes; until then the native cost instrument is the REFUSAL line
+itself, and the route is proven WIRED (the seed rendered the crate and cargo ran it) rather than
+executed. The refusal was reproduced three consecutive dispatches (baseline, poison,
+no-manifest -- all exit 2 with the same first_error), and it is NOT papered over: the poison and
+manifest-absence controls cannot report through it, which is why the control witnesses below carry
+the binding assertions instead.
+
+GREEN controls, executed: all twelve `test fn`s of
+`dag/test/claim/roster_import_sweep_native_control_witness.dag` HELD under `gunbc test
+//test/claim/...:all` (WITNESS_RC=0, cpu_ms<=2 per row), and the Rust control passed on the
+remote (`roster_import_sweep_native_is_bound_to_the_native_claim_program_producer ... ok`;
+`test result: ok. 1 passed`). The sibling native instrument `//gunbc/instruments:value-position-
+block-nests` exited 0 on the same dispatch, proving the producer route itself is live; the other
+sibling `native-materialization-store-closure` is red on main at the SAME emitted line (pre-existing,
+"run by name, not a merge gate"), which is what discriminates the collision: its closure carries
+both Word64 declarers, VBP's carries only std.bit.
