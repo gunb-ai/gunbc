@@ -87,7 +87,7 @@ type GpuBenchRequestV4 {
   retained: Nat
   session: Nat
   max_tokens: TokenCount
-  delta_tokens: Nat
+  delta_tokens: TokenCount
   delta_words: Nat
   tokens_per_word_milli: Nat?
   delta_sha256: Sha256Digest?
@@ -132,7 +132,7 @@ type V4Head {
   retained: Nat
   session: Nat
   max_tokens: TokenCount
-  delta_tokens: Nat
+  delta_tokens: TokenCount
   delta_words: Nat
   tokens_per_word_milli: Nat?
 }
@@ -178,8 +178,8 @@ fn v4_head(obj: JsonValue) -> V4HeadRead {
                       NatMemberUnreadable { cause: c } => V4HeadUnreadable { cause: c }
                       NatMemberRead { value: delta_words } => match json_field_nat(obj: obj, key: "tokens_per_word_milli") {
                         FieldMalformed { cause: c } => V4HeadUnreadable { cause: c as NonEmptyStr }
-                        FieldAbsent => V4HeadRead { head: V4Head { run: run, phase: phase, round: round, n_active: n_active, retained: retained, session: session, max_tokens: token_count(count: max_tokens), delta_tokens: delta_tokens, delta_words: delta_words, tokens_per_word_milli: none } }
-                        FieldRead { value: tpw } => V4HeadRead { head: V4Head { run: run, phase: phase, round: round, n_active: n_active, retained: retained, session: session, max_tokens: token_count(count: max_tokens), delta_tokens: delta_tokens, delta_words: delta_words, tokens_per_word_milli: Present { value: tpw } } }
+                        FieldAbsent => V4HeadRead { head: V4Head { run: run, phase: phase, round: round, n_active: n_active, retained: retained, session: session, max_tokens: token_count(count: max_tokens), delta_tokens: token_count(count: delta_tokens), delta_words: delta_words, tokens_per_word_milli: none } }
+                        FieldRead { value: tpw } => V4HeadRead { head: V4Head { run: run, phase: phase, round: round, n_active: n_active, retained: retained, session: session, max_tokens: token_count(count: max_tokens), delta_tokens: token_count(count: delta_tokens), delta_words: delta_words, tokens_per_word_milli: Present { value: tpw } } }
                       }
                     }
                   }
