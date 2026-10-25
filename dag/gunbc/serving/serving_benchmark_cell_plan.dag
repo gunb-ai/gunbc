@@ -1,0 +1,35 @@
+module gunbc.serving.serving_benchmark_cell_plan
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.host_identity { HostIdentity }
+import extdeps.docker { DockerMount }
+import extdeps.strata.serve_flags { StrataServeFlags }
+import gunbc.serving.serving_benchmark_run_receipt { ServingEngineBuild, ServingArtifact, ServingTopology }
+
+// WHAT A SERVING-BENCHMARK RUN STARTS, for one serving cell: the engine (its image, its in-image argv,
+// the flags it serves with, the weights it mounts read-only), the gpu-bench kit that drives it, and the
+// sampler image nvidia-smi runs in. The run receipt's cell identity is read from the host where it can be
+// (GPUs, CPU, RAM) and taken from this plan where only the plan knows it (the engine build, the
+// artifact, the topology), so a plan row is the cell's declared half and the receipt checks the rest.
+//
+// The kit's CTX argument sizes each session's history in the kit's own unit (CTX x 0.72 words); it is
+// chosen so the primed prompt lands inside the version's retained-context band on this model's tokenizer,
+// and admission refuses the run if it does not.
+type ServingBenchmarkCellPlan {
+  host: HostIdentity
+  engine_image: NonEmptyStr
+  engine_command: List<String>
+  engine_flags: StrataServeFlags
+  engine_mounts: List<DockerMount>
+  engine_port: Nat
+  engine_build: ServingEngineBuild
+  artifact: ServingArtifact
+  topology: ServingTopology
+  kit_image: NonEmptyStr
+  kit_command: List<String>
+  kit_model_name: NonEmptyStr
+  kit_ctx: Nat
+  kit_minutes: Nat
+  sampler_image: NonEmptyStr
+}
