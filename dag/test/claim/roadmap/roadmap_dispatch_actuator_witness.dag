@@ -7,8 +7,9 @@ import gunbc.roadmap.roadmap_sizing {
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
 import std.optional { Present }
-import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting }
 import extdeps.systemd {
+  UMaskProperty,
   systemd_unit_name_wire, systemd_service_unit_suffix,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
@@ -21,7 +22,9 @@ import std.filesystem { path_parent_directory }
 import extdeps.tools.gnu_coreutils { coreutils_directory_mode_operand }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
 import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, kibibyte }
+import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, dispatch_attempt_worker_worktree_grant }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
@@ -1018,6 +1021,38 @@ test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scra
     && any(argvs, a => any(a.args, w => w == publication_dir) && any(a.args, w => w == owner_only) && !any(a.args, w => w == attempt_dir))
     && setgid_traverse.setgid && setgid_traverse.group.execute && !setgid_traverse.group.write
     && !any(argvs, a => any(a.args, w => w == attempt_dir) && (any(a.args, w => w == writable) || any(a.args, w => w == owner_only)))
+}
+
+// THE DEDICATED WORKER RUNS AT UMASK 0002, AND ONLY IT. Its unit's RestrictSUIDSGID refuses the setgid chmod git
+// issues on a directory it creates under core.sharedRepository=group, and umask 0002 makes that chmod unnecessary
+// (measured on srv1 under the unit's own seccomp). A service-user worker keeps the default. RED on a lab unit
+// without the mask, and on the mask leaking onto the live unit.
+fn umask_of(props: List<SystemdRunProperty>) -> List<String> {
+  fold(props, init: [] as List<String>, f: (acc, p) => match p {
+    NamedUnitSetting { property: UMaskProperty, value: v } => concat(acc, [v as String])
+    _ => acc
+  })
+}
+
+test fn the_dedicated_worker_unit_runs_at_umask_0002_and_the_service_user_unit_does_not() -> Bool {
+  let lab = umask_of(props: dispatch_worker_unit_properties(instance: srv1_lab_dashboard_instance(), working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr))
+  let live = umask_of(props: dispatch_worker_unit_properties(instance: srv1_live_dashboard_instance(), working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr))
+  lab == ["0002"] && count(live) == 0
+}
+
+// THE CHECKOUT IS GRANTED TO THE DEDICATED WORKER, AND PROVEN, WITH ITS `.git` POINTER LEFT OUT. Two commands: the
+// sweep (group write on files too, since the checkout is the attempt's own) and the refusal walk, both pruning the
+// pointer. The service-user worker owns its checkout and gets neither. RED on a grant that does not prune the
+// pointer, a proof that does not name the group, or a grant leaking onto the live instance.
+test fn the_dedicated_worker_worktree_grant_sweeps_then_proves_and_never_touches_the_pointer() -> Bool {
+  let wt = "/opt/gunbc-lab/x/attempts/n-ak"
+  let lab = dispatch_attempt_worker_worktree_grant(instance: srv1_lab_dashboard_instance(), attempt_worktree: wt, group: "gunbc-attempt" as NonEmptyStr)
+  let live = dispatch_attempt_worker_worktree_grant(instance: srv1_live_dashboard_instance(), attempt_worktree: wt, group: "gunbc-attempt" as NonEmptyStr)
+  let words = map(lab, c => argv_words(command: c))
+  count(lab) == 2 && count(live) == 0
+    && all(words, ws => any(ws, w => w == join([wt, "/.git"], "")) && any(ws, w => w == "-prune"))
+    && any(words, ws => any(ws, w => w == "g+w") && !any(ws, w => w == "-group"))
+    && any(words, ws => any(ws, w => w == "-group") && any(ws, w => w == "gunbc-attempt") && any(ws, w => w == "false"))
 }
 
 // THE SERVICE-USER WORKER KEEPS THE ONE OWNER-ONLY INSTALL IT ALWAYS HAD: the worker is the owner, so the
