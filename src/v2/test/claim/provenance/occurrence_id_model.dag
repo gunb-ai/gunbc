@@ -7,6 +7,7 @@ import v2.std.exact_structural_equality_zip_fold_predicate {
 }
 import v2.std.node {
   Atom,
+  node_same_occurrence,
   Conj,
   Edge,
   Node,
@@ -182,7 +183,7 @@ test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
     occurrence_id: node_occurrence_identity_minted(id: m1.id)
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)
-    && !(left == right)
+    && !node_same_occurrence(a: left, b: right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
@@ -209,7 +210,7 @@ test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
     children: [Edge { label: Positional, target: child_right, declaration: NotADeclaration }]
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)
-    && !(left == right)
+    && !node_same_occurrence(a: left, b: right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
-    && !(node_for_structural_equality(n: left) == node_for_structural_equality(n: right))
+    && !node_same_occurrence(a: node_for_structural_equality(n: left), b: node_for_structural_equality(n: right))
 }
