@@ -36,11 +36,6 @@ type HostStateTreeRoot {
   mode: DeclaredDirectoryMode
 }
 
-data host_state_tree_root: HostStateTreeRoot = HostStateTreeRoot {
-  path: "/var/lib/gunbc" as NonEmptyStr,
-  owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr },
-  mode: DirectoryOwnerAllEveryoneTraverse,
-}
 
 // THE TREE AS A SEALED VALUE. HostStateTree is sole_constructor and this module builds it in exactly
 // two places, and there is no other:
