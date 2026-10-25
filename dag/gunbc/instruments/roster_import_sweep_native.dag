@@ -227,8 +227,9 @@ fn first_diff_step(a: String, b: String, i: Int, shared: Int) -> String {
 }
 
 fn case_row(c: SweepCase) -> String {
-  concat("case ", concat(c.identity, concat(if c.held { " held observed=" } else { " not_held observed=" }, concat(c.observed, "\n")))))
+  concat("case ", concat(c.identity, concat(if c.held { " held observed=" } else { " not_held observed=" }, concat(c.observed, "\n"))))
 }
+
 
 fn roster_line(cases: List<SweepCase>) -> String {
   concat("roster ", concat(cases |> map(c => c.identity) |> join(separator: ","), "\n"))
