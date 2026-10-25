@@ -15,7 +15,7 @@ import extdeps.gpu_bench.request_v4 { GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark { ServingBenchmarkVersion }
 import gunbc.serving.serving_benchmark_run_receipt {
   ObservedGpu, GpuLevelTelemetry, LevelTelemetry, WallPowerReading, TimedRequest,
-  timed_requests, earliest_start, micros_of_seconds, round_numbers, round_requests, round_submission, round_last_completion,
+  timed_requests, earliest_start, micros_of_seconds, measured_round_numbers, round_requests, round_submission, round_last_completion,
 }
 
 // THE TELEMETRY OF A SERVING-BENCHMARK RUN, folded onto the levels the run's own rows define. The kit
@@ -34,9 +34,10 @@ fn in_windows(at: Nat, windows: List<Window>) -> Bool {
   any(windows, w => at >= w.start && at <= w.end)
 }
 
-// The absolute windows of one level: each round's relative window shifted by the run's origin.
-fn level_windows(timed: List<TimedRequest>, origin: Nat, active: Nat) -> List<Window> {
-  map(round_numbers(requests: timed, active: active), k => {
+// The absolute windows of one level's measured rounds (warm-up rounds excluded, as from its quantities):
+// each round's relative window shifted by the run's origin.
+fn level_windows(timed: List<TimedRequest>, origin: Nat, active: Nat, warmup: Nat) -> List<Window> {
+  map(measured_round_numbers(requests: timed, active: active, warmup: warmup), k => {
     let rs = round_requests(requests: timed, round: k)
     Window { start: origin + microsecond_count(m: round_submission(rs: rs)), end: origin + microsecond_count(m: round_last_completion(rs: rs)) }
   })
@@ -132,7 +133,7 @@ fn serving_benchmark_level_telemetry(
       Present { value: origin } => {
         let timed = timed_requests(requests: requests).requests
         flat_map(version.workload.active_levels, n => {
-          let windows = level_windows(timed: timed, origin: microsecond_count(m: origin), active: n)
+          let windows = level_windows(timed: timed, origin: microsecond_count(m: origin), active: n, warmup: version.workload.warmup_rounds_per_level)
           if count(windows) == 0 { [] as List<LevelTelemetry> } else {
             [LevelTelemetry {
               active: n,

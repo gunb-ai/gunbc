@@ -1,0 +1,67 @@
+module extdeps.linux.etc_group
+
+import std.types { NonEmptyStr, String, Int, List }
+import std.optional { Present, Absent }
+import std.algebra { trim, skip }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE LOCAL GROUP DATABASE, /etc/group, as group(5) defines it: one line per group,
+// `group_name:password:GID:user_list`. Only the file is read; a group served by another NSS source
+// (LDAP, sssd) is not in it, so a GID this file cannot name is unresolved, never nameless.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/group.5.html" as NonEmptyStr
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.etc_group",
+      decl_name: "EtcGroupEntry",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+type EtcGroupEntry {
+  name: NonEmptyStr
+  gid: Int
+}
+
+fn etc_group_entry(line: String) -> EtcGroupEntry? {
+  let fields = split(s: line, delimiter: ":")
+  if count(fields) != 4 { none } else {
+    match first(fields) {
+      Absent => none
+      Present { value: name } =>
+        if name == "" { none } else {
+          match first(fields |> skip(n: 2)) {
+            Absent => none
+            Present { value: g } => match parse_int(s: trim(s: g)) {
+              Absent => none
+              Present { value: gid } => if gid < 0 { none } else { Present { value: EtcGroupEntry { name: name as NonEmptyStr, gid: gid } } }
+            }
+          }
+        }
+    }
+  }
+}
+
+// Comment and blank lines are not entries; any other line that is not an entry is skipped too, since
+// a malformed line names no group and so can resolve no GID.
+fn etc_group_entries(text: String) -> List<EtcGroupEntry> {
+  flat_map(split(s: text, delimiter: "\n"), l => if starts_with(s: trim(s: l), prefix: "#") { [] as List<EtcGroupEntry> } else {
+    match etc_group_entry(line: l) { Absent => [] as List<EtcGroupEntry>, Present { value: e } => [e] }
+  })
+}
+
+fn etc_group_name_of(entries: List<EtcGroupEntry>, gid: Int) -> NonEmptyStr? {
+  match first(entries |> filter(e => e.gid == gid)) { Absent => none, Present { value: e } => Present { value: e.name } }
+}

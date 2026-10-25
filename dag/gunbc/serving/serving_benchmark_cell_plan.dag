@@ -1,6 +1,7 @@
 module gunbc.serving.serving_benchmark_cell_plan
 
 import std.types { List, NonEmptyStr, String }
+import std.measure { Mebibyte }
 import std.nat { Nat }
 import product.host_identity { HostIdentity }
 import extdeps.docker { DockerMount }
@@ -16,20 +17,32 @@ import gunbc.serving.serving_benchmark_run_receipt { ServingEngineBuild, Serving
 // The kit's CTX argument sizes each session's history in the kit's own unit (CTX x 0.72 words); it is
 // chosen so the primed prompt lands inside the version's retained-context band on this model's tokenizer,
 // and admission refuses the run if it does not.
+// AN IMAGE THE RUN NEEDS MAY NOT EXIST YET, and that is a typed state, not a placeholder string: a plan
+// whose engine or kit is pending names what it awaits, and the instrument answers no observation with
+// that reason instead of starting anything. The engine's build identity (upstream, base, patches, the
+// binary's digest) is a fact of the pinned image, so it is carried by the pinned arm.
+type ServingEngineInput
+  = EngineImagePinned { reference: NonEmptyStr, command: List<String>, build: ServingEngineBuild }
+  | EngineImagePending { awaiting: NonEmptyStr }
+
+type ServingKitInput
+  = KitImagePinned { reference: NonEmptyStr, command: List<String> }
+  | KitImagePending { awaiting: NonEmptyStr }
+
 type ServingBenchmarkCellPlan {
   host: HostIdentity
-  engine_image: NonEmptyStr
-  engine_command: List<String>
+  engine: ServingEngineInput
   engine_flags: StrataServeFlags
   engine_mounts: List<DockerMount>
   engine_port: Nat
-  engine_build: ServingEngineBuild
   artifact: ServingArtifact
   topology: ServingTopology
-  kit_image: NonEmptyStr
-  kit_command: List<String>
+  kit: ServingKitInput
   kit_model_name: NonEmptyStr
   kit_ctx: Nat
   kit_minutes: Nat
   sampler_image: NonEmptyStr
+  // A GPU whose device memory in use is above this before the engine starts, or after it is removed,
+  // is held by something else.
+  idle_gpu_memory_bound: Mebibyte
 }

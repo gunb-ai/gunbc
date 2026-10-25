@@ -413,6 +413,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/linux/efi_stub.dag",
   "dag/extdeps/linux/boot_console.dag",
   "dag/extdeps/linux/mlx5_core.dag",
+  "dag/extdeps/linux/etc_group.dag",
   "dag/extdeps/linux/proc_cpuinfo.dag",
   "dag/extdeps/linux/proc_self_cgroup.dag",
   "dag/extdeps/os/debian.dag",

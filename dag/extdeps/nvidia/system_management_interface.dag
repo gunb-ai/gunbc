@@ -371,3 +371,24 @@ fn nvidia_smi_dmon_pcie_row(line: String) -> NvidiaSmiPcieSample? {
 fn nvidia_smi_dmon_pcie_rows(text: String) -> NvidiaSmiRowsRead<NvidiaSmiPcieSample> {
   nvidia_smi_rows(text: join(flat_map(split(s: text, delimiter: "\n"), l => if starts_with(s: trim(s: l), prefix: "#") { [] as List<String> } else { [l] }), "\n"), row: l => nvidia_smi_dmon_pcie_row(line: l))
 }
+
+// ── DEVICE MEMORY IN USE, per GPU: `--query-gpu=uuid,memory.used` ─────────────────────────────
+//
+// Read beside the process list because a container's nvidia-smi sees the device but not necessarily
+// the processes of other PID namespaces: memory in use is what any holder leaves on the device.
+data nvidia_smi_gpu_memory_used_fields: String = "uuid,memory.used"
+
+type NvidiaSmiGpuMemoryUsed {
+  uuid: NonEmptyStr
+  used: Mebibyte
+}
+
+fn nvidia_smi_gpu_memory_used_row(line: String) -> NvidiaSmiGpuMemoryUsed? {
+  let c = nvidia_smi_cells(line: line)
+  if count(c) != 2 { none } else {
+    match nonempty_cell(cells: c, i: 0) { Absent => none, Present { value: uuid } =>
+    match nat_cell(cells: c, i: 1) { Absent => none, Present { value: m } =>
+      Present { value: NvidiaSmiGpuMemoryUsed { uuid: uuid, used: mebibyte(count: m) } }
+    } }
+  }
+}
