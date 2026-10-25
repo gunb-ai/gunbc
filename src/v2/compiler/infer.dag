@@ -10439,7 +10439,8 @@ fn infer_match_arm_catch_all_binder_types(arm: Node, scrutinee_type: Node) -> Li
     Accepted { value: pat, diagnostics: _ } =>
       match infer_coproduct_arm_pattern(pat: pat) {
         ArmPatternBinder { name: _ } => [InferBinderType { site: pat.occurrence_id, derived: scrutinee_type }]
-        ArmPatternVariant { tag: _, fields: _ } => infer_no_binder_types()
+        // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
+        ArmPatternVariant { tag: _tag, fields: _ } => infer_no_binder_types()
         ArmPatternWildcard => infer_no_binder_types()
         ArmPatternUnread => infer_no_binder_types()
       }

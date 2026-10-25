@@ -423,7 +423,10 @@ test fn mab_declared_constructor_in_a_pattern_stays_a_declaration_reference() ->
 // atom resolves as a reference and refuses unbound, rather than becoming a catch-all binder that
 // matches every A(_). WHAT IT DISCRIMINATES, measured: red with the GlobalBareLookupAmbiguous arm
 // answering binder; still green with the declared-payload fact forced false, because this spelling
-// never reaches the GlobalBareHit arm. It is the executed receipt for the bridge's fail-safe
+// never reaches the GlobalBareHit arm. RE-MEASURED 2026-10-25 on #15125, and it contradicts that: this
+// row stays GREEN with GlobalBareLookupAmbiguous answering binder, and goes RED with GlobalBareHit and
+// GlobalBareLookupUnbound both answering binder, so its live route is one of those two, not the
+// ambiguous arm. The paragraph above is kept as the record of what was claimed. It is the executed receipt for the bridge's fail-safe
 // direction, not evidence for the index-keyed payload fact.
 fn mab_resolved_unimported_constructor() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
@@ -569,4 +572,35 @@ test fn mab_unread_catch_all_binder_refuses() -> Bool {
 
 test fn mab_misspelled_nullary_in_the_last_arm_refuses() -> Bool {
   mab_outcome_refuses_with(o: mab_resolved_misspelled_last_nullary(), reason: ^resolve_reason_catch_all_binder_unread)
+}
+
+// AN UNIMPORTED NULLARY VARIANT WHOSE ARM READS IT REFUSES, NEVER BINDS. `Absent => Absent` reads the
+// atom, so the unread-binder gate cannot catch it; what keeps it a constructor is the payload test
+// itself (resolve_pattern_atom_names_constructor). `Absent` is declared only in p.o and not imported
+// into p.q, so it is off the arm's lexical chain and the test takes the global-bare branch, which
+// names it a declared variant BY IDENTITY: GlobalBareHit, whose one path is a declared payload, not the
+// canonical-symbol spelling fallback. The atom then resolves as a reference and refuses unbound. Read as
+// a binder it would be a catch-all whose arm returns the scrutinee, Accepted with the wrong meaning.
+// WHAT DISCRIMINATES IT, measured 2026-10-25 on #15125: red with the GlobalBareHit and
+// GlobalBareLookupUnbound arms both answering binder; green with only GlobalBareLookupUnbound (the
+// canonical fallback) answering binder, and green with GlobalBareLookupAmbiguous answering binder.
+fn mab_resolved_unimported_bare_nullary_read() -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: mab_file(src: "module p.o\n\ntype Opt = Present { value: Int } | Absent\n", id: ^match_arm_binder_unimported_bare_o_cu),
+      tail: Cons {
+        head: mab_file(src: "module p.q\n\nfn pick(o: Int) -> Int {\n  match o {\n    Absent => Absent\n  }\n}\n", id: ^match_arm_binder_unimported_bare_q_cu),
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^p, tail: Cons { head: ^q, tail: Empty } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn mab_unimported_bare_nullary_read_by_its_arm_refuses_rather_than_binding() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_unimported_bare_nullary_read(), reason: ^resolve_reason_unbound_symbol)
 }
