@@ -3290,6 +3290,7 @@ type InferCoproductArmRow {
   covers: InferCoproductArmCoverage
   body: Node
   arm: Node
+  catch_all_binder: Bool
 }
 
 type InferCoproductArmCoverage
@@ -3333,9 +3334,9 @@ fn infer_coproduct_arm_row(arm: Node, coproduct: InferMatchCoproduct) -> Outcome
           match infer_coproduct_arm_pattern(pat: pat) {
             ArmPatternUnread => outcome_rejected(infer_match_pattern_unread_diagnostic(pattern: pat))
             ArmPatternWildcard =>
-              outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body, arm: arm })
+              outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body, arm: arm, catch_all_binder: false })
             ArmPatternBinder { name: _ } =>
-              outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body, arm: arm })
+              outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body, arm: arm, catch_all_binder: true })
             ArmPatternVariant { tag: tag, fields: fields } =>
               match infer_match_variant_payload(variants: coproduct.variants, tag: tag) {
                 Absent => outcome_rejected(infer_match_pattern_variant_not_declared_diagnostic(arm: arm))
@@ -3343,7 +3344,7 @@ fn infer_coproduct_arm_row(arm: Node, coproduct: InferMatchCoproduct) -> Outcome
                   bind_outcome(
                     o: infer_coproduct_arm_fields_check(pat: pat, payload: payload, fields: fields),
                     f: fn(_checked) {
-                      outcome_accepted(value: InferCoproductArmRow { covers: CoversVariant { tag: tag }, body: body, arm: arm })
+                      outcome_accepted(value: InferCoproductArmRow { covers: CoversVariant { tag: tag }, body: body, arm: arm, catch_all_binder: false })
                     }
                   )
               }
@@ -3547,6 +3548,9 @@ fn infer_match_coproduct_rows(
       match infer_coproduct_arm_after_catch_all(rows: rows) {
         Present { value: unreachable } => outcome_rejected(infer_match_arm_unreachable_diagnostic(arm: unreachable))
         Absent =>
+      match infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: rows, coproduct: coproduct) {
+        Present { value: binder_arm } => outcome_rejected(infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: binder_arm))
+        Absent =>
       match infer_coproduct_coverage_obligation(node: node, scrutinee_target: scrutinee_target, coproduct: coproduct, rows: rows) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: _ } =>
@@ -3584,6 +3588,84 @@ fn infer_match_coproduct_rows(
           }
       }
       }
+      }
+  }
+}
+
+// A CATCH-ALL BINDER LEFT TWO OR MORE ALTERNATIVES, ONE OF THEM NULLARY, REFUSES; the remedy is to give the
+// nullary variants their own arms. It closes the misspelled-nullary class without consulting spelling. A bare
+// name that names no declared payload reads as a binder (v2.compiler.lexical_scope
+// pattern_binder_candidates); if it misspells a nullary variant, the intended variant is among the
+// alternatives the earlier arms leave to it. When it is the ONLY one, the binder binds exactly that value (a
+// nullary variant carries only its tag), so `Absnet => Absnet` behaves as the intended program: not wrong,
+// and exempt. When two or more remain, the intended match would have been non-exhaustive and the misspelling
+// silently widens it: that refuses here, which an unread-binder gate cannot see because the arm reads the
+// binder. It is judged against the CURRENT remainder on every compile and never grandfathered, so adding a
+// variant to the type turns an exempt singleton into a refusal exactly when a misspelling would become a
+// silent widen. Only a BINDER is judged (a wildcard binds nothing), and every binder that reaches infer is
+// read: an unread one already refused at resolve (v2.compiler.resolve resolve_catch_all_binder_read_gate).
+// The remainder is the coproduct's alternatives less the tags the earlier arms name; a nullary alternative's
+// payload is the empty product, a childless Conj. RULED by sleek-owl-397 on tidy-ant-251's escalation,
+// 2026-10-25, after review 86112; keen-heron-809 co-reviews. The residual (a misspelling over a singleton
+// remainder, accepted and behaviour-identical) is recorded on gunbc.recurring_failure_mode
+// a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder.
+fn infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: List<InferCoproductArmRow>, coproduct: InferMatchCoproduct) -> Optional<Node> {
+  let walked = fold(rows, init: InferBinderRemainderWalk { earlier: Empty, found: Absent }, f: fn(acc, row) {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent =>
+        if row.catch_all_binder && infer_remainder_widens_over_a_nullary(variants: coproduct.variants, earlier: acc.earlier) {
+          InferBinderRemainderWalk { earlier: acc.earlier, found: Present { value: row.arm } }
+        } else {
+          match row.covers {
+            CoversVariant { tag: t } => InferBinderRemainderWalk { earlier: list_snoc_item(xs: acc.earlier, item: t), found: Absent }
+            CoversAll => acc
+          }
+        }
+    }
+  })
+  walked.found
+}
+
+type InferBinderRemainderWalk {
+  earlier: List<Symbol>
+  found: Optional<Node>
+}
+
+fn infer_remainder_widens_over_a_nullary(variants: Node, earlier: List<Symbol>) -> Bool {
+  let left = fold(variants.children, init: InferRemainderTally { alternatives: 0, nullary: false }, f: fn(acc, e) {
+    match e.label {
+      Authored { name: tag } =>
+        if contains(xs: earlier, item: tag, eq: fn(x, y) { x == y }) {
+          acc
+        } else {
+          InferRemainderTally { alternatives: acc.alternatives + 1, nullary: acc.nullary || infer_payload_is_empty_product(payload: e.target) }
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+  (left.alternatives >= 2) && left.nullary
+}
+
+type InferRemainderTally {
+  alternatives: Int
+  nullary: Bool
+}
+
+fn infer_payload_is_empty_product(payload: Node) -> Bool {
+  match payload.kind {
+    TypeNode { connective: Conj } => length(xs: payload.children) == 0
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant,
+    at: node_locus(node: arm),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -3592,8 +3674,8 @@ fn infer_match_coproduct_rows(
 // program says something the match will never do. For a binder this is also the first defence against a
 // misspelled nullary variant (`Absnet => ..`), which names no payload and so reads as a binder: unless it
 // is the LAST arm, the arms after it refuse here, and an unread last-arm typo refuses at resolve
-// (v2.compiler.resolve resolve_catch_all_binder_read_gate). A last-arm typo its own arm reads is the
-// declared drop gunbc.rung_drop catch_all_binder_repeating_a_misspelled_variant.
+// (v2.compiler.resolve resolve_catch_all_binder_read_gate). A last-arm typo its own arm reads refuses when
+// it would widen the match (infer_coproduct_catch_all_binder_widening_over_a_nullary).
 fn infer_coproduct_arm_after_catch_all(rows: List<InferCoproductArmRow>) -> Optional<Node> {
   let walked = fold(rows, init: InferCatchAllWalk { seen: false, unreachable: Absent }, f: fn(acc, row) {
     match acc.unreachable {

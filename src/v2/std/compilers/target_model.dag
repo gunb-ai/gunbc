@@ -14028,7 +14028,8 @@ fn wrap_decision_from_carrier_ownership(
     CarrierOwnershipByReference { realization: row } =>
       match row.reference_layer {
         ReferenceLayerOwned => WrapByValue
-        layer => WrapByReference { layer: layer }
+        ReferenceLayerRc => WrapByReference { layer: ReferenceLayerRc }
+        ReferenceLayerBox => WrapByReference { layer: ReferenceLayerBox }
       }
   }
 }

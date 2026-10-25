@@ -1224,6 +1224,7 @@ fn roster_with_pending_labels(sides: List<RosterHomeSide>,
       match edit {
         RosterEdit { start: st, end: en, text: tx, own_line: ol } =>
           if is_empty(xs: labels) { edit } else { RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: labels } }
+        RosterClean => RosterClean
         other => other
       }
   }

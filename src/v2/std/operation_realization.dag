@@ -3,7 +3,7 @@ module v2.std.operation_realization
 import std.optional { Present, Absent }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.effect_grant {
-  Envelope, HandlerBinding, CoveredBy, NoCoveringGrant, covering_grant,
+  Envelope, HandlerBinding, RealTransport, CoveredBy, NoCoveringGrant, covering_grant,
   NamespacePosition, ServiceOpTree, Read, Write, Verb,
 }
 import std.operation_argv { OperationRef, BoundOperationInvocation, InputText, InputTextList }
@@ -153,6 +153,7 @@ fn operation_handler_selection<S>(
             Present { value: b } => OperationHandlerSelected { binding: b }
           }
         }
+      RealTransport => OperationHandlerRefused { cause: OperationBoundElsewhere { at: at, binding: RealTransport } }
       other => OperationHandlerRefused { cause: OperationBoundElsewhere { at: at, binding: other } }
     }
   }

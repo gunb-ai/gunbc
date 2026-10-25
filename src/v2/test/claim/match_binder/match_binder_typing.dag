@@ -952,3 +952,43 @@ test fn mbt_an_arm_after_a_catch_all_refuses_as_unreachable_holds() -> Bool {
   mbp_reports(reading: mbp_reading(src: mbt_after_binder_src), reason: ^infer_match_arm_unreachable)
     && mbp_reports(reading: mbp_reading(src: mbt_after_wildcard_src), reason: ^infer_match_arm_unreachable)
 }
+
+// RULE R, AS RULED (sleek-owl-397, 2026-10-25): a read catch-all binder refuses when the alternatives the
+// earlier arms leave it number two or more and include a nullary variant (v2.compiler.infer
+// infer_coproduct_catch_all_binder_widening_over_a_nullary); a singleton remainder is exempt, because the
+// binder then binds exactly the value the intended arm would have matched. The three rows are the ruling's
+// required evidence.
+fn mbt_r_src(decl: String, arms: String) -> String {
+  "module p\n\n" + decl + "\n\nfn g(t: T) -> T {\n  match t {\n" + arms + "  }\n}\n"
+}
+
+data mbt_r_two_left: String = "type T = A { x: Int } | B | C"
+
+data mbt_r_one_left: String = "type T = A { x: Int } | B"
+
+data mbt_r_misspelled_arms: String = "    A { x: x } => t\n    Bx => Bx\n"
+
+data mbt_r_intended_arms: String = "    A { x: x } => t\n    other => other\n"
+
+data mbt_r_payload_left: String = "type T = A { x: Int } | B { y: Int } | C { z: Int }"
+
+// (1) A misspelled nullary over a remainder of two (B and C) refuses: the intended `B =>` arm would have left
+// C uncovered, and the binder silently takes it.
+test fn mbt_r_a_misspelled_binder_over_two_alternatives_refuses_holds() -> Bool {
+  mbp_reports(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_two_left, arms: mbt_r_misspelled_arms)), reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant)
+}
+
+// (2) TIME-STABILITY: the SAME arms are accepted while B is the only alternative left (behaviour-identical to
+// the intended program), and refuse once the type gains C: judged against the current remainder, never
+// grandfathered.
+test fn mbt_r_the_same_source_refuses_once_a_second_alternative_is_added_holds() -> Bool {
+  mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_misspelled_arms)))
+    && mbp_reports(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_two_left, arms: mbt_r_misspelled_arms)), reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant)
+}
+
+// (3) An intended catch-all over a singleton nullary remainder is accepted, and so is one whose remainder
+// carries payloads only (no nullary for a misspelling to name).
+test fn mbt_r_an_intended_catch_all_over_a_singleton_or_payload_remainder_infers_holds() -> Bool {
+  mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_intended_arms)))
+    && mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_payload_left, arms: mbt_r_intended_arms)))
+}

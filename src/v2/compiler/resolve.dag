@@ -4145,7 +4145,8 @@ fn resolve_pattern_atom_names_frame_value(ctx: ResolveContext, id: Symbol) -> Bo
     Rejected { diagnostics: _ } => false
     Accepted { value: bound, diagnostics: _ } =>
       match bound {
-        BoundInFrame { canonical: _, kind: _ } => true
+        // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
+        BoundInFrame { canonical: _canonical, kind: _ } => true
         BoundAtRoot { canonical: _ } => resolve_pattern_atom_names_module_value(ctx: ctx, id: id)
         ScopeUnbound => false
       }
@@ -4187,9 +4188,9 @@ fn resolve_candidate_is_value(ctx: ResolveContext, candidate: LexicalBindingCand
 // binder (v2.compiler.lexical_scope pattern_binder_candidates), and before catch-all binders bound
 // it refused unbound. Unread, it refuses again here. Whether the binder is read is resolve's own
 // record: an occurrence in the arm answered by this binder's site, other than the pattern itself.
-// The residual, a misspelling whose own arm repeats it (`Absnet => Absnet`), is the declared drop
-// gunbc.rung_drop catch_all_binder_repeating_a_misspelled_variant (tidy-ant-251, Manager 1,
-// 2026-10-25, message to jolly-cat-271 on #15125).
+// A misspelling whose own arm READS it (`Absnet => Absnet`) is judged in infer, against the alternatives
+// the earlier arms leave it (v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary).
+// Decided by tidy-ant-251 (Manager 1), 2026-10-25, message to jolly-cat-271 on #15125.
 fn resolve_catch_all_binder_read_gate(ctx: ResolveContext, pat: Node, walk: ResolveNodeWalk) -> ResolveNodeWalk {
   match walk {
     // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
