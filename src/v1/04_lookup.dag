@@ -1019,7 +1019,11 @@ type StructuralMethodLookup {
 // a sibling leaf of arity_proxy_for_callability_misroutes_a_found_local).
 fn product_field_result_type(field: Node) -> Node? {
   match field.inferred {
-    Present { value: Resolved { node: rt } } => Present { value: applied_field_type(field_type: rt) }
+    Present { value: Resolved { node: rt } } =>
+      match applied_field_type(field_type: rt) {
+        Present { value: applied } => Present { value: applied }
+        Absent => Present { value: rt }
+      }
     _ => none
   }
 }
