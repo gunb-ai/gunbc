@@ -186,7 +186,7 @@ fn alias_decl_resolve_verdict(t: NormalizedTree, module: String) -> String {
 fn alias_decl_locus_lexeme(d: Diagnostic) -> String {
   match d.at {
     NodeLocus { anchor: a } =>
-      match node_atom_identity_optional(node: a.at) {
+      match node_atom_identity_optional(node: a.at.node) {
         Present { value: id } => symbol_lexeme(sym: id)
         Absent => "node"
       }

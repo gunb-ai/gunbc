@@ -551,7 +551,7 @@ fn refusal_cover_anchor(acc: Map<OccurrenceId, Bool>, node: Node) -> Map<Occurre
 fn refusal_cover_add(cover: RefusalCover, d: Diagnostic) -> RefusalCover {
   match d.at {
     NodeLocus { anchor: anchor } =>
-      RefusalCover { anchored: refusal_cover_anchor(acc: cover.anchored, node: anchor.at), ranges: cover.ranges }
+      RefusalCover { anchored: refusal_cover_anchor(acc: cover.anchored, node: anchor.at.node), ranges: cover.ranges }
     Textual { file: _, extent: extent } =>
       match extent {
         ByteRange { start: s, end: e } =>

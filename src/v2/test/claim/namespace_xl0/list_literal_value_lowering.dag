@@ -337,11 +337,11 @@ fn llv_self_verdict_of(outcome: NativeCensusModuleOutcome) -> LlvSelfVerdict {
       LlvSelfResolveRefused {
         reason: d.head.reason,
         at_atom: match d.head.at {
-          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
           _ => optional_absent()
         },
         at_path: match d.head.at {
-          NodeLocus { anchor: a } => declaration_reference_path_optional(node: a.at)
+          NodeLocus { anchor: a } => declaration_reference_path_optional(node: a.at.node)
           _ => optional_absent()
         }
       }

@@ -183,7 +183,7 @@ fn retained_production_key(observation: RetainedProduction) -> String {
 // it exists to size.
 fn retained_node_optional(d: Diagnostic) -> Optional<Node> {
   match d.at {
-    NodeLocus { anchor: anchor } => Present { value: anchor.at }
+    NodeLocus { anchor: anchor } => Present { value: anchor.at.node }
     Textual { file: _, extent: _ } => Absent
     SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
     InvariantPortLocus { anchor: _, invariant: _ } => Absent
@@ -433,18 +433,18 @@ fn diagnostic_attribution(d: Diagnostic) -> String {
   match d.at {
     NodeLocus { anchor: anchor } =>
       concat(
-        retained_production_key(observation: retained_production_of(node: anchor.at)),
+        retained_production_key(observation: retained_production_of(node: anchor.at.node)),
         concat(
           "  arity ",
           concat(
-            to_string(length(xs: anchor.at.children)),
+            to_string(length(xs: anchor.at.node.children)),
             concat(
               "  occurrence ",
               concat(
-                occurrence_label(occurrence: anchor.at.occurrence_id),
+                occurrence_label(occurrence: anchor.at.node.occurrence_id),
                 concat(
                   "\n      atoms:",
-                  diagnostic_subtree_atoms(node: anchor.at)
+                  diagnostic_subtree_atoms(node: anchor.at.node)
                 )
               )
             )

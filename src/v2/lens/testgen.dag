@@ -1260,7 +1260,7 @@ declaration: NotADeclaration
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Authored { name: ^witness_validity_locus_tag_node }, target: a.at, declaration: NotADeclaration }
+            Edge { label: Authored { name: ^witness_validity_locus_tag_node }, target: a.at.node, declaration: NotADeclaration }
           ],
           occurrence_id: OccurrenceSynthetic
 },

@@ -182,7 +182,7 @@ fn iasl_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCens
       IaslRefused {
         reason: d.head.reason,
         at_atom: match d.head.at {
-          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
           _ => optional_absent()
         }
       }

@@ -1,4 +1,5 @@
 module v2.std.node
+import v2.std.node { NodeOccurrence }
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
@@ -18,6 +19,7 @@ import std.occurrence_identity {
   occurrence_identity_in_image_of,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.operator_realization { EqualityRouteRow }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.content_hash {
   ContentHash,
@@ -649,6 +651,50 @@ fn node_same_occurrence(a: Node, b: Node) -> Bool {
 fn node_edge_same_occurrence(x: Edge, y: Edge) -> Bool {
   (x.label == y.label) && node_same_occurrence(a: x.target, b: y.target)
 }
+
+// A POSITION THAT NAMES ONE AUTHORED NODE says so in its type. A bare Node member is a value: a
+// composite reaching it compares it as node_equal_ignoring_provenance. NodeOccurrence carries the
+// node itself and answers `==` as node_same_occurrence: the same authored occurrence. It is not
+// std.occurrence_identity NodeOccurrenceIdentity, which is the id alone and identifies only the
+// root (and every synthetic node shares OccurrenceSynthetic); this carries the whole node and
+// compares the id at every node of both trees.
+//
+// THE SYNTHETIC FALLBACK IS DELIBERATE. Every synthetic node has the occurrence OccurrenceSynthetic,
+// so two synthetic NodeOccurrences are the same occurrence exactly when they are structurally equal.
+// Keying on the root id alone would instead make every synthetic occurrence equal to every other,
+// which is a silent false equality; node_same_occurrence degrades to structure there, as derived
+// `==` did.
+type NodeOccurrence {
+  node: Node
+}
+
+fn node_occurrence(node: Node) -> NodeOccurrence {
+  NodeOccurrence { node: node }
+}
+
+fn node_occurrence_eq(a: NodeOccurrence, b: NodeOccurrence) -> Bool {
+  node_same_occurrence(a: a.node, b: b.node)
+}
+
+// THE EQUALITY ROUTES: a composite whose members reach one of these compares that member through the
+// named function (std.operator_realization EqualityRouted), member by member down to it. The seed
+// checker (v1.compiler.infer equality_route_declarations) carries a retained duplicate of these rows,
+// because v1 imports no v2 module; trigger: the v2 checker computes the equality plan and reads this
+// declaration.
+data equality_routes: List<EqualityRouteRow> = [
+  EqualityRouteRow {
+    carrier: DeclarationRef { module_path: "v2.std.node", decl_name: "Node", field: WholeDeclaration },
+    function: DeclarationRef { module_path: "v2.std.node", decl_name: "node_equal_ignoring_provenance", field: WholeDeclaration }
+  },
+  EqualityRouteRow {
+    carrier: DeclarationRef { module_path: "v2.std.node", decl_name: "Edge", field: WholeDeclaration },
+    function: DeclarationRef { module_path: "v2.std.node", decl_name: "node_edge_equal_ignoring_provenance", field: WholeDeclaration }
+  },
+  EqualityRouteRow {
+    carrier: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeOccurrence", field: WholeDeclaration },
+    function: DeclarationRef { module_path: "v2.std.node", decl_name: "node_occurrence_eq", field: WholeDeclaration }
+  }
+]
 
 
 

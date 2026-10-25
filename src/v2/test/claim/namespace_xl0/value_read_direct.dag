@@ -34,7 +34,7 @@ fn vrd_refused_unlowered_at(n: Node) -> Bool {
     Rejected { diagnostics: d } =>
       let f = diagnostics_fatal(d: d)
       (f.reason == ^body_lowering_reason_value_unlowered) && (match f.at {
-        NodeLocus { anchor: a } => content_hash(n: a.at) == content_hash(n: n)
+        NodeLocus { anchor: a } => content_hash(n: a.at.node) == content_hash(n: n)
         _ => false
       })
   }

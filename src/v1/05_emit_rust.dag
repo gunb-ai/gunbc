@@ -198,6 +198,8 @@ import std.operator_realization {
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
   HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType, HostTextCarrier,
   OperandShapeFacts, OperandDeclaration,
+  EqualityPlan, EqualityStep, EqualityByTarget, EqualityRouted, EqualityThroughPlan, EqualityPresence, EqualityContainer,
+  EqualityPlanField, EqualityPlanArm, DeclarationEqualityPlan,
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
   OperandDemand, DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
   operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label
@@ -12800,8 +12802,8 @@ fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 
 fn emit_rust_expr_bin_op(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprBinOp { op: op, algebra_field: algebra, operand: od } =>
-      emit_typed_bin_op(op: op, algebra_field: algebra, operand: od, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    ExprBinOp { op: op, algebra_field: algebra, operand: od, equality: eqp } =>
+      emit_typed_bin_op(op: op, algebra_field: algebra, operand: od, equality: eqp, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_bin_op expected ExprBinOp", target: Rust)
   }
 }
@@ -16452,11 +16454,13 @@ fn rust_zero_value(type_name: String) -> String? {
   else { none }
 }
 
-fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, equality: EqualityPlan?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let r_str = emit_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
+  } else if equality != none && (op == Eq || op == Ne) {
+    emit_rust_planned_equality(negate: op == Ne, plan: equality.value, l_str: l_str, r_str: r_str, emit_info: emit_info)
   } else {
     match binop_operator_realization(op: op, operand: operand, left: left, scope: scope) {
       OperatorRealizationRefused { cause: c } =>
@@ -16656,6 +16660,106 @@ fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Nod
     Absent => rust_operand_realization(operand: left, scope: scope)
   }
   operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows)
+}
+
+// THE DERIVED EQUALITY PLAN, REALIZED (std.operator_realization EqualityPlan; the checker computed it
+// once, by declaration identity, and stamped it on the ExprBinOp). Each declaration the plan names gets
+// one eq fn, keyed by its declaration, emitted as items inside the comparison's own block so recursive
+// plans resolve among themselves; the root step compares the two operands by reference. A routed leaf
+// calls the declared function the plan names, the same way a StructuralComparison calls its declared
+// comparison; From::from adapts the field's carrier (Rc / Box / bare) to the parameter's. A plan this
+// emitter cannot realize -- a declaration with no reference, or a generic one -- refuses as a typed
+// compile error at the site, never falls back to `==`.
+fn emit_rust_planned_equality(negate: Bool, plan: EqualityPlan, l_str: String, r_str: String, emit_info: EmitGraphInfo) -> String {
+  match plan.declarations |> map(d => emit_rust_equality_plan_refusal(d: d, emit_info: emit_info)) |> filter(r => r != "") |> first {
+    Present { value: message } => emit_rust_compile_error_expr(message: message)
+    Absent =>
+      let items = plan.declarations |> map(d => emit_rust_equality_plan_fn(plan: plan, d: d)) |> join(separator: " ")
+      let root = emit_rust_equality_step(plan: plan, step: plan.root, a: "__eq_l", b: "__eq_r")
+      concat("{ ", items, " let __eq_l = &(", l_str, "); let __eq_r = &(", r_str, "); ", if negate { "!" } else { "" }, "(", root, ") }")
+  }
+}
+
+fn emit_rust_equality_plan_refusal(d: DeclarationEqualityPlan, emit_info: EmitGraphInfo) -> String {
+  match d.reference {
+    Absent => concat("equality plan: declaration ", d.declaration, " reaches a routed member but the checker could not read it as a DeclarationRef, so its eq fn cannot be named")
+    Present { value: r } =>
+      match type_summary_decided(index: emit_info.type_summaries, key: type_decl_identity(owner_module: r.module_path as String, decl_name: r.decl_name as String)) {
+        Present { value: ts } =>
+          if (ts.generic_param_names |> count) > 0 {
+            concat("equality plan: generic declaration ", r.module_path as String, ".", r.decl_name as String, " reaches a routed member; its eq fn would need the instantiation, which the plan does not carry")
+          } else { "" }
+        Absent => ""
+      }
+  }
+}
+
+fn emit_rust_equality_fn_name(r: DeclarationRef) -> String {
+  concat("__eq_", module_to_filename(name: r.module_path as String), "__", r.decl_name as String)
+}
+
+fn emit_rust_equality_plan_fn(plan: EqualityPlan, d: DeclarationEqualityPlan) -> String {
+  match d.reference {
+    Absent => ""
+    Present { value: r } =>
+      let t = rust_declaration_path(module_path: r.module_path as String, decl_name: r.decl_name as String)
+      let body = match d.arms |> filter(arm => arm.arm == "") |> first {
+        Present { value: product } =>
+          emit_rust_equality_fields(plan: plan, fields: product.fields, a_prefix: "&a.", b_prefix: "&b.")
+        Absent =>
+          let arms = d.arms |> map(arm => emit_rust_equality_arm(plan: plan, t: t, arm: arm)) |> join(separator: ", ")
+          concat("match (a, b) { ", arms, ", _ => false }")
+      }
+      concat("#[allow(unreachable_patterns, clippy::all)] fn ", emit_rust_equality_fn_name(r: r), "(a: &", t, ", b: &", t, ") -> bool { ", body, " }")
+  }
+}
+
+fn emit_rust_equality_fields(plan: EqualityPlan, fields: List<EqualityPlanField>, a_prefix: String, b_prefix: String) -> String {
+  if (fields |> count) == 0 { "true" } else {
+    fields |> map(f => emit_rust_equality_step(plan: plan, step: f.step, a: concat(a_prefix, emit_ident(name: f.field, target: Rust)), b: concat(b_prefix, emit_ident(name: f.field, target: Rust)))) |> join(separator: " && ")
+  }
+}
+
+fn emit_rust_equality_arm(plan: EqualityPlan, t: String, arm: EqualityPlanArm) -> String {
+  let a_binds = arm.fields |> map(f => concat(emit_ident(name: f.field, target: Rust), ": __ea_", emit_ident(name: f.field, target: Rust))) |> join(separator: ", ")
+  let b_binds = arm.fields |> map(f => concat(emit_ident(name: f.field, target: Rust), ": __eb_", emit_ident(name: f.field, target: Rust))) |> join(separator: ", ")
+  let a_pat = if (arm.fields |> count) == 0 { "{ .. }" } else { concat("{ ", a_binds, ", .. }") }
+  let b_pat = if (arm.fields |> count) == 0 { "{ .. }" } else { concat("{ ", b_binds, ", .. }") }
+  let variant = concat(t, "::", emit_ident(name: arm.arm, target: Rust))
+  concat("(", variant, " ", a_pat, ", ", variant, " ", b_pat, ") => ", emit_rust_equality_fields(plan: plan, fields: arm.fields, a_prefix: "__ea_", b_prefix: "__eb_"))
+}
+
+fn emit_rust_equality_step(plan: EqualityPlan, step: EqualityStep, a: String, b: String) -> String {
+  match step {
+    EqualityByTarget => concat("(", a, " == ", b, ")")
+    EqualityRouted { function: f } =>
+      concat(rust_declaration_path(module_path: f.module_path as String, decl_name: f.decl_name as String), "(::core::convert::From::from((*", a, ").clone()), ::core::convert::From::from((*", b, ").clone()))")
+    EqualityThroughPlan { declaration: key } =>
+      match plan.declarations |> filter(d => d.declaration == key) |> first {
+        Present { value: d } =>
+          match d.reference {
+            Present { value: r } => concat(emit_rust_equality_fn_name(r: r), "(", a, ", ", b, ")")
+            Absent => emit_rust_compile_error_expr(message: concat("equality plan: declaration ", key, " has no DeclarationRef"))
+          }
+        Absent => concat("(", a, " == ", b, ")")
+      }
+    EqualityPresence { inner: i } =>
+      concat("(match (", a, ".as_ref(), ", b, ".as_ref()) { (Some(__px), Some(__py)) => ", emit_rust_equality_step(plan: plan, step: i, a: "__px", b: "__py"), ", (None, None) => true, _ => false })")
+    EqualityContainer { arguments: args } =>
+      if (args |> count) == 2 {
+        match args |> last {
+          Present { value: v } =>
+            concat("(", a, ".len() == ", b, ".len() && ", a, ".iter().all(|(__ck, __cv)| ", b, ".get(__ck).map_or(false, |__cw| ", emit_rust_equality_step(plan: plan, step: v, a: "__cv", b: "__cw"), ")))")
+          Absent => concat("(", a, " == ", b, ")")
+        }
+      } else {
+        match args |> first {
+          Present { value: e } =>
+            concat("(", a, ".len() == ", b, ".len() && ", a, ".iter().zip(", b, ".iter()).all(|(__cx, __cy)| ", emit_rust_equality_step(plan: plan, step: e, a: "__cx", b: "__cy"), "))")
+          Absent => concat("(", a, " == ", b, ")")
+        }
+      }
+  }
 }
 
 fn rust_declaration_path(module_path: String, decl_name: String) -> String {

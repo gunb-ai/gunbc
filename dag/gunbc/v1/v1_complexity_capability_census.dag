@@ -259,7 +259,7 @@ data size_expression_algebra: V1ComplexityInventoryRow = V1ComplexityInventoryRo
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC1ExpressionAuthority,
-    note: "v1 carries SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax; v2 carries only SizeVariable { source: Node } with no algebra over it. Per parity section 6 the String-keyed SizeVar and SizeLen re-ground onto exact identities rather than carrying their String leaves across." as NonEmptyStr
+    note: "v1 carries SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax; v2 carries only SizeVariable { source: NodeOccurrence } with no algebra over it. Per parity section 6 the String-keyed SizeVar and SizeLen re-ground onto exact identities rather than carrying their String leaves across." as NonEmptyStr
   }
 }
 

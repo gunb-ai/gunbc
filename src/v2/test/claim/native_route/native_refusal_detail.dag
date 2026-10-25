@@ -268,7 +268,7 @@ fn ndp_fatal_is_at_minted_occurrence(d: NonEmptyDiagnostics) -> Bool {
   let fatal = diagnostics_fatal(d: d)
   match fatal.at {
     NodeLocus { anchor: a } =>
-      match a.at.occurrence_id {
+      match a.at.node.occurrence_id {
         OccurrenceMinted { id: _ } => true
         OccurrenceProjected { id: _, caused_by: _ } => true
         OccurrencePending { caused_by: _ } => true

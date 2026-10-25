@@ -211,7 +211,7 @@ fn cref_node_in(xs: List<Node>, wanted: Node) -> Bool {
 
 fn cref_diagnostic_node_optional(d: Diagnostic) -> Optional<Node> {
   match d.at {
-    NodeLocus { anchor: a } => optional_present(value: a.at)
+    NodeLocus { anchor: a } => optional_present(value: a.at.node)
     _ => optional_absent()
   }
 }
@@ -611,7 +611,7 @@ fn cref_fatal_locus_node(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Nod
         Accepted { value: _, diagnostics: _ } => optional_absent()
         Rejected { diagnostics: ds } =>
           match ds.head.at {
-            NodeLocus { anchor: a } => optional_present(value: a.at)
+            NodeLocus { anchor: a } => optional_present(value: a.at.node)
             _ => optional_absent()
           }
       }

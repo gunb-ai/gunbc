@@ -14,7 +14,7 @@ import std.coercion {
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
-import std.operator_realization { OperandDeclaration }
+import std.operator_realization { OperandDeclaration, EqualityPlan }
 import std.target_representation { VariantParentIdentity }
 import std.decl_ref { DeclarationRef }
 import std.generated_provider { GeneratedProviderUnavailableCause, generated_provider_unavailable_message }
@@ -299,7 +299,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration? }
+  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, equality: EqualityPlan? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda
   | ExprStringInterp

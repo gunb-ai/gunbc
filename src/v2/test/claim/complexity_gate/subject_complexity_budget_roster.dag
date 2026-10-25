@@ -14,7 +14,7 @@ import v2.lens.complexity {
 import v2.lens.cost { SizeVariable }
 import v2.std.cardinality { loop_bound_measure, loop_bound_witness_for_node }
 import v2.std.diagnostic { Outcome }
-import v2.std.node { Node }
+import v2.std.node { Node, NodeOccurrence }
 import v2.std.witness { Holds, Violates }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
@@ -50,7 +50,7 @@ fn complexity_declared_budget_loop_linear(body: Node) -> ComplexityAssessment {
     Holds { value: bound } =>
       established_complexity(
         bound: linear_complexity(
-          size_var: SizeVariable { source: loop_bound_measure(bound: bound) }
+          size_var: SizeVariable { source: NodeOccurrence { node: loop_bound_measure(bound: bound) } }
         )
       )
     Violates { diagnostic: _ } => incomplete_complexity()

@@ -14,7 +14,8 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
-  NotADeclaration
+  NotADeclaration,
+  NodeOccurrence
 }
 import v2.std.witness { Holds }
 
@@ -87,7 +88,7 @@ data disj_max_input: Node = Node {
 test fn disj_max_claim_holds() -> Bool {
   match cost_lens(n: disj_max_input) {
     Holds { value: actual } =>
-      actual == LinearCost { variable: SizeVariable { source: disj_max_expensive_body_measure } }
+      actual == LinearCost { variable: SizeVariable { source: NodeOccurrence { node: disj_max_expensive_body_measure } } }
     _ => false
   }
 }

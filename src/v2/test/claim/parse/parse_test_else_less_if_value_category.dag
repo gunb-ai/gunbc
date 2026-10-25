@@ -100,7 +100,7 @@ fn elif_some(node: Node) -> Optional<Node> { Present { value: node } }
 
 fn elif_locus_is_the_if(at: Locus) -> Bool {
   match at {
-    NodeLocus { anchor: anchor } => elif_is_else_less_if(node: anchor.at)
+    NodeLocus { anchor: anchor } => elif_is_else_less_if(node: anchor.at.node)
     SourcePortLocus { anchor: _, file: _, extent: _ } => false
     Textual { file: _, extent: _ } => false
     InvariantPortLocus { anchor: _, invariant: _ } => false

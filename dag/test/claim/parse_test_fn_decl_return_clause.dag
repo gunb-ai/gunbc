@@ -294,7 +294,7 @@ data nfbcp_retention_route_source: String = "module m\nfn g() { true }\n"
 fn nfbcp_retention_anchored_at_fn_decl(d: Diagnostic) -> Bool {
   match d.at {
     NodeLocus { anchor: a } =>
-      match parse_production_emitted_identity_optional(node: a.at) {
+      match parse_production_emitted_identity_optional(node: a.at.node) {
         Present { value: id } => id == ^dag_surface_fn_decl
         Absent => false
       }
@@ -343,7 +343,7 @@ data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A = a\n"
 fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
   match d.at {
     NodeLocus { anchor: a } =>
-      match node_atom_identity_optional(node: a.at) {
+      match node_atom_identity_optional(node: a.at.node) {
         Present { value: id } => id == atom
         Absent => false
       }
@@ -411,7 +411,7 @@ fn nfbcp_node_mentions_atom(n: Node, atom: Symbol) -> Bool {
 
 fn nfbcp_locus_mentions_atom(d: Diagnostic, atom: Symbol) -> Bool {
   match d.at {
-    NodeLocus { anchor: a } => nfbcp_node_mentions_atom(n: a.at, atom: atom)
+    NodeLocus { anchor: a } => nfbcp_node_mentions_atom(n: a.at.node, atom: atom)
     _ => false
   }
 }

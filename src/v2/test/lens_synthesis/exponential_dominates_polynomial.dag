@@ -11,7 +11,7 @@ import v2.lens.cost {
 }
 import v2.std.cardinality { NonZeroNat }
 import std.nat { Zero }
-import v2.std.node { Atom, Node, TypeNode }
+import v2.std.node { Atom, Node, TypeNode, NodeOccurrence }
 
 data synthesis_exp_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_exp_x_symbol } },
@@ -22,11 +22,11 @@ data synthesis_exp_x: Node = Node {
 test fn exponential_dominates_polynomial_claim_holds() -> Bool {
   symbolic_cost_dominates(
     a: ExponentialCost {
-      variable: SizeVariable { source: synthesis_exp_x },
+      variable: SizeVariable { source: NodeOccurrence { node: synthesis_exp_x } },
       base: ExponentialBase { predecessor_after_one: NonZeroNat { prev: Zero } }
     },
     b: PolynomialCost {
-      variable: SizeVariable { source: synthesis_exp_x },
+      variable: SizeVariable { source: NodeOccurrence { node: synthesis_exp_x } },
       degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
     }
   )

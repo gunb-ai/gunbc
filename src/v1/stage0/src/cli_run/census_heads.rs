@@ -344,6 +344,7 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
             op: _,
             algebra_field,
             operand,
+            ..
         } => algebra_field.is_none() && operand.is_none(),
     };
     if !payload_free {

@@ -10,7 +10,7 @@ import v2.lens.cost {
 }
 import v2.std.cardinality { NonZeroNat }
 import std.nat { Zero }
-import v2.std.node { Atom, Node, TypeNode }
+import v2.std.node { Atom, Node, TypeNode, NodeOccurrence }
 
 data synthesis_fact_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_fact_x_symbol } },
@@ -20,9 +20,9 @@ data synthesis_fact_x: Node = Node {
 
 test fn factorial_dominates_exponential_claim_holds() -> Bool {
   symbolic_cost_dominates(
-    a: FactorialCost { variable: SizeVariable { source: synthesis_fact_x } },
+    a: FactorialCost { variable: SizeVariable { source: NodeOccurrence { node: synthesis_fact_x } } },
     b: ExponentialCost {
-      variable: SizeVariable { source: synthesis_fact_x },
+      variable: SizeVariable { source: NodeOccurrence { node: synthesis_fact_x } },
       base: ExponentialBase { predecessor_after_one: NonZeroNat { prev: Zero } }
     }
   )
