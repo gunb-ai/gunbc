@@ -97,3 +97,14 @@ fn network_boot_loader_member_is_authenticated(member: NetworkBootLoaderMember) 
     NotAuthenticated => false
   }
 }
+
+// THE SAME CHAIN WITH ANOTHER FILE AS ITS FIRST STAGE, for an upstream that lets an enrolled loader stand in for
+// the documented one; the later members and every verifier are unchanged.
+fn network_boot_loader_chain_with_first_stage_path(chain: NetworkBootLoaderChain, path: NonEmptyStr) -> NetworkBootLoaderChain {
+  NetworkBootLoaderChain {
+    members: FreeSemigroup {
+      head: NetworkBootLoaderMember { role: chain.members.head.role, served_path: path, verifier: chain.members.head.verifier },
+      tail: chain.members.tail,
+    },
+  }
+}
