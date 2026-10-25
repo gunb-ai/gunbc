@@ -1,0 +1,198 @@
+module gunbc.instruments.member_home_cost_native
+
+import std.types { Int, List, String, Bool }
+import std.algebra { fold_list, list_map, for_all, list_sort_by_key, int_total_order, list_push, list_append }
+import std.measure { Nanosecond, nanosecond, nanosecond_count }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+import gunbc.instruments.append_chain_ladder {
+  LadderTiming,
+  LadderLinearity,
+  LadderLinear,
+  LadderSuperlinear,
+  LadderUnobserved,
+  ladder_arm_linearity,
+  ladder_is_unobserved,
+  ladder_is_superlinear
+}
+
+// THE RECEIPT THAT A MEMBER MAY LEAVE THE AMBIENT TABLE WITHOUT A COST REGRESSION (the N7 member wall:
+// fold -> fold_list, map -> list_map, all -> for_all, sort_by -> list_sort_by_key). For each member it
+// times, on the emitted path, the ambient host primitive and the std.algebra declaration that becomes
+// its one home, over the same input at each n, best of member_home_trials runs.
+//
+// A member holds when (1) both arms compute the same checksum at every n, so a fast wrong answer is
+// never a time; (2) the home arm is linear per doubling under gunbc.instruments.append_chain_ladder
+// ladder_arm_linearity (sort_by's home is judged against n log n by the same band, which a doubling of
+// n log n stays inside); and (3) at every n the home arm costs at most member_home_ratio_budget_x100
+// per 100 of the ambient arm. A member that fails names the home body that needs a linear modeled
+// realization (or, only where none can be linear, a stated host seam) before its sweep may run.
+//
+// NOT ON THE REQUIRED PATH: this label runs when invoked; it gates the member sweeps by review.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn member_sizes() -> List<Int> { [2000, 4000, 8000, 16000] }
+
+fn member_home_trials() -> Int { 5 }
+
+// A POLICY BUDGET, not a measurement: the home arm may cost up to 3x the host primitive. The modeled
+// bodies run a closure call per element through the same carrier the host arm walks, so a linear home
+// sits within a small constant of it; a superlinear or per-element-copying home leaves it at large n.
+fn member_home_ratio_budget_x100() -> Int { 300 }
+
+fn member_names() -> List<String> { ["fold", "map", "all", "sort_by"] }
+
+fn ascending(i: Int, n: Int, acc: List<Int>) -> List<Int> {
+  if i >= n { acc } else { ascending(i: i + 1, n: n, acc: list_push(xs: acc, item: i)) }
+}
+
+// sort_by is fed a descending input so its work is not the already-sorted best case.
+fn descending(i: Int, acc: List<Int>) -> List<Int> {
+  if i <= 0 { acc } else { descending(i: i - 1, acc: list_push(xs: acc, item: i)) }
+}
+
+fn checksum(xs: List<Int>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, x) { (acc * 31 + x) % 1000000007 })
+}
+
+fn bool_sum(b: Bool) -> Int { if b { 1 } else { 0 } }
+
+fn ambient_arm(member: String, xs: List<Int>) -> Int {
+  if member == "fold" { fold(xs, init: 0, f: (acc, x) => acc + x) }
+  else if member == "map" { checksum(xs: map(xs, x => x + 1)) }
+  else if member == "all" { bool_sum(b: all(xs, x => x >= 0)) }
+  else { checksum(xs: sort_by(xs, x => x)) }
+}
+
+fn home_arm(member: String, xs: List<Int>) -> Int {
+  if member == "fold" { fold_list(xs: xs, empty: 0, cons: fn(acc, x) { acc + x }) }
+  else if member == "map" { checksum(xs: list_map(xs: xs, f: fn(x) { x + 1 })) }
+  else if member == "all" { bool_sum(b: for_all(xs: xs, predicate: fn(x) { x >= 0 })) }
+  else { checksum(xs: list_sort_by_key(xs: xs, key: fn(x) { x }, order: int_total_order())) }
+}
+
+fn member_input(member: String, n: Int) -> List<Int> {
+  if member == "sort_by" { descending(i: n, acc: []) } else { ascending(i: 0, n: n, acc: []) }
+}
+
+type TimedValue {
+  elapsed: Nanosecond
+  value: Int
+}
+
+fn time_arm(member: String, home: Bool, xs: List<Int>, tag: String) -> TimedValue {
+  let t0 = observed_monotonic_nanos(concat(tag, "-start"))
+  let value = if home { home_arm(member: member, xs: xs) } else { ambient_arm(member: member, xs: xs) }
+  let t1 = observed_monotonic_nanos(concat(tag, "-end"))
+  TimedValue { elapsed: nanosecond(count: t1 - t0), value: value }
+}
+
+type PairRow {
+  member: String
+  n: Int
+  ambient: Nanosecond
+  home: Nanosecond
+  agree: Bool
+}
+
+fn faster(a: Nanosecond, b: Nanosecond) -> Nanosecond {
+  if nanosecond_count(n: a) < nanosecond_count(n: b) { a } else { b }
+}
+
+fn best_pair(member: String, n: Int, xs: List<Int>, trial: Int, row: PairRow) -> PairRow {
+  if trial >= member_home_trials() {
+    row
+  } else {
+    let tag = concat(member, "-", to_string(value: n), "-", to_string(value: trial))
+    let a = time_arm(member: member, home: false, xs: xs, tag: concat(tag, "-ambient"))
+    let h = time_arm(member: member, home: true, xs: xs, tag: concat(tag, "-home"))
+    best_pair(member: member, n: n, xs: xs, trial: trial + 1, row: PairRow {
+      member: member,
+      n: n,
+      ambient: faster(a: a.elapsed, b: row.ambient),
+      home: faster(a: h.elapsed, b: row.home),
+      agree: row.agree && (a.value == h.value)
+    })
+  }
+}
+
+fn pair_row(member: String, n: Int) -> PairRow {
+  let xs = member_input(member: member, n: n)
+  let a = time_arm(member: member, home: false, xs: xs, tag: concat(member, "-", to_string(value: n), "-seed-ambient"))
+  let h = time_arm(member: member, home: true, xs: xs, tag: concat(member, "-", to_string(value: n), "-seed-home"))
+  best_pair(member: member, n: n, xs: xs, trial: 1, row: PairRow { member: member, n: n, ambient: a.elapsed, home: h.elapsed, agree: a.value == h.value })
+}
+
+fn pair_rows() -> List<PairRow> {
+  flat_map(member_names(), m => map(member_sizes(), n => pair_row(member: m, n: n)))
+}
+
+fn within_budget(r: PairRow) -> Bool {
+  nanosecond_count(n: r.home) * 100 <= nanosecond_count(n: r.ambient) * member_home_ratio_budget_x100()
+}
+
+fn verdict_word(held: Bool) -> String { if held { "held" } else { "not_held" } }
+
+fn size_identity(r: PairRow) -> String { concat(r.member, "@", to_string(value: r.n)) }
+
+fn size_case(r: PairRow) -> String {
+  concat(
+    "case ", size_identity(r: r), " ", verdict_word(held: r.agree && within_budget(r: r)),
+    " observed=ambient_ns=", to_string(value: nanosecond_count(n: r.ambient)),
+    " home_ns=", to_string(value: nanosecond_count(n: r.home)),
+    " agree=", if r.agree { "true" } else { "false" }, "\n"
+  )
+}
+
+fn home_timings(rows: List<PairRow>) -> List<LadderTiming> {
+  map(rows, r => LadderTiming { arm: r.member, n: r.n, best: r.home })
+}
+
+fn linearity_text(v: LadderLinearity) -> String {
+  match v {
+    LadderLinear => "linear"
+    LadderSuperlinear { arm: _, from_n: n, ratio_x100: x } => concat("grew_x100=", to_string(value: x), " from_n=", to_string(value: n))
+    LadderUnobserved { arm: _, cause: c } => concat("no_curve ", c)
+  }
+}
+
+fn linear_case(member: String, v: LadderLinearity) -> String {
+  concat("case ", member, ".home_linear ", verdict_word(held: !(ladder_is_unobserved(v: v) || ladder_is_superlinear(v: v))), " observed=", linearity_text(v: v), "\n")
+}
+
+// THE CURSOR-WALK CONTROL (the discriminating RED for the emitter's TCO cursor lowering, owned by
+// clever-crane-830): fold_list's emitted loop reads each element by index, an O(log n) descent on the
+// persistent Vector, so quadrupling n multiplies its time by more than 4. Held when the home fold's
+// time at 16000 is within cursor_walk_budget_x100 per 100 of 4x its time at 4000. A POLICY BUDGET:
+// 1.25 over linear separates a linear walk from the measured indexed one (5.9x on 2026-10-24).
+fn cursor_walk_budget_x100() -> Int { 500 }
+
+fn fold_home_at(rows: List<PairRow>, n: Int) -> List<PairRow> {
+  filter(rows, r => (r.member == "fold") && (r.n == n))
+}
+
+fn cursor_walk_held(rows: List<PairRow>) -> Bool {
+  let small = fold_home_at(rows: rows, n: 4000)
+  let large = fold_home_at(rows: rows, n: 16000)
+  if (count(small) != 1) || (count(large) != 1) { false }
+  else { all(large, l => all(small, s => nanosecond_count(n: l.home) * 100 <= nanosecond_count(n: s.home) * cursor_walk_budget_x100())) }
+}
+
+fn cursor_walk_case(rows: List<PairRow>) -> String {
+  concat("case fold.cursor_walk ", verdict_word(held: cursor_walk_held(rows: rows)), " observed=",
+    join(map(filter(rows, r => r.member == "fold"), r => concat(to_string(value: r.n), ":", to_string(value: nanosecond_count(n: r.home)))), ","), "\n")
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let rows = pair_rows()
+  let members = member_names()
+  let verdicts = map(members, m => ladder_arm_linearity(rows: home_timings(rows: rows), arm: m))
+  let identities = list_append(left: map(rows, r => size_identity(r: r)), right: list_append(left: map(members, m => concat(m, ".home_linear")), right: ["fold.cursor_walk"]))
+  let cases = concat(join(map(rows, r => size_case(r: r)), ""), join(map(members, m => linear_case(member: m, v: ladder_arm_linearity(rows: home_timings(rows: rows), arm: m))), ""), cursor_walk_case(rows: rows))
+  let unobserved = count(filter(verdicts, v => ladder_is_unobserved(v: v)))
+  let failed = count(filter(rows, r => !(r.agree && within_budget(r: r)))) + count(filter(verdicts, v => ladder_is_superlinear(v: v))) + (if cursor_walk_held(rows: rows) { 0 } else { 1 })
+  let terminal = if unobserved > 0 { NativeClaimNoObservation { reason: "a home arm's curve could not be read" } }
+    else if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " case(s) not held") } }
+    else { NativeClaimHeld }
+  NativeClaimReport { stdout: concat("roster ", join(identities, ","), "\n", cases), terminal: terminal }
+}

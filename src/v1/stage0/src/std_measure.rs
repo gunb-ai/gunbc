@@ -89,6 +89,7 @@ pub enum Quantity {
     VolumeFlow,
     Density,
     SpecificHeatCapacity,
+    Velocity,
     Acceleration,
     ResistancePerLength,
     Dimensionless,
@@ -442,13 +443,6 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     byte_size(v1_rt::int_mul(
         gibibyte_count(g.clone()),
         gibibyte_scale_factor_bytes(),
-    ))
-}
-
-pub fn centi_gibibyte_to_byte_size(centi: Nat) -> ByteSize {
-    byte_size(v1_rt::int_div(
-        v1_rt::int_mul(centi.clone(), gibibyte_scale_factor_bytes()),
-        100,
     ))
 }
 
@@ -1717,19 +1711,6 @@ pub fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
     measure_count(r.clone())
 }
 
-pub type GigaTensorOperationsPerSecond = Rc<Measure<Frequency, Giga, Nat>>;
-
-pub fn giga_tensor_operations_per_second(count: Nat) -> GigaTensorOperationsPerSecond {
-    Rc::new(Measure {
-        count: count.clone(),
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn giga_tensor_operations_per_second_count(r: GigaTensorOperationsPerSecond) -> Nat {
-    measure_count(r.clone())
-}
-
 pub type MilliRequestsPerSecond = Rc<Measure<Frequency, Milli, Nat>>;
 
 pub fn milli_requests_per_second(count: Nat) -> MilliRequestsPerSecond {
@@ -2060,32 +2041,6 @@ pub fn parts_per_million_count(m: PartsPerMillion) -> Nat {
 
 pub fn parts_per_million_scale_million() -> Nat {
     crate::extdeps_units_dimensionless::parts_per_million_unity_count()
-}
-
-pub type Permille = Rc<Measure<Dimensionless, Milli, Nat>>;
-
-pub fn permille(count: Nat) -> Permille {
-    Rc::new(Measure {
-        count: count.clone(),
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn permille_count(p: Permille) -> Nat {
-    measure_count(p.clone())
-}
-
-pub type ConcurrentRequestThousandths = Rc<Measure<Dimensionless, Milli, Nat>>;
-
-pub fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandths {
-    Rc::new(Measure {
-        count: count.clone(),
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn concurrent_request_thousandths_count(c: ConcurrentRequestThousandths) -> Nat {
-    measure_count(c.clone())
 }
 
 pub type AmortizationMonths = Rc<Measure<Count, One, Nat>>;
@@ -2428,6 +2383,19 @@ pub fn joule_per_kilogram_kelvin_count(c: JoulePerKilogramKelvin) -> Nat {
     measure_count(c.clone())
 }
 
+pub type MicrometrePerSecond = Rc<Measure<Velocity, Micro, Nat>>;
+
+pub fn micrometre_per_second(count: Nat) -> MicrometrePerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn micrometre_per_second_count(v: MicrometrePerSecond) -> Nat {
+    measure_count(v.clone())
+}
+
 pub type MicrometrePerSecondSquared = Rc<Measure<Acceleration, Micro, Nat>>;
 
 pub fn micrometre_per_second_squared(count: Nat) -> MicrometrePerSecondSquared {
@@ -2557,6 +2525,8 @@ pub struct VolumeFlow;
 pub struct Density;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SpecificHeatCapacity;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Velocity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Acceleration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

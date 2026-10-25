@@ -3,7 +3,7 @@ module extdeps.standards.rfc_7468
 import std.types { Int, String, List }
 import std.logic { Bool }
 import std.encoding { base64_decode, Standard }
-import std.algebra { trim }
+import std.algebra { trim, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 

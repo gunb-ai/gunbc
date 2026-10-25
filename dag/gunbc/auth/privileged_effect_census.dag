@@ -252,6 +252,25 @@ fn recurring_credential_read(subject: NonEmptyStr) -> PrivilegedEffect {
   }
 }
 
+// THE BOOT MEDIUM READER KEY'S MINT (gunbc.host.boot_medium_reader_key_mint). FleetOnce: one key for the
+// export host, minted again only to rotate it, which also makes it reversible. Its reach is one resource:
+// the key is authorized on the export host forced to a single sha256sum of the served link
+// (gunbc.host.boot_medium_reader_key), so MintsResourceScopedCredential. A human can attend it and owes no
+// witness, and the fleet identity at main is bindable, so the selection is the federated grant: the run
+// adds the version under its versionAdder cell, whose binding is the converge's approved apply.
+fn boot_medium_reader_key_mint_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "as the fleet identity at main, generate an ed25519 keypair in the run and add its private half as a version of boot-medium-reader-ssh-key; the receipt names only the public key, its fingerprint and the version" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // A one-off accessor-cell grant (getIamPolicy + setIamPolicy on one secret).
 fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
   PrivilegedEffect {
@@ -1031,9 +1050,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedHumanStep,
     divergence_reason: Present { value: github_environment_gate_is_not_the_approval_route },
   },
-  PrivilegedEffectSite {site:site(module_path:"product.printed_chassis.print_workflow",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
-  PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_approval",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
 
@@ -1260,6 +1277,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.github_app_control_plane_observe", decl_name: "observe_github_app_control_plane"),
     effect: recurring_credential_read(subject: "sign an App JWT with the gunbai-ci key the custody converge placed over WIF, then read GET /app and GET /app/installations/\{id\} to observe custody, registration and installation grant" as NonEmptyStr),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.boot_medium_reader_key_mint", decl_name: "boot_medium_reader_key_mint_wet"),
+    effect: boot_medium_reader_key_mint_effect(),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },

@@ -1,0 +1,16 @@
+module extdeps.container.curlimages_curl
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "hub.docker.com/r/curlimages/curl"
+  }
+}
+
+// The curl project's official container image, tag 8.11.1, pinned by its multi-architecture index digest
+// (read with `docker pull` on 2026-10-25). Its entrypoint is curl, so a container's arguments are curl's.
+data curlimages_curl_8_11_1_image: NonEmptyStr = "curlimages/curl@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69" as NonEmptyStr

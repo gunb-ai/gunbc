@@ -1,0 +1,115 @@
+module extdeps.docker.cli_service
+
+import std.types { String, Int, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/reference/cli/docker/"
+  }
+}
+
+// THE DOCKER CLI AS A SHELL-TRANSPORT SERVICE, one fixed argv per operation. extdeps.docker.cli builds the
+// same commands as ArgvCommand values for units and scripts; this module performs them, and is its own
+// module so a native program that runs containers does not take that module's JSON closure.
+//
+// Fixed argv, not literal policy: the docker program, container names, images, networks, paths and the
+// container's command all arrive as parameters, so the caller states every choice. The service is the
+// narrow process-spawn effect the native claim route admits (std.compiler_entry
+// native_claim_route_denominator; ruling gunbc.design_ruling native_claim_route_admits_the_docker_cli);
+// generic exec stays out.
+//
+// No operation declares an exit block: the exit code is a returned field, so a caller can read a refusal
+// (a failed `openresty -t`, an unreachable daemon) as a value. A program that cannot be spawned at all is
+// a transport error, which the native claim main reports as no observation.
+service DockerCli {
+  operation Version {
+    requires opaque
+    input { docker: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "version"] }
+  }
+
+  operation VersionAtHost {
+    requires opaque
+    input { docker: NonEmptyStr, host: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "--host", host, "version"] }
+  }
+
+  operation Create {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr, network: NonEmptyStr, image: NonEmptyStr, command: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "create", "--name", name, "--network", network, image, command] }
+  }
+
+  operation CopyInto {
+    requires opaque
+    input { docker: NonEmptyStr, source: String, destination: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "cp", source, destination] }
+  }
+
+  operation Start {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "start", name] }
+  }
+
+  operation StartAttached {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "start", "-a", name] }
+  }
+
+  operation RunRemoved {
+    requires opaque
+    input { docker: NonEmptyStr, network: NonEmptyStr, image: NonEmptyStr, arguments: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "run", "--rm", "--network", network, image, arguments] }
+  }
+
+  operation RemoveForce {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "rm", "-f", name] }
+  }
+}
