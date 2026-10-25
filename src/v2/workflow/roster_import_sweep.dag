@@ -44,7 +44,7 @@ import std.occurrence_identity {
   OccurrenceSynthetic,
   ValuePosition
 }
-import std.types { List, Bool, GitRef }
+import std.types { List, Bool, GitRef, is_kernel_type }
 import extdeps.git
 import extdeps.git.inspect
 import std.optional { Absent, Optional, Present }
@@ -1177,7 +1177,10 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterC
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
                 Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
                 Accepted { value: scoped, diagnostics: _ } =>
-                  let unmet = roster_gate_keys_all_met(gate: gate, sites: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites, spans: artifact.span_index)
+                  let gated_row_imported = fold_list(xs: candidates, empty: false, cons: fn(hit, row) {
+                hit || (row.call == gate.call && roster_symbol_imported(imported: scoped.tree.import_bindings, row: row))
+              })
+              let unmet = roster_gate_keys_all_met(gate: gate, sites: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites, spans: artifact.span_index, already_imported: gated_row_imported)
                   let outcome = match unmet {
                     Present { value: reason } => RosterRefused { reason: reason }
                     Absent => match roster_sweep_rows(sides: sides, 
@@ -1401,8 +1404,16 @@ fn roster_gate_allows_site(gate: RosterSiteGate, st: ScopedReferenceSite, spans:
 // narrowing, and never a fallback to sweeping the spelling (manager ruling, NAMESPACE-XL to_string wave: "if a row
 // does not match, refuse it and list it, never fall back to spelling"). A key the file does not name belongs to another
 // path's sweep; the per-file path list is already base-receipt-governed (wave_runs_base_census + base_selection_refusal).
-fn roster_gate_keys_all_met(gate: RosterSiteGate, sites: FreeMonoid<ScopedReferenceSite>, spans: SpanIndex) -> Optional<RosterRefusalReason> {
-  if !roster_gate_active(gate: gate) {
+//
+// THE RE-CHECK RUNS ON THE UNCONVERTED FILE ONLY (already_imported). A convergence re-run sees the sweep's OWN output:
+// pass 1 renamed the keyed heads and landed the home's import, so the census loci have shifted by every edit before
+// them and re-testing the keys against converted text would false-refuse a CONVERGED file. Once the gated row's import
+// is visible the file has been through the gate; a typo or drift in THAT state cannot silently narrow either -- it
+// leaves an unconverted keyed site, and the wave's census NEW-0 gate is red on it -- while the admission instrument
+// recomputes the plan from the scope over the same text and must byte-equal what landed. The net is the wave's, not
+// this fold's; the fold stays the pre-conversion tripwire.
+fn roster_gate_keys_all_met(gate: RosterSiteGate, sites: FreeMonoid<ScopedReferenceSite>, spans: SpanIndex, already_imported: Bool) -> Optional<RosterRefusalReason> {
+  if !roster_gate_active(gate: gate) || already_imported {
     Absent
   } else {
     match roster_first_unmet_key(keys: roster_keys_for_path(keys: gate.keys, path: gate.path), sites: sites, gate: gate, spans: spans) {
@@ -1412,7 +1423,17 @@ fn roster_gate_keys_all_met(gate: RosterSiteGate, sites: FreeMonoid<ScopedRefere
   }
 }
 
+// THE SITE KEYS ARE DERIVED ONCE PER FILE, not once per key-site pair: the keys of the gated call's sites are collected
+// in one fold (each rendering its locus over the line starts ONCE), and a key is met by membership in that list. The
+// first draft re-rendered every site's key for every key, a quadratic-in-keys scan over the whole line-start fold.
 fn roster_first_unmet_key(keys: List<String>, sites: FreeMonoid<ScopedReferenceSite>, gate: RosterSiteGate, spans: SpanIndex) -> Optional<String> {
+  let met = fold_list(xs: sites, empty: [], cons: fn(acc, st) {
+    if roster_spelling_is(qn: st.site.spelling, call: gate.call) {
+      list_snoc_item(xs: acc, item: roster_site_key(st: st, spans: spans, path: gate.path, starts: gate.starts))
+    } else {
+      acc
+    }
+  })
   fold_list(
     xs: keys,
     empty: Absent,
@@ -1420,12 +1441,10 @@ fn roster_first_unmet_key(keys: List<String>, sites: FreeMonoid<ScopedReferenceS
       match acc {
         Present { value: r } => Present { value: r }
         Absent =>
-          if fold_list(xs: sites, empty: false, cons: fn(f, st) {
-            f || (roster_spelling_is(qn: st.site.spelling, call: gate.call) && roster_site_key(st: st, spans: spans, path: gate.path, starts: gate.starts) == k)
-          }) {
-            Absent
-          } else {
+          if for_all(xs: met, predicate: fn(m) { m != k }) {
             Present { value: k }
+          } else {
+            Absent
           }
       }
     }
@@ -3376,9 +3395,18 @@ fn roster_companion_of(row: RosterHeadRow, to: String, prepared: PreparedGrammar
           match roster_return_head(arrow: callee) {
             Absent => CompanionUnderivable { call: row.call, to: to, detail: home + "." + to + " has no readable declared return type" }
             Present { value: ret } =>
-              match roster_type_owner(home: home, imports: himports, root: hroot, spelling: ret) {
-                Absent => CompanionUnderivable { call: row.call, to: to, detail: "return type " + ret + " is neither imported nor declared by " + home }
-                Present { value: owner } => roster_companion_from_owner(row: row, to: to, owner: owner, prepared: prepared, lex: lex)
+              // A KERNEL MINT RETURN (std.types' kernel_type_set -- String, Int, Bool, ...) has NO declaration node and
+              // no variants: there are no tags an ambient pattern position could stand in for, so the companion is none.
+              // Without this arm the rename rows for int_to_decimal_string / nat_to_decimal_string (return String) land in
+              // CompanionUnderivable, and once the callee import is visible every renamed file refuses at the companion
+              // pass (the NAMESPACE-XL to_string wave's measurement: std.types declares no String -- it is the mint).
+              if is_kernel_type(name: ret) {
+                CompanionNone
+              } else {
+                match roster_type_owner(home: home, imports: himports, root: hroot, spelling: ret) {
+                  Absent => CompanionUnderivable { call: row.call, to: to, detail: "return type " + ret + " is neither imported nor declared by " + home }
+                  Present { value: owner } => roster_companion_from_owner(row: row, to: to, owner: owner, prepared: prepared, lex: lex)
+                }
               }
           }
       }
