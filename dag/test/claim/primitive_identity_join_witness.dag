@@ -41,7 +41,7 @@ import gunbc.primitive_egress.d0_census {
   primitive_d0_interpreter_rows_are_from_authority,
   primitive_d0_interpreter_census_matches_roster,
   primitive_d0_interpreter_surface_row_count,
-  primitive_d0_map_keys_five_surface_join_holds,
+  primitive_d0_map_keys_four_surface_join_holds,
   primitive_d0_open_denominator_receipt_holds,
   primitive_d0_surface_census,
   primitive_d0_surface_census_derived_row_count,
@@ -92,8 +92,8 @@ test fn w_derived_rows_marked_derived_from_authority() -> Bool {
   primitive_d0_derived_rows_are_from_authority()
 }
 
-test fn w_map_keys_joins_all_five_surfaces() -> Bool {
-  primitive_d0_map_keys_five_surface_join_holds()
+test fn w_map_keys_joins_four_surfaces_and_no_contract_row() -> Bool {
+  primitive_d0_map_keys_four_surface_join_holds()
 }
 
 test fn w_fold_list_spelling_fork_named_finding() -> Bool {
