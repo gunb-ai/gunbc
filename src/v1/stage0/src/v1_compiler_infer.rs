@@ -26096,16 +26096,16 @@ pub fn unify_generics(
     }
 }
 
-pub fn generic_actual_position_type(a: Rc<Node>) -> Rc<Node> {
-    if (((a.children.clone().len() as i64) == 0) && (a.connective.clone() == Connective::NoConnective)) {
-        match a.inferred.clone().as_deref().cloned() {
+pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
+    if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
+        match slot.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: _, .. }) => {
-                crate::v1_compiler_infer_types::child_type_node(a.clone())
+                crate::v1_compiler_infer_types::child_type_node(slot.clone())
             }
-            _ => a.clone(),
+            _ => slot.clone(),
         }
     } else {
-        a.clone()
+        slot.clone()
     }
 }
 

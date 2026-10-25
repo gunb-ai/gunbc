@@ -15312,13 +15312,13 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 // its inferred is its EXPANSION and binding that would trade the nominal type for its structure.
 // (gunbc.recurring_failure_mode type_alias_identity_decided_by_spelling_at_each_check; work item
 // adhoc-b5f23a5d-052, with smart-tern-402's kernel-container RED.)
-fn generic_actual_position_type(a: Node) -> Node {
-  if a.children |> count == 0 && a.connective == NoConnective {
-    match a.inferred {
-      Present { value: Resolved { node: _ } } => child_type_node(ch: a)
-      _ => a
+fn generic_actual_position_type(slot: Node) -> Node {
+  if (slot.children |> count == 0 && slot.connective == NoConnective) {
+    match slot.inferred {
+      Present { value: Resolved { node: _ } } => child_type_node(ch: slot)
+      _ => slot
     }
-  } else { a }
+  } else { slot }
 }
 
 fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
@@ -15331,7 +15331,7 @@ fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_n
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: f, actual: generic_actual_position_type(a: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: f, actual: generic_actual_position_type(slot: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
         Absent => acc
       }
