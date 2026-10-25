@@ -30,6 +30,8 @@ mod class_b_trim_specimen_test;
 #[cfg(test)]
 mod decl_facts_dimensionless_projection_test;
 #[cfg(test)]
+mod declaration_named_in_module_reexport_test;
+#[cfg(test)]
 mod emitted_symbol_collision_test;
 #[cfg(test)]
 mod field_of_fractions_construction_test;

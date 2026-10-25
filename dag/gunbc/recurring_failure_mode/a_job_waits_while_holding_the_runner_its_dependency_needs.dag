@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.a_job_waits_while_holding_the_runner_its_dependency_needs
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_job_waits_while_holding_the_runner_its_dependency_needs: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_job_waits_while_holding_the_runner_its_dependency_needs" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of reading, for every job that waits on another run, the runner labels that run's jobs require, so generation refuses a wait placed on any runner the awaited run can need, rather than only the branch run grant's wait off GitHub-hosted runners." } },
+
+  receipts: [
+    "INVALID STATE: a job holds a runner slot while it waits for another run to finish, and that other run has a job that needs the same runner. With one slot online, neither can progress until a timeout.",
+
+    "HARM, 2026-10-23T03:5xZ: fleet-converge boot run 39895480515's mtcollins1-boot job, pinned to srv1, held srv1-01 (the only srv1 runner then online) in its step 'Run-scoped grant: wait for the grant run'. The grant run 39895564897's gcp-iam-converge job requires label srv1 and queued behind it. The boot job's timeout was 199 minutes. Both runs were cancelled by hand.",
+
+    "DISTINGUISHING FACTS: the wait was a STEP inside the job that then used the grant, so placing the job on its host placed the wait there too. The shared fleet-converge job had the same shape for every run-scoped mode, and a dispatch naming host=srv1 could deadlock the same way. The wait itself needs no fleet runner: it reads runs over the API with a read-only token.",
+
+    "RUNG FOUND AT: mitigatable (job timeouts bounded the hang; an operator cancelled). CURRENT: mechanically preventable. The wait is its own GitHub-hosted job (gunbc.fleet.fleet_converge_workflow fleet_converge_branch_run_grant_await_job) that the boot and shared jobs need, and emission refuses a workflow in which a job holding the wait has a runner that is not GitHub-hosted (fleet_converge_grant_wait_placement_refusal). test.claim.fleet_converge_run_scoped_coverage_witness the_grant_wait_holds_no_fleet_runner_and_a_wait_on_srv1_refuses is the RED and its positive control. CEILING: structurally guaranteed, once a wait's placement is checked against the runners of the run it awaits rather than against one rule for one wait.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_branch_run_grant_await_job", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_grant_wait_placement_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fleet_converge_run_scoped_coverage_witness", decl_name: "the_grant_wait_holds_no_fleet_runner_and_a_wait_on_srv1_refuses", field: WholeDeclaration },
+  ],
+}

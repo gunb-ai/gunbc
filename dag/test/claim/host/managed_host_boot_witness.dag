@@ -69,10 +69,10 @@ import gunbc.machine_intake.oob_boot_handoff {
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, WitnessInterrupted }
 import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
   one_socket_census_capture, run_attempt, console_of, count_named, world_with_console,
-  run_boot_route, world_for_boot_route, run_boot_route_without_fans,
+  healthy_census_world, healthy_census_world_with_a_stopped_fan,
 }
 import gunbc.machine_intake.post_power_fan_gate_outcome {
-  PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused,
+  PostPowerFanGatePowered, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused,
 }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MediaAttachAttempted,
@@ -238,7 +238,7 @@ test fn w_a_boot_of_an_unbound_host_is_refused() -> Bool {
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, smpro: h.smpro)
     }
     match admit_boot_subject(evidence: committed_evidence(), host: crossed, medium: mtcollins1_census_boot_medium, execution_revision: revision) {
       BootSubjectRefused { host: _, cause: BootSubjectHostUnbound { standing: BmcControlEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
@@ -312,7 +312,7 @@ test fn w_the_reset_and_boot_arms_each_decide_their_own_selection() -> Bool {
 // needed; the code path is the same fn.
 test fn w_a_second_machine_with_the_same_profile_gets_the_same_selection() -> Bool {
   managed_hosts() |> all(h => {
-    let second = managed_host_fixture(host: "fixture-second-machine", access: h.access, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let second = managed_host_fixture(host: "fixture-second-machine", access: h.access, secure: h.secure, smpro: h.smpro)
     match boot_selection(evidence: committed_evidence(), host: second) {
       VirtualMediaBootSelectionRefused { cause: _ } => false
       VirtualMediaBootSelectionAdmitted { selection: second_sel, capability_row: _ } => match boot_selection(evidence: committed_evidence(), host: h) {
@@ -436,7 +436,7 @@ test fn w_the_handoff_admission_discriminates_on_every_managed_hosts_rows() -> B
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, smpro: h.smpro)
     }
     let red = match boot_handoff_admission_probe_of(host: crossed) { Present { value: why } => string_contains(s: why, pattern: "observed and secured controllers differ")  Absent => false }
     real && red
@@ -636,7 +636,7 @@ test fn w_the_0_45_3_row_is_attested_and_never_rendered_as_machine_read() -> Boo
           host: h.host,
           access: h.access,
           secure: h.secure,
-          unit_hold: h.unit_hold,
+         
           // THE PLATFORM STANDING IS CARRIED FORWARD UNCHANGED: this claim is about the release, and a
           // total match that rebuilt the arms by hand would be a place to smuggle a change in.
           smpro: match h.smpro {
@@ -840,22 +840,19 @@ test fn w_a_build_reading_for_another_controller_grounds_no_capability_row() -> 
 // BootSourceOverride AND PowerControl, so no refusal arm can tell them apart and only the IDENTITY the
 // route itself handed out can.
 //
-// THE WORLD IS THE HEALTHY ONE-SOCKET CENSUS WORLD INSIDE A DEDICATED BOOT-ROUTE FRAME
-// (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix). What these claims assert is the
-// IDENTITY the handoff consumed and that the handoff REACHED the controller (its override + power writes
-// are minted inside oob_boot_handoff); nothing here reads the console census content. The census filing
-// reaches srv2 over the
-// fleet-ssh context, whose preparation calls three operations the boot realization never bound -- the
-// owner-only mux-directory creation and its two stat readbacks. An unbound operation refuses, the census
-// readback refuses before any ssh leg, and the attempt ends at the census gate BEFORE the attach and the
-// handoff -- an admitted identity read off THAT world would be asserted off a route that never reached
-// gunbc.machine_intake.oob_boot_handoff (measured there: the attempt ended with media attach not attempted).
-// The frame answers those three operations the way a healthy CI runner does (0700, job-owned), so the
-// executed path actually reaches the fold; the fold itself is untouched and remains the one decision
-// authority. The identity assertion below is only meaningful because the SAME evaluation's route records
-// the controller writes the admitted arm cannot be minted without (the pairing claim below).
+// THE WORLD IS THE HEALTHY ONE-SOCKET CENSUS WORLD, RUN THROUGH THE MATRIX'S OWN run_attempt
+// (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix): the same frame and the same dry
+// realization every boot case there runs under. What these claims assert is the IDENTITY the handoff
+// consumed and that the handoff REACHED the controller (its override + power writes are minted inside
+// oob_boot_handoff); nothing here reads the console census content. The route reaches the handoff only
+// because the realization answers everything the entry asks before it -- the census filing's fleet-ssh
+// mux directory included (gunbc.filesystem_model filesystem_ownership_bindings over the world's
+// RUNNER_TEMP) -- so an identity is never read off a route that stopped at the census gate. The fold is
+// untouched and remains the one decision authority. The identity assertion below is only meaningful
+// because the SAME evaluation's route records the controller writes the admitted arm cannot be minted
+// without (the pairing claim below).
 fn executed_boot_route_consumed_current_release() -> Bool {
-  match run_boot_route(world: world_for_boot_route()) {
+  match run_attempt(world: healthy_census_world()) {
     WitnessReturned { value, route: _ } =>
       match value.admitted {
         Absent => false
@@ -881,7 +878,7 @@ test fn w_the_executed_boot_route_consumes_the_current_release_identity() -> Boo
 // controller for power more than once across the attempt, and this claim is about reachability of the
 // actuation, not about how many times it happened.
 fn executed_boot_route_wrote_the_controller() -> Bool {
-  match run_boot_route(world: world_for_boot_route()) {
+  match run_attempt(world: healthy_census_world()) {
     WitnessReturned { value, route } =>
       match value.admitted {
         Absent => false
@@ -900,13 +897,13 @@ test fn w_the_identity_the_executed_route_reported_came_from_writing_the_control
 
 // THE FAN GATE IS ON THE EXECUTED ROUTE, IN BOTH DIRECTIONS. The production boot path runs
 // mtcollins1_boot_fan_gate after power-on and before the census watch (main #14263): it reads the chassis
-// and the fan sensors and post_power_fan_verdict decides. The boot route's world answers those reads the
-// way the committed healthy observation prints them (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix),
-// so the gate ADMITS through its own verdict and the boot reaches the census.
+// and the fan sensors and post_power_fan_verdict decides. The healthy world's controller publishes the
+// committed healthy observation as its IPMI SDR records (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
+// healthy_fan_records), so the gate ADMITS through its own verdict and the boot reaches the census.
 test fn w_the_fan_gate_admits_the_executed_boot_route_on_a_healthy_reading() -> Bool {
-  match run_boot_route(world: world_for_boot_route()) {
+  match run_attempt(world: healthy_census_world()) {
     WitnessReturned { value: a, route: _, state: _ } => match a.fan_gate {
-      PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } => match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: _ } => false }
+      PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } } => match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: _ } => false }
       _ => false
     }
     _ => false
@@ -920,10 +917,10 @@ test fn w_the_fan_gate_admits_the_executed_boot_route_on_a_healthy_reading() -> 
 // handoff had already been executed above it. Nothing here stubs the gate: the verdict is the production
 // post_power_fan_verdict's own decision on the seeded rows.
 test fn w_a_refused_fan_reading_stops_the_executed_boot_route_at_the_gate() -> Bool {
-  match run_boot_route_without_fans(world: world_for_boot_route()) {
+  match run_attempt(world: healthy_census_world_with_a_stopped_fan()) {
     WitnessReturned { value: a, route: _, state: _ } =>
       (match a.fan_gate {
-        PostPowerFanGateReached { fitted: _, outcome: PostPowerFanRefused { cause: _, observation: _, stop: _, manager: _, evidence: _ } } => true
+        PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: _, outcome: PostPowerFanRefused { cause: _, observation: _, stop: _, manager: _, evidence: _ } } } => true
         _ => false
       })
         && (match a.outcome {
