@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, Int, List, Bool, Unit }
 import std.optional { Absent, Present }
 import std.algebra { trim, length }
 import std.decl_ref { decl_ref }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, byte_size_count }
 import std.resources { Network }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.clock { Clock }
@@ -29,7 +29,6 @@ import extdeps.apple.apns {
   ApnsHeader, apns_request_url, apns_request_headers, apns_authorization_header, apns_id_header_name, apns_payload_json,
   ApnsSendOutcome, apns_send_outcome_of,
 }
-import std.measure { byte_size_count }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.jws_signer_realize { jws_sign }
 import gunbc.host.host_cli_dependency { first_absent_host_cli_dependency }
