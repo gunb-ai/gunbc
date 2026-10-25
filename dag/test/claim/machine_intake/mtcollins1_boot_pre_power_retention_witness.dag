@@ -18,6 +18,10 @@ module test.claim.machine_intake.mtcollins1_boot_pre_power_retention_witness
 //  - the two failure stages stay DISTINCT (review 86381 finding 1): a write that failed and a
 //    read-back that failed each surface their own cause with their own stage verb, never laundered
 //    into one another's message;
+//  - a failed read carries the TOOL'S OWN words (manager HOLD, review 86433 round): the exit status
+//    and stderr the controller reported go through the shared BMC typed-cause builder and reach the
+//    receipt verbatim — three different answers render three different lines, so no fixed string
+//    can pass;
 //  - the identity gate: without a run identity NOTHING is read (a missing identity must never read
 //    some other run's file), and the variable that was missing is named;
 //  - the receipt line leads with the cause the attempt record CARRIED, and reads the disk back to
@@ -37,6 +41,7 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   mtcollins1_pre_power_retention_of,
   mtcollins1_boot_pre_power_retained,
   pre_power_retention_receipt_line,
+  pre_power_read_failure_reason,
   PrePowerRetained,
   PrePowerNotRetained,
   AttemptRunId,
@@ -136,17 +141,51 @@ test fn without_the_run_identity_nothing_is_read_and_the_variable_is_named() -> 
 test fn a_missing_retention_says_its_own_why_on_the_receipt() -> Bool {
   let run = AttemptRunId { run_id: "43" }
   let never_ran = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Absent, run: run, path_of: mtcollins1_boot_mc_info_path)
-  let not_read = pre_power_retention_receipt_line(prefix: "fru" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: "fru print 0 was not read on this attempt" } }, run: run, path_of: mtcollins1_boot_fru_print_path)
+  let not_read = pre_power_retention_receipt_line(prefix: "fru" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: pre_power_read_failure_reason(capture: "fru print 0", at: "2026-10-25T12:00:00Z", exit_code: 1, stderr: "Unable to send RAW command: Invalid data field in request") } }, run: run, path_of: mtcollins1_boot_fru_print_path)
   let write_failed = mtcollins1_pre_power_retention_of(path: mtcollins1_boot_mc_info_path(run_attempt: "43"), read_ok: false, content: "", stage: "written" as NonEmptyStr, error: "disk full")
   let unwritten = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: write_failed }, run: run, path_of: mtcollins1_boot_mc_info_path)
   string_contains(s: never_ran, pattern: "mc-info=not retained: the attempt ended before the pre-power phase ran")
-    && string_contains(s: not_read, pattern: "fru=not retained: fru print 0 was not read on this attempt")
+    && string_contains(s: not_read, pattern: "fru=not retained: fru print 0 failed: BMC read failed at ipmi lanplus 192.168.1.228 (2026-10-25T12:00:00Z, exit 1): Unable to send RAW command: Invalid data field in request")
     && !string_contains(s: not_read, pattern: "read back")
     && string_contains(s: unwritten, pattern: "could not be written: disk full")
     && !string_contains(s: unwritten, pattern: "read back")
     && never_ran != not_read
     && unwritten != not_read
     && never_ran != unwritten
+}
+
+// A FAILED IPMITOOL SHOWS THE BMC'S OWN WORDS ON THE RECEIPT (manager HOLD, review 86433 round).
+// Before this, a failed read collapsed to a fixed "was not read on this attempt" — the tool's exit
+// status and stderr were discarded, so every failure looked identical. Now the retain fns route the
+// reported exit code and stderr through bmc_ipmitool_read_cause, the SAME typed builder every BMC
+// read in this file uses; this claim drives that exact path with a fabricated answer (the retain
+// fn's own ipmitool call is the boot's, not a claim's) and requires the receipt to carry the
+// stderr text, the exit status, and the transport's own classification — and to NOT be the old
+// stand-in. Three different answers render THREE different receipts, which is what makes this
+// discriminate: nothing that returns a fixed string can pass it.
+test fn a_failed_ipmitool_reports_its_own_stderr_on_the_receipt() -> Bool {
+  let refused = pre_power_read_failure_reason(capture: "mc info", at: "2026-10-25T12:00:00Z", exit_code: 1, stderr: "RAKP 2 HMAC is invalid")
+  let line_refused = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: refused } }, run: AttemptRunId { run_id: "45" }, path_of: mtcollins1_boot_mc_info_path)
+  let lost = pre_power_read_failure_reason(capture: "fru print 0", at: "2026-10-25T12:00:00Z", exit_code: 124, stderr: "Timeout while waiting for response")
+  let line_lost = pre_power_retention_receipt_line(prefix: "fru" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: lost } }, run: AttemptRunId { run_id: "45" }, path_of: mtcollins1_boot_fru_print_path)
+  let plain = pre_power_read_failure_reason(capture: "mc info", at: "2026-10-25T12:00:00Z", exit_code: 2, stderr: "Unable to send RAW command: Invalid data field in request\n(second line never quoted)")
+  let line_plain = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: plain } }, run: AttemptRunId { run_id: "45" }, path_of: mtcollins1_boot_mc_info_path)
+  // X from the tool survives, verbatim, in the receipt line...
+  string_contains(s: line_refused, pattern: "RAKP 2 HMAC is invalid")
+    && string_contains(s: line_lost, pattern: "Timeout while waiting for response")
+    && string_contains(s: line_plain, pattern: "Invalid data field in request")
+    // ...classified by the shared builder, not flattened: a refused credential is not a timeout is
+    // not a plain failed read, and the exit status the tool reported is carried for the failed read.
+    && string_contains(s: line_refused, pattern: "refused the credential")
+    && string_contains(s: line_lost, pattern: "timed out")
+    && string_contains(s: line_plain, pattern: "exit 2")
+    && !string_contains(s: line_plain, pattern: "second line")
+    // ...and no arm of this is the old fixed shrug.
+    && !string_contains(s: line_refused, pattern: "was not read on this attempt")
+    && !string_contains(s: line_lost, pattern: "was not read on this attempt")
+    && !string_contains(s: line_plain, pattern: "was not read on this attempt")
+    && line_refused != line_lost
+    && line_refused != line_plain
 }
 
 // THE RETENTION OVER REAL BYTES, END TO END. The committed hpm-check capture (the PR1 artifact) is on

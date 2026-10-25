@@ -2792,9 +2792,26 @@ fn mtcollins1_pre_power_retention_of(path: NonEmptyStr, read_ok: Bool, content: 
   }
 }
 
-// THE PRE-POWER WRITE OF `mc info`. Read-only by its operation declaration; a failed read is kept
-// silent HERE (the receipt line, which reads the file back, is where the cause surfaces -- the same
-// split the hpm check uses, where the write is fire-and-forget and the read-back carries the story).
+// WHY A PRE-POWER READ DID NOT ANSWER, in the transport's OWN words. exit_code and stderr are
+// exactly what the tool reported, run through the SAME typed-cause builder the firmware check and
+// every other BMC read use — so a failed read names its failure (the exit status, and the tool's
+// first stderr line) instead of a fixed shrug that could only ever mean "not read" (manager HOLD
+// on review 86433 round). Pure: it composes the cause from what the caller observed and WHEN it
+// was observed; the caller is the only thing that talks to the BMC or the clock.
+fn pre_power_read_failure_reason(capture: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> NonEmptyStr {
+  let cause = bmc_ipmitool_read_cause(
+    endpoint: mtcollins1_ipmi_endpoint(),
+    at: at,
+    exit_code: exit_code,
+    stderr: stderr,
+  )
+  concat(capture as String, " failed: ", bmc_read_cause_text(cause: cause)) as NonEmptyStr
+}
+
+// THE PRE-POWER WRITE OF `mc info`. Read-only by its operation declaration. A failed read keeps
+// the tool's OWN cause (exit status + stderr through the shared BMC typed-cause builder), never a
+// stand-in; the receipt line then reports that executed cause first and re-reads the file from
+// disk as a second, independent witness.
 fn mtcollins1_boot_mc_info_retain(username: NonEmptyStr, password_file: NonEmptyStr, run_attempt: NonEmptyStr) -> MtCollins1PrePowerRetention {
   let r = diagnostic.ipmi.Tool.McInfo(
     bmc_host: mtcollins1_endpoint.host,
@@ -2808,7 +2825,7 @@ fn mtcollins1_boot_mc_info_retain(username: NonEmptyStr, password_file: NonEmpty
     let retained = Filesystem.Write(path: path, content: r.stdout)
     mtcollins1_pre_power_retention_of(path: path, read_ok: retained.success, content: r.stdout, stage: "written", error: retained.error)
   } else {
-    PrePowerNotRetained { reason: "mc info was not read on this attempt" }
+    PrePowerNotRetained { reason: pre_power_read_failure_reason(capture: "mc info", at: clock_now_probed_at_or_unknown(), exit_code: r.exit_code, stderr: r.transport_stderr) }
   }
 }
 
@@ -2831,7 +2848,7 @@ fn mtcollins1_boot_fru_print_retain(username: NonEmptyStr, password_file: NonEmp
     let retained = Filesystem.Write(path: path, content: r.stdout)
     mtcollins1_pre_power_retention_of(path: path, read_ok: retained.success, content: r.stdout, stage: "written", error: retained.error)
   } else {
-    PrePowerNotRetained { reason: "fru print 0 was not read on this attempt" }
+    PrePowerNotRetained { reason: pre_power_read_failure_reason(capture: "fru print 0", at: clock_now_probed_at_or_unknown(), exit_code: r.exit_code, stderr: r.transport_stderr) }
   }
 }
 
