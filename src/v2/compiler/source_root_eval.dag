@@ -271,7 +271,7 @@ import v2.compiler.dependency_demand {
   OperationFact,
 }
 import gunbc.non_fold_residue_scope { NfrProductionScope, NfrTestLayerExcluded, nfr_file_scope }
-import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, declares_member_named, head_module_optional, roster_join_keys, root_member_reads, site_join_key }
+import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, declares_member_named, head_module_optional, nfr_wildcard_arm_in_tokens, roster_join_keys, root_member_reads, site_join_key }
 import v2.compiler.self_host.seed_retention_frontier { self_host_frontier_report }
 import v2.compiler.decl_ref_census { ImportPair, LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.effect_pair_census { BodyOrdered, EffectPairCensusReport, ImporteeRefusedCause, ResolveRefusedCause, ResolveUnclassifiedCause, UnobservedRoot, effect_pair_census_exit, effect_pair_census_lines, effect_pair_census_of_module, effect_reach_table, module_ordered_bodies, not_derived_keys_of, unobserved_roots_add, use_edges_of }
@@ -326,9 +326,6 @@ import v2.compiler.tokenize {
   PreparedLexRules,
   prepare_lex_rules,
   tokenize,
-}
-import v2.std.compilers.lexing {
-  TokenStream,
 }
 import v2.std.language_model {
   LanguageModel,
@@ -3731,32 +3728,6 @@ fn native_nfr_scan_holder(s: NativeNfrState, read: DagSourceReadWitness, front: 
 type NativeNfrOutput {
   lines: List<String>
   exit: Int
-}
-
-// The candidate question, answered on TOKENS: does this stream contain the wildcard arm shape -- an
-// underscore token (an identifier token whose lexeme is exactly "_", which is how the DAG lexer spells
-// a pattern underscore) immediately followed by a fat-arrow token? The scan carries the previous token's
-// verdict, so a stream like [_ , "(", "_", "=>", ...] is read pairwise in one pass. Near-misses stay
-// false: a string literal token carries its quotes in the lexeme ("_\""), an identifier like "_b" is a
-// different lexeme, and comments/whitespace never appear in the stream.
-type NfrWildcardArmScan {
-  pending_underscore: Bool
-  found_arm: Bool
-}
-
-fn nfr_wildcard_arm_in_tokens(stream: TokenStream) -> Bool {
-  fold_list(
-    xs: stream.all,
-    empty: NfrWildcardArmScan { pending_underscore: false, found_arm: false },
-    cons: fn(acc, t) {
-      if acc.found_arm { acc }
-      else if acc.pending_underscore {
-        NfrWildcardArmScan { pending_underscore: false, found_arm: (t.class == ^dag_token_fat_arrow) }
-      } else {
-        NfrWildcardArmScan { pending_underscore: (t.class == ^dag_token_ident) && (t.lexeme == "_"), found_arm: false }
-      }
-    }
-  ).found_arm
 }
 
 fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutput {

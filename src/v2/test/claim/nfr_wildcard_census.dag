@@ -5,7 +5,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import std.types { List }
 import v2.compiler.decl_ref_census { ImportPair }
-import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, head_module_optional, roster_join_keys, root_member_reads, site_join_key }
+import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, head_module_optional, nfr_wildcard_arm_in_tokens, roster_join_keys, root_member_reads, site_join_key }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
@@ -200,4 +200,28 @@ test fn nfr_odd_spelling_fixture_is_the_same_program_as_the_canonical_twin() -> 
   (nfr_count_sites(reads: nfr_reads_of(text: nfr_canonical_twin_src)) == 2)
     && (nfr_count_sites(reads: nfr_reads_of(text: nfr_odd_spelling_src)) == nfr_count_sites(reads: nfr_reads_of(text: nfr_canonical_twin_src)))
     && (string_contains(s: nfr_odd_spelling_src, pattern: "_ =>") == false)
+}
+
+// THE DISCRIMINATOR, on the production path. `nfr_candidate_is_produced` is the verb's own candidate
+// decision re-expressed here from the SAME exported predicate the verb imports
+// (v2.compiler.nfr_wildcard_census nfr_wildcard_arm_in_tokens) over the REAL DAG lexer
+// (v2.compiler.program_assembly dag_prepared_lex): a file is a candidate when its token stream holds the
+// wildcard arm pair, and a file that fails to lex is a candidate too (it then reaches the scan and lands
+// in `refused`, which is counted -- a silent drop would not be). The claim pins the two decisions apart on
+// the odd-spelling fixture: the TOKEN decision says candidate, the old TEXT decision (`string_contains
+// "_ =>"`, the prefilter review 86129 rejected) says not -- so a census that follows the tokens cannot
+// share the text prefilter's silent drop. On the canonical twin the two decisions agree, which keeps this
+// claim from passing for a vacuous reason (if the fixtures ever stop differing, the second line fails).
+fn nfr_candidate_is_produced(producer: String) -> Bool {
+  match tokenize_prepared(text: producer, file: ^nfr_wildcard_arm_probe, prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: stream, diagnostics: _ } => nfr_wildcard_arm_in_tokens(stream: stream)
+  }
+}
+
+test fn nfr_odd_spelling_candidate_decision_discriminates_the_text_prefilter() -> Bool {
+  nfr_candidate_is_produced(producer: nfr_odd_spelling_src)
+    && (string_contains(s: nfr_odd_spelling_src, pattern: "_ =>") == false)
+    && nfr_candidate_is_produced(producer: nfr_canonical_twin_src)
+    && string_contains(s: nfr_canonical_twin_src, pattern: "_ =>")
 }
