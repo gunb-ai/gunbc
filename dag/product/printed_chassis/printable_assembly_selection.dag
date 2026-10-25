@@ -2,7 +2,7 @@ module product.printed_chassis.printable_assembly_selection
 
 import std.types { String, List }
 import product.printed_chassis.printable_assembly {
-  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing,
+  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct,
   PrintableAssembly, PrintableAssemblySelection, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_wire,
 }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
@@ -13,6 +13,7 @@ import product.printed_chassis.gpu_duct {
   GpuDuctAdmitted, GpuDuctInsertReadingsDisagree, GpuDuctFinsAtTheWindowFace, GpuDuctFanMountRefused,
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, DuctCardMount, DuctExtent, PlugAndFlange, SleeveOverCardEnd,
   FullDuct, CardFitRing, a16_end_face, a16_duct_design, admit_gpu_duct, duct_presentation_members, duct_readme,
+  BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard, BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, a16_blower_duct_design, admit_blower_duct, blower_presentation_members, blower_readme,
 }
 
 // THE ONE PLACE A ROOT BECOMES PARTS. Every consumer on the print path -- the CAD check, preparation
@@ -35,6 +36,30 @@ fn select_printable_assembly(root: PrintedAssemblyRoot) -> PrintableAssemblySele
     A16SleeveDuct => a16_selection(root: root, mount: SleeveOverCardEnd, extent: FullDuct)
     A16PlugFitRing => a16_selection(root: root, mount: PlugAndFlange, extent: CardFitRing)
     A16SleeveFitRing => a16_selection(root: root, mount: SleeveOverCardEnd, extent: CardFitRing)
+    A16BlowerDuct => a16_blower_selection(root: root)
+  }
+}
+
+fn a16_blower_selection(root: PrintedAssemblyRoot) -> PrintableAssemblySelection {
+  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design) {
+    BlowerDuctAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
+      assembly: PrintableAssembly {
+        root: root,
+        parts: parts,
+        interfaces: joints,
+        required_keepouts: ["POWER-KEEPOUT"],
+        assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
+        package: printed_assembly_root_wire(root: root),
+        schema: "gunbc.a16-inlet-duct-review.v2",
+        readme: blower_readme(),
+        presentation: blower_presentation_members(),
+      }
+    }
+    BlowerDuctCardInterfaceRefused { refusal: _ } => PrintableAssemblyRefused { reason: "A16 blower duct card interface refused" }
+    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => PrintableAssemblyRefused { reason: "A16 blower socket is thicker than the card" }
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => PrintableAssemblyRefused { reason: "A16 blower passage closed by the 8-pin keep-out" }
+    BlowerInsertNotReachable { insert_x: _, insert_y: _, passage_low: _, passage_high: _, tool_radius: _ } => PrintableAssemblyRefused { reason: "A16 blower duct leaves a card insert unreachable through the open socket" }
+    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => PrintableAssemblyRefused { reason: "A16 blower duct admits one card; stacked intakes are unsolved" }
   }
 }
 
