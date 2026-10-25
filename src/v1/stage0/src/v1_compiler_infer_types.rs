@@ -230,8 +230,9 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
     Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
         .iter()
         .cloned()
-        .fold(std::option::Option::None, |acc: _, k: String| {
-            match acc.clone() {
+        .fold(
+            std::option::Option::None,
+            |acc: Option<String>, k: String| match acc.clone() {
                 Some(_) => acc.clone(),
                 std::option::Option::None => {
                     match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
@@ -245,8 +246,8 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
                         std::option::Option::None => std::option::Option::None,
                     }
                 }
-            }
-        })
+            },
+        )
 }
 
 pub fn container_kind_canonical(name: String) -> String {
@@ -3080,6 +3081,23 @@ pub fn applied_argument_declared_agrees(
     }
 }
 
+pub fn join_operand_element_is_unit(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        if node_is_element_collection(n.clone(), source_indices) {
+            match n.children.clone().first().cloned() {
+                Some(ch) => is_unit_like(child_type_node(ch.clone())),
+                std::option::Option::None => false,
+            }
+        } else {
+            (is_optional.clone() && is_unit_like(n.clone()))
+        }
+    }
+}
+
 pub fn prefer_specific_type(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -3088,28 +3106,9 @@ pub fn prefer_specific_type(
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
         let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let left_first_child = left.children.clone().first().cloned();
         let left_norm_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
-        let left_is_unit_inner = if left_is_container.clone() {
-            match left_first_child.clone() {
-                Some(ch) => {
-                    let el = child_type_node(ch.clone());
-                    let el_is_unit = is_unit_like(el);
-                    el_is_unit.clone()
-                }
-                std::option::Option::None => false,
-            }
-        } else {
-            if left_is_optional.clone() {
-                {
-                    let left_is_unit = is_unit_like(left.clone());
-                    left_is_unit.clone()
-                }
-            } else {
-                false
-            }
-        };
+        let left_is_unit_inner = join_operand_element_is_unit(left.clone(), source_indices.clone());
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
         let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
         let same_kind = if (left_is_container.clone() && right_is_container.clone()) {

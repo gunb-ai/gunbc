@@ -404,7 +404,7 @@ pub fn parser_state_param(
     .cloned()
     .fold(
         std::option::Option::None,
-        |acc: _, pair: (i64, Rc<Node>)| {
+        |acc: Option<Rc<ParserStateParam>>, pair: (i64, Rc<Node>)| {
             if (acc.clone() != std::option::Option::None) {
                 acc.clone()
             } else {
@@ -500,7 +500,7 @@ pub fn parser_state_arg_expr(
     .cloned()
     .fold(
         std::option::Option::None,
-        |acc: _, pair: (i64, Rc<Node>)| {
+        |acc: Option<Rc<Node>>, pair: (i64, Rc<Node>)| {
             if (acc.clone() != std::option::Option::None) {
                 acc.clone()
             } else {
@@ -3136,7 +3136,7 @@ pub fn consuming_tokens_arg(
 ) -> Option<Rc<Node>> {
     expr.children.clone().iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, child: Rc<Node>| match acc.clone() {
+        |acc: Option<Rc<Node>>, child: Rc<Node>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 match crate::v1_std_core::arg_name_at(child.clone(), si.clone()) {
@@ -4968,22 +4968,25 @@ pub fn collect_evidence_incremental(
                 let arms_ev = crate::v1_std_core::match_arm_nodes(body.clone())
                     .iter()
                     .cloned()
-                    .fold(std::option::Option::None, |acc: _, arm_node: Rc<Node>| {
-                        let is_base_case = if branching_only.clone() {
-                            (max_path_self_calls(
-                                crate::v1_std_core::arm_body(arm_node.clone()),
-                                func_name.clone(),
-                                si.clone(),
-                            ) == 0)
-                        } else {
-                            false
-                        };
-                        if is_base_case.clone() {
-                            acc.clone()
-                        } else {
-                            {
-                                let arm_vars =
-                                    if (scrut_is_descent.clone() || scrut_is_param.clone()) {
+                    .fold(
+                        std::option::Option::None,
+                        |acc: Option<DescentEvidence>, arm_node: Rc<Node>| {
+                            let is_base_case = if branching_only.clone() {
+                                (max_path_self_calls(
+                                    crate::v1_std_core::arm_body(arm_node.clone()),
+                                    func_name.clone(),
+                                    si.clone(),
+                                ) == 0)
+                            } else {
+                                false
+                            };
+                            if is_base_case.clone() {
+                                acc.clone()
+                            } else {
+                                {
+                                    let arm_vars = if (scrut_is_descent.clone()
+                                        || scrut_is_param.clone())
+                                    {
                                         match (*crate::v1_std_core::arm_pattern(arm_node.clone()))
                                             .clone()
                                         {
@@ -5015,20 +5018,21 @@ pub fn collect_evidence_incremental(
                                     } else {
                                         vars.clone()
                                     };
-                                let arm_ev = collect_evidence_incremental(
-                                    crate::v1_std_core::arm_body(arm_node.clone()),
-                                    func_name.clone(),
-                                    param_name.clone(),
-                                    arm_vars.clone(),
-                                    check_child.clone(),
-                                    check_list.clone(),
-                                    branching_only.clone(),
-                                    si.clone(),
-                                );
-                                merge_optional_evidence(acc.clone(), arm_ev.clone())
+                                    let arm_ev = collect_evidence_incremental(
+                                        crate::v1_std_core::arm_body(arm_node.clone()),
+                                        func_name.clone(),
+                                        param_name.clone(),
+                                        arm_vars.clone(),
+                                        check_child.clone(),
+                                        check_list.clone(),
+                                        branching_only.clone(),
+                                        si.clone(),
+                                    );
+                                    merge_optional_evidence(acc.clone(), arm_ev.clone())
+                                }
                             }
-                        }
-                    });
+                        },
+                    );
                 merge_optional_evidence(scrut_ev, arms_ev)
             }
             ExprData::ExprIf => {
@@ -5121,7 +5125,7 @@ pub fn collect_evidence_incremental(
                 };
                 let child_evidence = body.children.clone().iter().cloned().fold(
                     std::option::Option::None,
-                    |acc: _, child: Rc<Node>| {
+                    |acc: Option<DescentEvidence>, child: Rc<Node>| {
                         let ce = collect_evidence_incremental(
                             child.clone(),
                             func_name.clone(),
@@ -5200,52 +5204,57 @@ pub fn collect_evidence_incremental(
                         let args_ev = crate::v1_std_core::method_arg_nodes(body.clone())
                             .iter()
                             .cloned()
-                            .fold(std::option::Option::None, |acc: _, arg_node: Rc<Node>| {
-                                let arg_val = crate::v1_std_core::arg_value(arg_node.clone());
-                                let ev = match (*arg_val.expr_data.clone()).clone() {
-                                    ExprData::ExprLambda => match iteration_element_name(
-                                        ms.clone(),
-                                        arg_val.clone(),
-                                        si.clone(),
-                                    ) {
-                                        Some(iter_name) => {
-                                            let ext_vars = v1_rt::rc_map_insert(
-                                                vars.clone(),
-                                                iter_name.clone(),
-                                                true,
-                                            );
-                                            collect_evidence_incremental(
-                                                crate::v1_std_core::lambda_body(arg_val.clone()),
-                                                func_name.clone(),
-                                                param_name.clone(),
-                                                ext_vars.clone(),
-                                                check_child.clone(),
-                                                check_list.clone(),
-                                                branching_only.clone(),
-                                                si.clone(),
-                                            )
-                                        }
-                                        std::option::Option::None => std::option::Option::None,
-                                    },
-                                    _ => collect_evidence_incremental(
-                                        arg_val.clone(),
-                                        func_name.clone(),
-                                        param_name.clone(),
-                                        vars.clone(),
-                                        check_child.clone(),
-                                        check_list.clone(),
-                                        branching_only.clone(),
-                                        si.clone(),
-                                    ),
-                                };
-                                merge_optional_evidence(acc.clone(), ev.clone())
-                            });
+                            .fold(
+                                std::option::Option::None,
+                                |acc: Option<DescentEvidence>, arg_node: Rc<Node>| {
+                                    let arg_val = crate::v1_std_core::arg_value(arg_node.clone());
+                                    let ev = match (*arg_val.expr_data.clone()).clone() {
+                                        ExprData::ExprLambda => match iteration_element_name(
+                                            ms.clone(),
+                                            arg_val.clone(),
+                                            si.clone(),
+                                        ) {
+                                            Some(iter_name) => {
+                                                let ext_vars = v1_rt::rc_map_insert(
+                                                    vars.clone(),
+                                                    iter_name.clone(),
+                                                    true,
+                                                );
+                                                collect_evidence_incremental(
+                                                    crate::v1_std_core::lambda_body(
+                                                        arg_val.clone(),
+                                                    ),
+                                                    func_name.clone(),
+                                                    param_name.clone(),
+                                                    ext_vars.clone(),
+                                                    check_child.clone(),
+                                                    check_list.clone(),
+                                                    branching_only.clone(),
+                                                    si.clone(),
+                                                )
+                                            }
+                                            std::option::Option::None => std::option::Option::None,
+                                        },
+                                        _ => collect_evidence_incremental(
+                                            arg_val.clone(),
+                                            func_name.clone(),
+                                            param_name.clone(),
+                                            vars.clone(),
+                                            check_child.clone(),
+                                            check_list.clone(),
+                                            branching_only.clone(),
+                                            si.clone(),
+                                        ),
+                                    };
+                                    merge_optional_evidence(acc.clone(), ev.clone())
+                                },
+                            );
                         merge_optional_evidence(recv_ev, args_ev)
                     }
                 } else {
                     body.children.clone().iter().cloned().fold(
                         std::option::Option::None,
-                        |acc: _, child: Rc<Node>| {
+                        |acc: Option<DescentEvidence>, child: Rc<Node>| {
                             let ce = collect_evidence_incremental(
                                 child.clone(),
                                 func_name.clone(),
@@ -5263,7 +5272,7 @@ pub fn collect_evidence_incremental(
             }
             _ => body.children.clone().iter().cloned().fold(
                 std::option::Option::None,
-                |acc: _, child: Rc<Node>| {
+                |acc: Option<DescentEvidence>, child: Rc<Node>| {
                     let ce = collect_evidence_incremental(
                         child.clone(),
                         func_name.clone(),
@@ -5347,7 +5356,7 @@ pub fn construct_termination_proof(
     {
         let structural_proof = params.iter().cloned().fold(
             std::option::Option::None,
-            |best: _, p: Rc<Node>| match best.clone() {
+            |best: Option<Rc<TerminationProof>>, p: Rc<Node>| match best.clone() {
                 Some(_) => best.clone(),
                 std::option::Option::None => {
                     let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
@@ -5497,7 +5506,7 @@ pub fn construct_branching_termination_proof(
 ) -> Option<Rc<TerminationProof>> {
     params.iter().cloned().fold(
         std::option::Option::None,
-        |best: _, p: Rc<Node>| match best.clone() {
+        |best: Option<Rc<TerminationProof>>, p: Rc<Node>| match best.clone() {
             Some(_) => best.clone(),
             std::option::Option::None => {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());

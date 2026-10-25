@@ -272,9 +272,10 @@ pub fn last_code_token_end(tokens: Rc<Vec<Rc<Token>>>) -> Option<i64> {
     })
     .iter()
     .cloned()
-    .fold(std::option::Option::None, |acc: _, t: Rc<Token>| {
-        Some(t.span.end.clone())
-    })
+    .fold(
+        std::option::Option::None,
+        |acc: Option<i64>, t: Rc<Token>| Some(t.span.end.clone()),
+    )
 }
 
 pub fn token_stream_has_no_lexemes(tokens: Rc<Vec<Rc<Token>>>) -> bool {

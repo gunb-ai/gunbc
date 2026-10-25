@@ -112,7 +112,7 @@ import v1.compiler.infer_types {
   bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
+  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, join_operand_element_is_unit, alias_identity_in_judgment, alias_names_identity_in_judgment,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   is_product_type,
   node_type_deps,
@@ -1974,7 +1974,7 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope:
 // same declaration (`Result<List<DnsLabel>, DomainNameParseError>`), and every reader before this
 // one dropped its arguments by resolving it back to the declaration (record_lit_expected_coproduct).
 // So the literal typed as an uninstantiated declaration, and each consumer downstream compensated
-// or failed: fold_accumulator_is_unapplied_generic re-derives an accumulator from the step's
+// or failed: fold_carrier_closed_at_step re-derives an accumulator from the step's
 // return, which is itself such a literal, and extdeps.dns.domain_name parse_dns_label_list's
 // `labels |> list_push(label)` reached the emitter with `labels` typed by the formal `ok`
 // (gunbc native broker, E0599). The application is admitted only when the expected's head resolves
@@ -1989,14 +1989,37 @@ fn variant_literal_expected_application(owner: Node, expected: Node?, scope: Inf
   if (owner.params |> count) == 0 || owner.connective != Disj { return none }
   match expected {
     Present { value: exp } =>
-      if exp.connective != NoConnective || (exp.children |> count) == 0 { none }
-      else {
-        match lookup_type_for(env: scope.type_env, node: exp) {
-          Present { value: head } => if rc_ptr_eq(head, owner) { Present { value: with_required_cardinality(n: exp) } } else { none }
-          Absent => none
-        }
-      }
+      if type_applies_declaration(application: exp, declaration: owner, env: scope.type_env) { Present { value: with_required_cardinality(n: exp) } } else { none }
     Absent => none
+  }
+}
+
+// AN APPLICATION OF A DECLARATION is a type node with arguments and no connective whose head resolves to
+// that declaration: the same binding (rc identity), or a head whose minted DeclarationRef equals the
+// declaration's (declaration_ref_of_declaration_node, the one mint), never a spelling comparison. The
+// mint arm is needed because a bare declaration reached through a variant reference
+// (`init: NoPassingCandidate`) is not the env's own node for that declaration, so rc identity alone
+// misses it, and neither node's `declaration` field is set for a declaration (it names references).
+// The variant-literal context above and the branch join's bare-declaration rule
+// (arm_is_bare_declaration_of_sibling) both ask this one question.
+fn type_applies_declaration(application: Node, declaration: Node, env: TypeEnv) -> Bool {
+  if application.connective != NoConnective || (application.children |> count) == 0 { false }
+  else {
+    match lookup_type_for(env: env, node: application) {
+      Present { value: head } =>
+        if rc_ptr_eq(head, declaration) { true }
+        else {
+          match declaration_ref_of_declaration_node(decl: head, source_indices: env.source_indices, env: env) {
+            Present { value: head_ref } =>
+              match declaration_ref_of_declaration_node(decl: declaration, source_indices: env.source_indices, env: env) {
+                Present { value: declaration_ref } => declaration_ref_eq(a: head_ref, b: declaration_ref)
+                Absent => false
+              }
+            Absent => false
+          }
+        }
+      Absent => false
+    }
   }
 }
 
@@ -3207,8 +3230,11 @@ fn type_is_kernel_optional_declaration(t: Node, owner: Node?) -> Bool {
 
 // A BARE DECLARATION ARM IS DROPPED FROM THE JOIN WHEN A SIBLING ARM INHABITS THE SAME DECLARATION.
 // A sibling inhabits a corpus declaration when it carries the same DeclarationRef at a different
-// application (the node differs), and the kernel Optional when it is `T?`: that cardinality IS that
-// declaration, so the inhabitance is established by the owner's identity.
+// application (the node differs), or is an application whose head resolves to that declaration
+// (type_applies_declaration), and the kernel Optional when it is `T?`: that cardinality IS that
+// declaration, so the inhabitance is established by the owner's identity. The head arm is what lets
+// a callee's declared-return application (PassingCandidateFold<TargetPrimitiveRealization>, which
+// carries no `declaration` field) close a fold carrier seeded by the bare `NoPassingCandidate`.
 //
 // READING OF THE CORPUS RULE: `t.connective == Disj` makes t the BARE declaration (an application of a
 // generic coproduct is not Disj). Siblings that are applications of the same DeclarationRef (Box<Int>,
@@ -3218,9 +3244,10 @@ fn type_is_kernel_optional_declaration(t: Node, owner: Node?) -> Bool {
 // payload-carrying arm typed bare would ride this rule wrongly, so that typing must not be introduced
 // without revisiting it. The kernel Optional is identified by node equality with the kernel scope's own
 // binding, so a user coproduct that spells `Present`/`Absent` arms never matches.
-fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_owner: Node?) -> Bool {
+fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_owner: Node?, env: TypeEnv) -> Bool {
   t.connective == Disj && (siblings |> any(s =>
     (s != t && t.declaration != none && s.declaration == t.declaration)
+      || type_applies_declaration(application: s, declaration: t, env: env)
       || (s.return_cardinality == CardOptional && type_is_kernel_optional_declaration(t: t, owner: optional_owner))
   ))
 }
@@ -3229,8 +3256,22 @@ fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_ow
 // inhabits it. Dropping it leaves the sibling, which carries the type argument the declaration lacks.
 fn inhabited_join_types(types: List<Node>, scope: InferScope) -> List<Node> {
   let optional_owner = kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")
-  let kept = types |> filter(t => !arm_is_bare_declaration_of_sibling(t: t, siblings: types, optional_owner: optional_owner))
+  let kept = types |> filter(t => !arm_is_bare_declaration_of_sibling(t: t, siblings: types, optional_owner: optional_owner, env: scope.type_env))
   if kept |> count == 0 { types } else { kept }
+}
+
+// THE BRANCH JOIN, ONCE: match arms, if branches and a fold's carrier against its step all close by it.
+// A bare declaration yields to a sibling that inhabits it, then the first-wins prefer_specific_type
+// keeps the earlier type unless a later one is strictly more specific.
+fn branch_join_type(types: List<Node>, scope: InferScope) -> Node? {
+  let joined = inhabited_join_types(types: types, scope: scope)
+  match joined |> first {
+    Present { value: first_type } =>
+      Present { value: joined |> skip(1) |> fold(init: first_type, f: (acc, t) =>
+        prefer_specific_type(left: acc, right: t, source_indices: scope.type_env.source_indices)
+      ) }
+    Absent => none
+  }
 }
 
 // A FOLD INIT THAT IS A BARE DECLARATION FIXES NO ELEMENT TYPE: the fold's expected result, when it
@@ -3238,7 +3279,7 @@ fn inhabited_join_types(types: List<Node>, scope: InferScope) -> List<Node> {
 fn fold_init_joined_with_expected(init_type: Node, expected: Node?, scope: InferScope) -> Node {
   match expected {
     Present { value: exp } =>
-      if arm_is_bare_declaration_of_sibling(t: init_type, siblings: [exp], optional_owner: kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")) { exp } else { init_type }
+      if arm_is_bare_declaration_of_sibling(t: init_type, siblings: [exp], optional_owner: kernel_optional_owner_declaring(env: scope.type_env, name: "Absent"), env: scope.type_env) { exp } else { init_type }
     Absent => init_type
   }
 }
@@ -8205,19 +8246,76 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
   }
 }
 
-// AN UNAPPLIED GENERIC ACCUMULATOR IS UNDER-RESOLVED, THOUGH is_fully_resolved SAYS OTHERWISE. A
-// nullary constructor of a generic declaration -- `Empty` of `FreeMonoid<T>` -- types as the
-// declaration's expansion: a Disj (or Conj) whose children are its variants (or fields), not its
-// type arguments, still carrying its declared params. That shape reads as fully resolved, so
-// `fold(xs, init: Empty, f: ..)` kept the bare `FreeMonoid` as its accumulator although the step's
-// return names `FreeMonoid<Item>`, and every later read of an element fell back to the algebra
-// placeholder that types the element as the container itself (gunbc.recurring_failure_mode
-// unapplied_generic_accumulator_types_element_as_container). The refinement from the step's return
-// already exists at the fold call; this is the fact it was missing. STRUCTURAL ONLY -- declared
-// params on an expansion -- so it adds no spelling-keyed identity decision beside those
-// gunbc.recurring_failure_mode generic_identity_decided_by_spelling rosters.
-fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
-  (n.params |> count) > 0 && (n.connective == Disj || n.connective == Conj)
+// THE FOLD'S CARRIER IS AN ARM OF THE FOLD, and an open one closes at the type its step produces, by
+// the branch join every match arm and if branch closes by (branch_join_type). This is the v1 seed's
+// counterpart of v2.compiler.infer infer_fold_carrier_closed_at (#14983), so both compilers' folds follow
+// one rule. A carrier is OPEN when its own type leaves a position the join can fill:
+// - an unsolved position (`[]`'s element; is_fully_resolved),
+// - the unit placeholder as its element (`none`), which prefer_specific_type yields to any sibling of
+//   its kind (join_operand_element_is_unit, read by both),
+// - a generic declaration's bare expansion (`Empty` of `FreeMonoid<T>`, a T-free arm): a Disj or Conj
+//   still carrying its declared params, which reads as fully resolved
+//   (gunbc.recurring_failure_mode unapplied_generic_accumulator_types_element_as_container).
+// `none` was the leaf this list lacked: it read as fully resolved, so `fold(xs, init: none, ..)` kept
+// a unit optional as its result and handed it to the step as the step's declared return, and the
+// emitter wrote `|acc: _, ..|` (rustc E0282 at gunbc.durable_cas_file_store cas_observe_window).
+// A closed carrier is judged as written: the join is not consulted.
+fn fold_carrier_is_open(carrier: Node, scope: InferScope) -> Bool {
+  let si = scope.type_env.source_indices
+  !is_fully_resolved(n: carrier, source_indices: si)
+    || join_operand_element_is_unit(n: carrier, source_indices: si)
+    || ((carrier.params |> count) > 0 && (carrier.connective == Disj || carrier.connective == Conj))
+}
+
+// The type the fold's step produces, read from its typed lambda argument.
+fn fold_step_produced_type(typed_args: List<Node>) -> Node? {
+  match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+    Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+    Absent => none
+  }
+}
+
+// The carrier both fold forms (the free call and the method call) hand the template's FoldAccumulator
+// and the emitter: an open carrier joined with the step's produced type, the carrier first, so the
+// join leaves it only for a strictly more specific type.
+fn fold_carrier_closed_at_step(carrier: Node, typed_args: List<Node>, scope: InferScope) -> Node {
+  if !fold_carrier_is_open(carrier: carrier, scope: scope) { carrier } else {
+    match fold_step_produced_type(typed_args: typed_args) {
+      Present { value: produced } =>
+        match branch_join_type(types: [carrier, produced], scope: scope) {
+          Present { value: joined } => joined
+          Absent => carrier
+        }
+      Absent => carrier
+    }
+  }
+}
+
+// THE STEP IS INFERRED AGAIN UNDER THE CLOSED CARRIER, one extra round of the same argument
+// inference, as call_needs_generic_rebinding_pass runs a call's argument fold again from the
+// substitution its first round ended with. Round 1 infers the step against an open carrier with no
+// declared return (an open carrier is not a return the step's body can be checked against: `none`
+// would type every `Present` arm as a unit optional); the carrier is closed at what round 1
+// produced; round 2 infers the step with the closed carrier as its accumulator and its declared
+// return, so the typed lambda the emitter reads agrees with the call's result. Bounded at two rounds:
+// round 2 runs only when the closed carrier is itself closed, and nothing is fed back from it. A
+// closed carrier is inferred once, exactly as before.
+fn infer_fold_step_args(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node?, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
+  let carrier_open = match fold_acc_type {
+    Present { value: carrier } => fold_carrier_is_open(carrier: carrier, scope: scope)
+    Absent => false
+  }
+  let round_one = infer_method_args_with_fold(method_name: method_name, method_args: method_args, fold_info: fold_info, fold_acc_type: fold_acc_type, step_declares_return: !carrier_open, element_type: element_type, elem_provenance: elem_provenance, arg_contract: arg_contract, scope: scope)
+  match fold_acc_type {
+    Present { value: carrier } =>
+      if !carrier_open { round_one } else {
+        let closed = fold_carrier_closed_at_step(carrier: carrier, typed_args: round_one |> map(r => r.typed_arg), scope: scope)
+        if closed != carrier && !fold_carrier_is_open(carrier: closed, scope: scope) {
+          infer_method_args_with_fold(method_name: method_name, method_args: method_args, fold_info: fold_info, fold_acc_type: Present { value: closed }, step_declares_return: true, element_type: element_type, elem_provenance: elem_provenance, arg_contract: arg_contract, scope: scope)
+        } else { round_one }
+      }
+    Absent => round_one
+  }
 }
 
 fn method_name_is(opt: String?, expected: String) -> Bool {
@@ -8270,7 +8368,7 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
 // accumulator type was fully known). The lambda arm still admits the return as the body's
 // expected type only when it is established and fully resolved, so an accumulator whose own
 // type is unknown expects nothing, as before.
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node?, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node?, step_declares_return: Bool, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -8290,7 +8388,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       ]
       let fold_callable = Node {
         occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
-        connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc } },
+        connective: NoConnective, params: fold_params, inferred: if step_declares_return { Present { value: Resolved { node: fold_acc } } } else { none },
         return_cardinality: Required, uses: [], body: none, transport: none,
         properties: [], type_annotation: none, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
@@ -9624,7 +9722,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
+            let remaining_results = infer_fold_step_args(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), emissions: first_result.emissions }],
               remaining_results
@@ -9795,13 +9893,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
         let refined_call_fold_acc_type: Node? = match call_fold_acc_type {
-          Present { value: acc } =>
-            if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
-              match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-                Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
-                Absent => call_fold_acc_type
-              }
-            } else { call_fold_acc_type }
+          Present { value: acc } => Present { value: fold_carrier_closed_at_step(carrier: acc, typed_args: typed_args, scope: scope) }
           Absent => none
         }
         let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
@@ -10202,17 +10294,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
       let mc_arg_contract = declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices, expand_field_type: n => expand_type_for_field_access(n: n, env: scope.type_env, module_name: scope.module_name).resolved)
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
+      let mc_arg_infer_results = infer_fold_step_args(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_emissions = infer_emissions_concat_all(chunks: map(mc_arg_infer_results, air => air.emissions))
       let refined_fold_acc_type: Node? = match fold_acc_type {
-        Present { value: acc } =>
-          if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) {
-            match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-              Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
-              Absent => fold_acc_type
-            }
-          } else { fold_acc_type }
+        Present { value: acc } => Present { value: fold_carrier_closed_at_step(carrier: acc, typed_args: typed_mc_args, scope: scope) }
         Absent => none
       }
       let method_resolution = resolve_known_method_node(
@@ -10330,12 +10416,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       // formal unapplied, to the first-wins prefer_specific_type, which returned it and dropped T: a
       // fold accumulator refined from that lambda rendered as `Option<Present<_>>`. The declaration is
       // identified by its declaring site against the kernel Optional owner, never by spelling.
-      let joined_arm_types = inhabited_join_types(types: arm_body_types, scope: scope)
-      let unified_arm_type = match joined_arm_types |> first {
-        Present { value: first_type } =>
-          joined_arm_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
-            prefer_specific_type(left: acc, right: t, source_indices: scope.type_env.source_indices)
-          )
+      let unified_arm_type = match branch_join_type(types: arm_body_types, scope: scope) {
+        Present { value: joined } => joined
         Absent => scrut_rt
       }
       let arm_infer_results = if is_fully_resolved(n: unified_arm_type, source_indices: scope.type_env.source_indices) {
@@ -10471,8 +10553,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let else_rt = resolved_type(n: else_typed)
           let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
           let branch_declaration_yields = inhabited_branch_types |> count == 1
-          let unified = match inhabited_branch_types |> first {
-            Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }
+          let unified = match branch_join_type(types: [then_rt, else_rt], scope: scope) {
+            Present { value: joined } => joined
             Absent => prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
           }
           let branch_diags = if branch_declaration_yields || node_type_compatible(

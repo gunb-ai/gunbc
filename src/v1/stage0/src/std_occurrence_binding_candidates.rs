@@ -564,7 +564,8 @@ pub fn module_paths_validate_transport(
     {
         let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
             std::option::Option::None,
-            |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
+            |refusal: Option<Rc<OccurrenceModulePathIndexRefusal>>,
+             declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
                 Some(_) => refusal.clone(),
                 std::option::Option::None => module_exposure_declaration_missing_path_refusal(
                     module_by_occurrence.clone(),
@@ -577,7 +578,8 @@ pub fn module_paths_validate_transport(
             Some(refusal) => Some(refusal.clone()),
             std::option::Option::None => transport.references.clone().iter().cloned().fold(
                 std::option::Option::None,
-                |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
+                |refusal: Option<Rc<OccurrenceModulePathIndexRefusal>>,
+                 reference: Rc<ReferenceOccurrence>| match refusal.clone() {
                     Some(_) => refusal.clone(),
                     std::option::Option::None => reference_missing_module_path_refusal(
                         module_by_occurrence.clone(),
@@ -602,7 +604,8 @@ pub fn exposure_validate_transport_declarations(
 ) -> Option<Rc<DeclarationExposureIndexRefusal>> {
     declarations.iter().cloned().fold(
         std::option::Option::None,
-        |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
+        |refusal: Option<Rc<DeclarationExposureIndexRefusal>>,
+         declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
             Some(_) => refusal.clone(),
             std::option::Option::None => match v1_rt::map_get(
                 &exposure_by_occurrence,
@@ -640,7 +643,8 @@ pub fn authored_order_validate_transport(
     {
         let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
             std::option::Option::None,
-            |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
+            |refusal: Option<Rc<AuthoredOrderIndexRefusal>>,
+             declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
                 Some(_) => refusal.clone(),
                 std::option::Option::None => authored_order_validate_transport_occurrence(
                     order_by_occurrence.clone(),
@@ -652,7 +656,8 @@ pub fn authored_order_validate_transport(
             Some(refusal) => Some(refusal.clone()),
             std::option::Option::None => transport.references.clone().iter().cloned().fold(
                 std::option::Option::None,
-                |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
+                |refusal: Option<Rc<AuthoredOrderIndexRefusal>>,
+                 reference: Rc<ReferenceOccurrence>| match refusal.clone() {
                     Some(_) => refusal.clone(),
                     std::option::Option::None => authored_order_validate_transport_occurrence(
                         order_by_occurrence.clone(),
@@ -3114,22 +3119,26 @@ pub fn section13_first_duplicate_law(
 ) -> Option<Section13PopulationLawId> {
     rows.clone().iter().cloned().fold(
         std::option::Option::None,
-        |found: _, row: Rc<Section13PopulationLawRosterRow>| match found.clone() {
-            Some(_) => found.clone(),
-            std::option::Option::None => {
-                if (rows.iter().cloned().fold(
-                    0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| match (row.law.clone()
-                        == other.law.clone())
+        |found: Option<Section13PopulationLawId>, row: Rc<Section13PopulationLawRosterRow>| {
+            match found.clone() {
+                Some(_) => found.clone(),
+                std::option::Option::None => {
+                    if (rows.iter().cloned().fold(
+                        0,
+                        |count: i64, other: Rc<Section13PopulationLawRosterRow>| match (row
+                            .law
+                            .clone()
+                            == other.law.clone())
+                        {
+                            true => v1_rt::int_add(count.clone(), 1),
+                            false => count.clone(),
+                        },
+                    ) > 1)
                     {
-                        true => v1_rt::int_add(count.clone(), 1),
-                        false => count.clone(),
-                    },
-                ) > 1)
-                {
-                    Some(row.law.clone())
-                } else {
-                    std::option::Option::None
+                        Some(row.law.clone())
+                    } else {
+                        std::option::Option::None
+                    }
                 }
             }
         },
@@ -3188,7 +3197,9 @@ pub fn section13_observation_joins_receipt(
 ) -> Option<bool> {
     observations.iter().cloned().fold(
         std::option::Option::None,
-        |found: _, observation: Rc<Section13ExactHeadExecutionObservation>| match found.clone() {
+        |found: Option<bool>, observation: Rc<Section13ExactHeadExecutionObservation>| match found
+            .clone()
+        {
             Some(_) => found.clone(),
             std::option::Option::None => {
                 if (crate::std_decl_ref::declaration_ref_eq(
