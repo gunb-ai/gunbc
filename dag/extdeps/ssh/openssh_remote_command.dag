@@ -49,6 +49,7 @@ type OpenSshRemoteCommandRelease {
   release_name: NonEmptyStr
   client_source: ExternalAuthority
   server_source: ExternalAuthority
+  version_source: ExternalAuthority
 }
 
 data openssh_remote_command_releases: List<OpenSshRemoteCommandRelease> = [
@@ -56,11 +57,13 @@ data openssh_remote_command_releases: List<OpenSshRemoteCommandRelease> = [
     release_name: "9.6p1"
     client_source: openssh_client_command_authority
     server_source: openssh_server_command_authority
+    version_source: openssh_version_authority
   },
   OpenSshRemoteCommandRelease {
     release_name: "10.0p2"
     client_source: ExternalAuthority { uri: Uri { scheme: Https locator: "github.com/openssh/openssh-portable/blob/V_10_0_P2/ssh.c" } }
     server_source: ExternalAuthority { uri: Uri { scheme: Https locator: "github.com/openssh/openssh-portable/blob/V_10_0_P2/session.c" } }
+    version_source: ExternalAuthority { uri: Uri { scheme: Https locator: "github.com/openssh/openssh-portable/blob/V_10_0_P2/version.h" } }
   },
 ]
 

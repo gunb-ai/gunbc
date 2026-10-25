@@ -385,21 +385,7 @@ service shell.Passwd {
 // ONE POSIX sh RE-PARSE OF A COMMAND STRING, the command carried as ONE argv word (sh(1) -c): no quoting wraps it, so
 // what the shell parses is exactly the string handed over.
 service shell.Sh {
-  operation Reparse {
-    requires none
-    input { command: NonEmptyStr }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["sh", "-c", "{command}"] }
-    exit {
-      0 => Unit "the command ran"
-      nonzero => String "the command exited non-zero"
-    }
-  }
-  // The same re-parse under a NAMED shell (the user's login shell, as sshd runs a remote command: shell -c command).
+  // A re-parse under a NAMED shell (the user's login shell, as sshd runs a remote command: shell -c command).
   operation ReparseWith {
     requires none
     input { shell: NonEmptyStr, command: NonEmptyStr }
