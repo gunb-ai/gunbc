@@ -37,6 +37,7 @@ import gunbc.review_sheet_projection {
   DerivedErasureMark,
 }
 import std.measure { DisplayPixelCount }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.google.sheets
 import extdeps.google.sheets {
   SheetsBooleanConditionType,
@@ -55,6 +56,7 @@ import extdeps.google.sheets {
   SheetsColorRead,
   SheetsCellFormatRead,
   SheetsCellDataRead,
+  SheetsDimensionPropertiesRead,
   sheets_color_channel_read,
 }
 import std.algebra { fold_list, skip }
@@ -622,7 +624,7 @@ fn color_is_same_swatch(observed: SheetsColorRead, desired: SheetsColor, inclusi
 }
 
 type FormatObservation
-  = FormatObserved { frozen_rows: Int, header: SheetsCellFormatRead?, rule_count: Int, column_widths: List<Int?> }
+  = FormatObserved { frozen_rows: Int, header: SheetsCellFormatRead?, rule_count: Int, column_widths: List<DisplayPixelCount?> }
   | FormatUnreadable { cause: NonEmptyStr }
 
 // THE SECOND READ IS UNRANGED AND CARRIES NO GRID DATA, so the conditional rules are not filtered
@@ -643,11 +645,15 @@ fn read_format_meta(tab: LocatedReviewTab, grid: SpreadsheetRead) -> FormatObser
           match header_format_of(read: grid, sheet_id: tab.sheet_id) {
             HeaderFormatUnreadable { cause: c } => FormatUnreadable { cause: c }
             HeaderFormatRead { format: h } =>
-              FormatObserved {
-                frozen_rows: observed_frozen_rows(sheet: meta_sheet),
-                header: h,
-                rule_count: observed_rule_count(sheet: meta_sheet),
-                column_widths: observed_column_widths(read: grid, sheet_id: tab.sheet_id),
+              match observed_column_widths(read: grid, sheet_id: tab.sheet_id) {
+                ColumnWidthsRefused { cause: c } => FormatUnreadable { cause: c }
+                ColumnWidthsRead { widths: ws } =>
+                  FormatObserved {
+                    frozen_rows: observed_frozen_rows(sheet: meta_sheet),
+                    header: h,
+                    rule_count: observed_rule_count(sheet: meta_sheet),
+                    column_widths: ws,
+                  }
               }
           }
       }
@@ -858,21 +864,48 @@ fn observed_rule_count(sheet: SheetsSheetRead) -> Int {
 }
 
 // THE WIDTHS COME BACK WITH THE HEADER GRID READ, one pixelSize per column of the header range, so
-// they cost nothing beyond the field in the mask. An absent pixelSize is an unread width and never
-// matches a desired one.
-fn observed_column_widths(read: SpreadsheetRead, sheet_id: Int) -> List<Int?> {
+// they cost nothing beyond the field in the mask. The wire's Int crosses to DisplayPixelCount HERE,
+// through std.checked_arithmetic checked_int_to_nat, and nowhere later: an absent pixelSize is an
+// unread width and never matches a desired one, but a pixelSize no Nat holds (negative, or past the
+// magnitude) is not a width at all, so the whole reading refuses rather than reading as a mismatch
+// the converge would "repair" by writing over an answer it did not understand.
+type ColumnWidthsReading
+  = ColumnWidthsRead { widths: List<DisplayPixelCount?> }
+  | ColumnWidthsRefused { cause: NonEmptyStr }
+
+fn column_widths_of(cols: List<SheetsDimensionPropertiesRead>) -> ColumnWidthsReading {
+  let invalid = filter(enumerate(cols), p => match p.second.pixelSize {
+    Present { value: px } => match checked_int_to_nat(n: px) { Absent => true  Present { value: _ } => false }
+    Absent => false
+  })
+  if count(invalid) > 0 {
+    ColumnWidthsRefused {
+      cause: join(["the grid read answered a pixelSize no display width holds at column index ", join(map(invalid, p => to_string(p.first)), ", "), ", so the widths could not be observed"], "") as NonEmptyStr
+    }
+  } else {
+    ColumnWidthsRead { widths: map(cols, c => match c.pixelSize {
+      Absent => none
+      Present { value: px } => match checked_int_to_nat(n: px) {
+        Absent => none
+        Present { value: n } => Present { value: DisplayPixelCount { pixels: n } }
+      }
+    }) }
+  }
+}
+
+fn observed_column_widths(read: SpreadsheetRead, sheet_id: Int) -> ColumnWidthsReading {
   match located_sheet(read: read, sheet_id: sheet_id) {
-    Absent => []
+    Absent => ColumnWidthsRead { widths: [] }
     Present { value: sheet } =>
       match sheet.data {
-        Absent => []
+        Absent => ColumnWidthsRead { widths: [] }
         Present { value: grids } =>
           match first_grid(items: grids) {
-            Absent => []
+            Absent => ColumnWidthsRead { widths: [] }
             Present { value: grid } =>
               match grid.columnMetadata {
-                Absent => []
-                Present { value: cols } => map(cols, c => c.pixelSize)
+                Absent => ColumnWidthsRead { widths: [] }
+                Present { value: cols } => column_widths_of(cols: cols)
               }
           }
       }
@@ -1002,14 +1035,14 @@ fn desired_rule_count(rules: List<FormatRule>) -> Int {
 // first width that differed raised a type error instead of reading as wrong (the remediation RED
 // found it; no earlier claim compared a width that differed). Each column is matched as the
 // (index, width) pair it is, so the optional layer is the width's own.
-fn width_matches(observed: Int?, desired: ColumnWidthRequest) -> Bool {
+fn width_matches(observed: DisplayPixelCount?, desired: ColumnWidthRequest) -> Bool {
   match observed {
-    Present { value: px } => px == desired.pixel_size.pixels
+    Present { value: w } => w.pixels == desired.pixel_size.pixels
     Absent => false
   }
 }
 
-fn width_is_observed(observed: List<Int?>, desired: ColumnWidthRequest) -> Bool {
+fn width_is_observed(observed: List<DisplayPixelCount?>, desired: ColumnWidthRequest) -> Bool {
   count(filter(enumerate(observed), p => p.first == desired.column_index && width_matches(observed: p.second, desired: desired))) > 0
 }
 
@@ -1018,10 +1051,10 @@ type FormatTermReading {
   frozen_ok: Bool
   header_ok: Bool
   rule_count: Int
-  column_widths: List<Int?>
+  column_widths: List<DisplayPixelCount?>
 }
 
-fn format_terms_of(rows: Int, h: SheetsCellFormatRead?, rules: Int, widths: List<Int?>, inclusive_max: Int, header_bg: SheetsColor, header_fg: SheetsColor) -> FormatTermReading {
+fn format_terms_of(rows: Int, h: SheetsCellFormatRead?, rules: Int, widths: List<DisplayPixelCount?>, inclusive_max: Int, header_bg: SheetsColor, header_fg: SheetsColor) -> FormatTermReading {
   FormatTermReading {
     frozen_ok: rows == review_sheet_header_row_count,
     header_ok: header_matches(h: h, inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg),

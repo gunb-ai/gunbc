@@ -3,7 +3,8 @@ module test.claim.realization_census_sheet_witness
 import std.optional { Absent, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { FreeSemigroup, skip, take_prefix }
-import extdeps.google.sheets { hermetic_get_values_tab }
+import extdeps.google.sheets { hermetic_get_values_tab, SheetsDimensionPropertiesRead }
+import std.measure { DisplayPixelCount }
 import gunbc.repository_census_observation { repository_census_row_count }
 import gunbc.review_sheet_projection {
   ReviewSheetProjection,
@@ -66,6 +67,9 @@ import gunbc.review_sheet_format_actuator {
   FormatRemediationRefused,
   format_remediation,
   format_remediation_shape,
+  ColumnWidthsRead,
+  ColumnWidthsRefused,
+  column_widths_of,
 }
 import gunbc.review_sheet_kind {
   ReviewSheetKind,
@@ -476,14 +480,14 @@ fn modules_plan() -> FormatRequestPlan? {
 
 // The widths the plan wants, read back as Sheets would report them; `wrong` names one column whose
 // observed width is off by one pixel.
-fn observed_width_at(p: FormatRequestPlan, i: Int, wrong: Int) -> Int? {
+fn observed_width_at(p: FormatRequestPlan, i: Int, wrong: Int) -> DisplayPixelCount? {
   match first(filter(p.widths, w => w.column_index == i)) {
-    Present { value: w } => Present { value: if i == wrong { w.pixel_size.pixels + 1 } else { w.pixel_size.pixels } }
+    Present { value: w } => Present { value: if i == wrong { DisplayPixelCount { pixels: w.pixel_size.pixels + 1 } } else { w.pixel_size } }
     Absent => none
   }
 }
 
-fn observed_widths(p: FormatRequestPlan, wrong: Int) -> List<Int?> {
+fn observed_widths(p: FormatRequestPlan, wrong: Int) -> List<DisplayPixelCount?> {
   map([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], i => observed_width_at(p: p, i: i, wrong: wrong))
 }
 
@@ -519,4 +523,22 @@ test fn zero_observed_rules_add_the_full_set_and_any_other_count_refuses() -> Bo
   remediation_shape(rule_count: 0, wrong: -1) == join(["0,0,", to_string(modules_rule_count()), ",0"], "")
     && remediation_shape(rule_count: modules_rule_count() * 2, wrong: -1) == "refused"
     && remediation_shape(rule_count: 1, wrong: -1) == "refused"
+}
+
+// ── the observed width crosses to a typed value at the read ──────────────────────────────────
+// SUPPLIED COLUMN METADATA AT THE WIRE BOUNDARY: column_widths_of is what observed_column_widths
+// hands each grid read's columnMetadata to, on the route read_format_meta takes.
+fn width_reading_text(cols: List<SheetsDimensionPropertiesRead>) -> String {
+  match column_widths_of(cols: cols) {
+    ColumnWidthsRefused { cause: _ } => "refused"
+    ColumnWidthsRead { widths: ws } => join(map(ws, w => match w { Present { value: d } => to_string(d.pixels)  Absent => "unread" }), ",")
+  }
+}
+
+test fn a_negative_pixel_size_refuses_the_width_reading_rather_than_reading_as_a_mismatch() -> Bool {
+  width_reading_text(cols: [SheetsDimensionPropertiesRead { pixelSize: Present { value: 120 } }, SheetsDimensionPropertiesRead { pixelSize: Present { value: -1 } }]) == "refused"
+}
+
+test fn nonnegative_and_absent_pixel_sizes_read_as_widths_and_unread() -> Bool {
+  width_reading_text(cols: [SheetsDimensionPropertiesRead { pixelSize: Present { value: 120 } }, SheetsDimensionPropertiesRead { pixelSize: none }, SheetsDimensionPropertiesRead { pixelSize: Present { value: 0 } }]) == "120,unread,0"
 }
