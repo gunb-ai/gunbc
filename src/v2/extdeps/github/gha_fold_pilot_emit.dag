@@ -13,19 +13,13 @@ import std.algebra { for_all }
 import std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_is_absent
 }
 
 type GhaPilotStepEmit
   = GhaPilotRunEmit { run: String }
   | GhaPilotUsesEmit { uses: ActionRelease }
-
-fn optional_is_absent<T>(opt: Optional<T>) -> Bool {
-  match opt {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
 
 fn gha_pilot_optionals_all_absent(checks: List<Bool>) -> Bool {
   for_all(xs: checks, predicate: fn(b) { b })

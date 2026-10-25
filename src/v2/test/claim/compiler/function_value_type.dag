@@ -17,7 +17,7 @@ import v2.std.node { Atom, Authored, Edge, Node, Symbol, TypeNode, arrow_body_ta
 import v2.test.claim.compiler.free_monoid_structure_bound { fmb_declared, fmb_list_of }
 import v2.std.symbol_index { empty_symbol_index }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_is_absent, optional_present }
 import std.algebra { Cons, Empty, collection_sort_by_shape, empty_map, list_at_optional, list_snoc_item, map_insert }
 import std.types { Bool, List, String }
 
@@ -104,13 +104,6 @@ fn fvt_call_instance(tree_root: Node, facts_of: fn(Node) -> Optional<InferredFac
         Absent => optional_absent()
         Present { value: facts } => type_variable_instance_lookup(instances: facts.type_instances, binder: binder)
       }
-  }
-}
-
-fn fvt_absent<T>(o: Optional<T>) -> Bool {
-  match o {
-    Absent => true
-    Present { value: _ } => false
   }
 }
 
@@ -236,7 +229,7 @@ test fn fvt_supplied_frame_instance_and_body_type_assemble_the_signature() -> Bo
 test fn fvt_supplied_uninstantiated_input_is_undetermined() -> Bool {
   match fvt_supplied_value() {
     Absent => false
-    Present { value: _ } => fvt_absent(o: fvt_signature_with(instances_for: fn(_x) { [] }))
+    Present { value: _ } => optional_is_absent(opt: fvt_signature_with(instances_for: fn(_x) { [] }))
   }
 }
 
@@ -284,7 +277,7 @@ test fn fvt_a_carrier_instance_fixes_its_generator() -> Bool {
 test fn fvt_no_carrier_instance_fixes_no_generator() -> Bool {
   match fvt_sort_by_signature() {
     Absent => false
-    Present { value: _ } => fvt_absent(o: fvt_generator_after(instances: []))
+    Present { value: _ } => optional_is_absent(opt: fvt_generator_after(instances: []))
   }
 }
 
@@ -412,5 +405,5 @@ test fn fvt_supplied_arrow_inputs_pair_in_declared_not_stored_order() -> Bool {
 // positional guess.
 test fn fvt_supplied_arrow_without_an_order_learns_nothing() -> Bool {
   let produced = fvt_without_order(declared: fvt_produced_g())
-  fvt_absent(o: fvt_learned(produced: produced, binder: ^A)) && fvt_absent(o: fvt_learned(produced: produced, binder: ^R))
+  optional_is_absent(opt: fvt_learned(produced: produced, binder: ^A)) && optional_is_absent(opt: fvt_learned(produced: produced, binder: ^R))
 }

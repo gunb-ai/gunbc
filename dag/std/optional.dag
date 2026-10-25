@@ -12,6 +12,13 @@ fn optional_present<T>(value: T) -> Optional<T> {
   Present { value: value }
 }
 
+fn optional_is_absent<T>(opt: Optional<T>) -> Bool {
+  match opt {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 // Equality lifted through Optional: both absent, or both present with eq on the values. The Optional
 // sibling of std.algebra zip_eq, for element types whose equality is a route rather than derived `==`.
 fn optional_eq<T>(a: Optional<T>, b: Optional<T>, eq: fn(T, T) -> Bool) -> Bool {
