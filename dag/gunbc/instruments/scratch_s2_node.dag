@@ -1,0 +1,97 @@
+module gunbc.instruments.scratch_s2_node
+
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess }
+import std.integer { int_to_decimal_string }
+import std.algebra { fold_list }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.compiler.parse { PreparedGrammar }
+import v2.compiler.tokenize { PreparedLexRules }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.workflow.roster_import_sweep { RosterHeadRow, RosterHomeClosure, RosterHomeScope, RosterOutcome, RosterClean, RosterRefused, RosterApplyWritten, RosterApplyRefused, OneHome, OnlyOccurrences, KeepHead, roster_rows_for_scope, roster_home_sides, roster_home_closures, roster_census_text_rows, roster_applied, roster_refusal_text, roster_render_outcome }
+
+// SCRATCH, NEVER LANDED (branch scratch/s2-node): S2's apply route over v2.std.node on a fleet runner (a node.dag pass outruns
+// BuildBuddy's cap). The census before, the file converged IN MEMORY by roster_applied (the apply's own splice), the census
+// after, and the final text between markers, because a fleet runner's writes are not kept.
+data s2_path: String = "src/v2/std/node.dag"
+
+type S2Pass {
+  text: String
+  log: String
+  done: Bool
+}
+
+fn s2_scope() -> RosterHomeScope {
+  OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { call: "sort_by", within: "symbols_are_one_distinct_set", texts: ["symbol_total_order()"] } }
+}
+
+// The new heads' binding: list_sort_by_key read as a KeepHead row of std.algebra, so the census's own classifier counts its
+// heads, and its outcome is Clean exactly when every such head is free and the module imports it from std.algebra.
+fn s2_to_row() -> RosterHeadRow {
+  RosterHeadRow { call: "list_sort_by_key", import_name: "list_sort_by_key", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+}
+
+fn scratch_s2_node_wire() -> CliWireResponse {
+  CliWirePrintable { bytes: s2_report(), exit: ExitSuccess }
+}
+
+fn s2_report() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "S2 grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } => s2_run(prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn s2_census(label: String, text: String, rows: List<RosterHeadRow>, closures: List<RosterHomeClosure>, call: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let c = roster_census_text_rows(sides: roster_home_sides(rows: rows), companions: [], path: s2_path, text: text, prepared: prepared, lex: lex, candidates: rows, closures: closures, census_call: Present { value: call })
+  "CENSUS-" + label + " " + s2_path + " call=" + call + " heads=" + int_to_decimal_string(value: c.heads) + " selected=" + int_to_decimal_string(value: c.selected) + "\n" + roster_render_outcome(path: s2_path, outcome: c.outcome) + "OUTCOME-" + label + " " + s2_outcome_word(outcome: c.outcome) + "\n"
+}
+
+fn s2_outcome_word(outcome: RosterOutcome) -> String {
+  match outcome {
+    RosterClean => "clean"
+    RosterRefused { reason: r } => "refused " + roster_refusal_text(reason: r)
+    _ => "planned"
+  }
+}
+
+fn s2_run(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let scope = s2_scope()
+  let rows = roster_rows_for_scope(scope: scope)
+  let closures = roster_home_closures(root: "", scope: scope)
+  let read = Filesystem.Read(path: s2_path)
+  if read.success {
+    let before = s2_census(label: "BEFORE", text: read.content, rows: rows, closures: closures, call: "sort_by", prepared: prepared, lex: lex)
+    let last = fold_list(xs: [1, 2, 3, 4], empty: S2Pass { text: read.content, log: "", done: false }, cons: fn(acc, i) { s2_pass(acc: acc, i: i, rows: rows, closures: closures, prepared: prepared, lex: lex) })
+    let after = s2_census(label: "AFTER", text: last.text, rows: rows, closures: closures, call: "sort_by", prepared: prepared, lex: lex)
+    let bound = s2_census(label: "TO-BOUND", text: last.text, rows: [s2_to_row()], closures: closures, call: "list_sort_by_key", prepared: prepared, lex: lex)
+    before + last.log + after + bound + "FINAL-BEGIN\n" + last.text + "\nFINAL-END\n"
+  } else {
+    "S2 unreadable\n"
+  }
+}
+
+fn s2_pass(acc: S2Pass, i: Int, rows: List<RosterHeadRow>, closures: List<RosterHomeClosure>, prepared: PreparedGrammar, lex: PreparedLexRules) -> S2Pass {
+  if acc.done {
+    acc
+  } else {
+    s2_step(acc: acc, i: i, outcome: roster_census_text_rows(sides: roster_home_sides(rows: rows), companions: [], path: s2_path, text: acc.text, prepared: prepared, lex: lex, candidates: rows, closures: closures, census_call: Absent).outcome)
+  }
+}
+
+fn s2_step(acc: S2Pass, i: Int, outcome: RosterOutcome) -> S2Pass {
+  let head = "PASS " + int_to_decimal_string(value: i) + " "
+  match outcome {
+    RosterClean => S2Pass { text: acc.text, log: acc.log + head + "CLEAN\n", done: true }
+    RosterRefused { reason: r } => S2Pass { text: acc.text, log: acc.log + head + "REFUSED " + roster_refusal_text(reason: r) + "\n", done: true }
+    other => s2_applied(acc: acc, head: head, row: roster_render_outcome(path: s2_path, outcome: other), outcome: other)
+  }
+}
+
+fn s2_applied(acc: S2Pass, head: String, row: String, outcome: RosterOutcome) -> S2Pass {
+  match roster_applied(before: acc.text, outcome: outcome) {
+    RosterApplyRefused { reason: r } => S2Pass { text: acc.text, log: acc.log + head + "SPLICE-REFUSED " + roster_refusal_text(reason: r) + "\n", done: true }
+    RosterApplyWritten { content: c } => S2Pass { text: c, log: acc.log + head + row, done: false }
+  }
+}

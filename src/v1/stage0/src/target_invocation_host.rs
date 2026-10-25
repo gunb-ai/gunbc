@@ -688,6 +688,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("scratch-s2-node"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/scratch_s2_node.dag",
+                function: "scratch_s2_node_wire",
+            },
+        ),
+        (
             instrument_label("claim-coverage-census"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/claim_coverage_census_live.dag",
