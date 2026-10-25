@@ -1,0 +1,103 @@
+module gunbc.instruments.last_use_move_native
+
+import std.types { Int, List, String, Bool }
+import std.algebra { fold_list, list_push }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
+
+// THE MOVE-AT-LAST-USE FIXTURES, ON THE EMITTED PATH. v1.compiler.ownership moves a binding at a
+// by-value call argument only when that argument is the binding's one use, and authorizes the move at
+// that one OCCURRENCE (its std.occurrence_identity authored occurrence), never for the spelling. Each fixture below is
+// emitted by the seed, compiled by rustc and run, so a move the rule should not have made is a rustc
+// refusal (use of a moved value) before any case prints, and a case is held when the emitted function
+// returns the value an independently written reference computes. Which occurrences moved is read from
+// the emitted crate, not asserted here: the label's job is that every shape compiles and agrees.
+//
+//   single_use      the binding's one use is the argument: moved there.
+//   read_after      the binding is read again after the call: cloned at the call.
+//   shadow_inner    a lambda parameter `xs` whose one use is an argument, inside a function whose own
+//                   `xs` is read after the call: the lambda's occurrence moves, the outer stays cloned.
+//   shadow_outer    the reverse: the outer `xs` has one by-value use and a same-named lambda parameter
+//                   is read twice inside; the lambda's uses surface as captures under the same name,
+//                   so the outer is cloned too (conservative, never a move of the other binding).
+//   projected_after a by-value use followed by a field read of the same binding: cloned.
+//
+// NOT ON THE REQUIRED PATH: this label runs when invoked
+// (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type Holder {
+  items: List<Int>
+  tag: Int
+}
+
+fn ascending(i: Int, n: Int, acc: List<Int>) -> List<Int> {
+  if i >= n { acc } else { ascending(i: i + 1, n: n, acc: list_push(xs: acc, item: i)) }
+}
+
+fn fixture_input() -> List<Int> { ascending(i: 0, n: 64, acc: []) }
+
+fn single_use(xs: List<Int>) -> List<Int> {
+  list_push(xs: xs, item: 7)
+}
+
+fn read_after(xs: List<Int>) -> Int {
+  let ys = list_push(xs: xs, item: 7)
+  count(ys) * 1000 + count(xs)
+}
+
+fn shadow_inner(xs: List<Int>) -> Int {
+  let built = fold_list(xs: xs, empty: [], cons: fn(xs, item) { list_push(xs: xs, item: item * 2) })
+  count(built) * 1000 + count(xs)
+}
+
+fn shadow_outer(xs: List<Int>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(xs, item) { (xs + item + xs) % 1000003 })
+}
+
+fn holder_size(h: Holder) -> Int { count(h.items) }
+
+fn projected_after(p: Holder) -> Int {
+  holder_size(h: p) * 1000 + p.tag
+}
+
+// References: the same values, written with no shared or shadowed names.
+fn doubled_reference(items: List<Int>) -> List<Int> {
+  fold_list(xs: items, empty: [], cons: fn(built, item) { list_push(xs: built, item: item * 2) })
+}
+
+fn shadow_outer_reference(items: List<Int>) -> Int {
+  fold_list(xs: items, empty: 0, cons: fn(total, item) { (total + item + total) % 1000003 })
+}
+
+type FixtureCase {
+  name: String
+  observed: Int
+  expected: Int
+}
+
+fn fixture_cases() -> List<FixtureCase> {
+  let items = fixture_input()
+  let n = count(items)
+  let pushed = single_use(xs: items)
+  [
+    FixtureCase { name: "single_use", observed: count(pushed) * 1000 + fold_list(xs: pushed, empty: 0, cons: fn(acc, x) { acc + x }), expected: (n + 1) * 1000 + fold_list(xs: items, empty: 7, cons: fn(acc, x) { acc + x }) },
+    FixtureCase { name: "read_after", observed: read_after(xs: items), expected: (n + 1) * 1000 + n },
+    FixtureCase { name: "shadow_inner", observed: shadow_inner(xs: items), expected: count(doubled_reference(items: items)) * 1000 + n },
+    FixtureCase { name: "shadow_outer", observed: shadow_outer(xs: items), expected: shadow_outer_reference(items: items) },
+    FixtureCase { name: "projected_after", observed: projected_after(p: Holder { items: items, tag: 5 }), expected: n * 1000 + 5 },
+  ]
+}
+
+fn verdict_word(held: Bool) -> String { if held { "held" } else { "not_held" } }
+
+fn case_line(c: FixtureCase) -> String {
+  concat("case ", c.name, " ", verdict_word(held: c.observed == c.expected), " observed=", to_string(value: c.observed), " expected=", to_string(value: c.expected), "\n")
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = fixture_cases()
+  let failed = count(filter(cases, c => c.observed != c.expected))
+  let terminal = if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " fixture(s) disagree with their reference") } } else { NativeClaimHeld }
+  NativeClaimReport { stdout: concat("roster ", join(map(cases, c => c.name), ","), "\n", join(map(cases, c => case_line(c: c)), "")), terminal: terminal }
+}

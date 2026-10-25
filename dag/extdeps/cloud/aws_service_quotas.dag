@@ -1,0 +1,114 @@
+module extdeps.cloud.aws_service_quotas
+
+import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.decimal { ExactDecimal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// AWS SERVICE QUOTAS, the reads the flex loop uses: GetServiceQuota, the applied value of one quota in
+// the region the call is sent to; ListServiceQuotas (paginated), from which a quota code named by its
+// quota name is resolved; and each quota's UsageMetric, the CloudWatch metric that counts account-wide
+// usage against it (read through extdeps.cloud.aws_cloudwatch). A separately versioned AWS service (API version 2019-06-24), so its own
+// module beside extdeps.cloud.aws_ec2. Read 2026-10-23. EC2 spot and on-demand GPU quotas are vCPU
+// counts, per region, and default to 0 for the G and VT family (EC2 User Guide, using-spot-limits), so a
+// region with an applied value of 0 offers nothing to this account whatever its spot price.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_GetServiceQuota.html" }
+}
+
+data aws_service_quotas_list_service_quotas_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_ListServiceQuotas.html" }
+}
+
+data aws_service_quotas_metric_info_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_MetricInfo.html" }
+}
+
+// The subject is the service; aws_service_quotas_api_version is its revision fact.
+data aws_service_quotas_api: NonEmptyStr = "AWS Service Quotas API"
+
+data aws_ec2_spot_limits_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-spot-limits.html" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.aws_service_quotas",
+      decl_name: "aws_service_quotas_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [aws_ec2_spot_limits_page, aws_service_quotas_list_service_quotas_page, aws_service_quotas_metric_info_page]
+}
+
+data aws_service_quotas_api_version: NonEmptyStr = "2019-06-24"
+
+// DECLARED FRONTIER (DESIGN 3c): nothing imports this module yet. Its consumer is the per-region quota read that excludes a 0-quota region before ranking, in the flex AWS
+// supplier row, PR 4 of gunbc.plans.flex_supplier_generalization.
+data aws_service_quotas_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_service_quotas for the flex AWS supplier row (gunbc.plans.flex_supplier_generalization PR 4) and a Plan-mode pass executes over these shapes.")
+
+data aws_service_quotas_ec2_service_code: NonEmptyStr = "ec2"
+
+// All G and VT Spot Instance Requests (vCPUs), documented in using-spot-limits with default 0, adjustable.
+data aws_quota_code_g_vt_spot_vcpus: NonEmptyStr = "L-3819A6DF"
+
+// Running On-Demand G and VT instances (vCPUs). The code is read from the Service Quotas console, not from
+// a documentation page, so it is a CANDIDATE code: the consumer resolves the quota by its name through
+// ListServiceQuotas and trusts this code only when the resolved quota carries it (a typed resolution
+// verdict in the consumer, not here).
+data aws_quota_code_g_vt_on_demand_vcpus: NonEmptyStr = "L-DB2E81BA"
+
+data aws_quota_name_g_vt_on_demand_vcpus: NonEmptyStr = "Running On-Demand G and VT instances"
+
+type AwsGetServiceQuotaRequest {
+  service_code: NonEmptyStr
+  quota_code: NonEmptyStr
+}
+
+// MetricDimensions is a string map on the wire; modeled as its entries.
+type AwsQuotaMetricDimension {
+  name: NonEmptyStr
+  value: String
+}
+
+// MetricInfo: the CloudWatch metric that counts usage against the quota (namespace AWS/Usage for EC2
+// vCPU quotas) and the statistic AWS recommends for comparing it with the quota (e.g. Maximum).
+type AwsQuotaMetricInfo {
+  metric_namespace: NonEmptyStr
+  metric_name: NonEmptyStr
+  metric_dimensions: List<AwsQuotaMetricDimension>
+  metric_statistic_recommendation: String?
+}
+
+// ServiceQuota. usage_metric is absent for a quota AWS does not meter; such a quota's usage is unread,
+// and the consumer refuses the candidate rather than reading it as 0 (plan section 3).
+type AwsServiceQuota {
+  service_code: NonEmptyStr
+  quota_code: NonEmptyStr
+  quota_name: String
+  value: ExactDecimal
+  unit: String
+  adjustable: Bool
+  usage_metric: AwsQuotaMetricInfo?
+}
+
+type AwsGetServiceQuotaResponse {
+  quota: AwsServiceQuota
+}
+
+// ListServiceQuotas, paged by next_token; the list is complete only when a page answers with no
+// next_token, so a name absent from an incomplete listing is unresolved, not absent.
+type AwsListServiceQuotasRequest {
+  service_code: NonEmptyStr
+  max_results: Int?
+  next_token: String?
+}
+
+type AwsListServiceQuotasResponse {
+  quotas: List<AwsServiceQuota>
+  next_token: String?
+}

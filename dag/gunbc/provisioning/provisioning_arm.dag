@@ -5,16 +5,16 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.site_pxe_edge_converge {
-  SitePxeEdgeChainloaderPin,
-  SitePxeEdgeChainloaderPinned,
-  SitePxeEdgeChainloaderUnpinned,
-  SitePxeEdgeChainloaderBuildReceipt,
-  SitePxeEdgeSecureBootStanding,
-  SecureBootObserved,
-  SecureBootUnobserved,
-  SecureBootRefused,
-  SecureBootVerdictRejected,
-  SecureBootVerdictBooted,
+  SitePxeEdgeChainPin,
+  SitePxeEdgeChainPinned,
+  SitePxeEdgeChainUnpinned,
+  SitePxeEdgePinnedChain,
+  ChainSecureBootNoUnsignedMember,
+  ChainSecureBootBooted,
+  ChainSecureBootUnobserved,
+  ChainSecureBootRefused,
+  ChainSecureBootRejected,
+  site_pxe_edge_chain_secure_boot,
 }
 
 // ── Sibling imports (cut 6): ONE block. Each module is another cut-6 work item's file, now on main (S0 swift-wren-451,
@@ -31,7 +31,7 @@ import gunbc.firmware_network_boot_standing {
   Refused,
 }
 // S3, PR #14281: the pinned Ubuntu arm64 network origin an attempt fetches from.
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin }
 // S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
 import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding, BindingBlocker }
 
@@ -63,7 +63,7 @@ type AttemptBinding {
 // absence of an origin or a seed is an Optional Absent, which the derivation reports as Unobserved.
 type DeliveryEvidence {
   firmware: FirmwareNetworkBootStanding
-  chainloader: SitePxeEdgeChainloaderPin
+  chain: SitePxeEdgeChainPin
   virtual_media: VirtualMediaStanding
   origin: UbuntuNetworkOrigin?
   seed: AltraAutoinstallSeedBinding?
@@ -81,7 +81,7 @@ type FirmwarePreparation
 
 type ArmMissingEvidence
   = FirmwareStandingNotObserved
-  | ChainloaderNotPinned { obligation: NonEmptyStr }
+  | LoaderChainNotPinned { obligation: NonEmptyStr }
   | SecureBootStandingNotObserved { why: NonEmptyStr }
   | VirtualMediaStandingNotObserved
   | OriginNotObserved
@@ -102,7 +102,7 @@ type ArmRefusalCause
 // new evidence or a human choosing a strategy, never by this value retrying itself.
 type ArmShape
   = ArmedPxeOrUefiHttp {
-      chainloader: SitePxeEdgeChainloaderBuildReceipt
+      chain: SitePxeEdgePinnedChain
       firmware: FirmwarePreparation
       origin: UbuntuNetworkOrigin
       seed: AltraAutoinstallSeedBinding
@@ -147,23 +147,24 @@ fn derive_pxe(evidence: DeliveryEvidence) -> ArmShape {
 }
 
 fn derive_pxe_with(evidence: DeliveryEvidence, firmware: FirmwarePreparation) -> ArmShape {
-  match evidence.chainloader {
-    SitePxeEdgeChainloaderUnpinned { obligation: o } => ArmUnobserved { missing: ChainloaderNotPinned { obligation: o } }
-    SitePxeEdgeChainloaderPinned { build: b } => match b.secure_boot {
-      SecureBootUnobserved { why: w } => ArmUnobserved { missing: SecureBootStandingNotObserved { why: w } }
-      SecureBootRefused { why: w } => ArmRefused { cause: SecureBootStandingRefused { why: w } }
-      SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: e } => ArmRefused { cause: SecureBootRejectsChainloader { evidence: e } }
-      SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: _ } => bind_origin_and_seed(evidence: evidence, build: b, firmware: firmware)
+  match evidence.chain {
+    SitePxeEdgeChainUnpinned { architecture: _, obligation: o } => ArmUnobserved { missing: LoaderChainNotPinned { obligation: o } }
+    SitePxeEdgeChainPinned { chain: c } => match site_pxe_edge_chain_secure_boot(chain: c) {
+      ChainSecureBootUnobserved { why: w } => ArmUnobserved { missing: SecureBootStandingNotObserved { why: w } }
+      ChainSecureBootRefused { why: w } => ArmRefused { cause: SecureBootStandingRefused { why: w } }
+      ChainSecureBootRejected { evidence: e } => ArmRefused { cause: SecureBootRejectsChainloader { evidence: e } }
+      ChainSecureBootBooted { evidence: _ } => bind_origin_and_seed(evidence: evidence, chain: c, firmware: firmware)
+      ChainSecureBootNoUnsignedMember => bind_origin_and_seed(evidence: evidence, chain: c, firmware: firmware)
     }
   }
 }
 
-fn bind_origin_and_seed(evidence: DeliveryEvidence, build: SitePxeEdgeChainloaderBuildReceipt, firmware: FirmwarePreparation) -> ArmShape {
+fn bind_origin_and_seed(evidence: DeliveryEvidence, chain: SitePxeEdgePinnedChain, firmware: FirmwarePreparation) -> ArmShape {
   match evidence.origin {
     Absent => ArmUnobserved { missing: OriginNotObserved }
     Present { value: o } => match evidence.seed {
       Absent => ArmUnobserved { missing: SeedBindingNotObserved }
-      Present { value: s } => ArmedPxeOrUefiHttp { chainloader: build, firmware: firmware, origin: o, seed: s }
+      Present { value: s } => ArmedPxeOrUefiHttp { chain: chain, firmware: firmware, origin: o, seed: s }
     }
   }
 }
