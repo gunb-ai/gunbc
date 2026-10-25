@@ -11570,7 +11570,7 @@ fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_ar
 
 fn alias_chain_arity_diagnostics(carrier: Node, carrier_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
   let type_args = carrier.children
-  if carrier_name == "" || (type_args |> count) == 0 || is_container_type(name: carrier_name) { [] }
+  if carrier_name == "" || (type_args |> count) == 0 { [] }
   else {
     match lookup_type_by_name(env: env, name: carrier_name) {
       Present { value: target } =>

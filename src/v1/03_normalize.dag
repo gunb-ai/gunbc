@@ -5,7 +5,7 @@ import v1.std.core {
   InferredNode, Resolved, CompilerError,
   ExprData, NoExprData,
   make_error_node, module_items, authored_name_at,
-  NoConnective, ArityMismatch, ContainerSpellingUnrecognized,
+  NoConnective, ContainerSpellingUnrecognized,
   ContainerSpellingVerdict, ContainerSpellingDeclared, NotAContainerSpelling,
   ContainerSpellingUnknown, authored_container_spelling_verdict
 }
@@ -20,17 +20,13 @@ type NormalizeResult {
 }
 
 fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
-  let has_structure = match n.body { Present { value: _ } => true  Absent => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
   let is_expr = match n.expr_data { NoExprData => false  _ => true }
   let nname = authored_name_at(source_indices: source_indices, node: n)
   let self_diags = if is_expr { [] } else { match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
-    ContainerSpellingDeclared { arity: expected } =>
-      if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure {
-        [make_error_node(
-          diagnostic: ArityMismatch { name: nname, expected: expected, got: 0, span: n.span },
-          module_name: module_name
-        )]
-      } else { [] }
+    // A bare container spelling is not refused here: normalize runs before any declaration is known, so
+    // it cannot tell the kernel's List from a module's own. The arity of every type use is one rule at
+    // resolve (v1.compiler.resolve type_use_arity_diagnostics), read from the declaration it resolves to.
+    ContainerSpellingDeclared { arity: _ } => []
     ContainerSpellingUnknown { container_leaf: leaf } =>
       [make_error_node(
         diagnostic: ContainerSpellingUnrecognized { name: nname, container_leaf: leaf, span: n.span },

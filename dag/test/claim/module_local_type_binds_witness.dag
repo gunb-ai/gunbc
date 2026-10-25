@@ -1,0 +1,84 @@
+module test.claim.module_local_type_binds_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a type use binds the declaration it resolves to, never its spelling (tidy-ant-251 ruling,
+// 2026-10-25: a module-local declaration beats an ambient/kernel name in every position, type and value
+// alike), and its arity is that declaration's (v1.compiler.resolve declaration_is_container_family,
+// type_use_arity_diagnostics -- one arity rule for bare and applied uses).
+//
+// ROUTE: each fixture is compiled and rendered by the seed's real emit path (compile_dag_rust_emit_check).
+// A refusal arm is paired with a control that differs only in the offending construct, because the check
+// answers false for more than one reason.
+//
+// RED BEFORE THE REPAIR, measured on main 88e8991e557 with the seed built from that tree: a module's own
+// non-generic List refused "type List expects 1 type arguments, got 0" (its field `tail: List` bound the
+// kernel List), and `Map<String>` against std.types' two-parameter Map was accepted.
+
+fn local_list_source(module_leaf: String, body: String) -> String {
+  concat(concat(concat("module mltb.", module_leaf), "\n\nimport std.types { Int }\n\n"), body)
+}
+
+fn std_types_source(module_leaf: String, body: String) -> String {
+  concat(concat(concat("module mltb.", module_leaf), "\n\nimport std.types { Int, List, Map, String }\n\n"), body)
+}
+
+// THE CLIMB: a module's own non-generic List binds in its own field and return type.
+test fn a_module_local_non_generic_list_binds_its_own_declaration_test() -> Bool {
+  compile_dag_rust_emit_check(
+    local_list_source(module_leaf: "nongeneric", body: "type List = Nil | Cons { head: Int, tail: List }\n\nfn upto() -> List { Cons { head: 1, tail: Nil } }\n"),
+    "src/mltb_nongeneric.rs", [], []
+  )
+}
+
+// CONTROL: a module's own generic List, built by its own variants.
+test fn a_module_local_generic_list_typechecks_test() -> Bool {
+  compile_dag_rust_emit_check(
+    local_list_source(module_leaf: "generic", body: "type List<T> = Nil | Cons { head: T, tail: List<T> }\n\nfn local_nil() -> List<Int> { Nil }\n\nfn local_cons() -> List<Int> { Cons { head: 1, tail: Nil } }\n"),
+    "src/mltb_generic.rs", [], []
+  )
+}
+
+// THE CLIMB (warm-crane-888's RED, gunbc.recurring_failure_mode a_wrong_arity_use_of_a_container_alias_is_silently_accepted):
+// a container-alias use supplies the declaration's arity or refuses. The pair differs only in the arguments.
+test fn a_wrong_arity_container_alias_use_refuses_test() -> Bool {
+  compile_dag_rust_emit_check(std_types_source(module_leaf: "maptwo", body: "fn keep(m: Map<String, Int>) -> Map<String, Int> { m }\n"), "src/mltb_maptwo.rs", [], [])
+    && !compile_dag_rust_emit_check(std_types_source(module_leaf: "mapone", body: "fn keep(m: Map<String>) -> Map<String> { m }\n"), "src/mltb_mapone.rs", [], [])
+}
+
+// PRESERVED: a bare kernel container still refuses -- now by the declaration's arity at resolve, not by its
+// spelling at normalize -- at the root and nested.
+test fn a_bare_kernel_container_still_refuses_test() -> Bool {
+  compile_dag_rust_emit_check(std_types_source(module_leaf: "listone", body: "fn keep(xs: List<Int>) -> List<Int> { xs }\n"), "src/mltb_listone.rs", [], [])
+    && !compile_dag_rust_emit_check(std_types_source(module_leaf: "listbare", body: "fn keep(xs: List) -> Int { 0 }\n"), "src/mltb_listbare.rs", [], [])
+    && !compile_dag_rust_emit_check(std_types_source(module_leaf: "listnested", body: "fn keep(xs: List<List>) -> Int { 0 }\n"), "src/mltb_listnested.rs", [], [])
+}
+
+// PIN, NOT A PASS: the seed still ACCEPTS a kernel list returned where the module's own List<Int> is
+// declared. The return position now binds the local List; what remains is deciding a kernel MINT
+// against a module-local DECLARATION, which needs the kernel-carrier relation (which declaration carries
+// a kernel type) -- the same relation that makes kernel Bool and std's declared Bool one type.
+// RETIRES WHEN that relation decides the pair: valiant-badger-855's kernel-Int crossing PR (after
+// #14769, not yet opened; owner per tidy-raven-397). PR B (sunny-deer-180, node_type_equals_core through
+// the #15091 identity verdict) deliberately leaves mixed kernel/declaration pairs undecided, so it does
+// not retire this pin. When it is retired this arm goes red and is flipped to the refusal it should
+// assert; v2 already refuses it (arrow_body_does_not_inhabit_declared_return).
+test fn pin_the_seed_still_accepts_a_kernel_list_as_a_local_list_until_kernel_carrier_relation_test() -> Bool {
+  compile_dag_rust_emit_check(
+    local_list_source(module_leaf: "kernelliteral", body: "type List<T> = Nil | Cons { head: T, tail: List<T> }\n\nfn kernel_literal() -> List<Int> { [1, 2] }\n"),
+    "src/mltb_kernelliteral.rs", [], []
+  )
+}
+
+// PIN, NOT A PASS: the Rust emitter still lowers the module's own List<Int> by its spelling to the kernel
+// carrier while the body builds the module's enum (rustc refuses the crate). RETIRES WHEN gunbc#13936
+// (wise-lark-652's declaration-identity re-key) covers collection lowering: this arm then goes red and is
+// flipped to assert the module's own enum is emitted.
+test fn pin_the_emitter_still_lowers_a_local_list_by_spelling_until_13936_test() -> Bool {
+  compile_dag_rust_emit_check(
+    local_list_source(module_leaf: "emitted", body: "type List<T> = Nil | Cons { head: T, tail: List<T> }\n\nfn local_nil() -> List<Int> { Nil }\n"),
+    "src/mltb_emitted.rs", ["pub fn local_nil() -> Rc<Vec<i64>>"], []
+  )
+}
