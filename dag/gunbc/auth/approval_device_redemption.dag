@@ -558,7 +558,7 @@ fn list_google_enrolments(root: NonEmptyStr) -> GoogleEnrolmentListing {
 // one's -- so it is a WINDOWED compare-and-set slot in the device store (gunbc.durable_cas_file_store
 // file_compare_and_set_windowed), never a growing generation line and never a last-write-wins file.
 // It used to be the second: an owner-only create-new file under a root nothing ensured, so a ROTATED
-// token -- the frontier's own case (approval_device_routes_frontier: "a rotated APNs token to reach
+// token -- the device routes' own case ("a rotated APNs token to reach
 // the server without a new enrolment") -- refused on the existing file. The key is server-derived from
 // the verified enrolment's id, and its "push-" prefix keeps it out of list_google_enrolments.
 data approval_push_slot_window_k: Int = 2

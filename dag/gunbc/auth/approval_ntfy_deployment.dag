@@ -44,6 +44,11 @@ data approval_ntfy_topic: NtfyTopic = "gunbc-approvals" as NtfyTopic
 // :443 already carries the dashboard, so the approval server takes its own.
 data approval_ntfy_serve_port: Port = 8443
 
+// WHERE THE CUSTODY CONVERGE DELIVERS THE PUBLISHER TOKEN (gunbc.fleet.host_credential_custody_converge
+// ApprovalNtfyPublisherToken). Nothing reads it since the publish was deleted; it stays while the
+// token is still placed on srv1, and goes with the retirement above.
+data approval_publisher_token_path: NonEmptyStr = "/etc/gunbc-ntfy/publisher-token"
+
 fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
   tailnet_base_url_from(host: operator_host_srv1 as NonEmptyStr, domain: domain, port: Present { value: approval_ntfy_serve_port })
 }
