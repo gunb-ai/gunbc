@@ -1266,7 +1266,7 @@ pub fn binop_symbol(
     algebra_field: Option<AlgebraFieldKind>,
 ) -> Option<String> {
     {
-        let ops = target_operators(target.clone());
+        let ops = target_operators(target);
         let op_matching = Rc::new({
             let mut __result = Vec::new();
             for spec in ops.iter().cloned() {
@@ -1354,56 +1354,50 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
 }
 
 pub fn scaffold_for_target(target: RenderTarget) -> Rc<ProjectScaffold> {
-    language_spec_for_target(target.clone()).scaffold.clone()
+    language_spec_for_target(target).scaffold.clone()
 }
 
 pub fn serialization_for_target(target: RenderTarget) -> Rc<SerializationSpec> {
-    language_spec_for_target(target.clone())
-        .serialization
-        .clone()
+    language_spec_for_target(target).serialization.clone()
 }
 
 pub fn test_conventions_for_target(target: RenderTarget) -> Rc<TestConventions> {
-    language_spec_for_target(target.clone())
-        .test_conventions
-        .clone()
+    language_spec_for_target(target).test_conventions.clone()
 }
 
 pub fn visibility_for_target(target: RenderTarget) -> Rc<VisibilitySpec> {
-    language_spec_for_target(target.clone()).visibility.clone()
+    language_spec_for_target(target).visibility.clone()
 }
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
-    language_spec_for_target(target.clone()).sharing.clone()
+    language_spec_for_target(target).sharing.clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
-        let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
+        let tmpl = sharing_for_target(target).wrap_template.clone();
         v1_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
     }
 }
 
 pub fn sharing_wrap_ctor_for_target(target: RenderTarget, inner_expr: String) -> String {
     {
-        let tmpl = sharing_for_target(target.clone())
-            .wrap_ctor_template
-            .clone();
+        let tmpl = sharing_for_target(target).wrap_ctor_template.clone();
         v1_rt::replace(tmpl.clone(), "{0}".to_string(), inner_expr.clone())
     }
 }
 
 pub fn sharing_wrap_ctor_open_for_target(target: RenderTarget) -> String {
-    sharing_for_target(target.clone()).wrap_ctor_open.clone()
+    sharing_for_target(target).wrap_ctor_open.clone()
 }
 
 pub fn sharing_wrap_ctor_close_for_target(target: RenderTarget) -> String {
-    sharing_for_target(target.clone()).wrap_ctor_close.clone()
+    sharing_for_target(target).wrap_ctor_close.clone()
 }
 
 pub fn sharing_type_is_wrapped_for_target(target: RenderTarget, type_name: String) -> bool {
     {
-        let prefix = sharing_for_target(target.clone()).wrap_type_prefix.clone();
+        let prefix = sharing_for_target(target).wrap_type_prefix.clone();
         let prefix_len = v1_rt::string_length(&prefix);
         if (prefix_len.clone() == 0) {
             false

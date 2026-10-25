@@ -89,6 +89,7 @@ import gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall { na
 import gunbc.guarantee_stall.census_live_routes_interpreted_only_stall { census_live_routes_interpreted_only_stall }
 import gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall { compute_cold_reserve_durable_commit_stall }
 import gunbc.guarantee_stall.swift_declaration_reference_call_namespace_unrealized_stall { swift_declaration_reference_call_namespace_unrealized_stall }
+import gunbc.guarantee_stall.swift_source_to_text_door_walk_stall { swift_source_to_text_door_walk_stall }
 import gunbc.guarantee_stall.rust_primitive_rows_hand_spelled_from_the_seed_stall { rust_primitive_rows_hand_spelled_from_the_seed_stall }
 import gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_stall { local_repo_wet_lane_per_row_wall_budget_unarmed_stall }
 
@@ -273,6 +274,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   census_live_routes_interpreted_only_stall,
   compute_cold_reserve_durable_commit_stall,
   swift_declaration_reference_call_namespace_unrealized_stall,
+  swift_source_to_text_door_walk_stall,
   approve_ios_swift_join_live_off_the_merge_path_stall,
   infer_checking_mode_expected_red_pair_stall,
   rust_primitive_rows_hand_spelled_from_the_seed_stall,
