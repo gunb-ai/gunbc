@@ -36114,3 +36114,110 @@ mod peak_resident_inheritance_control_tests {
         );
     }
 }
+
+// EXECUTABLE RECEIPT for the hand-written fold Rust in this file (the pair-keyed
+// `resolve_coproduct_wire_policy` + `serialize_variant_to_wire_json` declaring-module selection,
+// RFM dag/gunbc/recurring_failure_mode/coproduct_wire_contract_target_not_local_in_emitted_extdeps_github.dag).
+// This Rust is not deletable scaffold: it is the serializer-side reader of CoproductWireContract
+// rows, reached in production by `value_to_wire_json` for request-body coproduct values, and no
+// .dag fixture sends a coproduct REQUEST body -- so the admission evidence for this Rust is here,
+// driving the fold from its public entry over modules built the way the CLI builds them: real
+// corpus .dag text resolved through `resolve_virtual_source_with_imports` (the route
+// compile_dag_rust_emit_check uses), not hand-constructed ASTs.
+#[cfg(test)]
+mod wire_fold_pair_key_receipt_tests {
+    use super::{
+        build_module_path_index_from_witness_roots, resolve_virtual_source_with_imports,
+        value_to_wire_json,
+    };
+    use crate::v1_compiler_compile::compile_to_resolved;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use std::rc::Rc;
+
+    fn carrier_ctx(rows: &str) -> InterpContext {
+        let entry = format!(
+            "module cwc_fold_carrier\n\nimport std.serialization {{ CoproductWireContract, InternallyTaggedObject, AsAuthored }}\nimport std.decl_ref {{ DeclarationRef, WholeDeclaration }}\n\ntype FoldState = Open | Closed\n\n{rows}\n"
+        );
+        let index = build_module_path_index_from_witness_roots();
+        let sources = resolve_virtual_source_with_imports(
+            "dag/test/claim/cwc_fold_carrier.dag",
+            &entry,
+            &index,
+        )
+        .unwrap_or_else(|e| panic!("fixture imports must resolve: {e}"));
+        let result = compile_to_resolved(Rc::new(sources.into()));
+        let graph = result
+            .graph
+            .as_ref()
+            .unwrap_or_else(|| panic!("fixture must resolve: {:?}", result.diagnostics));
+        InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        )
+    }
+
+    fn serialize_open(rows: &str) -> serde_json::Value {
+        let ctx = carrier_ctx(rows);
+        let val = Value::Variant {
+            type_name: ctx.sym("FoldState"),
+            variant_name: ctx.sym("Open"),
+            fields: Rc::new(Vec::new()),
+        };
+        value_to_wire_json(&val, &ctx).expect("FoldState.Open must encode")
+    }
+
+    fn row_named(data_name: &str, claimed_module: &str, tag: &str) -> String {
+        format!(
+            "data {data_name}: CoproductWireContract = {{\n  coproduct: DeclarationRef {{ module_path: \"{claimed_module}\", decl_name: \"FoldState\", field: WholeDeclaration }},\n  encoding: InternallyTaggedObject {{ tag_field: \"{tag}\", naming: AsAuthored }}\n}}"
+        )
+    }
+
+    /// THE REPAIR, AT THE FOLD: a row whose DeclarationRef claims ANOTHER module's same-named
+    /// coproduct must not govern the local one. Before the pair-key change the fold matched rows
+    /// by decl_name alone and served the foreign `kind` tag to FoldState. After, the pair does
+    /// not match the declaring module, the row governs nothing here, and the value keeps the
+    /// internal-tag default.
+    #[test]
+    fn fold_ignores_a_row_claiming_another_modules_coproduct() {
+        let got = serialize_open(&row_named("fold_wire_row", "somewhere.else", "kind"));
+        assert_eq!(
+            got,
+            serde_json::json!({ "_variant": "Open" }),
+            "a foreign-claimed row leaked its tag into the fold"
+        );
+    }
+
+    /// THE STANDING OBLIGATION, AT THE FOLD: a row whose DeclarationRef names THIS module's
+    /// coproduct still governs the encoding -- the repair keys rows, it does not drop them.
+    #[test]
+    fn fold_still_serves_an_honest_local_row() {
+        let got = serialize_open(&row_named("fold_wire_row", "cwc_fold_carrier", "kind"));
+        assert_eq!(
+            got,
+            serde_json::json!({ "kind": "Open" }),
+            "the fold dropped a row that names its own coproduct"
+        );
+    }
+
+    /// THE PAIR KEY SELECTS, IT DOES NOT COLLAPSE: with two same-named rows where only one names
+    /// this module, the local row's encoding must apply. Under the old name-only matching both
+    /// rows entered the same candidate set: the fold-era merge saw divergent policies and dropped
+    /// ALL of them (the local obligation silently lost next to a foreign row), and the resolver's
+    /// ambiguity refusal turns the same mis-match into a wire error -- either way the honest local
+    /// row's encoding never reaches the wire.
+    #[test]
+    fn fold_prefers_the_local_row_beside_a_foreign_one() {
+        let rows = format!(
+            "{}\n\n{}",
+            row_named("fold_wire_row_foreign", "somewhere.else", "wrong_tag"),
+            row_named("fold_wire_row_local", "cwc_fold_carrier", "kind")
+        );
+        let got = serialize_open(&rows);
+        assert_eq!(
+            got,
+            serde_json::json!({ "kind": "Open" }),
+            "a foreign row must not contaminate the fold for a module that has its own row"
+        );
+    }
+}
