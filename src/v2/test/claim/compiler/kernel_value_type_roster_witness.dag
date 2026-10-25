@@ -27,8 +27,8 @@ import v2.std.diagnostic { diagnostics_fatal_reason, Accepted, Outcome, Rejected
 import v2.std.integer { integer_int_type_node }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
-import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_type_node }
-import std.optional { Absent, Optional, Present }
+import v2.std.node { node_same_occurrence, Atom, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_type_node }
+import std.optional { optional_eq, Absent, Optional, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.text { String }
@@ -109,7 +109,7 @@ fn kvr_atom_identity(n: Node) -> Optional<Symbol> {
 fn kvr_binding_denotes(node: Node) -> Bool {
   match kvr_atom_identity(n: node) {
     Absent => false
-    Present { value: id } => dag_binding_denotation(sym: id) == Present { value: node }
+    Present { value: id } => optional_eq(a: dag_binding_denotation(sym: id), b: Present { value: node }, eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
   }
 }
 
@@ -121,7 +121,7 @@ fn kvr_binding_denotes(node: Node) -> Bool {
 fn kvr_row_binds_and_denotes(row: KernelValueType) -> Bool {
   match dag_kernel_value_type_binding(row: row) {
     Absent => false
-    Present { value: binding } => dag_binding_denotation(sym: binding) == Present { value: row.value_type }
+    Present { value: binding } => optional_eq(a: dag_binding_denotation(sym: binding), b: Present { value: row.value_type }, eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
   }
 }
 
@@ -160,7 +160,7 @@ test fn kvr_a_spelling_and_its_declarations_bind_what_the_join_denotes_holds() -
 // without the de-fork deciding it. It is then rewritten to the converged state.
 fn kvr_unspelled_row_converges_on(node: Node, dotted: String) -> Bool {
   any(xs: dag_kernel_value_type_roster, predicate: fn(row) {
-    (row.value_type == node)
+    (node_same_occurrence(a: row.value_type, b: node))
       && (row.converges_on == Present { value: qualified_name_from_dotted_string(dotted: dotted) })
       && (row.spelling == Absent)
   })

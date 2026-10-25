@@ -9,7 +9,7 @@ import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_strip_provenance_marker
 }
-import v2.std.node { Atom, Edge, Authored, Node, Symbol, TypeNode, fold_list_node, NotADeclaration }
+import v2.std.node { node_same_occurrence, Atom, Edge, Authored, Node, Symbol, TypeNode, fold_list_node, NotADeclaration }
 import v2.std.symbol_index { empty_symbol_index, symbol_index_lexical_lookup, symbol_index_lookup }
 import v2.compiler.symbol_index_fill { disj_variant_counts_in_module, symbol_index_fill_containment_node }
 import v2.std.qualified_name {
@@ -123,7 +123,7 @@ fn ms_lookup_pair_eq(
   match symbol_index_lookup(index: marked, qualified_path: path) {
     Present { value: marked_node } =>
       match symbol_index_lookup(index: stripped, qualified_path: path) {
-        Present { value: stripped_node } => marked_node == stripped_node
+        Present { value: stripped_node } => node_same_occurrence(a: marked_node, b: stripped_node)
         Absent => false
       }
     Absent =>
