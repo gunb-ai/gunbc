@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { TranscribedUncited }
-import gunbc.fleet.provider_acquisition { AcquisitionRealization, OperatorPerformed }
+import gunbc.fleet.provider_acquisition { AcquisitionRealization }
 import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure }
 
 // THE HAND OS INSTALL OF SUPERMICRO H11SSL UNIT 1, RECORDED AS A RECEIPT OF AN OPERATOR-PERFORMED
@@ -26,12 +26,18 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedF
 //
 // THE EXISTING HOMES THIS RECORD REUSES, checked before inventing anything:
 //   - WHO PERFORMED a step outside an automated route: gunbc.fleet.provider_acquisition
-//     AcquisitionRealization OperatorPerformed -- imported and used directly, not mirrored. It times
-//     a step at the day granularity the operator actually relays ("2026-10-24"), which is the
-//     provider_acquisition precedent's own granularity ("2026-10-07"); an earlier draft of this
-//     record carried a second OperatorPerformed branded as an Rfc3339 INSTANT, but the operator gave
-//     a day, not a time, and the instant that filled the field would have been fabricated (§5), so
-//     the shared carrier at day granularity is the honest one (review 85697);
+//     AcquisitionRealization OperatorPerformed -- imported, and reused for exactly one arm of
+//     HandInstallRealization: Completed. It is a COMPLETED-STEP carrier (it times a step that was
+//     performed, at the day granularity the operator relays, the provider_acquisition precedent's
+//     "2026-10-07"). The operator's 2026-10-24 ruling stated the INTENT to install by hand and has
+//     NOT said the install completed -- operator_stated_phase is NotRelayed below -- so recording
+//     the install's state today through OperatorPerformed would assert a completed effect nobody
+//     reported (§4d; merry-fox-82's side-chat hold). Divergence stated (§3b): the planned-not-
+//     completed state is a new arm, DeclaredByOperator; a "started, not yet finished" relay would
+//     land as its own arm in the change that adds it (provider_acquisition's precedent is no arms
+//     without producers). An earlier draft also branded performed_on as an Rfc3339 INSTANT, which
+//     was a fabricated precision (§5, review 85697); every date here is a RelayedDay. An arm for a
+//     route-performed install is absent by design: no producer exists);
 //   - the operator-relayed figure: gunbc.machine_intake.supermicro_h11ssl_unit_observation
 //     H11sslReportedFigure { value, standing: CitedFigureStanding }, imported here for the relayed
 //     arm of HandInstallRecordedField;
@@ -94,16 +100,39 @@ type InstallSystemState {
   network_config_report: HandInstallRecordedField
 }
 
-// THE HAND INSTALL ITSELF: one typed receipt of one operator-performed procedure on one unit.
-// This is a DECLARED DEPARTURE from the modeled bring-up, not a converged provisioning phase:
-// `operator_stated_phase` records what the operator stated the install reached, and the modeled
-// folds keep their own verdicts (which, with no route having run, stay at their honest arms until
-// the read-only intake lands).
+// THE REALIZATION STATE OF THE HAND INSTALL: what the operator has DECLARED, never more.
+// DeclaredByOperator is the state as of the 2026-10-24 ruling -- the operator ruled the unit be
+// installed by hand; completion has NOT been relayed, and this arm must not be readable as a
+// completed effect (§4d). The only arm that asserts a finished install is Completed, and it can be
+// built ONLY when the operator relays completion, wrapping the corpus's one completed-step carrier,
+// gunbc.fleet.provider_acquisition AcquisitionRealization (imported here, not mirrored) -- with the
+// day granularity that carrier already carries (§5: a precision nobody relayed stays unfilled).
+// A "started, not yet finished" relay would land as its own arm in the change that adds it: the
+// provider_acquisition precedent is no arms without producers.
+type HandInstallRealization
+  = DeclaredByOperator { ruled_on: RelayedDay, relayed: NonEmptyStr }
+  | Completed { performed: AcquisitionRealization }
+
+// COMPLETEDNESS GOES THROUGH std.optional: callers ask whether the install was completed and get an
+// Optional over the shared completed-step carrier -- nothing re-derives "completed" by naming arms.
+fn hand_install_completed_step(realization: HandInstallRealization) -> Optional<AcquisitionRealization> {
+  match realization {
+    DeclaredByOperator { ruled_on: _, relayed: _ } => Absent
+    Completed { performed: p } => Present { value: p }
+  }
+}
+
+// THE HAND INSTALL ITSELF: one typed receipt of one operator-DECLARED procedure on one unit.
+// This is a DECLARED DEPARTURE from the modeled bring-up, not a converged provisioning phase and
+// not (yet) a performed effect: `realization` records the ruling, and `operator_stated_phase`
+// records what the operator stated the install reached -- the modeled folds keep their own verdicts
+// (which, with no route having run and no completion relayed, stay at their honest arms until the
+// read-only intake lands).
 type SupermicroH11sslUnit1HandInstall {
   unit_key: NonEmptyStr
   bmc_ipv4: NonEmptyStr
   ruling: NonEmptyStr
-  realization: AcquisitionRealization
+  realization: HandInstallRealization
   install_media: InstallMedia
   disk_layout: InstallDiskLayout
   system_state: InstallSystemState
@@ -139,9 +168,9 @@ data supermicro_h11ssl_unit1_hand_install: SupermicroH11sslUnit1HandInstall = Su
   unit_key: "supermicro-h11ssl-unit1",
   bmc_ipv4: "192.168.1.252",
   ruling: "operator, 2026-10-24: install by hand this time; record the gaps, fill them afterwards",
-  realization: OperatorPerformed {
-    performed_on: "2026-10-24",
-    relayed: "OS install performed by the operator at the physical console, outside any modeled route",
+  realization: DeclaredByOperator {
+    ruled_on: "2026-10-24",
+    relayed: "operator ruled 2026-10-24: install this unit's OS by hand; the ruling states intent -- the install's completion has not been relayed, so this record is not a completed effect",
   },
   install_media: InstallMedia {
     iso_name: NotRelayed {

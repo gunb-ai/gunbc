@@ -32,8 +32,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //    (join_network_boot_delivery, whose client admission is the arm64 UEFI spellings -- the network
 //    boot delivery client-mode refusal) and gunbc.site_uefi_arm64_pxe_edge (site_pxe_edge_standing,
 //    around gunbc.ci.ci_fleet first_slice_admitted_architectures, an Aarch64-only roster);
-//    extdeps.firmware.ipxe ships ipxe_arm64_efi_snponly and no x86_64 target. For x86 UEFI PXE/HTTP
-//    boot: none exists.
+//    extdeps.firmware.ipxe ships ipxe_arm64_efi_snponly and no x86_64 target -- and per the route
+//    settled 2026-10-24 (gunbc.plans.network_install_architecture_rows, #15060) the x86 first stages
+//    are the Ubuntu signed chain (shim + grub netboot builds), not an x86 iPXE. For x86 UEFI
+//    PXE/HTTP boot: none exists.
 //
 // G4 BMC virtual-media route for THIS BMC. Exists: extdeps.bmc.redfish_virtual_media (Redfish
 //    virtual-media insert model) and gunbc.machine_intake.megarac_media_attach MegaRacAttachRoute,
@@ -75,8 +77,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //      image nor boot work.
 //   4. G1 seed/image: the largest new modeling surface (arch-gate inversion + x86 seed content), and
 //      it gates only G2's happy path.
-//   5. G3 x86 network boot: needs G1's artifacts and an iPXE x86 target, and edits the srv4 PXE
-//      edge's admission set -- the most site-wide change, done last of the enablers.
+//   5. G3 x86 network boot: needs G1's artifacts and the signed shim+grub loader chain served whole
+//      by the edge per gunbc.plans.network_install_architecture_rows (#15060 -- the approved route;
+//      iPXE stays the ARM row's chain), and edits the srv4 PXE edge's admission set -- the most
+//      site-wide change, done last of the enablers.
 //   6. G2 install-to-disk route: composes G1 (media), G3 (boot path), G4 (media attach) on the
 //      srv3-actuate shape -- the capstone, not the first brick.
 
@@ -167,12 +171,12 @@ data h11ssl_x86_autoinstall_seed_frontier: FrontierRow = frontier_row_decl(
 // ---- G3: x86 network boot at the srv4 PXE edge (fill-order step 5) ----
 
 data h11ssl_x86_network_boot_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: the srv4 PXE edge serves an x86_64 UEFI client end to end -- gunbc.ci.ci_fleet first_slice_admitted_architectures admits the x86_64 UEFI spelling, gunbc.network_boot_delivery's client-mode admission admits it, extdeps.firmware.ipxe carries an x86_64 UEFI target beside ipxe_arm64_efi_snponly, and a site PXE edge standing covers that client with a witnessed DHCP/BOOTP offer on the LAN. A BIOS-mode-only path, an iPXE binary built by hand outside the toolchain, or an admission constant flipped without the standing and the witness, is not this trigger." as NonEmptyStr
+  description: "TRIGGER: the srv4 PXE edge serves an x86_64 UEFI client end to end THROUGH THE APPROVED LOADER ROUTE -- the signed Ubuntu chain (shimx64.efi.signed.latest, grubnetx64.efi.signed served as grubx64.efi, grub.cfg, casper vmlinuz, initrd) served whole as loader-chain rows per gunbc.plans.network_install_architecture_rows (the route settled 2026-10-24 by merry-fox-82, msg_93cf21b7; PR #15060): gunbc.ci.ci_fleet first_slice_admitted_architectures admits the x86_64 UEFI spelling, gunbc.network_boot_delivery's client-mode admission admits it, the chain's members carry pins verified at placement and at readback, and a site PXE edge standing covers that client with a witnessed DHCP/BOOTP offer on the LAN. NOT this trigger: an x86 iPXE build (iPXE is the ARM row's one-member chain and stays that way), a BIOS-mode-only path, a chain member placed without its pin check, or an admission constant flipped without the standing and the witness." as NonEmptyStr
 )
 
 data h11ssl_x86_network_boot_frontier: FrontierRow = frontier_row_decl(
   ref: h11ssl_x86_bringup_pxe_edge_gap_subject,
-  reason: "the srv4 PXE edge is arm64 end to end: first_slice_admitted_architectures is Aarch64-only, join_network_boot_delivery's client-mode admission is arm64 spellings only, and iPXE ships only the arm64 EFI target",
+  reason: "the srv4 PXE edge is arm64 end to end: first_slice_admitted_architectures is Aarch64-only, join_network_boot_delivery's client-mode admission is arm64 spellings only, and the only loader artifact is iPXE's arm64 EFI target -- the approved x86 route (signed shim+grub chain, #15060) has no edge row yet",
   dissolution: h11ssl_x86_network_boot_dissolution,
 )
 
