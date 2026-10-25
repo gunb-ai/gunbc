@@ -126,15 +126,15 @@ fn router_callout_lines(c: RouterCallout) -> List<String> {
     AuthzCapture { location: l, failure_status: r, copies: cs } => concat([
       "ngx.req.read_body()",
       "local res = ngx.location.capture('" + (l as String) + "', \{method = ngx.HTTP_POST, always_forward_body = true\})",
-      "if res.status ~= 200 then return ngx.exit(" + ((r as Int) as String) + ") end",
-    ], flat_map(cs, c => header_copy_lines(c: c, failure: (r as Int) as String)))
+      "if res.status ~= 200 then return ngx.exit(" + to_string(r as Int) + ") end",
+    ], flat_map(cs, c => header_copy_lines(c: c, failure: to_string(r as Int))))
     StreamEndPost { host: hs, port: pt, path: pa, timeout_ms: t, only_when_set: o, header: hd, header_value: hv } => [
       "if ngx.var." + (o as String) + " == '' then return end",
       "local value = ngx.var." + (hv as String),
       "ngx.timer.at(0, function(p)",
       "local s = ngx.socket.tcp()",
-      "s:settimeout(" + ((t as Int) as String) + ")",
-      "if not s:connect('" + (hs as String) + "', " + ((pt as Int) as String) + ") then return end",
+      "s:settimeout(" + to_string(t as Int) + ")",
+      "if not s:connect('" + (hs as String) + "', " + to_string(pt as Int) + ") then return end",
       "s:send('POST " + (pa as String) + " HTTP/1.1\\r\\nHost: x\\r\\n" + (hd as String) + ": ' .. value .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
       "s:receive('*a')",
       "s:close()",

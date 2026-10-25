@@ -152,12 +152,12 @@ fn nginx_line(text: String, indent: String) -> String { indent + text + ";\n" }
 
 fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
   match d {
-    WorkerProcesses { count: n } => nginx_line(text: "worker_processes " + (n as String), indent: indent)
+    WorkerProcesses { count: n } => nginx_line(text: "worker_processes " + to_string(n), indent: indent)
     EventsBlock => indent + "events \{\}\n"
     HttpBlock { body: b } => nginx_block(head: "http", body: b, indent: indent)
     AccessLogOff => nginx_line(text: "access_log off", indent: indent)
     ServerBlock { body: b } => nginx_block(head: "server", body: b, indent: indent)
-    ListenOn { address: a, port: p } => nginx_line(text: "listen " + (a as String) + ":" + ((p as Int) as String), indent: indent)
+    ListenOn { address: a, port: p } => nginx_line(text: "listen " + (a as String) + ":" + to_string(p as Int), indent: indent)
     LocationBlock { matching: m, body: b } => nginx_block(head: "location " + location_match_text(m: m), body: b, indent: indent)
     SetEmptyVariable { variable: v } => nginx_line(text: "set $" + (v as String) + " ''", indent: indent)
     ProxyHttpVersion11 => nginx_line(text: "proxy_http_version 1.1", indent: indent)
@@ -166,7 +166,7 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ProxyNextUpstreamDirective { value: v } => match v { ProxyNextUpstreamOff => nginx_line(text: "proxy_next_upstream off", indent: indent) }
     ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) }, indent: indent)
     ProxyPassDirective { target: t, variable: v } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$" + (v as String), indent: indent) }
-    ProxyPassToHost { host: hs, port: p, path: pa } => nginx_line(text: "proxy_pass http://" + (hs as String) + ":" + ((p as Int) as String) + (pa as String), indent: indent)
+    ProxyPassToHost { host: hs, port: p, path: pa } => nginx_line(text: "proxy_pass http://" + (hs as String) + ":" + to_string(p as Int) + (pa as String), indent: indent)
     InternalLocationOnly => nginx_line(text: "internal", indent: indent)
     ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
     LuaPhaseBlock { phase: ph, lines: ls } =>
