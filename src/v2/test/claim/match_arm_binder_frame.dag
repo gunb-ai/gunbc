@@ -604,3 +604,33 @@ fn mab_resolved_unimported_bare_nullary_read() -> Outcome<ResolvedTree> {
 test fn mab_unimported_bare_nullary_read_by_its_arm_refuses_rather_than_binding() -> Bool {
   mab_outcome_refuses_with(o: mab_resolved_unimported_bare_nullary_read(), reason: ^resolve_reason_unbound_symbol)
 }
+
+// A PATTERN ATOM NAMING A VALUE OF AN ENCLOSING FRAME IS A CONSTANT PATTERN, AND IT REFUSES AS ONE
+// (v2.compiler.resolve resolve_constant_pattern_atom, remedy an equality guard). On #15125 this program
+// refused binder_hides_visible_value and its arm is unread, so the reason asserted is the precedence: the
+// constant's cause is reported, not a rename or `_` remedy. A binder spelled like a module FUNCTION is
+// not decided here (module-level names are a declaration-shape modeling item) and still binds.
+fn mab_resolved_constant_frame_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C, x: C) -> Int {\n  match c {\n    x => 1\n  }\n}\n")
+}
+
+fn mab_resolved_constant_frame_field_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C, k: Int) -> Int {\n  match c {\n    A(k) => 1\n    A(_) => 2\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_binder_spelled_like_a_function() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\nfn twice(v: Int) -> Int { v }\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> C {\n  match c {\n    A(y) => c\n    twice => twice\n  }\n}\n")
+}
+
+test fn mab_a_visible_frame_value_in_pattern_position_refuses_as_a_constant_pattern() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_constant_frame_pattern(), reason: ^resolve_reason_constant_pattern_unsupported)
+}
+
+test fn mab_a_visible_frame_value_in_a_field_pattern_refuses_as_a_constant_pattern() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_constant_frame_field_pattern(), reason: ^resolve_reason_constant_pattern_unsupported)
+}
+
+test fn mab_a_binder_spelled_like_a_module_function_still_binds() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_binder_spelled_like_a_function())
+    && mab_has_atom(o: mab_resolved_binder_spelled_like_a_function(), id: ^twice)
+}

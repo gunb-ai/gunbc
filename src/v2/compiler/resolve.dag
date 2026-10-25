@@ -4090,6 +4090,14 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
+      match resolve_constant_pattern_atom(ctx: ctx, pat: pat) {
+        Present { value: atom } =>
+          resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
+            reason: ^resolve_reason_constant_pattern_unsupported,
+            at: node_locus(node: atom),
+            correction: Unavailable { reason: UserInputBoundary }
+          }))
+        Absent =>
       match gate_value_binders(names: pattern_binder_name_list(ctx: ctx, pat: pat), outer: ctx.scope, at: pat) {
         BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
         BinderGateAdmitted =>
@@ -4098,6 +4106,44 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
             pat: pat,
             walk: resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()))
           )
+      }
+      }
+  }
+}
+
+// A PATTERN ATOM THAT NAMES A VALUE OF AN ENCLOSING FRAME IS A CONSTANT PATTERN, AND NEITHER COMPILER HAS
+// ONE. The grammar gives a bare name in pattern position one form, and an atom naming no declared
+// payload reads as a binder (pattern_binders). When the name is a parameter or `let` the arm can already
+// see, the author meant to compare against that value, not to bind a fresh name. As a binder it would be
+// refused as hiding a visible value (rename it) or as unread (`_`), and both remedies would change what
+// the author wrote into something they did not mean. So it refuses with this cause first, remedy an
+// equality guard. Frame values only: a module-level name is not decided here, because the symbol index
+// classifies a module function and a `data` row alike as values (LexicalValueOccurrence), and telling a
+// constant from a callable needs a declaration-shape fact it does not yet carry; root shadowing stays
+// admitted as before (admit_one_named_value_binder). Decided by tidy-ant-251 (Manager 1), 2026-10-25.
+// The first such atom, at either pattern position, in the pre-order resolution binds them.
+fn resolve_constant_pattern_atom(ctx: ResolveContext, pat: Node) -> Optional<Node> {
+  fold(pattern_binders(ctx: ctx, pat: pat), init: Absent, f: fn(found, c) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if resolve_pattern_atom_names_frame_value(ctx: ctx, id: c.name) {
+          Present { value: c.atom }
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+fn resolve_pattern_atom_names_frame_value(ctx: ResolveContext, id: Symbol) -> Bool {
+  match lookup_chain(s: ctx.scope, name: id) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: bound, diagnostics: _ } =>
+      match bound {
+        BoundInFrame { canonical: _, kind: _ } => true
+        BoundAtRoot { canonical: _ } => false
+        ScopeUnbound => false
       }
   }
 }
