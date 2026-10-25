@@ -164,13 +164,16 @@ test fn every_row_names_a_resolvable_owner_or_is_unowned() -> Bool {
     && !owner_is_declared(l: "Row X1 x. Owner plan `gunbc.serving.serving_enrollment::ServingRoute`. Standing: s.")
 }
 
-// ── Acyclicity. A row's edges are the `Row <label>` references after its `Depends on`.
-// Each round admits every row whose dependencies are all admitted; after as many rounds
-// as there are rows, the graph is acyclic exactly when every row is admitted.
+// ── Acyclicity. A row's edges are every `Row <label>` reference in its completion text,
+// from `Done:` on: its `Depends on` clause and any row its done criterion waits on, so a
+// row cannot close on an observation owned by a row that depends on it. Each round admits
+// every row whose dependencies are all admitted; after as many rounds as there are rows,
+// the graph is acyclic exactly when every row is admitted.
 fn row_dependencies(l: String) -> List<String> {
-  let parts: List<String> = l.split(delimiter: "Depends on")
+  let own = row_label(l: l)
+  let parts: List<String> = l.split(delimiter: "Done:")
   match parts {
-    Cons { head: _, tail: Cons { head: clause, tail: _ } } => referenced_labels(t: clause)
+    Cons { head: _, tail: Cons { head: clause, tail: _ } } => filter(referenced_labels(t: clause), r => r != own)
     _ => []
   }
 }
@@ -193,12 +196,16 @@ test fn the_dependency_graph_is_acyclic() -> Bool {
     && any(rows, l => row_dependencies(l: l).length() >= 1)
     && dependency_graph_is_acyclic(rows: rows)
     && dependency_graph_is_acyclic(rows: [
-      "Row X1 a. Standing: s. Depends on Row X2.",
-      "Row X2 b. Standing: s. Depends on: nothing."
+      "Row X1 a. Standing: s. Done: d. Depends on Row X2.",
+      "Row X2 b. Standing: s. Done: d, not Row X2 itself. Depends on: nothing."
     ])
     && !dependency_graph_is_acyclic(rows: [
-      "Row X1 a. Standing: s. Depends on Row X2.",
-      "Row X2 b. Standing: s. Depends on Row X1."
+      "Row X1 a. Standing: s. Done: d. Depends on Row X2.",
+      "Row X2 b. Standing: s. Done: d. Depends on Row X1."
+    ])
+    && !dependency_graph_is_acyclic(rows: [
+      "Row X1 a. Standing: s. Done: d. Depends on Row X2.",
+      "Row X2 b. Standing: s. Done: observed live under Row X1. Depends on: nothing."
     ])
 }
 
