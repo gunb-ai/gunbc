@@ -66,9 +66,10 @@ pub use crate::v1_std_core::{
     error_type, find_child_named, float_type, has_inferred, int_type, is_compiler_error,
     kernel_span, leaf_node_with_span, make_error_node, make_expr_error_node, make_expr_node,
     make_param_node, no_span, none_type, param_node_type_expr, qualified_last_segment, string_type,
-    type_name_compatible, unit_type, with_optional_cardinality, with_required_cardinality,
-    Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, DeclarationMarker,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, NewlineIndex, Node,
+    symbol_type, type_name_compatible, unit_type, with_optional_cardinality,
+    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective,
+    ContainerSpellingVerdict, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, InferredNode,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3607,7 +3608,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
         LiteralValue::LitFloat { value: _, .. } => float_type(),
         LiteralValue::LitBool { value: _, .. } => bool_type(),
         LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type()),
-        LiteralValue::LitSymbol { value: _, .. } => string_type(),
+        LiteralValue::LitSymbol { value: _, .. } => symbol_type(),
     }
 }
 

@@ -4875,7 +4875,8 @@ pub fn kernel_value_declared_type_mismatch_bounded(
                     source_indices.clone(),
                     actual_base.clone(),
                 );
-                if ((crate::std_types::is_kernel_type(actual_name.clone()) == false)
+                if (((crate::std_types::is_kernel_type(actual_name.clone()) == false)
+                    && (actual_name.clone() != "Symbol".to_string()))
                     || (actual_name.clone() == "Unit".to_string()))
                 {
                     break false;
@@ -4888,7 +4889,10 @@ pub fn kernel_value_declared_type_mismatch_bounded(
                     } else {
                         formal_name_override.clone()
                     };
-                    if (((formal_name.clone() == "".to_string())
+                    let symbol_at_text = ((actual_name.clone() == "Symbol".to_string())
+                        && (crate::v1_std_core::qualified_last_segment(formal_name.clone())
+                            == "String".to_string()));
+                    if ((((formal_name.clone() == "".to_string()) || symbol_at_text.clone())
                         || (crate::v1_std_core::qualified_last_segment(formal_name.clone())
                             == crate::v1_std_core::qualified_last_segment(actual_name.clone())))
                         || crate::std_coercion::dag_can_cast(
