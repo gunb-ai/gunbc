@@ -1059,12 +1059,28 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
       match roster_label_splices(before: before, edits: labels) {
         RosterApplyRefused { reason: r } => RosterApplyRefused { reason: r }
         RosterApplyWritten { content: relabelled } =>
-          if roster_labels_below(labels: labels, at: end) {
-            roster_splice(before: relabelled, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
-          } else {
-            RosterApplyRefused { reason: RefusalExtentMismatch }
+          match roster_import_and_labels_disjoint(start: start, end: end, text: text, labels: labels) {
+            Present { value: r } => RosterApplyRefused { reason: r }
+            Absent =>
+              if roster_labels_below(labels: labels, at: end) {
+                roster_splice(before: relabelled, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
+              } else {
+                RosterApplyRefused { reason: RefusalExtentMismatch }
+              }
           }
       }
+  }
+}
+
+// THE IMPORT EDIT AND THE LABEL EDITS ARE ONE PLAN FOR DISJOINTNESS (tidy-ant-251's side chat on #15062): the import
+// (possibly zero-width) is checked with every label and head edit by the one predicate, so a zero-width label at the
+// import's offset refuses as coincident instead of slipping past a separate check.
+fn roster_import_and_labels_disjoint(start: Int, end: Int, text: String, labels: List<RosterLabelEdit>) -> Optional<RosterRefusalReason> {
+  let import_edit = RosterLabelEdit { start: start, end: end, from: "", to: text, relocation: Absent }
+  match roster_label_edits_disjoint(edits: list_sort_by_key(xs: list_snoc_item(xs: roster_expand_relocations(edits: labels), item: import_edit), key: roster_label_edit_order_key, order: int_total_order())) {
+    LabelsRenameRefused { reason: r } => Present { value: r }
+    LabelsSelected { edits: _ } => Absent
+    LabelsAmbiguous => Present { value: RefusalLabelSitesAmbiguous }
   }
 }
 
@@ -2490,7 +2506,12 @@ fn roster_with_pending_labels(sides: List<RosterHomeSide>,
     LabelsSelected { edits: labels } =>
       match edit {
         RosterEdit { start: st, end: en, text: tx, own_line: ol } =>
-          if is_empty(xs: labels) { edit } else { RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: labels } }
+          if is_empty(xs: labels) { edit } else {
+            match roster_import_and_labels_disjoint(start: st, end: en, text: tx, labels: labels) {
+              Present { value: r } => RosterRefused { reason: r }
+              Absent => RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: labels }
+            }
+          }
         other => other
       }
   }
@@ -2912,9 +2933,8 @@ fn roster_controls_report() -> String {
         + roster_control_label_sites_disagree(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_pass2_clean(prepared: prepared, lex: dag_prepared_lex())
         + roster_kind_controls(prepared: prepared, lex: dag_prepared_lex())
-        + roster_rename_controls(prepared: prepared, lex: dag_prepared_lex())
+        + roster_rename_controls_counted(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_positional_past_unreadable()
-        + roster_control_edits_disjoint()
         + roster_control_edit_splices()
         + roster_control_generation()
         + roster_control_status_names()
@@ -2995,7 +3015,209 @@ fn roster_companion_derived_check(companions: List<RosterCompanion>) -> String {
   }
 }
 
-fn roster_rename_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+// ONE CONTROL'S VERDICT: its name, and its failure text ("" when it held). A report of failures alone reads the same when every
+// control held and when none ran, so the rename controls are also counted against a declared list (tidy-ant-251, #15101).
+type RosterControlVerdict {
+  name: String
+  fail: String
+}
+
+fn roster_control_verdict(name: String, fail: String) -> RosterControlVerdict {
+  RosterControlVerdict { name: name, fail: fail }
+}
+
+fn roster_control_fails(verdicts: List<RosterControlVerdict>) -> String {
+  fold_list(xs: verdicts, empty: "", cons: fn(acc, v) { acc + v.fail })
+}
+
+// THE DECLARED CONTROLS, written out and not derived from the verdicts, so a control that is dropped from the run, or one
+// added without being declared, fails the count. A name is matched by identity in both directions.
+fn roster_rename_control_names() -> List<String> {
+  [
+    "companion-derived",
+    "rename-positive (with the companion import)",
+    "rename-in-argument (no tag used: no companion)",
+    "companion imports only the tags used",
+    "companion tags already imported",
+    "no renamed call: ambient tags left for their own wave",
+    "rename-named-argument-matching",
+    "rename-named-argument-mixed",
+    "rename-named-argument-mismatched",
+    "rename-named-argument-reordered",
+    "rename-companion-tag-undecided",
+    "rename-arity",
+    "rename-parameter-bound",
+    "rename-method-spelling",
+    "rename-pipe",
+    "rename-pipe-multiline-operand",
+    "rename-pipe-chain",
+    "rename-pipe-nested-operand",
+    "rename-pipe-into-a-chain-step",
+    "rename-pipe-parameter-bound",
+    "rename-pipe-operand-unclean",
+    "rename-pipe-arity",
+    "rename-pipe-named-argument-matching",
+    "rename-pipe-named-argument-mismatched",
+    "companion-underivable",
+    "edits-coincide",
+    "edits-overlap",
+    "edits-insert-inside-replacement",
+    "edits-rename-shape",
+    "import-and-label-coincide",
+    "import-then-label-disjoint",
+    "edits-adjacent-replacements",
+    "edits-pipe-three-adjacent",
+    "edits-connector-overlaps-head-by-one",
+    "relocation-splice",
+    "supplied-direct",
+    "supplied-pipe",
+    "supplied-key-let",
+    "supplied-self-home-import-skipped",
+    "supplied-unsupplied",
+    "supplied-wrong-correspondence",
+    "supplied-ambiguous",
+    "supplied-foreign-path",
+    "supplied-key-let-inline-body",
+    "supplied-key-let-not-a-lambda"
+  ]
+}
+
+// THE SUPPLIED ROW'S CONTROLS, over the PRODUCTION sort_by row (its sites filled the way a supplied run fills them, by
+// roster_table_with_sites), so a change to the row or to the run's filling is measured. Positives: a direct call, a pipe, and a
+// key moved into an annotated let at the body's top, each converging to the expected text and then Clean. REDs: a call with no
+// supply, a supply whose text names no call while one call stands (the equal-count wrong correspondence), two calls sharing
+// one text, a supply naming another file, a key let with no line to go to, and a key let over a key that is not a lambda.
+// Each RED is read on the FIRST outcome, so a refused file is also shown to be left unwritten (no import before a refusal).
+fn roster_supplied_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  let head = "module c.sortby\n\nimport std.algebra { Cons }\n\n"
+  let call = "sort_by(xs, fn(x) { x })"
+  let int_order = [RosterSuppliedImport { home: qualified_name_from_dotted_string(dotted: "std.algebra"), name: "int_total_order" }]
+  let direct = roster_control_supply(path: "control/sortby.dag", call_text: call, imports: int_order, key_let: Absent)
+  let record = "type R {\n  d: Int\n}\n\n"
+  let key_let = Present { value: RosterKeyLet { label: "key", name: "r_key", annotation: "fn(R) -> Int" } }
+  [
+    roster_control_verdict(name: "supplied-direct", fail: roster_supplied_expect_text(name: "supplied-direct", sites: [direct],
+      before: head + "fn f(xs: List<Int>) -> List<Int> {\n  sort_by(xs, fn(x) { x })\n}\n",
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key, int_total_order }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_sort_by_key(xs: xs, key: fn(x) { x }, order: int_total_order())\n}\n",
+      prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-pipe", fail: roster_supplied_expect_text(name: "supplied-pipe",
+      sites: [roster_control_supply(path: "control/sortby.dag", call_text: "sort_by(fn(x) { x })", imports: int_order, key_let: Absent)],
+      before: head + "fn f(xs: List<Int>) -> List<Int> {\n  xs |> sort_by(fn(x) { x })\n}\n",
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key, int_total_order }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_sort_by_key(xs: xs, key: fn(x) { x }, order: int_total_order())\n}\n",
+      prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-key-let", fail: roster_supplied_expect_text(name: "supplied-key-let",
+      sites: [roster_control_supply(path: "control/sortby.dag", call_text: "sort_by(xs, fn(h) { h.d })", imports: int_order, key_let: key_let)],
+      before: head + record + "fn f(xs: List<R>) -> List<R> {\n  g(\n    sort_by(xs, fn(h) { h.d })\n  )\n}\n",
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key, int_total_order }\n\n" + record + "fn f(xs: List<R>) -> List<R> {\n  let r_key: fn(R) -> Int = fn(h) { h.d }\n  g(\n    list_sort_by_key(xs: xs, key: r_key, order: int_total_order())\n  )\n}\n",
+      prepared: prepared, lex: lex)),
+    // The supplied home is this module itself: its name is not imported.
+    roster_control_verdict(name: "supplied-self-home-import-skipped", fail: roster_supplied_expect_text(name: "supplied-self-home-import-skipped",
+      sites: [roster_control_supply(path: "control/sortby.dag", call_text: call, imports: [RosterSuppliedImport { home: qualified_name_from_dotted_string(dotted: "c.sortby"), name: "local_order" }], key_let: Absent)],
+      before: head + "fn f(xs: List<Int>) -> List<Int> {\n  sort_by(xs, fn(x) { x })\n}\n",
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_sort_by_key(xs: xs, key: fn(x) { x }, order: int_total_order())\n}\n",
+      prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-unsupplied", fail: roster_supplied_expect_refusal(name: "supplied-unsupplied", sites: [],
+      text: head + "fn f(xs: List<Int>) -> List<Int> {\n  sort_by(xs, fn(x) { x })\n}\n",
+      want: "supplied-arg-unsupplied call=sort_by text=sort_by(xs, fn(x) { x })", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-wrong-correspondence", fail: roster_supplied_expect_refusal(name: "supplied-wrong-correspondence",
+      sites: [roster_control_supply(path: "control/sortby.dag", call_text: "sort_by(ys, fn(x) { x })", imports: int_order, key_let: Absent)],
+      text: head + "fn f(xs: List<Int>) -> List<Int> {\n  sort_by(xs, fn(x) { x })\n}\n",
+      want: "supplied-arg-unsupplied call=sort_by text=sort_by(xs, fn(x) { x })", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-ambiguous", fail: roster_supplied_expect_refusal(name: "supplied-ambiguous", sites: [direct],
+      text: head + "fn f(xs: List<Int>) -> List<List<Int>> {\n  [sort_by(xs, fn(x) { x }), sort_by(xs, fn(x) { x })]\n}\n",
+      want: "supply-ambiguous call=sort_by text=sort_by(xs, fn(x) { x })", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-foreign-path", fail: roster_supplied_expect_refusal(name: "supplied-foreign-path",
+      sites: [roster_control_supply(path: "control/other.dag", call_text: call, imports: int_order, key_let: Absent)],
+      text: head + "fn f(xs: List<Int>) -> List<Int> {\n  sort_by(xs, fn(x) { x })\n}\n",
+      want: "supply-foreign-path call=sort_by path=control/other.dag", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-key-let-inline-body", fail: roster_supplied_expect_refusal(name: "supplied-key-let-inline-body",
+      sites: [roster_control_supply(path: "control/sortby.dag", call_text: "sort_by(xs, fn(h) { h.d })", imports: int_order, key_let: key_let)],
+      text: head + record + "fn f(xs: List<R>) -> List<R> { sort_by(xs, fn(h) { h.d }) }\n",
+      want: "key-let-unplaced call=sort_by name=r_key", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-key-let-not-a-lambda", fail: roster_supplied_expect_refusal(name: "supplied-key-let-not-a-lambda",
+      sites: [roster_control_supply(path: "control/sortby.dag", call_text: "sort_by(xs, k)", imports: int_order, key_let: key_let)],
+      text: head + record + "fn f(xs: List<R>, k: fn(R) -> Int) -> List<R> {\n  sort_by(xs, k)\n}\n",
+      want: "key-let-unplaced call=sort_by name=r_key", prepared: prepared, lex: lex))
+  ]
+}
+
+fn roster_control_supply(path: String, call_text: String, imports: List<RosterSuppliedImport>, key_let: Optional<RosterKeyLet>) -> RosterSiteSupply {
+  RosterSiteSupply { path: path, call_text: call_text, args: ["int_total_order()"], imports: imports, key_let: key_let }
+}
+
+fn roster_supplied_control_rows(sites: List<RosterSiteSupply>) -> List<RosterHeadRow> {
+  roster_rows_for_scope_in(table: roster_table_with_sites(table: roster_head_rows(), call: "sort_by", sites: sites), scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyCall { call: "sort_by" } })
+}
+
+fn roster_supplied_outcome(sites: List<RosterSiteSupply>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  let rows = roster_supplied_control_rows(sites: sites)
+  roster_sweep_text_rows(sides: roster_home_sides(rows: rows), companions: [], path: "control/sortby.dag", text: text, prepared: prepared, lex: lex, candidates: rows, closures: roster_control_closures())
+}
+
+fn roster_supplied_converge(sites: List<RosterSiteSupply>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterConverged {
+  fold_list(xs: [0, 1, 2, 3, 4], empty: ConvergedText { text: text }, cons: fn(acc, _i) {
+    match acc {
+      ConvergedRefused { cause: c } => ConvergedRefused { cause: c }
+      ConvergedText { text: t } => roster_supplied_step(t: t, outcome: roster_supplied_outcome(sites: sites, text: t, prepared: prepared, lex: lex))
+    }
+  })
+}
+
+fn roster_supplied_step(t: String, outcome: RosterOutcome) -> RosterConverged {
+  match outcome {
+    RosterClean => ConvergedText { text: t }
+    RosterRefused { reason: r } => ConvergedRefused { cause: roster_refusal_text(reason: r) }
+    other =>
+      match roster_applied(before: t, outcome: other) {
+        RosterApplyRefused { reason: r } => ConvergedRefused { cause: "splice " + roster_refusal_text(reason: r) }
+        RosterApplyWritten { content: c } => ConvergedText { text: c }
+      }
+  }
+}
+
+fn roster_supplied_expect_text(name: String, sites: List<RosterSiteSupply>, before: String, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_supplied_converge(sites: sites, text: before, prepared: prepared, lex: lex) {
+    ConvergedRefused { cause: c } => "CONTROL-FAIL " + name + ": refused " + c + "\n"
+    ConvergedText { text: t } =>
+      if t != after {
+        "CONTROL-FAIL " + name + ": converged to unexpected text: " + t + "\n"
+      } else {
+        match roster_supplied_outcome(sites: sites, text: t, prepared: prepared, lex: lex) {
+          RosterClean => ""
+          other => "CONTROL-FAIL " + name + ": not a fixed point: " + roster_render_outcome(path: "control/sortby.dag", outcome: other)
+        }
+      }
+  }
+}
+
+// The refusal on the FIRST outcome: nothing was planned, so nothing is written before it.
+fn roster_supplied_expect_refusal(name: String, sites: List<RosterSiteSupply>, text: String, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_supplied_outcome(sites: sites, text: text, prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } => if roster_refusal_text(reason: r) == want { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + ", wanted " + want + "\n" }
+    other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/sortby.dag", outcome: other)
+  }
+}
+
+fn roster_rename_control_count_check(verdicts: List<RosterControlVerdict>) -> String {
+  let ran = list_map(xs: verdicts, f: fn(v) { v.name })
+  let declared = roster_rename_control_names()
+  let missing = fold_list(xs: declared, empty: "", cons: fn(acc, n) { if roster_contains(xs: ran, name: n) { acc } else { acc + "CONTROL-FAIL control-count: declared control did not run: " + n + "\n" } })
+  let undeclared = fold_list(xs: ran, empty: "", cons: fn(acc, n) { if roster_contains(xs: declared, name: n) { acc } else { acc + "CONTROL-FAIL control-count: ran an undeclared control: " + n + "\n" } })
+  let count = if length(xs: ran) == length(xs: declared) { "" } else { "CONTROL-FAIL control-count: ran " + int_to_decimal_string(value: length(xs: ran)) + ", declared " + int_to_decimal_string(value: length(xs: declared)) + "\n" }
+  missing + undeclared + count
+}
+
+fn roster_rename_controls_verdicts_all(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  list_append(left: list_append(left: roster_rename_control_verdicts(prepared: prepared, lex: lex), right: roster_control_edits_disjoint_verdicts()), right: roster_supplied_control_verdicts(prepared: prepared, lex: lex))
+}
+
+// The rename controls' failures and the count check, as the gated report reads them.
+fn roster_rename_controls_counted(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let verdicts = roster_rename_controls_verdicts_all(prepared: prepared, lex: lex)
+  roster_control_fails(verdicts: verdicts) + roster_rename_control_count_check(verdicts: verdicts)
+}
+
+fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
   let companions = roster_rename_companions(rows: roster_rename_production_row(), prepared: prepared, lex: lex)
   let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => match map_get(m, v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
   let after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => match map_lookup(m: m, key: v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
@@ -3006,39 +3228,41 @@ fn roster_rename_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> S
   let tags_imported = "module c.rename\n\nimport std.algebra { Cons }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => v\n    Absent => k\n  }\n}\n"
   let tags_imported_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => v\n    Absent => k\n  }\n}\n"
   let unrenamed = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(o: Optional<String>, k: String) -> String {\n  match o {\n    Present { value: v } => v\n    Absent => k\n  }\n}\n"
-  roster_companion_derived_check(companions: companions)
-    + roster_rename_expect_text(companions: companions, name: "rename-positive (with the companion import)", before: before, after: after, prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "rename-in-argument (no tag used: no companion)", before: nested, after: nested_after, prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "companion imports only the tags used", before: only_present, after: only_present_after, prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "companion tags already imported", before: tags_imported, after: tags_imported_after, prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "no renamed call: ambient tags left for their own wave", before: unrenamed, after: unrenamed, prepared: prepared, lex: lex)
+  [
+    roster_control_verdict(name: "companion-derived", fail: roster_companion_derived_check(companions: companions)),
+    roster_control_verdict(name: "rename-positive (with the companion import)", fail: roster_rename_expect_text(companions: companions, name: "rename-positive (with the companion import)", before: before, after: after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-in-argument (no tag used: no companion)", fail: roster_rename_expect_text(companions: companions, name: "rename-in-argument (no tag used: no companion)", before: nested, after: nested_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "companion imports only the tags used", fail: roster_rename_expect_text(companions: companions, name: "companion imports only the tags used", before: only_present, after: only_present_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "companion tags already imported", fail: roster_rename_expect_text(companions: companions, name: "companion tags already imported", before: tags_imported, after: tags_imported_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "no renamed call: ambient tags left for their own wave", fail: roster_rename_expect_text(companions: companions, name: "no renamed call: ambient tags left for their own wave", before: unrenamed, after: unrenamed, prepared: prepared, lex: lex)),
     // THE NAMED-ARGUMENT RULE: a label equal to the row's label at its position binds as authored; a mismatched label refuses;
     // a reordered pair refuses (never remapped, which would reorder evaluation).
-    + roster_rename_expect_text(companions: companions, name: "rename-named-argument-matching", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "rename-named-argument-mixed", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m, key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument-mismatched", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, k: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument-reordered", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(key: k, m: m)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-companion-tag-undecided", text: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String, o: Optional<String>) -> String {\n  match o {\n    Present { value: Present } => match map_lookup(m: m, key: k) {\n      Present { value: v } => v\n      Absent => k\n    }\n    Absent => k\n  }\n}\n", want: "companion-tag-undecided call=map_get tag=Present", prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "rename-parameter-bound", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "rename-method-spelling", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", prepared: prepared, lex: lex)
+    roster_control_verdict(name: "rename-named-argument-matching", fail: roster_rename_expect_text(companions: companions, name: "rename-named-argument-matching", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-named-argument-mixed", fail: roster_rename_expect_text(companions: companions, name: "rename-named-argument-mixed", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m, key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-named-argument-mismatched", fail: roster_rename_expect_refusal(companions: companions, name: "rename-named-argument-mismatched", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, k: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-named-argument-reordered", fail: roster_rename_expect_refusal(companions: companions, name: "rename-named-argument-reordered", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(key: k, m: m)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-companion-tag-undecided", fail: roster_rename_expect_refusal(companions: companions, name: "rename-companion-tag-undecided", text: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String, o: Optional<String>) -> String {\n  match o {\n    Present { value: Present } => match map_lookup(m: m, key: k) {\n      Present { value: v } => v\n      Absent => k\n    }\n    Absent => k\n  }\n}\n", want: "companion-tag-undecided call=map_get tag=Present", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-arity", fail: roster_rename_expect_refusal(companions: companions, name: "rename-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-parameter-bound", fail: roster_rename_expect_text(companions: companions, name: "rename-parameter-bound", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-method-spelling", fail: roster_rename_expect_text(companions: companions, name: "rename-method-spelling", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", prepared: prepared, lex: lex)),
     // THE PIPE FORM (sunny-bee-153, tidy-ant-251's ruling): a piped call is the same rename with the pipe's left operand as slot 0,
     // one replacement, the operand copied byte for byte.
-    + roster_rename_expect_text(companions: companions, name: "rename-pipe", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "rename-pipe-multiline-operand", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  g(\n    x: m\n  ) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: g(\n    x: m\n  ), key: k)\n}\n", prepared: prepared, lex: lex)
+    roster_control_verdict(name: "rename-pipe", fail: roster_rename_expect_text(companions: companions, name: "rename-pipe", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-pipe-multiline-operand", fail: roster_rename_expect_text(companions: companions, name: "rename-pipe-multiline-operand", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  g(\n    x: m\n  ) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: g(\n    x: m\n  ), key: k)\n}\n", prepared: prepared, lex: lex)),
     // A CHAIN and a NESTED operand: the outer pipe replacement holds the inner renamed call, which is deferred to the next pass
     // and converges there, never planned as an overlapping edit.
-    + roster_rename_expect_text(companions: companions, name: "rename-pipe-chain", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: map_lookup(m: m, key: k), key: k)\n}\n", prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "rename-pipe-nested-operand", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m, k) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: map_lookup(m: m, key: k), key: k)\n}\n", prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "rename-pipe-into-a-chain-step", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k) |> h()\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k) |> h()\n}\n", prepared: prepared, lex: lex)
+    roster_control_verdict(name: "rename-pipe-chain", fail: roster_rename_expect_text(companions: companions, name: "rename-pipe-chain", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: map_lookup(m: m, key: k), key: k)\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-pipe-nested-operand", fail: roster_rename_expect_text(companions: companions, name: "rename-pipe-nested-operand", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m, k) |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: map_lookup(m: m, key: k), key: k)\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-pipe-into-a-chain-step", fail: roster_rename_expect_text(companions: companions, name: "rename-pipe-into-a-chain-step", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k) |> h()\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k) |> h()\n}\n", prepared: prepared, lex: lex)),
     // A PIPE INTO A PARAMETER-BOUND name stays untouched: selection is the one binding-sensitive classifier.
-    + roster_rename_expect_text(companions: companions, name: "rename-pipe-parameter-bound", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String, String) -> String, m: String, k: String) -> String {\n  m |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String, String) -> String, m: String, k: String) -> String {\n  m |> map_get(k)\n}\n", prepared: prepared, lex: lex)
+    roster_control_verdict(name: "rename-pipe-parameter-bound", fail: roster_rename_expect_text(companions: companions, name: "rename-pipe-parameter-bound", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String, String) -> String, m: String, k: String) -> String {\n  m |> map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String, String) -> String, m: String, k: String) -> String {\n  m |> map_get(k)\n}\n", prepared: prepared, lex: lex)),
     // REDs: an operand the pipe does not cleanly hand to the call, a pipe arity mismatch, and a named argument after the pipe.
-    + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-operand-unclean", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Int {\n  m |> map_get(k) + 1\n}\n", want: "rename-pipe-operand-unclean call=map_get", prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k, k)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
-    + roster_rename_expect_text(companions: companions, name: "rename-pipe-named-argument-matching", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-named-argument-mismatched", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k2: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
-    + roster_companion_underivable_control(prepared: prepared, lex: lex)
+    roster_control_verdict(name: "rename-pipe-operand-unclean", fail: roster_rename_expect_refusal(companions: companions, name: "rename-pipe-operand-unclean", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Int {\n  m |> map_get(k) + 1\n}\n", want: "rename-pipe-operand-unclean call=map_get", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-pipe-arity", fail: roster_rename_expect_refusal(companions: companions, name: "rename-pipe-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k, k)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-pipe-named-argument-matching", fail: roster_rename_expect_text(companions: companions, name: "rename-pipe-named-argument-matching", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "rename-pipe-named-argument-mismatched", fail: roster_rename_expect_refusal(companions: companions, name: "rename-pipe-named-argument-mismatched", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k2: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "companion-underivable", fail: roster_companion_underivable_control(prepared: prepared, lex: lex))
+  ]
 }
 
 // AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
@@ -3302,17 +3526,21 @@ type RosterSynthCapture
 // through every rename and label control above). REDs: two zero-width insertions at one offset, and a replacement that
 // covers another edit's start. Positives: the rename shape (an insertion at a replacement's start, then insertions after
 // it) and two adjacent replacements.
-fn roster_control_edits_disjoint() -> String {
-  roster_edits_disjoint_expect(name: "edits-coincide", edits: [roster_edit_insert(at: 4), roster_edit_insert(at: 4)], want: "edits-coincide at=4")
-    + roster_edits_disjoint_expect(name: "edits-overlap", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_replace(start: 5, end: 7)], want: "edits-overlap start=5 end=7 covered-to=9")
-    + roster_edits_disjoint_expect(name: "edits-insert-inside-replacement", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_insert(at: 5)], want: "edits-overlap start=5 end=5 covered-to=9")
-    + roster_edits_disjoint_expect(name: "edits-rename-shape", edits: [roster_edit_insert(at: 3), roster_edit_replace(start: 3, end: 10), roster_edit_insert(at: 11), roster_edit_insert(at: 15)], want: "")
-    + roster_edits_disjoint_expect(name: "edits-adjacent-replacements", edits: [roster_edit_replace(start: 0, end: 4), roster_edit_replace(start: 4, end: 8)], want: "")
+fn roster_control_edits_disjoint_verdicts() -> List<RosterControlVerdict> {
+  [
+    roster_control_verdict(name: "edits-coincide", fail: roster_edits_disjoint_expect(name: "edits-coincide", edits: [roster_edit_insert(at: 4), roster_edit_insert(at: 4)], want: "edits-coincide at=4")),
+    roster_control_verdict(name: "edits-overlap", fail: roster_edits_disjoint_expect(name: "edits-overlap", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_replace(start: 5, end: 7)], want: "edits-overlap start=5 end=7 covered-to=9")),
+    roster_control_verdict(name: "edits-insert-inside-replacement", fail: roster_edits_disjoint_expect(name: "edits-insert-inside-replacement", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_insert(at: 5)], want: "edits-overlap start=5 end=5 covered-to=9")),
+    roster_control_verdict(name: "edits-rename-shape", fail: roster_edits_disjoint_expect(name: "edits-rename-shape", edits: [roster_edit_insert(at: 3), roster_edit_replace(start: 3, end: 10), roster_edit_insert(at: 11), roster_edit_insert(at: 15)], want: "")),
+    roster_control_verdict(name: "import-and-label-coincide", fail: roster_import_labels_expect(name: "import-and-label-coincide", start: 30, end: 30, labels: [roster_edit_insert(at: 30)], want: "edits-coincide at=30")),
+    roster_control_verdict(name: "import-then-label-disjoint", fail: roster_import_labels_expect(name: "import-then-label-disjoint", start: 30, end: 30, labels: [roster_edit_insert(at: 41)], want: "")),
+    roster_control_verdict(name: "edits-adjacent-replacements", fail: roster_edits_disjoint_expect(name: "edits-adjacent-replacements", edits: [roster_edit_replace(start: 0, end: 4), roster_edit_replace(start: 4, end: 8)], want: "")),
     // THE PIPE SITE'S THREE EDITS are half-open neighbours: the connector [l, h) ends where the relocated head [h, h+n) starts,
     // which ends where the paren [h+n, h+n+1) starts. Adjacency is admitted; an overlap of one byte refuses.
-    + roster_edits_disjoint_expect(name: "edits-pipe-three-adjacent", edits: [roster_edit_replace(start: 2, end: 6), roster_edit_replace(start: 6, end: 13), roster_edit_replace(start: 13, end: 14)], want: "")
-    + roster_edits_disjoint_expect(name: "edits-connector-overlaps-head-by-one", edits: [roster_edit_replace(start: 2, end: 7), roster_edit_replace(start: 6, end: 13)], want: "edits-overlap start=6 end=13 covered-to=7")
-    + roster_relocation_splice_controls()
+    roster_control_verdict(name: "edits-pipe-three-adjacent", fail: roster_edits_disjoint_expect(name: "edits-pipe-three-adjacent", edits: [roster_edit_replace(start: 2, end: 6), roster_edit_replace(start: 6, end: 13), roster_edit_replace(start: 13, end: 14)], want: "")),
+    roster_control_verdict(name: "edits-connector-overlaps-head-by-one", fail: roster_edits_disjoint_expect(name: "edits-connector-overlaps-head-by-one", edits: [roster_edit_replace(start: 2, end: 7), roster_edit_replace(start: 6, end: 13)], want: "edits-overlap start=6 end=13 covered-to=7")),
+    roster_control_verdict(name: "relocation-splice", fail: roster_relocation_splice_controls())
+  ]
 }
 
 // THE RELOCATION AT THE SPLICE: a head relocation whose text begins with the home name applies (head removed, text written at
@@ -3331,6 +3559,14 @@ fn roster_relocation_splice_controls() -> String {
     RosterApplyWritten { content: c } => "CONTROL-FAIL relocation-text-not-headed: wrote " + c + "\n"
   }
   good_text + bad_text
+}
+
+fn roster_import_labels_expect(name: String, start: Int, end: Int, labels: List<RosterLabelEdit>, want: String) -> String {
+  let got = match roster_import_and_labels_disjoint(start: start, end: end, text: "import std.algebra { map_lookup }", labels: labels) {
+    Present { value: r } => roster_refusal_text(reason: r)
+    Absent => ""
+  }
+  if got == want { "" } else { "CONTROL-FAIL " + name + ": want '" + want + "', got '" + got + "'\n" }
 }
 
 fn roster_edit_insert(at: Int) -> RosterLabelEdit {
@@ -4327,9 +4563,15 @@ fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, 
 
 // The rename controls alone (RenameHead, its pipe form and the named-argument rule), for a run that does not need the whole
 // control report: empty when every control holds.
+// THE HAND-RUN READING: the count and names of the controls that ran, then any failure, then the count check.
+fn roster_rename_controls_ran(verdicts: List<RosterControlVerdict>) -> String {
+  int_to_decimal_string(value: length(xs: verdicts)) + " controls ran: " + roster_join_exact(xs: list_map(xs: verdicts, f: fn(v) { v.name }), sep: ", ") + "\n"
+    + roster_control_fails(verdicts: verdicts) + roster_rename_control_count_check(verdicts: verdicts)
+}
+
 fn roster_rename_controls_report() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
-    Accepted { value: prepared, diagnostics: _ } => roster_rename_controls(prepared: prepared, lex: dag_prepared_lex()) + roster_control_edits_disjoint()
+    Accepted { value: prepared, diagnostics: _ } => roster_rename_controls_ran(verdicts: roster_rename_controls_verdicts_all(prepared: prepared, lex: dag_prepared_lex()))
   }
 }
