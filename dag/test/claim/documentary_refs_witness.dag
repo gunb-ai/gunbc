@@ -4,13 +4,14 @@ import std.types { Bool, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.std.decl_index { DeclFact, FnItem, TypeItem, decl_facts_at }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count }
 import gunbc.documentary_refs { generated_document_declaration_refs }
 import std.decl_ref { DeclarationSymbol }
 import std.markdown { cited_symbol_spelling }
 import gunbc.design_document { expected_design_md }
-import gunbc.design_ruling { design_rulings }
+import gunbc.design_ruling { DesignRuling, design_rulings }
 
 // THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
 // cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the
@@ -144,10 +145,17 @@ test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
 // it proves the resolver's behaviour, not that a row's reference names the row: a row whose
 // decl_name drifted from its declaration would plant its own matching fact and stay green. This
 // claim reads the live declaration pool, keyed, so each ruling reference must name exactly one real
-// declaration.
+// declaration. The pool is read ONCE with every ruling's key and each ruling is joined against
+// that read by its own key, so a ruling answers with exactly the rows a one-key read would give.
+fn documentary_ruling_key(r: DesignRuling) -> String {
+  concat("gunbc.design_ruling.", r.reference.decl_name as String)
+}
+
 test fn documentary_refs_ruling_references_name_live_declarations() -> Bool {
-  all(design_rulings(), r => length(xs: decl_facts_at(
+  let facts = decl_facts_at(
     pool_roots: ["dag"],
-    qualified_name: concat("gunbc.design_ruling.", r.reference.decl_name as String),
-  )) == 1)
+    qualified_names: map(design_rulings(), r => documentary_ruling_key(r: r)),
+    type_names: [],
+  )
+  all(design_rulings(), r => length(xs: decl_facts_matching_qualified_name(qn: documentary_ruling_key(r: r), facts: facts)) == 1)
 }

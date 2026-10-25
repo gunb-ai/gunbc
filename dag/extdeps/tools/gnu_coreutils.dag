@@ -559,6 +559,12 @@ fn df_available_bytes_argv(path: String) -> List<String> {
 }
 
 
+// Copy a file setting its mode at creation, ownership following the invoking principal: the unprivileged
+// sibling of install_file_owned_command, for a principal copying a file it can read into a directory it owns.
+fn install_file_mode_command(source: String, destination: String, mode: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: install_program(), arguments: [coreutils_install_mode_flag as String, mode as String, source, destination])
+}
+
 // Copy a file with ownership established before an unprivileged consumer can open it.
 fn install_file_owned_command(source: String, destination: String, mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
   argv_command(program: install_program(), arguments: [

@@ -270,6 +270,7 @@ import v2.compiler.dependency_demand {
   FunctionFact,
   OperationFact,
 }
+import v2.compiler.self_host.seed_retention_frontier { self_host_frontier_report }
 import v2.compiler.decl_ref_census { LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.effect_pair_census { BodyOrdered, EffectPairCensusReport, ImporteeRefusedCause, ResolveRefusedCause, ResolveUnclassifiedCause, UnobservedRoot, effect_pair_census_exit, effect_pair_census_lines, effect_pair_census_of_module, effect_reach_table, module_ordered_bodies, not_derived_keys_of, unobserved_roots_add, use_edges_of }
 import v2.compiler.value_use_dependency { value_use_dispositions }
@@ -1547,6 +1548,7 @@ type NativeDriverVerb
   | NativeDriverCensusVerb { verb: NativeCensusVerbWord, source_roots: FreeMonoid<String> }
   | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
+  | NativeDriverSelfHostFrontier { manifest_path: String, verdict_path: String, observed_path: String }
 
 type NativeDriverPlan
   = NativeDriverPlanned { verb: NativeDriverVerb }
@@ -1565,6 +1567,14 @@ data native_driver_verb_census_infer: String = "census-infer"
 // emitted run function serve every verb here, and native_census_verb_output is the single dispatch from a
 // verb to its fold. The closed verb type and its spelling are gunbc.native_census_verb.
 
+// THE SELF-HOST FRONTIER MODE (v2.compiler.self_host.seed_retention_frontier self_host_frontier_report): three
+// operands, each a FILE the self-host step wrote or the seed emitted -- the emitted-population
+// manifest, the controls verdict, the observed stage0 paths. It takes no source root, because its
+// subject is not a corpus to ingest but the join of those three populations.
+data native_driver_verb_self_host_frontier: String = "self-host-frontier"
+
+data native_driver_self_host_frontier_needs_operands: String = "REFUSED: self-host-frontier takes <emitted-population-manifest> <controls-verdict> <observed-paths>"
+
 data native_driver_verb_census_scoped: String = "census-scoped"
 
 data native_driver_census_scoped_needs_subject: String = "REFUSED: census-scoped takes a subject package label before the source roots"
@@ -1579,7 +1589,7 @@ data native_driver_census_scoped_against_one_subject: String = "REFUSED: census-
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | decl-ref-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | self-host-frontier <emitted-population-manifest> <controls-verdict> <observed-paths> | decl-ref-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -1620,6 +1630,10 @@ type NativeDriverParseState
   | DriverAdjudicateOptions { facts_path: String }
   | DriverAdjudicateSeekPatternValue { facts_path: String }
   | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
+  | DriverSelfHostFrontierSeekManifest
+  | DriverSelfHostFrontierSeekVerdict { manifest_path: String }
+  | DriverSelfHostFrontierSeekObserved { manifest_path: String, verdict_path: String }
+  | DriverSelfHostFrontierOperands { manifest_path: String, verdict_path: String, observed_path: String }
   | DriverParseRefused { reason: Symbol, detail: String }
 
 fn native_driver_unknown_verb_detail(word: String) -> String {
@@ -1627,7 +1641,7 @@ fn native_driver_unknown_verb_detail(word: String) -> String {
     concat("REFUSED: unknown mode ", word),
     fold_list(
       xs: native_census_verbs,
-      empty: " -- expected adjudicate, census, census-resolve, census-infer, census-scoped",
+      empty: " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier",
       cons: fn(acc, v) { concat(concat(acc, ", "), native_census_verb_word(v: v)) }
     )
   )
@@ -1647,6 +1661,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusResolveRoots { roots: [] }
       } else if word == native_driver_verb_census_infer {
         DriverCensusInferRoots { roots: [] }
+      } else if word == native_driver_verb_self_host_frontier {
+        DriverSelfHostFrontierSeekManifest
       } else if word == native_driver_verb_census_scoped {
         DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
@@ -1698,6 +1714,14 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusScopedRoots { subject: subject, rest: [], against: optional_present(value: word), roots: [] }
     DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: roots } =>
       DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: list_snoc_item(xs: roots, item: word) }
+    DriverSelfHostFrontierSeekManifest => DriverSelfHostFrontierSeekVerdict { manifest_path: word }
+    DriverSelfHostFrontierSeekVerdict { manifest_path: manifest_path } =>
+      DriverSelfHostFrontierSeekObserved { manifest_path: manifest_path, verdict_path: word }
+    DriverSelfHostFrontierSeekObserved { manifest_path: manifest_path, verdict_path: verdict_path } =>
+      DriverSelfHostFrontierOperands { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: word }
+    // A FOURTH OPERAND IS A REFUSAL, not an ignored word: the mode's inputs are exactly three files.
+    DriverSelfHostFrontierOperands { manifest_path: _, verdict_path: _, observed_path: _ } =>
+      DriverParseRefused { reason: ^native_driver_self_host_frontier_extra_operand, detail: native_driver_self_host_frontier_needs_operands }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateOptions { facts_path: word }
     DriverAdjudicateOptions { facts_path: facts_path } =>
@@ -1741,6 +1765,14 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
         reason: ^native_driver_no_verb_given,
         detail: native_driver_usage
       }
+    DriverSelfHostFrontierSeekManifest =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierSeekVerdict { manifest_path: _ } =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierSeekObserved { manifest_path: _, verdict_path: _ } =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierOperands { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: observed_path } =>
+      NativeDriverPlanned { verb: NativeDriverSelfHostFrontier { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: observed_path } }
     DriverAdjudicateSeekFacts =>
       NativeDriverPlanRefused {
         reason: ^native_driver_adjudicate_without_facts_path,
@@ -1809,6 +1841,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusVerb { verb: _, source_roots: roots } => roots
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
+        NativeDriverSelfHostFrontier { manifest_path: _, verdict_path: _, observed_path: _ } => []
       }
   }
 }
@@ -3226,6 +3259,13 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
   }
 }
 
+// THE FRONTIER VERB'S ANSWER: the report and exit are v2.compiler.self_host.seed_retention_frontier
+// self_host_frontier_report's; the host only reads the three files and prints.
+type NativeSelfHostFrontierOutput {
+  lines: List<String>
+  exit: Int
+}
+
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (`decl-ref-census`). Cut to its demand: the
 // candidates (modules whose Node tree constructs a DeclarationRef, or whose prose cites a symbol) and
 // the targets those cite, each reached by one path lookup in the layout and a normalize, never the
@@ -3244,6 +3284,11 @@ fn native_decl_ref_census_file_in_prose_scope(path: String) -> Bool {
 type NativeDeclRefCensusOutput {
   lines: List<String>
   exit: Int
+}
+
+fn native_self_host_frontier_output(manifest_text: String, verdict_text: String, observed_text: String) -> NativeSelfHostFrontierOutput {
+  let report = self_host_frontier_report(manifest_text: manifest_text, verdict_text: verdict_text, observed_text: observed_text)
+  NativeSelfHostFrontierOutput { lines: report.lines, exit: report.exit }
 }
 
 // THE CENSUS DEMANDS THE CANDIDATES AND THE MODULES THEIR CITATIONS NAME, NOTHING ELSE (DESIGN 2:

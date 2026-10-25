@@ -1,0 +1,217 @@
+module gunbc.serving.flash_next_predictions
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { ByteSize, byte_size, byte_size_count, bandwidth, gibibyte, gibibyte_to_byte_size, BasisPoint, basis_point, Permille, permille_count }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16, GpuBandwidthFigure }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_max_q_catalog, nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog }
+import extdeps.qwen.qwen3_8_flash_next { qwen3_8_flash_next_architecture }
+import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21 }
+import gunbc.serving.flash_next_image_capability_observation { ImageGpuArch, Sm90, Sm100, Sm120, flash_next_image_observations, image_main_kv_element_bytes }
+import gunbc.serving.gpu_observed_memory_receipt { ObservedGpuMemory, observed_memory_bytes, max_q_observed_memory, h200_nvl_observed_memory, b200_observed_memory }
+import gunbc.serving.flash_next_roofline { RooflineCard, CeilingRatio, maxq_kv_bytes_per_token, kv_bytes_per_token_at_width, kv_capacity_tokens, sessions_resident, p5_composed_permille }
+
+// THE PRE-REGISTERED PREDICTIONS, as rows. Registered 2026-10-21 ~23:55Z, before any H200 or B200 serving
+// measurement, by the operator; the intervals are the ~80 percent bets, quoted as registered and never
+// restated after the fact (a finding is reported against them, not by editing them). Units are fixed per
+// quantity: tokens, sessions, permille of the Max-Q (1000 = parity), requests per hour, basis points.
+type PredictionCard = H200Nvl | B200
+
+type PredictionId = P1KvCapacity | P2Sessions | P3DecodeSpeedup | P4PrefillSpeedup | P5SaturatedRequestRate | P6GpuPrefixShare
+
+type PredictionUnit = Tokens | SessionCount | RatioPermille | RequestsPerHour | ShareBasisPoints
+
+type PredictionRow {
+  id: PredictionId
+  card: PredictionCard
+  unit: PredictionUnit
+  low: Nat
+  high: Nat
+  registered_basis: NonEmptyStr
+}
+
+fn prediction_row(id: PredictionId, card: PredictionCard, unit: PredictionUnit, low: Nat, high: Nat, registered_basis: NonEmptyStr) -> PredictionRow {
+  PredictionRow { id: id, card: card, unit: unit, low: low, high: high, registered_basis: registered_basis }
+}
+
+data flash_next_registered_predictions: List<PredictionRow> = [
+  prediction_row(id: P1KvCapacity, card: H200Nvl, unit: Tokens, low: 2600000, high: 3100000, registered_basis: "memory x 0.96 - ~76 GiB weights (non-CSF scales) - ~6-8 GiB overhead, at the Max-Q's measured 19.3 KiB/token; gpu-mem-util 0.96, max-len 262144" as NonEmptyStr),
+  prediction_row(id: P1KvCapacity, card: B200, unit: Tokens, low: 4300000, high: 5200000, registered_basis: "memory x 0.96 - ~76 GiB weights (non-CSF scales) - ~6-8 GiB overhead, at the Max-Q's measured 19.3 KiB/token; gpu-mem-util 0.96, max-len 262144" as NonEmptyStr),
+  prediction_row(id: P2Sessions, card: H200Nvl, unit: SessionCount, low: 25, high: 29, registered_basis: "P1 / 106.4k mean prompt tokens; max-num-seqs 16 must be raised to use it" as NonEmptyStr),
+  prediction_row(id: P2Sessions, card: B200, unit: SessionCount, low: 41, high: 50, registered_basis: "P1 / 106.4k mean prompt tokens; max-num-seqs 16 must be raised to use it" as NonEmptyStr),
+  prediction_row(id: P3DecodeSpeedup, card: H200Nvl, unit: RatioPermille, low: 1600, high: 2600, registered_basis: "decode tok/s per request, 4 concurrent at ~110k context, MTP-3; bandwidth ratio 2.7x discounted for an untuned non-b12x path and launch-overhead floors" as NonEmptyStr),
+  prediction_row(id: P3DecodeSpeedup, card: B200, unit: RatioPermille, low: 2200, high: 4000, registered_basis: "decode tok/s per request, 4 concurrent at ~110k context, MTP-3; bandwidth ratio 4.5x discounted for an untuned non-b12x path and launch-overhead floors" as NonEmptyStr),
+  prediction_row(id: P4PrefillSpeedup, card: H200Nvl, unit: RatioPermille, low: 1300, high: 2500, registered_basis: "computed-prefill tok/s at a 6k chunk; expert GEMMs at ~118 rows/expert are near bandwidth-bound; the H200's BF16 math clears that; the Max-Q is power-capped" as NonEmptyStr),
+  prediction_row(id: P4PrefillSpeedup, card: B200, unit: RatioPermille, low: 2000, high: 5000, registered_basis: "computed-prefill tok/s at a 6k chunk; expert GEMMs at ~118 rows/expert are near bandwidth-bound; the B200's FP4 clears that; the Max-Q is power-capped" as NonEmptyStr),
+  prediction_row(id: P5SaturatedRequestRate, card: H200Nvl, unit: RequestsPerHour, low: 1000, high: 1750, registered_basis: "1.4-2.4x of 727 req/h at the production mix; combination of P3/P4; more KV removes queueing and preemption" as NonEmptyStr),
+  prediction_row(id: P5SaturatedRequestRate, card: B200, unit: RequestsPerHour, low: 1450, high: 2900, registered_basis: "2-4x of 727 req/h at the production mix; combination of P3/P4; more KV removes queueing and preemption" as NonEmptyStr),
+  prediction_row(id: P6GpuPrefixShare, card: H200Nvl, unit: ShareBasisPoints, low: 4500, high: 6500, registered_basis: "share of prompt tokens served from GPU prefix cache (not LMCache), from 29 percent; 3.7-6x resident KV" as NonEmptyStr),
+  prediction_row(id: P6GpuPrefixShare, card: B200, unit: ShareBasisPoints, low: 5500, high: 7500, registered_basis: "share of prompt tokens served from GPU prefix cache (not LMCache), from 29 percent; 3.7-6x resident KV" as NonEmptyStr),
+]
+
+// CARDS AS THE PREDICTOR SEES THEM. Memory, bandwidth and tensor rate come from the extdeps.gpu.nvidia rows
+// (their standing travels with them); weights, overhead, utilization and math path are the registered
+// run configuration. The B200 bandwidth is an operator figure because the catalog row carries none.
+// Weights: the Max-Q's observed 71.86 GiB; H200 and B200 the registered ~76 GiB (non-CSF scales).
+// Overhead: the registered 6-8 GiB, taken at its midpoint 7 GiB. Main-KV width comes from the image
+// observation of that arch, not from the Max-Q.
+fn flash_next_card(catalog: GpuModelCatalogRow, observed: ObservedGpuMemory, bandwidth_override: GpuBandwidthFigure?, weights_bytes: ByteSize, arch: ImageGpuArch, math: TensorDatatype) -> RooflineCard? {
+  match image_main_kv_element_bytes(rows: flash_next_image_observations, arch: arch) {
+    Present { value: w } => Present {
+      value: RooflineCard {
+        catalog: catalog,
+        memory_bytes: observed_memory_bytes(o: observed),
+        bandwidth_override: bandwidth_override,
+        weights_bytes: weights_bytes,
+        overhead_bytes: gibibyte_to_byte_size(g: gibibyte(count: 7)),
+        gpu_memory_utilization: basis_point(count: 9600),
+        main_kv_element_bytes: w,
+        math_datatype: math,
+      }
+    }
+    none => none
+  }
+}
+
+data flash_next_other_card_weights_bytes: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 76))
+
+// The Max-Q row carries its own bandwidth, so no override is supplied. Declared as data with its
+// type spelled, because a bare `none` at call-argument position loses the Measure payload's type.
+data no_bandwidth_override: GpuBandwidthFigure? = none
+
+data flash_next_maxq_card: RooflineCard? = flash_next_card(catalog: nvidia_rtx_pro_6000_max_q_catalog, observed: max_q_observed_memory, bandwidth_override: no_bandwidth_override, weights_bytes: flash_next_maxq_run_2026_10_21.weights_bytes, arch: Sm120, math: TensorFp4)
+
+data flash_next_h200_card: RooflineCard? = flash_next_card(catalog: nvidia_h200_nvl_catalog, observed: h200_nvl_observed_memory, bandwidth_override: no_bandwidth_override, weights_bytes: flash_next_other_card_weights_bytes, arch: Sm90, math: TensorBf16)
+
+// The B200's 8 TB/s HBM3e rate, the operator figure the catalog row does not carry; its rate is
+// std.measure Bandwidth (bytes per second, review 84774) and it carries its own standing, which every
+// bandwidth floor on the B200 card reports (review 5641830716): no page this repository read states it.
+// As a PEAK ("up to") it is the right figure for a floor, since a floor divides by the fastest rate.
+data flash_next_b200_bandwidth_obligation: NonEmptyStr = "Read the B200 SXM HBM3e memory bandwidth from an NVIDIA B200 datasheet. The 8 TB/s used here is an operator figure (2026-10-21); the catalog row extdeps.gpu.nvidia nvidia_b200_sxm_catalog carries no memory_bandwidth because no page read states an exact rate." as NonEmptyStr
+
+data flash_next_b200_bandwidth_operator_figure: GpuBandwidthFigure = GpuBandwidthFigure {
+  rate: bandwidth(count: 8000000000000),
+  standing: TranscribedUncited { read_obligation: flash_next_b200_bandwidth_obligation },
+}
+
+data flash_next_b200_fp4_card: RooflineCard? = flash_next_card(catalog: nvidia_b200_sxm_catalog, observed: b200_observed_memory, bandwidth_override: Present { value: flash_next_b200_bandwidth_operator_figure }, weights_bytes: flash_next_other_card_weights_bytes, arch: Sm100, math: TensorFp4)
+
+data flash_next_b200_marlin_card: RooflineCard? = flash_next_card(catalog: nvidia_b200_sxm_catalog, observed: b200_observed_memory, bandwidth_override: Present { value: flash_next_b200_bandwidth_operator_figure }, weights_bytes: flash_next_other_card_weights_bytes, arch: Sm100, math: TensorBf16)
+
+// P1/P2 TWO WAYS. The registered basis holds the Max-Q's per-token KV bytes (FP8 main KV, element width
+// 1); the image path moves the QSA K+V bytes to the width the image allows on that card. Both are
+// reported so the registered interval is scored against the registered arithmetic AND against the path
+// the image can run -- a gap between them is the finding, not a reason to move the interval.
+// (review 84955: the element width rides std.measure's ByteSize — it is a byte quantity (bytes per element),
+// not a plain count. The return stays Nat: it counts tokens, which the 84774 verdict leaves plain.)
+fn p1_tokens_at_width(card: RooflineCard, element_bytes: ByteSize) -> Nat? {
+  match maxq_kv_bytes_per_token(receipt: flash_next_maxq_run_2026_10_21) {
+    Present { value: calibration } => kv_capacity_tokens(card: card, kv_bytes_per_token: kv_bytes_per_token_at_width(arch: qwen3_8_flash_next_architecture, calibration_bytes_per_token: calibration, element_bytes: element_bytes))
+    none => none
+  }
+}
+
+fn p1_registered_basis_tokens(card: RooflineCard) -> Nat? {
+  p1_tokens_at_width(card: card, element_bytes: byte_size(count: 1))
+}
+
+fn p1_image_path_tokens(card: RooflineCard) -> Nat? {
+  p1_tokens_at_width(card: card, element_bytes: card.main_kv_element_bytes)
+}
+
+fn p2_image_path_sessions(card: RooflineCard) -> Nat? {
+  match p1_image_path_tokens(card: card) {
+    Present { value: t } => sessions_resident(capacity_tokens: t, receipt: flash_next_maxq_run_2026_10_21)
+    none => none
+  }
+}
+
+type IntervalPosition = BelowInterval | InsideInterval | AboveInterval
+
+fn interval_position(row: PredictionRow, value: Nat) -> IntervalPosition {
+  if value < row.low { BelowInterval } else { if value > row.high { AboveInterval } else { InsideInterval } }
+}
+
+// CEILING VERSUS REGISTERED INTERVAL for the speedup rows (P3, P4): a roofline ceiling below the interval's
+// LOW end means the interval needs the Max-Q to be running below its own floor by at least that gap,
+// which the registered figures neither state nor refute -- reported as `IntervalAboveCeiling`, a finding
+// about the transcribed specs or the Max-Q's efficiency. The deduction holds because both ends of the
+// ratio are floors over mandatory work (gunbc.serving.flash_next_roofline); the verdict carries the
+// CeilingRatio whole, so every standing the ratio stood on travels with it.
+type CeilingVerdict
+  = CeilingNotScored
+  | IntervalAboveCeiling { ceiling: CeilingRatio }
+  | IntervalReachableUnderCeiling { ceiling: CeilingRatio }
+
+fn ceiling_verdict(row: PredictionRow, ceiling: CeilingRatio?) -> CeilingVerdict {
+  match ceiling {
+    Present { value: c } => if permille_count(p: c.permille) < row.low {
+      IntervalAboveCeiling { ceiling: c }
+    } else {
+      IntervalReachableUnderCeiling { ceiling: c }
+    }
+    none => CeilingNotScored
+  }
+}
+
+// A MEASURED ROW, to be joined to a prediction by (id, card). The calibration and measurement rows for
+// H200 and B200 are the operator's, supplied later: this list is a declared frontier, empty, and an empty
+// join is NotMeasured, never a pass.
+type MeasuredReading {
+  id: PredictionId
+  card: PredictionCard
+  value: Nat
+  standing: CitedFigureStanding
+}
+
+data flash_next_measured_readings: List<MeasuredReading> = []
+
+data flash_next_measured_readings_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c declared frontier: flash_next_measured_readings is the join target for the H200 NVL and B200 calibration and measurement rows the operator supplies after renting the cards. Trigger: the first committed H200 or B200 receipt (vLLM startup log KV line for P1, /metrics for P3 to P6) is appended as MeasuredReading rows with a standing; prediction_verdict then scores them with no edit to flash_next_registered_predictions. Until then every verdict is PredictionNotMeasured." as NonEmptyStr
+)
+
+type PredictionVerdict
+  = PredictionNotMeasured
+  | PredictionAmbiguousReadings { count: Nat }
+  | PredictionScored { position: IntervalPosition, value: Nat }
+
+fn prediction_id_eq(a: PredictionId, b: PredictionId) -> Bool {
+  match a {
+    P1KvCapacity => match b { P1KvCapacity => true, _ => false }
+    P2Sessions => match b { P2Sessions => true, _ => false }
+    P3DecodeSpeedup => match b { P3DecodeSpeedup => true, _ => false }
+    P4PrefillSpeedup => match b { P4PrefillSpeedup => true, _ => false }
+    P5SaturatedRequestRate => match b { P5SaturatedRequestRate => true, _ => false }
+    P6GpuPrefixShare => match b { P6GpuPrefixShare => true, _ => false }
+  }
+}
+
+fn prediction_card_eq(a: PredictionCard, b: PredictionCard) -> Bool {
+  match a {
+    H200Nvl => match b { H200Nvl => true, B200 => false }
+    B200 => match b { H200Nvl => false, B200 => true }
+  }
+}
+
+fn prediction_verdict(row: PredictionRow, readings: List<MeasuredReading>) -> PredictionVerdict {
+  let hits = readings |> filter(r => prediction_id_eq(a: r.id, b: row.id) && prediction_card_eq(a: r.card, b: row.card))
+  let n = count(hits)
+  if n == 0 {
+    PredictionNotMeasured
+  } else if n == 1 {
+    fold(hits, init: PredictionNotMeasured, f: (_acc, r) => PredictionScored { position: interval_position(row: row, value: r.value), value: r.value })
+  } else {
+    PredictionAmbiguousReadings { count: n }
+  }
+}
+
+// P5 interval composed from the registered P3 and P4 ends, in requests per hour at the receipt's
+// 727 req/h, for the consistency reading "does P5 follow from P3 and P4".
+fn p5_composed_interval_ends(receipt_requests_per_hour: Nat, p3: Permille, p4: Permille) -> Nat? {
+  match p5_composed_permille(receipt: flash_next_maxq_run_2026_10_21, r3: p3, r4: p4) {
+    Present { value: r } => Present { value: receipt_requests_per_hour * permille_count(p: r) / 1000 }
+    none => none
+  }
+}
