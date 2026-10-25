@@ -307,6 +307,23 @@ fn variant_not_found_result(scrut: Node, variant_name: String, site: SourceSpan,
 // is where the bound NODE comes from once admission succeeds -- the scrutinee
 // when it carries that variant, the declaration otherwise, which is the
 // pre-existing answer for a scrutinee that does not.
+fn leaf2c_lookup_reading(env: TypeEnv, name: String) -> String {
+  match lookup_type_by_name(env: env, name: name) {
+    Present { value: d } =>
+      if d.connective == Disj { "present-disj" } else if d.connective == Conj { "present-conj" } else if d.inferred != none { concat("present-alias children=", to_string(d.children |> count)) } else { concat("present-leaf children=", to_string(d.children |> count)) }
+    Absent => "absent"
+  }
+}
+
+fn leaf2c_inferred_reading(n: Node) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: _ } } => "resolved"
+    Present { value: TypeVariable { id: _ } } => "typevar"
+    Present { value: _ } => "other"
+    Absent => "none"
+  }
+}
+
 fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: SourceSpan, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
@@ -338,7 +355,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
       let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
       let scrut_opt = scrut_node.return_cardinality == CardOptional
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
-        node_lookup_failed(diagnostics: [])
+        node_lookup_failed(diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: concat("LEAF2C name=", concat(scrut_node.name, concat(" authored=", concat(authored_name_at(source_indices: source_indices, node: scrut_node), concat(" lookup=", concat(leaf2c_lookup_reading(env: env, name: authored_name_at(source_indices: source_indices, node: scrut_node)), concat(" inferred=", leaf2c_inferred_reading(n: scrut_node)))))))), span: site }, module_name: module_name)])
       } else {
         let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
         let witness_subject = is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: scrut_node)) && scrut_node.children |> count == 1
