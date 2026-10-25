@@ -2823,6 +2823,8 @@ fn mtcollins1_boot_fru_print_retain(username: NonEmptyStr, password_file: NonEmp
     username: username,
     password_file: password_file,
     fru_id: "0",
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   if r.success {
     let path = mtcollins1_boot_fru_print_path(run_attempt: run_attempt)

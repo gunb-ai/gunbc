@@ -100,6 +100,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // --kill-after included; exit 124 on expiry) with the caller's bound, so a controller that does not
 // answer is a bounded reading, not a hung step, whatever ipmitool's own retry schedule is.
 //
+// FruPrint RUNS UNDER coreutils `timeout` LIKE ITS BOUNDED SIBLINGS, since the boot's read-only
+// pre-power phase now gates on it (#15193, review 86419): an unbounded `fru print` against a
+// controller that does not answer would outlive the phase it belongs to, and the bound is caller
+// policy (deadline + kill_after, exit 124 on expiry), one operation per command.
+//
 // SdrDumpAuthenticated AND SelListAuthenticatedCached ARE ONE READ SPLIT AT THE SDR. ipmitool(1)
 // (ipmitool 1.8.19, OPTIONS and SEL COMMANDS): `sel elist` "cross-references event records with
 // sensor data records to produce descriptive event output", so an uncached elist reads the whole SDR
@@ -410,10 +415,10 @@ service diagnostic.ipmi.Tool {
 
   operation FruPrint {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, fru_id: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, fru_id: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "fru", "print", "{fru_id}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "fru", "print", "{fru_id}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool fru print failed"

@@ -1,4 +1,4 @@
-namespace dag.test.claim.machine_intake.mtcollins1_boot_pre_power_retention_witness
+module test.claim.machine_intake.mtcollins1_boot_pre_power_retention_witness
 
 // WHAT THIS WITNESS HOLDS (PR2 of #15065).
 //
