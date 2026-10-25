@@ -3935,7 +3935,7 @@ mod compiler_tests {
                 );
                 assert!(
                     words.contains("struct Word64") && words.contains("Copy"),
-                    "the constant Word64 { hi: Int, lo: Int } keeps its Copy roster; probe_words:\n{}",
+                    "the constant Word64 {{ hi: Int, lo: Int }} keeps its Copy roster; probe_words:\n{}",
                     words
                 );
                 assert!(
