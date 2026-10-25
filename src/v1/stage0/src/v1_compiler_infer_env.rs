@@ -1800,6 +1800,7 @@ pub fn qualify_borrowed_type_names(
                             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                             match_pattern: n.match_pattern.clone(),
                             module_item_kind: n.module_item_kind.clone(),
+                            application_role: n.application_role.clone(),
                             declaration_marker: n.declaration_marker.clone(),
                             declaration: n.declaration.clone(),
                             expr_data: n.expr_data.clone(),
@@ -1834,6 +1835,40 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
+        application_role: n.application_role.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
+        expr_data: n.expr_data.clone(),
+    })
+}
+
+pub fn node_with_children_params_inferred_basis(
+    n: Rc<Node>,
+    children: Rc<Vec<Rc<Node>>>,
+    params: Rc<Vec<Rc<Node>>>,
+    inferred: Option<Rc<InferredNode>>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name: n.name.clone(),
+        ident: n.ident.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: children.clone(),
+        connective: n.connective.clone(),
+        params: params.clone(),
+        inferred: inferred.clone(),
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        application_role: n.application_role.clone(),
         declaration_marker: n.declaration_marker.clone(),
         declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
@@ -1861,6 +1896,7 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
+        application_role: n.application_role.clone(),
         declaration_marker: n.declaration_marker.clone(),
         declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
@@ -2072,7 +2108,35 @@ pub fn declaration_substitution_basis(
             }
             __result
         });
-        let with_children = node_with_children(n.clone(), children.clone());
+        let params = Rc::new({
+            let mut __result = Vec::new();
+            for p in n.params.clone().iter().cloned() {
+                __result.push(declaration_substitution_basis(
+                    p.clone(),
+                    env.clone(),
+                    generic_names.clone(),
+                ));
+            }
+            __result
+        });
+        let stamped_inferred = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                Some(Rc::new(InferredNode::Resolved {
+                    node: declaration_substitution_basis(
+                        rt.clone(),
+                        env.clone(),
+                        generic_names.clone(),
+                    ),
+                }))
+            }
+            _ => n.inferred.clone(),
+        };
+        let with_children = node_with_children_params_inferred_basis(
+            n.clone(),
+            children.clone(),
+            params.clone(),
+            stamped_inferred.clone(),
+        );
         let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
         let generic_leaf = ((((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
@@ -2579,6 +2643,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    application_role: std::option::Option::None,
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
@@ -3824,6 +3889,7 @@ pub fn alias_rhs_with_index_identity(
                 has_non_tail_self_call: rhs.has_non_tail_self_call.clone(),
                 match_pattern: rhs.match_pattern.clone(),
                 module_item_kind: rhs.module_item_kind.clone(),
+                application_role: rhs.application_role.clone(),
                 declaration_marker: rhs.declaration_marker.clone(),
                 declaration: Some(d.clone()),
                 expr_data: rhs.expr_data.clone(),

@@ -28,6 +28,7 @@ use self::SpanLocation::*;
 use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
+use self::TypeApplicationRole::*;
 use self::UnaryOpKind::*;
 use self::UnlocatedCause::*;
 use self::VarBindingKind::*;
@@ -194,6 +195,16 @@ pub struct FieldSummary {
     pub value_shape: FieldValueShape,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TypeApplicationRole {
+    AuthoredArguments,
+    ResolvedArguments,
+    ExpandedDeclarationBody,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum InferredNode {
@@ -230,6 +241,7 @@ pub fn divergent_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -1622,6 +1634,7 @@ pub struct Node {
     pub has_non_tail_self_call: bool,
     pub match_pattern: Option<Rc<MatchPattern>>,
     pub module_item_kind: ParsedModuleItemKind,
+    pub application_role: Option<TypeApplicationRole>,
     pub declaration_marker: DeclarationMarker,
     pub declaration: Option<Rc<DeclarationRef>>,
     pub expr_data: Rc<ExprData>,
@@ -1672,6 +1685,7 @@ pub fn make_expr_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: expr_data.clone(),
@@ -1707,6 +1721,7 @@ pub fn make_named_expr_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: expr_data.clone(),
@@ -1758,6 +1773,7 @@ pub fn make_expr_error_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprError {
@@ -1799,6 +1815,7 @@ pub fn make_arg_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -1838,6 +1855,7 @@ pub fn make_arm_node(
             has_non_tail_self_call: false,
             match_pattern: Some(pattern.clone()),
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -1872,6 +1890,7 @@ pub fn make_resource_use_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -1924,6 +1943,7 @@ pub fn make_field_init_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -1957,6 +1977,7 @@ pub fn make_field_binding_node(
         has_non_tail_self_call: false,
         match_pattern: Some(binding.clone()),
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -2002,6 +2023,7 @@ pub fn make_text_part_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprLiteral {
@@ -2037,6 +2059,7 @@ pub fn make_interp_part_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -2076,6 +2099,7 @@ pub fn make_param_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -2119,6 +2143,7 @@ pub fn make_resolved_param_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -2270,6 +2295,7 @@ pub fn make_field_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -2362,6 +2388,7 @@ pub fn make_variant_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -3215,6 +3242,7 @@ pub fn make_transport_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -3365,6 +3393,7 @@ pub fn shell_transport_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -3401,6 +3430,7 @@ pub fn shell_transport_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -3909,6 +3939,7 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: node.match_pattern.clone(),
         module_item_kind: node.module_item_kind.clone(),
+        application_role: node.application_role.clone(),
         declaration_marker: node.declaration_marker.clone(),
         declaration: node.declaration.clone(),
         expr_data: node.expr_data.clone(),
@@ -4398,6 +4429,7 @@ pub fn module_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4434,6 +4466,7 @@ pub fn import_node(
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                application_role: std::option::Option::None,
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
@@ -4461,6 +4494,7 @@ pub fn import_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -4518,6 +4552,7 @@ pub fn leaf_node_with_span(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4700,6 +4735,7 @@ pub fn unit_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4732,6 +4768,7 @@ pub fn bool_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4764,6 +4801,7 @@ pub fn string_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4796,6 +4834,7 @@ pub fn hash_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4828,6 +4867,7 @@ pub fn int_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4860,6 +4900,7 @@ pub fn float_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4892,6 +4933,7 @@ pub fn none_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -4936,6 +4978,7 @@ pub fn error_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprError {
@@ -5418,6 +5461,7 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
+        application_role: n.application_role.clone(),
         declaration_marker: n.declaration_marker.clone(),
         declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
@@ -5445,6 +5489,7 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
+        application_role: n.application_role.clone(),
         declaration_marker: n.declaration_marker.clone(),
         declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
@@ -5689,6 +5734,12 @@ pub struct TupleSecond;
 pub struct PlainValue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OptionalValue;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AuthoredArguments;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedArguments;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExpandedDeclarationBody;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ParseRecoveryError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

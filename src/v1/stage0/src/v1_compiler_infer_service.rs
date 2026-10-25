@@ -921,6 +921,7 @@ pub fn check_service_method_call_node(
                                                 match_pattern: std::option::Option::None,
                                                 module_item_kind:
                                                     ParsedModuleItemKind::NotAModuleItem,
+                                                application_role: std::option::Option::None,
                                                 declaration_marker: DeclarationMarker::Unmarked,
                                                 declaration: std::option::Option::None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -942,6 +943,7 @@ pub fn check_service_method_call_node(
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                    application_role: std::option::Option::None,
                                     declaration_marker: DeclarationMarker::Unmarked,
                                     declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
