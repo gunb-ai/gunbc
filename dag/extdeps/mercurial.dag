@@ -11,6 +11,7 @@ import std.graph {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.numeric.base16 { byte_hex_lower, base16_decode_lower, base16_is_digit_code_point, base16_is_upper_digit_code_point }
 import extdeps.uri { Uri, Https }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -273,11 +274,11 @@ fn mercurial_decode_node_identity(
     MercurialNodeIdentityDecodeRefused {
       cause: MercurialNodeIdentityWrongLength { observed: text.length() },
     }
-  } else if !all(chars(s: text), cp => base16_is_digit_code_point(cp: cp)) {
+  } else if !all(chars(text: text), cp => base16_is_digit_code_point(cp: cp)) {
     MercurialNodeIdentityDecodeRefused {
       cause: MercurialNodeIdentityNonHexadecimal,
     }
-  } else if any(chars(s: text), cp => base16_is_upper_digit_code_point(cp: cp)) {
+  } else if any(chars(text: text), cp => base16_is_upper_digit_code_point(cp: cp)) {
     MercurialNodeIdentityDecodeRefused {
       cause: MercurialNodeIdentityNonCanonicalUppercase,
     }

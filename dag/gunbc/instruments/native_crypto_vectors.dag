@@ -1,7 +1,7 @@
 module gunbc.instruments.native_crypto_vectors
 
 import std.measure { nanosecond_count }
-import std.types { Int, List, String, Bool }
+import std.types { Int, List, String, Bool, bool_text }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import std.machine_word { machine_word_apply, machine_word_native_operate, OperatorAnd, OperatorOr, OperatorXor, OperatorNot, OperatorShiftRight, OperatorShiftLeft, OperatorRotateRight, OperatorAddWrapping, Width8, Width32 }
@@ -25,6 +25,7 @@ import extdeps.wycheproof.ecdsa_secp256r1_sha256_p1363 {
   wycheproof_p256_sha256_p1363_group1_public_key,
   wycheproof_p256_sha256_p1363_group1_cases,
 }
+import std.host_text { chars }
 
 // THE NATIVE CRYPTO INSTRUMENT'S PROGRAM: the emitted .dag verifiers executed over their published
 // vectors, as a NativeClaimDriver entry (std.compiler_entry). `gunbc test
@@ -187,9 +188,6 @@ fn apples_p384_keys_on_curve() -> Bool {
   }
 }
 
-fn bool_text(b: Bool) -> String {
-  if b { "true" } else { "false" }
-}
 
 fn curve_parameter_cases() -> List<NativeCryptoCase> {
   let g = curve_affine(c: p384_curve, x: p384_gx, y: p384_gy)

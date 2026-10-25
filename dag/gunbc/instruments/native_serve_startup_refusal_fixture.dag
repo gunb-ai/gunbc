@@ -4,7 +4,7 @@ import std.types { String, Int, List, CommitSha }
 import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
 import extdeps.http.server { ServeWireResponse }
 import gunbc.native_serve { native_serve_application_json, NativeServeStartup, NativeServeStartupPassed, NativeServeStartupRefused }
-import gunbc.auth.approval_device_crypto_realization { DeviceCryptoObligation, device_crypto_obligations }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoObligation, DeviceCryptoHandlerReceipt, device_crypto_obligations, device_crypto_handler_identity }
 import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_startup }
 
 // THE CONTROL SERVICE FOR THE STARTUP FOLD (gunbc.native_serve native_serve_startup_entry_function): a NativeServeDriver
@@ -24,11 +24,11 @@ fn without_obligation(dropped: DeviceCryptoObligation) -> List<DeviceCryptoOblig
 fn dropped_refusal(dropped: DeviceCryptoObligation) -> String? {
   match device_crypto_receipt_startup(covered: without_obligation(dropped: dropped), exact_revision: "fixture-revision") {
     NativeServeStartupRefused { reason: why } => Present { value: why }
-    NativeServeStartupPassed { note: _ } => none
+    NativeServeStartupPassed { line: _, value: _ } => none
   }
 }
 
-fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup {
+fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
   let refusals = flat_map(device_crypto_obligations, o =>
     match dropped_refusal(dropped: o) {
       Present { value: why } => [why]
@@ -37,10 +37,10 @@ fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup {
   if count(refusals) == count(device_crypto_obligations) {
     NativeServeStartupRefused { reason: join(refusals, " | ") }
   } else {
-    NativeServeStartupPassed { note: "an obligation was dropped and its receipt was admitted" }
+    NativeServeStartupPassed { line: "an obligation was dropped and its receipt was admitted", value: DeviceCryptoHandlerReceipt { handler_identity: device_crypto_handler_identity, exact_revision: "fixture-revision", covered: device_crypto_obligations } }
   }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   ServeWireResponse { status: 200, content_type_label: native_serve_application_json, body: "unreachable\n", headers: [] }
 }

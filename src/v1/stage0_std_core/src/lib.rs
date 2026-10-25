@@ -27,6 +27,9 @@ pub mod std_content_hash;
 #[path = "../../stage0/src/std_coercion.rs"]
 pub mod std_coercion;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_host_text.rs"]
+pub mod std_host_text;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_currency_currency.rs"]
 pub mod extdeps_currency_currency;
 #[rustfmt::skip]
@@ -50,6 +53,9 @@ pub mod std_disposition;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_error_primitives.rs"]
 pub mod std_error_primitives;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_float.rs"]
+pub mod std_float;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_emit_model.rs"]
 pub mod std_emit_model;
@@ -134,6 +140,9 @@ pub mod extdeps_units_iso_80000_3;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_occurrence_identity.rs"]
 pub mod std_occurrence_identity;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_generated_provider.rs"]
+pub mod std_generated_provider;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_source_annotation.rs"]
 pub mod std_source_annotation;

@@ -30,7 +30,7 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.grammar { ParseTree }
-import v2.std.node { Node, Symbol }
+import v2.std.node { node_same_occurrence, Node, Symbol }
 import v2.std.node_query { find_named_child }
 import v2.std.verification {
   BoolWitness,
@@ -80,7 +80,7 @@ test fn emit_backward_selects_canonical_row_holds() -> Bool {
     emitted: emit_ingest_canonical_emitted()
   ) {
     Accepted { value: row, diagnostics: _ } =>
-      row == emit_ingest_canonical_row()
+      node_same_occurrence(a: row, b: emit_ingest_canonical_row())
     Rejected { diagnostics: _ } => false
   }
 }
@@ -93,7 +93,7 @@ test fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
         rules: emit_ingest_shared_rules()
       ) {
         Accepted { value: emitted, diagnostics: _ } =>
-          emitted == emit_ingest_canonical_emitted()
+          node_same_occurrence(a: emitted, b: emit_ingest_canonical_emitted())
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -113,7 +113,7 @@ test fn emit_then_ingest_selector_identity_holds() -> Bool {
             rules: emit_ingest_shared_rules()
           ) {
             Accepted { value: recovered, diagnostics: _ } =>
-              recovered == emit_ingest_canonical_emitted()
+              node_same_occurrence(a: recovered, b: emit_ingest_canonical_emitted())
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
@@ -135,7 +135,7 @@ test fn ingest_then_emit_selector_identity_holds() -> Bool {
             emitted: emitted
           ) {
             Accepted { value: row, diagnostics: _ } =>
-              row == emit_ingest_canonical_row()
+              node_same_occurrence(a: row, b: emit_ingest_canonical_row())
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
@@ -171,7 +171,7 @@ test fn same_grammar_parse_ingest_bridge_holds() -> Bool {
         source_model: dag_target_model()
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
-          recovered == emit_ingest_canonical_emitted()
+          node_same_occurrence(a: recovered, b: emit_ingest_canonical_emitted())
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

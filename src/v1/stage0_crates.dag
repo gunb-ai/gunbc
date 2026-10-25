@@ -21,6 +21,7 @@ import gunbc.stage0.stage0_partition_package_graph {
   partition_package_dependency_names_over
 }
 import gunbc.stage0.stage0_emitted_edge_admission { partition_module_owner_packages_over }
+import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFacadeCrate,
@@ -101,7 +102,13 @@ fn stage0_foundation_header_doc() -> String {
     "//!",
     "//! Foundation crate for the derived ~8-crate stage0 partition.",
     "//!",
-    "//! Module bodies remain generated into `src/v1/stage0/src`. The root",
+    concat(
+      concat(
+        concat("//! Module bodies remain generated into `", stage0_package_root),
+        stage0_source_dir_relative_to_package
+      ),
+      "`. The root"
+    ),
     "//! `NonEmpty*` wrappers are mirrored here because generated modules address",
     "//! them as `crate::NonEmptyVec` and `crate::NonEmptyBTreeSet`."
   ] |> join(separator: "\n")
@@ -305,7 +312,12 @@ fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
     CargoDependency { name: "im", source: RegistryDep { version: "15.1", default_features: true, features: ["serde"] } },
     CargoDependency { name: "libc", source: RegistryDep { version: "0.2", default_features: true, features: [] } },
     CargoDependency { name: "serde", source: RegistryDep { version: "1", default_features: true, features: ["derive", "rc"] } },
-    CargoDependency { name: "serde_json", source: RegistryDep { version: "1", default_features: true, features: [] } },
+    // arbitrary_precision: a JSON number keeps the text it arrived as, so a declared ExactDecimal is
+    // decoded from the wire's own digits and scale, and a number with more digits than Int units carry
+    // refuses instead of rounding to the nearest f64 (gunbc.recurring_failure_mode
+    // rest_response_declared_exact_decimal_decoded_as_float). Cargo unifies the feature across every crate
+    // of the build that links serde_json, the interpreter's decode included.
+    CargoDependency { name: "serde_json", source: RegistryDep { version: "1", default_features: true, features: ["arbitrary_precision"] } },
     CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", default_features: true, features: [] } },
     CargoDependency { name: "unicode-properties", source: RegistryDep { version: "0.1", default_features: true, features: ["emoji"] } }
   ]
@@ -642,13 +654,6 @@ fn partition_facade_wrapper_reexports_outcome(spec: Stage0CrateSpec) -> Stage0Re
           }
       }
     })
-}
-
-fn stage0_partition_lookups_valid() -> Bool {
-  match stage0_crate_boundary_emit_outcome() {
-    Stage0CrateBoundaryEmitOk { files: _ } => true
-    Stage0CrateBoundaryEmitRefused { cause: _ } => false
-  }
 }
 
 fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOutcome {

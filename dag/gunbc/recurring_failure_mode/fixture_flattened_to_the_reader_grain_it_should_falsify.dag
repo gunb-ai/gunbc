@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fixture_flattened_to_the_reader_grain_it_should_falsify
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data fixture_flattened_to_the_reader_grain_it_should_falsify: RecurringFailureMode = RecurringFailureMode {
   identity: "fixture_flattened_to_the_reader_grain_it_should_falsify" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a fixture is reshaped until it matches the reader's grain, and the accommodation is written up as fidelity to the producer** (INVALID STATE: a check is red because the reader under test cannot see the fixture's shape.",

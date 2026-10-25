@@ -42,6 +42,7 @@
 // src/gunbc_rust_emitted_crate.rs
 // src/gunbc_rust_emitted_edge.rs
 // src/gunbc_rust_source_type_bindings.rs
+// src/gunbc_stage0_stage0_cargo_manifest.rs
 // src/gunbc_stage0_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_stage0_crate_partition_generated.rs
 // src/gunbc_stage0_stage0_emitted_edge_admission.rs
@@ -65,7 +66,10 @@
 // src/std_effects.rs
 // src/std_emit_model.rs
 // src/std_error_primitives.rs
+// src/std_float.rs
+// src/std_generated_provider.rs
 // src/std_graph.rs
+// src/std_host_text.rs
 // src/std_import_statement.rs
 // src/std_induction.rs
 // src/std_integer.rs
@@ -141,7 +145,6 @@
 // src/v1_compiler_runtime_rust.rs
 // src/v1_compiler_stage0_crates.rs
 // src/v1_compiler_tokenize.rs
-// src/v1_compiler_trace.rs
 // src/v1_compiler_trait_bound_witness.rs
 // src/v1_compiler_trait_derive_emit.rs
 // src/v1_compiler_type_head_exposure.rs
@@ -149,7 +152,6 @@
 // src/v1_gunbc_namespace_reference_derived_closure_production_observations.rs
 // src/v1_gunbc_occurrence_binding_parser_walk.rs
 // src/v1_gunbc_parsed_import_statements.rs
-// src/v1_probe_emit_interp.rs
 // src/v1_rt.rs
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs
@@ -162,6 +164,7 @@
 // src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
 // src/v1_tests_claim_keyword_pattern_binder_refusal_test.rs
+// src/v1_tests_claim_parse_allocator_postcondition_test.rs
 // src/v1_tests_claim_parse_source_extent_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs

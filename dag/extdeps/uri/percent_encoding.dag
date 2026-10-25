@@ -9,6 +9,8 @@ import std.encoding { utf8_decode_octets }
 import std.coercion { unicode_scalar_fold }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.host_text { chars }
+import std.algebra { collection_concat_shape, collection_map_shape, collection_join_shape, list_push }
 
 // RFC 3986 (STD 66, January 2005), section 2.1 Percent-Encoding.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

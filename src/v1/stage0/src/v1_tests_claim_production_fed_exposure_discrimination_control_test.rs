@@ -44,8 +44,8 @@ pub fn inputs_in_consumer_module(
     declaration: OccurrenceId,
     consumer: String,
 ) -> Rc<OccurrenceBindingCandidateInputs> {
-    Rc::new(OccurrenceBindingCandidateInputs {
-        module_paths: inputs.module_paths.clone().iter().cloned().fold(
+    {
+        let __rb_0_0 = inputs.module_paths.clone().iter().cloned().fold(
             Rc::new(vec![]),
             |acc: Rc<Vec<Rc<OccurrenceModulePathRow>>>, row: Rc<OccurrenceModulePathRow>| {
                 v1_rt::concat(
@@ -61,10 +61,26 @@ pub fn inputs_in_consumer_module(
                     ]),
                 )
             },
-        ),
-        exposure_rows: inputs.exposure_rows.clone(),
-        authored_order_rows: inputs.authored_order_rows.clone(),
-    })
+        );
+        let __rb_1_0 = inputs.exposure_rows.clone();
+        let __rb_2_0 = inputs.authored_order_rows.clone();
+        let mut __rb_h = inputs;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.module_paths = __rb_0_0;
+                __rb_r.exposure_rows = __rb_1_0;
+                __rb_r.authored_order_rows = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(OccurrenceBindingCandidateInputs {
+                    module_paths: __rb_0_0,
+                    exposure_rows: __rb_1_0,
+                    authored_order_rows: __rb_2_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 #[derive(
@@ -85,7 +101,7 @@ pub fn outcome_under(grounding: DeclarationExposureGrounding) -> ExposureOutcome
     std::option::Option::None => ExposureOutcome::OutcomeSubjectRefused,
     Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(t.clone(), "ZqxProvided".to_string()).first().cloned() {
     std::option::Option::None => ExposureOutcome::OutcomeSubjectRefused,
-    Some(declaration) => match (*crate::std_occurrence_binding_candidates::resolve_type_reference_containment_binding(t.clone(), inputs_in_consumer_module(crate::v1_gunbc_occurrence_binding_parser_walk::occurrence_binding_inputs_from_transport(module_path.clone(), t.clone(), grounding.clone()), declaration.occurrence.clone(), "zqxexp.consumer".to_string()), reference.clone())).clone() {
+    Some(declaration) => match (*crate::std_occurrence_binding_candidates::resolve_type_reference_containment_binding(t.clone(), inputs_in_consumer_module(crate::v1_gunbc_occurrence_binding_parser_walk::occurrence_binding_inputs_from_transport(module_path.clone(), t.clone(), grounding), declaration.occurrence.clone(), "zqxexp.consumer".to_string()), reference.clone())).clone() {
     ReferenceBindingProjection::ReferenceBindingProjectionBound { provider: _, .. } => ExposureOutcome::OutcomeBound,
     ReferenceBindingProjection::ReferenceBindingProjectionUnbound { occurrence: _, .. } => ExposureOutcome::OutcomeUnbound,
     _ => ExposureOutcome::OutcomeOther,

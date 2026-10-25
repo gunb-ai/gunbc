@@ -1,0 +1,29 @@
+module gunbc.rung_drop.gcp_iam_bootstrap_approval_in_reviewed_code
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, Enumerated }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// THE DECLARED DROP FOR WHO MAY REACH iam-bootstrap BETWEEN TAPS (DESIGN 4b(3)). The provider of the
+// bootstrap pool admits only the fleet-converge workflow at reviewed main in the gcp-iam-bootstrap
+// environment (gunbc.auth.gcp_iam_bootstrap_federation), so no other job can mint the token. Within
+// that job, approval-necessity is enforced by the job's reviewed code refusing before it federates
+// (gunbc.auth.gcp_iam_bootstrap_delta_run), not by the credential layer: a change merged to main that
+// skipped the gate would federate without a tap. The rung owed is the credential layer's. GitHub creates
+// an environment a workflow references on first use, with NO protection rules, so until the custom rule
+// is configured the gcp-iam-bootstrap environment's only effect is the claim the provider pins: that is
+// the state this row covers. The tap is filed by the ungated gcp-iam-bootstrap-request job, so a rule
+// that opens only on a redeemed capability can be added without the gated job waiting on itself.
+data gcp_iam_bootstrap_approval_in_reviewed_code: RungDrop = RungDrop {
+  identity: "gcp_iam_bootstrap_approval_in_reviewed_code" as NonEmptyStr,
+  subject: "approval-necessity for federating to iam-bootstrap, the project-parented bootstrap delta identity",
+  declared: "2026-10-18",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "a GitHub custom deployment protection rule on the gcp-iam-bootstrap environment, modeled by gunbc#14336 stage 1 and wired by its stage 2" },
+    population: Enumerated { members: FreeSemigroup { head: "gunbc.auth.gcp_iam_bootstrap_delta_run gcp_iam_bootstrap_delta_apply_wet", tail: [] } },
+    restoration_trigger: "the gcp-iam-bootstrap environment's protection is a custom rule answered only on a redeemed capability, so the job that federates to iam-bootstrap cannot start before the operator's tap is redeemed; observed on a run whose deployment was held until redemption, at which point this row retires"
+  } }
+}

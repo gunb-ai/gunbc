@@ -6,7 +6,7 @@ import extdeps.languages.css.values {
   CssLength, css_ch, css_px, css_length_wire,
   CssFontStack, CssFontFamily, NamedFamily, GenericFamily,
   CssGenericFamily, GenericSansSerif, GenericMonospace, GenericSystemUi,
-  css_font_stack_wire,
+  css_font_stack_wire, SingleQuote,
 }
 import extdeps.fonts.google_fonts { roboto_source }
 
@@ -34,7 +34,7 @@ type ScaleValue
 fn scale_value_wire(v: ScaleValue) -> String {
   match v {
     LengthValue { length: l } => css_length_wire(l: l)
-    FontStackValue { stack: s } => css_font_stack_wire(s: s)
+    FontStackValue { stack: s } => css_font_stack_wire(s: s, quote: SingleQuote)
   }
 }
 

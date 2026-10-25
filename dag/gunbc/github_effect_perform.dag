@@ -8,11 +8,11 @@ import extdeps.clock {
   clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
 }
 import extdeps.auth.jws {
-  jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets,
+  JwsRs256, jws_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets,
   JwsEncoded, JwsEncodeNotOctets,
   JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused,
 }
-import gunbc.jws_signer_realize { jws_rs256_sign }
+import gunbc.jws_signer_realize { jws_sign }
 import extdeps.auth.jwt { JwtCompactSerialization }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.github.effect { GitHubOrganizationRef }
@@ -37,17 +37,17 @@ import extdeps.github.git_database
 import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
 import extdeps.github.org_actions
 import extdeps.github.org_actions { OrgRunnerGroupWire }
-import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.github.actions_artifacts
 import extdeps.github.actions_artifacts { ActionsArtifactList }
-import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared }
+import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared, gunbai_ci_app_pem_secret }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
   JitCredentialDelivery, JitCredentialNotDispatched, receive_jit_mint,
 }
 import std.optional { Absent, Present }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_delete }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused }
 import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -137,14 +137,16 @@ type JitMintPerformance
   | JitMintTokenForAnotherInstallation { app: DeclaredGitHubApp, installation: GitHubAppInstallationId }
 
 fn app_jwt_for(dispatch_app_id: Int, key: JwsSigningKeyRef, now_epoch_secs: EpochSecs) -> JitMintAppJwt {
-  match jws_rs256_signing_input(
+  match jws_signing_input(
+    alg: JwsRs256,
+    kid: none,
     payload_json: github_app_jwt_claims_json(app_id: dispatch_app_id, now_epoch_secs: now_epoch_secs),
   ) {
     JwsEncodeNotOctets { observed: o } =>
       AppJwtUnsigned { detail: concat("the signing input carried a member outside octet range: ", to_string(o)) }
     JwsEncoded { text: jws_signing_text } => {
       let signing_input = jws_signing_text as NonEmptyStr
-      match jws_rs256_sign(signing_input: signing_input, key: key) {
+      match jws_sign(alg: JwsRs256, signing_input: signing_input, key: key) {
         JwsSignRefused { detail: d } => AppJwtUnsigned { detail: d }
         JwsSigned { signature: sig } =>
           match jws_compact_serialization(signing_input: signing_input, signature: sig) {
@@ -390,8 +392,8 @@ type WorkflowRunRead sole_constructor {
   run: RestResult<WorkflowRun>
 }
 
-fn read_run_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> WorkflowRunRead uses net: Network {
-  let read = github.WorkflowRuns.GetRun(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String)
+fn read_run_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId) -> WorkflowRunRead uses net: Network {
+  let read = github.WorkflowRuns.GetRun(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: github_workflow_run_id_wire_text(id: run_id))
   WorkflowRunRead {
     run: match read {
       RestAnswered { answer } => RestAnswered { answer: answer.run }
@@ -404,8 +406,8 @@ type WorkflowAttemptJobsRead sole_constructor {
   jobs: RestResult<WorkflowJobRunList>
 }
 
-fn read_attempt_jobs_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int, attempt: Int) -> WorkflowAttemptJobsRead uses net: Network {
-  let read = github.WorkflowRuns.ListAttemptJobs(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String, attempt_number: attempt)
+fn read_attempt_jobs_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId, attempt: Int) -> WorkflowAttemptJobsRead uses net: Network {
+  let read = github.WorkflowRuns.ListAttemptJobs(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: github_workflow_run_id_wire_text(id: run_id), attempt_number: attempt)
   WorkflowAttemptJobsRead {
     jobs: match read {
       RestAnswered { answer } => RestAnswered { answer: answer.result }
@@ -440,8 +442,8 @@ type WorkflowRunArtifactsRead sole_constructor {
   listed: RestResult<ActionsArtifactList>
 }
 
-fn list_run_artifacts_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> WorkflowRunArtifactsRead uses net: Network {
-  let read = github.Artifacts.ListWorkflowRunArtifacts(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String)
+fn list_run_artifacts_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId) -> WorkflowRunArtifactsRead uses net: Network {
+  let read = github.Artifacts.ListWorkflowRunArtifacts(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: github_workflow_run_id_wire_text(id: run_id))
   WorkflowRunArtifactsRead {
     listed: match read {
       RestAnswered { answer } => RestAnswered { answer: answer.result }
@@ -514,13 +516,98 @@ fn update_runner_group_workflows_with(token: ControllerInstallationToken, organi
 // repository and the one permission the publication needs (contents: write), so a leaked token is
 // that and nothing else for one hour.
 //
-// THE KEY HANDOFF IS A FILE, THE SMALLER HONEST ARM. jws_rs256_sign signs from a HostKeyFile through
+// THE KEY HANDOFF IS A FILE, THE SMALLER HONEST ARM. jws_sign signs from a HostKeyFile through
 // openssl reading a file; a JwsSigningKeyRef arm for an in-memory Secret would be a new signer
 // realization (openssl would still need the bytes through a pipe or a file). So the Secret Manager
 // payload is written 0600 (Filesystem.WriteOwnerOnly, create-new) under the caller-named runner
 // temp path and deleted on EVERY arm after signing, refusals included; a delete that fails refuses
 // the mint rather than leaving a key behind. The JWT and the token are Secrets that live only inside
 // this call; only the scoped installation token is returned, to be presented to one fast-forward.
+// THE CONTROLLER APP'S KEY, STAGED FOR A RUN THAT HOLDS NO HOST KEY. A fleet-converge run federates to
+// GCP (WIF_ACCESS_TOKEN) and reads the gunbai-ci App key from Secret Manager, as the heal publisher
+// does for gunbai-bot. The key is written owner-only, signs the installation-token mint AND the
+// control-plane observation (both need the file), and is removed by the caller on every arm;
+// remove_staged_controller_key reports a key that stayed, which the caller must not swallow.
+type ControllerKeyStaging
+  = ControllerKeyStaged { key: JwsSigningKeyRef }
+  | ControllerKeyNotStaged { cause: String }
+
+// A FAILED CREATE-NEW WRITE IS NOT NOTHING HAVING BEEN WRITTEN (the place_netrc_binding finding): the
+// O_EXCL create precedes write_all, so an error after the create can leave a 0600 file holding a prefix
+// of the App key. The staging therefore clears the path first and removes it again when the write fails.
+// The cause REPORTS OBSERVATIONS ONLY and never the path: what the pre-clear observed, what the cleanup
+// observed. It asserts no origin: a path that was absent at cleanup does not show that no file was ever
+// created, and a file that could not be removed is not shown to be this attempt's or a prior one's.
+fn controller_key_delete_observation(d: FilesystemDelete) -> String {
+  match d {
+    FilesystemDeleted { path: _ } => "a file was removed"
+    FilesystemDeleteTargetAbsent { path: _ } => "the path was absent"
+    FilesystemDeleteRefused { path: _, kind: _, error: why } => concat("removal was refused: ", why)
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: why } => concat("removal failed with an unrecognized kind: ", why)
+  }
+}
+
+fn controller_key_write_refusal(write_error: String, before: FilesystemDelete, after: FilesystemDelete) -> String {
+  match after {
+    FilesystemDeleted { path: _ } => concat("ControllerAppKeyUnstaged: the key write refused (", concat(write_error, concat("); pre-clear: ", concat(controller_key_delete_observation(d: before), "; cleanup: a file was removed"))))
+    FilesystemDeleteTargetAbsent { path: _ } => concat("ControllerAppKeyUnstaged: the key write refused (", concat(write_error, concat("); pre-clear: ", concat(controller_key_delete_observation(d: before), "; cleanup: the path was absent"))))
+    FilesystemDeleteRefused { path: _, kind: _, error: _ } => controller_key_residue_cause(write_error: write_error, before: before, cleanup: controller_key_delete_observation(d: after))
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: _ } => controller_key_residue_cause(write_error: write_error, before: before, cleanup: controller_key_delete_observation(d: after))
+  }
+}
+
+fn controller_key_residue_cause(write_error: String, before: FilesystemDelete, cleanup: String) -> String {
+  concat("ControllerAppKeyResidueUnconfirmed: the key write refused (", concat(write_error, concat("); pre-clear: ", concat(controller_key_delete_observation(d: before), concat("; cleanup: ", concat(cleanup, "; a file may remain at the path and requires cleanup"))))))
+}
+
+data lost_boot_key_staging_partial_write_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: stage_key_file, called by stage_controller_app_key on the lost-boot sweep route. POPULATION: a Filesystem.WriteOwnerOnly that creates the O_EXCL file and then fails mid-write, leaving a partial 0600 file. NOT ESTABLISHED: that the cleanup Filesystem.Delete call runs after such a failure (dropping it is invisible to every control: the supplied-outcome tests fix only the cause text per observation, and the real-filesystem control reaches only a missing parent and an unremovable existing path). TRIGGER: a filesystem fault-injection capability in extdeps.filesystem that fails a write after its create, so the partial-file state is authorable." as NonEmptyStr)
+
+// THE FILE HALF OF THE STAGING, split out so the pre-clear, the O_EXCL write and the cleanup run in a
+// witness against a real filesystem with no Secret Manager exchange.
+fn stage_key_file(key: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging admit_callers: [
+  decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+  decl_ref(module_path: "test.claim.github_effect_perform_witness", decl_name: "a_real_filesystem_write_refusal_names_what_became_of_the_path"),
+] {
+    let before = Filesystem.Delete(path: key_path)
+    let written = Filesystem.WriteOwnerOnly(path: key_path, content: key as String)
+    if written.success {
+      ControllerKeyStaged { key: HostKeyFile { path: key_path } }
+    } else {
+      let after = Filesystem.Delete(path: key_path)
+      ControllerKeyNotStaged { cause: controller_key_write_refusal(
+        write_error: written.error,
+        before: filesystem_delete(path: key_path as String, success: before.success, error: before.error, error_kind: before.error_kind),
+        after: filesystem_delete(path: key_path as String, success: after.success, error: after.error, error_kind: after.error_kind),
+      ) }
+    }
+}
+
+fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
+] {
+  match gcp.SecretManager.AccessVersion(
+    access_token: wif_access_token,
+    project_id: gunbai_ci_app_pem_secret.project,
+    secret: gunbai_ci_app_pem_secret.secret,
+    version: gunbai_ci_app_pem_secret.version,
+  ) {
+    RestRefused { refusal } => ControllerKeyNotStaged { cause: concat("ControllerAppKeyUnreadable: ", publisher_refusal_text(refusal: refusal)) }
+    RestAnswered { answer } =>
+      match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
+        SmAccessVersionSecretDecodeRefused { cause: _ } =>
+          ControllerKeyNotStaged { cause: "ControllerAppKeyUnreadable: the Secret Manager payload did not decode" }
+        SmAccessVersionSecretDecoded { credential: key } => {
+          stage_key_file(key: key, key_path: key_path)
+        }
+      }
+  }
+}
+
+fn remove_staged_controller_key(key_path: NonEmptyStr) -> String? {
+  let removed = Filesystem.Delete(path: key_path)
+  if removed.success { Absent } else { Present { value: concat("ControllerAppKeyNotRemoved: ", removed.error) } }
+}
+
 type PublisherTokenMint
   = PublisherTokenMinted { token: Secret }
   | PublisherTokenNotMinted { cause: String }

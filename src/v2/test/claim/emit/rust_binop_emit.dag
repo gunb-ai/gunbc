@@ -1,5 +1,6 @@
 module v2.test.claim.emit.rust_binop_emit
 
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
@@ -46,6 +47,8 @@ import v2.std.compilers.target_model {
   canonical_operation_op_ne,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
+  TargetRealizationCatalog,
+  PrimitiveRealizationsUnwired,
   target_value_expression_binding_ref,
   target_value_expression_primitive_apply,
   target_value_expression_primitive_apply_to_concrete_tokens,
@@ -149,7 +152,7 @@ fn rust_binop_vep_emit(operation: CanonicalOperation, catalog: Node) -> Outcome<
     o: target_value_expression_primitive_apply_to_concrete_tokens(
       expr: rust_binop_binary_expr(operation: operation),
       projection: rust_value_expression_projection(),
-      catalog: catalog
+      catalog: TargetRealizationCatalog { operators: catalog, primitives: PrimitiveRealizationsUnwired }
     ),
     f: fn(tokens) {
       bind_outcome(

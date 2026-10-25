@@ -1,0 +1,114 @@
+module test.claim.printable_assembly_selection_witness
+
+import std.types { Bool, List, String }
+import extdeps.languages.json.emit { serialize_json }
+import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
+import product.printed_chassis.cassette { rear_socket_bolt_clearances }
+import product.printed_chassis.printable_assembly {
+  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct, PrintableAssembly,
+  PrintableAssemblyReady, PrintableAssemblyRefused, printable_manifest, printed_assembly_root_wire, printed_assembly_root_from_wire, printed_assembly_roots,
+}
+import product.printed_chassis.printable_assembly_selection { select_printable_assembly }
+import product.printed_chassis.preparation_identity { manifest_identity }
+
+fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
+  match select_printable_assembly(root: root) {
+    PrintableAssemblyReady { assembly: a } => Present { value: a }
+    PrintableAssemblyRefused { reason: _ } => none
+  }
+}
+
+fn ids(a: PrintableAssembly) -> List<String> { map(a.parts, p => p.id) }
+
+fn is_clearance(a: PrintableAssembly, id: String) -> Bool {
+  any(a.parts, p => p.id == id && match p.kind { Clearance => true Printed => false Purchased => false Metal => false })
+}
+
+// The residential cassette keeps the rear-socket hardware envelopes it has always required.
+test fn w_residential_cassette_keeps_its_socket_keepouts() -> Bool {
+  match selected(root: ResidentialCassette) {
+    Present { value: a } =>
+      length(list: a.required_keepouts) == length(list: rear_socket_bolt_clearances())
+        && all(rear_socket_bolt_clearances(), k => any(a.required_keepouts, r => r == k.id))
+        && all(a.required_keepouts, k => is_clearance(a: a, id: k))
+    Absent => false
+  }
+}
+
+fn a16_selects(root: PrintedAssemblyRoot, printed: String, with_fan: Bool) -> Bool {
+  match selected(root: root) {
+    Present { value: a } =>
+      length(list: a.parts) == (if with_fan { 4 } else { 3 })
+        && all(concat([printed, "CARD", "POWER-KEEPOUT"], if with_fan { ["FAN"] } else { [] }), i => any(ids(a: a), x => x == i))
+        && length(list: a.required_keepouts) == 1 && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
+        && is_clearance(a: a, id: "POWER-KEEPOUT")
+        && !any(a.assembly_members, m => m == "POWER-KEEPOUT")
+        && a.package == printed_assembly_root_wire(root: root)
+    Absent => false
+  }
+}
+
+// Each A16 root selects exactly its parts, and its power keep-out is required and a clearance part.
+test fn w_a16_duct_selects_exactly_its_parts_and_power_keepout() -> Bool {
+  a16_selects(root: A16PlugDuct, printed: "DUCT", with_fan: true)
+    && a16_selects(root: A16SleeveDuct, printed: "DUCT", with_fan: true)
+    && a16_selects(root: A16PlugFitRing, printed: "FIT-RING", with_fan: false)
+    && a16_selects(root: A16SleeveFitRing, printed: "FIT-RING", with_fan: false)
+    && a16_selects(root: A16BlowerDuct, printed: "DUCT", with_fan: true)
+}
+
+// RED: the duct and the residential cassette share no part id. This is a claim about that pair only;
+// the rack review and the residential cassette overlap by design, and the prepared-root digest
+// (w_the_prepared_root_is_bound_by_the_manifest_digest) is what keeps overlapping roots apart.
+test fn w_duct_and_residential_cassette_share_no_part_ids() -> Bool {
+  match selected(root: ResidentialCassette) {
+    Present { value: c } => match selected(root: A16PlugDuct) {
+      Present { value: d } =>
+        !any(ids(a: c), x => any(ids(a: d), y => x == y))
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// The root round-trips through its wire spelling, and an unknown spelling refuses.
+test fn w_root_wire_round_trips_and_unknown_refuses() -> Bool {
+  all(printed_assembly_roots, r =>
+    match printed_assembly_root_from_wire(s: printed_assembly_root_wire(root: r)) {
+      Present { value: back } => printed_assembly_root_wire(root: back) == printed_assembly_root_wire(root: r)
+      Absent => false
+    })
+    && match printed_assembly_root_from_wire(s: "cassette") { Present { value: _ } => false Absent => true }
+}
+
+// The checked manifest carries the root and its keep-outs, which is what preparation reads back and
+// what the CAD adapter enforces on solids.
+test fn w_duct_manifest_names_its_root_and_keepout() -> Bool {
+  match selected(root: A16SleeveFitRing) {
+    Present { value: a } => {
+      let m = serialize_json(v: printable_manifest(a: a))
+      string_contains(s: m, pattern: "\"root\": \"a16-sleeve-fit-ring\"") && string_contains(s: m, pattern: "\"required_keepouts\": [\"POWER-KEEPOUT\"]")
+        && string_contains(s: m, pattern: "\"presentation\": {\"axes\": ")
+    }
+    Absent => false
+  }
+}
+
+// RED for the prepared-root identity: the root is inside the digested bytes. Two manifests that
+// differ only in root have different digests, so a prepared readback bound to the rack-review
+// manifest cannot verify against a residential-cassette manifest -- the swap the two overlapping
+// cassette roots would otherwise permit. Each identity also reports the root from its own bytes.
+test fn w_the_prepared_root_is_bound_by_the_manifest_digest() -> Bool {
+  match manifest_identity(content: "{\"root\": \"cassette-rack-review\", \"parts\": []}") {
+    Present { value: a } => match manifest_identity(content: "{\"root\": \"residential-cassette\", \"parts\": []}") {
+      Present { value: b } => a.digest.hex != b.digest.hex && a.root_wire == "cassette-rack-review" && b.root_wire == "residential-cassette"
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// A manifest without a root refuses rather than defaulting to the cassette.
+test fn w_a_manifest_without_a_root_refuses() -> Bool {
+  match manifest_identity(content: "{\"parts\": []}") { Present { value: _ } => false Absent => true }
+}

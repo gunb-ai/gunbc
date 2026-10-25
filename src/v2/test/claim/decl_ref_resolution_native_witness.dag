@@ -1,0 +1,141 @@
+module v2.test.claim.decl_ref_resolution_native_witness
+
+import std.algebra { Cons, Empty, FreeMonoid, contains, length }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr }
+import v2.compiler.name_resolve { ResolutionContext, resolution_context }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.compiler.source_root_eval { native_test_context_from_ingest }
+import v2.test.claim.resolve.namespace_candidate_rule { ncr_double_read, ncr_home_a_read, ncr_home_b_read, ncr_relay_read, ncr_shadow_read }
+import std.optional { Absent, Optional, Present }
+import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefContested, DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefResolved, resolve_declaration_ref }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted, bind_outcome }
+import v2.std.resolution_policy { ImportScoped }
+import v2.test.claim.name_resolve.admission_fail_closed { fc_admitted, fc_module_root_export }
+
+// The native DeclarationRef resolver, executed on the real ResolutionContext path over a one-module
+// fixture whose module `fc_import_a_seg` declares `fc_export_a_sym`. Positive control: the declared
+// reference resolves. Discriminating REDs: an invented declaration and an invented module are each
+// refused with their own typed arm, and a test-witness module the ingest did not read is counted
+// ModuleAbsent: the arm is decided by the ingest's module roots, never by the spelling `test`.
+//
+// CONTESTED BINDINGS (the raw-slot defect): a position bound by two declaring claimants keeps ONE raw
+// node, so a resolver reading the storage slot would call it Resolved. The second context is a real
+// ingest through native_test_context_from_ingest: `v2.ncr_double` imports `NcrTwin` from two homes
+// and `v2.ncr_shadow` declares and imports it; each refuses as Contested naming every claimant, while
+// a uniquely declared name and a name reached through a re-export relay resolve under their HOME's
+// declaring path (the positive controls).
+
+fn dr_context() -> Outcome<ResolutionContext> {
+  bind_outcome(o: fc_admitted(n: fc_module_root_export(seg: ^fc_import_a_seg, export_sym: ^fc_export_a_sym)), f: fn(root) {
+    resolution_context(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: [root],
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    )
+  })
+}
+
+fn dr_ref(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef { module_path: module_path as NonEmptyStr, decl_name: decl_name as NonEmptyStr, field: WholeDeclaration }
+}
+
+test fn declared_reference_resolves() -> Bool {
+  match dr_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match resolve_declaration_ref(ref: dr_ref(module_path: "fc_import_a_seg", decl_name: "fc_export_a_sym"), context: c) {
+        DeclarationRefResolved { declaration_identity: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn invented_declaration_is_refused() -> Bool {
+  match dr_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match resolve_declaration_ref(ref: dr_ref(module_path: "fc_import_a_seg", decl_name: "invented_decl"), context: c) {
+        DeclarationRefDeclarationAbsent { reference: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn invented_module_is_refused() -> Bool {
+  match dr_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match resolve_declaration_ref(ref: dr_ref(module_path: "invented_module", decl_name: "fc_export_a_sym"), context: c) {
+        DeclarationRefModuleAbsent { reference: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn nonexistent_test_module_is_refused_module_absent() -> Bool {
+  match dr_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match resolve_declaration_ref(ref: dr_ref(module_path: "v2.test.claim.unread", decl_name: "x"), context: c) {
+        DeclarationRefModuleAbsent { reference: _ } => true
+        _ => false
+      }
+  }
+}
+
+data dr_contested_ingest: SourceRootIngest = Cons {
+  head: ncr_home_a_read(),
+  tail: Cons {
+    head: ncr_home_b_read(),
+    tail: Cons {
+      head: ncr_double_read(),
+      tail: Cons { head: ncr_shadow_read(), tail: Cons { head: ncr_relay_read(), tail: Empty } }
+    }
+  }
+}
+
+fn dr_ingest_resolution(ref: DeclarationRef) -> Optional<DeclarationRefResolution> {
+  match native_test_context_from_ingest(ingest: dr_contested_ingest) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: t, diagnostics: _ } =>
+      match t.resolution {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: c, diagnostics: _ } => Present { value: resolve_declaration_ref(ref: ref, context: c) }
+      }
+  }
+}
+
+test fn two_import_contested_name_is_refused_naming_both_claimants() -> Bool {
+  match dr_ingest_resolution(ref: dr_ref(module_path: "v2.ncr_double", decl_name: "NcrTwin")) {
+    Present { value: DeclarationRefContested { reference: _, claimants: c } } =>
+      length(xs: c) == 2 && contains(xs: c, item: "v2.ncr_home_a.NcrTwin", eq: fn(a, b) { a == b }) && contains(xs: c, item: "v2.ncr_home_b.NcrTwin", eq: fn(a, b) { a == b })
+    _ => false
+  }
+}
+
+test fn declared_and_imported_name_is_refused_as_contested() -> Bool {
+  match dr_ingest_resolution(ref: dr_ref(module_path: "v2.ncr_shadow", decl_name: "NcrTwin")) {
+    Present { value: DeclarationRefContested { reference: _, claimants: c } } => length(xs: c) == 2
+    _ => false
+  }
+}
+
+test fn uniquely_declared_name_resolves_under_its_declaring_path() -> Bool {
+  match dr_ingest_resolution(ref: dr_ref(module_path: "v2.ncr_home_a", decl_name: "NcrTwin")) {
+    Present { value: DeclarationRefResolved { declaration_identity: i } } => i.qualified_name == "v2.ncr_home_a.NcrTwin"
+    _ => false
+  }
+}
+
+test fn re_exported_name_resolves_under_its_home_not_the_relay() -> Bool {
+  match dr_ingest_resolution(ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
+    Present { value: DeclarationRefResolved { declaration_identity: i } } => i.qualified_name == "v2.ncr_home_a.NcrTwin"
+    _ => false
+  }
+}

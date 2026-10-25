@@ -5,7 +5,7 @@ import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
 import product.host_identity { HostIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { hardware_thread_count_saturating_sub }
-import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow, integer_overflow_text }
 import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
@@ -67,7 +67,7 @@ import gunbc.host.host_memory_observation {
   HostFixedOverheadAllowance,
   HostFixedOverheadUnmeasured,
 }
-import gunbc.ci.ci_fleet { fleet_intent_offers }
+import gunbc.ci.ci_fleet { fleet_intent_offers, fleet_converge_applied_offers, fleet_image_baked_offers, fleet_host_is_image_baked }
 
 type WorkloadClass
   = BatchLatencyTolerant
@@ -189,7 +189,7 @@ fn host_cpu_allocation(threads: HardwareThreadCount, reserve: HardwareThreadCoun
     let sessions_cpu_cap = measure_scale_fraction_floor(m: threads, num: byte_size_count(b: session_pool), den: byte_size_count(b: host_ram))
     let runner_threads = hardware_thread_count_saturating_sub(a: hardware_thread_count_saturating_sub(a: threads, b: reserve), b: sessions_cpu_cap)
     match checked_int_magnitude(a: slots) {
-      CheckedNatOverflow { cause: c } => HostCpuAllocationRefused { reason: concat("the committed width has no natural-number magnitude: ", c) }
+      CheckedNatOverflow { cause: c } => HostCpuAllocationRefused { reason: concat("the committed width has no natural-number magnitude: ", integer_overflow_text(cause: c)) }
       CheckedNatReady { value: slot_count } => {
         let per_slot = hardware_thread_count(count: measure_fit_count_floor(capacity: runner_threads, each: hardware_thread_count(count: slot_count)))
         if hardware_thread_count_value(t: per_slot) == 0 {
@@ -259,6 +259,7 @@ type HostRunnerDeploymentRefusal
   | CommittedWidthUnresolved { cause: String }
   | HostCpuAllocationUnchargeable { cause: String }
   | HostNotEnrolledInFleet
+  | HostRealizedByImage
 
 type RefusedHostDeployment {
   host: HostIdentity
@@ -549,6 +550,7 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     CommittedWidthUnresolved { cause: t } => concat("committed_width_unresolved ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
+    HostRealizedByImage => "host_realized_by_image_not_converge_applied"
   }
 }
 
@@ -748,9 +750,30 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan_under_placement(control_plane_placement: fabric_control_plane_placement)
 }
 
+// THE PLAN IS THE CONVERGE-APPLIED ARM: the hosts a converge installs onto in place. Every reader of it
+// (the converge policy, the unit-file, file-converge and deploy emitters) therefore never sees a RAM-image
+// host, and a new reader cannot SSH-install one. The image-baked arm is runner_image_baked_deployment_plan.
 fn runner_deployment_plan_under_placement(control_plane_placement: FabricControlPlanePlacement) -> RunnerDeploymentPlan {
   RunnerDeploymentPlan {
-    hosts: map(fleet_intent_offers, o => host_deployment_standing(offer: o, control_plane_placement: control_plane_placement)),
+    hosts: map(fleet_converge_applied_offers, o => host_deployment_standing(offer: o, control_plane_placement: control_plane_placement)),
+  }
+}
+
+// THE IMAGE-BAKED ARM over the same per-host derivation: a RAM-image host's slots and knobs, owed to the
+// image build input rather than applied by a converge.
+fn runner_image_baked_deployment_plan() -> RunnerDeploymentPlan {
+  RunnerDeploymentPlan {
+    hosts: map(fleet_image_baked_offers, o => host_deployment_standing(offer: o, control_plane_placement: fabric_control_plane_placement)),
+  }
+}
+
+// THE FLEET CAPACITY PLAN: every enrolled CI host whichever way its runner program is realized. Readers that
+// place or count CI capacity (the fleet-wide runner width, workspace-commissioning host-budget admission)
+// read this union, because mtcollins1 serves CI and must not drop out of a capacity answer; readers that
+// SSH-apply a host read runner_deployment_plan (converge-applied arm only).
+fn runner_fleet_capacity_plan() -> RunnerDeploymentPlan {
+  RunnerDeploymentPlan {
+    hosts: concat(runner_deployment_plan().hosts, runner_image_baked_deployment_plan().hosts),
   }
 }
 
@@ -776,7 +799,7 @@ fn plan_derived_run_total(p: RunnerDeploymentPlan) -> Int {
 // a host-targeted transaction, so srv3 being deployable is a fact about srv3 and stays true while
 // srv2 is refused.
 fn runner_host_deployment_for(p: RunnerDeploymentPlan, host: HostIdentity) -> HostRunnerDeploymentStanding {
-  fold(p.hosts, init: refuse_host(host: host, cause: HostNotEnrolledInFleet), f: (acc, st) => match st {
+  fold(p.hosts, init: refuse_host(host: host, cause: if fleet_host_is_image_baked(host: host) { HostRealizedByImage } else { HostNotEnrolledInFleet }), f: (acc, st) => match st {
     HostRunnerDeploymentDerived { deployment: d } =>
       if (d.identity as String) == (host as String) { HostRunnerDeploymentDerived { deployment: d } } else { acc }
     HostRunnerDeploymentRefused { refusal: r } =>
@@ -814,7 +837,7 @@ type RunnersPerHostResolution
 // over three hosts is not the maximum over four. It therefore asks for completeness rather than
 // reading whatever derived, and names the refused hosts when it cannot have it.
 fn effective_runners_per_host() -> RunnersPerHostResolution {
-  match require_complete_fleet_plan(p: runner_deployment_plan()) {
+  match require_complete_fleet_plan(p: runner_fleet_capacity_plan()) {
     FleetDeploymentComplete { deployments: hosts, fleet_concurrent_runs: _ } =>
       RunnersPerHostDerived { count: fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc }) }
     FleetDeploymentIncomplete { derived_hosts: _, refused_hosts: refused, known_derived_runs: _ } =>

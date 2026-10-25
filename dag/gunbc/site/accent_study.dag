@@ -1,8 +1,8 @@
 module gunbc.site.accent_study
 
-import std.markup { Fragment, Element, FragmentText, Attribute, attr }
+import std.markup { MarkupDocument, Fragment, Element, FragmentText, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class }
-import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.languages.html { try_serialize_html_document, EmitOk, EmitRejected, html_doctype_name }
 import gunbc.design.theme {
   Theme, night_theme, day_theme, theme_var_decls,
   CanvasRole, role_decl,
@@ -191,9 +191,15 @@ fn accent_study_page() -> Fragment {
   ] }
 }
 
+// Same as the moodboard: the doctype rides the model through the guarded route instead of being
+// concatenated after it.
+fn accent_study_document() -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: accent_study_page() }
+}
+
 fn accent_study_html() -> String {
-  match try_serialize_html_source(node: accent_study_page()) {
-    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+  match try_serialize_html_document(doc: accent_study_document()) {
+    EmitOk { html: h } => h
     EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
   }
 }

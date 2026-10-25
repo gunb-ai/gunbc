@@ -1,0 +1,203 @@
+module test.claim.decl_facts_field_binder_witness
+
+import std.types { String, List, Bool, Int }
+import std.optional { Optional, Present, Absent, optional_absent, optional_present }
+import v2.std.concept_index { FieldRef, QualifiedConcept, enumerate_concepts_in }
+import v2.std.decl_index { decl_facts, DeclFact }
+import v2.std.node { Node, Edge, Authored, OccurrenceSynthetic, TypeNode, ComputationNode, Value, Atom, Conj, Symbol, NotADeclaration, symbol_intern_lexeme, symbol_lexeme }
+import std.nat { Succ, Zero }
+import v2.std.optional_layers { wrap_type_node_occupancy }
+import v2.std.node_query { DeclaredField, declared_field_list, binder_node, edge_field_type_name, FieldDefault, LiteralDefault, field_default_reading }
+
+// THE ONE INHABITANCE CLAIM for the host reflection of a record's fields: the node decl_facts yields
+// for a declared record reads, through v2.std.node_query declared_field_list, as the same field list
+// as the node the compiler builds (binder_node). Names, order, type, cardinality and default
+// PRESENCE plus the literal's lexeme are compared. The host cannot reproduce a lowered default
+// expression, so its marshal REFUSES every non-literal default (the refusal RED is the Rust test
+// coproduct_reflection field_binder_default_tests a_non_literal_default_refuses, since a host
+// TypeError aborts decl_facts and cannot be authored as a .dag fixture); see field_default_reading.
+// The route is asserted: the expected side is built by node_query's own constructor and the derived
+// side comes only from the real batched decl_facts pass.
+
+fn atom(name: String) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: symbol_of(text: name) } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn symbol_of(text: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: text)
+}
+
+fn field_edge(name: String, ty: String, default: Optional<String>) -> Edge {
+  Edge {
+    label: Authored { name: symbol_of(text: name) }
+    target: binder_node(type_node: atom(name: ty), default: default_node(default: default))
+    declaration: NotADeclaration
+  }
+}
+
+fn default_node(default: Optional<String>) -> Optional<Node> {
+  match default {
+    Present { value: d } => optional_present(value: literal_node(lexeme: d))
+    Absent => optional_absent()
+  }
+}
+
+fn literal_node(lexeme: String) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Value }
+    children: [Edge { label: Authored { name: symbol_of(text: "0") } target: atom(name: lexeme) }]
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn compiler_built_conj(fields: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: fields, occurrence_id: OccurrenceSynthetic }
+}
+
+fn render_field(f: DeclaredField) -> String {
+  concat(concat(concat(symbol_lexeme(sym: f.name), ":"), symbol_lexeme(sym: edge_field_type_name(target: f.type_node))), render_default(d: f.default))
+}
+
+fn render_default(d: Optional<Node>) -> String {
+  match d {
+    Present { value: n } => match field_default_reading(d: n) {
+      LiteralDefault { lexeme: l } => concat("=L:", symbol_lexeme(sym: l))
+      MalformedDefault { reason: _ } => "=MALFORMED"
+    }
+    Absent => ""
+  }
+}
+
+fn render_fields(payload: Node) -> List<String> {
+  map(declared_field_list(payload: payload), f => render_field(f: f))
+}
+
+fn hits_named(qn: String) -> List<DeclFact> {
+  decl_facts(pool_roots: ["dag", "src/v2"]) |> filter(f => f.qualified_name == qn)
+}
+
+fn browser_expected() -> Node {
+  compiler_built_conj(fields: [
+    field_edge(name: "headless", ty: "Bool", default: optional_present(value: "false")),
+    field_edge(name: "profile_path", ty: "FilePath", default: optional_absent()),
+    field_edge(name: "viewport_width", ty: "Int", default: optional_present(value: "1280")),
+    field_edge(name: "viewport_height", ty: "Int", default: optional_present(value: "900"))
+  ])
+}
+
+test fn decl_facts_record_with_defaults_reads_as_the_compiler_built_fields() -> Bool {
+  let hits = hits_named(qn: "extdeps.browser.BrowserConfig")
+  count(hits) == 1 && all(hits, f => render_fields(payload: f.node) == render_fields(payload: browser_expected()))
+}
+
+test fn decl_facts_record_without_defaults_reads_with_its_names_in_order() -> Bool {
+  let hits = hits_named(qn: "gunbc.auth.approval_device_wire.ReadAuthentication")
+  count(hits) == 1 && all(hits, f => render_fields(payload: f.node) == ["enrollment_id:NonEmptyStr", "requested_at:Timestamp", "assertion_b64:NonEmptyStr"])
+}
+
+// RED: the derived list is not the compiler-built one when a default is dropped, so the comparison
+// discriminates defaults and is not satisfied by names alone.
+test fn a_dropped_default_is_not_the_derived_list() -> Bool {
+  let dropped = compiler_built_conj(fields: [
+    field_edge(name: "headless", ty: "Bool", default: optional_absent()),
+    field_edge(name: "profile_path", ty: "FilePath", default: optional_absent()),
+    field_edge(name: "viewport_width", ty: "Int", default: optional_present(value: "1280")),
+    field_edge(name: "viewport_height", ty: "Int", default: optional_present(value: "900"))
+  ])
+  let hits = hits_named(qn: "extdeps.browser.BrowserConfig")
+  count(hits) == 1 && all(hits, f => render_fields(payload: f.node) != render_fields(payload: dropped))
+}
+
+// CONTROL: the literals that share a spelling with other defaults keep their own kind: the string
+// "none" keeps its quotes, "false" differs from false. (The corpus `none` default is a literal.)
+test fn literals_that_share_a_spelling_keep_their_kind() -> Bool {
+  let hits = hits_named(qn: "test.fixture.decl_facts_field_binder.specimen.DefaultSpecimen")
+  count(hits) == 1 && all(hits, f => render_fields(payload: f.node) == ["quoted_none:String=L:\"none\"", "quoted_false:String=L:\"false\"", "bool_false:Bool=L:false"])
+}
+
+fn first_default(payload: Node) -> String {
+  fold(declared_field_list(payload: payload), init: "", f: fn(acc, fld) {
+    if acc == "" { render_default(d: fld.default) } else { acc }
+  })
+}
+
+// CONTROL: three defaults that share a spelling are three readings. The string "none", the
+// expression none and the string "false" versus the bool false never collapse.
+test fn defaults_with_one_spelling_are_distinct_readings() -> Bool {
+  let quoted = render_default(d: optional_present(value: literal_node(lexeme: "\"none\"")))
+  let bool_false = render_default(d: optional_present(value: literal_node(lexeme: "false")))
+  let quoted_false = render_default(d: optional_present(value: literal_node(lexeme: "\"false\"")))
+  let source = render_default(d: optional_present(value: atom(name: "none")))
+  quoted != source && bool_false != quoted_false && source == "=MALFORMED" && bool_false == "=L:false"
+}
+
+// RED: a default node that is not a literal Value computation is a refusal reading. A Value
+// computation with no child, a Conj node and a bare source-text Atom must not read as a literal.
+test fn a_malformed_default_is_not_a_literal() -> Bool {
+  let empty_value = Node { kind: ComputationNode { behavior: Value }, children: [], occurrence_id: OccurrenceSynthetic }
+  let conj = compiler_built_conj(fields: [])
+  render_default(d: optional_present(value: empty_value)) == "=MALFORMED" && render_default(d: optional_present(value: conj)) == "=MALFORMED"
+}
+
+// THE v1-RUNNABLE TWIN of v2.test.claim.concept_index_enumeration (an implicit-scope module that the
+// v1 interpreter cannot resolve): concept_index reads a record's fields through
+// node_labeled_child_edges + member_edge_type_name and a coproduct's arms through
+// coproduct_arm_list_from_node, the readers this marshal change feeds binder nodes.
+fn concept_fields(qn: String) -> List<FieldRef> {
+  fold(enumerate_concepts_in(pool_roots: ["dag", "src/v2"]), init: [], f: fn(acc, qc) {
+    if qc.qualified_name == qn { qc.concept.fields } else { acc }
+  })
+}
+
+fn has_field(fields: List<FieldRef>, fname: String, tname: String) -> Bool {
+  fold(fields, init: false, f: fn(acc, fr) { acc || (fr.field == fname && fr.type_name == tname) })
+}
+
+test fn concept_index_reads_a_record_through_binder_fields() -> Bool {
+  let fs = concept_fields(qn: "v2.std.concept_index.FieldRef")
+  count(fs) == 2 && has_field(fields: fs, fname: "field", tname: "String") && has_field(fields: fs, fname: "type_name", tname: "String")
+}
+
+test fn concept_index_reads_a_defaulted_record_through_binder_fields() -> Bool {
+  let fs = concept_fields(qn: "extdeps.browser.BrowserConfig")
+  count(fs) == 4 && has_field(fields: fs, fname: "headless", tname: "Bool") && has_field(fields: fs, fname: "viewport_width", tname: "Int")
+}
+
+test fn concept_index_reads_coproduct_arms_with_named_fields() -> Bool {
+  let fs = concept_fields(qn: "v2.test.claim.concept_index_enumeration.concept_index_enumeration.ConceptIndexWitnessCoproduct")
+  count(fs) == 2 && has_field(fields: fs, fname: "NullaryArm", tname: "coproduct_nullary_payload") && has_field(fields: fs, fname: "NamedFieldArm", tname: "{ alpha: String, beta: Bool }")
+}
+
+// RED: a literal default node with MORE than one child is malformed -- the extra child is never
+// silently dropped, so the first child's spelling is not read as the literal. CONTROL: the same
+// first child alone reads as the literal, so the refusal is the overfull shape and not the atom.
+test fn an_overfull_literal_default_is_malformed_and_its_single_child_form_is_a_literal() -> Bool {
+  let second = Edge { label: Authored { name: symbol_of(text: "1") } target: atom(name: "extra") }
+  let first = Edge { label: Authored { name: symbol_of(text: "0") } target: atom(name: "true") }
+  let overfull = Node { kind: ComputationNode { behavior: Value }, children: [first, second], occurrence_id: OccurrenceSynthetic }
+  let single = Node { kind: ComputationNode { behavior: Value }, children: [first], occurrence_id: OccurrenceSynthetic }
+  render_default(d: optional_present(value: overfull)) == "=MALFORMED" && render_default(d: optional_present(value: single)) == "=L:true"
+}
+
+fn specimen_field(name: String) -> List<DeclaredField> {
+  let fs = fold(hits_named(qn: "test.fixture.decl_facts_field_binder.specimen.OptionalSpecimen"), init: [], f: fn(acc, h) { declared_field_list(payload: h.node) })
+  fs |> filter(fld => symbol_lexeme(sym: fld.name) == name)
+}
+
+// DIFFERENTIAL: the host marshal's optional-field node is the node v2.std.optional_layers
+// wrap_type_node_occupancy builds over the same inner type (one layer), not a second spelling of it.
+// The expected side is the substrate's own constructor; the derived side is the real decl_facts pass.
+test fn the_marshalled_optional_field_is_wrap_type_node_occupancy_over_its_type() -> Bool {
+  let fs = specimen_field(name: "maybe_count")
+  count(fs) == 1 && all(fs, fld => fld.type_node == wrap_type_node_occupancy(base: atom(name: "Int"), depth: Succ { prev: Zero }))
+}
+
+// RED: the same derived node is not a required type, not two layers, and not a layer over another
+// inner type, so the equality above is discriminating (a mutated layer or spine fails it).
+test fn a_mutated_optional_layer_is_not_the_marshalled_node() -> Bool {
+  let fs = specimen_field(name: "maybe_count")
+  count(fs) == 1 && all(fs, fld =>
+    fld.type_node != atom(name: "Int")
+      && fld.type_node != wrap_type_node_occupancy(base: atom(name: "Int"), depth: Succ { prev: Succ { prev: Zero } })
+      && fld.type_node != wrap_type_node_occupancy(base: atom(name: "Bool"), depth: Succ { prev: Zero }))
+}

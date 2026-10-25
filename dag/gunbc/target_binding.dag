@@ -9,6 +9,7 @@ import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
 import std.measure { Millisecond }
 import gunbc.instruments.native_process_memory_reading { NativeMeasuredWorkload }
+import gunbc.native_census_verb { NativeCensusVerbWord }
 import gunbc.native_serve_probe_plan { NativeServeProbe }
 
 // A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
@@ -57,7 +58,8 @@ type TargetProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
-  | DependencyDemandCensusProducer
+  | NativeCensusVerbProducer { verb: NativeCensusVerbWord }
+  | SelfHostFrontierProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
   | SharedTypeLeafCollisionCensusProducer
@@ -99,7 +101,8 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     RequiredLaneResolutionCensusProducer {} => optional_absent()
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
-    DependencyDemandCensusProducer {} => optional_absent()
+    NativeCensusVerbProducer { verb: _ } => optional_absent()
+    SelfHostFrontierProducer {} => optional_absent()
     GenericIdentityCensusProducer {} => optional_absent()
     InterpolationHoleCensusProducer {} => optional_absent()
     SharedTypeLeafCollisionCensusProducer {} => optional_absent()
@@ -139,6 +142,9 @@ fn native_serve_probe_if_entry(producer: TargetProducer, want: String) -> Option
 //   OccurrenceBindingReading: `census-infer` again, its occurrence-binding lines (resolve's one
 //     binding record, v2.compiler.occurrence_binding_census) with that census's fixture and unindexed
 //     controls, read by gunbc.instruments.ambient_name_census_reading.
+//   AmbientOperationDispositionReading: that same run, read by
+//     gunbc.instruments.ambient_operation_disposition_reading for each ambient primitive spelling's
+//     disposition (existing declaration, missing, compiler-generated, host substrate).
 //   BindingDiffReading: those rows on BASE (base's own ambient-name-census, run in a private worktree
 //     of the merge base by base's own seed) and on HEAD, joined per occurrence by
 //     gunbc.instruments.namespace_wave_binding_diff, with its re-bind RED run over two fixture roots.
@@ -150,6 +156,7 @@ type V2NativeCensusReading
   | ScopedRefusalCensusReading { subject: PackageName }
   | TypeDeclarationUseReading
   | OccurrenceBindingReading
+  | AmbientOperationDispositionReading
   | BindingDiffReading
   | NativeProcessMemoryReading { workload: NativeMeasuredWorkload }
 

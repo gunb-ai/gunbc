@@ -65,7 +65,7 @@ import v2.std.diagnostic {
 }
 import v2.std.type_binder { node_inferred_subtree_nodes }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Conj,
@@ -80,7 +80,6 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
   Arrow,
-  Occupancy,
   Instantiation,
   Positional,
   Bind,
@@ -120,7 +119,6 @@ fn partition_user_semantic_type_shape(node: Node) -> Bool {
     TypeNode { connective: Conj } => true
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -145,7 +143,6 @@ fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
       TypeNode { connective: Atom { identity: _ } } => Absent
       TypeNode { connective: Disj } => Absent
       TypeNode { connective: Arrow } => Absent
-      TypeNode { connective: Occupancy } => Absent
       TypeNode { connective: Instantiation } => Absent
       ComputationNode { behavior: _ } => Absent
     }
@@ -206,7 +203,6 @@ fn partition_collect_user_semantic_types_from_module(
     TypeNode { connective: Atom { identity: _ } } => acc
     TypeNode { connective: Disj } => acc
     TypeNode { connective: Arrow } => acc
-    TypeNode { connective: Occupancy } => acc
     TypeNode { connective: Instantiation } => acc
     ComputationNode { behavior: _ } => acc
   }
@@ -413,7 +409,7 @@ fn partition_subtree_root_contained_in_ambient(
   ambient_root: Node,
   segment_root: Node
 ) -> Bool {
-  (segment_root == ambient_root)
+  node_same_occurrence(a: segment_root, b: ambient_root)
     || node_in_subtree_by_identity(root: ambient_root, needle: segment_root)
 }
 
@@ -576,7 +572,6 @@ fn partition_segment_root_is_transform_computation(root: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Branch } => false
@@ -591,7 +586,7 @@ fn partition_segment_is_ambient_arrow_body_behavior(
 ) -> Bool {
   match partition.segment {
     SubtreeRoot { root: segment_root } =>
-      (segment_root != partition.ambient.root)
+      !node_same_occurrence(a: segment_root, b: partition.ambient.root)
         && target_value_expr_arrow_has_value_expression_body(arrow: partition.ambient.root)
         && node_in_subtree_by_identity(
           root: partition.ambient.root,

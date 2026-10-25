@@ -10,8 +10,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host {
-  ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
-  managed_hosts, managed_host_binding, managed_host_fixture,
+  ManagedHost, managed_hosts, managed_host_fixture,
+}
+import gunbc.host.bmc_control_binding {
+  bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured,
+  BmcControlEndpointMismatch, bmc_control_route_observation,
 }
 import gunbc.host.baseboard_dimm_figure { BaseboardDimmFigureOf, BoardFigureUnmodeled, MtCollinsGettingStartedGuideFigures, baseboard_dimm_figure }
 import gunbc.machine_intake.dimm_physical_orientation { HostDimmOriented, HostDimmBoardUnmodeled, host_dimm_orientation }
@@ -46,8 +49,8 @@ test fn w_only_a_board_with_a_cited_figure_selects_one() -> Bool {
 }
 
 fn resolves_full_mirror(binding_host: ManagedHost, anchors: List<DimmPlacementAnchor>) -> Bool {
-  match managed_host_binding(host: binding_host) {
-    ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
+  match bmc_control_binding(observed: binding_host.access, secured: binding_host.secure) {
+    BmcControlBound { route: r } => match host_dimm_orientation(host: binding_host.host, observation: bmc_control_route_observation(route: r), anchors: anchors) {
       HostDimmOriented { oriented: o } => (o.host as String) == (binding_host.host as String) && o.board == mt_collins_board_authority && match o.outcome {
         OrientationResolved { hypothesis: h, order: _ } => h == FullMirror
         OrientationAmbiguous { surviving: _ } => false
@@ -58,21 +61,21 @@ fn resolves_full_mirror(binding_host: ManagedHost, anchors: List<DimmPlacementAn
       }
       HostDimmBoardUnmodeled { host: _, board: _ } => false
     }
-    ManagedHostAccessUnobserved { endpoint: _ } => false
-    ManagedHostNotSecured { cause: _ } => false
-    ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+    BmcControlAccessUnobserved { endpoint: _ } => false
+    BmcControlNotSecured { cause: _ } => false
+    BmcControlEndpointMismatch { observed: _, secured: _ } => false
   }
 }
 
 fn refused_unmodeled(binding_host: ManagedHost, anchors: List<DimmPlacementAnchor>, board: BoardFruObservation) -> Bool {
-  match managed_host_binding(host: binding_host) {
-    ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
+  match bmc_control_binding(observed: binding_host.access, secured: binding_host.secure) {
+    BmcControlBound { route: r } => match host_dimm_orientation(host: binding_host.host, observation: bmc_control_route_observation(route: r), anchors: anchors) {
       HostDimmBoardUnmodeled { host: h, board: refused } => refused == observed_board_authority(observation: board) && (h as String) == (binding_host.host as String)
       HostDimmOriented { oriented: _ } => false
     }
-    ManagedHostAccessUnobserved { endpoint: _ } => false
-    ManagedHostNotSecured { cause: _ } => false
-    ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+    BmcControlAccessUnobserved { endpoint: _ } => false
+    BmcControlNotSecured { cause: _ } => false
+    BmcControlEndpointMismatch { observed: _, secured: _ } => false
   }
 }
 
@@ -108,8 +111,8 @@ test fn w_the_same_anchors_on_another_reported_board_are_refused_unmodeled() -> 
   managed_hosts() |> all(h => match h.access {
     BmcAccessUnobserved { endpoint: _ } => false
     BmcAccessObserved { observation: o } => {
-      let jade = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: jade_fru_read) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-      let asrock = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: asrock_fru_read) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      let jade = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: jade_fru_read) }, secure: h.secure, smpro: h.smpro)
+      let asrock = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: asrock_fru_read) }, secure: h.secure, smpro: h.smpro)
       o.identity.board == collins_fru_read
         && resolves_full_mirror(binding_host: h, anchors: mtcollins1_placement_anchors)
         && refused_unmodeled(binding_host: jade, anchors: mtcollins1_placement_anchors, board: jade_fru_read)
@@ -119,18 +122,18 @@ test fn w_the_same_anchors_on_another_reported_board_are_refused_unmodeled() -> 
 }
 
 // AN UNOBSERVED BASEBOARD REFUSES ON ITS OWN CAUSE. A row whose access was never observed has no
-// baseboard to select a figure from; it is refused at the binding as ManagedHostAccessUnobserved, so no
+// baseboard to select a figure from; it is refused at the binding as BmcControlAccessUnobserved, so no
 // orientation is reachable for it and it never reads as BoardFigureUnmodeled.
 test fn w_an_unobserved_controller_is_refused_at_the_binding_not_as_an_unmodeled_board() -> Bool {
   managed_hosts() |> all(h => match h.access {
     BmcAccessUnobserved { endpoint: _ } => false
     BmcAccessObserved { observation: o } => {
-      let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-      match managed_host_binding(host: unobserved) {
-        ManagedHostAccessUnobserved { endpoint: e } => (e.host as String) == (o.endpoint.host as String)
-        ManagedHostBound { binding: _ } => false
-        ManagedHostNotSecured { cause: _ } => false
-        ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+      let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, secure: h.secure, smpro: h.smpro)
+      match bmc_control_binding(observed: unobserved.access, secured: unobserved.secure) {
+        BmcControlAccessUnobserved { endpoint: e } => (e.host as String) == (o.endpoint.host as String)
+        BmcControlBound { route: _ } => false
+        BmcControlNotSecured { cause: _ } => false
+        BmcControlEndpointMismatch { observed: _, secured: _ } => false
       }
     }
   }) && count(managed_hosts()) == 1

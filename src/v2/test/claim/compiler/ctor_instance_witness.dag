@@ -1,0 +1,63 @@
+module v2.test.claim.compiler.ctor_instance_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, Some }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, Int, List, String }
+import v2.compiler.infer { infer }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+import v2.test.claim.compiler.infer_expected_return_seed_witness { ers_assemble, ers_infer_accepted, ers_error_count }
+import v2.std.anonymous_binder { TypeVariableOfBinder, TypeVariableOfConstructorUse, TypeVariableRigid, fresh_constructor_use_variable, fresh_type_variable, type_variable_origin }
+import v2.std.node { symbol_intern_lexeme }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ci_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { Present { value: 1 } }\n") }
+fn ci_bare() -> Outcome<ResolvedTree> { ers_assemble(body: "fn a() -> Int? { Absent }\n") }
+fn ci_rigid() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f<T>() -> T? { Absent }\n") }
+fn ci_present() -> Outcome<ResolvedTree> { ers_assemble(body: "fn s() -> Int? { Present { value: \"s\" } }\n") }
+fn ci_unsolved() -> Outcome<ResolvedTree> { ers_assemble(body: "fn u() -> Int? {\n  let x = Absent\n  Absent\n}\n") }
+fn ci_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool { 1 }\n") }
+
+test fn ci_positive_control_plain_infers_holds() -> Bool { ers_infer_accepted(o: ci_plain()) }
+test fn ci_planted_error_counts_one_holds() -> Bool { ers_error_count(o: ci_planted()) == 1 }
+// The cut (#14531) removed Occupancy, so the constructor-use variable of Absent at Int? is solved: accepts.
+test fn ci_bare_absent_at_optional_int_accepts_holds() -> Bool { ers_infer_accepted(o: ci_bare()) }
+test fn ci_absent_at_rigid_optional_accepts_holds() -> Bool { ers_infer_accepted(o: ci_rigid()) }
+test fn ci_present_string_at_optional_int_refuses_holds() -> Bool { ers_error_count(o: ci_present()) >= 1 }
+test fn ci_unsolved_constructor_variable_refuses_holds() -> Bool { ers_error_count(o: ci_unsolved()) >= 1 }
+
+fn ci_rigid_payload() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r<T>(x: T) -> Int? { Present { value: x } }\n") }
+// A rigid T at a declared Int is refused (inhabitance_judged_type_variables): the former hole is closed.
+test fn ci_rigid_payload_at_optional_int_refuses_holds() -> Bool { ers_error_count(o: ci_rigid_payload()) >= 1 }
+
+fn ci_two_uses() -> Outcome<ResolvedTree> { ers_assemble(body: "fn a() -> Int? { Absent }\nfn b() -> String? { Absent }\nfn c() -> Int? {\n  let x: String? = Absent\n  Absent\n}\n") }
+// Each Absent is judged at its own declared type, so three uses at two types accept.
+test fn ci_two_absent_uses_at_distinct_types_accepts_holds() -> Bool { ers_infer_accepted(o: ci_two_uses()) }
+
+// The origin reader tells the two minted families and an authored parameter apart: a binder placeholder and a
+// rigid `T` are never classified as a constructor-use variable. `<` is not an identifier character, so no
+// authored name spells either prefix; the only mint of `<constructor-use@` is fresh_constructor_use_variable.
+test fn ci_origin_reader_discriminates_the_three_families_holds() -> Bool {
+  let use_var = fresh_constructor_use_variable(use_id: 7, label: symbol_intern_lexeme(lexeme: "T"))
+  let binder_var = fresh_type_variable(path: [1], label: symbol_intern_lexeme(lexeme: "T"))
+  (type_variable_origin(sym: use_var) == TypeVariableOfConstructorUse)
+    && (type_variable_origin(sym: binder_var) == TypeVariableOfBinder)
+    && (type_variable_origin(sym: symbol_intern_lexeme(lexeme: "T")) == TypeVariableRigid)
+}
+
+fn ci_let_present() -> Outcome<ResolvedTree> { ers_assemble(body: "fn p() -> Int? {\n  let x = Present { value: 1 }\n  x\n}\n") }
+fn ci_let_solved_call() -> Outcome<ResolvedTree> { ers_assemble(body: "fn id2<T>(a: T?, b: T?) -> T? { a }\n\nfn q() -> Int? {\n  let x = id2(Present { value: 1 }, Absent)\n  x\n}\n") }
+// An unannotated let whose constructor variable IS solved keeps accepting: the unsolved-let refusal is not a blanket reject.
+test fn ci_unannotated_let_of_present_accepts_holds() -> Bool { ers_infer_accepted(o: ci_let_present()) }
+test fn ci_unannotated_let_of_solved_call_accepts_holds() -> Bool { ers_infer_accepted(o: ci_let_solved_call()) }

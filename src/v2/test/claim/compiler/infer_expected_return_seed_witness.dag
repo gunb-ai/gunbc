@@ -1,0 +1,120 @@
+module v2.test.claim.compiler.infer_expected_return_seed_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, Some }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, Int, List, String }
+import v2.compiler.infer { infer }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ers_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_artifact, file_path: "src/v2/pilot/ers_pilot.dag" }
+data ers_collection_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_collection_artifact, file_path: "src/v2/pilot/ers_collection_pilot.dag" }
+data ers_algebra_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_algebra_artifact, file_path: "src/v2/pilot/ers_algebra_pilot.dag" }
+data ers_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_std_artifact, file_path: "src/v2/pilot/ers_std_pilot.dag" }
+
+fn ers_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^infer_expected_return_seed_cu,
+    source_root: V2Tree
+  }
+}
+
+fn ers_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      ers_witness(src: concat("module p\n\nimport std.optional { Absent, Optional, Present }\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\n", body), artifact: ers_artifact),
+      ers_witness(src: osd_std_optional(), artifact: ers_std_artifact),
+      ers_witness(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: ers_collection_artifact),
+      ers_witness(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n\nfn collection_concat_shape() -> Int { 0 }\n", artifact: ers_algebra_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+
+// RULE A (native): an application at a declared position is judged with its type variables seeded by matching the callee's
+// declared return against the position's declared type (v2.compiler.infer infer_expected_return_seed). Every control runs the
+// real route: assemble, resolve, infer. `none` is not used: it does not lower to Absent natively yet (a separate gap), and Absent
+// at an expected T? exercises the seed exactly because Absent's own T is otherwise unbound.
+
+fn ers_id2() -> String { "fn id2<T>(a: T?, b: T?) -> T? { a }\n\n" }
+fn ers_row() -> String { "type Row {\n  f: Int?\n}\n\ntype Cell {\n  c: Int?\n}\n\n" }
+
+fn ers_f() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn f() -> Int? { id2(Absent, Absent) }\n")) }
+fn ers_h() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn h<U>() -> U? { id2(Absent, Absent) }\n")) }
+fn ers_let_annotated() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn a() -> Int? {\n  let x: Int? = id2(Absent, Absent)\n  x\n}\n")) }
+fn ers_g() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn g() -> Int? {\n  let x = id2(Absent, Absent)\n  x\n}\n")) }
+fn ers_k() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_row(), concat(ers_id2(), "fn keep<T>(a: T, b: T?) -> T? { b }\n\nfn k(c: Cell) -> Row? { keep(c, Absent) }\n"))) }
+fn ers_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { Present { value: 1 } }\n") }
+fn ers_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool { 1 }\n") }
+
+fn ers_infer_accepted(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn ers_fatal_is(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+fn ers_has(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: reason)
+      }
+  }
+}
+
+fn ers_error_count(o: Outcome<ResolvedTree>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => 0
+        Rejected { diagnostics: d } => fold(d.tail, init: 1, f: fn(acc, _x) { acc + 1 })
+      }
+  }
+}
+
+test fn ers_positive_control_plain_infers_holds() -> Bool { ers_infer_accepted(o: ers_plain()) }
+test fn ers_planted_error_counts_one_holds() -> Bool { ers_error_count(o: ers_planted()) == 1 }
+test fn ers_f_fn_return_accepts_holds() -> Bool { ers_infer_accepted(o: ers_f()) }
+test fn ers_h_bound_variable_accepts_holds() -> Bool { ers_infer_accepted(o: ers_h()) }
+test fn ers_annotated_let_accepts_holds() -> Bool { ers_infer_accepted(o: ers_let_annotated()) }
+test fn ers_g_no_declared_position_refuses_holds() -> Bool { ers_has(o: ers_g(), reason: ^infer_unsolved_constructor_type_variable) }
+test fn ers_k_refuses_at_the_argument_holds() -> Bool { ers_has(o: ers_k(), reason: ^application_argument_does_not_inhabit) }
+
+fn ers_pick() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_row(), "fn pick<T>(a: T) -> T { a }\n\nfn kp(c: Cell) -> Row { pick(c) }\n")) }
+test fn ers_k_seeded_conflict_refuses_at_the_argument_holds() -> Bool { ers_has(o: ers_pick(), reason: ^application_argument_does_not_inhabit) }
+test fn ers_k_seeded_conflict_is_not_the_return_refusal_holds() -> Bool { !ers_has(o: ers_pick(), reason: ^arrow_body_does_not_inhabit_declared_return) }

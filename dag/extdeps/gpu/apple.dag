@@ -44,4 +44,5 @@ data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: [],
+  dense_tensor_throughput: [],
 }

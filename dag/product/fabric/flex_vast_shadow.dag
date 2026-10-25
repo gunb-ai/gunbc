@@ -1,5 +1,6 @@
 module product.fabric.flex_vast_shadow
 
+import product.fabric.flex_serving_image { flex_lil_serving_image, flex_serving_image_reference }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.types { NonEmptyStr, String, Bool, Int, List, Port, EpochMs }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
@@ -436,6 +437,11 @@ type FlexVastHostFilters {
   gpu_ram_min: ByteSize
   inet_down_min: Bandwidth
   verified: Bool
+  // The GPUs one rental carries. A Vast offer is a whole machine rented at one price (extdeps.cloud.vast_ai
+  // num_gpus), so a 4-GPU machine's min_bid is four cards' price; a recipe that serves on one card
+  // admits only one-card machines. The first live flex_pass (run 39214273788) admitted x2, x4 and x8
+  // machines into the field without it.
+  gpu_count: Nat
 }
 
 type FlexHostImageRow {
@@ -455,6 +461,7 @@ data flex_flash_next_vast_filters: FlexVastHostFilters = FlexVastHostFilters {
   gpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 90000)),
   inet_down_min: bandwidth(count: 1000 * vast_ai_bits_per_megabit),
   verified: true,
+  gpu_count: 1,
 }
 
 data flex_host_images: List<FlexHostImageRow> = [
@@ -467,7 +474,7 @@ data flex_host_images: List<FlexHostImageRow> = [
   },
   FlexHostImageRow {
     recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
-    image: "ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7" as NonEmptyStr,
+    image: flex_serving_image_reference(image: flex_lil_serving_image),
     filters: Present { value: flex_flash_next_vast_filters },
     read_on: Present { value: "2026-10-18 operator-account read of Vast template flash-next lil v2 (runtype ssh)" as NonEmptyStr },
     ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),
@@ -567,6 +574,7 @@ fn flex_vast_offer_query(recipe: ServingRecipe) -> VastAiOfferQuery? {
               cpu_ram_min: f.cpu_ram_min,
               inet_down_min: f.inet_down_min,
               verified: f.verified,
+              num_gpus: f.gpu_count,
             },
           }
       }
@@ -638,6 +646,7 @@ fn flex_offer_meets_filters(offer: VastAiOffer, host: VastAiOfferHostResources, 
     && offer.gpu_ram >= vast_ai_wire_mb(b: filters.gpu_ram_min)
     && host.cpu_ram >= vast_ai_wire_mb(b: filters.cpu_ram_min)
     && (!filters.verified || offer.verification == "verified")
+    && (offer.num_gpus == (filters.gpu_count as Int))
 }
 
 // Consumer: flex_offer_in_shadow_field (the roster walk), and through it product.fabric.flex_vast_loop flex_entry_wall.

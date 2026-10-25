@@ -18,11 +18,11 @@ import std.measure {
 }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.cloud.vast_ai
+import extdeps.entropy
 import extdeps.cloud.vast_ai { VastAiOffer, VastAiInstance, VastAiCharge }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import product.host_identity { HostIdentity }
-import product.supplier.vast_ai { VastAiAskReceipt }
 import product.fabric.flex_policy { FlexPolicy, FlexBidAdmission, FlexBidAdmitted, flex_liability_for_horizon }
 import product.fabric.flex_market {
   FlexOwnerLabel, FlexOwnedCard, FlexCapAssessment, FlexCapUnder,
@@ -52,7 +52,7 @@ import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
 import gunbc.serving.rented_release {
   RentedReleaseReadings, RentedReleaseReceiptV1, RentedInstanceReading, RentedDestroyRequest,
-  RentedReleasePending, rented_release_receipt, rented_bound_instance_id, rented_destroy_perform,
+  RentedReleasePending, rented_release_receipt, rented_bound_instance_id, RentedObservedInstance,
 }
 
 // THE EXECUTING WET LOOP of the flex tier (acquisition and release only). ONE PASS reads a sealed
@@ -392,10 +392,21 @@ fn flex_create_request(policy: FlexPolicy, intent: FlexCreateIntent, recipe: Ser
   }
 }
 
+// ---- THE PER-RENTAL SERVER PASSWORD. POOL_API_KEY is the bearer password the rented card's own inference
+// server requires (it is not a pool credential); the secret-free template carries none, so each create
+// draws a fresh one from extdeps.entropy Urandom and sends it only in the create body's env. It is a
+// Secret and is never rendered: FlexCreateRequest, the printable plan, holds none, and the draw happens
+// in flex_run_create, the write path, not in the pure plan. ctrl's pool reads it per instance.
+data flex_pool_password_length_chars: Int = 48
+
+fn mint_flex_pool_password() -> Secret {
+  concat("-e POOL_API_KEY=", Urandom.ReadPassword(count: flex_pool_password_length_chars).password) as Secret
+}
+
 // ---- THE CREATE ACTUATION. An answer with success is Answered; a refusal that proves no rental (a
 // 4xx other than an undecodable answer) is Refused; every uncertain completion (transport lost, a 5xx,
 // an answer that did not decode) is Lost, because the machine may have rented.
-fn flex_create_perform(api_key: Secret, request: FlexCreateRequest) -> FlexCreateStanding uses net: Network {
+fn flex_create_perform(api_key: Secret, request: FlexCreateRequest, pool_password: Secret) -> FlexCreateStanding uses net: Network {
   let sent = vast_ai.Asks.Create(
     api_key: api_key,
     offer_id: request.offer_id,
@@ -403,6 +414,7 @@ fn flex_create_perform(api_key: Secret, request: FlexCreateRequest) -> FlexCreat
     disk: flex_vast_disk_gigabytes(disk: request.disk),
     template_hash_id: request.template_hash_id,
     label: request.label,
+    env: pool_password,
   )
   match sent {
     RestAnswered { answer: a } =>
@@ -455,7 +467,6 @@ fn flex_acquired_allocation(
       owner: policy.owner as NonEmptyStr,
       asked_at: asked_at,
       asked_rate: request.bid,
-      provider_ask: VastAiAskReceipt { ask_id: request.offer_id, machine_id: request.machine_id },
     },
     contract: RentedContractUnread { obligation: flex_contract_unread_obligation },
     card: placement.card,
@@ -609,7 +620,7 @@ fn flex_created_outcome(input: FlexPassInput, request: FlexCreateRequest, intent
 }
 
 fn flex_run_create(input: FlexPassInput, api_key: Secret, request: FlexCreateRequest, intent: FlexCreateIntent) -> FlexPassOutcome uses net: Network {
-  flex_created_outcome(input: input, request: request, intent: intent, standing: flex_create_perform(api_key: api_key, request: request))
+  flex_created_outcome(input: input, request: request, intent: intent, standing: flex_create_perform(api_key: api_key, request: request, pool_password: mint_flex_pool_password()))
 }
 
 // A create whose answer was lost and whose instance the NEXT pass's observation shows carrying our label
@@ -706,7 +717,40 @@ fn flex_run_pass(input: FlexPassInput, api_key: Secret, releasing: FlexReleaseIn
     FlexPassDone { outcome: outcome } => outcome
     FlexPassCreateDue { request: request, intent: intent } => flex_run_create(input: input, api_key: api_key, request: request, intent: intent)
     FlexPassDestroyDue { receipt: receipt, request: q } =>
-      FlexPassReleased { receipt: receipt, destroy_status: Present { value: rented_destroy_perform(api_key: api_key, request: q) } }
+      FlexPassReleased { receipt: receipt, destroy_status: Present { value: flex_vast_destroy_perform(api_key: api_key, roster: input.observation.roster, ours: input.policy.owner, request: q) } }
+  }
+}
+
+// ---- THE VAST ROW'S HALF OF RELEASE. gunbc.serving.rented_release reads a supplier-agnostic instance; the
+// Vast instance maps into it here (id, label, actual_status), and the authorized destroy, which names the
+// instance by the agnostic id, is performed against the Vast instance of that id in the COMPLETE roster
+// this pass observed, REDUCED TO OUR LABEL first: a destroy can only ever name an instance this pass read
+// carrying policy.owner, never a parsed number and never a foreign row that shares the id string.
+fn flex_vast_rented_instance(instance: VastAiInstance) -> RentedObservedInstance {
+  RentedObservedInstance {
+    id: int_to_decimal_string(value: instance.id) as NonEmptyStr,
+    owner_label: instance.label,
+    status: instance.actual_status,
+  }
+}
+
+fn flex_vast_destroy_target(roster: FlexInstancesStanding, ours: FlexOwnerLabel, request: RentedDestroyRequest) -> VastAiInstance? {
+  match flex_ours_roster(roster: roster, ours: ours) {
+    FlexInstancesComplete { roster: r } => first_where(r.instances, i => int_to_decimal_string(value: i.id) == (request.instance_id as String))
+    _ => none
+  }
+}
+
+fn flex_vast_destroy_perform(api_key: Secret, roster: FlexInstancesStanding, ours: FlexOwnerLabel, request: RentedDestroyRequest) -> String uses net: Network {
+  match flex_vast_destroy_target(roster: roster, ours: ours, request: request) {
+    Absent => "destroy not sent: no instance of ours with that id is in this pass's complete Vast roster"
+    Present { value: target } =>
+      match vast_ai.InstanceLifecycle.Destroy(api_key: api_key, instance_id: target.id) {
+        RestAnswered { answer: _ } => "destroy answered"
+        RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["destroy refused with status ", to_string(status)], "")
+        RestRefused { refusal: RestTransportRefused { cause: _ } } => "destroy got no response"
+        RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["destroy status ", to_string(status), " body undecodable"], "")
+      }
   }
 }
 

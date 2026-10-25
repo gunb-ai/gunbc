@@ -56,7 +56,7 @@ import v2.compiler.source_root_eval {
   native_lane_module_reachable
 }
 
-import v2.compiler.module_acquisition { AcquiredModule }
+import v2.compiler.module_acquisition { AcquiredFromFile, AcquiredModule }
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.compiler.native_test_vocabulary {
@@ -77,6 +77,7 @@ import v2.std.diagnostic {
 import std.algebra { Cons, FreeSemigroup, fold_list, length, empty_map, map_insert }
 import v2.std.node { Symbol }
 import std.integer { Int }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // ── synthetic receipt constructors ─────────────────────────────────────────────────────────
 //
@@ -1473,7 +1474,7 @@ fn green_receipt_with_old_route_control(control: NativeRouteOldRouteControl) -> 
 // withdrawn arm gets.
 test fn an_old_route_absent_for_the_window_closes_the_fallback() -> Bool {
   let receipt = green_receipt_with_old_route_control(
-    control: OldRouteNotPresentAtWindow { expected_executable: "target/release/gunbc" }
+    control: OldRouteNotPresentAtWindow { expected_executable: concat(cargo_default_release_dir_rel, "/gunbc") }
   )
   native_route_admitted(admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt))
 }
@@ -1576,7 +1577,8 @@ fn an_acquired(name: String, path: String, markers: List<String>, content: Strin
     host_directory: "src/v2",
     content: content,
     requests: [],
-    test_markers: markers
+    test_markers: markers,
+    origin: AcquiredFromFile
   }
 }
 

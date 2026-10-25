@@ -191,6 +191,17 @@ pub mod gunbc_rust_decl_type_overlay;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod gunbc_stage0_stage0_cargo_manifest;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod gunbc_stage0_stage0_crate_layout_generated;
 #[allow(
     unused_imports,
@@ -598,17 +609,6 @@ pub mod v1_compiler_tokenize;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_compiler_trace;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_compiler_trait_bound_witness;
 #[allow(
     unused_imports,
@@ -665,17 +665,6 @@ pub mod v1_gunbc_occurrence_binding_parser_walk;
     clippy::all
 )]
 pub mod v1_gunbc_parsed_import_statements;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod v1_probe_emit_interp;
 #[allow(
     unused_imports,
     unused_variables,
@@ -786,6 +775,17 @@ pub mod v1_tests_claim_item_kind_dissolves_shape_predicates_control_test;
     clippy::all
 )]
 pub mod v1_tests_claim_keyword_pattern_binder_refusal_test;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod v1_tests_claim_parse_allocator_postcondition_test;
 #[allow(
     unused_imports,
     unused_variables,

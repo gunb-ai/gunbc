@@ -7,7 +7,7 @@ import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePendi
 import std.algebra { list_snoc_item, PartialFunction, empty_map, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
 import v2.std.inhabitance { TypeVariableInstance }
@@ -26,13 +26,43 @@ import v2.std.inhabitance { TypeVariableInstance }
 // v2.compiler.infer imports these back; this is a relocation of one
 // authority, never a second declaration of it (DESIGN.md §3).
 
+// THE SITE THAT LEFT A NODE ON THE GROUNDING FRONTIER, one arm per producer of GroundingNotDerived. The
+// advisory stays ONE reason (^infer_grounding_not_derived) so its counts and every gate keyed on it are
+// unchanged; what the single reason hid is WHICH of unlike causes produced it (DESIGN section 4b), and
+// the located node plus this site is the cause identity. inferred_facts_not_derived takes the site, so a
+// new producer must add an arm and an untagged one does not compile (DESIGN section 6b, root
+// generalization: one rule for the leaves that each answered 'not derived').
+type NotDerivedSite
+  = BinderTypeNodeUnfacted
+  | BinderTypeUnjudged
+  | DeclarationWrapperEvidenceEdgesAbsent
+  | ProductEvidenceEdgesAbsent
+  | LexicalReferenceValued
+  | LexicalReferenceUntyped
+  | LiteralTypeUnknown
+  | RosterMemberTypeAbsent
+  | ProjectionReceiverUnderived
+  | ReferenceRejectedGrounding
+  | DeclarationReferenceWithoutPath
+  | ReferenceLookupMiss
+  | VariantArmValueNotDerived
+  | CallableEvidenceAbsent
+  | MatchFrontier
+  | ComparisonNotDerived
+  | LiteralPayloadMember
+  | ConstructFieldsUnbound
+  | ConstructFormalsAuthored
+  | ConstructTypeAbsent
+  | FunctionValueSignatureUndetermined
+
 // Why GroundingNotDerived exists: before this arm, a node no derivation rule covered was routed
 // through solve_constraints with the singleton candidate set [root], and the resulting grounding
 // carried the SOURCE NODE as its resolved type. Every literal, binding and operation was typed as
 // itself, and every downstream consumer read that as an established judgment.
+
 type NodeGrounding
   = DerivedGrounding { grounding: CanonicalGrounding }
-  | GroundingNotDerived { node: Node }
+  | GroundingNotDerived { node: Node, site: NotDerivedSite }
 
 // WHAT A NODE DENOTES IS AN INFERRED FACT ABOUT IT, WHICH IS WHY IT LIVES HERE AND NOT IN A SECOND
 // CARRIER. A resolved reference to a corpus declaration (v2.compiler.resolve resolved_reference_node)
@@ -133,7 +163,7 @@ fn authored_occurrence_census_step(acc: AuthoredOccurrenceCensus, n: Node) -> Au
       match map_lookup(m: acc.seen, key: id.value) {
         Absent => AuthoredOccurrenceCensus { seen: map_insert(m: acc.seen, key: id.value, value: n), collisions: acc.collisions }
         Present { value: held } =>
-          if held == n {
+          if node_same_occurrence(a: held, b: n) {
             acc
           } else {
             AuthoredOccurrenceCensus {

@@ -1,5 +1,7 @@
 module gunbc.file_access
 
+import std.host_text { chars }
+
 
 type FileTreeScope {
   root_path: NonEmptyStr
@@ -25,7 +27,7 @@ fn path_has_dotdot_segment(path: String) -> Bool {
 // EVERY ANCESTOR DIRECTORY OF A PATH, AS PREFIXES ENDING JUST BEFORE EACH SEPARATOR. This lives
 // here rather than in either consumer because "what are the ancestor directories of this path" is
 // one fact, and this module already owns the other half of it -- whether a path lies within a
-// scope. It was authored twice: gunbc.runner.runner_host_file_converge runner_host_path_ancestors folded
+// scope. It was authored twice: gunbc.runner.runner_host_file_converge fleet_host_path_ancestors folded
 // it and then filtered to its own /etc scope, and gunbc.runner.runner_microvm_network_apply copied the
 // fold verbatim, bare separator codepoint and all, because the first one's scope filter made it
 // unreusable (review 69712). Two answers to one question drift independently -- on trailing
@@ -37,7 +39,7 @@ fn path_has_dotdot_segment(path: String) -> Bool {
 // expression at the call site, and neither is a second derivation of the prefixes.
 fn path_ancestor_prefixes(path: String) -> List<String> {
   map(
-    filter(enumerate(chars(s: path)), pair => pair.second == 47 && pair.first > 0),
+    filter(enumerate(chars(text: path)), pair => pair.second == 47 && pair.first > 0),
     pair => substring(s: path, start: 0, end: pair.first),
   )
 }

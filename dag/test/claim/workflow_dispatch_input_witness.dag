@@ -9,7 +9,7 @@ import extdeps.github.actions {
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
-  FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
+  FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, fleet_converge_gcp_iam_bootstrap_job_id, fleet_converge_gcp_iam_bootstrap_request_job_id,
   fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, DashboardDeploy, HostResetReturn,
@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_in_job_compiler_pair_jobs, fleet_converge_mtcollins1_boot_pair_build_step,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for, ApprovalDeviceEnrolmentCodeIssue,
+  FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -256,7 +256,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // an edge row no rostered mode reaches, and a rostered mode's job with no edge row -- so a red names
 // its identities rather than two unequal lists.
 fn fleet_converge_expected_job_ids() -> List<String> {
-  concat([fleet_converge_plan_revision_job_id as String, fleet_converge_release_bins_job_id as String],
+  concat([fleet_converge_plan_revision_job_id as String, fleet_converge_release_bins_job_id as String, fleet_converge_gcp_iam_bootstrap_request_job_id as String, fleet_converge_gcp_iam_bootstrap_job_id as String],
     map(fleet_converge_workflow_modes, m => fleet_converge_mode_job_id(mode: m) as String))
 }
 
@@ -284,7 +284,10 @@ fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: Li
     } else if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
       e.needs == []
     } else {
-      e.needs == build
+      // THE BINARIES' SOURCE IS `build`; a job may also wait on another rostered job (the converge waits
+      // for gcp-iam-bootstrap), but never on one the roster does not name.
+      any(e.needs, n => n == (fleet_converge_release_bins_job_id as String))
+        && all(e.needs, n => n == (fleet_converge_release_bins_job_id as String) || (n != (e.id as String) && any(expected, x => x == n)))
     })
 }
 
@@ -803,17 +806,9 @@ test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> B
   string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
-// THE LOCK KEY IS THE MUTATED SUBJECT, NOT THE DISPATCH HOST, IN BOTH DIRECTIONS: the enrolment-code
-// issue (the approval device store alone) leaves srv1's executor key, so a control-plane dispatch on
-// srv1 can no longer supersede a pending enrolment; two issues still share one group; and the keyring
-// converge still shares srv1's executor key. Reverting the mode's row to the executor domain turns the
-// first conjunct red.
-test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_with_the_executor() -> Bool {
-  let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1", target: "srv1", run_id: "0")
-  issue != fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv1", run_id: "0")
-    && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2", target: "srv2", run_id: "0")
-    && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1", target: "srv1", run_id: "0") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv1", run_id: "0")
-    && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1'")
+// The keyring converge shares srv1's executor key: it is not a narrower subject.
+test fn the_keyring_converge_stays_with_the_executor_key() -> Bool {
+  fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1", target: "srv1", run_id: "0") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv1", run_id: "0")
 }
 
 // The plan choice must reach the commissioning-only entry with both admission bindings,

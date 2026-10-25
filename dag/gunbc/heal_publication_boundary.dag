@@ -21,6 +21,7 @@ import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject
 }
+import std.host_text { chars }
 
 // A CREDENTIAL-ISOLATED BOUNDARY FOR HEAL REPAIRS (gunbc#10958), bidirectional and stated as an
 // invariant rather than a convention:
@@ -654,7 +655,7 @@ fn head_ref_code_point_addressable(cp: Int) -> Bool {
 
 fn head_ref_is_addressable(head_ref: String) -> Bool {
   string_length(s: head_ref) > 0
-    && all(chars(s: head_ref), cp => head_ref_code_point_addressable(cp: cp))
+    && all(chars(text: head_ref), cp => head_ref_code_point_addressable(cp: cp))
     && !string_contains(s: head_ref, pattern: "..")
 }
 

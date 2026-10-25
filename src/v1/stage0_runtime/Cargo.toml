@@ -12,6 +12,6 @@ stacker = "0.1"
 im = { version = "15.1", features = ["serde"] }
 libc = "0.2"
 serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["arbitrary_precision"] }
 unicode-ident = "1"
 unicode-properties = { version = "0.1", features = ["emoji"] }

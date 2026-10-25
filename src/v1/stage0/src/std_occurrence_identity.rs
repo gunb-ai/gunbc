@@ -8,6 +8,7 @@ use self::OccurrenceCategoryModuleScopeExposureVerdict::*;
 use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
+use self::ReferencePosition::*;
 pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
 pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -175,6 +176,18 @@ pub fn occurrence_category_clause_e_dependency_inducing_verdict(
 pub enum OccurrenceRole {
     DeclarationRole,
     ReferenceRole,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ReferencePosition {
+    ValuePosition,
+    TypeAnnotationPosition,
+    ReturnPosition,
+    LabelPosition,
+    PatternTagPosition,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -351,6 +364,20 @@ pub enum NodeOccurrenceIdentity {
     OccurrencePending {
         caused_by: OccurrenceId,
     },
+}
+
+pub fn authored_occurrence_of(identity: Rc<NodeOccurrenceIdentity>) -> Option<OccurrenceId> {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrenceProjected { caused_by, .. } => {
+            Some(caused_by.occurrence.clone())
+        }
+        NodeOccurrenceIdentity::OccurrencePending {
+            caused_by: caused_by,
+            ..
+        } => Some(caused_by.clone()),
+        NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -576,8 +603,8 @@ pub fn occurrence_containment_ancestors_are_prefix_of(
     path_ancestors: Rc<Vec<OccurrenceId>>,
 ) -> bool {
     occurrence_id_list_is_prefix_of(
-        occurrence_containment_ancestors_as_list(prefix_ancestors.clone()),
-        occurrence_containment_ancestors_as_list(path_ancestors.clone()),
+        occurrence_containment_ancestors_as_list(prefix_ancestors),
+        occurrence_containment_ancestors_as_list(path_ancestors),
     )
 }
 
@@ -930,7 +957,7 @@ pub fn occurrence_transport_validate(
 pub fn occurrence_transport_refusal(
     transport: Rc<OccurrenceTransport>,
 ) -> Option<Rc<OccurrenceTransportRefusal>> {
-    match (*occurrence_transport_validate(transport.clone())).clone() {
+    match (*occurrence_transport_validate(transport)).clone() {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Some(refusal.clone()),
@@ -985,3 +1012,13 @@ pub struct MethodOccurrence;
 pub struct DeclarationRole;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceRole;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ValuePosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeAnnotationPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReturnPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LabelPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PatternTagPosition;

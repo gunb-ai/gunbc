@@ -4,7 +4,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.types { Bool, Int, NonEmptyStr, Unit }
+import std.types { Bool, Int, NonEmptyStr, Secret, Unit }
 import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -22,7 +22,7 @@ data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffol
   }
 }
 
-data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: every operation below re-spells the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). Dissolves when the operations become declarative transport rows realized by the shared HTTP-client machinery - i.e. when `transport rest` (or a derived-curl realization of the extdeps.http.client shape) supports the FOUR axes these argv rows carry by hand: netrc/basic auth, insecure-TLS (self-signed BMC certs), request-body-from-file, and UNAUTHENTICATED STATUS-AS-THE-ANSWER capture (no --fail-with-body, a caller-supplied write-out format, and the three-digit code read back off stdout as the observation - ProbeServiceRoot). The fourth axis is stated because a `transport rest` covering exactly the first three would RETIRE THIS ROW while ProbeServiceRoot still had to be hand-spelled, which is DESIGN section 4b(3): a trigger naming less than the capability it restores is satisfied while the capability stays dead (review 67976). Until then the argv rows stay - live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, bmc_intake_first_contact, srv3_boot_once_cd) execute them as-is."
+data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: every operation below re-spells the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). Dissolves when the operations become declarative transport rows realized by the shared HTTP-client machinery - i.e. when `transport rest` (or a derived-curl realization of the extdeps.http.client shape) supports the FOUR axes these argv rows carry by hand: netrc/basic auth, insecure-TLS (self-signed BMC certs), request-body-from-file (and, for the two password-bearing bodies, a request body that never touches disk -- stdin today), and UNAUTHENTICATED STATUS-AS-THE-ANSWER capture (no --fail-with-body, a caller-supplied write-out format, and the three-digit code read back off stdout as the observation - ProbeServiceRoot). The fourth axis is stated because a `transport rest` covering exactly the first three would RETIRE THIS ROW while ProbeServiceRoot still had to be hand-spelled, which is DESIGN section 4b(3): a trigger naming less than the capability it restores is satisfied while the capability stays dead (review 67976). Until then the argv rows stay - live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, bmc_intake_first_contact, srv3_boot_once_cd) execute them as-is."
 
 // LOAD-BEARING: success:Bool derives from exit_success, so curl MUST fail-close on HTTP status.
 // Authenticated resource ops carry --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on
@@ -39,8 +39,9 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // still fails closed on an unreachable host. A new op may omit the flag only when status is the
 // consumed answer in that same shape, never because a caller would rather treat 404 as success.
 
-// EVERY REDFISH OPERATION AUTHENTICATES BY FILE, AND THE ABSENCE OF `Secret` IN THIS MODULE'S
-// IMPORTS IS THE RECEIPT. GetSystem, GetPower and GetThermal each declared `password: Secret` and
+// EVERY REDFISH OPERATION AUTHENTICATES BY FILE, AND NO `Secret` INPUT IS AN ARGV WORD. (Until the
+// password bodies moved to stdin, below, the absence of `Secret` from this module's imports was the
+// receipt; the two `request_body: Secret` inputs are bound only to `stdin:`, never to `argv:`.) GetSystem, GetPower and GetThermal each declared `password: Secret` and
 // interpolated it into an argv token -- `-u {username}:{password}` -- so the credential became a
 // word in curl's command line. On the fleet hosts that is a real exposure: /proc is mounted with no
 // hidepid, /proc/PID/cmdline is mode 0444, and the CI runner slots are ordinary host systemd
@@ -61,11 +62,22 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // because no neighbour spells it.
 //
 // WHAT THIS DOES NOT CLAIM: the module is clean by CONSTRUCTION nowhere. Nothing refuses a new
-// `password: Secret` interpolated into an argv token -- v2.std.operation_argv's binding wall
+// `password: Secret` interpolated into an argv token -- std.operation_argv's binding wall
 // refuses undeclared names and a non-literal executable position, but ShellTransportOperationRow
 // carries declared_inputs as a List<String>, names without types, so the binder cannot see that an
 // input is Secret. That missing declared-input TYPE on the row is this class's next-rung trigger;
 // until it lands the class sits at mitigatable and this note is diligence.
+//
+// A REQUEST BODY THAT HOLDS A PASSWORD REACHES CURL ON STDIN, NOT AS A FILE: the StdinPassword
+// binding of gunbc.auth.materialized_secret SecretBinding, realized here by the transport row's
+// `stdin:` rather than by a materialization leg. SetAccountPassword and
+// CreateAccount once took `request_body_file` and read it with `--data @{request_body_file}`, so
+// every caller had to put a plaintext password on disk first. gunbc.tools.bmc_onboard wrote
+// /tmp/bmc_onboard_pwbody.json with the default mode and never removed it. `--data-binary @-` reads
+// the body from the pipe the transport writes, so no path exists to be world-readable, outlive the
+// run or be raced. The operations whose bodies hold no credential (boot override, reset) keep the
+// file route. A stdin body is not in /proc/PID/cmdline, which is why it does not reopen the argv
+// exposure recorded above.
 //
 // ABOUT ProbeServiceRoot BELOW. This note sits at module grain because the parser models only
 // module-item annotations: a // block inside the service body is a located parse refusal
@@ -278,10 +290,11 @@ service redfish.Http {
 
   operation CreateAccount {
     requires Network
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, request_body: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "POST", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "POST", "-H", "Content-Type: application/json", "--data-binary", "@-", "https://{bmc_host}/redfish/v1/AccountService/Accounts"]
+      stdin: request_body
     }
     exit {
       0 => Unit
@@ -291,10 +304,11 @@ service redfish.Http {
 
   operation SetAccountPassword {
     requires Network
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr, request_body: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts/{account_id}"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data-binary", "@-", "https://{bmc_host}/redfish/v1/AccountService/Accounts/{account_id}"]
+      stdin: request_body
     }
     exit {
       0 => Unit
