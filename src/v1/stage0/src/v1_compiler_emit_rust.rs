@@ -82,7 +82,7 @@ use crate::std_literal_elaboration::KernelMintDeclarationLookup::{KernelMintDecl
 use crate::std_literal_elaboration::KernelMintOwnership::{DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous};
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{OccurrenceSynthetic};
-use crate::std_operator_realization::EqualityStep::{EqualityByTarget, EqualityRouted, EqualityThroughPlan, EqualityPresence, EqualityContainer};
+use crate::std_operator_realization::EqualityStep::{EqualityByTarget, EqualityRouted, EqualityThroughPlan, EqualityPresence, EqualityElements, EqualityMapValues};
 use crate::std_operator_realization::HostRealizationReason::{KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType, HostTextCarrier};
 use crate::std_operator_realization::OperandDemand::{DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent};
 use crate::std_operator_realization::OperandRealization::{HostNumericOperand, StructuralOperand, OperandIdentityUnavailable, HostRealizedOperand};
@@ -37311,204 +37311,19 @@ pub fn emit_rust_equality_step(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*step.clone()).clone() {
-            EqualityStep::EqualityByTarget => v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("(".to_string(), a.clone()),
-                        " == ".to_string(),
-                    ),
-                    b.clone(),
-                ),
-                ")".to_string(),
-            ),
-            EqualityStep::EqualityRouted { function: f, .. } => v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                rust_declaration_path(f.module_path.clone(), f.decl_name.clone()),
-                                "(::core::convert::From::from((*".to_string(),
-                            ),
-                            a.clone(),
-                        ),
-                        ").clone()), ::core::convert::From::from((*".to_string(),
-                    ),
-                    b.clone(),
-                ),
-                ").clone()))".to_string(),
-            ),
-            EqualityStep::EqualityThroughPlan {
-                declaration: key, ..
-            } => match Rc::new({
-                let mut __result = Vec::new();
-                for d in plan.declarations.clone().iter().cloned() {
-                    if (d.declaration.clone() == key.clone()) {
-                        __result.push(d);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned()
-            {
-                Some(d) => match d.reference.clone() {
-                    Some(r) => v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        emit_rust_equality_fn_name(r.clone()),
-                                        "(".to_string(),
-                                    ),
-                                    a.clone(),
-                                ),
-                                ", ".to_string(),
-                            ),
-                            b.clone(),
-                        ),
-                        ")".to_string(),
-                    ),
-                    std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(
-                        v1_rt::concat("equality plan: declaration ".to_string(), key.clone()),
-                        " has no DeclarationRef".to_string(),
-                    )),
-                },
-                std::option::Option::None => v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("(".to_string(), a.clone()),
-                            " == ".to_string(),
-                        ),
-                        b.clone(),
-                    ),
-                    ")".to_string(),
-                ),
-            },
-            EqualityStep::EqualityPresence { inner: i, .. } => v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("(match (".to_string(), a.clone()),
-                                ".as_ref(), ".to_string(),
-                            ),
-                            b.clone(),
-                        ),
-                        ".as_ref()) { (Some(__px), Some(__py)) => ".to_string(),
-                    ),
-                    emit_rust_equality_step(
-                        plan.clone(),
-                        i.clone(),
-                        "__px".to_string(),
-                        "__py".to_string(),
-                    ),
-                ),
-                ", (None, None) => true, _ => false })".to_string(),
-            ),
-            EqualityStep::EqualityContainer {
-                arguments: args, ..
-            } => {
-                if ((args.clone().len() as i64) == 2) {
-                    match args.clone().last().cloned() {
-                        Some(v) => v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                "(".to_string(),
-                                                                a.clone(),
-                                                            ),
-                                                            ".len() == ".to_string(),
-                                                        ),
-                                                        b.clone(),
-                                                    ),
-                                                    ".len() && ".to_string(),
-                                                ),
-                                                a.clone(),
-                                            ),
-                                            ".iter().all(|(__ck, __cv)| ".to_string(),
-                                        ),
-                                        b.clone(),
-                                    ),
-                                    ".get(__ck).map_or(false, |__cw| ".to_string(),
-                                ),
-                                emit_rust_equality_step(
-                                    plan.clone(),
-                                    v.clone(),
-                                    "__cv".to_string(),
-                                    "__cw".to_string(),
-                                ),
-                            ),
-                            ")))".to_string(),
-                        ),
-                        std::option::Option::None => v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat("(".to_string(), a.clone()),
-                                    " == ".to_string(),
-                                ),
-                                b.clone(),
-                            ),
-                            ")".to_string(),
-                        ),
-                    }
-                } else {
-                    match args.clone().first().cloned() {
-                        Some(e) => v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                "(".to_string(),
-                                                                a.clone(),
-                                                            ),
-                                                            ".len() == ".to_string(),
-                                                        ),
-                                                        b.clone(),
-                                                    ),
-                                                    ".len() && ".to_string(),
-                                                ),
-                                                a.clone(),
-                                            ),
-                                            ".iter().zip(".to_string(),
-                                        ),
-                                        b.clone(),
-                                    ),
-                                    ".iter()).all(|(__cx, __cy)| ".to_string(),
-                                ),
-                                emit_rust_equality_step(
-                                    plan.clone(),
-                                    e.clone(),
-                                    "__cx".to_string(),
-                                    "__cy".to_string(),
-                                ),
-                            ),
-                            "))".to_string(),
-                        ),
-                        std::option::Option::None => v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat("(".to_string(), a.clone()),
-                                    " == ".to_string(),
-                                ),
-                                b.clone(),
-                            ),
-                            ")".to_string(),
-                        ),
-                    }
-                }
-            }
-        }
+    EqualityStep::EqualityByTarget => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("(".to_string(), a.clone()), " == ".to_string()), b.clone()), ")".to_string()),
+    EqualityStep::EqualityRouted { function: f, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_declaration_path(f.module_path.clone(), f.decl_name.clone()), "(::core::convert::From::from((*".to_string()), a.clone()), ").clone()), ::core::convert::From::from((*".to_string()), b.clone()), ").clone()))".to_string()),
+    EqualityStep::EqualityThroughPlan { declaration: key, .. } => match Rc::new({ let mut __result = Vec::new(); for d in plan.declarations.clone().iter().cloned() { if (d.declaration.clone() == key.clone()) { __result.push(d); } } __result }).first().cloned() {
+    Some(d) => match d.reference.clone() {
+    Some(r) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(emit_rust_equality_fn_name(r.clone()), "(".to_string()), a.clone()), ", ".to_string()), b.clone()), ")".to_string()),
+    std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("equality plan: declaration ".to_string(), key.clone()), " has no DeclarationRef".to_string())),
+},
+    std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("equality plan names declaration ".to_string(), key.clone()), " but carries no plan for it; the checker's normalization makes this unconstructible".to_string())),
+},
+    EqualityStep::EqualityPresence { inner: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("(match (".to_string(), a.clone()), ".as_ref(), ".to_string()), b.clone()), ".as_ref()) { (Some(__px), Some(__py)) => ".to_string()), emit_rust_equality_step(plan.clone(), i.clone(), "__px".to_string(), "__py".to_string())), ", (None, None) => true, _ => false })".to_string()),
+    EqualityStep::EqualityElements { element: e, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("(".to_string(), a.clone()), ".len() == ".to_string()), b.clone()), ".len() && ".to_string()), a.clone()), ".iter().zip(".to_string()), b.clone()), ".iter()).all(|(__cx, __cy)| ".to_string()), emit_rust_equality_step(plan.clone(), e.clone(), "__cx".to_string(), "__cy".to_string())), "))".to_string()),
+    EqualityStep::EqualityMapValues { value: v, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("(".to_string(), a.clone()), ".len() == ".to_string()), b.clone()), ".len() && ".to_string()), a.clone()), ".iter().all(|(__ck, __cv)| ".to_string()), b.clone()), ".get(__ck).map_or(false, |__cw| ".to_string()), emit_rust_equality_step(plan.clone(), v.clone(), "__cv".to_string(), "__cw".to_string())), ")))".to_string()),
+}
     })
 }
 

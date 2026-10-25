@@ -38,18 +38,11 @@ pub struct OperandDeclaration {
 #[serde(tag = "_variant")]
 pub enum EqualityStep {
     EqualityByTarget,
-    EqualityRouted {
-        function: Rc<DeclarationRef>,
-    },
-    EqualityThroughPlan {
-        declaration: String,
-    },
-    EqualityPresence {
-        inner: Rc<EqualityStep>,
-    },
-    EqualityContainer {
-        arguments: Rc<Vec<Rc<EqualityStep>>>,
-    },
+    EqualityRouted { function: Rc<DeclarationRef> },
+    EqualityThroughPlan { declaration: String },
+    EqualityPresence { inner: Rc<EqualityStep> },
+    EqualityElements { element: Rc<EqualityStep> },
+    EqualityMapValues { value: Rc<EqualityStep> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

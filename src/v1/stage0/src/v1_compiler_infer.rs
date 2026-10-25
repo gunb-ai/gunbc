@@ -30,11 +30,16 @@ pub use crate::gunbc_structural_realization_bindings::{
     conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows,
     kernel_optional_mint_name, literal_homomorphism_rows,
 };
+pub use crate::std_algebra::AlgebraCarrier;
+use crate::std_algebra::AlgebraProfile::{
+    FinitePowerSetProfile, FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile,
+};
 use crate::std_algebra::AlgebraTypeTemplate::{NamedTemplate, ReceiverSelf};
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{
-    carrier_container_equality_rows, kernel_carrier_admits_numeral, AlgebraTypeTemplate,
-    CollectionSizeEffect, FreeMonoid, FreeSemigroup,
+    algebra_carriers, carrier_container_equality_rows, carrier_spelling_row_present,
+    kernel_carrier_admits_numeral, AlgebraProfile, AlgebraTypeTemplate, CollectionSizeEffect,
+    FreeMonoid, FreeSemigroup,
 };
 use crate::std_coercion::ConversionPlanJudgment::{
     ConversionPlanAbsent, ConversionPlanAdmitted, ConversionPlanAmbiguous,
@@ -134,7 +139,8 @@ pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_operator_realization::EqualityStep::{
-    EqualityByTarget, EqualityContainer, EqualityPresence, EqualityRouted, EqualityThroughPlan,
+    EqualityByTarget, EqualityElements, EqualityMapValues, EqualityPresence, EqualityRouted,
+    EqualityThroughPlan,
 };
 pub use crate::std_operator_realization::{
     DeclarationEqualityPlan, EqualityPlan, EqualityPlanArm, EqualityPlanField, EqualityStep,
@@ -5478,13 +5484,20 @@ pub fn equality_container_walk(
                 }
             },
         );
+        let steps = Rc::new({
+            let mut __result = Vec::new();
+            for f in a.fields.clone().iter().cloned() {
+                __result.push(f.step.clone());
+            }
+            __result
+        });
         if (a.refusal.clone() != std::option::Option::None) {
             equality_walk_refused(a.refusal.clone())
         } else {
             if {
                 let mut __all = true;
-                for f in a.fields.clone().iter().cloned() {
-                    if !(equality_step_is_by_target(f.step.clone())) {
+                for s in steps.iter().cloned() {
+                    if !(equality_step_is_by_target(s.clone())) {
                         __all = false;
                         break;
                     }
@@ -5497,22 +5510,66 @@ pub fn equality_container_walk(
                     plans: a.plans.clone(),
                 })
             } else {
-                Rc::new(EqualityWalk {
-                    refusal: std::option::Option::None,
-                    step: Rc::new(EqualityStep::EqualityContainer {
-                        arguments: Rc::new({
-                            let mut __result = Vec::new();
-                            for f in a.fields.clone().iter().cloned() {
-                                __result.push(f.step.clone());
-                            }
-                            __result
-                        }),
-                    }),
-                    plans: a.plans.clone(),
-                })
+                match equality_container_profile(crate::v1_std_core::qualified_last_segment(name.clone())) {
+    Some(AlgebraProfile::FreeMonoidCollectionProfile) => match steps.clone().first().cloned() {
+    Some(e) => Rc::new(EqualityWalk {
+    refusal: std::option::Option::None,
+    step: Rc::new(EqualityStep::EqualityElements {
+    element: e.clone(),
+}),
+    plans: a.plans.clone(),
+}),
+    std::option::Option::None => equality_walk_by_target(),
+},
+    Some(AlgebraProfile::FinitelySupportedFunctionProfile) => match steps.clone().last().cloned() {
+    Some(v) => Rc::new(EqualityWalk {
+    refusal: std::option::Option::None,
+    step: Rc::new(EqualityStep::EqualityMapValues {
+    value: v.clone(),
+}),
+    plans: a.plans.clone(),
+}),
+    std::option::Option::None => equality_walk_by_target(),
+},
+    Some(AlgebraProfile::FinitePowerSetProfile) => Rc::new(EqualityWalk {
+    refusal: std::option::Option::None,
+    step: Rc::new(EqualityStep::EqualityByTarget),
+    plans: a.plans.clone(),
+}),
+    _ => equality_walk_refused(equality_refused(name.clone(), "a routed member inside a container whose shape the equality plan does not model".to_string(), false)),
+}
             }
         }
     }
+}
+
+pub fn equality_container_profile(leaf: String) -> Option<AlgebraProfile> {
+    crate::std_algebra::algebra_carriers().iter().cloned().fold(
+        std::option::Option::None,
+        |acc: _, c: Rc<AlgebraCarrier>| match acc.clone() {
+            Some(_) => acc.clone(),
+            std::option::Option::None => {
+                if {
+                    let mut __found = false;
+                    for sp in c.spellings.clone().iter().cloned() {
+                        if ((sp.text.clone() == leaf.clone())
+                            && crate::std_algebra::carrier_spelling_row_present(
+                                sp.container_algebra_row.clone(),
+                            ))
+                        {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    Some(c.profile.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+        },
+    )
 }
 
 pub fn equality_presence_walk(inner: Rc<EqualityWalk>) -> Rc<EqualityWalk> {
@@ -6015,36 +6072,59 @@ pub fn equality_plan_dedup(
     )
 }
 
-pub fn equality_step_reaches_route(s: Rc<EqualityStep>, live: Rc<Vec<String>>) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*s.clone()).clone() {
-        EqualityStep::EqualityByTarget => false,
-        EqualityStep::EqualityRouted { function: _, .. } => true,
-        EqualityStep::EqualityThroughPlan { declaration: d, .. } => {
-            let mut __found = false;
-            for l in live.iter().cloned() {
-                if (l.clone() == d.clone()) {
-                    __found = true;
-                    break;
+pub fn equality_step_reaches_route(
+    mut __tco_loop_s: Rc<EqualityStep>,
+    mut __tco_loop_live: Rc<Vec<String>>,
+) -> bool {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut s = __tco_loop_s;
+            #[allow(unused_mut)]
+            let mut live = __tco_loop_live;
+            match (*s.clone()).clone() {
+                EqualityStep::EqualityByTarget => {
+                    break false;
+                }
+                EqualityStep::EqualityRouted { function: _, .. } => {
+                    break true;
+                }
+                EqualityStep::EqualityThroughPlan { declaration: d, .. } => {
+                    break {
+                        let mut __found = false;
+                        for l in live.iter().cloned() {
+                            if (l.clone() == d.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    };
+                }
+                EqualityStep::EqualityPresence { inner: i, .. } => {
+                    let __tco_0 = i.clone();
+                    let __tco_1 = live;
+                    __tco_loop_s = __tco_0;
+                    __tco_loop_live = __tco_1;
+                    continue;
+                }
+                EqualityStep::EqualityElements { element: e, .. } => {
+                    let __tco_0 = e.clone();
+                    let __tco_1 = live;
+                    __tco_loop_s = __tco_0;
+                    __tco_loop_live = __tco_1;
+                    continue;
+                }
+                EqualityStep::EqualityMapValues { value: v, .. } => {
+                    let __tco_0 = v.clone();
+                    let __tco_1 = live;
+                    __tco_loop_s = __tco_0;
+                    __tco_loop_live = __tco_1;
+                    continue;
                 }
             }
-            __found
         }
-        EqualityStep::EqualityPresence { inner: i, .. } => {
-            equality_step_reaches_route(i.clone(), live.clone())
-        }
-        EqualityStep::EqualityContainer {
-            arguments: args, ..
-        } => {
-            let mut __found = false;
-            for a in args.iter().cloned() {
-                if equality_step_reaches_route(a.clone(), live.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-    })
+    }
 }
 
 pub fn equality_plan_reaches_route(p: Rc<DeclarationEqualityPlan>, live: Rc<Vec<String>>) -> bool {
@@ -6074,44 +6154,129 @@ pub fn equality_live_plans(
     mut __tco_loop_live: Rc<Vec<String>>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<Vec<String>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut plans = __tco_loop_plans;
-        #[allow(unused_mut)]
-        let mut live = __tco_loop_live;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        let next = Rc::new({
-            let mut __result = Vec::new();
-            for p in Rc::new({
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut plans = __tco_loop_plans;
+            #[allow(unused_mut)]
+            let mut live = __tco_loop_live;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            let next = Rc::new({
                 let mut __result = Vec::new();
-                for p in plans.iter().cloned() {
-                    if equality_plan_reaches_route(p.clone(), live.clone()) {
-                        __result.push(p);
+                for p in Rc::new({
+                    let mut __result = Vec::new();
+                    for p in plans.iter().cloned() {
+                        if equality_plan_reaches_route(p.clone(), live.clone()) {
+                            __result.push(p);
+                        }
                     }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(p.declaration.clone());
                 }
                 __result
-            })
-            .iter()
-            .cloned()
+            });
+            if ((fuel.clone() <= 0) || ((next.clone().len() as i64) == (live.clone().len() as i64)))
             {
-                __result.push(p.declaration.clone());
+                break next.clone();
+            } else {
+                {
+                    let __tco_0 = plans;
+                    let __tco_1 = next.clone();
+                    let __tco_2 = v1_rt::int_sub(fuel, 1);
+                    __tco_loop_plans = __tco_0;
+                    __tco_loop_live = __tco_1;
+                    __tco_loop_fuel = __tco_2;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn equality_step_normalized(s: Rc<EqualityStep>, live: Rc<Vec<String>>) -> Rc<EqualityStep> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if !equality_step_reaches_route(s.clone(), live.clone()) {
+            Rc::new(EqualityStep::EqualityByTarget)
+        } else {
+            match (*s.clone()).clone() {
+                EqualityStep::EqualityByTarget => Rc::new(EqualityStep::EqualityByTarget),
+                EqualityStep::EqualityRouted { function: f, .. } => {
+                    Rc::new(EqualityStep::EqualityRouted {
+                        function: f.clone(),
+                    })
+                }
+                EqualityStep::EqualityThroughPlan { declaration: d, .. } => {
+                    Rc::new(EqualityStep::EqualityThroughPlan {
+                        declaration: d.clone(),
+                    })
+                }
+                EqualityStep::EqualityPresence { inner: i, .. } => {
+                    Rc::new(EqualityStep::EqualityPresence {
+                        inner: equality_step_normalized(i.clone(), live.clone()),
+                    })
+                }
+                EqualityStep::EqualityElements { element: e, .. } => {
+                    Rc::new(EqualityStep::EqualityElements {
+                        element: equality_step_normalized(e.clone(), live.clone()),
+                    })
+                }
+                EqualityStep::EqualityMapValues { value: v, .. } => {
+                    Rc::new(EqualityStep::EqualityMapValues {
+                        value: equality_step_normalized(v.clone(), live.clone()),
+                    })
+                }
+            }
+        }
+    })
+}
+
+pub fn equality_declaration_plan_normalized(
+    p: Rc<DeclarationEqualityPlan>,
+    live: Rc<Vec<String>>,
+) -> Rc<DeclarationEqualityPlan> {
+    {
+        let __rb_0_0 = p.declaration.clone();
+        let __rb_1_0 = p.reference.clone();
+        let __rb_2_0 = Rc::new({
+            let mut __result = Vec::new();
+            for a in p.arms.clone().iter().cloned() {
+                __result.push(Rc::new(EqualityPlanArm {
+                    arm: a.arm.clone(),
+                    fields: Rc::new({
+                        let mut __result = Vec::new();
+                        for f in a.fields.clone().iter().cloned() {
+                            __result.push(Rc::new(EqualityPlanField {
+                                field: f.field.clone(),
+                                step: equality_step_normalized(f.step.clone(), live.clone()),
+                            }));
+                        }
+                        __result
+                    }),
+                }));
             }
             __result
         });
-        if ((fuel.clone() <= 0) || ((next.clone().len() as i64) == (live.clone().len() as i64))) {
-            break next.clone();
-        } else {
-            {
-                let __tco_0 = plans;
-                let __tco_1 = next.clone();
-                let __tco_2 = v1_rt::int_sub(fuel, 1);
-                __tco_loop_plans = __tco_0;
-                __tco_loop_live = __tco_1;
-                __tco_loop_fuel = __tco_2;
-                continue;
+        let mut __rb_h = p;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.declaration = __rb_0_0;
+                __rb_r.reference = __rb_1_0;
+                __rb_r.arms = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(DeclarationEqualityPlan {
+                    declaration: __rb_0_0,
+                    reference: __rb_1_0,
+                    arms: __rb_2_0,
+                });
             }
         }
+        __rb_h
     }
 }
 
@@ -6125,22 +6290,34 @@ pub fn equality_plan_of_walk(w: Rc<EqualityWalk>) -> Option<Rc<EqualityPlan>> {
         );
         if equality_step_reaches_route(w.step.clone(), live.clone()) {
             Some(Rc::new(EqualityPlan {
-                root: w.step.clone(),
+                root: equality_step_normalized(w.step.clone(), live.clone()),
                 declarations: Rc::new({
                     let mut __result = Vec::new();
-                    for p in plans.iter().cloned() {
-                        if {
-                            let mut __found = false;
-                            for l in live.iter().cloned() {
-                                if (l.clone() == p.declaration.clone()) {
-                                    __found = true;
-                                    break;
+                    for p in Rc::new({
+                        let mut __result = Vec::new();
+                        for p in plans.iter().cloned() {
+                            if {
+                                let mut __found = false;
+                                for l in live.iter().cloned() {
+                                    if (l.clone() == p.declaration.clone()) {
+                                        __found = true;
+                                        break;
+                                    }
                                 }
+                                __found
+                            } {
+                                __result.push(p);
                             }
-                            __found
-                        } {
-                            __result.push(p);
                         }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(equality_declaration_plan_normalized(
+                            p.clone(),
+                            live.clone(),
+                        ));
                     }
                     __result
                 }),
@@ -6272,13 +6449,12 @@ pub fn equality_collection_key_rows(
                         peeled.clone(),
                     ),
                 );
-                let here = if (((((leaf.clone() == "Map".to_string())
-                    || (leaf.clone() == "Set".to_string()))
-                    || (leaf.clone() == "HashMap".to_string()))
-                    || (leaf.clone() == "HashSet".to_string()))
-                    && (v1_rt::map_get(&equality_extensional_container_rows(), leaf.clone())
-                        != std::option::Option::None))
-                {
+                let keyed = match equality_container_profile(leaf) {
+                    Some(AlgebraProfile::FinitelySupportedFunctionProfile) => true,
+                    Some(AlgebraProfile::FinitePowerSetProfile) => true,
+                    _ => false,
+                };
+                let here = if keyed.clone() {
                     match peeled.children.clone().first().cloned() {
                         Some(key) => {
                             let kt = crate::v1_compiler_infer_types::child_type_node(key.clone());

@@ -14850,7 +14850,8 @@ pub fn parse_expr_loop(
                                                             let new_lhs = crate::v1_std_core::make_expr_node(minted.identity.clone(), Rc::new(ExprData::ExprBinOp {
     op: binop.clone(),
     algebra_field: std::option::Option::None,
-    operand: std::option::Option::None, equality: std::option::Option::None,
+    operand: std::option::Option::None,
+    equality: std::option::Option::None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), std::option::Option::None, loop_span.clone());
                                                             {
                                                                 let __tco_0 = r.tokens.clone();
@@ -17153,7 +17154,8 @@ pub fn parse_expr_loop_no_brace(
                                                             let new_lhs = crate::v1_std_core::make_expr_node(minted.identity.clone(), Rc::new(ExprData::ExprBinOp {
     op: binop.clone(),
     algebra_field: std::option::Option::None,
-    operand: std::option::Option::None, equality: std::option::Option::None,
+    operand: std::option::Option::None,
+    equality: std::option::Option::None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), std::option::Option::None, loop_span.clone());
                                                             {
                                                                 let __tco_0 = r.tokens.clone();
