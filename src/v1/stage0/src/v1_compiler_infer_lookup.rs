@@ -1436,9 +1436,12 @@ pub struct StructuralMethodLookup {
 
 pub fn product_field_result_type(field: Rc<Node>) -> Option<Rc<Node>> {
     match field.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => Some(
-            crate::v1_compiler_infer_types::applied_field_type(rt.clone()),
-        ),
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            match crate::v1_compiler_infer_types::applied_field_type(rt.clone()) {
+                Some(applied) => Some(applied.clone()),
+                std::option::Option::None => Some(rt.clone()),
+            }
+        }
         _ => std::option::Option::None,
     }
 }
