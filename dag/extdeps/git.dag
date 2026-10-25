@@ -1295,6 +1295,33 @@ fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
   ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]
 }
 
+// THE SAME GRANT CARRIED BY THE ENVIRONMENT (git-config(1) ENVIRONMENT: GIT_CONFIG_COUNT, GIT_CONFIG_KEY_<n>,
+// GIT_CONFIG_VALUE_<n>). These set configuration in the COMMAND scope exactly as `-c` does, and command scope is
+// protected configuration, so safe.directory is honoured from it; unlike `-c`, they reach every git a process and
+// its children run -- which is what a confined session needs, since most of its git calls are its own tools', not
+// argv this repository spells. Still exactly one path, never the wildcard. Measured on srv1 (git 2.43.0,
+// 2026-10-24): as the dedicated worker account in a worktree the service user owns, `rev-parse HEAD` refused with
+// dubious ownership without it and answered with it. A local-fetch source is the documented exception below:
+// upload-pack scrubs these variables, so that trust rides inside --upload-pack instead.
+type GitEnvironmentSetting {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+data git_config_count_env_name: String = "GIT_CONFIG_COUNT"
+
+data git_config_key_env_prefix: String = "GIT_CONFIG_KEY_"
+
+data git_config_value_env_prefix: String = "GIT_CONFIG_VALUE_"
+
+fn git_safe_directory_environment(grant: SafeDirectoryGrant) -> List<GitEnvironmentSetting> {
+  [
+    GitEnvironmentSetting { name: git_config_count_env_name as NonEmptyStr, value: "1" as NonEmptyStr },
+    GitEnvironmentSetting { name: concat(git_config_key_env_prefix, "0") as NonEmptyStr, value: git_safe_directory_key as NonEmptyStr },
+    GitEnvironmentSetting { name: concat(git_config_value_env_prefix, "0") as NonEmptyStr, value: grant.path },
+  ]
+}
+
 // A CALL INTO A REPOSITORY TRUSTS EXACTLY THAT REPOSITORY. The grant is derived from the same path
 // `-C` names, so a caller cannot trust one directory while operating in another, and cannot pass the
 // wildcard: the narrowest grant is the only one this shape can spell.

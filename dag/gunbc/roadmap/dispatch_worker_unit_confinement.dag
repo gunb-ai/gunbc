@@ -13,22 +13,28 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.optional { Present, Absent }
 import std.measure { Kibibyte, millicore }
 import std.filesystem { path_parent_directory }
-import extdeps.git { git_non_bare_git_dir_name }
+import extdeps.git { git_non_bare_git_dir_name, SafeDirectoryGrant, GitEnvironmentSetting, git_safe_directory_environment }
 import extdeps.systemd {
   ExecStopPostProperty, NoNewPrivilegesProperty, PrivateTmpProperty, ProtectHomeProperty, ProtectSystemProperty,
   ReadOnlyPathsProperty, ReadWritePathsProperty, RestrictSUIDSGIDProperty, StandardErrorProperty, StandardOutputProperty,
+  UMaskProperty,
 }
+import extdeps.systemd.unit_file { systemd_system_credstore_directory }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
+import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file }
 import extdeps.systemd.systemd_run { EmptyCapabilityBoundingSet, NamedUnitSetting, SystemdRunProperty }
 import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.host.host_layout { attempt_exit_inbox_dir }
 import gunbc.roadmap.dispatch_worker_handed_set {
   HandedEntry, HandedWorkingDirectory, HandedReadWrite, HandedReadOnly, HandedStdout, HandedStderr,
-  HandedExitRoot, HandedExecutable, dispatch_worker_source_roots, dispatch_worker_set_working_directory,
+  HandedExitRoot, HandedExecutable, HandedCredentialSource, dispatch_worker_source_roots, dispatch_worker_set_working_directory,
   dispatch_worker_set_stream_wire, dispatch_worker_set_read_write_wire, dispatch_worker_set_read_only_wire,
+  dispatch_worker_set_credential_settings,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, dashboard_instance_dispatch_worktree_root,
+  WorkerIsServiceUser, WorkerDedicatedAccount,
 }
 
 // THE EXECUTOR AXIS, AND WHY THE HARNESS ARM BELONGS HERE AND NOT IN ProviderKind.
@@ -182,6 +188,42 @@ fn dispatch_model_driven_privilege_confinement_properties() -> List<SystemdRunPr
   ]
 }
 
+// THE DEDICATED WORKER CREATES GROUP-WRITABLE ENTRIES, BECAUSE ITS CONFINEMENT FORBIDS THE CHMOD GIT WOULD ISSUE.
+// The shared repository runs git with core.sharedRepository=group, so a directory git creates (an object fan-out,
+// a new ref directory) is created and then chmod-ed to 02775 -- setgid included. The worker unit's
+// RestrictSUIDSGID=yes (above) refuses any chmod whose mode carries setuid or setgid, so that chmod fails EPERM and
+// the object write with it ("unable to create temporary file: Operation not permitted": the srv1 lab's first
+// worker to reach its model could not `git add` at all, 2026-10-25). git issues the chmod only when the new
+// entry's mode differs from the shared one, and under umask 0002 a directory made inside a setgid parent already
+// is 2775, so no chmod is issued and the confinement stays whole. Measured on srv1 under the unit's own seccomp: a
+// transient gunbc-worker unit with RestrictSUIDSGID=yes wrote a new object with UMask=0002 and refused with EPERM
+// with UMask=0022. The same mask makes what the worker creates writable by the attempt group, which is how the
+// service user's commit of the worker's changes reaches them. A service-user worker owns everything it touches and
+// keeps the default. The class: gunbc.recurring_failure_mode restrict_suidsgid_refuses_the_shared_repository_chmod.
+data dispatch_dedicated_worker_umask: NonEmptyStr = "0002"
+
+fn dispatch_worker_umask_properties(instance: HostDashboardInstance) -> List<SystemdRunProperty> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [NamedUnitSetting { property: UMaskProperty, value: dispatch_dedicated_worker_umask }]
+  }
+}
+
+// THE WORKER'S GIT TRUST: EXACTLY ITS OWN WORKTREE. `git worktree add` runs as the service user, so the attempt's
+// worktree is the service user's; a dedicated worker account operating in it is refused by every git call with
+// "detected dubious ownership" -- the harness's own status reads and the model's tools, its commit included (srv1
+// lab, 2026-10-24, the first attempt to reach its model). The trust is git's own safe.directory grant naming that
+// one worktree, carried by the environment so it reaches the tools' git as well as the harness's
+// (extdeps.git git_safe_directory_environment), and set on the unit by the root launcher from the attempt's identity
+// (gunbc.roadmap.attempt_system_unit_launch attempt_system_unit_worker_environment). A worker that IS the service
+// user owns its worktree and gets none.
+fn dispatch_worker_git_trust_environment(instance: HostDashboardInstance, attempt_worktree: String) -> List<GitEnvironmentSetting> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => git_safe_directory_environment(grant: SafeDirectoryGrant { path: attempt_worktree as NonEmptyStr })
+  }
+}
+
 fn dispatch_pane_working_directory(
   provider: DispatchCliProvider,
   instance: HostDashboardInstance,
@@ -290,18 +332,21 @@ fn dispatch_worker_unit_stream_properties(
   concat(
     concat(
       compute_grant_unit_properties(granted: granted, working_directory: dispatch_worker_set_working_directory(set: set), process_bounds: Present { value: process_bounds }),
-      dispatch_model_driven_privilege_confinement_properties(),
+      concat(dispatch_model_driven_privilege_confinement_properties(), dispatch_worker_umask_properties(instance: instance)),
     ),
-    [
-      NamedUnitSetting { property: StandardOutputProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: true) as NonEmptyStr },
-      NamedUnitSetting { property: StandardErrorProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: false) as NonEmptyStr },
-      NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
-      NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
-      NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-      NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
-      NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
-      NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
-    ],
+    concat(
+      [
+        NamedUnitSetting { property: StandardOutputProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: true) as NonEmptyStr },
+        NamedUnitSetting { property: StandardErrorProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: false) as NonEmptyStr },
+        NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+        NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+        NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+        NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
+        NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
+        NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
+      ],
+      dispatch_worker_set_credential_settings(set: set),
+    ),
   )
 }
 
@@ -329,16 +374,63 @@ fn dispatch_worker_handed_set(
       dispatch_worker_source_roots(repo_root: instance.repo_root as String),
     ),
     concat(
-      map(
-        dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)),
-        p => HandedEntry { role: HandedReadWrite, path: p },
+      concat(
+        map(
+          dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)),
+          p => HandedEntry { role: HandedReadWrite, path: p },
+        ),
+        map(
+          dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree),
+          p => HandedEntry { role: HandedReadOnly { missing_ok: false }, path: p },
+        ),
       ),
       map(
-        dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree),
-        p => HandedEntry { role: HandedReadOnly { missing_ok: false }, path: p },
+        dispatch_worker_credentials(instance: instance),
+        c => HandedEntry { role: HandedCredentialSource { identifier: c.identifier }, path: c.credstore_path as String },
       ),
     ),
   )
+}
+
+// THE CREDENTIALS A DEDICATED WORKER IS HANDED, AND WHERE EACH ONE COMES FROM. The harness worker reaches its model
+// over the operator route, whose key is the service user's custody in its home
+// (gunbc.harness.harness_operator_route OperatorCredentialCustody). A worker running AS the service user reads it
+// there; a dedicated worker account has no home and must not hold a standing copy, so the manager hands the unit
+// the file at start (LoadCredential=) and removes it at stop. The manager opens the source as root, so the source
+// is a root-owned copy under the system credstore and never the custody path itself: a path the service user can
+// write or relink, opened by root, would let any launch it requests read an arbitrary root-only file into a unit
+// it directs. The deploy makes the copy reading the custody AS THE SERVICE USER
+// (gunbc.live_deploy.apply_legs credstore_copy_legs), so the copy can only ever hold bytes that principal
+// could read itself. Per instance, because two instances on one host may hold different keys. A rotated key
+// reaches the worker at the next deploy, not before.
+//
+// The identifier is the route's own (gunbc.harness.harness_operator_credential), so the file the unit is handed
+// and the file the harness looks up in $CREDENTIALS_DIRECTORY are one datum.
+type DispatchWorkerCredential {
+  identifier: NonEmptyStr
+  custody_source: NonEmptyStr
+  credstore_path: NonEmptyStr
+}
+
+// THE CREDSTORE COPY'S PATH, ONE SPELLING: <credstore>/<identifier>-<instance id>. The deploy installs the copy here
+// and the unit loads it from here, both through dispatch_worker_credentials, which is the only caller.
+fn dispatch_worker_credstore_path(instance: HostDashboardInstance, file: OperatorCredentialFile) -> NonEmptyStr {
+  join([systemd_system_credstore_directory as String, "/", file.identifier as String, "-", instance.instance_id as String], "") as NonEmptyStr
+}
+
+fn dispatch_worker_credential(instance: HostDashboardInstance, file: OperatorCredentialFile) -> DispatchWorkerCredential {
+  DispatchWorkerCredential {
+    identifier: file.identifier,
+    custody_source: join([fleet_posix_home_directory(login: instance.directory_owner.user) as String, "/", file.relative_path as String], "") as NonEmptyStr,
+    credstore_path: dispatch_worker_credstore_path(instance: instance, file: file),
+  }
+}
+
+fn dispatch_worker_credentials(instance: HostDashboardInstance) -> List<DispatchWorkerCredential> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [dispatch_worker_credential(instance: instance, file: operator_route_credential_file)]
+  }
 }
 
 fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> List<String> {

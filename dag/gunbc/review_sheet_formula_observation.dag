@@ -3,9 +3,7 @@ module gunbc.review_sheet_formula_observation
 import std.optional { Absent, Present }
 import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.resources { Network }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
-import std.dissolution { unbound_dissolution }
 import extdeps.google.sheets {
   ValueRange,
   SheetsValueRenderOption,
@@ -324,16 +322,3 @@ fn observe_formula_whole_tab(
   }
 }
 
-// THE CONSUMER IS PRIVATE AND LATER: strategy.buyer_review_live (gunbc-private, H2) issues this read
-// when its FORMATTED whole-tab read looks blank, and hands the reading to
-// gunbc.review_sheet_header_init plan_header_init. Until it lands, the mint is a declared frontier.
-// test.claim.review_sheet_header_init_witness executes the mint against the hermetic values.get
-// fixture (extdeps.google.sheets hermetic_get_values_value_range) and does not fire this row: a
-// witness is not a production consumer.
-data review_sheet_formula_observation_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_formula_observation", decl_name: "observe_formula_whole_tab"),
-    reason: "the whole-tab FORMULA values.get that is the only mint of FormulaWholeTabObservation; its caller is the private transaction strategy.buyer_review_live (H2), which holds the buyer roster and the create-then-initialise sequence this repository cannot see",
-    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_formula_observation observe_formula_whole_tab after a blank-looking FORMATTED read of a live tab and hands the reading to gunbc.review_sheet_header_init plan_header_init on that route; the hermetic witness execution over extdeps.google.sheets hermetic_get_values_value_range does not fire this"),
-  ),
-]

@@ -1,0 +1,535 @@
+module gunbc.realization_census_sheet
+
+import std.optional { Absent, Present }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, skip, map_insert, map_contains_key, empty_map }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+import std.content_hash { content_hash_atom }
+import extdeps.color.okabe_ito {
+  okabe_ito_bluish_green,
+  okabe_ito_yellow,
+  okabe_ito_orange,
+  okabe_ito_vermillion,
+  okabe_ito_sky_blue,
+  okabe_ito_reddish_purple,
+}
+import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFingerprint }
+import gunbc.guarantee_rung { GuaranteeRung, Mitigatable, MechanicallyPreventable, StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_index, guarantee_rung_label }
+import gunbc.repository_census_observation {
+  RepositoryIdentity,
+  SourceRootIdentity,
+  CensusSubjectKey,
+  RepositoryPopulation,
+  CensusMethodRunIdentity,
+  CensusObservedRow,
+  RepositoryCensusObservation,
+  census_observed_row,
+  repository_census_observation,
+}
+import gunbc.review_sheet_projection {
+  ReviewColumn,
+  ReviewSheetSchema,
+  DerivedField,
+  OperatorEntered,
+  DerivedCell,
+  ProjectionRow,
+}
+import gunbc.review_sheet_format_actuator {
+  FormatRule,
+  RuleTextContains,
+  RuleNumberGreater,
+  SheetsColorReading,
+  sheets_color_from_srgb8,
+}
+import gunbc.review_sheet_kind {
+  ReviewSheetKind,
+  ReviewSheetTab,
+  TabRowsProjected,
+  ColumnContent,
+  ColumnContentClass,
+  ContentVocabulary,
+  ContentIdentifier,
+  ContentCode,
+  ContentCount,
+  ContentProse,
+}
+import gunbc.realization_census {
+  DecisionSite,
+  DimensionReading,
+  ModuleCensusReading,
+  FindingCensusReading,
+  ClassCensusReading,
+  CensusClassRung,
+  CensusModuleClass,
+  ClassProduction,
+  ClassExtdeps,
+  ClassSeed,
+  ClassSeedGenerated,
+  RungUnmodeled,
+  RungOnLadder,
+  SiteHome,
+  SitePassed,
+  SiteRederived,
+  SiteLiteral,
+  SiteForked,
+  decision_site_text,
+  realization_level_text,
+  realization_dimension_text,
+  census_module_class_text,
+  decision_sites_all,
+  realization_levels_all,
+  realization_dimensions_all,
+  census_module_classes_all,
+  census_phases_all,
+  census_phase_text,
+  evidence_citation_text,
+}
+import gunbc.realization_census_rows {
+  realization_census_pin,
+  realization_census_data_commit,
+  realization_census_module_rows,
+  realization_census_finding_rows,
+  realization_census_class_rows,
+}
+
+// THE REALIZATION CENSUS AS A REVIEW SHEET KIND: one spreadsheet, three tabs, every census column a
+// DerivedField and two operator columns per tab. The rows are the typed readings in
+// gunbc.realization_census_rows, whoever produced them; this module only says how a reading is
+// shown. The census's own column names are kept as the headers, because a renamed header would be
+// a second name for a column the receipt already names.
+
+// ── the observation: a population measured at a revision ─────────────────────────────────────
+
+// THE CENSUS INHABITS gunbc.repository_census_observation, one observation per tab's population.
+// The population is the modules the census lane enumerated at the pin (its method.md, kept in the
+// receipt) over three roots: dag, src/v1 (the seed's Rust files, which its rows name by path) and
+// src/v2. The inclusion rule is the rows declaration itself rather than a re-derivation this
+// module could not perform. The revision is the pin. The method run is the census data commit,
+// which carries the lane's scripts, read through gunbc.realization_census_rows_gen. A row's fact is
+// the content of its rendered cells, so two observations agree exactly when every cell agrees.
+data realization_census_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "dag" as SourceRootIdentity,
+  additional_source_roots: ["src/v1" as SourceRootIdentity, "src/v2" as SourceRootIdentity],
+  inclusion_rule: decl_ref(module_path: "gunbc.realization_census_rows", decl_name: "realization_census_module_rows"),
+  exclusion_rule: Absent,
+}
+
+fn realization_census_revision() -> MeasurementRevision {
+  GitRevision { commit: realization_census_pin }
+}
+
+fn realization_census_method_run() -> CensusMethodRunIdentity {
+  CensusMethodRunIdentity {
+    classifier: decl_ref(module_path: "gunbc.realization_census_rows_gen", decl_name: "realization_census_rows_generate"),
+    classifier_revision: GitRevision { commit: realization_census_data_commit },
+    invocation_identity: content_hash_atom(value: realization_census_data_commit as NonEmptyStr),
+  }
+}
+
+fn observed_row_of(row: ProjectionRow) -> CensusObservedRow {
+  census_observed_row(
+    subject: row.listing_id as CensusSubjectKey,
+    fact: content_hash_atom(value: concat("cells:", join(map(row.derived, c => concat(c.column as String, "=", c.value)), "\t")) as NonEmptyStr),
+  )
+}
+
+// THE OBSERVATION'S CONSUMER IS THE LENS THAT WILL REPLACE THE HAND CENSUS. A v2 lens over the
+// Node tree is to produce these readings per revision (precedent:
+// gunbc.realization_vocab_confinement_census), and this hand census is its oracle: the two agree
+// exactly when repository_census_observation_identity_eq holds over their module observations at
+// one pin. Nothing in this change compares them, so the observation is a declared frontier.
+fn realization_census_module_observation() -> RepositoryCensusObservation {
+  repository_census_observation(
+    population: realization_census_population,
+    observed_at_revision: realization_census_revision(),
+    method_run: realization_census_method_run(),
+    rows: map(realization_census_module_projection_rows(), r => observed_row_of(row: r)),
+  )
+}
+
+// The pin's first twelve hex digits name the spreadsheet and its marker, so a census at a new pin
+// is a new spreadsheet beside the old one rather than an overwrite of the operator's rulings on a
+// census they no longer describe.
+fn realization_census_short_pin() -> String {
+  match realization_census_revision() {
+    GitRevision { commit: c } => substring(s: c, start: 0, end: 12)
+    ContentFingerprint { digest: _ } => ""
+  }
+}
+
+// ── columns ───────────────────────────────────────────────────────────────────────────────────
+
+fn derived_column(name: String) -> ReviewColumn {
+  ReviewColumn { name: name as NonEmptyStr, kind: DerivedField { source_field: name as NonEmptyStr } }
+}
+
+// RULING AND NOTE ARE THE OPERATOR'S, and a later lane reads the rulings back: that readback is a
+// declared frontier (realization_census_ruling_readback_frontier below), not built here. They ship
+// empty from every derived row, and the identity-keyed write never touches them.
+data realization_census_operator_columns: List<ReviewColumn> = [
+  ReviewColumn { name: "Ruling" as NonEmptyStr, kind: OperatorEntered },
+  ReviewColumn { name: "Note" as NonEmptyStr, kind: OperatorEntered },
+]
+
+data realization_census_module_column_names: List<String> = [
+  "module", "class",
+  "storage_site", "storage_level", "caching_site", "caching_level", "access_site", "access_level",
+  "authz_site", "authz_level", "placement_site", "placement_level",
+  "ambient_calls", "worst_site", "worst_finding", "evidence_symbols", "phase",
+]
+
+data realization_census_finding_column_names: List<String> = [
+  "finding_id", "class_id", "module", "class", "dimension", "site", "level", "symbol", "specimen",
+  "note", "existing_authority", "fix_shape",
+]
+
+// The classes tab shows the receipt's population counts as projections of the findings naming the
+// class (gunbc.realization_census ClassCensusReading says why they are not stored), and drops one
+// column: module_list, whose every cell is the sentence "findings.tsv where class_id = <id>" -- a
+// pointer to the findings tab, which the sheet shows beside it.
+data realization_census_class_column_names: List<String> = [
+  "class_id", "dimension", "decision_site", "pattern", "instances", "modules", "production_modules",
+  "extdeps_modules", "seed_modules", "current_rung", "attainable_ceiling", "owning_authority", "wall",
+  "red_control", "residual", "next_trigger",
+]
+
+fn census_schema(identity: String, names: List<String>) -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: identity as NonEmptyStr,
+    columns: concat(map(names, n => derived_column(name: n)), realization_census_operator_columns),
+  }
+}
+
+// ── cells ─────────────────────────────────────────────────────────────────────────────────────
+
+fn cell(column: String, value: String) -> DerivedCell {
+  DerivedCell { column: column as NonEmptyStr, value: value }
+}
+
+fn dimension_cells(dimension: String, d: DimensionReading) -> List<DerivedCell> {
+  [
+    cell(column: concat(dimension, "_site"), value: decision_site_text(s: d.site)),
+    cell(column: concat(dimension, "_level"), value: realization_level_text(l: d.level)),
+  ]
+}
+
+fn module_projection_row(m: ModuleCensusReading) -> ProjectionRow {
+  ProjectionRow {
+    listing_id: m.module,
+    derived: concat(concat(concat(concat(concat(concat(
+      [cell(column: "module", value: m.module as String), cell(column: "class", value: census_module_class_text(c: m.module_class))],
+      dimension_cells(dimension: "storage", d: m.storage)),
+      dimension_cells(dimension: "caching", d: m.caching)),
+      dimension_cells(dimension: "access", d: m.access)),
+      dimension_cells(dimension: "authz", d: m.authz)),
+      dimension_cells(dimension: "placement", d: m.placement)),
+      [
+        cell(column: "ambient_calls", value: to_string(m.ambient_calls)),
+        cell(column: "worst_site", value: decision_site_text(s: m.worst_site)),
+        cell(column: "worst_finding", value: m.worst_finding),
+        cell(column: "evidence_symbols", value: join(m.evidence_symbols |> map(c => evidence_citation_text(c: c)), "; ")),
+        cell(column: "phase", value: census_phase_text(p: m.phase)),
+      ]),
+  }
+}
+
+fn finding_projection_row(f: FindingCensusReading) -> ProjectionRow {
+  ProjectionRow {
+    listing_id: f.finding_id,
+    derived: [
+      cell(column: "finding_id", value: f.finding_id as String),
+      cell(column: "class_id", value: match f.class_id { Present { value: c } => c as String  Absent => "" }),
+      cell(column: "module", value: f.module as String),
+      cell(column: "class", value: census_module_class_text(c: f.module_class)),
+      cell(column: "dimension", value: realization_dimension_text(d: f.dimension)),
+      cell(column: "site", value: decision_site_text(s: f.site)),
+      cell(column: "level", value: realization_level_text(l: f.level)),
+      cell(column: "symbol", value: f.symbol),
+      cell(column: "specimen", value: f.specimen),
+      cell(column: "note", value: f.note),
+      cell(column: "existing_authority", value: f.existing_authority),
+      cell(column: "fix_shape", value: f.fix_shape),
+    ],
+  }
+}
+
+// A RUNG IS SHOWN AS ITS DIGIT AND ITS LADDER NAME, so the column reads the way DESIGN section 4b
+// does and a conditional rule can colour it by name without matching a digit inside prose.
+fn ladder_rung_text(r: GuaranteeRung) -> String {
+  concat(to_string(guarantee_rung_index(r: r)), " ", guarantee_rung_label(r: r))
+}
+
+data census_rung_unmodeled_label: String = "unmodeled"
+
+fn census_class_rung_text(r: CensusClassRung) -> String {
+  match r {
+    RungUnmodeled => concat("0 ", census_rung_unmodeled_label)
+    RungOnLadder { rung: g } => ladder_rung_text(r: g)
+  }
+}
+
+fn findings_naming_class(class_id: NonEmptyStr) -> List<FindingCensusReading> {
+  filter(realization_census_finding_rows, f => f.class_id == Present { value: class_id })
+}
+
+type DistinctModules {
+  seen: Map<String, Bool>
+  distinct: Int
+}
+
+fn distinct_module_count(findings: List<FindingCensusReading>) -> Int {
+  let scan = fold(findings, init: DistinctModules { seen: empty_map(), distinct: 0 }, f: fn(acc, f) {
+    if map_contains_key(acc.seen, f.module as String) { acc } else { DistinctModules { seen: map_insert(acc.seen, f.module as String, true), distinct: acc.distinct + 1 } }
+  })
+  scan.distinct
+}
+
+fn of_module_classes(findings: List<FindingCensusReading>, classes: List<CensusModuleClass>) -> List<FindingCensusReading> {
+  filter(findings, f => count(filter(classes, c => c == f.module_class)) > 0)
+}
+
+fn class_projection_row(c: ClassCensusReading) -> ProjectionRow {
+  let named = findings_naming_class(class_id: c.class_id)
+  ProjectionRow {
+    listing_id: c.class_id,
+    derived: [
+      cell(column: "class_id", value: c.class_id as String),
+      cell(column: "dimension", value: realization_dimension_text(d: c.dimension)),
+      cell(column: "decision_site", value: join(map(concat([c.decision_sites.head], c.decision_sites.tail), s => decision_site_text(s: s)), "/")),
+      cell(column: "pattern", value: c.pattern),
+      cell(column: "instances", value: to_string(count(named))),
+      cell(column: "modules", value: to_string(distinct_module_count(findings: named))),
+      cell(column: "production_modules", value: to_string(distinct_module_count(findings: of_module_classes(findings: named, classes: [ClassProduction])))),
+      cell(column: "extdeps_modules", value: to_string(distinct_module_count(findings: of_module_classes(findings: named, classes: [ClassExtdeps])))),
+      cell(column: "seed_modules", value: to_string(distinct_module_count(findings: of_module_classes(findings: named, classes: [ClassSeed, ClassSeedGenerated])))),
+      cell(column: "current_rung", value: census_class_rung_text(r: c.current_rung)),
+      cell(column: "attainable_ceiling", value: concat(ladder_rung_text(r: c.attainable_ceiling), ": ", c.ceiling_reason)),
+      cell(column: "owning_authority", value: c.owning_authority),
+      cell(column: "wall", value: c.wall),
+      cell(column: "red_control", value: c.red_control),
+      cell(column: "residual", value: c.residual),
+      cell(column: "next_trigger", value: c.next_trigger),
+    ],
+  }
+}
+
+fn realization_census_module_projection_rows() -> List<ProjectionRow> {
+  map(realization_census_module_rows, m => module_projection_row(m: m))
+}
+
+// ── colours ───────────────────────────────────────────────────────────────────────────────────
+
+// WHERE THE DECISION IS MADE, AS A TEMPERATURE. Home and Passed are the decision living with its
+// authority or handed down from it, one calm colour. Rederived, Literal and Forked are the three
+// ways it escaped, each a step warmer than the last. None and Other are left uncoloured: they are
+// most cells, and a colour spent on them is attention taken from the ones that earned it.
+type SiteColour {
+  site: DecisionSite
+  color: SheetsColorReading
+}
+
+fn site_colours() -> List<SiteColour> {
+  [
+    SiteColour { site: SiteHome, color: sheets_color_from_srgb8(c: okabe_ito_bluish_green) },
+    SiteColour { site: SitePassed, color: sheets_color_from_srgb8(c: okabe_ito_bluish_green) },
+    SiteColour { site: SiteRederived, color: sheets_color_from_srgb8(c: okabe_ito_yellow) },
+    SiteColour { site: SiteLiteral, color: sheets_color_from_srgb8(c: okabe_ito_orange) },
+    SiteColour { site: SiteForked, color: sheets_color_from_srgb8(c: okabe_ito_vermillion) },
+  ]
+}
+
+fn site_rules(column: String) -> List<FormatRule> {
+  map(site_colours(), sc => FormatRule {
+    column: column as NonEmptyStr,
+    condition: RuleTextContains { fragment: decision_site_text(s: sc.site) },
+    color: sc.color,
+  })
+}
+
+// AMBIENT CALLS ABOVE NINE. The census counts, per module, calls that reach an ambient authority
+// rather than a passed one. Nine was chosen at about the 95th percentile of the census at this pin,
+// so the colour marks roughly the twentieth of modules where an ambient reach is a habit rather
+// than an exception. It is a policy threshold, named here once, not a measurement of the corpus.
+data realization_census_ambient_calls_threshold: Int = 9
+
+fn ambient_calls_rule() -> FormatRule {
+  FormatRule {
+    column: "ambient_calls" as NonEmptyStr,
+    condition: RuleNumberGreater { threshold: realization_census_ambient_calls_threshold },
+    color: sheets_color_from_srgb8(c: okabe_ito_reddish_purple),
+  }
+}
+
+// THE LADDER AS A TEMPERATURE, coldest at the top. Matched by rung name, which ladder_rung_text
+// writes into both rung columns.
+type RungColour {
+  label: String
+  color: SheetsColorReading
+}
+
+fn rung_colours() -> List<RungColour> {
+  [
+    RungColour { label: census_rung_unmodeled_label, color: sheets_color_from_srgb8(c: okabe_ito_vermillion) },
+    RungColour { label: "mitigatable", color: sheets_color_from_srgb8(c: okabe_ito_orange) },
+    RungColour { label: "mechanically preventable", color: sheets_color_from_srgb8(c: okabe_ito_yellow) },
+    RungColour { label: "structurally guaranteed", color: sheets_color_from_srgb8(c: okabe_ito_sky_blue) },
+    RungColour { label: "structurally impossible", color: sheets_color_from_srgb8(c: okabe_ito_bluish_green) },
+  ]
+}
+
+fn rung_rules(column: String) -> List<FormatRule> {
+  map(rung_colours(), rc => FormatRule {
+    column: column as NonEmptyStr,
+    condition: RuleTextContains { fragment: rc.label },
+    color: rc.color,
+  })
+}
+
+data realization_census_site_columns: List<String> = [
+  "storage_site", "caching_site", "access_site", "authz_site", "placement_site", "worst_site",
+]
+
+fn module_tab_rules() -> List<FormatRule> {
+  concat(flat_map(realization_census_site_columns, c => site_rules(column: c)), [ambient_calls_rule()])
+}
+
+fn finding_tab_rules() -> List<FormatRule> {
+  site_rules(column: "site")
+}
+
+fn class_tab_rules() -> List<FormatRule> {
+  concat(concat(site_rules(column: "decision_site"), rung_rules(column: "current_rung")), rung_rules(column: "attainable_ceiling"))
+}
+
+// ── widths: what each column holds ───────────────────────────────────────────────────────────
+
+fn vocabulary(texts: List<String>) -> ColumnContentClass {
+  match first(texts) {
+    Present { value: h } => ContentVocabulary { members: FreeSemigroup { head: h, tail: skip(texts, 1) } }
+    Absent => ContentCode
+  }
+}
+
+fn site_vocabulary() -> ColumnContentClass { vocabulary(texts: map(decision_sites_all, s => decision_site_text(s: s))) }
+
+fn level_vocabulary() -> ColumnContentClass { vocabulary(texts: map(realization_levels_all, l => realization_level_text(l: l))) }
+
+fn dimension_vocabulary() -> ColumnContentClass { vocabulary(texts: map(realization_dimensions_all, d => realization_dimension_text(d: d))) }
+
+fn module_class_vocabulary() -> ColumnContentClass { vocabulary(texts: map(census_module_classes_all, c => census_module_class_text(c: c))) }
+
+fn rung_vocabulary() -> ColumnContentClass {
+  vocabulary(texts: concat([concat("0 ", census_rung_unmodeled_label)], map([Mitigatable, MechanicallyPreventable, StructurallyGuaranteed, StructurallyImpossible], r => ladder_rung_text(r: r))))
+}
+
+fn content(column: String, class: ColumnContentClass) -> ColumnContent {
+  ColumnContent { column: column as NonEmptyStr, content: class }
+}
+
+fn dimension_content(dimension: String) -> List<ColumnContent> {
+  [content(column: concat(dimension, "_site"), class: site_vocabulary()), content(column: concat(dimension, "_level"), class: level_vocabulary())]
+}
+
+fn module_tab_content() -> List<ColumnContent> {
+  concat(concat(
+    [content(column: "module", class: ContentIdentifier), content(column: "class", class: module_class_vocabulary())],
+    flat_map(["storage", "caching", "access", "authz", "placement"], d => dimension_content(dimension: d))),
+    [
+      content(column: "ambient_calls", class: ContentCount),
+      content(column: "worst_site", class: site_vocabulary()),
+      content(column: "worst_finding", class: ContentProse),
+      content(column: "evidence_symbols", class: ContentProse),
+      content(column: "phase", class: vocabulary(texts: map(census_phases_all, p => census_phase_text(p: p)))),
+    ])
+}
+
+fn finding_tab_content() -> List<ColumnContent> {
+  [
+    content(column: "finding_id", class: ContentIdentifier),
+    content(column: "class_id", class: ContentIdentifier),
+    content(column: "module", class: ContentIdentifier),
+    content(column: "class", class: module_class_vocabulary()),
+    content(column: "dimension", class: dimension_vocabulary()),
+    content(column: "site", class: site_vocabulary()),
+    content(column: "level", class: level_vocabulary()),
+    content(column: "symbol", class: ContentIdentifier),
+    content(column: "specimen", class: ContentProse),
+    content(column: "note", class: ContentProse),
+    content(column: "existing_authority", class: ContentIdentifier),
+    content(column: "fix_shape", class: ContentProse),
+  ]
+}
+
+fn class_tab_content() -> List<ColumnContent> {
+  [
+    content(column: "class_id", class: ContentIdentifier),
+    content(column: "dimension", class: dimension_vocabulary()),
+    content(column: "decision_site", class: ContentCode),
+    content(column: "pattern", class: ContentProse),
+    content(column: "instances", class: ContentCount),
+    content(column: "modules", class: ContentCount),
+    content(column: "production_modules", class: ContentCount),
+    content(column: "extdeps_modules", class: ContentCount),
+    content(column: "seed_modules", class: ContentCount),
+    content(column: "current_rung", class: rung_vocabulary()),
+    content(column: "attainable_ceiling", class: ContentProse),
+    content(column: "owning_authority", class: ContentIdentifier),
+    content(column: "wall", class: ContentProse),
+    content(column: "red_control", class: ContentProse),
+    content(column: "residual", class: ContentProse),
+    content(column: "next_trigger", class: ContentProse),
+  ]
+}
+
+// ── the kind ──────────────────────────────────────────────────────────────────────────────────
+
+fn realization_census_review_sheet_kind() -> ReviewSheetKind {
+  ReviewSheetKind {
+    kind_id: "realization-census" as NonEmptyStr,
+    sheet_name: concat("Realization census ", realization_census_short_pin()) as NonEmptyStr,
+    marker_value: concat("realization-census-", realization_census_short_pin()) as NonEmptyStr,
+    tabs: FreeSemigroup {
+      head: ReviewSheetTab {
+        title: "modules" as NonEmptyStr,
+        schema: census_schema(identity: "module", names: realization_census_module_column_names),
+        rules: module_tab_rules(),
+        content: module_tab_content(),
+        rows: TabRowsProjected { rows: realization_census_module_projection_rows() },
+      },
+      tail: [
+        ReviewSheetTab {
+          title: "findings" as NonEmptyStr,
+          schema: census_schema(identity: "finding_id", names: realization_census_finding_column_names),
+          rules: finding_tab_rules(),
+          content: finding_tab_content(),
+          rows: TabRowsProjected { rows: map(realization_census_finding_rows, f => finding_projection_row(f: f)) },
+        },
+        ReviewSheetTab {
+          title: "classes" as NonEmptyStr,
+          schema: census_schema(identity: "class_id", names: realization_census_class_column_names),
+          rules: class_tab_rules(),
+          content: class_tab_content(),
+          rows: TabRowsProjected { rows: map(realization_census_class_rows, c => class_projection_row(c: c)) },
+        },
+      ],
+    },
+  }
+}
+
+// ── frontiers ─────────────────────────────────────────────────────────────────────────────────
+
+data realization_census_sheet_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.realization_census_sheet", decl_name: "realization_census_module_observation"),
+    reason: "the hand census as a gunbc.repository_census_observation population measured at the pin; its consumer is the v2 lens that produces the same readings and is compared to this observation by repository_census_observation_identity_eq",
+    dissolution: unbound_dissolution(description: "a v2 lens over the Node tree emits ModuleCensusReading rows per revision and a claim compares its observation with this one at the same pin"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.realization_census_sheet", decl_name: "realization_census_operator_columns"),
+    reason: "the Ruling column is written by the operator; the lane that reads rulings back off the live sheet (a values.get of each tab, keyed by the identity column) and acts on them is a declared later consumer, not built in this change",
+    dissolution: unbound_dissolution(description: "a census ruling readback lane lands that reads the Ruling column of each tab through gunbc.review_sheet_values_actuator read_values and folds it into typed rulings"),
+  ),
+]
