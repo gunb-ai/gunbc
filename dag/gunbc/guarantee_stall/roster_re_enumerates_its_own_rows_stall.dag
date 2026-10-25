@@ -12,8 +12,10 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // already records. A `MechanicallyPreventable` reading needs the gate to execute (DESIGN section
 // 4b(1)), so it was inflation, and the paragraphs below are kept as the record of what was claimed.
 // What does hold: for the three derived rosters an author cannot forget a row FILED IN THE ROW
-// DIRECTORY, because the list has no author. A row of an enrolled type declared anywhere else, or
-// under a stem that is not its declaration name, is not in the roster and nothing refuses it. The
+// DIRECTORY, because the list has no author. A row of an enrolled type declared anywhere else is not
+// in the roster and nothing refuses it. A row under a stem that is not its declaration name is
+// refused by the native derivation (`v2.compiler.source_authority` `DerivedRosterRowMisplaced`) and
+// reds `v2.test.claim.derived_roster_seed_agreement`, neither of which runs on the required path. The
 // next climb is that join executing on a required path, and that RFM row states why it is parked
 // behind a grounding (the `DeclFact` initializer projection carrying bound names, so the join is
 // emitted and judged natively) rather than behind a host caller. So the blocker stays

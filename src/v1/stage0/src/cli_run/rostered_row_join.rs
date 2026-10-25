@@ -6,8 +6,9 @@
 //! a path, record what was claimed when that phase existed. Why a host caller is not the repair, and
 //! what must land first: `gunbc.recurring_failure_mode`
 //! `a_drops_rederivation_instrument_sits_in_the_population_it_measures`. So a row of an enrolled
-//! type that a derived roster omits (declared outside its row directory, or under a stem that is
-//! not its declaration name) is refused by nothing that executes today.
+//! type declared outside its row directory is refused by nothing that executes today. One under a
+//! stem that is not its declaration name is refused only by the native derivation
+//! (`v2.compiler.source_authority` `DerivedRosterRowMisplaced`), which is not on the required path.
 //!
 //! WHAT IT DECIDES. A carrier whose rows live one per module and whose roster re-enumerates them
 //! by hand authors one membership fact twice, so a row that lands DECLARED and UNROSTERED is

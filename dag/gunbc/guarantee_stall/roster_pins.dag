@@ -19,8 +19,11 @@ module gunbc.guarantee_stall.roster_pins
 // were moved into row files here when the roster was derived (operator ruling, Charter 3), and
 // their host modules import them back. The objection the hand list recorded -- that a directory
 // cannot see a row declared elsewhere -- STILL HOLDS: a `GuaranteeStall` declared outside this
-// directory, or under a stem that is not its declaration name, is absent from the roster and
-// nothing refuses it. `gunbc.rostered_row_join` declares the corpus-wide join that would refuse it
+// directory is absent from the roster and nothing refuses it. A row in this directory under a stem
+// that is not its declaration name is absent from the seed's roster too; the native derivation
+// (`v2.compiler.source_authority`, `DerivedRosterRowMisplaced`) refuses it, and
+// `v2.test.claim.derived_roster_seed_agreement` goes red on one, but neither runs on the required
+// path. `gunbc.rostered_row_join` declares the corpus-wide join that would refuse it
 // as `DeclaredNotRostered`, but its host entry point has no caller
 // (`gunbc.recurring_failure_mode.a_drops_rederivation_instrument_sits_in_the_population_it_measures`
 // names why, and what must land first). This is no worse than the hand list, which had the same
