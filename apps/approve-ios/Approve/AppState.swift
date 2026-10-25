@@ -11,6 +11,16 @@ final class AppState: ObservableObject {
         didSet { errors.enter(state.phase) }
     }
     @Published var pending: [PendingApproval] = []
+    /// The escalation a tapped alert named (ApprovalPushHint.notification_id). It only ORDERS the
+    /// inbox: the card shown is still one the server listed as pending, read over the authenticated
+    /// route, and a locator naming nothing pending selects nothing.
+    @Published var focused: String?
+
+    /// The card the inbox shows first: the tapped request when it is pending, else the oldest.
+    var front: PendingApproval? {
+        if let f = focused, let p = pending.first(where: { $0.escalation_id == f }) { return p }
+        return pending.first
+    }
     /// One current error per operation (the generated OperationErrors): every attempt records its
     /// outcome, so the next success of an operation removes that operation's error.
     @Published private(set) var errors = OperationErrors()

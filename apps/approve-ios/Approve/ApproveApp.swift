@@ -26,7 +26,8 @@ struct ApproveApp: App {
 }
 
 /// APNs token delivery and push receipt. The push carries only ApprovalPushHint.notification_id
-/// with generic alert text; nothing in it is displayed as the request — the app re-lists.
+/// with generic alert text; nothing in it is displayed as the request — the app re-lists, and a
+/// tapped alert's locator only chooses which pending request is shown first.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     weak var state: AppState?
     /// A token that arrives before the state object is attached is kept, not dropped.
@@ -67,17 +68,24 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    // The UN* arguments are not Sendable and are not read: these callbacks are nonisolated so they
-    // never cross the main actor, and hop with no payload to refreshFromPush.
+    // The UN* arguments are not Sendable: these callbacks are nonisolated so they never cross the
+    // main actor, and hop with at most a plain String (the tapped alert's locator).
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         await refreshFromPush()
         return [.banner, .sound]
     }
 
-    /// The operator tapped the alert: re-list, then the inbox shows what is pending.
+    /// The operator tapped the alert: re-list, then the inbox opens the request the alert named.
+    /// The hint is read here as plain text (Sendable) and only orders the list (AppState.front).
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        await refreshFromPush()
+        let locator = try? WireDecode.pushHint(response.notification.request.content.userInfo).notification_id
+        await openFromPush(locator)
+    }
+
+    @MainActor private func openFromPush(_ locator: String?) async {
+        state?.focused = locator
+        _ = await state?.refresh()
     }
 
     @MainActor private func refreshFromPush() async {

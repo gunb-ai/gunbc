@@ -74,7 +74,7 @@ struct InboxView: View {
         GeometryReader { geo in
             ScrollView {
                 VStack(spacing: 16) {
-                    if let p = state.pending.first {
+                    if let p = state.front {
                         RequestCard(pending: p, remaining: state.pending.count - 1).id(p.escalation_id)
                     } else {
                         Spacer(minLength: 0)
