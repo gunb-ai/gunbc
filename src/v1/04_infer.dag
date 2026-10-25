@@ -65,7 +65,6 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, 
   InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOnInadmissibleType, EqualityOptionalityMismatch,
-  TypeArgumentArityMismatch,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -11527,8 +11526,11 @@ fn alias_chain_generic_decl(env: TypeEnv, carrier: Node, target: Node) -> Node {
 // (alias_chain_target_after_args, and the record branch's re-substitution over an
 // unresolved-parameter field) did not check at all. The repair is construction before validation:
 // the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed
-// downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and
-// located, at the seam that owns both the declaration and the application. SCOPE, stated rather
+// downstream by any caller; and the refusal is stated ONCE, typed and located, by v1.compiler.resolve
+// type_use_arity_diagnostics, the one arity rule every type use passes (this seam's own
+// TypeArgumentArityMismatch rule is deleted: it re-reported, beside resolve's ArityMismatch, the same
+// fact at the same span -- measured on main for a user generic -- and once resolve covered container
+// aliases too it had no position of its own). SCOPE, stated rather
 // than implied: the refused population is exactly the state `dropped_args` already computed -- both
 // counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already
 // treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched.
@@ -11568,29 +11570,6 @@ fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_ar
   }
 }
 
-fn alias_chain_arity_diagnostics(carrier: Node, carrier_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
-  let type_args = carrier.children
-  if carrier_name == "" || (type_args |> count) == 0 { [] }
-  else {
-    match lookup_type_by_name(env: env, name: carrier_name) {
-      Present { value: target } =>
-        let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
-        if alias_chain_type_arg_arity_mismatch(carrier: carrier, decl: decl, type_args: type_args) {
-          [make_error_node(
-            diagnostic: TypeArgumentArityMismatch {
-              type_name: carrier_name,
-              supplied: type_args |> count,
-              declared: decl.params |> count,
-              span: carrier.span
-            },
-            module_name: module_name
-          )]
-        } else { [] }
-      Absent => []
-    }
-  }
-}
-
 fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> Node {
   let type_args = carrier.children
   if type_args |> count == 0 { target }
@@ -11626,7 +11605,7 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
   let peeled = peel_result.resolved
   let carrier = alias_chain_carrier(n: peeled)
   let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
-  let own_diags = concat(peel_result.diagnostics, alias_chain_arity_diagnostics(carrier: carrier, carrier_name: carrier_name, env: env, module_name: module_name))
+  let own_diags = peel_result.diagnostics
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
   let is_record = structural.connective == Conj || structural.connective == Disj
   if is_record {

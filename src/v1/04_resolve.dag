@@ -57,9 +57,9 @@ import v1.compiler.infer_env {
 }
 
 // KIND INHABITANCE AT AN APPLIED TYPE ARGUMENT -- the wall that makes a kinded parameter position
-// mean something. It sits beside the arity check in resolve_node_bounded's generic-use-site branch
-// because that is the ONE place an applied user generic is judged, so every occurrence is reached
-// rather than only the field-access route alias_chain_arity_diagnostics covers.
+// mean something. It sits in resolve_node_bounded's generic-use-site branch because that is the ONE
+// place an applied user generic is judged, so every occurrence is reached (the arity of the same use is
+// type_use_arity_diagnostics', stated once for every type use).
 //
 // THE ADMITTING ARMS, AND THE HONEST CEILING OF EACH; the arms themselves are read from
 // type_arg_kind_inhabitance below rather than counted here, because a count in prose rots the first
@@ -556,21 +556,39 @@ fn container_family_declaration(declared: DeclarationRef) -> Bool {
 // rule is stated once there, for bare and applied uses alike, with the arity read from the resolved
 // declaration (the kernel row's arity for a kernel mint, which declares no parameters of its own).
 // WHERE A USE IS: an applied use anywhere, a bare use nested in a type (depth > 0), and a bare use at a
-// root position (a field, parameter or return type: bare_type_use_arity_diagnostics at those call sites).
+// root position (a field, parameter or return type, resolved through resolve_type_position).
 // A bare node resolved at depth 0 that is no position -- a declaration's own binding, such as an opaque
 // `type ReferenceModel<T>` -- is not a use, and asking its arity refused std.types itself.
-fn bare_type_use_arity_diagnostics(n: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
-  if n.children |> count == 0 { type_use_arity_diagnostics(n: n, env: env, module_name: module_name) } else { [] }
+
+// A USE REFERS TO A DECLARATION LOCATED ELSEWHERE; a node whose name sits where its own declaration's name
+// sits IS that declaration, reached by resolve through some other type's expansion (measured: the opaque
+// `type MachineWidth<bits: WidthResolution>` and `type ReferenceModel<T>` in std, refused as bare uses
+// of themselves at their own declaring position before this test).
+fn node_names_its_own_declaration(n: Node, decl: Node) -> Bool {
+  match n.ident_span {
+    Absent => false
+    Present { value: at } =>
+      match decl.ident_span {
+        Absent => false
+        Present { value: declared } => at.file == declared.file && at.start == declared.start
+      }
+  }
 }
 
-fn type_use_arity_diagnostics(n: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
-  let is_use = n.connective == NoConnective && n.params |> count == 0 && n.body == none
+// A node shaped like a type use: an unstructured, named reference, not a declaration item.
+fn node_is_type_use_shape(n: Node) -> Bool {
+  n.connective == NoConnective && n.params |> count == 0 && n.body == none
     && n.uses |> count == 0 && n.properties |> count == 0 && match n.expr_data { NoExprData => true  _ => false }
     && match n.module_item_kind { NotAModuleItem => true  _ => false }
-  if !is_use { [] } else {
+}
+
+// THE DECLARATION IS RESOLVED ONCE PER USE (DESIGN section 6, bare-minimum cost): the caller passes the
+// declaration it resolved, which resolve_node_bounded also hands to the structure arm, so a type use
+// costs one resolve_generic_use_decl and not one per question asked of it.
+fn type_use_arity_diagnostics(n: Node, decl: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
+  if !node_is_type_use_shape(n: n) || node_names_its_own_declaration(n: n, decl: decl) { [] } else {
     let type_name = authored_name(env: env, node: n)
     if type_name == "" { [] } else {
-      let decl = resolve_generic_use_decl(env: env, n: n)
       let declared = declared_type_parameter_count(decl: decl, env: env)
       let supplied = n.children |> count
       if declared > 0 && supplied != declared {
@@ -592,16 +610,12 @@ fn declared_type_parameter_count(decl: Node, env: TypeEnv) -> Int {
 }
 
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
-  let has_structure = n.connective != NoConnective
-  if has_structure { false }
-  else {
-    let decl = resolve_generic_use_decl(env: env, n: n)
-    if decl.params |> count > 0 {
-      if declaration_is_container_family(decl: decl, env: env) { false }
-      else if decl.inferred != none { true }
-      else { true }
-    } else { false }
-  }
+  if n.connective != NoConnective { false }
+  else { is_user_generic_declaration(decl: resolve_generic_use_decl(env: env, n: n), env: env) }
+}
+
+fn is_user_generic_declaration(decl: Node, env: TypeEnv) -> Bool {
+  decl.params |> count > 0 && !declaration_is_container_family(decl: decl, env: env)
 }
 
 type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
@@ -662,13 +676,24 @@ data resolve_node_bounded_masked_boundary: String = "Selective-import fail-close
 // UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on:
 // gunbc.type_ref_hit_ne_bind_measure.authority type_ref_hit_ne_bind_measure_dissolve_trigger.
 
+// A TYPE POSITION: a field, parameter or return type. Its root is a use even when bare, which a node
+// resolved at depth 0 for some other reason (a declaration's own binding) is not.
+fn resolve_type_position(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
+  resolve_node_at(n: n, env: env, module_name: module_name, depth: 0, masked: true, position: true)
+}
+
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
-  let arity_diags = if n.children |> count > 0 || depth > 0 { type_use_arity_diagnostics(n: n, env: env, module_name: module_name) } else { [] }
-  let inner = resolve_node_bounded_structure(n: n, env: env, module_name: module_name, depth: depth, masked: masked)
+  resolve_node_at(n: n, env: env, module_name: module_name, depth: depth, masked: masked, position: false)
+}
+
+fn resolve_node_at(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool, position: Bool) -> NodeResolveResult {
+  let use_decl = if (n.connective == NoConnective) { resolve_generic_use_decl(env: env, n: n) } else { n }
+  let arity_diags = if (n.children |> count > 0 || depth > 0 || position) { type_use_arity_diagnostics(n: n, decl: use_decl, env: env, module_name: module_name) } else { [] }
+  let inner = resolve_node_bounded_structure(n: n, env: env, module_name: module_name, depth: depth, masked: masked, use_decl: use_decl)
   NodeResolveResult { resolved: inner.resolved, diagnostics: concat(arity_diags, inner.diagnostics) }
 }
 
-fn resolve_node_bounded_structure(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
+fn resolve_node_bounded_structure(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool, use_decl: Node) -> NodeResolveResult {
   if depth > 100 {
     return NodeResolveResult {
       resolved: n,
@@ -798,9 +823,9 @@ fn resolve_node_bounded_structure(n: Node, env: TypeEnv, module_name: String, de
         }
       }
     }
-  } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
+  } else if n.children |> count > 0 && is_user_generic_declaration(decl: use_decl, env: env) {
     let type_name = authored_name(env: env, node: n)
-    let decl = resolve_generic_use_decl(env: env, n: n)
+    let decl = use_decl
     let kind_diags = type_param_kind_diagnostics(carrier: n, decl: decl, type_name: type_name, env: env, module_name: module_name)
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1, masked: masked))
     // A nested type application is a use site, the same fact rendered_use_site_type stamps at a
@@ -977,9 +1002,9 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
 
 fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResolveResult {
   let authored_type = field_node_type_expr(n: field)
-  let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
+  let type_result = resolve_type_position(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
-  let type_diags = concat(type_result.diagnostics, bare_type_use_arity_diagnostics(n: authored_type, env: env, module_name: module_name))
+  let type_diags = type_result.diagnostics
   let default_resolved = match field_node_default_value(n: field) {
     Present { value: default_value } => Present { value: resolve_expr_types(texpr: default_value, env: env, module_name: module_name) }
     Absent => none
@@ -1022,10 +1047,10 @@ fn rendered_use_site_type(authored: Node, resolved: Node) -> Node {
 
 fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResolveResult {
   let authored_type = param_node_type_expr(n: param)
-  let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
+  let type_result = resolve_type_position(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
   let rendered_type = rendered_use_site_type(authored: authored_type, resolved: type_resolved)
-  let type_diags = concat(type_result.diagnostics, bare_type_use_arity_diagnostics(n: authored_type, env: env, module_name: module_name))
+  let type_diags = type_result.diagnostics
   let default_resolved = match param_node_default_value(n: param) {
     Present { value: default_value } => Present { value: resolve_expr_types(texpr: default_value, env: env, module_name: module_name) }
     Absent => none
@@ -1559,8 +1584,8 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   let child_results = if item.connective == Conj && item.transport == none {
     item.children |> map(child =>
       let authored_type = field_node_type_expr(n: child)
-      let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
-      let type_diags = concat(tr.diagnostics, bare_type_use_arity_diagnostics(n: authored_type, env: env, module_name: module_name))
+      let tr = resolve_type_position(n: authored_type, env: env, module_name: module_name)
+      let type_diags = tr.diagnostics
       ItemResolveResult {
         item: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: field_children_with_stamped_type(field: child, source_indices: env.source_indices), connective: child.connective, params: child.params, inferred: field_inferred_with_declaration(field: child, binders: tp_names, env: env), return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
         diagnostics: type_diags
@@ -1570,8 +1595,8 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
     item.children |> map(variant =>
       let field_results = variant.children |> map(field =>
         let authored_type = field_node_type_expr(n: field)
-        let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
-        let type_diags = concat(tr.diagnostics, bare_type_use_arity_diagnostics(n: authored_type, env: env, module_name: module_name))
+        let tr = resolve_type_position(n: authored_type, env: env, module_name: module_name)
+        let type_diags = tr.diagnostics
         ItemResolveResult {
           item: Node { occurrence_identity: field.occurrence_identity, name: field.name, span: field.span, ident_span: field.ident_span, children: field_children_with_stamped_type(field: field, source_indices: env.source_indices), connective: field.connective, params: field.params, inferred: field_inferred_with_declaration(field: field, binders: tp_names, env: env), return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field.module_item_kind, declaration_marker: field.declaration_marker, declaration: field.declaration, expr_data: NoExprData },
           diagnostics: type_diags
