@@ -765,7 +765,7 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
     {
         let step_return = t.param_types.clone().iter().cloned().fold(
             std::option::Option::None,
-            |acc: Option<Rc<AlgebraTypeTemplate>>, p: Rc<AlgebraTypeTemplate>| match acc.clone() {
+            |acc: _, p: Rc<AlgebraTypeTemplate>| match acc.clone() {
                 Some(_) => acc.clone(),
                 std::option::Option::None => match (*p.clone()).clone() {
                     AlgebraTypeTemplate::CallableOf { return_type: r, .. } => Some(r.clone()),
@@ -2398,10 +2398,8 @@ pub fn fold_list<T: Clone, A: Clone>(
                 let mut empty = __tco_loop_empty;
                 #[allow(unused_mut)]
                 let mut cons = __tco_loop_cons;
-                #[allow(unused_mut)]
-                let mut xs = __tco_loop_xs.clone();
                 {
-                    let __fm = xs.clone();
+                    let __fm = __tco_base_xs.clone();
                     if (__fm.len() - __tco_cursor_xs) == 0 {
                         break empty.clone();
                     } else {
@@ -2538,30 +2536,37 @@ pub fn skip<T: Clone>(
     mut __tco_loop_xs: Rc<FreeMonoid<T>>,
     mut __tco_loop_n: i64,
 ) -> Rc<FreeMonoid<T>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut xs = __tco_loop_xs;
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        if (n.clone() <= 0) {
-            break xs.clone();
-        } else {
-            {
-                let __fm = xs.clone();
-                if __fm.is_empty() {
-                    break Rc::new(vec![]);
+    {
+        let mut __tco_cursor_xs: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut n = __tco_loop_n;
+                if (n.clone() <= 0) {
+                    break Rc::new(__tco_base_xs.skip(__tco_cursor_xs));
                 } else {
-                    let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
                     {
-                        let __tco_0 = t.clone();
-                        let __tco_1 = v1_rt::int_sub(n, 1);
-                        __tco_loop_xs = __tco_0;
-                        __tco_loop_n = __tco_1;
-                        continue;
+                        let __fm = __tco_base_xs.clone();
+                        if (__fm.len() - __tco_cursor_xs) == 0 {
+                            break Rc::new(vec![]);
+                        } else {
+                            {
+                                let __tco_0 = __tco_cursor_xs + 1;
+                                let __tco_1 = v1_rt::int_sub(n, 1);
+                                __tco_cursor_xs = __tco_0;
+                                __tco_loop_n = __tco_1;
+                                continue;
+                            }
+                        }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
@@ -2610,68 +2615,76 @@ pub fn sort_merge_into<T: Clone, K: Clone>(
     mut __tco_loop_order: Rc<TotalOrder<K>>,
     mut __tco_loop_acc: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
 ) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut left = __tco_loop_left;
-        #[allow(unused_mut)]
-        let mut right = __tco_loop_right;
-        #[allow(unused_mut)]
-        let mut order = __tco_loop_order;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        {
-            let __fm = left.clone();
-            if __fm.is_empty() {
-                break list_append(acc.clone(), right.clone());
-            } else {
-                let l = (*__fm)[0].clone();
-                let lt: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+    {
+        let mut __tco_cursor_left: usize = 0;
+        let mut __tco_cursor_right: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_left = __tco_loop_left.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_left = __tco_base_left.focus();
+            let __tco_base_right = __tco_loop_right.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_right = __tco_base_right.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut order = __tco_loop_order;
+                #[allow(unused_mut)]
+                let mut acc = __tco_loop_acc;
                 {
-                    let __fm = right.clone();
-                    if __fm.is_empty() {
-                        break list_append(acc.clone(), left.clone());
+                    let __fm = __tco_base_left.clone();
+                    if (__fm.len() - __tco_cursor_left) == 0 {
+                        break list_append(
+                            acc.clone(),
+                            Rc::new(__tco_base_right.skip(__tco_cursor_right)),
+                        );
                     } else {
-                        let r = (*__fm)[0].clone();
-                        let rt: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                        match (order.compare)(l.key.clone(), r.key.clone()) {
-                            Ordering::Greater => {
-                                let __tco_0 = left;
-                                let __tco_1 = rt.clone();
-                                let __tco_2 = order;
-                                let __tco_3 = v1_rt::rc_list_push(acc, r.clone());
-                                __tco_loop_left = __tco_0;
-                                __tco_loop_right = __tco_1;
-                                __tco_loop_order = __tco_2;
-                                __tco_loop_acc = __tco_3;
-                                continue;
-                            }
-                            Ordering::Less => {
-                                let __tco_0 = lt.clone();
-                                let __tco_1 = right;
-                                let __tco_2 = order;
-                                let __tco_3 = v1_rt::rc_list_push(acc, l.clone());
-                                __tco_loop_left = __tco_0;
-                                __tco_loop_right = __tco_1;
-                                __tco_loop_order = __tco_2;
-                                __tco_loop_acc = __tco_3;
-                                continue;
-                            }
-                            Ordering::Equal => {
-                                let __tco_0 = lt.clone();
-                                let __tco_1 = right;
-                                let __tco_2 = order;
-                                let __tco_3 = v1_rt::rc_list_push(acc, l.clone());
-                                __tco_loop_left = __tco_0;
-                                __tco_loop_right = __tco_1;
-                                __tco_loop_order = __tco_2;
-                                __tco_loop_acc = __tco_3;
-                                continue;
+                        let l = __tco_focus_left.index(__tco_cursor_left + 0).clone();
+                        {
+                            let __fm = __tco_base_right.clone();
+                            if (__fm.len() - __tco_cursor_right) == 0 {
+                                break list_append(
+                                    acc.clone(),
+                                    Rc::new(__tco_base_left.skip(__tco_cursor_left)),
+                                );
+                            } else {
+                                let r = __tco_focus_right.index(__tco_cursor_right + 0).clone();
+                                match (order.compare)(l.key.clone(), r.key.clone()) {
+                                    Ordering::Greater => {
+                                        let __tco_0 = __tco_cursor_right + 1;
+                                        let __tco_1 = order;
+                                        let __tco_2 = v1_rt::rc_list_push(acc, r.clone());
+                                        __tco_cursor_right = __tco_0;
+                                        __tco_loop_order = __tco_1;
+                                        __tco_loop_acc = __tco_2;
+                                        continue;
+                                    }
+                                    Ordering::Less => {
+                                        let __tco_0 = __tco_cursor_left + 1;
+                                        let __tco_1 = order;
+                                        let __tco_2 = v1_rt::rc_list_push(acc, l.clone());
+                                        __tco_cursor_left = __tco_0;
+                                        __tco_loop_order = __tco_1;
+                                        __tco_loop_acc = __tco_2;
+                                        continue;
+                                    }
+                                    Ordering::Equal => {
+                                        let __tco_0 = __tco_cursor_left + 1;
+                                        let __tco_1 = order;
+                                        let __tco_2 = v1_rt::rc_list_push(acc, l.clone());
+                                        __tco_cursor_left = __tco_0;
+                                        __tco_loop_order = __tco_1;
+                                        __tco_loop_acc = __tco_2;
+                                        continue;
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
@@ -2948,10 +2961,8 @@ pub fn list_find_first<T: Clone>(
             break loop {
                 #[allow(unused_mut)]
                 let mut predicate = __tco_loop_predicate;
-                #[allow(unused_mut)]
-                let mut xs = __tco_loop_xs.clone();
                 {
-                    let __fm = xs.clone();
+                    let __fm = __tco_base_xs.clone();
                     if (__fm.len() - __tco_cursor_xs) == 0 {
                         break crate::std_optional::optional_absent();
                     } else {

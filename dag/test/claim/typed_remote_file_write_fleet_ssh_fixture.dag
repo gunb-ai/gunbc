@@ -109,6 +109,8 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_preamble_witness", decl_name: "the_typed_preamble_refuses_a_fleet_ssh_transport_before_running_any_command"),
     decl_ref(module_path: "test.claim.live_deploy.ensure_dependency_witness", decl_name: "both_subject_arms_reach_the_transport_as_argv_not_as_a_script_body"),
     decl_ref(module_path: "test.claim.runner.runner_host_cap_bracket_witness", decl_name: "bracket_context"),
+    // The withdraw/restore witness seals the same sealed context for its runs rather than resealing it.
+    decl_ref(module_path: "test.claim.runner.runner_host_withdraw_witness", decl_name: "withdraw_run"),
     // P4: the cap-route witness reads the sealed fleet context through this one fixture rather than
     // resealing it -- one way to seal a fleet context, one home (DESIGN section 6).
     decl_ref(module_path: "test.claim.runner.runner_slot_cap_observe_route_witness", decl_name: "cap_context"),
