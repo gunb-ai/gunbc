@@ -40,8 +40,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // to pa.f, and infer refused with application_positional_deficit at `f` -- the pipe lowered as an
 // opaque infix Transform, so its left operand never reached the call. Claims (1)-(3) were red there.
 //
-// MUTATION RECEIPT: lowering the pipe as lower_binary_infix again reds (1), (2), (3) and (4); putting
-// the left operand after the authored actuals instead of before them reds (3) and (4).
+// MUTATION RECEIPT, executed: putting the left operand after the authored actuals instead of before
+// them reds (1) through (5) and leaves (0) and (6) green, so the claims discriminate the slot the
+// operand takes rather than whether the program compiles.
 
 fn pipe_witness(src: String, path: String, cu: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
