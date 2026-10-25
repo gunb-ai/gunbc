@@ -97,6 +97,7 @@ type SystemdUnitProperty
   | WantsProperty
   | InvocationIDProperty
   | FragmentPathProperty
+  | StandardInputProperty
   | StandardOutputProperty
   | StandardErrorProperty
   | ProtectSystemProperty
@@ -192,6 +193,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     WantsProperty => "Wants" as NonEmptyStr
     InvocationIDProperty => "InvocationID" as NonEmptyStr
     FragmentPathProperty => "FragmentPath" as NonEmptyStr
+    StandardInputProperty => "StandardInput" as NonEmptyStr
     StandardOutputProperty => "StandardOutput" as NonEmptyStr
     StandardErrorProperty => "StandardError" as NonEmptyStr
     ProtectSystemProperty => "ProtectSystem" as NonEmptyStr
@@ -267,6 +269,7 @@ fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
     WantsProperty => false
     InvocationIDProperty => false
     FragmentPathProperty => false
+    StandardInputProperty => true
     StandardOutputProperty => true
     StandardErrorProperty => true
     ProtectSystemProperty => false
