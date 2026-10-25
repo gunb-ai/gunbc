@@ -146,7 +146,7 @@ test fn path_or_lowers_double_pipe_not_double_ampersand() -> Bool {
 }
 
 // THE ASCENT. Pinning what the deleted `cgroup_locate_body_preserves_ascent_holds` pinned, through the
-// model that stays: one command-substitution assignment to the ascent target from `dirname` of the
+// model that stays: a command-substitution assignment to the ascent target from `dirname` of the
 // walked variable. Refusal cases matter as much as the accepted one, because the target and the name
 // both go through the POSIX-name rule.
 test fn dirname_ascent_lowers_a_dirname_command_substitution() -> Bool {

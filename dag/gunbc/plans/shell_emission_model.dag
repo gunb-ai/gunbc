@@ -23,7 +23,7 @@ fn shell_emission_model_body() -> List<MarkdownBlock> {
     h2(text: "2. The model (locked)"),
     p(text: "**ADOPT:** `intent(std)` → `bash(extdeps)` via `emit(intent, Bash)`, extending the existing dispatcher."),
     p(text: "**REJECT:** a new `ShellProgram` AST — retired 2026-07 (#6831, Phase 0): `dag/extdeps/languages/bash/program.dag` was deleted; v2 bash grammar rows are the authority."),
-    p(text: "**CUT:** host-op vocab (`EnsurePackage`/`EnableService`/`ServePort`) — single consumer (`live_deploy`) + idempotency is already a `host_effect.Policy` fact (`OneShotIdempotent`). Desugar `live_deploy` verbs **inline** to `If\{Not\{ExitZero\{…\}\}, Do\{…\}\}` intent; no minted verb."),
+    p(text: "**CUT:** host-op vocab (`EnsurePackage`/`EnableService`/`ServePort`) — sole consumer (`live_deploy`) + idempotency is already a `host_effect.Policy` fact (`OneShotIdempotent`). Desugar `live_deploy` verbs **inline** to `If\{Not\{ExitZero\{…\}\}, Do\{…\}\}` intent; no minted verb."),
     p(text: "**Binding purity-trap fence (§6):** no construct (grammar arm / intent variant / desugar) added without a **named live site** that emits it; do not grow ingest-direction bash gates to serve emit-only coverage."),
     p(text: "**`std.layout.Doc` stays for LAYOUT only** (line/indent/heredoc-body framing), never for shell content — the regime-2 shared emission fold owns that half."),
     h3(text: "Bash-minimization rule (operator, 2026-07-03)"),
