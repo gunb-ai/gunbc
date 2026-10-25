@@ -14,10 +14,12 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_model { BmcWorld, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count }
+import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
-import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_refusing_reads_of, fs_with_file }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, ModeledPathStat, fs_refusing_reads_of, fs_with_file }
 import gunbc.process_environment_model { ModeledVariable }
+import extdeps.access.posix { FileMode, PermissionBits }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
 import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd }
@@ -38,9 +40,10 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
   SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
+  mtcollins1_boot_run_record,
 }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, CensusImageDerived }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { census_record_path, census_medium_served_path }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium, census_record_path }
+import gunbc.host.boot_medium_served_readback { boot_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
 import gunbc.runner.runner_browser_toolchain {
   RunnerBrowserToolchainResolution, RunnerBrowserToolchainLocation, RunnerBrowserToolchainStanding,
@@ -51,6 +54,9 @@ import gunbc.runner.runner_browser_toolchain {
 }
 import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { MtCollins1EndMedia, EndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, run_record_text, MtCollins1BootRunRecord }
+import gunbc.machine_intake.megarac_media_attach { MegaRacOwnSessionEnded, OwnSessionStopped, SessionReleased }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGatePowered, PostPowerFanGateAbandoned, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -84,7 +90,7 @@ fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
 // writing. An operation of any other service refuses as uncovered.
 data matrix_services: List<String> = [
   "diagnostic.ipmi.Tool", "megarac.Media", "Filesystem", "shell.Env", "sleep.Delay",
-  "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move", "os.Hostname", "shell.Mkdir", "shell.Path",
+  "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move", "os.Hostname", "shell.Mkdir", "shell.Path", "shell.Stat",
 ]
 
 fn matrix_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
@@ -136,7 +142,7 @@ fn ready_toolchain() -> RunnerBrowserToolchainResolution {
 }
 
 fn boot_with_toolchain(toolchain: RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt {
-  mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() { toolchain })
+  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_census_boot_medium, resolve_toolchain: fn() { toolchain })
 }
 
 fn run_attempt(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
@@ -187,6 +193,7 @@ fn world_for_reset_route(observer_label: String, run_id: String) -> MtCollins1Bo
       files: base.fs.files,
       directories: concat(xs: base.fs.directories, ys: ["target"]),
       refused_reads: base.fs.refused_reads,
+      stats: base.fs.stats,
     },
     // PREPENDED, not appended, because the modeled environment answers a repeated name from the first
     // row that matches it (gunbc.process_environment_model.modeled_variable): the reset dispatch's own
@@ -321,246 +328,101 @@ fn run_reset_route(world: MtCollins1BootWorld, evidence: MegaRacOperationEvidenc
   )
 }
 
-// ─── THE BOOT ROUTE: THE SAME IDEA ON THE BOOT SIDE ────────────────────────────────────────────
-// The boot entry's census filing reaches srv2 over the SAME fleet-ssh context the reset route's
-// reachability probe uses, and that context's preparation calls three operations the boot
-// realization never bound -- the owner-only mux-directory creation and the two stat readbacks that
-// certify it (gunbc.fleet.fleet_ssh_locus -> materialize_fleet_ssh_multiplex_directory). An unbound
-// operation refuses, the context is refused "before any ssh leg", the census filing is never read on
-// srv2, and the attempt ends at the census gate BEFORE the media attach and the handoff -- so a boot
-// claim that judged value.admitted off this world would be reading an identity off a route that
-// never reached gunbc.machine_intake.oob_boot_handoff. Binding these three is the boot-side twin of
-// the reachability binding above: it answers each operation the way a CI runner answers it on a
-// healthy machine (the directory is created at 0700, owned by the same principal that owns the job's
-// RUNNER_TEMP), and it makes the executed path reach the fold instead of faking a verdict. The
-// handler answers NO question the claim asks: it certifies the fixture machine's temp directory, not
-// the boot selection, the capability row, or the controller.
-data boot_route_runner_temp: String = "/tmp/gunbc-ci-runner"
-data boot_route_runner_owner: String = "runner"
+// ─── THE RUNNER AND THE CONTROLLER THE BOOT SEES ────────────────────────────────────────────────
+// Two facts of the healthy world exist because the production boot reads them, and the dry
+// realization answers each from the world rather than from a constant:
+//
+// THE JOB-OWNED TEMP DIRECTORY. The census filing reaches srv2 over the fleet-ssh context, whose
+// preparation (gunbc.fleet.fleet_known_hosts_anchor materialize_fleet_ssh_multiplex_directory, main
+// #14108) reads RUNNER_TEMP, creates the control-socket directory under it owner-only, and reads back
+// its mode and owner against RUNNER_TEMP's owner. A CI runner sets RUNNER_TEMP on every job and owns
+// it, so the healthy world carries both; the directory's mode and owner are then whatever
+// gunbc.filesystem_model's owner-only mkdir records, read back by its stat bindings.
+data runner_temp: String = "/tmp/gunbc-ci-runner"
+data runner_principal: String = "runner"
 
-fn boot_route_mux_created(_state: MtCollins1BootWorld, _call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  OperationObserved {
-    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } },
-    state: _state,
-    elapsed: second(count: 0),
+data runner_temp_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: false, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false, setgid: false, sticky: false,
+}
+
+// THE CONTROLLER'S IPMI SENSOR RECORDS. The boot's post-power-on chassis-fan gate (main #14263) reads
+// `sdr type Temperature` and `sdr type Fan` after power-on and before the census watch, and
+// post_power_fan_verdict decides. The healthy controller publishes the committed observation of boot
+// run 39005709187 (the capture gunbc.machine_intake mtcollins1_fitted_fan_set stands on, and the
+// shape test.claim.machine_intake.mtcollins1_boot_fan_gate_witness unit_rows carries): the four fitted
+// headers FAN4_0/FAN4_1/FAN5_0/FAN5_1 turning, the two unfitted headers the board prints as No
+// Reading, and the temperature rows published -- the reading the verdict ADMITS. The verdict stays
+// post_power_fan_verdict's alone; the world only says what the controller publishes. The records are
+// static -- no transition ties a reading to chassis power -- which is sound only because the gate reads
+// them after power-on and nothing here reads them before it.
+fn sdr_record(sensor_type: String, name: String, number: String, status: String, entity: String, reading: String) -> BmcSdrRecord {
+  BmcSdrRecord {
+    sensor_type: sensor_type as NonEmptyStr,
+    line: SdrTypeLine { name: name as NonEmptyStr, sensor_number: number as NonEmptyStr, status: status as NonEmptyStr, entity_id: entity as NonEmptyStr, reading_text: reading as NonEmptyStr },
   }
 }
 
-fn boot_route_mode_of(_state: MtCollins1BootWorld, _call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  OperationObserved {
-    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "700", stderr: "" } },
-    state: _state,
-    elapsed: second(count: 0),
-  }
-}
-
-fn boot_route_owner_of(_state: MtCollins1BootWorld, _call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  OperationObserved {
-    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: boot_route_runner_owner, stderr: "" } },
-    state: _state,
-    elapsed: second(count: 0),
-  }
-}
-
-// THE WORLD THE BOOT ROUTE RUNS IN: the healthy one-socket census world, plus the job-owned temp
-// directory the fleet-ssh context demands a place for. RUNNER_TEMP is PREPENDED for the same reason
-// the reset world prepends its own run id -- the modeled environment answers a repeated name from the
-// first matching row -- and the directory itself is added to the modeled filesystem so a read of the
-// runner's own tree agrees with the handler that certifies it.
-fn world_for_boot_route() -> MtCollins1BootWorld {
-  let base = world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
-  MtCollins1BootWorld {
-    bmc: base.bmc,
-    media: base.media,
-    fs: ModeledFilesystem {
-      directories: concat(xs: base.fs.directories, ys: [boot_route_runner_temp]),
-      files: base.fs.files,
-      refused_reads: base.fs.refused_reads,
-    },
-    environment: concat(xs: [ModeledVariable { name: "RUNNER_TEMP", value: boot_route_runner_temp }], ys: base.environment),
-    clock: base.clock,
-    agent: base.agent,
-    remote_hosts: base.remote_hosts,
-    worker: base.worker,
-    console: base.console,
-  }
-}
-
-// The envelope the boot route runs under is the matrix envelope PLUS the shell.Stat service: the
-// mux-directory certification reads the directory's mode and owner through shell.Stat, and an
-// operation whose service carries no grant refuses as uncovered before its binding is ever consulted.
-// Every other grant, and the frame identity, are the matrix's own.
-data boot_route_extra_services: List<String> = ["shell.Stat"]
-
-// THE POST-POWER-ON FAN GATE'S READS, CERTIFIED THE WAY A HEALTHY mtcollins1 CONTROLLER ANSWERS.
-// The production boot path gained a chassis-fan gate (main #14263) that runs AFTER power-on and BEFORE
-// the census watch: settle, then observe_fan_round -- ChassisStatus, then sdr type Temperature, then sdr
-// type Fan -- then post_power_fan_verdict decides. The boot realization never bound the fan reads (the
-// gate was written after it was, and it reads through diagnostic.ipmi.Tool.SdrTypeList), so an unbound
-// operation refuses, the round is unreadable, and the gate stops the boot for a fixture reason instead
-// of deciding on the reading. These bindings answer each read the way the committed observation of boot
-// run 39005709187 (the capture mtcollins1_fitted_fan_set stands on) prints it when the chassis is ON and
-// the fans are turning: every fitted header FAN4_0/FAN4_1/FAN5_0/FAN5_1 at non-zero RPM, every other
-// sensor row decodable, the Temperature rows published and recognised, the chassis line reporting power
-// on -- which is the reading post_power_fan_verdict ADMITS. The handler is powerless: it answers the
-// three reads from the world's power state and the fixture rows, and decides nothing; the verdict remains
-// post_power_fan_verdict's alone. A world that is powered off answers the chassis line off, which is the
-// gate's own PostPowerChassisNotOn refusal shape, so the refused arm is executable too.
-// Every row is the committed unit fixture's shape (test.claim.machine_intake.mtcollins1_boot_fan_gate_witness
-// unit_rows, the capture the fitted set stands on): the four fitted headers at non-zero RPM with status ok,
-// the two unfitted headers the same board prints as No Reading.
-data boot_route_fan_rows: List<String> = [
-  "FAN4_0_Speed       | 00h | ok  | 29.1 | 5700 RPM",
-  "FAN4_1_Speed       | 01h | ok  | 29.1 | 5700 RPM",
-  "FAN5_0_Speed       | 02h | ok  | 29.1 | 5700 RPM",
-  "FAN5_1_Speed       | 03h | ok  | 29.1 | 5800 RPM",
-  "FAN0_0_Speed       | 04h | ok  | 29.1 | No Reading",
-  "FAN3_1_Speed       | 05h | ok  | 29.1 | No Reading",
-]
-// The temperature rows carry a published, fully decoded reading (the committed witness's posted shape).
-data boot_route_temperature_rows: List<String> = [
-  "CPU0_Temp          | 01h | ok  |  3.1 | 45 degrees C",
-  "DIMM_Temp          | 02h | ok  |  3.2 | 38 degrees C",
+data healthy_temperature_records: List<BmcSdrRecord> = [
+  sdr_record(sensor_type: "Temperature", name: "CPU0_Temp", number: "01h", status: "ok", entity: "3.1", reading: "45 degrees C"),
+  sdr_record(sensor_type: "Temperature", name: "DIMM_Temp", number: "02h", status: "ok", entity: "3.2", reading: "38 degrees C"),
 ]
 
-// The refused arm's rows: every row identical to the healthy capture EXCEPT the first fitted header,
-// which prints 0 RPM -- the committed refusal fixture's reading (FittedHeaderZeroRpm).
-data boot_route_fan_rows_first_zero: List<String> = [
-  "FAN4_0_Speed       | 00h | ok  | 29.1 | 0 RPM",
-  "FAN4_1_Speed       | 01h | ok  | 29.1 | 5700 RPM",
-  "FAN5_0_Speed       | 02h | ok  | 29.1 | 5700 RPM",
-  "FAN5_1_Speed       | 03h | ok  | 29.1 | 5800 RPM",
-  "FAN0_0_Speed       | 04h | ns  | 29.1 | No Reading",
-  "FAN3_1_Speed       | 05h | ns  | 29.1 | No Reading",
+data healthy_fan_records: List<BmcSdrRecord> = [
+  sdr_record(sensor_type: "Fan", name: "FAN4_0_Speed", number: "00h", status: "ok", entity: "29.1", reading: "5700 RPM"),
+  sdr_record(sensor_type: "Fan", name: "FAN4_1_Speed", number: "01h", status: "ok", entity: "29.1", reading: "5700 RPM"),
+  sdr_record(sensor_type: "Fan", name: "FAN5_0_Speed", number: "02h", status: "ok", entity: "29.1", reading: "5700 RPM"),
+  sdr_record(sensor_type: "Fan", name: "FAN5_1_Speed", number: "03h", status: "ok", entity: "29.1", reading: "5800 RPM"),
+  sdr_record(sensor_type: "Fan", name: "FAN0_0_Speed", number: "04h", status: "ok", entity: "29.1", reading: "No Reading"),
+  sdr_record(sensor_type: "Fan", name: "FAN3_1_Speed", number: "05h", status: "ok", entity: "29.1", reading: "No Reading"),
 ]
 
-fn boot_route_sdr_rows(state: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  let rows = match first(filter(call.invocation.bindings, b => (b.name as String) == "sensor_type")) {
-    Present { value: b } => match b.value { InputText { text: t } => if t == "Fan" { boot_route_fan_rows } else { boot_route_temperature_rows } _ => boot_route_temperature_rows }
-    Absent => boot_route_temperature_rows
-  }
-  OperationObserved {
-    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join(rows, "\n"), stderr: "" } },
-    state: state,
-    elapsed: second(count: 1),
-  }
+// The refused reading: every record the healthy one EXCEPT the first fitted header at 0 RPM -- the
+// committed refusal fixture's reading (FittedHeaderZeroRpm) -- with the unfitted headers reporting ns.
+data fan_records_first_fitted_header_stopped: List<BmcSdrRecord> = [
+  sdr_record(sensor_type: "Fan", name: "FAN4_0_Speed", number: "00h", status: "ok", entity: "29.1", reading: "0 RPM"),
+  sdr_record(sensor_type: "Fan", name: "FAN4_1_Speed", number: "01h", status: "ok", entity: "29.1", reading: "5700 RPM"),
+  sdr_record(sensor_type: "Fan", name: "FAN5_0_Speed", number: "02h", status: "ok", entity: "29.1", reading: "5700 RPM"),
+  sdr_record(sensor_type: "Fan", name: "FAN5_1_Speed", number: "03h", status: "ok", entity: "29.1", reading: "5800 RPM"),
+  sdr_record(sensor_type: "Fan", name: "FAN0_0_Speed", number: "04h", status: "ns", entity: "29.1", reading: "No Reading"),
+  sdr_record(sensor_type: "Fan", name: "FAN3_1_Speed", number: "05h", status: "ns", entity: "29.1", reading: "No Reading"),
+]
+
+fn bmc_publishing(bmc: BmcWorld, fans: List<BmcSdrRecord>) -> BmcWorld {
+  bmc_with_record_surfaces(world: bmc, surfaces: BmcRecordSurfaces {
+    manager_date_time: bmc.record_surfaces.manager_date_time,
+    log_services: bmc.record_surfaces.log_services,
+    account_events: bmc.record_surfaces.account_events,
+    virtual_media: bmc.record_surfaces.virtual_media,
+    sensors: bmc.record_surfaces.sensors,
+    ipmi_sdr: Present { value: concat(healthy_temperature_records, fans) },
+  })
 }
 
-fn matrix_boot_route_frame_without_fans(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
-  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
-  let certified = OperationRealization {
-    identity: production.identity,
-    initial: production.initial,
-    epoch: production.epoch,
-    advance: production.advance,
-    bindings: concat(xs: production.bindings, ys: [
-      OperationBinding {
-        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Mkdir", operation: "NewOwnerOnly" },
-        handler: boot_route_mux_created,
-      },
-      OperationBinding {
-        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "ModeOf" },
-        handler: boot_route_mode_of,
-      },
-      OperationBinding {
-        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "OwnerOf" },
-        handler: boot_route_owner_of,
-      },
-      OperationBinding {
-        at: OperationRef { path: "dag/extdeps/bmc/ipmi.dag", service: "diagnostic.ipmi.Tool", operation: "SdrTypeList" },
-        handler: boot_route_sdr_rows_refused,
-      },
-    ]),
-  }
-  let boot_services = concat(xs: matrix_services, ys: boot_route_extra_services)
-  WitnessEvaluationFrame {
-    envelope: Envelope {
-      frame: Frame { name: "mtcollins1-boot-matrix", kind: SharedStateFrame }
-      grants: concat(map(boot_services, s => matrix_grant(service: s, verb: Read)), map(boot_services, s => matrix_grant(service: s, verb: Write)))
-    }
-    rest_fixtures: []
-    realization: Present { value: certified }
-  }
+// THE HEALTHY ONE-SOCKET CENSUS WORLD, and the same world with one fitted fan stopped. The boot claims
+// here and in test.claim.host.managed_host_boot_witness run the production entry over these through
+// run_attempt -- one frame, one realization.
+fn healthy_census_world() -> MtCollins1BootWorld {
+  world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
 }
 
-fn boot_route_sdr_rows_refused(state: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  let rows = match first(filter(call.invocation.bindings, b => (b.name as String) == "sensor_type")) {
-    Present { value: b } => match b.value { InputText { text: t } => if t == "Fan" { boot_route_fan_rows_first_zero } else { boot_route_temperature_rows } _ => boot_route_temperature_rows }
-    Absent => boot_route_temperature_rows
-  }
-  OperationObserved {
-    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join(rows, "\n"), stderr: "" } },
-    state: state,
-    elapsed: second(count: 1),
-  }
-}
-
-// EXECUTE THE PRODUCTION BOOT ENTRY IN THE FAN-REFUSED WORLD: same entry, same subject; only the fan
-// rows differ (first fitted header at zero RPM), and the gate's own verdict stops the boot.
-fn run_boot_route_without_fans(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
-  evaluate_in_witness_frame(
-    frame: matrix_boot_route_frame_without_fans(world: world),
-    subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
-  )
-}
-
-fn matrix_boot_route_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
-  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
-  let certified = OperationRealization {
-    identity: production.identity,
-    initial: production.initial,
-    epoch: production.epoch,
-    advance: production.advance,
-    bindings: concat(xs: production.bindings, ys: [
-      OperationBinding {
-        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Mkdir", operation: "NewOwnerOnly" },
-        handler: boot_route_mux_created,
-      },
-      OperationBinding {
-        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "ModeOf" },
-        handler: boot_route_mode_of,
-      },
-      OperationBinding {
-        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "OwnerOf" },
-        handler: boot_route_owner_of,
-      },
-      OperationBinding {
-        at: OperationRef { path: "dag/extdeps/bmc/ipmi.dag", service: "diagnostic.ipmi.Tool", operation: "SdrTypeList" },
-        handler: boot_route_sdr_rows,
-      },
-    ]),
-  }
-  let boot_services = concat(xs: matrix_services, ys: boot_route_extra_services)
-  WitnessEvaluationFrame {
-    envelope: Envelope {
-      frame: Frame { name: "mtcollins1-boot-matrix", kind: SharedStateFrame }
-      grants: concat(map(boot_services, s => matrix_grant(service: s, verb: Read)), map(boot_services, s => matrix_grant(service: s, verb: Write)))
-    }
-    rest_fixtures: []
-    realization: Present { value: certified }
-  }
-}
-
-// EXECUTE THE PRODUCTION BOOT ENTRY IN THIS FRAME. Same entry, same subject expression as run_attempt
-// -- only the frame carries the three certified mux answers, so the boot reaches the census filing,
-// the attach, the media write, the handoff and the power actuation as a healthy runner's boot does.
-fn run_boot_route(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
-  evaluate_in_witness_frame(
-    frame: matrix_boot_route_frame(world: world),
-    subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
-  )
+fn healthy_census_world_with_a_stopped_fan() -> MtCollins1BootWorld {
+  let w = healthy_census_world()
+  with_bmc(w: w, bmc: bmc_publishing(bmc: w.bmc, fans: fan_records_first_fitted_header_stopped))
 }
 
 // ─── THE HEALTHY WORLD, and the facts it is built from ───────────────────────────────────────────
 fn selected_digest() -> String {
-  mtcollins1_boot_medium.digest as String
+  mtcollins1_census_boot_medium.digest as String
 }
 
 fn healthy_srv2() -> ModeledRemoteHost {
   ModeledRemoteHost { endpoint: "srv2", files: match mtcollins1_census_image {
     CensusImageDerived { input: input } => [
       ModeledRemoteFile { path: census_record_path(input: input) as String, content: Present { value: concat(selected_digest(), "\n") }, sha256: none },
-      ModeledRemoteFile { path: census_medium_served_path(medium: mtcollins1_boot_medium) as String, content: Present { value: "<image bytes>" }, sha256: Present { value: selected_digest() } },
+      ModeledRemoteFile { path: boot_medium_served_path(medium: mtcollins1_census_boot_medium) as String, content: Present { value: "<image bytes>" }, sha256: Present { value: selected_digest() } },
     ]
     _ => []
   } }
@@ -569,9 +431,9 @@ fn healthy_srv2() -> ModeledRemoteHost {
 fn healthy_media() -> MegaRacMediaWorld {
   MegaRacMediaWorld {
     sessions: [], next_session: 1,
-    share: MegaRacShare { server: "192.168.1.188", source_path: "/srv/bmc", share_type: "nfs" },
+    share: MegaRacShare { server: "192.168.1.201", source_path: "/srv/bmc", share_type: "nfs" },
     mount_cd: 1, cd_error_code: 0,
-    images: [MegaRacImage { image_name: mtcollins1_boot_medium.image_name as String, image_index: 5 }],
+    images: [MegaRacImage { image_name: mtcollins1_census_boot_medium.image_name as String, image_index: 5 }],
     cd: megarac_cleared_cd(),
     ready_after: second(count: 12),
     withdraw_at: none,
@@ -590,9 +452,10 @@ data first_worker_start: Int = 5000
 fn worker_filesystem() -> ModeledFilesystem {
   worker_process_started(
     fs: ModeledFilesystem {
-      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
+      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/tmp", runner_temp, "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
       files: [ModeledFile { path: credential_path, content: "secret" }],
       refused_reads: [],
+      stats: [ModeledPathStat { path: runner_temp, mode: runner_temp_mode, owner: runner_principal }],
     },
     boot_id: worker_boot_id, pid_namespace: worker_pid_namespace, pid: first_worker_pid, start_ticks: first_worker_start,
   )
@@ -600,9 +463,10 @@ fn worker_filesystem() -> ModeledFilesystem {
 
 fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
   with_notice_watcher(capture_path: sol_capture_path, token: "matrix-notice-token", w: MtCollins1BootWorld {
-    bmc: bmc_world(power: BmcPowerOff),
+    bmc: bmc_publishing(bmc: bmc_world(power: BmcPowerOff), fans: healthy_fan_records),
     fs: worker_filesystem(),
     environment: [
+      ModeledVariable { name: "RUNNER_TEMP", value: runner_temp },
       ModeledVariable { name: "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE", value: credential_path },
       ModeledVariable { name: "GUNBC_MTCOLLINS1_SOL_CAPTURE", value: sol_capture_path },
       ModeledVariable { name: "GUNBC_MTCOLLINS1_SOL_PID_FILE", value: sol_pid_path },
@@ -613,7 +477,7 @@ fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
     agent: ModeledSshAgent { socket: "/run/ssh-agent.sock", holds_fleet_key: true },
     remote_hosts: [healthy_srv2()],
     clock: ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0), jumps: [] },
-    worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400 },
+    worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400, principal: runner_principal },
     console: ModeledHostConsole { lines: lines, emitted: 0, boot: none },
     media: healthy_media(),
   })
@@ -821,14 +685,93 @@ fn no_withdrawal() -> Second? {
 }
 
 fn desired_image() -> String {
-  mtcollins1_boot_medium.image_name as String
+  mtcollins1_census_boot_medium.image_name as String
 }
 
-data real_share: MegaRacShare = MegaRacShare { server: "192.168.1.188", source_path: "/srv/bmc", share_type: "nfs" }
+data real_share: MegaRacShare = MegaRacShare { server: "192.168.1.201", source_path: "/srv/bmc", share_type: "nfs" }
 
 fn reached_no_power_action(route: List<DispatchRecord>) -> Bool {
   count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 0
     && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") == 0
+}
+
+// THE TWO WORLD FACTS ARE LOAD-BEARING, each shown by removing it. Without RUNNER_TEMP the fleet-ssh
+// context refuses before any ssh leg, so the census filing is never read and the attempt stops before
+// the media write and the power action. With the controller's SDR surface unmodeled, the fan gate's
+// read is a harness fault and the evaluation refuses -- after power-on, since the gate sits there --
+// rather than booting through an empty sensor table.
+fn without_runner_temp(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs, environment: filter(w.environment, v => v.name != "RUNNER_TEMP"),
+    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+  }
+}
+
+test fn a_runner_without_runner_temp_stops_before_any_controller_write() -> Bool {
+  match run_attempt(world: without_runner_temp(w: healthy_census_world())) {
+    WitnessReturned { value, route } =>
+      !census_ended(a: value)
+        && count_named(route: route, name: "shell.Mkdir.NewOwnerOnly") == 0
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE CENSUS MEDIUM IS READ BACK RECORD FIRST ON THE PRODUCTION ROUTE (gunbc.machine_intake.mtcollins1_census_image
+// census_served_check, applied by the boot run to the generic gunbc.host.boot_medium_served_readback). srv2 serves
+// the image bytes the row names, but the derivation record beside them names other bytes, or is gone: the
+// boot refuses on the record before filing, with no controller write. The healthy census claims above are
+// the positive control -- the same route reads the record healthy_srv2 serves -- so deleting the record leg
+// from the boot run makes this claim, not those, go red.
+fn srv2_with_record(content: String?) -> ModeledRemoteHost {
+  ModeledRemoteHost { endpoint: "srv2", files: match mtcollins1_census_image {
+    CensusImageDerived { input: input } => [
+      ModeledRemoteFile { path: census_record_path(input: input) as String, content: content, sha256: none },
+      ModeledRemoteFile { path: boot_medium_served_path(medium: mtcollins1_census_boot_medium) as String, content: Present { value: "<image bytes>" }, sha256: Present { value: selected_digest() } },
+    ]
+    _ => []
+  } }
+}
+
+fn with_srv2(w: MtCollins1BootWorld, srv2: ModeledRemoteHost) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs, environment: w.environment,
+    agent: w.agent, remote_hosts: [srv2], clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+  }
+}
+
+fn refuses_on_the_record_before_any_controller_write(srv2: ModeledRemoteHost, pattern: String) -> Bool {
+  match run_attempt(world: with_srv2(w: healthy_census_world(), srv2: srv2)) {
+    WitnessReturned { value, route } =>
+      !census_ended(a: value)
+        && string_contains(s: outcome_reason(a: value), pattern: pattern)
+        && string_contains(s: outcome_reason(a: value), pattern: "controller untouched")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+test fn a_census_boot_whose_derivation_record_names_other_bytes_refuses_before_any_controller_write() -> Bool {
+  refuses_on_the_record_before_any_controller_write(
+    srv2: srv2_with_record(content: Present { value: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555\n" }),
+    pattern: "the row does not describe the current derivation",
+  )
+}
+
+test fn a_census_boot_whose_derivation_record_is_gone_refuses_before_any_controller_write() -> Bool {
+  refuses_on_the_record_before_any_controller_write(srv2: srv2_with_record(content: none), pattern: "could not be read on")
+}
+
+test fn a_controller_with_no_modeled_sdr_refuses_at_the_fan_gate_rather_than_booting() -> Bool {
+  let w = healthy_census_world()
+  match run_attempt(world: with_bmc(w: w, bmc: bmc_with_record_surfaces(world: w.bmc, surfaces: bmc_record_surfaces_unmodeled))) {
+    WitnessRefused { diagnostic, route } =>
+      string_contains(s: witness_diagnostic_rendered_reason(diagnostic: diagnostic), pattern: "does not model the controller's IPMI SDR surface")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") >= 1
+    _ => false
+  }
 }
 
 // THE IMAGE IS ALREADY PRESENTED AND READY. Convergence has nothing to do: no stop, no start, and the
@@ -943,6 +886,20 @@ test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
 // the teardown within sixty seconds of the power action -- before the census could have printed. This
 // case was pinned as reporting the loss only at the deadline until #12434's watch detected it. The final
 // world shows the drop fired, so the case is not green on a run where the loss never happened.
+//
+// THE LOSS LANDS IN THE FAN GATE'S SETTLE: #14263's gate reads the chassis only after a 60s settle, and
+// a drop at boot+30s falls inside it. The case was red while the gate slept the settle with SOL
+// unwatched (the teardown landed 60-120s after power). The settle is now spent under the SOL watch
+// (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_watched_fan_settle), and THE CONTRACT WAS
+// CORRECTED ON SAFETY GROUNDS (merry-fox-82, 2026-10-24; DESIGN 5), not relaxed: a loss before the gate
+// has passed leaves a powered host with unverified fans and nothing watching it, so the boot fails safe.
+// Power-on is followed by exactly one PowerDown, no fan read is taken after power-on, and the gate reads
+// Abandoned -- all within the same sixty-second teardown bound, which stays. The bound is met in this
+// model's time because the SOL release precedes the end media look and release on every path; with the
+// host now OFF that release runs, and its outcome must still reach the run record after the collector has
+// gone, so the case reads the record's end_media line too. Model time is not real-host timing: this case
+// does not establish the bound on the physical controller. The case stays as the repair's regression
+// control; a_sol_loss_after_the_fan_gate_passes_keeps_the_host_on is its control.
 fn sol_drop_fired_in(w: MtCollins1BootWorld) -> Bool {
   bmc_sol_drop_fired(world: w.bmc)
 }
@@ -964,19 +921,120 @@ fn teardown_within(route: List<DispatchRecord>, bound: Int) -> Bool {
   }
 }
 
-test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
+// THE POWER ACTIONS THE ROUTE ISSUED, in dispatch order, as the verbs ipmitool was given.
+fn power_actions(route: List<DispatchRecord>) -> List<String> {
+  map(filter(route, r => operation_name(r: r) == "diagnostic.ipmi.Tool.ChassisPowerControl"), r => fold(r.invocation.bindings, init: "", f: fn(acc, b) {
+    if acc != "" { acc } else if b.name == "action" { match b.value { InputText { text: t } => t InputTextList { items: _ } => "" } } else { "" }
+  }))
+}
+
+// NO FAN READ AFTER POWER-ON: the gate's round reads the sensors by SdrTypeList, so none may follow the first power action.
+fn sdr_reads_after_power_on(route: List<DispatchRecord>) -> Int {
+  let power = first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+  count(filter(route, r => operation_name(r: r) == "diagnostic.ipmi.Tool.SdrTypeList" && r.ordinal > power))
+}
+
+fn fan_gate_abandoned(a: MtCollins1BootAttempt) -> Bool {
+  match a.fan_gate {
+    PostPowerFanGatePowered { gate: PostPowerFanGateAbandoned { reason: _, stop: _ } } => true
+    PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: _, outcome: _ } } => false
+    PostPowerFanGateNotReached { reason: _ } => false
+  }
+}
+
+fn fan_gate_established(a: MtCollins1BootAttempt) -> Bool {
+  match a.fan_gate {
+    PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } } => true
+    PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: _, outcome: PostPowerFanRefused { cause: _, observation: _, stop: _, manager: _, evidence: _ } } } => false
+    PostPowerFanGatePowered { gate: PostPowerFanGateAbandoned { reason: _, stop: _ } } => false
+    PostPowerFanGateNotReached { reason: _ } => false
+  }
+}
+
+fn sol_drop_world(after: Int) -> MtCollins1BootWorld {
   let w = world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
-  let dropping = with_bmc(w: w, bmc: bmc_with_sol_drop_after_boot(world: w.bmc, after: second(count: 30)))
-  match evaluate_in_witness_frame(frame: matrix_frame(world: dropping), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
+  with_bmc(w: w, bmc: bmc_with_sol_drop_after_boot(world: w.bmc, after: second(count: after)))
+}
+
+test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
+  match evaluate_in_witness_frame(frame: matrix_frame(world: sol_drop_world(after: 30)), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
     WitnessReturned { value, route, state } =>
       string_contains(s: outcome_reason(a: value), pattern: "ObservationChannelLost while the boot was being watched")
         && string_contains(s: outcome_reason(a: value), pattern: "incident frozen to /run/sol.capture.loss")
         && string_contains(s: outcome_reason(a: value), pattern: "BMC answered mc info")
-        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && string_contains(s: outcome_reason(a: value), pattern: "the host was powered down without a fan read: power-off read back as off")
+        && join(power_actions(route: route), ",") == "on,off"
+        && sdr_reads_after_power_on(route: route) == 0
+        && fan_gate_abandoned(a: value)
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
         && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate")
         && teardown_within(route: route, bound: 60)
+        && end_release_stopped(end: value.end_media)
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "megarac.Media.StopMedia")
+        && string_contains(s: run_record_text(r: attempt_run_record(a: value)), pattern: "end_media=")
+        && string_contains(s: run_record_text(r: attempt_run_record(a: value)), pattern: "this attempt's own session stopped and read back as gone")
         && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
+    _ => false
+  }
+}
+
+// THE RUN RECORD THE RECEIPT BUNDLE RENDERS, built from the attempt as the conclusion builds it.
+fn attempt_run_record(a: MtCollins1BootAttempt) -> MtCollins1BootRunRecord {
+  mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
+}
+
+// THE CONTROL: THE SAME LOSS AFTER THE FAN GATE HAS PASSED keeps the existing teardown. At boot+90s the
+// settle and the gate's read are over and the census is running, so the census watch observes the loss:
+// typed ObservationChannelLost, an Established gate, ONE power action and no PowerDown -- the host is left
+// on as before, its fans verified -- and the collector torn down within sixty seconds of the loss. The
+// fail-safe above is therefore a fact of where the loss lands, not a PowerDown on every loss.
+test fn a_sol_loss_after_the_fan_gate_passes_keeps_the_host_on() -> Bool {
+  match evaluate_in_witness_frame(frame: matrix_frame(world: sol_drop_world(after: 90)), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
+    WitnessReturned { value, route, state } =>
+      string_contains(s: outcome_reason(a: value), pattern: "ObservationChannelLost while the boot was being watched")
+        && !string_contains(s: outcome_reason(a: value), pattern: "powered down without a fan read")
+        && join(power_actions(route: route), ",") == "on"
+        && fan_gate_established(a: value)
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
+        && teardown_within(route: route, bound: 90 + 60)
+        && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
+    _ => false
+  }
+}
+
+// A REFUSED TERMINAL INSIDE THE SETTLE ENDS THE BOOT, AND A BOOT THAT HAS ENDED LEAVES NO POWERED HOST WITH UNVERIFIED
+// FANS (merry-fox-82, 2026-10-24). GRUB fails both entries twenty seconds after power-on -- the lines boot 23 attempt 7
+// printed -- while the gate is still settling. The settle stops on the refusal and abandons the gate: the refusal is
+// the reported cause, the host gets exactly one PowerDown after its power-on, and no fan read follows the power-on.
+// Before the settle stopped on a refusal it read the fans and booted on (one power action); this case was that RED.
+data grub_failed_lines: String = "Checkpoint AD\nGNU GRUB  version 2.12\n      Press enter to boot the selected OS, `e' to edit the commands       \nerror: you need to load the kernel first.\nPress any key to continue...\n  Failed to boot both default and fallback entries.\nPress any key to continue...\nGNU GRUB  version 2.12"
+
+fn grub_failed_world(after: Int) -> MtCollins1BootWorld {
+  world_with_console(lines: console_of(capture: grub_failed_lines, begin_after: after, end_after: after))
+}
+
+test fn a_refusal_inside_the_settle_powers_the_host_down_without_a_fan_read() -> Bool {
+  match run_attempt(world: grub_failed_world(after: 20)) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "boot loader failed both default and fallback entries")
+        && string_contains(s: outcome_reason(a: value), pattern: "the host was powered down without a fan read: power-off read back as off")
+        && join(power_actions(route: route), ",") == "on,off"
+        && sdr_reads_after_power_on(route: route) == 0
+        && fan_gate_abandoned(a: value)
+    _ => false
+  }
+}
+
+// THE CONTROL: THE SAME REFUSAL AFTER THE GATE HAS PASSED keeps the existing behaviour. At boot+120s the settle and
+// the gate's read are over, so the census watch reports the refusal over an Established gate, with one power action and
+// no PowerDown: the host's fans were verified, so leaving it on is the gate's admitted state, not an unverified one.
+test fn a_refusal_after_the_fan_gate_passes_keeps_the_host_on() -> Bool {
+  match run_attempt(world: grub_failed_world(after: 120)) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "boot loader failed both default and fallback entries")
+        && !string_contains(s: outcome_reason(a: value), pattern: "powered down without a fan read")
+        && join(power_actions(route: route), ",") == "on"
+        && fan_gate_established(a: value)
     _ => false
   }
 }
@@ -986,11 +1044,15 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
 // TWO SOCKETS ANSWER. The census reports 160 CPUs over two NUMA nodes; the declared expectation for
 // this unit is one socket and 80 CPUs, so the terminal verdict refuses on topology and reports what it
 // observed -- the thread count and the per-node placement -- rather than a transport failure. The
-// refused terminal is reported at the powered-on stage, not as a census that ended.
+// refused terminal is reported at the powered-on stage, not as a census that ended. The census prints at
+// boot+90s, after the fan gate's settle: its open envelope already refuses on topology, and a refusal seen inside the
+// settle abandons the gate and powers the host down (a_refusal_inside_the_settle_powers_the_host_down_without_a_fan_read),
+// which is not this case's subject. A real census takes minutes to print, so on the physical host it lands after the
+// settle too.
 data two_socket_census_capture: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0-1\navailable: 2 nodes (0-1)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 1 cpus: 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159\n----EXIT numa: 0\n----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z====="
 
 test fn a_two_socket_answer_is_a_truthful_topology_refusal() -> Bool {
-  match run_attempt(world: world_with_console(lines: console_of(capture: two_socket_census_capture, begin_after: 60, end_after: 240))) {
+  match run_attempt(world: world_with_console(lines: console_of(capture: two_socket_census_capture, begin_after: 90, end_after: 240))) {
     WitnessReturned { value, route } =>
       !census_ended(a: value)
         && string_contains(s: outcome_reason(a: value), pattern: "nproc observed 160, qualification expects 80")
@@ -1265,6 +1327,65 @@ test fn a_foreign_presented_image_is_not_stopped() -> Bool {
         && count_named(route: route, name: "megarac.Media.StopMedia") == 0
         && count_named(route: route, name: "megarac.Media.StartMedia") == 0
         && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE END OF THE ATTEMPT RELEASES ITS OWN SESSION ONLY WHEN THE HOST ENDS OFF (boot run 39868779331 ended
+// off at the fan gate with its census row Started, and the next two attempts met that row at
+// redirection_status 19). These are the inhabitance claims for the release's pure folds
+// (test.claim.machine_intake.megarac_end_of_attempt_release_witness): the real entry, over the dry world,
+// emits the stop on the route and only on the route that ends with the host off.
+// THE TYPED ARM, not only the route: the stop count alone cannot tell the gate keeping the session from
+// the release running and being refused one layer down (megarac_detach_admission), which writes no stop
+// either.
+fn end_release_kept(end: MtCollins1EndMedia) -> Bool {
+  match end {
+    EndMediaObserved { look: _, end_release: EndReleaseKeptHostOn } => true
+    _ => false
+  }
+}
+
+fn end_release_stopped(end: MtCollins1EndMedia) -> Bool {
+  match end {
+    EndMediaObserved { look: _, end_release: EndReleaseRan { result: r } } =>
+      match r.outcome {
+        MegaRacOwnSessionEnded { end: OwnSessionStopped { detach: _ } } => match r.session_release { SessionReleased => true  _ => false }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn last_ordinal(route: List<DispatchRecord>, name: String) -> Int {
+  match ordinals_where(route: route, keep: fn(r) { operation_name(r: r) == name }).last() { Present { value: o } => o Absent => 0 - 1 }
+}
+
+// The fan gate's safe stop powers the unit off, as 39868779331's did: the attempt still reports the fan
+// stop as its cause, and after that power action it stops its own session, once, under the hold.
+test fn an_attempt_that_ends_with_the_host_off_stops_its_own_session() -> Bool {
+  match run_attempt(world: healthy_census_world_with_a_stopped_fan()) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "mtcollins1 boot stopped: chassis fan function not established after power-on")
+        && string_contains(s: outcome_reason(a: value), pattern: "end-of-attempt") == false
+        && end_release_stopped(end: value.end_media)
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 1
+        && first_ordinal(route: route, name: "megarac.Media.StopMedia") > last_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// THE CONTROL: a host left ON keeps its session. The census never prints, the watch reaches its deadline,
+// and the host is still on: the attempt writes no stop, and its verdict names no release.
+test fn an_attempt_that_ends_with_the_host_on_keeps_its_session() -> Bool {
+  match run_attempt(world: world_with_console(lines: [])) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && string_contains(s: outcome_reason(a: value), pattern: "end-of-attempt") == false
+        && end_release_kept(end: value.end_media)
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 1
     _ => false
   }
 }

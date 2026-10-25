@@ -2,8 +2,9 @@ module test.claim.print_preparation_kernel_validation
 import std.measure {micrometer_count}
 import std.process {ProcessExit,exit_failure}
 import product.printing.print_runtime {observe_cad_runtime,CadRuntimeObserved,CadRuntimeRefused}
-import product.printed_chassis.print_preparation {run_kernel,required_settings,deposited_path_edge_allowance_um}
-import extdeps.languages.json.emit {serialize_json}
+import product.printed_chassis.print_preparation {run_kernel,deposited_path_edge_allowance_um}
+import extdeps.languages.json.emit {serialize_json,JsonValue,json_object,json_kv,json_string,json_array}
+import product.printing.process_geometry {prototype_support_policy,support_settings}
 fn controls() -> String {join([
  "import tempfile,copy\n",
  "leading='G90\\nM83\\nG1 X10 Y10 Z.2\\n; CHANGE_LAYER\\n; FEATURE: Inner wall\\n; printing object X id:0\\nG1 X10.2 Y10 E.025\\n'\n",
@@ -79,10 +80,24 @@ fn controls() -> String {join([
  "    fixture(p,bad_digest=True);must_refuse(lambda:observe_archived_process(p))\n",
  "print('PASS: process observations, relative/absolute E, G92, cross-layer recovery, wipes, modal feed, arc time, unknown feed, firmware commands and admission/retrospective integration')\n",
 ],"")}
+// The readback compares a sliced archive's settings with whatever requirements it is handed; these
+// are fixture values for that comparison, not a print policy.
+fn fixture_settings() -> JsonValue {
+ json_object(members:concat(support_settings(p:prototype_support_policy),[
+  json_kv(key:"printer_model",value:json_string(s:"Bambu Lab A1 mini")),
+  json_kv(key:"nozzle_diameter",value:json_array(elements:[json_string(s:"0.4")])),
+  json_kv(key:"filament_type",value:json_array(elements:[json_string(s:"PLA")])),
+  json_kv(key:"nozzle_temperature",value:json_array(elements:[json_string(s:"220")])),
+  json_kv(key:"textured_plate_temp",value:json_array(elements:[json_string(s:"65")])),
+  json_kv(key:"print_sequence",value:json_string(s:"by layer")),
+  json_kv(key:"wall_loops",value:json_string(s:"4")),
+  json_kv(key:"sparse_infill_density",value:json_string(s:"20%"))
+ ]))
+}
 fn exercise_kernel(script:String) -> ProcessExit {
  match observe_cad_runtime() {
   CadRuntimeRefused {reason:why}=>exit_failure(reason:why)
-  CadRuntimeObserved {runtime:c}=>run_kernel(cad_runtime:c,script:script,call:join(["\nrequirements=",serialize_json(v:required_settings()),"\nedge_allowance_um=",to_string(micrometer_count(m: deposited_path_edge_allowance_um)),"\n",controls()],""))
+  CadRuntimeObserved {runtime:c}=>run_kernel(cad_runtime:c,script:script,call:join(["\nrequirements=",serialize_json(v:fixture_settings()),"\nedge_allowance_um=",to_string(micrometer_count(m: deposited_path_edge_allowance_um)),"\n",controls()],""))
  }
 }
 
