@@ -117,7 +117,7 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
   SensorsNotTaken, mtcollins1_boot_sensors,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_hpm_check, mtcollins1_boot_build_reading, build_reading_receipt_line, mtcollins1_boot_console,
-  mtcollins1_boot_mc_info_retain, mtcollins1_boot_fru_print_retain, mtcollins1_boot_mc_info_retained, mtcollins1_boot_fru_print_retained, mc_info_retention_receipt_line, fru_retention_receipt_line,
+  mtcollins1_boot_mc_info_retain, mtcollins1_boot_fru_print_retain, mtcollins1_boot_pre_power_retained, pre_power_retention_receipt_line, mtcollins1_boot_mc_info_path, mtcollins1_boot_fru_print_path, MtCollins1PrePowerRetention,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_findings, harness_finding_text, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
@@ -2735,6 +2735,12 @@ type MtCollins1HeldBoot {
   actuation: MtCollins1BootActuation
   configuration: AttemptConfigurationReceipt
   baseline: MtCollins1BootBaseline
+  // WHAT THE PRE-POWER PHASE ITSELF REPORTED for the two extra captures (review 86381 finding 1). They
+  // ride the record so the conclusion reports the ORIGINAL cause -- an ipmitool that refused, a write
+  // that failed -- instead of laundering both into a read-back's file-not-found. Absent means the phase
+  // never ran (the hold was refused, the attempt was refused): honest silence, never a foreign file.
+  mc_info: MtCollins1PrePowerRetention?
+  fru: MtCollins1PrePowerRetention?
 }
 
 // THE ATTEMPT'S BMC BASELINE (the SDR cache and the SEL before), taken only under the unit hold and
@@ -2769,6 +2775,8 @@ fn mtcollins1_boot_under_live_unit_hold(
         actuation: actuation_not_powered_on(outcome: exit_failure(reason: concat("mtcollins1 boot: ", r as String)), reason: "the unit hold was refused, so nothing was written"),
         configuration: attempt_configuration_not_recorded(host: operator_host_mtcollins1 as NonEmptyStr, attempt: run_id, reason: "the unit hold was refused, so the attempt receipt was not admitted"),
         baseline: baseline_not_taken(reason: "the unit hold was refused, so the controller was not read"),
+        mc_info: Absent,
+        fru: Absent,
       }
     UnitHeld { proof: p } =>
       match admit_boot_attempt(proof: p, revision: subject.execution_revision) {
@@ -2778,13 +2786,15 @@ fn mtcollins1_boot_under_live_unit_hold(
             actuation: actuation_not_powered_on(outcome: unit_hold_release(proof: p, outcome: exit_failure(reason: why)), reason: "the named attempt receipt was refused, so nothing was written"),
             configuration: attempt_configuration_refused(host: operator_host_mtcollins1 as NonEmptyStr, attempt: run_id, cause: c),
             baseline: baseline_not_taken(reason: "the named attempt receipt was refused, so the controller was not read"),
+            mc_info: Absent,
+            fru: Absent,
           }
         }
         BootAttemptCleared { clearance: clearance } => {
-          let configuration = mtcollins1_boot_pre_power(configuration: attempt_configuration_receipt(clearance: clearance, attempt: run_id), clearance: clearance, run_attempt: run_id, password_file: password_file)
+          let phase = mtcollins1_boot_pre_power(configuration: attempt_configuration_receipt(clearance: clearance, attempt: run_id), clearance: clearance, run_attempt: run_id, password_file: password_file)
           let taken = baseline()
           let actuation = mtcollins1_boot_actuate_held(medium: medium, image_stem: image_stem, proof: p, subject: subject, password_file: password_file, run_id: run_id, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
-          MtCollins1HeldBoot { actuation: actuation, configuration: configuration, baseline: taken }
+          MtCollins1HeldBoot { actuation: actuation, configuration: phase.configuration, baseline: taken, mc_info: Present { value: phase.mc_info }, fru: Present { value: phase.fru } }
         }
       }
   }
@@ -2792,25 +2802,52 @@ fn mtcollins1_boot_under_live_unit_hold(
 
 // THE PRE-POWER READ, AFTER ADMISSION AND BEFORE ANY WRITE: the firmware each component runs (hpm
 // check), joined to the frozen configuration by gunbc.host.host_boot_attempt_admission.
-fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearance: BootAttemptClearance, run_attempt: NonEmptyStr, password_file: String) -> AttemptConfigurationReceipt {
+// WHAT THE PRE-POWER PHASE REPORTS as a whole: the firmware read folded into the attempt configuration,
+// and the two extra captures' OWN results (review 86381 finding 1: the results the phase produced are
+// carried OUT of it, not bound and dropped -- the conclusion reports those causes, not a guess rebuilt
+// from whether a file happens to exist).
+type MtCollins1PrePowerPhase {
+  configuration: AttemptConfigurationReceipt
+  mc_info: MtCollins1PrePowerRetention
+  fru: MtCollins1PrePowerRetention
+}
+
+fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearance: BootAttemptClearance, run_attempt: NonEmptyStr, password_file: String) -> MtCollins1PrePowerPhase {
   match mtcollins1_bmc_username {
-    Absent => attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" })
+    // THE SHORT-CIRCUIT ARMS CARRY THEIR OWN CAUSE: without an account/credential NOTHING was read, and
+    // the receipt says exactly why -- the same deficit visibility (DESIGN.md §5, "stop visibly; never
+    // conceal the deficit") that the hpm check's unread arm has always had.
+    Absent => {
+      let why = "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with"
+      MtCollins1PrePowerPhase {
+        configuration: attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: why }),
+        mc_info: PrePowerNotRetained { reason: concat("the pre-power phase did not read it: ", why) as NonEmptyStr },
+        fru: PrePowerNotRetained { reason: concat("the pre-power phase did not read it: ", why) as NonEmptyStr },
+      }
+    }
     Present { value: user } =>
       if password_file == "" {
-        attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: "no BMC credential path is bound" })
+        let why = "no BMC credential path is bound"
+        MtCollins1PrePowerPhase {
+          configuration: attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: why }),
+          mc_info: PrePowerNotRetained { reason: concat("the pre-power phase did not read it: ", why) as NonEmptyStr },
+          fru: PrePowerNotRetained { reason: concat("the pre-power phase did not read it: ", why) as NonEmptyStr },
+        }
       } else {
-        // THE READ-ONLY PRE-POWER PHASE now keeps THREE verbatim captures beside the hpm check: the
-        // retained hpm table (which mints the build identity), `mc info` (the channel's own account of
-        // what BMC it is), and `fru print 0` board 0 (the inventory the identity rows are made from). All
-        // three operations are declared readonly on extdeps.bmc.ipmi, all three run BEFORE any power or
-        // boot-order write, and none of the two additions answers a question the boot decides on -- the
-        // admission, the selection, and the actuation consume only the hpm table, exactly as before. The
-        // two new writes return their retention; the phase ignores the result HERE (the conclusion's
-        // receipt reads each file back BY THE RUN'S IDENTITY, where a failure surfaces with its cause --
-        // the same write-silent/read-back-loud split the hpm check uses).
+        // THE READ-ONLY PRE-POWER PHASE keeps THREE verbatim captures: the retained hpm table (which mints
+        // the build identity), `mc info` (the channel's own account of what BMC it is), and `fru print 0`
+        // board 0 (the inventory the identity rows are made from). All three operations are declared
+        // readonly on extdeps.bmc.ipmi, all three run BEFORE any power or boot-order write, and none of
+        // the two additions answers a question the boot decides on -- the admission, the selection, and
+        // the actuation consume only the hpm table, exactly as before. Each capture's OWN result leaves
+        // the phase in the phase record; the receipt is composed from those results at conclusion.
         let mc_kept = mtcollins1_boot_mc_info_retain(username: user, password_file: password_file as NonEmptyStr, run_attempt: run_attempt)
         let fru_kept = mtcollins1_boot_fru_print_retain(username: user, password_file: password_file as NonEmptyStr, run_attempt: run_attempt)
-        attempt_configuration_with_pre_power(c: configuration, firmware: mtcollins1_boot_hpm_check(username: user, password_file: password_file as NonEmptyStr, clearance: clearance, run_attempt: run_attempt))
+        MtCollins1PrePowerPhase {
+          configuration: attempt_configuration_with_pre_power(c: configuration, firmware: mtcollins1_boot_hpm_check(username: user, password_file: password_file as NonEmptyStr, clearance: clearance, run_attempt: run_attempt)),
+          mc_info: mc_kept,
+          fru: fru_kept,
+        }
       }
   }
 }
@@ -2882,6 +2919,13 @@ type MtCollins1BootAttempt {
   runner_host: RunnerHostUp?
   fan_gate: PostPowerFanGateReading
   configuration: AttemptConfigurationReceipt
+  // WHAT THE PRE-POWER PHASE ITSELF REPORTED for the two extra captures (review 86381 finding 1). They
+  // ride the record from the phase that executed them so the receipt reports the ORIGINAL cause -- an
+  // ipmitool that refused, a write that failed -- instead of laundering both into a read-back's
+  // file-not-found. Absent means the phase never ran (the hold was refused, the attempt was refused, the
+  // attempt ended before the BMC): honest silence, never a guess and never a foreign file.
+  mc_info: MtCollins1PrePowerRetention?
+  fru: MtCollins1PrePowerRetention?
 }
 
 fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
@@ -2893,7 +2937,7 @@ fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
 
 // THE ACTUATION AS THE ATTEMPT RESULT, PURE: every field the actuation observed, the runner-host
 // reading among them, beside the BMC access the attempt held.
-fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootBmcAccess, configuration: AttemptConfigurationReceipt) -> MtCollins1BootAttempt {
+fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootBmcAccess, configuration: AttemptConfigurationReceipt, mc_info: MtCollins1PrePowerRetention?, fru: MtCollins1PrePowerRetention?) -> MtCollins1BootAttempt {
   MtCollins1BootAttempt {
     outcome: act.outcome,
     media: act.media,
@@ -2910,6 +2954,8 @@ fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootB
     runner_host: act.runner_host,
     fan_gate: act.fan_gate,
     configuration: configuration,
+    mc_info: mc_info,
+    fru: fru,
   }
 }
 
@@ -2930,6 +2976,8 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     runner_host: none,
     fan_gate: PostPowerFanGateNotReached { reason: "the attempt ended before the unit hold" },
     configuration: attempt_configuration_not_recorded(host: operator_host_mtcollins1 as NonEmptyStr, attempt: "not reached", reason: "the attempt ended before the unit hold, so no attempt receipt was admitted"),
+    mc_info: Absent,
+    fru: Absent,
   }
 }
 
@@ -3063,11 +3111,11 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
     bundle_write_receipt_line(w: write),
     kvm_observer_receipt_line(rec: attempt.screen),
     build_reading_receipt_line(r: mtcollins1_boot_build_reading(attempt: run)),
-    // THE PRE-POWER RETENTIONS, read back BY THE RUN'S OWN IDENTITY: what this run's `mc info` and
-    // `fru print 0` left on disk, with the byte count derived from the retained content. Like the build
-    // line, these speak only for this attempt -- no run identity, no file, no claim.
-    mc_info_retention_receipt_line(r: mtcollins1_boot_mc_info_retained(attempt: run)),
-    fru_retention_receipt_line(r: mtcollins1_boot_fru_print_retained(attempt: run)),
+    // THE PRE-POWER RETENTIONS: the ORIGINAL cause the executing phase reported (carried in the record),
+    // and only on a write-side retention does the conclusion read the file back by the run's own identity.
+    // These speak only for this attempt -- no phase, no claim; no run identity at conclusion, no read.
+    pre_power_retention_receipt_line(prefix: "mc-info", executed: attempt.mc_info, run: run, path_of: mtcollins1_boot_mc_info_path),
+    pre_power_retention_receipt_line(prefix: "fru", executed: attempt.fru, run: run, path_of: mtcollins1_boot_fru_print_path),
     concat("account=", join(mtcollins1_power_on_account_notes(a: findings.account), "; ")),
     concat("coverage=", join(map(filter(findings.account.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")),
     concat("harness=", if count(findings.harness) == 0 { "none" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "; ") }),
@@ -3161,12 +3209,12 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolc
     Absent => {
       let held = mtcollins1_boot_under_live_unit_hold(medium: medium, image_stem: image_stem, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { baseline_not_taken(reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with") })
       let act = held.actuation
-      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }, configuration: held.configuration)
+      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }, configuration: held.configuration, mc_info: held.mc_info, fru: held.fru)
     }
     Present { value: user } => {
       let held = mtcollins1_boot_under_live_unit_hold(medium: medium, image_stem: image_stem, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { mtcollins1_boot_baseline(username: user, password_file: cred as NonEmptyStr) })
       let act = held.actuation
-      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: held.baseline.sdr, sel_before: held.baseline.sel_before }, configuration: held.configuration)
+      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: held.baseline.sdr, sel_before: held.baseline.sel_before }, configuration: held.configuration, mc_info: held.mc_info, fru: held.fru)
     }
   }
 }
