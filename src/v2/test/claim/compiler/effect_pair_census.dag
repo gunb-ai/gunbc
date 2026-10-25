@@ -509,6 +509,8 @@ data epc_fv_source: String = "module acd\n\nfn an_effect() -> Int {\n  1\n}\n\nf
 
 data epc_flag_source: String = "module acd\n\ndata an_flag: Bool = true\n\nfn f() -> Int {\n  if an_flag { 1 } else { 2 }\n}\n"
 
+data epc_param_selector_source: String = "module acd\n\nfn an_effect() -> Int {\n  1\n}\n\nfn f(flag: Bool) -> Int {\n  let b = an_effect()\n  if flag { b } else { 2 }\n}\n"
+
 data epc_ordinal_source: String = "module acd\n\ndata an_value: Int = 3\n\nfn an_effect() -> Int {\n  1\n}\n\nfn f() -> Int {\n  let a = an_value\n  let b = an_effect()\n  an_effect()\n}\n"
 
 fn epc_source_bodies(source: String) -> List<FactBodySites> {
@@ -582,6 +584,16 @@ test fn a_branch_with_a_declaration_reference_selector_is_not_a_call_site_holds(
   match epc_f_sites(source: epc_flag_source) {
     Absent => false
     Present { value: sites } => length(xs: sites) == 0
+  }
+}
+
+// NEGATIVE, THE GUARD'S OWN CASE: a Branch whose selector is a bare PARAMETER reference beside one static effect is
+// ONE site (the static call) and no pair. Without the Transform guard the parameter-head test reads the Branch's first
+// child and mints a function-value site for the selector, so the counts change. RED if the guard is dropped.
+test fn a_branch_with_a_parameter_selector_is_not_a_call_site_holds() -> Bool {
+  match epc_f_sites(source: epc_param_selector_source) {
+    Absent => false
+    Present { value: sites } => length(xs: sites) == 1 && length(xs: epc_census_pairs(source: epc_param_selector_source)) == 0
   }
 }
 
