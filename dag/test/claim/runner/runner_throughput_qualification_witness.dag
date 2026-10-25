@@ -1,7 +1,8 @@
 module test.claim.runner.runner_throughput_qualification_witness
 
 import std.logic { Bool }
-import std.types { Int, List, NonEmptyStr, String, WorkflowRunId }
+import std.types { Int, List, NonEmptyStr, String }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure {
   ByteSize, byte_size, byte_size_count, EvalStepCount, eval_step_count, eval_step_count_value,
@@ -64,7 +65,7 @@ import gunbc.runner.runner_throughput_qualification {
   RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
 }
 import std.nat { Nat, nat_range_inclusive }
-import std.observation { OccurrenceId }
+import std.observation { AttemptOccurrenceId }
 import product.capacity.cohort_observation {
   CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
 }
@@ -97,8 +98,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data pin_revision: String = "43643bad4f0000000000000000000000000000ab"
 data attempt: NonEmptyStr = "mtcollins1-qual-1" as NonEmptyStr
-data run_a: WorkflowRunId = "35447067113" as WorkflowRunId
-data run_b: WorkflowRunId = "35447067114" as WorkflowRunId
+data run_a: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067113 }
+data run_b: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067114 }
 
 fn pinned_rate() -> Int {
   calibration_rate(calibration: floor_eval_step_calibration)
@@ -294,7 +295,7 @@ fn effective_with_high(high: ByteSize) -> EffectiveSlotProperties {
 // and meets every standing: the pinned specimen in 50 ms, a peak 5 GiB under the high, the
 // complete phase roster, the selected unit's effective properties, tmpfs on the subject.
 fn run_with(
-  id: WorkflowRunId,
+  id: GitHubWorkflowRunId,
   host: HostIdentity,
   specimen: NonEmptyStr,
   effective: EffectiveSlotProperties,
@@ -326,7 +327,7 @@ fn run_with(
   )
 }
 
-fn good_run(id: WorkflowRunId) -> ObservedRunnerQualificationRun {
+fn good_run(id: GitHubWorkflowRunId) -> ObservedRunnerQualificationRun {
   run_with(
     id: id, host: "mtcollins1", specimen: specimen_identity(), effective: effective_as_selected(),
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
@@ -334,7 +335,7 @@ fn good_run(id: WorkflowRunId) -> ObservedRunnerQualificationRun {
   )
 }
 
-fn varied_run(id: WorkflowRunId, cpu: Millisecond, memory: CgroupMemoryReading, phases: List<PhaseWall>) -> ObservedRunnerQualificationRun {
+fn varied_run(id: GitHubWorkflowRunId, cpu: Millisecond, memory: CgroupMemoryReading, phases: List<PhaseWall>) -> ObservedRunnerQualificationRun {
   run_with(
     id: id, host: "mtcollins1", specimen: specimen_identity(), effective: effective_as_selected(),
     workspace: OnSubjectChargedToSlot, cpu: cpu, memory: memory, phases: phases,
@@ -392,30 +393,30 @@ fn covers_rate_memory_walls_and_cohort(facts: List<AssessedFact>) -> Bool {
 // one more refusal beside the one the claim reads.
 fn t(n: Nat) -> ObservationInstant { ObservationInstant { domain: SharedMonotonic { origin: "mtcollins1-boot" as NonEmptyStr }, basis: WallClock, since_origin: nanosecond(count: n) } }
 
-fn seat_ids(n: Int) -> List<WorkflowRunId> {
-  map(nat_range_inclusive(lo: 1, hi: n), i => concat("cohort-seat-", i as String) as WorkflowRunId)
+fn seat_ids(n: Int) -> List<GitHubWorkflowRunId> {
+  map(nat_range_inclusive(lo: 1, hi: n), i => GitHubWorkflowRunId { value: 35447067200 + i })
 }
 
-fn seat_reading(id: WorkflowRunId, settlement: SeatSettlement) -> CohortSeatReading<WorkflowRunId> {
+fn seat_reading(id: GitHubWorkflowRunId, settlement: SeatSettlement) -> CohortSeatReading<GitHubWorkflowRunId> {
   CohortSeatReading {
-    seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr },
+    seat: id, source: AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: github_workflow_run_id_wire_text(id: id) as NonEmptyStr },
     ready_at: t(n: 5), started_at: t(n: 20), ended_at: t(n: 40), settlement: settlement,
   }
 }
 
-fn cohort_of(seats: List<CohortSeatReading<WorkflowRunId>>) -> RunnerCohortEvidence {
+fn cohort_of(seats: List<CohortSeatReading<GitHubWorkflowRunId>>) -> RunnerCohortEvidence {
   CohortObserved {
     seal: seal_cohort(
       reading: CohortReading {
         roster: map(seats, s => s.seat), barrier_released_at: t(n: 10), host_window_from: t(n: 0), host_window_to: t(n: 100),
-        host_source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: "host" as NonEmptyStr }, seats: seats,
+        host_source: AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: "host" as NonEmptyStr }, seats: seats,
       },
       seat_key: run_key,
     ),
   }
 }
 
-fn cohort_runs(ids: List<WorkflowRunId>) -> List<ObservedRunnerQualificationRun> {
+fn cohort_runs(ids: List<GitHubWorkflowRunId>) -> List<ObservedRunnerQualificationRun> {
   map(ids, id => good_run(id: id))
 }
 
@@ -634,14 +635,14 @@ test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool
   let ids = seat_ids(n: w)
   let runs = cohort_runs(ids: ids)
   let short = seat_ids(n: w - 1)
-  let failed = map(ids, id => if (id as String) == "cohort-seat-1" { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatFailed { cause: "floor phase refused" as NonEmptyStr } }) } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
-  let stranger = concat(map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })), [seat_reading(id: "not-an-assessed-run" as WorkflowRunId, settlement: SeatSettledAs { settled: SeatSucceeded })])
-  let apart = map(ids, id => if (id as String) == "cohort-seat-1" { CohortSeatReading { seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledAs { settled: SeatSucceeded } } } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
+  let failed = map(ids, id => if id.value == 35447067201 { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatFailed { cause: "floor phase refused" as NonEmptyStr } }) } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
+  let stranger = concat(map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })), [seat_reading(id: GitHubWorkflowRunId { value: 35447099999 }, settlement: SeatSettledAs { settled: SeatSucceeded })])
+  let apart = map(ids, id => if id.value == 35447067201 { CohortSeatReading { seat: id, source: AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: github_workflow_run_id_wire_text(id: id) as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledAs { settled: SeatSucceeded } } } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
   w >= 2
     && concurrency_is(a: assess_unobserved(selection: selection(), runs: runs), want: "no concurrent cohort was observed")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", (w - 1) as String, " seats but the derived width is ", w as String], ""))
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: failed)), want: "cohort seat cohort-seat-1 failed: floor phase refused")
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: not-an-assessed-run")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: failed)), want: "cohort seat 35447067201 failed: floor phase refused")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: 35447099999")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: apart)), want: "the seats were never all active at once")
     && assessment_holds(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))))
 }
@@ -747,20 +748,25 @@ test fn the_route_classifies_every_mutation_at_its_grain() -> Bool {
     ))
 }
 
-// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: the image, boot, registration, dispatch and
-// deregistration authorities are implemented but not wired. This flips to the regression control that the bindings stay when they land.
+// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: the registration, dispatch and deregistration
+// authorities are implemented but not wired. This flips to the regression control that the bindings stay when they land.
 test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool {
   !route_is_executable(route: route()) && !leg_is_wired(leg: qualification_run_producer_frontier)
 }
 
-// THE IMAGE AND BOOT LEGS HAVE IMPLEMENTED RUNNER-OWNED AUTHORITIES AND ARE NOT WIRED. Wiring either
-// before a production caller boots the runner image, or pointing either at another declaration
-// (the census-only boot run among them), turns this red.
-test fn the_image_and_boot_legs_are_implemented_by_the_runner_medium_and_not_wired() -> Bool {
-  leg_names(leg: mtcollins1_route_legs.image, module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_medium_image")
-    && !leg_is_wired(leg: mtcollins1_route_legs.image)
-    && leg_names(leg: mtcollins1_route_legs.boot, module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_up_readback")
-    && !leg_is_wired(leg: mtcollins1_route_legs.boot)
+// THE IMAGE LEG IS WIRED TO ITS PUBLISH CALLER AND THE BOOT LEG TO THE BOOT RUN'S SELECTED MEDIUM. Pointing
+// either leg at another declaration (the census medium among them), or demoting it, turns this red.
+fn leg_wired_to(leg: RouteLegStanding, module_path: String, decl_name: String) -> Bool {
+  leg_is_wired(leg: leg)
+    && (match leg_authority(leg: leg) {
+      Present { value: a } => (a.module_path as String) == module_path && (a.decl_name as String) == decl_name
+      Absent => false
+    })
+}
+
+test fn the_image_leg_and_the_boot_leg_are_wired_to_their_production_callers() -> Bool {
+  leg_wired_to(leg: mtcollins1_route_legs.image, module_path: "gunbc.runner.runner_host_medium_publish", decl_name: "mtcollins1_runner_image_publish_wet")
+    && leg_wired_to(leg: mtcollins1_route_legs.boot, module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_medium")
 }
 
 // REGISTRATION, DISPATCH AND DEREGISTRATION HAVE IMPLEMENTED AUTHORITIES AND ARE NOT WIRED -- by
@@ -779,7 +785,6 @@ test fn the_registration_dispatch_and_deregistration_legs_are_implemented_not_wi
     && leg_names(leg: mtcollins1_route_legs.deregistration, module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered")
     && !leg_is_wired(leg: mtcollins1_route_legs.registration)
     && !leg_is_wired(leg: mtcollins1_route_legs.deregistration)
-    && !leg_is_wired(leg: mtcollins1_route_legs.boot)
     && !leg_is_wired(leg: mtcollins1_route_legs.dispatch)
     && leg_names(leg: mtcollins1_route_legs.collect, module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments")
     && !leg_is_wired(leg: mtcollins1_route_legs.collect)
@@ -820,8 +825,8 @@ test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
   !leg_is_wired(leg: qualification_run_producer_frontier)
     && (route() |> any(s =>
       match s {
-        CollectInstruments { instruments: is, collection: _ } =>
-          is |> any(i =>
+        CollectInstruments { instruments: ins, collection: _ } =>
+          ins |> any(i =>
             match i {
               ConcurrentCohortSeatWindows => {
                 let p = qualification_instrument_producer(i: i)
@@ -838,8 +843,8 @@ test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
 test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
   route() |> any(s =>
     match s {
-      CollectInstruments { instruments: is, collection: _ } =>
-        (is |> any(i =>
+      CollectInstruments { instruments: ins, collection: _ } =>
+        (ins |> any(i =>
           match i {
             CalibrationSpecimenWitnessLine => {
               let p = qualification_instrument_producer(i: i)
@@ -848,7 +853,7 @@ test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
             _ => false
           }
         ))
-          && (is |> any(i =>
+          && (ins |> any(i =>
             match i {
               FloorCgroupRows => {
                 let p = qualification_instrument_producer(i: i)
@@ -857,7 +862,7 @@ test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
               _ => false
             }
           ))
-          && (is |> all(i => {
+          && (ins |> all(i => {
             let p = qualification_instrument_producer(i: i)
             string_contains(s: qualification_instrument_wire(i: i) as String, pattern: p.decl_name as String)
           }))

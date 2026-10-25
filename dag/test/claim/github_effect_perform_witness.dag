@@ -3,7 +3,7 @@ module test.claim.github_effect_perform_witness
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.integer { UInt8 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets, JwsEncoded, JwsEncodeNotOctets }
+import extdeps.auth.jws { JwsRs256, jws_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets, JwsEncoded, JwsEncodeNotOctets }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }
 import extdeps.github.actions_jit_runner { JitConfigCreatedBody, JitConfigCreatedRunner }
@@ -22,8 +22,10 @@ import gunbc.github_effect_perform {
   publisher_key_unreadable, publisher_installation_token_refused, publisher_jwt_after_removal,
   stage_sign_and_remove_publisher_key, AppJwtSigned, AppJwtUnsigned,
   heal_publisher_installation_token_permissions, publication_helper_installation_token_permissions,
+  controller_key_write_refusal, stage_key_file, ControllerKeyStaged, ControllerKeyNotStaged,
 }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemPermissionDenied }
+import std.algebra { string_contains }
 import gunbc.auth.github_apps { gunbai_bot_declared }
 import test.claim.github_app_registry { dispatched, runner_grant }
 
@@ -35,7 +37,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data rs256_jwt_header_b64url: String = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"
 
 test fn witness_jws_signing_input_leads_with_the_rs256_header_unpadded() -> Bool {
-  match jws_rs256_signing_input(payload_json: "x") {
+  match jws_signing_input(alg: JwsRs256, kid: none, payload_json: "x") {
     JwsEncodeNotOctets { observed: _ } => false
     JwsEncoded { text: jws_signing_text } => starts_with(s: jws_signing_text, prefix: concat(rs256_jwt_header_b64url, "."))
   }
@@ -226,4 +228,45 @@ test fn publication_helper_installation_token_permissions_add_pull_requests_writ
       Present { value: v } => v == "write"
       Absent => false
     }
+}
+
+
+data ck_removed: FilesystemDelete = FilesystemDeleted { path: "k" }
+data ck_absent: FilesystemDelete = FilesystemDeleteTargetAbsent { path: "k" }
+data ck_refused: FilesystemDelete = FilesystemDeleteRefused { path: "k", kind: FilesystemPermissionDenied, error: "denied" }
+
+// Observations only: a cleanup that removed a file reports a removal, never "the partial file".
+test fn a_failed_key_write_whose_cleanup_removed_a_file_reports_the_observation() -> Bool {
+  let c = controller_key_write_refusal(write_error: "disk full", before: ck_absent, after: ck_removed)
+  string_contains(s: c, pattern: "cleanup: a file was removed") && string_contains(s: c, pattern: "pre-clear: the path was absent") && !string_contains(s: c, pattern: "partial")
+}
+
+// Absence at cleanup is not "no file was created": the claim is not made.
+test fn an_absent_path_at_cleanup_does_not_claim_nothing_was_created() -> Bool {
+  let c = controller_key_write_refusal(write_error: "no dir", before: ck_absent, after: ck_absent)
+  string_contains(s: c, pattern: "cleanup: the path was absent") && !string_contains(s: c, pattern: "no file was created")
+}
+
+// A cleanup refusal is unconfirmed residue whatever the pre-clear saw; it asserts no origin.
+test fn a_cleanup_refusal_is_unconfirmed_residue_for_every_preclear_observation() -> Bool {
+  let a = controller_key_write_refusal(write_error: "disk full", before: ck_absent, after: ck_refused)
+  let r = controller_key_write_refusal(write_error: "exists", before: ck_refused, after: ck_refused)
+  string_contains(s: a, pattern: "ControllerAppKeyResidueUnconfirmed") && string_contains(s: a, pattern: "requires cleanup")
+    && string_contains(s: r, pattern: "ControllerAppKeyResidueUnconfirmed") && string_contains(s: r, pattern: "pre-clear: removal was refused")
+    && !string_contains(s: a, pattern: "pre-existing") && !string_contains(s: r, pattern: "pre-existing")
+}
+
+// THE PRODUCTION PATH, REAL FILESYSTEM: stage_key_file (the function stage_controller_app_key calls)
+// against paths whose write must fail. A missing parent leaves the path absent at cleanup; /proc/self
+// cannot be removed and exists, so the cleanup is refused. The supplied-outcome tests above fix the
+// cause text per observation; they do NOT cover a dropped cleanup call, and a mid-write partial file
+// cannot be authored, so that is deferred (lost_boot_key_staging_partial_write_frontier).
+test fn a_real_filesystem_write_refusal_names_what_became_of_the_path() -> Bool {
+  (match stage_key_file(key: "k" as Secret, key_path: "/tmp/gunbc_ck_no_such_parent/x/key" as NonEmptyStr) {
+    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyUnstaged") && string_contains(s: c, pattern: "cleanup: the path was absent")
+    ControllerKeyStaged { key: _ } => false
+  }) && (match stage_key_file(key: "k" as Secret, key_path: "/proc/self" as NonEmptyStr) {
+    ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyResidueUnconfirmed")
+    ControllerKeyStaged { key: _ } => false
+  })
 }

@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme, dag_string_l
 import v2.std.arrow_signature { declared_signature_arrow }
 import v2.std.node_query { binder_edge }
 import v2.std.list_introduction { lower_list_introduction }
-import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, BindingMalformed, DeclaredInputUnbound, DuplicateInputBinding, ExecutablePositionNotLiteral, OperationNotFound, TokenListInStringPosition, UndeclaredInputBound }
+import std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, BindingMalformed, DeclaredInputUnbound, DuplicateInputBinding, ExecutablePositionNotLiteral, OperationNotFound, TokenListInStringPosition, UndeclaredInputBound }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -27,7 +27,7 @@ import std.types { List }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Atom, Authored, Conj, Disj, Edge, Node, Symbol, TypeNode, node_synthetic, symbol_intern_lexeme }
+import v2.std.node { Atom, Authored, Conj, Disj, Edge, Node, Symbol, TypeNode, node_synthetic, symbol_intern_lexeme, NotADeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -48,7 +48,7 @@ fn sr_conj(children: List<Edge>) -> Node {
 }
 
 fn sr_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn sr_lex(s: String) -> Symbol {
@@ -124,6 +124,17 @@ fn sr_rest_entry(pat: Node, key: String) -> Node {
   ])
 }
 
+fn sr_reading_arm() -> Node {
+  sr_conj(children: [sr_named(name: realization_arm_payload_label(), target: sr_atom(id: ^Unit))])
+}
+// A file entry: the transport observes no status, so its mock carries bare readings and no pattern.
+fn sr_file_entry(mocks: List<Node>) -> Node {
+  sr_conj(children: [
+    sr_transport(kind: "file", fields: [sr_named(name: ^path, target: sr_string(value: "/x"))]),
+    sr_named(name: realization_mock_arms_label(), target: sr_list(elements: mocks)),
+    sr_projection(field: ^out, key: "byte_count")
+  ])
+}
 fn sr_leaf(op: Symbol, entry: Node) -> Node {
   sr_conj(children: [sr_named(name: op, target: entry)])
 }
@@ -175,6 +186,16 @@ test fn a_binding_field_of_another_kind_refuses_holds() -> Bool {
 test fn a_status_pattern_of_the_other_transport_refuses_holds() -> Bool {
   sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_atom(id: sr_lex(s: "5xx")))], field: ^out, key: "stdout")), reason: ^service_realization_status_pattern_not_of_transport)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_atom(id: sr_lex(s: "nonzero")), key: "x")), reason: ^service_realization_status_pattern_not_of_transport)
+}
+
+// A mock is keyed by its transport's own discriminator: the file transport has none, so its mock is one
+// bare reading; a status-keyed arm on file stays refused (the RED), a second reading is malformed, and a
+// pattern-less arm on shell or rest is malformed.
+test fn a_file_mock_is_one_bare_reading_holds() -> Bool {
+  sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_file_entry(mocks: [sr_reading_arm()])))
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_file_entry(mocks: [sr_arm(pat: sr_code(lexeme: "0"))])), reason: ^service_realization_status_pattern_not_of_transport)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_file_entry(mocks: [sr_reading_arm(), sr_reading_arm()])), reason: ^service_realization_arm_malformed)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_reading_arm()], field: ^out, key: "stdout")), reason: ^service_realization_arm_malformed)
 }
 
 test fn a_repeated_status_pattern_refuses_holds() -> Bool {
@@ -315,7 +336,7 @@ fn sr_argv_cause_tag(c: ArgvRefusalCause) -> String {
   }
 }
 
-// P1c. A SHELL ARGV IS READ IN THE SHARED ARGV VOCABULARY (v2.std.operation_argv ArgvRefusalCause). The
+// P1c. A SHELL ARGV IS READ IN THE SHARED ARGV VOCABULARY (std.operation_argv ArgvRefusalCause). The
 // accepted control references the declared input x; each red differs in the one property its cause
 // names.
 test fn a_shell_argv_is_checked_in_the_shared_argv_vocabulary_holds() -> Bool {

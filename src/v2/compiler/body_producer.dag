@@ -22,6 +22,7 @@ import v2.std.node {
   well_formed,
   ArrowBodyEdge,
   core_edge_label,
+  NotADeclaration
 }
 import std.algebra { list_snoc_item }
 
@@ -52,7 +53,8 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
             xs: arrow.children,
             item: Edge {
               label: core_edge_label(marker: ArrowBodyEdge),
-              target: body
+              target: body,
+              declaration: NotADeclaration
             }
           )
         )
@@ -60,7 +62,6 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
     TypeNode { connective: Atom { identity: _ } } => attach_arrow_body_malformed(arrow: arrow)
     TypeNode { connective: Conj } => attach_arrow_body_malformed(arrow: arrow)
     TypeNode { connective: Disj } => attach_arrow_body_malformed(arrow: arrow)
-    TypeNode { connective: Occupancy } => attach_arrow_body_malformed(arrow: arrow)
     TypeNode { connective: Instantiation } => attach_arrow_body_malformed(arrow: arrow)
     ComputationNode { behavior: _ } => attach_arrow_body_malformed(arrow: arrow)
   }
@@ -95,7 +96,6 @@ fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => body_producer_structured_body_shape_rejected(body: body)
     TypeNode { connective: Disj } => body_producer_structured_body_shape_rejected(body: body)
     TypeNode { connective: Arrow } => body_producer_structured_body_shape_rejected(body: body)
-    TypeNode { connective: Occupancy } => body_producer_structured_body_shape_rejected(body: body)
     TypeNode { connective: Instantiation } => body_producer_structured_body_shape_rejected(body: body)
   }
 }

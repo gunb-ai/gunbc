@@ -12,6 +12,7 @@ import gunbc.auth.request_authentication { IngressUnattested,
   RequestAccessPath,
 }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_apns_publish { read_device_push_targets, read_apns_sender }
 import gunbc.auth.approval_request_submission {
   admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_http_body, read_submission_keyring, read_publisher_token, escalation_status,
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
@@ -35,9 +36,9 @@ import gunbc.auth.approval_writer_authority {
 }
 import gunbc.auth.approval_store_receipt { store_receipt_answer }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marked_body,
+  ApprovalBrokerMarker, BrokerBodyMarked, BrokerMarkedBody, BrokerMarkerRefused, approval_broker_marked_body,
   ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved, StoreReceiptHandlerObserved,
-  DeviceEnrolHandlerObserved, DeviceRedeemHandlerObserved, DevicePendingHandlerObserved,
+  DeviceEnrolHandlerObserved, DeviceRedeemHandlerObserved, DevicePendingHandlerObserved, DeviceListHandlerObserved, DeviceRevokeHandlerObserved,
   DeviceRequestHandlerObserved, DeviceEnrollmentReadbackHandlerObserved, DevicePushUpdateHandlerObserved,
   BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused, BrokerStaticRouteServed,
 }
@@ -49,14 +50,15 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_store_receipt_path_template,
   approval_broker_confirm_path_prefix,
   approval_device_request_path_template,
-  approval_device_enrollment_path_template,
+  approval_device_enrollment_path_template, approval_device_revoke_path_template,
   approval_broker_listen_host,
   approval_broker_serving_base_url,
 }
-import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path }
+import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path, approval_devices_list_path }
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
   device_enrol_response, device_redeem_response, device_pending_response, device_request_response, device_enrollment_readback_response, device_push_update_response,
+  device_list_response, device_revoke_response,
 }
 import extdeps.http.server { application_json_utf8 }
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpStatus }
@@ -133,6 +135,8 @@ type ApprovalBrokerHandler
   | DeviceRequestHandler
   | DeviceEnrollmentReadbackHandler
   | DevicePushUpdateHandler
+  | DeviceListHandler
+  | DeviceRevokeHandler
 
 // THE APPROVAL PAIR IS TWO ROUTES ON PURPOSE. The operator's tap is a GET, and a GET must not
 // spend the decision -- link previews, mail scanners, chat unfurlers and browser prefetch all
@@ -148,6 +152,10 @@ type ApprovalBrokerHandler
 fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
   [
     ServedRouteSpec { method: GET, raw: site_favicon_path, handler: ApprovalSiteFaviconHandler },
+    // FIRST-MATCH ORDER IS PART OF THE TABLE: the confirm page's GET template "/approve/{capability}" would
+    // otherwise bind the literal "devices" as a capability and answer the operator's list with a page, so
+    // the literal list path precedes it.
+    ServedRouteSpec { method: GET, raw: approval_devices_list_path as String, handler: DeviceListHandler },
     ServedRouteSpec { method: GET, raw: approval_broker_confirm_path_template as String, handler: ApprovalConfirmPageHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_decide_path_template as String, handler: ApprovalDecideHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
@@ -159,6 +167,7 @@ fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>>
     ServedRouteSpec { method: POST, raw: approval_device_request_path_template as String, handler: DeviceRequestHandler },
     ServedRouteSpec { method: POST, raw: approval_device_enrollment_path_template as String, handler: DeviceEnrollmentReadbackHandler },
     ServedRouteSpec { method: POST, raw: approval_device_push_path as String, handler: DevicePushUpdateHandler },
+    ServedRouteSpec { method: POST, raw: approval_device_revoke_path_template as String, handler: DeviceRevokeHandler },
   ]
 }
 
@@ -193,12 +202,39 @@ fn device_route_response(marker: ApprovalBrokerMarker, process: ApprovalServingP
 // WHAT MAKES THE PROCESS TRUSTWORTHY is that it is bound by the serve ENTRY, one entry per process
 // for its life, and is threaded down rather than inferred from the request. A request cannot choose
 // it by matching a route, which is precisely what it could do to the fold arm.
+// The favicon route's own answer to the emitter's result. A refusal is a typed 500 carrying the reason,
+// matching both broker_text_response's marker-refusal arm and roadmap_serve's favicon route: an unmarked
+// or empty favicon would be a served route lying about what it served.
+fn broker_favicon_response(process: ApprovalServingProcess) -> ServeHttpResponse {
+  match site_favicon_source() {
+    EmitOk { html: h } =>
+      broker_text_response(status: 200, content_type: site_favicon_type, body: h, marker: BrokerStaticRouteServed, process: process)
+    EmitRejected { reason: r } =>
+      ServeHttpResponse {
+        status: 500,
+        content_type: text_plain_utf8,
+        body: page_render_refusal_body(reason: r),
+        headers: [],
+      }
+  }
+}
+
 fn broker_text_response(status: HttpStatus, content_type: MediaType, body: String, marker: ApprovalBrokerMarker, process: ApprovalServingProcess) -> ServeHttpResponse {
-  ServeHttpResponse {
-    status: status,
-    content_type: content_type,
-    body: approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process),
-    headers: [],
+  match approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process) {
+    BrokerBodyMarked { body: marked, headers: marker_headers } =>
+      ServeHttpResponse { status: status, content_type: content_type, body: marked, headers: marker_headers }
+    // A marker that cannot be built is a construction failure of THIS response, so it fails the way
+    // every other construction failure in this fold fails: a typed 500 naming the reason, through the
+    // same refusal body a page-render refusal takes. Not an unmarked response — an unmarked response is
+    // what the reading side reports as "the request never reached the broker", and here we know we did
+    // reach it and could not mark it. Those two must not share an answer.
+    BrokerMarkerRefused { reason: r } =>
+      ServeHttpResponse {
+        status: 500,
+        content_type: text_plain_utf8,
+        body: page_render_refusal_body(reason: r),
+        headers: [],
+      }
   }
 }
 
@@ -414,15 +450,17 @@ fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAccessPath
             root: approval_decision_store_root,
             capability_keyring: read_approval_keyring(),
             publisher: read_publisher_token(),
+            devices: read_device_push_targets(),
+            sender: read_apns_sender(),
             request: admitted,
             broker: approval_broker_serving_base_url(),
           )
       }
   }
   let status = match outcome {
-    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => 201
-    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => 502
-    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => 503
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _, devices: _ } => 201
+    SubmissionFiledNotNotified { escalation_id: _, publish: _, devices: _ } => 502
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _, devices: _ } => 503
     SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => 503
     SubmissionFiledBrokerAddressRefused { escalation_id: _, detail: _ } => 503
     SubmissionAlreadyFiled { escalation_id: _ } => 409
@@ -524,7 +562,7 @@ fn approval_broker_invoke(
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match handler {
-    ApprovalSiteFaviconHandler => broker_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source(), marker: BrokerStaticRouteServed, process: process)
+    ApprovalSiteFaviconHandler => broker_favicon_response(process: process)
     ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params, process: process)
     ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
     ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
@@ -535,6 +573,8 @@ fn approval_broker_invoke(
     DevicePendingHandler => device_route_response(marker: DevicePendingHandlerObserved, process: process, r: device_pending_response(body: request.body))
     DeviceRequestHandler => device_route_response(marker: DeviceRequestHandlerObserved, process: process, r: device_request_response(body: request.body, segment: path_param_value(params: params, name: "segment")))
     DeviceEnrollmentReadbackHandler => device_route_response(marker: DeviceEnrollmentReadbackHandlerObserved, process: process, r: device_enrollment_readback_response(body: request.body, segment: path_param_value(params: params, name: "segment")))
+    DeviceListHandler => device_route_response(marker: DeviceListHandlerObserved, process: process, r: device_list_response(presented: tailnet_transport_observation(security: request.security)))
+    DeviceRevokeHandler => device_route_response(marker: DeviceRevokeHandlerObserved, process: process, r: device_revoke_response(presented: tailnet_transport_observation(security: request.security), segment: path_param_value(params: params, name: "segment"), process: process))
     DevicePushUpdateHandler => device_route_response(marker: DevicePushUpdateHandlerObserved, process: process, r: device_push_update_response(body: request.body, process: process))
   }
 }

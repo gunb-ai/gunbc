@@ -1,7 +1,8 @@
 module product.fabric.flex_vast_shadow
 
+import product.fabric.flex_serving_image { flex_lil_serving_image, flex_serving_image_reference }
 import std.apply_mode { ApplyMode, Plan, Apply }
-import std.types { NonEmptyStr, String, Bool, Int, List, Port }
+import std.types { NonEmptyStr, String, Bool, Int, List, Port, EpochMs }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
@@ -9,8 +10,10 @@ import std.integer { int_to_decimal_string }
 import std.measure {
   MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
   money_amount_micro, money_per_hour_micros, measure_le,
-  second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  Bandwidth, bandwidth, bandwidth_count, mebibyte_count, mebibyte_ceiling,
+  second, Second, second_count, scale_exponent, Giga, gibibyte_scale_factor_bytes, seconds_per_minute, minutes_per_hour, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
+  money_amount_micro_count, exact_decimal_to_money_amount_micro_ceil, DecimalMoneyConverted,
 }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.currency.currency { CurrencyCode, Usd }
@@ -34,6 +37,9 @@ import product.fabric.flex_market {
 }
 import product.fabric.serving_recipe {
   ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+  ServingCardSupply, RentedCardSupply, ServingDiskRate, PerGibibyteHour, ServingSelectionQuote,
+  SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable,
+  serving_card_hourly, serving_cost_per_million_tokens, serving_unit_cost_for_selection,
   ServingCardFacts, serving_recipe_accepts_card, CardAccepted,
   CardRefusedWrongCard, CardRefusedDriverBelowFloor, CardRefusedDriverUnread, CardScreenedOnUncitedFloor,
 }
@@ -41,12 +47,17 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand { debt_payoff_objective, DemandObjective }
 import product.fabric.budget { MoneyAccount }
 import extdeps.cloud.vast_ai {
-  VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
+  VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, vast_ai_wire_mb, vast_ai_wire_mbps, vast_ai_bits_per_megabit, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
   vast_ai_search_type_bid, vast_ai_search_limit_default, vast_ai_keyset_page_limit,
   vast_ai_min_bid_money_per_hour, vast_ai_quote_currency,
   vast_ai_instance_dph_total_money_per_hour,
 }
 import std.rational { NonzeroNatFraction }
+import std.nat { Nat }
+import std.induction { int_pow_bounded }
+import std.decimal { ExactDecimal, decimal_pow10 }
+import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
+import std.optional { Absent, Present }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 // Read-only Vast observation plus M0 admission recorded as a shadow receipt. The create and destroy
@@ -387,6 +398,11 @@ data flex_trial_fleet_rate_cap_authority: DeclarationRef = decl_ref(module_path:
 
 data flex_trial_total: MoneyAmountMicro = money_amount_micro(count: 50000000)
 
+// The instant the trial's charges are read from: 2026-10-16T00:00Z, the day the operator set the trial's cap
+// and total. Only rows under our label count (flex_vast_loop flex_spent), so an earlier start could only add
+// rows that are not ours; a later one could hide ours, so it is never moved later.
+data flex_trial_charges_from: EpochMs = 1792108800000
+
 data flex_trial_policy: FlexPolicy = FlexPolicy {
   fleet_rate_cap: flex_trial_fleet_rate_cap,
   on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
@@ -405,35 +421,83 @@ data flex_objective: DemandObjective = debt_payoff_objective
 // The recipe the flex tier realizes is a POLICY fact, selected here and resolved through
 // product.fabric.serving_recipe: the image, port, disk, model id, card classes and driver floor are
 // the recipe's, not literals of this loop. Consumer: flex_offer_in_shadow_field, which walks the
-// Vast roster against it.
-data flex_serving_recipe: ServingRecipe = serving_recipe_qwen3_8_27b_nvfp4_ninfer
+// Vast roster against it. The first flex recipe is Flash-Next (ruling flex_first_recipe_is_flash_next);
+// the 27B-on-ninfer recipe stays modelled in serving_recipe and is not selected.
+data flex_serving_recipe: ServingRecipe = serving_recipe_flash_next_lab_vllm
 
-// THE VAST CONTAINER REALIZATION OF A RECIPE: the image a rented Vast card boots is a Vast fact, not a
-// recipe fact (an owned card has no image). The image is operator policy, standing on the cited ruling. A recipe with no row here has no Vast realization.
+// THE VAST REALIZATION OF A RECIPE IS ONE JOINT FACT: the image a rented Vast card boots and the host
+// filters the operator's template searches with are read together from one Vast template, so they live in
+// one row. The image is a Vast fact, not a recipe fact (an owned card has no image); the disk is the
+// recipe's (flex_serving_template reads recipe.disk), never restated here. Every figure is an OPERATOR-ACCOUNT
+// READ of the Vast template (see read_on), and the filter thresholds are operator policy under the cited ruling.
+// A recipe with no row here has no Vast realization; a row with no filters admits no offer (flex_offer_screen_by_recipe).
+type FlexVastHostFilters {
+  cuda_max_good_min: Nat
+  cpu_ram_min: ByteSize
+  gpu_ram_min: ByteSize
+  inet_down_min: Bandwidth
+  verified: Bool
+  // The GPUs one rental carries. A Vast offer is a whole machine rented at one price (extdeps.cloud.vast_ai
+  // num_gpus), so a 4-GPU machine's min_bid is four cards' price; a recipe that serves on one card
+  // admits only one-card machines. The first live flex_pass (run 39214273788) admitted x2, x4 and x8
+  // machines into the field without it.
+  gpu_count: Nat
+}
+
 type FlexHostImageRow {
   recipe: DeclarationRef
   image: NonEmptyStr
+  filters: FlexVastHostFilters?
+  read_on: NonEmptyStr?
   ruling: DeclarationRef
+}
+
+// Flash-Next, read from the operator's Vast account 2026-10-18 (template "flash-next lil v2"): the image is
+// digest-pinned; cuda_max_good >= 13 is the CUDA major the recipe's driver floor derives from
+// (cuda_13_0_driver_requirement), so the filter and the floor cannot disagree.
+data flex_flash_next_vast_filters: FlexVastHostFilters = FlexVastHostFilters {
+  cuda_max_good_min: cuda_13_0_driver_requirement.toolkit_major,
+  cpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 128000)),
+  gpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 90000)),
+  inet_down_min: bandwidth(count: 1000 * vast_ai_bits_per_megabit),
+  verified: true,
+  gpu_count: 1,
 }
 
 data flex_host_images: List<FlexHostImageRow> = [
   FlexHostImageRow {
     recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
     image: "vastai/vllm:v0.30.0-cuda-13.0" as NonEmptyStr,
+    filters: none,
+    read_on: none,
     ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
+  },
+  FlexHostImageRow {
+    recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
+    image: flex_serving_image_reference(image: flex_lil_serving_image),
+    filters: Present { value: flex_flash_next_vast_filters },
+    read_on: Present { value: "2026-10-18 operator-account read of Vast template flash-next lil v2 (runtype ssh)" as NonEmptyStr },
+    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),
   },
 ]
 
-fn flex_host_image(recipe: ServingRecipe) -> NonEmptyStr? {
+fn flex_host_row(recipe: ServingRecipe) -> FlexHostImageRow? {
   fold(
     flex_host_images,
     init: none,
     f: (acc, row) =>
       match acc {
         Present { value: found } => Present { value: found }
-        Absent => if declaration_ref_eq(a: row.recipe, b: recipe.id) { Present { value: row.image } } else { none }
+        Absent => if declaration_ref_eq(a: row.recipe, b: recipe.id) { Present { value: row } } else { none }
       },
   )
+}
+
+fn flex_host_image(recipe: ServingRecipe) -> NonEmptyStr? {
+  match flex_host_row(recipe: recipe) {
+    Absent => none
+    Present { value: row } => Present { value: row.image }
+  }
 }
 
 type FlexServingTemplate {
@@ -477,20 +541,52 @@ fn vast_gpu_ram_bytes(gpu_ram_mb: Int) -> ByteSize? {
   }
 }
 
-// A Vast offer as the recipe sees any card. An unreadable VRAM is no card at all.
-// INGEST: a Vast gpu_name to the cited catalog row it names. Vast spells the PRO 6000 editions WS, S and
-// Max-Q; a name that names no single edition maps to no row rather than a guess. The suffix spellings are
-// TranscribedUncited (read them from Vast's offer vocabulary).
+// Vast's spelling of each named PRO 6000 edition. ONE table mapping an offer's name to the catalog row (ingest). The spellings were observed in the
+// 2026-10-18 operator read-only search; a name outside the table maps to no row rather than a guess.
+type FlexVastEditionName {
+  gpu_name: String
+  catalog: GpuModelCatalogRow
+}
+
+data flex_vast_pro_6000_editions: List<FlexVastEditionName> = [
+  FlexVastEditionName { gpu_name: "RTX PRO 6000 WS", catalog: nvidia_rtx_pro_6000_workstation_catalog },
+  FlexVastEditionName { gpu_name: "RTX PRO 6000 S", catalog: nvidia_rtx_pro_6000_server_catalog },
+  FlexVastEditionName { gpu_name: "RTX PRO 6000 Max-Q", catalog: nvidia_rtx_pro_6000_max_q_catalog },
+]
+
+// THE SEARCH QUERY is the realization's filter fact, so the search and the screen read the same numbers. It names no
+// gpu_name: the template filters alone return the PRO 6000 editions and the class screen excludes other 96 GB cards
+// (H200, B200), as the 2026-10-18 operator read-only search showed. A recipe with no filters has no query.
+// Consumer: the dry pass's search (product.fabric.flex_vast_loop) and test.claim.fabric.flex_vast_shadow_witness.
+fn flex_vast_offer_query(recipe: ServingRecipe) -> VastAiOfferQuery? {
+  match flex_host_row(recipe: recipe) {
+    Absent => none
+    Present { value: row } =>
+      match row.filters {
+        Absent => none
+        Present { value: f } =>
+          Present {
+            value: VastAiOfferQuery {
+              search_type: vast_ai_search_type_bid,
+              limit: vast_ai_search_limit_default,
+              gpu_ram_min: f.gpu_ram_min,
+              cuda_max_good_min: f.cuda_max_good_min,
+              cpu_ram_min: f.cpu_ram_min,
+              inet_down_min: f.inet_down_min,
+              verified: f.verified,
+              num_gpus: f.gpu_count,
+            },
+          }
+      }
+  }
+}
+
+// INGEST: a Vast gpu_name to the cited catalog row it names; the PRO 6000 editions come from the table above.
 fn flex_vast_gpu_catalog_row(gpu_name: String) -> GpuModelCatalogRow? {
   if string_contains(s: gpu_name, pattern: "RTX PRO 6000") {
-    if string_contains(s: gpu_name, pattern: "Max-Q") {
-      Present { value: nvidia_rtx_pro_6000_max_q_catalog }
-    } else if string_contains(s: gpu_name, pattern: " WS") {
-      Present { value: nvidia_rtx_pro_6000_workstation_catalog }
-    } else if string_contains(s: gpu_name, pattern: " S") {
-      Present { value: nvidia_rtx_pro_6000_server_catalog }
-    } else {
-      none
+    match first_where(flex_vast_pro_6000_editions, e => e.gpu_name == gpu_name) {
+      Present { value: e } => Present { value: e.catalog }
+      Absent => none
     }
   } else if string_contains(s: gpu_name, pattern: "RTX PRO 5000") {
     if string_contains(s: gpu_name, pattern: "72GB") {
@@ -503,30 +599,16 @@ fn flex_vast_gpu_catalog_row(gpu_name: String) -> GpuModelCatalogRow? {
   }
 }
 
-// THE WIRE-TO-CATALOG EDGE: an offer's card is the catalog product its name selects only when the
-// observed VRAM is that row's memory capacity less at most 1 GiB (Vast reports usable VRAM in MB, a little under
-// the physical figure; the 1 GiB tolerance is TranscribedUncited, read it from Vast's offer vocabulary); a name/VRAM disagreement is no card (refused, never
-// guessed), because one of the two observations is wrong.
-fn flex_offer_card_product(gpu_name: String, vram: ByteSize, tolerance: FlexVramTolerance) -> GpuModelCatalogRow? {
-  match flex_vast_gpu_catalog_row(gpu_name: gpu_name) {
-    Absent => none
-    Present { value: row } =>
-      if byte_size_count(b: vram) <= byte_size_count(b: row.memory.capacity)
-        && byte_size_count(b: row.memory.capacity) - byte_size_count(b: vram) < byte_size_count(b: tolerance.shortfall) {
-        Present { value: row }
-      } else {
-        none
-      }
-  }
-}
-
-fn flex_offer_card_facts(offer: VastAiOffer, tolerance: FlexVramTolerance) -> ServingCardFacts? {
+// An offer's card is the catalog product its name selects; a name that names no single edition is no card.
+// VRAM does not confirm the name: the minimum usable VRAM is the realization's operator-policy filter
+// (flex_offer_meets_filters), which replaced the 1 GiB name/VRAM tolerance.
+fn flex_offer_card_facts(offer: VastAiOffer) -> ServingCardFacts? {
   match vast_gpu_ram_bytes(gpu_ram_mb: offer.gpu_ram) {
     Absent => none
     Present { value: vram } =>
       Present {
         value: ServingCardFacts {
-          product: flex_offer_card_product(gpu_name: offer.gpu_name, vram: vram, tolerance: tolerance),
+          product: flex_vast_gpu_catalog_row(gpu_name: offer.gpu_name),
           vram: vram,
           driver_major: flex_offer_driver_major(offer: offer),
         },
@@ -534,110 +616,164 @@ fn flex_offer_card_facts(offer: VastAiOffer, tolerance: FlexVramTolerance) -> Se
   }
 }
 
-// An offer is a member of the shadow field with a STANDING (DESIGN 4d). A screen that rests on an
-// uncited figure (the recipe's driver floor, the 1 GiB name/VRAM tolerance) admits the offer as ESTIMATED,
-// never established: the uncited standings it rests on travel with it, and product.fabric.flex_vast_loop
-// flex_entry_wall refuses a wet create on them. The VERDICT is provisional on BOTH sides: an uncited screen that
-// would reject (floor not met, VRAM outside the tolerance) is Estimated with provisional_member false, never an
-// established exclusion, because the figure that rejected it was never cited.
+// An offer is a member of the shadow field with a STANDING (DESIGN 4d). A screen resting on an uncited
+// figure (a recipe whose driver floor is TranscribedUncited) admits the offer as ESTIMATED, never
+// established: the standing travels with it, and product.fabric.flex_vast_loop flex_entry_wall refuses a wet
+// create on it. The verdict is provisional on both sides: an uncited screen that would reject is Estimated
+// with provisional_member false, never an established exclusion.
 type FlexShadowFieldEntry
   = ShadowEntryEstablished
   | ShadowEntryEstimated { provisional_member: Bool, standings: List<CitedFigureStanding> }
   | ShadowEntryExcluded
 
-// ONE FACT: the admitted shortfall and the standing it rests on travel together, so citing the standing
-// changes the verdict (cited within = established, cited beyond = established exclusion).
-type FlexVramTolerance {
-  shortfall: ByteSize
-  standing: CitedFigureStanding
+fn decimal_at_least(d: ExactDecimal, min: Int) -> Bool {
+  d.units >= min * decimal_pow10(exponent: d.fraction_digits)
 }
 
-data flex_vram_tolerance: FlexVramTolerance = FlexVramTolerance {
-  shortfall: gibibyte_to_byte_size(g: gibibyte(count: 1)),
-  standing: TranscribedUncited {
-    read_obligation: "Vast reports usable VRAM in MB a little under the physical figure; the 1 GiB shortfall is a transcribed flex screen, read it from Vast's offer vocabulary" as NonEmptyStr,
-  },
-}
-
-fn flex_vram_tolerance_uncited(t: FlexVramTolerance) -> Bool {
-  match t.standing {
-    TranscribedUncited { read_obligation: _ } => true
-    _ => false
+fn flex_optional_decimal_at_least(d: ExactDecimal?, min: Int) -> Bool {
+  match d {
+    Absent => false
+    Present { value: v } => decimal_at_least(d: v, min: min)
   }
 }
 
-fn flex_offer_vram_tolerance_used(offer: VastAiOffer, tolerance: FlexVramTolerance) -> Bool {
-  match flex_offer_card_facts(offer: offer, tolerance: tolerance) {
-    Absent => false
-    Present { value: card } =>
-      match card.product {
-        Absent => false
-        Present { value: row } => byte_size_count(b: card.vram) < byte_size_count(b: row.memory.capacity)
-      }
-  }
+// The realization's host filters applied to the offer exactly as the Vast template searches with them. An
+// unread field fails the filter: absence is not a pass.
+fn flex_offer_meets_filters(offer: VastAiOffer, host: VastAiOfferHostResources, filters: FlexVastHostFilters) -> Bool {
+  host.id == offer.id
+    && flex_optional_decimal_at_least(d: offer.cuda_max_good, min: filters.cuda_max_good_min)
+    && flex_optional_decimal_at_least(d: offer.inet_down, min: vast_ai_wire_mbps(b: filters.inet_down_min))
+    && offer.gpu_ram >= vast_ai_wire_mb(b: filters.gpu_ram_min)
+    && host.cpu_ram >= vast_ai_wire_mb(b: filters.cpu_ram_min)
+    && (!filters.verified || offer.verification == "verified")
+    && (offer.num_gpus == (filters.gpu_count as Int))
 }
 
-fn flex_offer_vram_beyond_tolerance(offer: VastAiOffer, tolerance: FlexVramTolerance) -> Bool {
-  match vast_gpu_ram_bytes(gpu_ram_mb: offer.gpu_ram) {
-    Absent => false
-    Present { value: vram } =>
-      match flex_vast_gpu_catalog_row(gpu_name: offer.gpu_name) {
-        Absent => false
-        Present { value: _ } =>
-          match flex_offer_card_product(gpu_name: offer.gpu_name, vram: vram, tolerance: tolerance) {
-            Present { value: _ } => false
-            Absent => true
+// Consumer: flex_offer_in_shadow_field (the roster walk), and through it product.fabric.flex_vast_loop flex_entry_wall.
+fn flex_offer_screen_by_recipe(offer: VastAiOffer, host: VastAiOfferHostResources, recipe: ServingRecipe) -> FlexShadowFieldEntry {
+  match flex_host_row(recipe: recipe) {
+    Absent => ShadowEntryExcluded
+    Present { value: row } =>
+      match row.filters {
+        Absent => ShadowEntryExcluded
+        Present { value: filters } =>
+          if !flex_offer_meets_filters(offer: offer, host: host, filters: filters) {
+            ShadowEntryExcluded
+          } else {
+            match flex_offer_card_facts(offer: offer) {
+              Absent => ShadowEntryExcluded
+              Present { value: card } =>
+                match serving_recipe_accepts_card(recipe: recipe, card: card) {
+                  CardAccepted { class: _ } => ShadowEntryEstablished
+                  CardRefusedWrongCard => ShadowEntryExcluded
+                  CardRefusedDriverBelowFloor { required: _, observed: _ } => ShadowEntryExcluded
+                  CardRefusedDriverUnread => ShadowEntryExcluded
+                  CardScreenedOnUncitedFloor { class: _, required: _, observed: _, floor_met: met } =>
+                    ShadowEntryEstimated { provisional_member: met, standings: [recipe.driver_floor.standing] }
+                }
+            }
           }
       }
   }
 }
 
-fn flex_offer_screen_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> FlexShadowFieldEntry {
-  flex_offer_screen_with_tolerance(offer: offer, recipe: recipe, vram_tolerance: flex_vram_tolerance)
+// INTERRUPTIBLE IS THE SEARCH THAT FOUND THE OFFER, NOT is_bid. A live read-only search from srv1 on
+// 2026-10-18 (type bid) answered 63 offers, every one with is_bid false, and a running interruptible
+// rental under ctrl-bidder also read is_bid false; so is_bid does not mark an offer as rentable at a bid
+// price, and screening on it excluded every bid offer. search_type is the query the offer was returned for
+// (extdeps.cloud.vast_ai VastAiOfferQuery); only a bid search's offers are interruptible candidates.
+fn flex_interruptible_rentable(offer: VastAiOffer, search_type: String) -> Bool {
+  (search_type == vast_ai_search_type_bid) && offer.rentable && !offer.rented
 }
 
-fn flex_offer_screen_with_tolerance(offer: VastAiOffer, recipe: ServingRecipe, vram_tolerance: FlexVramTolerance) -> FlexShadowFieldEntry {
-  match flex_offer_card_facts(offer: offer, tolerance: vram_tolerance) {
-    Absent => ShadowEntryExcluded
-    Present { value: card } =>
-      if flex_offer_vram_beyond_tolerance(offer: offer, tolerance: vram_tolerance) {
-        if flex_vram_tolerance_uncited(t: vram_tolerance) {
-          ShadowEntryEstimated { provisional_member: false, standings: [vram_tolerance.standing] }
-        } else {
-          ShadowEntryExcluded
-        }
-      } else {
-      let tolerance_used = flex_offer_vram_tolerance_used(offer: offer, tolerance: vram_tolerance)
-      let tolerance = if tolerance_used && flex_vram_tolerance_uncited(t: vram_tolerance) { [vram_tolerance.standing] } else { [] }
-      match serving_recipe_accepts_card(recipe: recipe, card: card) {
-        CardAccepted { class: _ } =>
-          if length(tolerance) > 0 { ShadowEntryEstimated { provisional_member: true, standings: tolerance } } else { ShadowEntryEstablished }
-        CardRefusedWrongCard => ShadowEntryExcluded
-        CardRefusedDriverBelowFloor { required: _, observed: _ } => ShadowEntryExcluded
-        CardRefusedDriverUnread => ShadowEntryExcluded
-        CardScreenedOnUncitedFloor { class: _, required: _, observed: _, floor_met: met } =>
-          ShadowEntryEstimated { provisional_member: met, standings: concat([recipe.driver_floor.standing], tolerance) }
-      }
-      }
-  }
-}
-
-fn flex_interruptible_rentable(offer: VastAiOffer) -> Bool {
-  match offer.is_bid {
-    Absent => false
-    Present { value: bid } => bid && offer.rentable && !offer.rented
-  }
-}
-
-fn flex_offer_in_shadow_field(offer: VastAiOffer) -> FlexShadowFieldEntry {
-  if flex_interruptible_rentable(offer: offer) {
-    flex_offer_screen_by_recipe(offer: offer, recipe: flex_serving_recipe)
+fn flex_offer_in_shadow_field(offer: VastAiOffer, host: VastAiOfferHostResources, search_type: String) -> FlexShadowFieldEntry {
+  if flex_interruptible_rentable(offer: offer, search_type: search_type) {
+    flex_offer_screen_by_recipe(offer: offer, host: host, recipe: flex_serving_recipe)
   } else {
     ShadowEntryExcluded
   }
 }
 
+// ---- THE QUOTE OF ONE SHADOW-FIELD OFFER, as select_supply and the create walls take it: the recipe's cost
+// per accepted unit on this card, at the offer's bid floor (min_bid, the least an interruptible rental can
+// cost an hour) plus the recipe's disk at the host's storage rate.
+// Vast prices storage in dollars per GB-month (extdeps.cloud.vast_ai: storage_cost $/GB-month); the hourly
+// rate divides by the hours in a billing month, which no cited Vast page states. That figure is
+// TranscribedUncited, so a quote resting on it is Estimated (refused as an established price, DESIGN 4d)
+// and names what would ground it. GB to GiB is exact (2^30 / 10^9).
+// The billing month is a DURATION, and a zero month is unrepresentable: the period is one second more than
+// a Second-valued predecessor (the encoding std.rational NonzeroNatFraction uses for its denominator), so
+// the hourly division below has no zero case to check.
+type FlexStorageBillingMonth {
+  period_less_one_second: Second
+  standing: CitedFigureStanding
+}
+
+fn flex_billing_month_seconds(m: FlexStorageBillingMonth) -> Nat {
+  second_count(s: m.period_less_one_second) + 1
+}
+
+data flex_vast_storage_billing_month: FlexStorageBillingMonth = FlexStorageBillingMonth {
+  period_less_one_second: second(count: 730 * 3600 - 1),
+  standing: TranscribedUncited {
+    read_obligation: "the period Vast divides storage_cost ($/GB-month) by to bill storage per hour (taken as 730 hours); read it from Vast's billing documentation or derive it from a storage charge row (amount over GB-hours)" as NonEmptyStr,
+  },
+}
+
+// Bytes in a decimal gigabyte, from std.measure's Giga exponent (Vast's storage_cost is per GB).
+fn flex_bytes_per_gigabyte() -> Int? {
+  match scale_exponent(s: Giga) {
+    Absent => none
+    Present { value: e } => int_pow_bounded(base: 10, exp: e)
+  }
+}
+
+// $/GB-month to $/GiB-hour, rounded up: x * (bytes per GiB / bytes per GB) * (seconds per hour / seconds
+// per billing month). Every factor is std.measure's own; the month is the one uncited figure.
+fn flex_offer_disk_rate(offer: VastAiOffer, month: FlexStorageBillingMonth) -> ServingDiskRate? {
+  match exact_decimal_to_money_amount_micro_ceil(d: offer.storage_cost) {
+    DecimalMoneyConverted { amount: per_gb_month } =>
+      match flex_bytes_per_gigabyte() {
+        Absent => none
+        Present { value: bytes_per_gb } =>
+          let seconds_per_hour = seconds_per_minute() * minutes_per_hour()
+          let denominator = bytes_per_gb * flex_billing_month_seconds(m: month)
+          Present {
+            value: ServingDiskRate {
+              rate: MoneyRate {
+                amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * gibibyte_scale_factor_bytes() * seconds_per_hour + (denominator - 1)) / denominator),
+                currency: vast_ai_quote_currency,
+              },
+            },
+          }
+      }
+    _ => none
+  }
+}
+
+fn flex_offer_quote(offer: VastAiOffer, recipe: ServingRecipe) -> ServingSelectionQuote {
+  match vast_ai_min_bid_money_per_hour(offer: offer) {
+    DecimalMoneyPerHourRefused { conversion: _ } => SelectionQuoteRefusedUnavailable
+    DecimalMoneyPerHourConverted { rate: floor } =>
+      match flex_offer_disk_rate(offer: offer, month: flex_vast_storage_billing_month) {
+        Absent => SelectionQuoteRefusedUnavailable
+        Present { value: disk } =>
+          let quote = serving_unit_cost_for_selection(cost: serving_cost_per_million_tokens(recipe: recipe, hourly: serving_card_hourly(recipe: recipe, supply: RentedCardSupply { dph: floor, disk_rate: disk })))
+          match flex_vast_storage_billing_month.standing {
+            TranscribedUncited { read_obligation: _ } =>
+              match quote {
+                SelectionQuoteRefusedEstimated { standings: ss } => SelectionQuoteRefusedEstimated { standings: concat(ss, [flex_vast_storage_billing_month.standing]) }
+                SelectionQuoteEstablished { amount: _, currency: _ } => SelectionQuoteRefusedEstimated { standings: [flex_vast_storage_billing_month.standing] }
+                other => other
+              }
+            _ => quote
+          }
+      }
+  }
+}
+
 data flex_search_type: String = vast_ai_search_type_bid
+
 data flex_search_limit: Int = vast_ai_search_limit_default
 data flex_keyset_page_limit: Int = vast_ai_keyset_page_limit
 
@@ -701,6 +837,23 @@ fn flex_candidates_from_vast_offer(
       "cited region unobserved on search-offers" as NonEmptyStr,
       "use permit unobserved on search-offers" as NonEmptyStr,
     ],
+  }
+}
+
+// THE ACCOUNT the flex tier rents under: the operator's Vast account, the one the custody key
+// (gunbc.flex_vast_credential) authenticates as. Read 2026-10-18 from srv1 as the creator_id of the
+// operator's private template under that key; ctrl shares this account, isolated by label.
+data flex_vast_account: ProviderAccountObservationIdentity = "739031" as ProviderAccountObservationIdentity
+
+// THE ADMISSION AN OFFER CAN HAVE BEFORE ANY BID ATTEMPT IS BUILT. search-offers carries none of the
+// consequences a bid attempt needs (flex_candidates_from_vast_offer), so an offer whose candidates are
+// unestablished is refused with the missing facts named, exactly as flex_shadow_bid refuses it; an offer
+// whose candidates are derived has no admission until an attempt is built (none, never a guess).
+fn flex_offer_admission_unattempted(offer: VastAiOffer, account: ProviderAccountObservationIdentity) -> FlexBidAdmission? {
+  match flex_candidates_from_vast_offer(offer: offer, machine: flex_machine_key_for_offer(account: account, offer: offer)) {
+    VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+      Present { value: FlexBidRefused { cause: FlexCandidateConsequencesUnestablished { offer_key: k, missing: ms } } }
+    VastCandidateDerived { candidates: _ } => none
   }
 }
 

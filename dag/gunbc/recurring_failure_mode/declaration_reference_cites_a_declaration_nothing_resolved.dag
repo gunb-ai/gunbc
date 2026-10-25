@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data declaration_reference_cites_a_declaration_nothing_resolved: RecurringFailureMode = RecurringFailureMode {
+  identity: "declaration_reference_cites_a_declaration_nothing_resolved" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+      trigger_capability: "a fixture-root parameter on the decl-ref-census label that adds a fixtures directory to the census roots, after which the four dispatch-only fixtures (invented reference, bare head, alias of the reference type, invented prose span) are enrolled with a positive control; the further ceiling step needs substrate construction that refuses an unresolvable DeclarationRef literal",
+    },
+  },
+
+  receipts: [
+    "**a DeclarationRef literal, or a backtick symbol in ledger prose, names a module or declaration that does not exist, and nothing refuses it** (module_path, decl_name and field are three unchecked strings at construction, so an invented or stale citation is as writable as a real one).",
+
+    "INVALID STATE: a citation consumed as a pointer to a declaration that no longer exists or never did. HARM: a reader follows it to nothing, or trusts a claim whose cited authority was renamed away. A stale symbol is decidable from the Node tree (DESIGN section 3), so every instance is a missed refusal, not an unknowable.",
+
+    "RUNG FOUND AT: silent wrongness below the ladder for literals and prose alike. NOW: mitigatable. The decl-ref-census instrument resolves every literal and every ledger backtick span through the native ingest and refuses an unrostered unresolved identity by name, but it runs only on manual dispatch (the instrument-dispatch workflow), no required step runs it, and its discriminating REDs are not enrolled, so no merge is blocked by it and the rung is not mechanically preventable. Rostered identities carry one typed reason each and the census refuses a roster row that matches nothing, so the recorded debt only shrinks when the instrument is run.",
+
+    "CEILING: structurally guaranteed for literals (construction refuses an unresolvable reference) once the substrate can resolve at construction; prose spans stay a validator because a backtick span is not typed as a symbol. NEXT-RUNG TRIGGERS, two capabilities and then a third. (1) To reach mechanically preventable: the census on the required path (a row in the emitted subject build rows, which is closed to new jobs without operator sign-off) AND its REDs enrolled (the fixture-root capability below). (2) To reach structurally guaranteed: substrate construction that refuses an unresolvable DeclarationRef literal (the seed rosters are frozen with that dissolve-on).",
+
+    "UNENROLLED EVIDENCE, A DECLARED STALL: the discriminating REDs for an invented reference, a bare head, an alias of the reference type and an invented prose span were executed as dispatch-only fixtures at gunbc#14598 and are not enrolled, because the census takes its source roots from the self-host roots and no fixture root can be passed through its label. The standing in-corpus RED is the deliberate-absent roster rows. TRIGGER (a capability): a fixture-root parameter on the decl-ref-census label that adds a fixtures directory to the census roots, after which the four fixtures are enrolled with a positive control, and this stall closes.)",
+
+    "RECEIPT, v1_src_dag_parse ON MAIN (gunbc#14878): the seed sweep `v1_src_dag_parse`, built from main 82a77ab6271 BEFORE the PR, exited 1 with 60 *-ABSENT findings besides 13 CITATION-DEBT-ROW-STALE rows, so main carried citations to modules and declarations that do not exist while the rows meant to account for them rotted separately. The PR clears the 13 stale rows and 2 dead citation classes (modules deleted by #13703 and #13641); the residual 57 findings are a parked backlog, listed with owners in the PR body. This receipt is the SAME class at the seed sweep's grain: the sweep refuses them, but v1_src_dag_parse is on no required path, which is why main was red unobserved.",
+
+    "OWNERS OF THE RESIDUAL (gunbc#14878 body): the 10 citations of `gunbc.provisioning.network_boot_actuation` are main citing a module that exists only on zesty-bear-293's branch (the unlanded-citation shape of `unlanded_citation_indistinguishable_at_the_citing_end`); the remaining ~47 are owner unassigned, routed to sleek-owl-397.",
+  ],
+
+  evidence: [],
+}

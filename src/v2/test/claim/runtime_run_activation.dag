@@ -1,0 +1,660 @@
+module v2.test.claim.runtime_run_activation
+
+import std.algebra { Cons, Empty, PartialFunction, fold_list, length, list_at_optional }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { Bool, Int, List }
+import v2.compiler.activation_dependency { activation_dispositions_of_root }
+import v2.compiler.eval {
+  EvalContext,
+  eval_context_with_semantics,
+  eval_diagnostic,
+  eval_with_context,
+  inputs_root_only
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag { dag_pick_if_body_from_arms, dag_type_atom_node }
+import v2.lens.parallelism { parallelism_witness }
+import v2.program {
+  program_allocate_literal,
+  program_bind_value,
+  program_context_with_effect_io,
+  program_effect_io_roundtrip,
+  program_bool_type,
+  program_facts_for,
+  program_facts_lookup,
+  program_facts_typed,
+  program_i64_type,
+  program_interpretation,
+  program_kw_false,
+  program_kw_true,
+  program_literal_two,
+  program_pick_if_branch_with_effect_io,
+  program_reject_primitive,
+  program_step_loop,
+  program_structure_witness,
+  program_termination_proof
+}
+import v2.std.dependency { BindsTo, Contains, DataDependsOn, DependencyKind, DependencyView }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_eq, diagnostics_fatal_reason, diagnostics_singleton, non_empty_diagnostics_eq }
+import v2.std.node { node_same_occurrence,
+  Behavior,
+  Bind,
+  Branch,
+  BranchConditionSlot,
+  ComputationNode,
+  Conj,
+  Edge,
+  Match,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  Node,
+  NotADeclaration,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  branch_slot_target,
+  core_edge_label
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimeValue,
+  RuntimeValueEqualityUnavailable,
+  RuntimeValuesDiffer,
+  RuntimeValuesEqual,
+  TransformInterpreter,
+  ValueInterpreter,
+  runtime_value_equality
+}
+import v2.std.witness { Holds, Violates, Witness }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.workflow.runtime_run {
+  RuntimeRunActivated,
+  RuntimeRunCompleted,
+  RuntimeRunLog,
+  RuntimeRunNotDerived,
+  RuntimeRunReceipt,
+  RuntimeRunResult,
+  RuntimeRunRoot,
+  RuntimeRunSelectedBy,
+  RuntimeRunSelectorOf,
+  RuntimeRunWhole,
+  runtime_run
+}
+
+// THE RUN FROM DERIVED ACTIVATION (v2.workflow.runtime_run), at its one interface: given a root, a tree of facts
+// and an evaluation context, what does the run answer and what did it evaluate? The trees are supplied the way
+// v2.program supplies its own (hand-built nodes, a hand-written facts lookup, the program interpretation),
+// because the run's production consumer is v2.program and that is the shape it runs; v2.program
+// program_runtime_run_holds is the inhabitance claim on that real route.
+//
+// TWO READINGS PER CLAIM. The root outcome is compared with eval_with_context's for the same root, tree and
+// context wherever the run is meant to agree with eval -- the run sequences eval's own control steps, so any
+// disagreement (a site admitted without its facts, a chosen value not accepted against the site) shows here.
+// The receipts say what was evaluated, in what role and in what order, which eval's answer cannot: that only
+// the chosen alternative ran is the receipts' fact. The three places the run is meant to DIFFER from eval are
+// stated per claim: a not-derived site (refused before anything runs), a choice outside the derived
+// alternatives, and a selected Match alternative (the pattern-binder frontier).
+
+// ---- fixtures ----
+
+// EACH NODE'S DECLARED TYPE IS THE TYPE OF THE VALUE IT PRODUCES, because eval accepts a value only against
+// its node's declared type (v2.compiler.eval eval_runtime_value_acceptance_witness). Int: the literal two, the
+// effect (it reads back the Int locator, v2.program program_locator_value) and every site or Bind whose chosen
+// value is one of those; Bool: a site that chooses its own condition. v2.program's own lookup answers the
+// rest.
+fn rr_facts(node: Node) -> InferredFacts {
+  if node_same_occurrence(a: node, b: program_literal_two()) || node_same_occurrence(a: node, b: rr_false_site) || node_same_occurrence(a: node, b: rr_inner_site) || node_same_occurrence(a: node, b: rr_nested_site) || node_same_occurrence(a: node, b: rr_bind_over_branch) || node_same_occurrence(a: node, b: rr_untaken_malformed_site) {
+    program_facts_typed(node: node, algebra: program_i64_type())
+  } else if node_same_occurrence(a: node, b: rr_shared_site) {
+    program_facts_typed(node: node, algebra: program_bool_type())
+  } else {
+    match program_facts_lookup(node: node) {
+      Present { value: facts } => facts
+      Absent => program_facts_for(node: node)
+    }
+  }
+}
+
+fn rr_facts_everywhere(node: Node) -> Optional<InferredFacts> {
+  optional_present(value: rr_facts(node: node))
+}
+
+fn rr_tree(root: Node) -> InferredTree {
+  InferredTree { root: root, facts: PartialFunction { lookup: rr_facts_everywhere } }
+}
+
+fn rr_tree_with(root: Node, lookup: fn(Node) -> Optional<InferredFacts>) -> InferredTree {
+  InferredTree { root: root, facts: PartialFunction { lookup: lookup } }
+}
+
+fn rr_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
+}
+
+fn rr_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
+  dag_pick_if_body_from_arms(condition: condition, then_arm: then_arm, else_arm: else_arm)
+}
+
+fn rr_node(behavior: Behavior, children: List<Edge>) -> Node {
+  Node { kind: ComputationNode { behavior: behavior }, children: children, occurrence_id: OccurrenceSynthetic }
+}
+
+fn rr_arm(pattern: Node, body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+data rr_false_site: Node = rr_branch(condition: program_kw_false(), then_arm: program_effect_io_roundtrip, else_arm: program_literal_two())
+
+// The condition IS the then arm: one node in two roles.
+data rr_shared_site: Node = rr_branch(condition: program_kw_true(), then_arm: program_kw_true(), else_arm: program_literal_two())
+
+// A well-formed selector the program interpretation refuses to evaluate: an atom it allocates no value for.
+data rr_refusing_selector: Node = dag_type_atom_node(identity: ^rr_unallocated_atom)
+data rr_selector_refuses_site: Node = rr_branch(condition: rr_refusing_selector, then_arm: program_effect_io_roundtrip, else_arm: program_literal_two())
+
+// A selector that evaluates but is not a Bool, so the program interpretation's chooser refuses.
+data rr_chooser_refuses_site: Node = rr_branch(condition: program_literal_two(), then_arm: program_effect_io_roundtrip, else_arm: program_literal_two())
+
+// A Branch with two positional children: the derivation cannot classify it.
+data rr_malformed_site: Node = rr_node(behavior: Branch, children: [rr_positional(target: program_kw_true()), rr_positional(target: program_literal_two())])
+
+// The malformed site in the else arm (untaken), as the then arm (chosen), and under a Bind (delegated).
+data rr_untaken_malformed_site: Node = rr_branch(condition: program_kw_true(), then_arm: program_literal_two(), else_arm: rr_malformed_site)
+data rr_chosen_malformed_site: Node = rr_branch(condition: program_kw_true(), then_arm: rr_malformed_site, else_arm: program_literal_two())
+data rr_bind_over_malformed: Node = rr_node(behavior: Bind, children: [
+  rr_positional(target: dag_type_atom_node(identity: ^rr_binder)),
+  rr_positional(target: program_kw_true()),
+  rr_positional(target: rr_malformed_site)
+])
+
+data rr_zero_alternative_match: Node = rr_node(behavior: Match, children: [rr_positional(target: program_kw_true())])
+
+data rr_match_with_arms: Node = rr_node(behavior: Match, children: [
+  rr_positional(target: program_kw_true()),
+  rr_positional(target: rr_arm(pattern: program_kw_true(), body: program_literal_two())),
+  rr_positional(target: rr_arm(pattern: program_kw_false(), body: program_effect_io_roundtrip))
+])
+
+// A Bind whose body is a Branch: the run evaluates the whole Bind through eval and does not decompose inside it.
+data rr_bind_over_branch: Node = rr_node(behavior: Bind, children: [
+  rr_positional(target: dag_type_atom_node(identity: ^rr_binder)),
+  rr_positional(target: program_kw_true()),
+  rr_positional(target: program_pick_if_branch_with_effect_io)
+])
+
+// A Branch whose chosen arm is itself a Branch: the run decomposes both sites.
+data rr_inner_site: Node = rr_branch(condition: program_kw_false(), then_arm: program_effect_io_roundtrip, else_arm: program_literal_two())
+data rr_nested_site: Node = rr_branch(condition: program_kw_true(), then_arm: rr_inner_site, else_arm: program_literal_two())
+
+// The site's facts are absent; every other node has them.
+fn rr_facts_except_true_site(node: Node) -> Optional<InferredFacts> {
+  if node_same_occurrence(a: node, b: program_pick_if_branch_with_effect_io) { optional_absent() } else { rr_facts_everywhere(node: node) }
+}
+
+// The site's declared result is Bool while its chosen arm produces Int.
+fn rr_facts_true_site_typed_bool(node: Node) -> Optional<InferredFacts> {
+  if node_same_occurrence(a: node, b: program_pick_if_branch_with_effect_io) {
+    optional_present(value: claim_inferred_facts_from_nodes(
+      resolved: node,
+      algebra: program_bool_type(),
+      descent: Holds { value: program_termination_proof() }
+    ))
+  } else {
+    rr_facts_everywhere(node: node)
+  }
+}
+
+// ---- contexts ----
+
+fn rr_context() -> EvalContext {
+  program_context_with_effect_io()
+}
+
+// The program interpretation with NO effect handler: an effect operation that runs here refuses.
+fn rr_context_without_effects() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^program_runtime_id,
+    interpretation: program_interpretation(),
+    structure_witness: program_structure_witness()
+  )
+}
+
+// A chooser that returns the condition: a node that is no alternative of the site.
+fn rr_choose_condition(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  match branch_slot_target(n: node, slot: BranchConditionSlot) {
+    Present { value: condition } => Accepted { value: condition, diagnostics: None }
+    Absent => Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^rr_no_condition, node: node)) }
+  }
+}
+
+// A Match chooser that takes the first derived arm: what an interpretation that executes Match would do.
+fn rr_choose_first_arm(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  match activation_dispositions_of_root(root: node).demands {
+    Cons { head: demand, tail: _ } => Accepted { value: demand.alternatives.head.root, diagnostics: None }
+    Empty => Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^rr_no_arm, node: node)) }
+  }
+}
+
+fn rr_interpretation(choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>, branch_identity: Symbol, choose_arm: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>, arm_identity: Symbol) -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: program_allocate_literal, identity: ^program_allocate_literal },
+    transform: TransformInterpreter { call_primitive: program_reject_primitive, identity: ^program_reject_primitive },
+    branch: BranchInterpreter { choose_branch: choose_branch, identity: branch_identity },
+    loop: LoopInterpreter { step_loop: program_step_loop, identity: ^program_step_loop },
+    bind: BindInterpreter { bind_value: program_bind_value, identity: ^program_bind_value },
+    match: MatchInterpreter { choose_arm: choose_arm, identity: arm_identity }
+  }
+}
+
+fn rr_structure_witness(branch_identity: Symbol, arm_identity: Symbol) -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^program_allocate_literal,
+    call_primitive: ^program_reject_primitive,
+    choose_branch: branch_identity,
+    step_loop: ^program_step_loop,
+    bind_value: ^program_bind_value,
+    choose_arm: arm_identity
+  }
+}
+
+fn rr_context_choosing_condition() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^rr_runtime_choosing_condition,
+    interpretation: rr_interpretation(choose_branch: rr_choose_condition, branch_identity: ^rr_choose_condition, choose_arm: rr_choose_first_arm, arm_identity: ^rr_choose_first_arm),
+    structure_witness: rr_structure_witness(branch_identity: ^rr_choose_condition, arm_identity: ^rr_choose_first_arm)
+  )
+}
+
+// ---- readers ----
+
+fn rr_root_of(result: RuntimeRunResult) -> Optional<Outcome<RuntimeValue>> {
+  match result {
+    RuntimeRunCompleted { root: root, log: _ } => optional_present(value: root)
+    RuntimeRunNotDerived { not_derived: _, log: _ } => optional_absent()
+  }
+}
+
+fn rr_log_of(result: RuntimeRunResult) -> RuntimeRunLog {
+  match result {
+    RuntimeRunCompleted { root: _, log: log } => log
+    RuntimeRunNotDerived { not_derived: _, log: log } => log
+  }
+}
+
+fn rr_eval(tree: InferredTree, root: Node, context: EvalContext) -> Outcome<RuntimeValue> {
+  eval_with_context(tree: tree, context: context, inputs: inputs_root_only(root: root))
+}
+
+// TWO OUTCOMES AGREE when both refuse with equal diagnostics, or both accept equal values with equal
+// diagnostics. Runtime values have no Boolean equality (v2.std.runtime RuntimeValueEquality): an undecided
+// comparison is a located Violates, never an answer.
+fn rr_outcomes_agree(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Witness<Bool> {
+  match a {
+    Accepted { value: av, diagnostics: ad } =>
+      match b {
+        Accepted { value: bv, diagnostics: bd } =>
+          match runtime_value_equality(a: av, b: bv) {
+            RuntimeValuesEqual => Holds { value: diagnostics_eq(a: ad, b: bd) }
+            RuntimeValuesDiffer => Holds { value: false }
+            RuntimeValueEqualityUnavailable { reason: r } =>
+              Violates { diagnostic: eval_diagnostic(reason: r, node: rr_comparison_subject) }
+          }
+        Rejected { diagnostics: _ } => Holds { value: false }
+      }
+    Rejected { diagnostics: ar } =>
+      match b {
+        Accepted { value: _, diagnostics: _ } => Holds { value: false }
+        Rejected { diagnostics: br } => Holds { value: non_empty_diagnostics_eq(a: ar, b: br) }
+      }
+  }
+}
+
+data rr_comparison_subject: Node = dag_type_atom_node(identity: ^rr_runtime_value_comparison)
+
+// THE ONE COLLAPSE IN THIS MODULE: a claim answers a Bool, so a Violates (the comparison could not be
+// decided) reads as the claim failing -- red, never green -- and its reason is lost here, as in v2.program
+// program_runs_holds.
+fn rr_holds(w: Witness<Bool>) -> Bool {
+  match w {
+    Holds { value: b } => b
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn rr_outcomes_equal(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
+  rr_holds(w: rr_outcomes_agree(a: a, b: b))
+}
+
+// The run completed and its root outcome is eval's.
+fn rr_agrees_with_eval(tree: InferredTree, root: Node, context: EvalContext) -> Bool {
+  match rr_root_of(result: runtime_run(tree: tree, root: root, context: context)) {
+    Present { value: outcome } => rr_outcomes_equal(a: outcome, b: rr_eval(tree: tree, root: root, context: context))
+    Absent => false
+  }
+}
+
+fn rr_accepted(o: Outcome<RuntimeValue>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rr_rejected_for(o: Outcome<RuntimeValue>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// Role kinds: 0 the root, 1 a selector of `site`, 2 the alternative `site` chose.
+fn rr_role_is(receipt: RuntimeRunReceipt, kind: Int, site: Node) -> Bool {
+  match receipt.role {
+    RuntimeRunRoot => kind == 0
+    RuntimeRunSelectorOf { site: s } => kind == 1 && node_same_occurrence(a: s, b: site)
+    RuntimeRunSelectedBy { site: s, selections: _ } => kind == 2 && node_same_occurrence(a: s, b: site)
+  }
+}
+
+fn rr_receipt_is(log: RuntimeRunLog, index: Int, node: Node, kind: Int, site: Node, accepted: Bool) -> Bool {
+  match list_at_optional(xs: log.entries, index: index) {
+    Present { value: receipt } =>
+      node_same_occurrence(a: receipt.node, b: node) && rr_role_is(receipt: receipt, kind: kind, site: site) && rr_accepted(o: receipt.result) == accepted
+    Absent => false
+  }
+}
+
+fn rr_receipt_count(log: RuntimeRunLog) -> Int {
+  length(xs: log.entries)
+}
+
+fn rr_no_receipt_for(log: RuntimeRunLog, node: Node) -> Bool {
+  fold_list(xs: log.entries, empty: true, cons: fn(ok, receipt) { ok && !node_same_occurrence(a: receipt.node, b: node) })
+}
+
+fn rr_run(root: Node) -> RuntimeRunResult {
+  runtime_run(tree: rr_tree(root: root), root: root, context: rr_context())
+}
+
+// ---- claims ----
+
+// (a) TRUE: the condition, then the then arm, then the site; the else arm never runs; the answer is eval's.
+test fn rr_a_true_branch_runs_condition_then_chosen_arm_holds() -> Bool {
+  let site = program_pick_if_branch_with_effect_io
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 3
+    && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: program_effect_io_roundtrip, kind: 2, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 2, node: site, kind: 0, site: site, accepted: true)
+    && rr_no_receipt_for(log: log, node: program_literal_two())
+}
+
+// (b) FALSE: the else arm runs and the then arm (the effect) has no receipt.
+test fn rr_b_false_branch_runs_only_the_else_arm_holds() -> Bool {
+  let site = rr_false_site
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 3
+    && rr_receipt_is(log: log, index: 0, node: program_kw_false(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: program_literal_two(), kind: 2, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 2, node: site, kind: 0, site: site, accepted: true)
+    && rr_no_receipt_for(log: log, node: program_effect_io_roundtrip)
+}
+
+// (c) THE FALSE BRANCH'S ANSWER DOES NOT DEPEND ON THE EFFECT HANDLER: with no handler an effect that runs refuses,
+// so the true Branch's answer changes when the handler is removed (the control: its chosen effect runs) and the
+// false Branch's does not. This is a statement about the ROOT OUTCOME only. A run that also evaluated the untaken
+// effect and discarded its result would still pass here (measured: the all-alternatives mutation leaves this claim
+// green), because the pure effect fixture returns no record of its invocations; that the untaken effect never ran
+// at all is (b)'s receipt fact, which that mutation turns red.
+test fn rr_c_false_branch_answer_does_not_depend_on_the_effect_handler_holds() -> Bool {
+  let with_true = rr_root_of(result: runtime_run(tree: rr_tree(root: program_pick_if_branch_with_effect_io), root: program_pick_if_branch_with_effect_io, context: rr_context()))
+  let without_true = rr_root_of(result: runtime_run(tree: rr_tree(root: program_pick_if_branch_with_effect_io), root: program_pick_if_branch_with_effect_io, context: rr_context_without_effects()))
+  let with_false = rr_root_of(result: runtime_run(tree: rr_tree(root: rr_false_site), root: rr_false_site, context: rr_context()))
+  let without_false = rr_root_of(result: runtime_run(tree: rr_tree(root: rr_false_site), root: rr_false_site, context: rr_context_without_effects()))
+  match with_true {
+    Present { value: wt } =>
+      match without_true {
+        Present { value: nt } =>
+          match with_false {
+            Present { value: wf } =>
+              match without_false {
+                Present { value: nf } =>
+                  rr_accepted(o: wt) && !rr_accepted(o: nt) && rr_accepted(o: wf) && rr_outcomes_equal(a: wf, b: nf)
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// (d) A ROOT SITE THE DERIVATION CANNOT CLASSIFY stops the run before anything is evaluated (the run differs from
+// eval here by design: a site it is about to drive must be classified).
+test fn rr_d_not_derived_refuses_before_running_holds() -> Bool {
+  match rr_run(root: rr_malformed_site) {
+    RuntimeRunNotDerived { not_derived: rows, log: log } => length(xs: rows) == 1 && rr_receipt_count(log: log) == 0
+    RuntimeRunCompleted { root: _, log: _ } => false
+  }
+}
+
+// (q) A MALFORMED SITE IN AN UNTAKEN ALTERNATIVE contributes no runtime refusal: the outer Branch chooses the
+// literal, the run completes with eval's answer, and the malformed site has no receipt. A whole-tree completeness
+// preflight would refuse here.
+test fn rr_q_malformed_site_in_an_untaken_alternative_does_not_refuse_holds() -> Bool {
+  let site = rr_untaken_malformed_site
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 3
+    && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: program_literal_two(), kind: 2, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 2, node: site, kind: 0, site: site, accepted: true)
+    && rr_no_receipt_for(log: log, node: rr_malformed_site)
+}
+
+// (r) A MALFORMED SITE INSIDE A DELEGATED BIND is eval's, not the run's: the run evaluates the Bind whole, reports
+// eval's answer for it whatever that is, and does not stop as not-derived.
+test fn rr_r_malformed_site_inside_a_delegated_bind_is_evals_holds() -> Bool {
+  let root = rr_bind_over_malformed
+  match rr_run(root: root) {
+    RuntimeRunCompleted { root: _, log: log } =>
+      rr_agrees_with_eval(tree: rr_tree(root: root), root: root, context: rr_context())
+        && rr_receipt_count(log: log) == 1
+        && rr_receipt_is(log: log, index: 0, node: root, kind: 0, site: root, accepted: rr_accepted(o: rr_eval(tree: rr_tree(root: root), root: root, context: rr_context())))
+    RuntimeRunNotDerived { not_derived: _, log: _ } => false
+  }
+}
+
+// (s) A MALFORMED SITE THAT IS CHOSEN stops the run as not-derived when it becomes active: the outer selector has
+// run (its receipt stands), the malformed site's selector has not, and neither site has a receipt.
+test fn rr_s_malformed_chosen_site_stops_the_run_when_it_becomes_active_holds() -> Bool {
+  let site = rr_chosen_malformed_site
+  match rr_run(root: site) {
+    RuntimeRunNotDerived { not_derived: rows, log: log } =>
+      length(xs: rows) == 1
+        && rr_receipt_count(log: log) == 1
+        && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+        && rr_no_receipt_for(log: log, node: rr_malformed_site)
+        && rr_no_receipt_for(log: log, node: site)
+    RuntimeRunCompleted { root: _, log: _ } => false
+  }
+}
+
+// (e) THE SITE'S FACTS ARE ADMITTED BEFORE ITS SELECTOR RUNS: with the site's facts absent the run refuses as eval
+// does, and the selector has no receipt.
+test fn rr_e_missing_site_facts_refuse_before_the_selector_holds() -> Bool {
+  let site = program_pick_if_branch_with_effect_io
+  let tree = rr_tree_with(root: site, lookup: rr_facts_except_true_site)
+  let log = rr_log_of(result: runtime_run(tree: tree, root: site, context: rr_context()))
+  rr_agrees_with_eval(tree: tree, root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 1
+    && rr_receipt_is(log: log, index: 0, node: site, kind: 0, site: site, accepted: false)
+}
+
+// (f) THE CHOSEN VALUE IS ACCEPTED AGAINST THE SITE: the arm produces Int, the site declares Bool; the selector and
+// the arm succeed and the root refuses, as eval refuses.
+test fn rr_f_chosen_value_violating_the_site_refuses_holds() -> Bool {
+  let site = program_pick_if_branch_with_effect_io
+  let tree = rr_tree_with(root: site, lookup: rr_facts_true_site_typed_bool)
+  let log = rr_log_of(result: runtime_run(tree: tree, root: site, context: rr_context()))
+  rr_agrees_with_eval(tree: tree, root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 3
+    && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: program_effect_io_roundtrip, kind: 2, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 2, node: site, kind: 0, site: site, accepted: false)
+}
+
+// (g) A REFUSING SELECTOR activates nothing.
+test fn rr_g_refusing_selector_activates_no_alternative_holds() -> Bool {
+  let site = rr_selector_refuses_site
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 2
+    && rr_receipt_is(log: log, index: 0, node: rr_refusing_selector, kind: 1, site: site, accepted: false)
+    && rr_receipt_is(log: log, index: 1, node: site, kind: 0, site: site, accepted: false)
+}
+
+// (h) A REFUSING CHOICE activates nothing; the selector's receipt stands.
+test fn rr_h_refusing_choice_activates_no_alternative_holds() -> Bool {
+  let site = rr_chooser_refuses_site
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 2
+    && rr_receipt_is(log: log, index: 0, node: program_literal_two(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: site, kind: 0, site: site, accepted: false)
+}
+
+// (i) A CHOICE OUTSIDE THE DERIVED ALTERNATIVES refuses, typed, and nothing more runs (eval, which has no derived
+// population, would evaluate the returned node).
+test fn rr_i_choice_outside_the_alternatives_refuses_holds() -> Bool {
+  let site = program_pick_if_branch_with_effect_io
+  let result = runtime_run(tree: rr_tree(root: site), root: site, context: rr_context_choosing_condition())
+  let log = rr_log_of(result: result)
+  match rr_root_of(result: result) {
+    Present { value: root } =>
+      rr_rejected_for(o: root, reason: ^runtime_run_selection_outside_alternatives)
+        && rr_receipt_count(log: log) == 2
+        && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+        && rr_receipt_is(log: log, index: 1, node: site, kind: 0, site: site, accepted: false)
+    Absent => false
+  }
+}
+
+// (j) ONE NODE IN TWO ROLES runs in both: the condition and the then arm are the same node, and it has two receipts.
+test fn rr_j_shared_node_runs_in_each_role_holds() -> Bool {
+  let site = rr_shared_site
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 3
+    && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: program_kw_true(), kind: 2, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 2, node: site, kind: 0, site: site, accepted: true)
+}
+
+// (k) A SCRUTINEE-ONLY MATCH keeps its selector demand and does not succeed by default: the scrutinee runs and the
+// program interpretation's chooser refuses, as under eval.
+test fn rr_k_zero_alternative_match_keeps_its_selector_and_does_not_succeed_holds() -> Bool {
+  let site = rr_zero_alternative_match
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 2
+    && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: site, kind: 0, site: site, accepted: false)
+}
+
+// (l) A MATCH UNDER THE PROGRAM INTERPRETATION: its chooser refuses every arm, and the run propagates that refusal
+// as eval does. This is propagation only; a successful Match selection is (m).
+test fn rr_l_match_choice_refusal_propagates_holds() -> Bool {
+  let site = rr_match_with_arms
+  let log = rr_log_of(result: rr_run(root: site))
+  rr_agrees_with_eval(tree: rr_tree(root: site), root: site, context: rr_context())
+    && rr_receipt_count(log: log) == 2
+    && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: site, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: site, kind: 0, site: site, accepted: false)
+}
+
+// (m) A SELECTED MATCH ALTERNATIVE IS OUTSIDE THIS RUN'S QUALIFIED POPULATION: when an interpretation does choose
+// an arm, the run refuses with ^runtime_run_match_selection_unqualified and does not run the arm (its pattern may
+// bind names whose data flow is value_use_dependency's open frontier).
+test fn rr_m_selected_match_alternative_refuses_holds() -> Bool {
+  let site = rr_match_with_arms
+  let result = runtime_run(tree: rr_tree(root: site), root: site, context: rr_context_choosing_condition())
+  let log = rr_log_of(result: result)
+  match rr_root_of(result: result) {
+    Present { value: root } =>
+      rr_rejected_for(o: root, reason: ^runtime_run_match_selection_unqualified)
+        && rr_receipt_count(log: log) == 2
+        && rr_no_receipt_for(log: log, node: program_literal_two())
+    Absent => false
+  }
+}
+
+// (n) A BIND IS DELEGATED WHOLE: the Branch inside it is eval's, not decomposed by the run.
+test fn rr_n_bind_is_delegated_whole_holds() -> Bool {
+  let root = rr_bind_over_branch
+  let log = rr_log_of(result: rr_run(root: root))
+  rr_agrees_with_eval(tree: rr_tree(root: root), root: root, context: rr_context())
+    && rr_receipt_count(log: log) == 1
+    && rr_no_receipt_for(log: log, node: program_kw_true())
+    && rr_no_receipt_for(log: log, node: program_effect_io_roundtrip)
+}
+
+// (o) A CHOSEN ARM THAT IS ITSELF A SITE is decomposed in turn, and the order is selector before chosen at each.
+test fn rr_o_nested_site_is_decomposed_in_order_holds() -> Bool {
+  let outer = rr_nested_site
+  let inner = rr_inner_site
+  let log = rr_log_of(result: rr_run(root: outer))
+  rr_agrees_with_eval(tree: rr_tree(root: outer), root: outer, context: rr_context())
+    && rr_receipt_count(log: log) == 5
+    && rr_receipt_is(log: log, index: 0, node: program_kw_true(), kind: 1, site: outer, accepted: true)
+    && rr_receipt_is(log: log, index: 1, node: program_kw_false(), kind: 1, site: inner, accepted: true)
+    && rr_receipt_is(log: log, index: 2, node: program_literal_two(), kind: 2, site: inner, accepted: true)
+    && rr_receipt_is(log: log, index: 3, node: inner, kind: 2, site: outer, accepted: true)
+    && rr_receipt_is(log: log, index: 4, node: outer, kind: 0, site: outer, accepted: true)
+    && rr_no_receipt_for(log: log, node: program_effect_io_roundtrip)
+}
+
+// (p) A STRUCTURAL VIEW IS NOT A PARALLELISM INPUT: Contains and BindsTo refuse at the parallelism lens, located,
+// while a DataDependsOn view is still classified.
+fn rr_view(kind: DependencyKind) -> DependencyView {
+  DependencyView {
+    source: program_kw_true(),
+    dependent: program_effect_io_roundtrip,
+    kind: kind,
+    usage_site: program_effect_io_roundtrip
+  }
+}
+
+fn rr_parallelism_refuses_structurally(kind: DependencyKind) -> Bool {
+  match parallelism_witness(tree: rr_tree(root: program_pick_if_branch_with_effect_io), dependencies: [rr_view(kind: kind)]) {
+    Violates { diagnostic: d } => d.reason == ^parallelism_reason_structural_view_is_not_a_coupling
+    Holds { value: _ } => false
+  }
+}
+
+test fn rr_p_structural_views_refuse_at_the_parallelism_lens_holds() -> Bool {
+  rr_parallelism_refuses_structurally(kind: Contains)
+    && rr_parallelism_refuses_structurally(kind: BindsTo)
+    && match parallelism_witness(tree: rr_tree(root: program_pick_if_branch_with_effect_io), dependencies: [rr_view(kind: DataDependsOn)]) {
+      Holds { value: _ } => true
+      Violates { diagnostic: _ } => false
+    }
+}

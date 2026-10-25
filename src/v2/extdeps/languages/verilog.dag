@@ -14,9 +14,10 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   EmitSpellingWrap,
   EmitLineBreaks,
   ProducedDeclUnwired,
@@ -843,7 +844,7 @@ fn verilog_conj(children: List<Edge>) -> Node {
 }
 
 fn verilog_slot(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 // THE EMITTED NODE CARRIES ONE SLOT PER VARIABLE POSITION, and its ARITY is what the backward
@@ -1064,7 +1065,7 @@ fn verilog_module_relation_row() -> Witness<Node> {
 }
 
 fn verilog_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn verilog_row_or_empty(lhs: Symbol, emitted: Node) -> Node {
@@ -1172,6 +1173,7 @@ fn verilog_emission_translation_rules() -> Node {
 
 fn verilog_emission_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     bundle: verilog_conj(children: [
       verilog_named_edge(
         name: ^target_model_edge_translation_rules,
@@ -1194,6 +1196,7 @@ fn verilog_emission_target_model() -> TargetModel {
 // program. The composition is real, and it happens at derivation.
 fn verilog_target_model_with_single_row(row: Node) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     bundle: verilog_conj(children: [
       verilog_named_edge(
         name: ^target_model_edge_translation_rules,
@@ -1293,6 +1296,7 @@ fn verilog_emission_rules_for_row(row: Node) -> Node {
 
 fn verilog_target_model_for(row: Node, spellings: Map<Symbol, String>) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     bundle: verilog_conj(children: [
       verilog_named_edge(
         name: ^target_model_edge_translation_rules,

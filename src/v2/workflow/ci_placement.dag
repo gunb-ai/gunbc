@@ -9,13 +9,12 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment,
   CommitWorkflowSurface,
   commit_gate_roster,
-  commit_workflow_surface_eq,
   commit_check_kind_eq
 }
 
 // The two-tier placement axis (ci-two-tier-placement-redesign.md D3, operator 2026-07-24): a check
 // rides the PR path iff its measured warm cost is within the fast-lane budget OR proportional to
-// the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence). Placement
+// the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence, declared but unrealized since falsifier.yml was deleted at 611fd02770/#8283). Placement
 // is DATA (PrTier | Gauntlet), never per-site prose. Admission is FAIL-CLOSED by construction:
 // PrTier requires (a) a measured warm-cost receipt within the fast-lane budget and (b) a
 // hermetic/ephemeral classification; an unmeasured or unclassified check is inadmissible as PrTier
@@ -101,7 +100,7 @@ fn commit_workflow_surface_list_eq(left: List<CommitWorkflowSurface>, right: Lis
 }
 
 fn commit_workflow_surface_present(surface: CommitWorkflowSurface, surfaces: List<CommitWorkflowSurface>) -> Bool {
-  any(xs: surfaces, predicate: fn(s) { commit_workflow_surface_eq(a: s, b: surface) })
+  any(xs: surfaces, predicate: fn(s) { s == surface })
 }
 
 fn commit_check_enrollment_eq(left: CommitCheckEnrollment, right: CommitCheckEnrollment) -> Bool {

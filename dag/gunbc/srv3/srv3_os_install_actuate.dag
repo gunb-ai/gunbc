@@ -1,34 +1,26 @@
 module gunbc.srv3.srv3_os_install_actuate
 
-// This module used to resolve every cross-module name through the bare channel. Pinning
-// `Filesystem` (the login-body write below) declares an import, and a module that declares
-// imports has its bare channel off -- so every provider name it reads is imported here
-// explicitly, each from the module that declares it. Filesystem itself is filesystem_io's service
-// Write (input {path, content}, output success/error), which is the operation the login-body write means; std.resources also declares
-// a Filesystem (a capability resource whose write returns {written}) and is transitively in
-// reach, so the bare read would have picked a declarer by scope precedence, which nothing in
-// this source authorizes.
-import std.process { ProcessExit, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
+// This module used to resolve every cross-module name through the bare channel. A module that
+// declares imports has its bare channel off, so every provider name it reads is imported here
+// explicitly, each from the module that declares it.
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.types { NonEmptyStr, PathSegment, Secret, String }
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
+  with_private_secret_file,
+}
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.nbd_proxy_virtual_media_install { ActuatorPlanRefused, srv3_os_install_actuator_plan_standing }
 import gunbc.provisioning.seeded_install_media_publish { SeededImageResolution }
-import gunbc.srv3.srv3_actuate_shell_paths { srv3_bmcweb_login_body_path }
 import gunbc.srv3.srv3_bmc_credential_resolve { BmcCredentialAccessUpsertRequired, BmcCredentialFetchRefused, BmcCredentialMaterialized, BmcCredentialResolution, CredentialResolutionRefused, UseFactoryCredential, UseRotatedSecretRef, bmcweb_login_body_content, materialize_bmc_login_password, observe_and_resolve_srv3_bmc_credential, srv3_os_install_actuate_credential_intent }
 import gunbc.srv3.srv3_host_effect_apply { srv3_apply_to_process_exit, srv3_bmcweb_session_login_apply, srv3_bmcweb_token_extract_apply, srv3_nbd_proxy_serve_apply }
 
 
 data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
-}
-
-data srv3_os_install_actuate_shell_runner_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
 }
 
 data srv3_os_install_actuate_operator_runbook: NonEmptyStr = "docs/runbooks/srv3-os-install-actuate.md"
@@ -89,22 +81,29 @@ fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> Pr
       return exit_failure(reason: concat("bmcweb-login: ", reason as String))
   }
 
-  let body_content = srv3_bmcweb_login_body_content_for_resolution(
-    resolution: resolution,
-    password: password,
-  )
-  let body_write = Filesystem.Write(
-    path: srv3_bmcweb_login_body_path,
-    content: body_content,
-  )
-  if body_write.success == false {
-    return exit_failure(reason: concat("bmcweb-login: body write failed: ", body_write.error))
+  // THE LOGIN BODY HOLDS THE BMC PASSWORD, so it exists only inside this bracket: an owner-only file
+  // in a fresh 0700 directory, removed with the directory when the login returns, on every arm. It
+  // used to be Filesystem.Write to the fixed /tmp/srv3_bmcweb_login_body.json at the ambient umask,
+  // never removed. It is a file, not stdin, because the login runs as a described curl command
+  // through the host-effect transport, which has no stdin channel.
+  let login_exit = match with_private_secret_file(
+    file_name: "bmcweb_login_body.json" as PathSegment,
+    content: srv3_bmcweb_login_body_content_for_resolution(resolution: resolution, password: password) as Secret,
+    use: fn(body_file) {
+      srv3_apply_to_process_exit(
+        d: srv3_bmcweb_session_login_apply(request_body_file: body_file),
+        failure_prefix: "bmcweb-login: curl login failed: ",
+      )
+    },
+  ) {
+    PrivateSecretFileCompleted { value: exit } => exit
+    PrivateSecretFileCompletedResidueRemains { value: _ } =>
+      exit_failure(reason: "bmcweb-login: the login ran (a session may have been opened) but its private request body could not be removed, so the BMC password may remain on disk and requires cleanup before retry")
+    PrivateSecretFileNotEntered { cause: c } =>
+      exit_failure(reason: concat("bmcweb-login: the login body could not be placed owner-only, so no login was attempted: ", c as String))
+    PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
+      exit_failure(reason: concat("bmcweb-login: the login body could not be placed AND credential material may remain on disk, requiring cleanup before retry: ", c as String))
   }
-
-  let login_exit = srv3_apply_to_process_exit(
-    d: srv3_bmcweb_session_login_apply(),
-    failure_prefix: "bmcweb-login: curl login failed: ",
-  )
   match login_exit {
     ExitSuccess => {}
     ExitFailure { code: _, reason: _ } => return login_exit

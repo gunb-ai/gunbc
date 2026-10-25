@@ -12,7 +12,7 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted
 }
-import v2.std.node { Arrow, ArrowBodyEdge, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, core_edge_label }
+import v2.std.node { node_same_occurrence, Arrow, ArrowBodyEdge, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, core_edge_label, NotADeclaration }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.text { String }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -228,7 +228,7 @@ fn cont_arrow_with_body(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -237,7 +237,7 @@ fn cont_arrow_with_body(body: Node) -> Node {
 fn cont_root_over(child: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child }],
+    children: [Edge { label: Positional, target: child, declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -273,7 +273,7 @@ fn cont_agrees_with_subject(mine: Outcome<Node>, theirs: Outcome<Node>) -> Bool 
     Accepted { value: a, diagnostics: _ } =>
       match theirs {
         Rejected { diagnostics: _ } => false
-        Accepted { value: b, diagnostics: _ } => a == b
+        Accepted { value: b, diagnostics: _ } => node_same_occurrence(a: a, b: b)
       }
   }
 }

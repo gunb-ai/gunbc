@@ -92,50 +92,91 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// `(hits, misses)` for the `compile_dag_diagnostic_census` memo across the whole process.
-/// Report-only; no consumer branches on it. Same accounting shape, and the same reason for it,
-/// as [`compile_dag_rust_emit_check_memo_counts`]: a hit count with no denominator is not a
-/// measurement.
-pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
+// CENSUS COST COUNTERS (census cost-shape fix). One process-wide set of atomic counters at the
+// seams where a census call can pay for the corpus: (1) the module-path index entry (which used
+// to clone the whole corpus index on every cache hit -- asserted at zero by
+// tests/census_cost_step0_measurement.rs, a LOCAL cargo test: the required path runs no v1 unit
+// tests (gunbc.rung_drop v1_required_lanes_withdrawn), so the assertion holds when that file is
+// executed and is not what a green required job establishes), (2) the scratch's source-file map clone, and
+// (3) every real disk read the census's resolve path performs. Exposed as a pub fn read by an
+// in-process observer, so a receipt is process-differential (deltas around calls in one
+// process), never a claim about another process.
+pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64, u64) {
     (
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed),
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_INDEX_CLONES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_CLONES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_LEN.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READS.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READ_BYTES.load(std::sync::atomic::Ordering::Relaxed),
+        // The identity proof's verdict, as an OBSERVABLE: zero over warm calls is what says the
+        // read-through is actually being taken (a false refusal would silently put the ~10 s back
+        // and only show up here), and the drifted-facts RED in cli_run's own tests drives it
+        // nonzero -- which is what keeps the proof from being code that never runs.
+        crate::cli_run::CENSUS_COST_IDENTITY_REFUSALS.load(std::sync::atomic::Ordering::Relaxed),
     )
 }
 
-/// Memoized entry point for the census, mirroring [`compile_dag_rust_emit_check`]'s memo rather
-/// than inventing a second caching discipline beside it (DESIGN §3 — the two builtins compile the
-/// same program through the same pipeline and differ only in what they report, so they must not
-/// disagree about when a compile may be reused).
-///
-/// WHY THIS EXISTS, stated as the measurement that produced it rather than as a general
-/// preference: `compile_dag_rust_emit_check` was memoized and this sibling was not, so a witness
-/// asking two QUESTIONS about one source paid for two full compiles of it. `neither_green_source_
-/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness`) is the
-/// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
-/// pure function of an input already compiled in the same run. That is the DESIGN §6
-/// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
-/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms CPU
-/// safety deadline standing at the time, a FAIL-STOP protecting the executor and explicitly "never
-/// a budget, tolerance, or target" — so the admissible repair is to stop recomputing, never to
-/// raise the line. That deadline is gone (the claim ceiling gates on
-/// `claim_eval_step_budget_for_identity` since 2026-09-12 and CPU is observed-only), which does
-/// NOT retire this memo: the defect it repairs is a recomputation, and a recomputation costs the
-/// same whether or not a clock refuses on it.
-///
-/// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
-/// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content
-/// digest, because `build_module_path_index_from_witness_roots` reads those bytes and the census
-/// is therefore a function of the corpus as well as of the source. Outside the guard there is no
-/// snapshot, so a hit would be a claim about disk that nothing established — DESIGN's
-/// cache-impurity rule (key on declared-input content), and the reason this is not simply a
-/// `HashMap` on the source string.
-pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
-    // The floor prepared-inventory guard that armed the content-keyed memo is deleted
-    // with `run_required_floor`. Disk is the only remaining source.
-    compile_dag_diagnostic_census_uncached(source)
+/// Zero the seven cost counters and return them (read-and-reset, so a caller brackets one
+/// census call or a run of them without subtracting an earlier snapshot).
+pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64, u64) {
+    (
+        crate::cli_run::CENSUS_COST_INDEX_CLONES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES
+            .swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_CLONES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_LEN.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READS.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READ_BYTES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_IDENTITY_REFUSALS.swap(0, std::sync::atomic::Ordering::Relaxed),
+    )
 }
 
+/// THIS IS THE BUILTIN'S ONLY ENTRY POINT, and there is no separate uncached body. It used to be
+/// a memoized wrapper over a `pub(crate)` `_uncached` function, and BOTH halves of that split are
+/// gone: the memo is deleted (see the deletion story below), and a wrapper that only forwards is
+/// authored duplication (§3, one fact one home; the sibling `compile_dag_rust_emit_check` keeps
+/// its split for a reason this one never had -- its `_uncached` returns `EmitCheckRead`, a
+/// different type, while these two had identical signatures).
+///
+/// THE DELETION STORY, because a future reader must not re-add what is deleted here. A memo
+/// once sat on top of this function, and it was NOT arbitrary caching: it was the repair for a
+/// measured cost-shape defect (when that memo was written, the sibling `compile_dag_rust_emit_check`
+/// had a live memo and this did not, so `neither_green_source_refuses_and_neither_mis_resolves` in
+/// `test.claim.callable_candidate_ambiguity_witness` recomputed half its compiles -- 5437 ms CPU
+/// against the then-standing 5000 ms claim CPU refusal). The memo then lost its soundness
+/// precondition: it keyed on source PLUS the floor's prepared-inventory content digest, because
+/// `build_module_path_index_from_witness_roots` reads those bytes. When `run_required_floor` was
+/// deleted (in the earlier floor-residue chain-delete, not on this branch) the guard went with it
+/// and the cell stopped being consulted AT THAT POINT; what reached this PR was the residue -- a
+/// `HashMap` nobody consulted, two atomics still reporting (0, 0), and an entry point whose only
+/// job was forwarding. And the work each call redid is measured here rather than guessed: it was
+/// CPU-bound pool-cache rebuild (~10 s of a 12.9 s warm call), NOT disk -- the fixture's import
+/// closure reads 3 files and 89,436 bytes, closure-scale, identical before and after
+/// (`census_cost_step0_measurement`).
+///
+/// WHY DELETION AND NOT A RE-ARMED GUARD. The deleted key was complete ONLY under the frozen
+/// floor snapshot -- with the snapshot gone, a content-keyed memo would have to declare every
+/// input it reads (corpus bytes, floor inventory, and the process-level cache state this
+/// function now reads through), which is a stronger claim than anything here can establish.
+/// DESIGN's cache-impurity rule forbids a hit that asserts a fact about its inputs that nothing
+/// established. So the recomputation is not
+/// cached, it is DELETED at its two sources, which is the same defect class the memo was
+/// invented for and is strictly cheaper than the memo ever was: a warm census call measured
+/// 12.9 s before this change and 0.34 s after it (Step 0 series, `census_cost_step0_measurement`,
+/// which asserts the corpus-index clone count at zero -- executed locally, not on the required
+/// path; see that file's execution-locus block). Where the memo made the repeat call
+/// free by asserting its key was complete, these make the repeat call cheap by not doing the work.
+/// The `hits/misses` atomics and the memo cell went with it; nothing ever branched on them.
+///
+/// THE SIBLING IS NOT CITED AS A HEALTHY MIRROR. It is in the state this function was in: its
+/// entry point forwards to `compile_dag_rust_emit_check_uncached`, its `..._MEMO` cell is declared
+/// and `forget`-ed but never consulted, and its two atomics are read only by
+/// `compile_dag_rust_emit_check_memo_counts`. That residue is pre-existing and outside this PR's
+/// named accusation (the census's cost shape), and it is declared here rather than left for a
+/// reader to find it contradicting the asymmetry above. The sibling's split survives on its own
+/// merits (the different return type); its cache does not exist.
+///
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
 /// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
 /// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
@@ -157,17 +198,56 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
 /// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
 /// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
-pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDiagnosticCensus {
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
-            let module_index = build_module_path_index_from_witness_roots();
-            let sources =
-                resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
-                    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
-            record_fixture_closure(&sources);
-            compile_fixture_rendering_only_what_is_read(sources, None)
-        })
-    }));
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || -> Result<_, FixtureRenderRefusal> {
+            crate::v1_rt::with_type_ref_hit_ne_bind_measure(
+                || -> Result<_, FixtureRenderRefusal> {
+                    // THE MODULE-PATH INDEX IS LENT, NOT COPIED (CENSUS COST). This asked for the
+                    // whole corpus index as an owned map, which clones all 9003 entries out of the
+                    // thread-local memo on EVERY census call; the resolve below only ever asks it
+                    // keyed questions (`module_index.get(&module_path)`), one entry at a time.
+                    // `with_module_path_index` is the same memo, borrowed for the duration. A
+                    // re-entrant demand on the same memo would double-borrow and panic -- that is
+                    // caught here and surfaces as `NotRunnable`, so the digest equality the census
+                    // control asserts is what keeps this borrow honest, not an argument.
+                    let roots = default_source_roots();
+                    // THE COMPILE JOINS THE BORROW TOO. A caller merged after this fix removed the
+                    // index from this signature, so the compile here must take the SAME lent index
+                    // the resolve got -- threading it as a borrow, never a clone: building a second
+                    // owned index (build_module_path_index_from_witness_roots) would clone every
+                    // corpus entry per census call, exactly the cost this change deleted. The
+                    // double-borrow hazard is the one the comment above already accepts: a re-entrant
+                    // demand panics and lands in NotRunnable, and the digest-equality control is what
+                    // keeps the borrow honest.
+                    crate::cli_run::entry_resolve::with_module_path_index(&roots, |module_index| {
+                        let sources = resolve_virtual_source_with_imports(
+                            FIXTURE_SOURCE_PATH,
+                            source,
+                            module_index,
+                        )
+                        .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+                        record_fixture_closure(&sources);
+                        // THE CENSUS RUNS ON THE COMPILED GRAPH'S DIAGNOSTICS AND REQUESTS NO
+                        // RENDER SUBJECT (mgr ruling msg_546ed998, after the #13037 floor repair
+                        // wired a render-selection demand into this route). A census asks "which
+                        // located diagnostics did the compile produce"; a render subject is not
+                        // one of its inputs, and demanding one made a parse-error fixture -- whose
+                        // own module never joins the compiled graph -- refuse the census instead of
+                        // reporting the parse diagnostics it exists to report. The route therefore
+                        // emits with an EMPTY selection: the fixed-point compile runs in full
+                        // (whole-graph checks and graph-level scans included, all before any
+                        // per-module work), and the empty selection renders no module, which is
+                        // exactly what a census needs and nothing more. It is NOT a catch of the
+                        // old refusal and a proceed, and it never widens to RenderEveryModule --
+                        // the counter below and the control test make a whole-graph census render
+                        // a refused regression rather than a slower pass.
+                        compile_fixture_rendering_nothing(sources, module_index)
+                    })
+                },
+            )
+        },
+    ));
     let result = match compiled {
         Ok(Ok(r)) => r,
         Ok(Err(refusal)) => {
@@ -448,7 +528,18 @@ pub fn compile_dag_multi_module_fixture(
         })
         .collect();
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+        // A hermetic fixture's pool is empty: its manifest is its whole closure, so a generated
+        // provider outside it refuses (GeneratedProviderUnavailable) instead of reaching the tree.
+        let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+            files,
+            &|_: &str| super::provider_acquire::PoolAnswer::Lacks,
+            &|module: &str| {
+                Err(super::provider_acquire::ClosureOfError::Closure(format!(
+                    "hermetic fixture: no pool holds '{module}'"
+                )))
+            },
+        )
+        .unwrap_or_else(|cause| unreachable!("an empty pool never asks for acquisition: {cause}"));
         let module_count = match resolved.graph.clone() {
             Some(g) => g.modules.len() as i64,
             None => 0,
@@ -459,9 +550,10 @@ pub fn compile_dag_multi_module_fixture(
         // Walk per TypedModule registry. Bare Fn/Func names that collide across modules are
         // omitted (Absent) — never InstrumentRefused, never an un-expanded loser row.
         let resolved_rust_functions = project_resolved_rust_fn_signatures(resolved.as_ref());
-        let result = v1_compiler_compile::emit_resolved_for_target(
+        let result = emit_resolved_for_target_counting(
             resolved,
             crate::v1_compiler_artifact::RenderTarget::Rust,
+            Rc::new(crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule),
         );
         (module_count, resolved_rust_functions, result)
     }));
@@ -590,6 +682,7 @@ fn project_resolved_rust_fn_signatures(
                 ItemKind::TypeItem
                 | ItemKind::DataItem
                 | ItemKind::ServiceItem
+                | ItemKind::ResourceItem
                 | ItemKind::OtherItem => {}
             }
         }
@@ -1146,10 +1239,15 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
         crate::cli_run::ResolvedCallEdgeCensus,
     > {
         match resolved {
-            Ok((graph, _)) => {
-                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-                    graph.diagnostics.clone(),
-                );
+            // THE INDEX WAS ALREADY HERE and thrown away with `_`. The refusal lines this census
+            // carries to the terminal are reader-facing, so they go through the located renderer
+            // rather than the 1-arg name that formats `{file}:{start}-{end}`.
+            Ok((graph, source_indices)) => {
+                let blocking =
+                    crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                        graph.diagnostics.clone(),
+                        source_indices,
+                    );
                 if !blocking.is_empty() {
                     let detail = blocking.iter().cloned().collect::<Vec<_>>().join("; ");
                     return Err(ResolvedCallEdgeCensus::Refused {
@@ -1487,9 +1585,13 @@ fn compile_dag_primitive_call_edges_on_this_thread(
     v1_rt::trace_mark("primitive-call-edges.resolve.done".to_string());
     v1_rt::trace_mark("primitive-call-edges.walk.begin".to_string());
     let Some(graph) = resolved.graph.clone() else {
-        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-            resolved.diagnostics.clone(),
-        );
+        // `resolved` CARRIES THE INDEX (`ResolvedPipelineResult::source_indices`); the 1-arg call
+        // below just never passed it, so this refusal arrived as `{file}:{start}-{end}`.
+        let blocking =
+            crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                resolved.diagnostics.clone(),
+                resolved.source_indices.clone(),
+            );
         return PrimitiveCallEdgeCensus::Refused {
             cause: format!(
                 "primitive call edges: the corpus did not resolve to a graph: {}",
@@ -1501,9 +1603,11 @@ fn compile_dag_primitive_call_edges_on_this_thread(
     let mut blocked_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for d in resolved.diagnostics.iter() {
         if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-                Rc::new(vec![d.clone()].into()),
-            )
+            let message =
+                crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                    Rc::new(vec![d.clone()].into()),
+                    resolved.source_indices.clone(),
+                )
             .iter()
             .next()
             .cloned()
@@ -2006,7 +2110,8 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
     let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
         .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     record_fixture_closure(&sources);
-    let result = compile_fixture_rendering_only_what_is_read(sources, Some(file_path))?;
+    let result =
+        compile_fixture_rendering_only_what_is_read(sources, Some(file_path), &module_index)?;
     let hard_diagnostics = result
         .diagnostics
         .iter()
@@ -2067,16 +2172,157 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 ///
 /// The control that the selected bytes equal the full render's is
 /// [`compile_dag_render_selection_agreement`], which runs the full render for real.
+/// The witness-root module index's answer for a demanded module: Lacks when no file declares it,
+/// Unreadable when the index names a file whose bytes cannot be read now, Holds otherwise. The answer
+/// reads the bytes rather than inspecting the path, so Holds means a read succeeded. The index panics
+/// on two files for one module path when it is built, so no answer here is ambiguous.
+pub(crate) fn fixture_pool_answer(
+    module: &str,
+    pool: &HashMap<String, String>,
+) -> super::provider_acquire::PoolAnswer {
+    match pool.get(module) {
+        None => super::provider_acquire::PoolAnswer::Lacks,
+        Some(path) => match std::fs::read_to_string(process_workspace_root().join(path)) {
+            Ok(_) => super::provider_acquire::PoolAnswer::Holds,
+            Err(_) => super::provider_acquire::PoolAnswer::Unreadable,
+        },
+    }
+}
+
+/// A demanded provider joins an emit-check fixture with its own import closure, read from the
+/// witness-root module index the way the fixture's own imports were. A read failure is the model's
+/// Unreadable, never a prose error; a failure to close the provider's own imports is a closure error.
+pub(crate) fn fixture_pool_closure_of(
+    module: &str,
+    pool: &HashMap<String, String>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, super::provider_acquire::ClosureOfError> {
+    let Some(path) = pool.get(module) else {
+        return Err(super::provider_acquire::ClosureOfError::Unreadable);
+    };
+    // Read the way the fixture's own imports are read: the index holds workspace-relative paths,
+    // resolved against the process workspace root, never against the current directory.
+    let content = std::fs::read_to_string(process_workspace_root().join(path))
+        .map_err(|_| super::provider_acquire::ClosureOfError::Unreadable)?;
+    resolve_virtual_source_with_imports(&workspace_relative_repo_path(path), &content, pool)
+        .map_err(super::provider_acquire::ClosureOfError::Closure)
+}
+
 pub(crate) fn compile_fixture_rendering_only_what_is_read(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     read_path: Option<&str>,
+    pool: &HashMap<String, String>,
 ) -> Result<Rc<v1_compiler_compile::PipelineResult>, FixtureRenderRefusal> {
-    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    // The witness-root module index is this surface's pool for generated providers.
+    let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+        sources,
+        &|module: &str| fixture_pool_answer(module, pool),
+        &|module: &str| fixture_pool_closure_of(module, pool),
+    )
+    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     let selection = fixture_render_selection(&resolved, read_path)?;
-    Ok(v1_compiler_compile::emit_resolved_for_target_selected(
+    Ok(emit_resolved_for_target_counting(
         resolved,
         crate::v1_compiler_artifact::RenderTarget::Rust,
         selection,
+    ))
+}
+
+// RENDER-REQUEST COUNTERS AT THE HOST SEAM (floor repair C1 control, mgr ruling msg_546ed998).
+// These two thread_local Cells count every render REQUEST that passes through the host seam
+// `emit_resolved_for_target_counting`, by the shape requested: `RenderEveryModule` moves the
+// whole-graph counter, a `RenderSelectedMirrors` with at least one basename moves the selected
+// counter. They exist so the census route's claim "this route requests no render subject" is
+// executed evidence, not prose: `compile_fixture_rendering_nothing` -- the only render request
+// the census makes -- goes through the counting seam, so a census that widened to a whole-graph
+// render (re-buying the cost the empty selection exists to not-pay) moves a counter the control
+// test (`src/v1/stage0/tests/census_no_render_subject_control.rs`) reads, and the test's positive
+// control (a direct `RenderEveryModule` request through the same seam moves the whole-graph
+// counter by exactly one) proves the counter is not stuck at zero.
+//
+// WHY HERE AND NOT IN THE COMPILER: `v1_compiler_compile.rs` is a GENERATED file (its authority
+// is `src/v1/compile.dag`, which cannot express `thread_local`/`Cell`; the seed's hand-item law,
+// gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror, forbids hand items
+// in generated files, and a CI heal round has already executed that revert on this branch). The
+// census route's render REQUEST is authored in this hand file, so counting at the request site is
+// both law-abiding and exactly the level the control question lives at: what the census ASKED
+// for, not what the generated emit internals did internally.
+thread_local! {
+    static EVERY_MODULE_RENDER_CALLS: Cell<u64> = const { Cell::new(0) };
+    static NON_EMPTY_SELECTED_RENDER_CALLS: Cell<u64> = const { Cell::new(0) };
+}
+
+/// How many renders through [`emit_resolved_for_target_counting`] requested `RenderEveryModule`.
+/// Per-thread; the census and the control test run on the thread that calls them.
+pub fn every_module_render_calls() -> u64 {
+    EVERY_MODULE_RENDER_CALLS.with(Cell::get)
+}
+
+/// How many renders through [`emit_resolved_for_target_counting`] requested a
+/// `RenderSelectedMirrors` selection carrying at least one basename.
+pub fn non_empty_selected_render_calls() -> u64 {
+    NON_EMPTY_SELECTED_RENDER_CALLS.with(Cell::get)
+}
+
+/// THE COUNTED RENDER REQUEST SEAM. Records the requested selection's shape in the counters
+/// above, then delegates unchanged to `v1_compiler_compile::emit_resolved_for_target_selected`.
+/// It adds no decision and changes no verdict -- the delegation is the same call the pre-counter
+/// code made directly -- so the counters observe, they do not gate. Every render request made by
+/// a fixture instrument in this file goes through this function:
+/// `compile_fixture_rendering_only_what_is_read`, `compile_fixture_rendering_nothing` (the census
+/// route), the multi-module fixture, the render-selection agreement receipt, and the
+/// closure-union emit receipt. The production CLI compile paths (the render-requests verb in
+/// `cli_run.rs`, the compile command in `main.rs`) are not fixture instruments and do not pass
+/// here -- they emit what their request asks for. Within the instruments, a census route that
+/// re-widened to a whole-graph render -- by either compiler entry -- therefore moves the
+/// whole-graph counter, which the control test forbids.
+pub fn emit_resolved_for_target_counting(
+    resolved: Rc<v1_compiler_compile::ResolvedPipelineResult>,
+    target: crate::v1_compiler_artifact::RenderTarget,
+    selection: Rc<crate::v1_compiler_artifact::RustModuleRenderSelection>,
+) -> Rc<v1_compiler_compile::PipelineResult> {
+    match &*selection {
+        crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule => {
+            EVERY_MODULE_RENDER_CALLS.with(|c| c.set(c.get() + 1));
+        }
+        crate::v1_compiler_artifact::RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames,
+        } => {
+            if !basenames.is_empty() {
+                NON_EMPTY_SELECTED_RENDER_CALLS.with(|c| c.set(c.get() + 1));
+            }
+        }
+    }
+    v1_compiler_compile::emit_resolved_for_target_selected(resolved, target, selection)
+}
+
+/// COMPILE A FIXTURE CLOSURE AND RENDER NOTHING. The census route: the same fixed-point compile
+/// as [`compile_fixture_rendering_only_what_is_read`] (identical pool, identical closure authority,
+/// identical resolve), but the emit requests NO render subject instead of deriving one from a read
+/// path. The census question -- "which located diagnostics did the compile produce" -- is answered
+/// by the diagnostics the compile and the crate-level emit scans attach before per-module work
+/// begins, so no module needs to render to answer it, and a fixture whose own module never joins
+/// the compiled graph (a parse-error fixture) reports its parse diagnostics instead of refusing for
+/// lack of a render subject. The selection is the empty one, never `RenderEveryModule`: widening
+/// would re-buy the whole-graph render cost this route exists to not-ask for, and the counter at
+/// `emit_resolved_for_target_counting` makes any such widening a control failure.
+pub(crate) fn compile_fixture_rendering_nothing(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pool: &HashMap<String, String>,
+) -> Result<Rc<v1_compiler_compile::PipelineResult>, FixtureRenderRefusal> {
+    let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+        sources,
+        &|module: &str| fixture_pool_answer(module, pool),
+        &|module: &str| fixture_pool_closure_of(module, pool),
+    )
+    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+    Ok(emit_resolved_for_target_counting(
+        resolved,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+        Rc::new(
+            crate::v1_compiler_artifact::RustModuleRenderSelection::RenderSelectedMirrors {
+                basenames: Rc::new(Vec::<String>::new().into()),
+            },
+        ),
     ))
 }
 
@@ -2165,11 +2411,12 @@ pub(crate) fn render_selection_agreement_receipt(
         let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
         let selection = fixture_render_selection(&resolved, Some(fx.read_path))
             .map_err(|r| refuse(r.to_string()))?;
-        let full = v1_compiler_compile::emit_resolved_for_target(
+        let full = emit_resolved_for_target_counting(
             resolved.clone(),
             crate::v1_compiler_artifact::RenderTarget::Rust,
+            Rc::new(crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule),
         );
-        let selected = v1_compiler_compile::emit_resolved_for_target_selected(
+        let selected = emit_resolved_for_target_counting(
             resolved,
             crate::v1_compiler_artifact::RenderTarget::Rust,
             selection,
@@ -2846,9 +3093,10 @@ pub(crate) fn fixture_closure_union_emit_receipt_staged(
     }
     let compile_diagnostics = resolved.diagnostics.len();
     stage_line("exclusion-done");
-    let rendered = v1_compiler_compile::emit_resolved_for_target(
+    let rendered = emit_resolved_for_target_counting(
         resolved,
         crate::v1_compiler_artifact::RenderTarget::Rust,
+        Rc::new(crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule),
     );
     stage_line("emit-done");
     let emitted: Vec<&Rc<ErrorNode>> = rendered

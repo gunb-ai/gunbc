@@ -1,0 +1,558 @@
+module gunbc.machine_intake.bmc_inband_recovery_receipts
+
+// THE OBSERVING LAYER'S OWN SHELF. Everything below is a RECEIPT THIS REPOSITORY TOOK, not a fact about
+// the board it was taken from: the sha256 of a file under artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-
+// 2026-10-16/, the Get Device ID answer one controller gave in that session, and what that controller's
+// firmware did when asked to write the published factory password. DESIGN section 3 puts observations
+// here: "Observations this repository makes are receipts in the observing layer, not facts of the observed
+// upstream; a missing observation is a downstream coverage obligation, never an `Unobserved` property
+// inside the upstream module." That is why none of this lives in extdeps.boards.asrock_rack: that module
+// answers what ASRock Rack PUBLISHES, and it answers it the same whether or not anyone here ever held one
+// of these boards -- a `NotMeasured` arm there would be an upstream module reporting on our lab notebook.
+// A consumer that wants a MEASUREMENT comes here. A coverage obligation this file has not discharged is a
+// missing row, and a missing row is a refusal with a name, never a silently-defaulted answer.
+//
+// ONE-WAY, AS EVERYWHERE ELSE: this module may speak of the vendor's published facts, and may NEVER speak
+// of a machine, a phase, or a step (section 3). It names a specimen, because a receipt without a specimen
+// is not a receipt; it does not name a host, a hostname, or an operator.
+
+import extdeps.bmc.capability { BmcFirmwareVersion }
+import extdeps.bmc.ipmi {
+  IpmiCompletionCode,
+  IpmiDeviceIdentity,
+  ipmi_completion_code_invalid_data_field,
+  ipmi_device_identity_runs_same_firmware,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_openbmc_3_22_00_capabilities }
+import extdeps.clock { epoch_secs_of_millis }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate, iso8601_seconds_since_midnight, iso8601_unix_seconds_at, iso8601_utc_text,
+}
+import std.interval {
+  IntervalConstructionFold, OrderedClosedInterval, closed_interval, interval_construction_fold,
+  interval_high, interval_low,
+}
+import std.measure { milliseconds_per_second }
+import std.optional { Absent, Present }
+import std.types { Bool, EpochMs, List }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+
+import gunbc.machine_intake.receipt { EvidenceRef }
+
+// ── CAN THE PUBLISHED FACTORY PASSWORD BE WRITTEN BACK IN? A PER-RELEASE FACT ─────────────────
+//
+// THE FACT THAT DECIDES WHETHER A LOCKED UNIT NEEDS A RESET AT ALL. On the one release we have
+// captured, writing the PUBLISHED factory password to the Administrator account over the in-band
+// channel is refused by the firmware:
+//
+//   $ sudo ipmitool user set password 1 '0penBmc'
+//   IPMI command failed: Invalid data field in request
+//   Set User Password command failed (user 1)
+//   exit=1
+//
+// and a second invocation with a trailing width argument fails identically. WHAT THAT SECOND FAILURE DOES
+// AND DOES NOT SAY. ipmitool's own usage line is `set password <user id> [<password> [<16|20>]]`
+// (lib/ipmi_user.c), so the trailing token selects the password FIELD WIDTH the tool encodes into, not a
+// different password: the same seven bytes go into a 16- or a 20-byte field. Both encodings were refused
+// with the same completion code, which says the refusal is not specific to one field width. It does NOT
+// rule out a password-length policy: the payload bytes are the same in both attempts, so an implementation
+// rejecting the string's length would reject both, identically. The refusal is therefore recorded as what
+// it is -- the firmware declined this credential write at this account, for a reason the completion code
+// does not itemise -- and no cause is selected among the candidates on this evidence (§4d: do not assert as
+// deduced what is only inferred).
+//
+// WHAT IS ON THE RECORD IS THE ATTEMPT AND ITS AFTERMATH. The attempt ended exit 1 and the unit was still
+// locked afterwards -- the same two invocations, re-run after the reset recorded in 01_summary.txt, produce
+// the same refusal -- so this module files no route that goes through writing the factory password in.
+// Whether some other credential write would succeed on this release is a different measurement, and is
+// NotMeasured rather than answered here.
+//
+// WHY THIS SITS ON A RELEASE ROW AND NOT IN extdeps.bmc.openbmc. The refusal is a property of one
+// vendor build, not of OpenBMC in general: another build, or another vendor's firmware, may accept
+// the published password (and a unit that does is carrying a different, worse fact -- a factory
+// password that is writable). Stating it as an OpenBMC-wide rule would license a reset on firmware
+// that never refused anything. So the policy is keyed by the catalog's own typed BmcFirmwareVersion,
+// beside the release's other capability rows: there is no free-string version field here, and no
+// second version authority beside the catalog.
+//
+// A RELEASE THE CATALOG DOES NOT CARRY IS NotMeasured, and NotMeasured means "refuse", not "assume
+// the same as the release we did read" (DESIGN §4d). The row's own version is checked into the
+// judgement: a policy for 2.07.00 never answers a question about 3.22.00.
+//
+// Cited bytes (SHA256SUMS committed with them):
+//   artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt
+//     -- the two refused `ipmitool user set password 1 ...` invocations and their completion code,
+//        re-run after the reset and reproducing identically; the `mc info` line in the same file is
+//        where the Firmware Revision 3.22 reading comes from.
+//
+// WHY THIS ROW IS KEYED TO THIS BOARD AND NOT ANOTHER. The refusal below was observed on a board
+// whose `mc info` reports Product ID 8245 (0x2035) and whose capture names itself
+// bmc-altrad8ud-1l2t-6 -- an ASRock Rack ALTRAD8UD-1L2T, the machine this module catalogs. It is
+// filed against this module's own release row for exactly that reason: a refusal measured on one
+// board is a fact about that board's firmware, and keying it to a different board's catalog entry
+// would let a destructive ResetAll be justified by an observation made on hardware nobody read.
+// THE READING A MEASUREMENT WAS TAKEN UNDER, AND WHY IT IS CARRIED AT ALL. The refusal this module
+// files is a fact about one controller on one release. A route may only use it for a controller it has
+// IDENTIFIED, and the only identification a locked BMC gives up is its answer to Get Device ID. So the
+// measurement carries the reading it was measured under, and the route compares that reading with the
+// one it observed itself (the route record's in_band_device_identity field). A policy is therefore
+// never a value a caller picks: it is the row whose reading matches the controller under foot, or there
+// is no policy and the route refuses. Names are not in the comparison (see ipmi_device_identity_runs_same_firmware)
+// because this same capture proves a controller reports `Product Name : Unknown (0x2035)`.
+type PublishedFactoryPasswordWritePolicy
+  = FirmwareRefusesPublishedPassword {
+      firmware: BmcFirmwareVersion
+      completion_code: IpmiCompletionCode
+      capture: Sha256Digest
+      measured_under: IpmiDeviceIdentity
+    }
+  | NotMeasured { firmware: BmcFirmwareVersion }
+
+data asrock_altrad8ud_inband_recovery_capture: Sha256Digest = Sha256Digest {
+  hex: "8c1750d13a6c9832b459a61b8aadab246f4e74f138d85861e2758200c07202a4",
+}
+
+// THE Get Device ID ANSWER OFF THE BOARD THIS MODULE CATALOGS, byte-for-byte from the committed capture
+// (02_inband_channel.txt, sha256 above): Device ID 32, Device Revision 1, Firmware Revision 3.22,
+// Manufacturer ID 49622 / "ASRock Rack Incorporation", Product ID 8245 (0x2035), Product Name
+// "Unknown (0x2035)". A READING, NOT A CATALOG ENTRY, and not a fact of the upstream module either: the
+// board's catalogued identity lives in extdeps.boards.asrock_rack, and what one specimen ANSWERED lives
+// here. Nobody may edit it to make a policy apply: the policy below names it as the reading the refusal
+// was observed under, so changing the reading and keeping the policy would be caught by every comparison
+// against the next real observation.
+data asrock_altrad8ud_1l2t_inband_device_identity: IpmiDeviceIdentity = IpmiDeviceIdentity {
+  device_id: 32,
+  device_revision: 1,
+  firmware_revision_major: 3,
+  firmware_revision_minor: 22,
+  manufacturer_id: 49622,
+  manufacturer_name: "ASRock Rack Incorporation",
+  product_id: 8245,
+  product_name: "Unknown (0x2035)",
+}
+
+// THE ONE MEASURED ROW. An ALTRAD8UD-1L2T (mc info Product ID 0x2035), OpenBMC Firmware Revision
+// 3.22, both password forms, reproduced after the reset. What is carried is the BYTE, as the typed
+// constant from extdeps.bmc.ipmi: no English label travels with it, so nothing here can be edited into
+// agreeing with a code that changed. The sentence a reader wants is the spec's, and the byte is what an
+// operator acts on.
+data asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy: PublishedFactoryPasswordWritePolicy = FirmwareRefusesPublishedPassword {
+  firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  completion_code: ipmi_completion_code_invalid_data_field,
+  capture: asrock_altrad8ud_inband_recovery_capture,
+  measured_under: asrock_altrad8ud_1l2t_inband_device_identity,
+}
+
+data asrock_altrad8ud_published_factory_password_write_policy_catalog: List<PublishedFactoryPasswordWritePolicy> = [
+  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
+]
+
+// ── THE POST-RESET READBACK, FILED AGAINST THE CONTROLLER THAT ANSWERED ──────────────────────
+//
+// WHY A ROW AND NOT A CONSTANT. The proving arm of a recovery standing cites the bytes its readback came
+// from. While that citation was a constant sitting in the module that consumes it, a proof could be shown
+// pointing at the right file by anyone who knew the file's name: nothing connected the bytes to the
+// controller, so the same "evidence" would have proved a reset on any board at all. Filed HERE, keyed by
+// the same IpmiDeviceIdentity the write-policy row above is keyed by, the citation becomes a LOOKUP that
+// can fail: a standing whose readback cites bytes that were not taken from this controller has no row to
+// cite, and the absence is the refusal (§5: "a failure arm refuses, never widens").
+//
+// THE IDENTITY IS THE KEY AND THE ANSWER CARRIES IT BACK, so the fold compares one join rather than
+// assembling three facts from three places. That is the shape the recovery proof needs: unit, controller and
+// readback are one claim, not three claims that happen to be true.
+type RecoveryPostResetReadbackRecord sole_constructor {
+  taken_from: IpmiDeviceIdentity
+  capture: EvidenceRef
+}
+
+// The 04_post_reset_readback.txt capture of the same session that produced the in-band digest above --
+// 403 with Base.1.16.0.PasswordChangeRequired, quoted with its bytes in
+// artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/. Same session, same board, same reading of
+// Get Device ID: that is what entitles this row to claim it came from the controller the row above
+// identifies. The digest is the SHA256SUMS entry for 04_post_reset_readback.txt.
+data asrock_altrad8ud_1l2t_post_reset_readback_record: RecoveryPostResetReadbackRecord = RecoveryPostResetReadbackRecord {
+  taken_from: asrock_altrad8ud_1l2t_inband_device_identity,
+  capture: EvidenceRef {
+    label: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/04_post_reset_readback.txt",
+    digest: Sha256Hash(Sha256Digest { hex: "9837b3a8e47ff2ec59ecc3ddd41b81c7f3757b3d47082bec969d1fb75be5751c" }),
+  },
+}
+
+// THE LOOKUP. Absent is an answer about the filing, and it is the only answer available for a controller
+// nobody read: this repository has one post-reset readback on file, and inventing a row for a second board
+// would be exactly the invented-fact failure this module exists to avoid.
+fn asrock_altrad8ud_post_reset_readback_record_for(
+  observed: IpmiDeviceIdentity,
+) -> Optional<RecoveryPostResetReadbackRecord> {
+  match filter([asrock_altrad8ud_1l2t_post_reset_readback_record], r =>
+    ipmi_device_identity_runs_same_firmware(a: r.taken_from, b: observed)) |> first() {
+    Present { value: r } => Present { value: r }
+    Absent => Absent
+  }
+}
+
+// The policy for a release, read off the catalog. A lookup and never a default: an unmeasured
+// release answers NotMeasured with ITS OWN version attached, so the refusal can be reported against
+// the firmware that was actually observed.
+fn asrock_altrad8ud_published_factory_password_write_policy_for(
+  firmware: BmcFirmwareVersion,
+) -> PublishedFactoryPasswordWritePolicy {
+  match filter(asrock_altrad8ud_published_factory_password_write_policy_catalog, p =>
+    policy_names_firmware(policy: p, firmware: firmware)) |> first() {
+    Present { value: p } => p
+    Absent => NotMeasured { firmware: firmware }
+  }
+}
+
+// WHICH RELEASE A ROW IS ABOUT, BY THE STRUCTURAL EQUALITY OF THE TYPED VERSION. The row's `firmware` is
+// the same BmcFirmwareVersion the catalog keys on, so this compares the values instead of walking
+// family/major/minor/patch field by field: a fourth field added to FirmwareSemanticVersion would have been
+// silently ignored by the field-by-field version, and the version it ignored would still have matched.
+fn policy_names_firmware(policy: PublishedFactoryPasswordWritePolicy, firmware: BmcFirmwareVersion) -> Bool {
+  match policy {
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, capture: _, measured_under: _ } => f == firmware
+    NotMeasured { firmware: f } => f == firmware
+  }
+}
+
+// THE MEASUREMENT'S OWN TWO READINGS HAVE TO AGREE, INSIDE THE ROW. A row claims a refusal for a
+// catalogued release AND names the Get Device ID answer it was measured under; IPMI reports Firmware
+// Revision as major.minor only (no patch level exists in that response), so those two numbers are
+// checked against the catalogued release's major and minor. A row relabelled to a release it was not
+// measured on -- e.g. firmware bumped to 3.23.00 while the reading stays 3.22 -- is refused rather than
+// believed. Checked here, at the row, because the row is where both readings live.
+fn published_password_refusal_row_agrees_with_its_reading(
+  firmware: BmcFirmwareVersion,
+  measured_under: IpmiDeviceIdentity,
+) -> Bool {
+  measured_under.firmware_revision_major == firmware.version.major
+    && measured_under.firmware_revision_minor == firmware.version.minor
+}
+
+// WHAT THE CATALOG CAN SAY ABOUT THE CONTROLLER STANDING IN FRONT OF YOU, given the Get Device ID
+// answer you read yourself. This is the join a recovery route needs, and it is here rather than in the
+// route because this module owns both indexes -- the release a row is keyed by, and the reading a row was
+// measured under -- and only here can they be checked against EACH OTHER. Three answers, and exactly one
+// of them licenses anything:
+//
+//   CONTROLLER NEVER MEASURED. The reading matches no row: Manufacturer ID, Product ID and both Firmware
+//   Revision fields have to equal the reading the refusal was observed under (see
+//   ipmi_device_identity_runs_same_firmware for why names never enter that comparison). This is the
+//   refusal that keeps ASRock's 3.22.00 measurement -- the only thing that licenses a destructive
+//   ResetAll -- unreachable for another vendor's controller, or for this model on a release nobody read.
+//   It is NOT the same as "the release has no row" below, and the two must not be collapsed: one says
+//   this machine has never been looked at, the other says our own catalog is inconsistent.
+//
+//   CATALOG INDEXES DISAGREE. A row was found by reading, and then the SAME row is looked up by the
+//   release it claims, through the release-keyed index; if that lookup does not answer with a refusal for
+//   that release, the two indexes do not agree about the row. A row filed against a release that is not
+//   in the capability catalog is the case: the destructive step would be justified by a measurement whose
+//   release key nobody can resolve. Refuse, and name the release that could not be resolved.
+//
+//   REFUSAL MEASURED ON THIS CONTROLLER, carrying the row AND the reading it was checked against, so the
+//   consumer can show both. Nothing here takes a default: no argument for the caller to pass a policy in,
+//   no fallback arm, no "assume as measured".
+//
+// WHY EXACTLY ONE MATCH, AND WHY AMBIGUITY REFUSES. The reading cannot express a patch level, so a catalog
+// holding two rows for the same controller at the same major.minor with different patches would be
+// genuinely ambiguous -- and picking the first would be a coin flip standing behind a factory reset. An
+// ambiguous catalog therefore answers "never measured", which is the honest reading: we do not know which
+// release this is.
+type PublishedPasswordWritePolicySighting
+  = RefusalMeasuredOnThisController {
+      refusal: PublishedFactoryPasswordWritePolicy
+      observed: IpmiDeviceIdentity
+    }
+  | ControllerNeverMeasured { observed: IpmiDeviceIdentity }
+  // the catalog holds two refusal rows for one reading: the measurement exists, the catalog does not
+  // resolve it, and the rows that disagreed travel with the refusal so the duplicate is findable
+  | CatalogAmbiguousForController {
+      observed: IpmiDeviceIdentity
+      matched: List<PublishedFactoryPasswordWritePolicy>
+    }
+  | CatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
+  // A ROW THAT DISAGREES WITH ITSELF. The row matched the reading, and then its own two readings failed to
+  // agree: it claims a refusal for one release while naming a Get Device ID answer taken under another (see
+  // published_password_refusal_row_agrees_with_its_reading). This is NOT "never measured" -- somebody did
+  // measure this controller, and telling them otherwise sends them to re-measure a board that has a
+  // measurement on file, and leaves the mislabelled row in the catalog to do it again. It is its own arm
+  // because the repair belongs to whoever maintains the filing, not to whoever owns the board (§5: "every
+  // degradation is typed, located and countable"; §3b: a failure cause keeps its own meaning and may not be
+  // absorbed by its neighbour). The row itself travels, so the bad filing is findable from the refusal.
+  | RowDisagreesWithItsOwnReading {
+      row: PublishedFactoryPasswordWritePolicy
+      observed: IpmiDeviceIdentity
+    }
+
+// THE FOLD, AT ITS OWN INTERFACE. The catalog is a parameter so a claim can hand it zero rows and two
+// rows without inventing a second measurement in the FILED catalog: the fold is what is being tested, and
+// the filed rows stay the single measurement of record. Production reads through
+// ..._sighted_on below, which applies the filed catalog and nothing else.
+fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
+  catalog: List<PublishedFactoryPasswordWritePolicy>,
+  observed: IpmiDeviceIdentity,
+) -> PublishedPasswordWritePolicySighting {
+  // THE TWO TESTS ARE NOT COMBINED INTO ONE FILTER. This one asks only whether the row is ABOUT the
+  // controller in front of us. Whether the row is internally consistent is asked BELOW, where a failure can
+  // be reported as itself. The previous version ANDed the two and dropped an inconsistent row here, which
+  // made a mislabelled filing arrive as ControllerNeverMeasured -- the one cause it was not (see
+  // RowDisagreesWithItsOwnReading, and the same class of loss fixed for the duplicated-row case in
+  // CatalogAmbiguousForController).
+  let matches = filter(catalog, p =>
+    match p {
+      FirmwareRefusesPublishedPassword {
+        firmware: _,
+        completion_code: _,
+        capture: _,
+        measured_under: measured_under,
+      } => ipmi_device_identity_runs_same_firmware(a: measured_under, b: observed)
+      NotMeasured { firmware: _ } => false
+    })
+  // THREE outcomes, not two. They are three different failures and the operator has to be told which one
+  // to go fix (section 5: "every degradation is typed, located and countable"; section 3b: a failure cause
+  // keeps its own meaning and may not be absorbed by its neighbour):
+  //   ZERO -- nobody has measured this controller. A coverage obligation: go run the measurement.
+  //   ONE -- the measurement applies here, subject to the catalog still saying the same thing about the
+  //     release it names; if it does not, our own rows disagree and that is a different repair.
+  //   MORE THAN ONE -- the catalog carries two rows for one reading. The measurement EXISTS; the CATALOG is
+  //     wrong, and the refusal carries the rows that disagreed so the duplicate is findable. Folding this
+  //     into "never measured" -- which is what the previous version did, through a `!= 1` test -- would
+  //     send someone to re-measure a board that had been measured twice, and would erase the one cause the
+  //     type already had an arm for.
+  // No arm defaults and no arm picks a row: choosing the first would put a coin flip behind wiping a chassis.
+  match list_length(items: matches) {
+    0 => ControllerNeverMeasured { observed: observed }
+    1 =>
+      match matches |> first() {
+        Present { value: row } =>
+          match row {
+            FirmwareRefusesPublishedPassword {
+              firmware: f,
+              completion_code: _,
+              capture: _,
+              measured_under: measured_under,
+            } =>
+              // THE ROW'S OWN TWO READINGS, ASKED NOW RATHER THAN IN THE FILTER ABOVE, so that a row whose
+              // catalogued release and Get Device ID answer disagree reports itself as that disagreement
+              // instead of vanishing and leaving "nobody measured this" in its place. IPMI reports Firmware
+              // Revision as major.minor only, so those two numbers are what can be checked against the
+              // catalogued release.
+              if !published_password_refusal_row_agrees_with_its_reading(
+                firmware: f,
+                measured_under: measured_under,
+              ) {
+                RowDisagreesWithItsOwnReading { row: row, observed: observed }
+              } else if match asrock_altrad8ud_published_factory_password_write_policy_for(firmware: f) {
+                FirmwareRefusesPublishedPassword { firmware: g, completion_code: _, capture: _, measured_under: _ } => g == f
+                NotMeasured { firmware: _ } => false
+              } {
+                RefusalMeasuredOnThisController { refusal: row, observed: observed }
+              } else {
+                CatalogIndexesDisagree { firmware: f, observed: observed }
+              }
+            NotMeasured { firmware: nf } => CatalogIndexesDisagree { firmware: nf, observed: observed }
+          }
+        // unreachable while the length is one; stated rather than defaulted so no arm is missing
+        Absent => ControllerNeverMeasured { observed: observed }
+      }
+    _ => CatalogAmbiguousForController { observed: observed, matched: matches }
+  }
+}
+
+// THE PRODUCTION ENTRY: one catalog, the filed one. There is no variant that takes a caller's policy and
+// no way to pass a measurement in from outside, which is the whole point -- the destructive reset is
+// warranted only by what THIS repository measured, read from the one shelf that holds it.
+fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on(
+  observed: IpmiDeviceIdentity,
+) -> PublishedPasswordWritePolicySighting {
+  asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
+    catalog: asrock_altrad8ud_published_factory_password_write_policy_catalog,
+    observed: observed,
+  )
+}
+
+// ── CAPTURE TIME: A MINTED BAND, NOT A STOPWATCH READING ───────────────────────────────────────
+// THE OBSERVING LAYER OWNS THE CALENDAR OF ITS OWN NOTEBOOK. These bands are statements about WHEN
+// THIS REPOSITORY READ BYTES OFF A MACHINE, and the only authority for them is the capture directory
+// (00_README.txt, and date fields quoted inside the captures). The route module therefore receives a
+// CapturedInstant and never mints one: what the run's date is has no business inside a reusable route,
+// and a band built through a hardcoded day would silently pin every observation to a date it never
+// checked (DESIGN section 3: "Policy has leaked when an argv carries a literal it should receive as a
+// parameter"). One day stands here instead, because one run's README records one day -- and it is read
+// back through the calendar authority below, never asserted beside a bare literal.
+//
+// The artifact records its times to the precision the capture itself has, and none of them to the
+// second:
+//   02_inband_channel.txt   the device node's own date field: `Oct 16 06:27 /dev/ipmi0`
+//   00_README.txt           `PRIVILEGED WRITE 1 ... executed in the original run ~06:40Z`
+//   00_README.txt           `PRIVILEGED WRITE 2 (Redfish Manager.ResetToDefaults): executed ~06:45Z`
+//   00_README.txt           `Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset`
+// An EpochMs field holds ONE exact instant, so every value typed into one claims second precision the
+// bytes do not support (DESIGN section 5: "no plausible output is fabricated"; section 4d: an
+// inference is a bet and travels typed as one). So what an observation carries is the INTERVAL the
+// capture licenses, minted through std.interval -- a reversed pair becomes CaptureTimeBandInverted
+// carrying std.interval's own words about the pair rather than being swapped into order, and there is
+// no arm for "a time" at all, only for a band or for the refusal.
+type CapturedInstant
+  = CaptureTimeBand { band: OrderedClosedInterval<EpochMs> }
+  | CaptureTimeBandInverted { reason: String }
+
+// THE DAY THIS REPOSITORY'S BMC RECOVERY NOTEBOOK IS DATED. 2026-10-16, the directory's own name and
+// every line of its README. Named because it is policy: a second run on another day mints its own
+// bands against its own day and changes nothing here.
+fn recovery_capture_day() -> Iso8601CivilDate {
+  Iso8601CivilDate { year: 2026, month: 10, day: 16 }
+}
+
+// one UTC instant on a NAMED DAY, from the hour/minute/second a capture line shows. The combination of
+// the calendar's scale factors is owned by extdeps.units.iso8601_calendar (DESIGN §6b: this was the
+// third hand-written copy of it), and std.measure owns only the second-to-millisecond scale, which is
+// this mint's own concern. The DAY is a parameter, and the parameter this module passes is its own
+// notebook's date.
+fn captured_epoch_millisecond(day: Iso8601CivilDate, hour: Int, minute: Int, second: Int) -> EpochMs {
+  iso8601_unix_seconds_at(
+    date: day,
+    since_midnight: iso8601_seconds_since_midnight(hour: hour, minute: minute, second: second),
+  ) * (milliseconds_per_second() as Int)
+}
+
+// THE ONE MINT EVERY BAND GOES THROUGH, including what a claim asks when it wants to know what an
+// out-of-order pair does. A claim that re-implemented this fold would be checking a copy of the mint,
+// not the mint: same shape, and no way to tell the two apart when they diverge. The ordering argument
+// is spelled inline rather than behind a named function: EpochMs is a refinement of Int, the corpus'
+// other EpochMs comparisons (gunbc.fleet.mtcollins_firmware_converge's later_of) are ordinary
+// comparisons of the refined value, and a name for `<=` alone would be a second name for one operator.
+fn captured_band(low: EpochMs, high: EpochMs) -> CapturedInstant {
+  interval_construction_fold(
+    construction: closed_interval(low: low, high: high, le: (earlier, later) => earlier <= later),
+    fold: IntervalConstructionFold {
+      ready: i => CaptureTimeBand { band: i },
+      refused: r => CaptureTimeBandInverted { reason: r },
+    },
+  )
+}
+
+// a capture line reading `06:4x` licenses the minute it names; the closed interval runs to the last
+// whole second inside it, so every reading stays inside the recorded band
+fn captured_minute_band(day: Iso8601CivilDate, hour: Int, minute: Int) -> CapturedInstant {
+  captured_band(
+    low: captured_epoch_millisecond(day: day, hour: hour, minute: minute, second: 0),
+    high: captured_epoch_millisecond(
+      day: day,
+      hour: hour,
+      minute: minute,
+      second: (iso8601_seconds_per_minute() as Int) - 1,
+    ),
+  )
+}
+
+// the band, read out of the carrier rather than out of a chosen point: a reader gets the ordered pair
+// (with std.interval's own bounds proof attached) and cannot mistake either bound for a stopwatch
+// reading. No accessor hands out one instant.
+fn captured_instant_band(instant: CapturedInstant) -> Optional<OrderedClosedInterval<EpochMs>> {
+  match instant {
+    CaptureTimeBand { band: b } => Present { value: b }
+    CaptureTimeBandInverted { reason: _ } => Absent
+  }
+}
+
+// DOES ONE BAND LIE ENTIRELY BEFORE ANOTHER? Both sides have to be bands that constructed, and both
+// bounds are compared: an earlier band that merely STARTS before a later one does not precede it, and
+// a band that failed to construct is not allowed to look early, late, or equal -- it refuses. This is
+// the only way ordering is asked of a capture time anywhere, so a claim cannot get a different answer
+// from the one a fold would give.
+fn captured_band_ordering(earlier: CapturedInstant, later: CapturedInstant) -> CapturedBandOrdering {
+  match earlier {
+    // WHICH SIDE FAILED IS THE ANSWER, not a detail. A caller that reports "the earlier thing came
+    // later" when the earlier band never constructed has drawn a conclusion it never measured, and it
+    // points the repair at the wrong fact: a node time that will not build is a defect in the node time.
+    // The mint's own words come along, so the refusal is not a fresh claim about the capture.
+    CaptureTimeBandInverted { reason: r } => EarlierBandRefuses { reason: r }
+    CaptureTimeBand { band: e } =>
+      match later {
+        CaptureTimeBandInverted { reason: r } => LaterBandRefuses { reason: r }
+        CaptureTimeBand { band: l } =>
+          if interval_high(interval: e) <= interval_low(interval: l) {
+            BandPrecedes
+          } else {
+            BandDoesNotPrecede
+          }
+      }
+  }
+}
+
+// WHY A BAND CANNOT BE ORDERED AGAINST ANOTHER. Four answers, because there are four different facts
+// and the old Bool reported all of them as "does not precede": a real late band, an earlier band that
+// failed to construct, a later band that failed to construct, and a pair that does lie in order. A
+// band that failed to construct is not early, not late and not equal, and saying which side failed is
+// what makes the refusal actionable.
+type CapturedBandOrdering
+  = BandPrecedes
+  | BandDoesNotPrecede
+  | EarlierBandRefuses { reason: String }
+  | LaterBandRefuses { reason: String }
+
+// THE BOOLEAN PROJECTION, for the claims that only ask whether one band lies before another. It is the
+// same fold, so a claim cannot get an answer different from the one a gate gets.
+fn captured_band_precedes(earlier: CapturedInstant, later: CapturedInstant) -> Bool {
+  captured_band_ordering(earlier: earlier, later: later) == BandPrecedes
+}
+
+// A BAND BOUND AS UTC TEXT, for the claims that read a bound back against the artifact. The conversion
+// is extdeps.clock's -- the one millis-to-seconds conversion in the corpus, which returns the typed
+// EpochSecs POSIX seconds means -- and the formatting is extdeps.units.iso8601_calendar's own. Neither
+// is re-implemented here: the earlier version divided by milliseconds_per_second locally and returned a
+// bare Int, which grew a second concept for one fact and stripped the unit off the result.
+fn captured_bound_utc_text(bound: EpochMs) -> String {
+  iso8601_utc_text(unix: epoch_secs_of_millis(millis: bound))
+}
+
+// ── THE TIMES THIS RUN'S CAPTURES RECORD ────────────────────────────────────────────────────────
+// Each is a named fact with its own referent in the notebook, so an ordering between them is
+// assertable (and asserted) instead of being an artifact of one timestamp shared by three facts.
+
+// THE ONE ~06:5xZ BAND THE README RECORDS for the pass taken after the reset, shared by every fact
+// whose bytes come from that pass so a bound cannot drift between the two files dated by it. The band
+// spans the whole tens-of-minutes the README states, instead of the 06:53:00.000 an exact field would
+// have had to invent.
+fn recovery_recapture_window() -> CapturedInstant {
+  captured_band(
+    low: captured_epoch_millisecond(day: recovery_capture_day(), hour: 6, minute: 50, second: 0),
+    high: captured_epoch_millisecond(day: recovery_capture_day(), hour: 6, minute: 59, second: 59),
+  )
+}
+
+// THE IN-BAND CHANNEL READING WAS TAKEN AFTER THE RESET, NOT BEFORE IT. 00_README.txt
+// dates 02_inband_channel.txt as a "Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset, against
+// the SAME rescue host (.251) and the BMC in its post-reset factory state", so the channel facts --
+// device node present, modules loaded, mc info, channel 1, user list, lan print -- are reads of a
+// controller already back in its factory state. Stamping this observation with 06:27 instead (the
+// /dev/ipmi0 mtime quoted INSIDE that capture) put the reading before the destructive reset, which is
+// the one ordering this route is built to keep straight.
+fn recovery_inband_channel_instant() -> CapturedInstant {
+  recovery_recapture_window()
+}
+
+// WHEN THE KERNEL CREATED THE QUEUE, which 02_inband_channel.txt quotes as `Oct 16 06:27`. That minute
+// belongs to the device node, not to the reading: the node was made when the boot that ran the capture
+// brought the IPMI driver up, ~18 minutes before these bytes were read. It is carried as its own named
+// fact, and the claim over it asserts the ordering the earlier single timestamp had got backwards.
+fn recovery_device_node_creation_instant() -> CapturedInstant {
+  captured_minute_band(day: recovery_capture_day(), hour: 6, minute: 27)
+}
+
+// WHEN THE RESET WAS EXECUTED. 00_README.txt dates it: "PRIVILEGED WRITE 2 (Redfish Manager.
+// ResetToDefaults): executed ~06:45Z". That is an OBSERVED-IN-SESSION fact, not a captured one -- no
+// request or response bytes were saved (04 holds only the readback) -- so it is the minute the notebook
+// itself records, banded the way every other time here is, and it exists to be ordered against the reads
+// around it rather than to ground any write.
+fn recovery_reset_instant() -> CapturedInstant {
+  captured_minute_band(day: recovery_capture_day(), hour: 6, minute: 45)
+}
+
+// the post-reset readback (04_post_reset_readback.txt): first contact after the BMC came back, inside
+// the same re-capture window
+fn recovery_post_reset_instant() -> CapturedInstant {
+  recovery_recapture_window()
+}

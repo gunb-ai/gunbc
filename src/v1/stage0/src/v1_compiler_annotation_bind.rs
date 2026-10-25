@@ -44,7 +44,7 @@ pub fn erased_region_depth() -> i64 {
 
 pub fn zero_padded(n: i64, width: i64) -> String {
     {
-        let digits = (n.clone()).to_string();
+        let digits = (n).to_string();
         if (v1_rt::string_length(&digits) >= width.clone()) {
             digits.clone()
         } else {
@@ -88,13 +88,16 @@ pub fn swept_region_key(r: Rc<SweptRegion>) -> String {
 
 pub fn swept_region_order(regions: Rc<Vec<Rc<SweptRegion>>>) -> Rc<Vec<Rc<SweptRegion>>> {
     Rc::new({
-        let mut __sorted: Vec<_> = regions.iter().cloned().collect();
-        __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
-            let __ka = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(a.clone());
-            let __kb = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(b.clone());
-            v1_rt::canonical_key_cmp(&__ka, &__kb)
-        });
-        __sorted
+        let mut __keyed: Vec<_> = regions
+            .iter()
+            .cloned()
+            .map(|__e: Rc<SweptRegion>| {
+                let __k = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(__e.clone());
+                (__k, __e)
+            })
+            .collect();
+        __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
     })
 }
 
@@ -138,17 +141,31 @@ pub fn region_sweep_step(acc: Rc<RegionSweepAcc>, region: Rc<SweptRegion>) -> Rc
             Some(top) => top.scope.clone(),
             std::option::Option::None => Rc::new(AnnotationScope::FileScope),
         };
-        Rc::new(RegionSweepAcc {
-            open: v1_rt::rc_list_push(open.clone(), region.clone()),
-            regions: v1_rt::rc_list_push(
+        {
+            let __rb_0_0 = v1_rt::rc_list_push(open.clone(), region.clone());
+            let __rb_1_0 = v1_rt::rc_list_push(
                 acc.regions.clone(),
                 Rc::new(AnnotationRegion {
                     scope: region.scope.clone(),
                     extent: region.extent.clone(),
                     parent: parent.clone(),
                 }),
-            ),
-        })
+            );
+            let mut __rb_h = acc;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.open = __rb_0_0;
+                    __rb_r.regions = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(RegionSweepAcc {
+                        open: __rb_0_0,
+                        regions: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 
@@ -246,13 +263,16 @@ pub fn region_key_index(
             },
         );
         let ordered = Rc::new({
-            let mut __sorted: Vec<_> = regions.iter().cloned().collect();
-            __sorted.sort_by(|a: &Rc<AnnotationRegion>, b: &Rc<AnnotationRegion>| {
-                let __ka = (|r: Rc<AnnotationRegion>| r.extent.start.clone())(a.clone());
-                let __kb = (|r: Rc<AnnotationRegion>| r.extent.start.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = regions
+                .iter()
+                .cloned()
+                .map(|__e: Rc<AnnotationRegion>| {
+                    let __k = (|r: Rc<AnnotationRegion>| r.extent.start.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         let stepped = ordered.iter().cloned().fold(
             Rc::new(RegionKeyStepAcc {
@@ -348,11 +368,7 @@ pub fn optional_region_key(
     depth: i64,
 ) -> Option<String> {
     match scope.clone() {
-        Some(s) => Some(region_structural_key(
-            index.clone(),
-            s.clone(),
-            depth.clone(),
-        )),
+        Some(s) => Some(region_structural_key(index, s.clone(), depth)),
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -363,12 +379,12 @@ pub fn keyed_annotation_rows(
     graph: Rc<SourceAnnotationGraph>,
 ) -> Rc<Vec<Rc<KeyedAnnotationRow>>> {
     {
-        let regions = annotation_regions(transport.clone(), extents.clone());
+        let regions = annotation_regions(transport.clone(), extents);
         let index = region_key_index(transport.clone(), regions.clone());
         let depth = v1_rt::int_add((regions.clone().len() as i64), 1);
         Rc::new({
             let mut __result = Vec::new();
-            for row in crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
+            for row in crate::std_source_annotation::source_annotation_graph_rows(graph)
                 .iter()
                 .cloned()
             {
@@ -407,7 +423,7 @@ pub fn keyed_annotation_regions(
     extents: Rc<ParsedSourceExtents>,
 ) -> Rc<Vec<Rc<KeyedAnnotationRegion>>> {
     {
-        let regions = annotation_regions(transport.clone(), extents.clone());
+        let regions = annotation_regions(transport.clone(), extents);
         let index = region_key_index(transport.clone(), regions.clone());
         let depth = v1_rt::int_add((regions.clone().len() as i64), 1);
         Rc::new({
@@ -450,6 +466,6 @@ pub fn bind_annotations(
             }
             __result
         }),
-        annotation_regions(transport.clone(), extents.clone()),
+        annotation_regions(transport, extents),
     )
 }

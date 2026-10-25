@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.holds_spools_retry_consolidation_residue
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringFailureMode {
   identity: "holds_spools_retry_consolidation_residue" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "INVALID STATE: the holds/spools/retry consolidation (gunbc#13821) left named leftover authorities beside the new homes, so a later durable work-queue can still fork against the old spelling. HARM: a second decision algebra, a second stall bound, a second unit-liveness spelling, or a systemd RestartSec that is not the retry law's earliest time reappears as if the consolidation had not happened. These are not rung drops: nothing fell; the class sits unbuilt.",

@@ -2,6 +2,7 @@ module v2.test.claim.manual.infer_emit_compile_anchor
 
 
 
+
 data anchor_stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
@@ -9,6 +10,7 @@ data anchor_stub_empty_conj: Node = Node {
 }
 
 data anchor_stub_target_model: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
   produced_decl_support: ProducedDeclUnwired,
   bundle: anchor_stub_empty_conj,
   lex: VoidLexRules,

@@ -41,8 +41,10 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Holds, Violates, Witness }
+import std.host_text { chars }
 
 fn sql_atom(id: Symbol) -> Node {
   Node {
@@ -63,7 +65,7 @@ fn sql_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
           BoundToken { binding: binding, token_class: _ } =>
             list_snoc_item(
               xs: acc,
-              item: Edge { label: Positional, target: sql_atom(id: binding) }
+              item: Edge { label: Positional, target: sql_atom(id: binding), declaration: NotADeclaration }
             )
           FixedToken { token_class: _ } => acc
         }
@@ -201,7 +203,7 @@ fn sql_make_bound_tokens_target_model(
 fn sql_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 

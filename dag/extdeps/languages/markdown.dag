@@ -4,8 +4,14 @@ import std.types { List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
+import std.markup { CommentGrammar, DeclaresDocument }
 import extdeps.languages.html {
   canonical_html_spellings,
+  html_comment_open_sequence,
+  html_comment_close_sequence,
+  html_doctype_open_sequence,
+  html_comment_terminators,
+  html_doctype_name_end_whitespace,
 }
 import extdeps.languages.html_fragment { serialize_fragment }
 import extdeps.uri_validation {
@@ -15,17 +21,11 @@ import std.render_repeat_string_bootstrap { repeat_string }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
-  Fragment,
-  Element,
-  FragmentText,
-  RawNode,
   MarkupMedium,
   TagDelimiter,
   EscapeRaw,
   OmitClose,
-  serialize_fragment_with,
   MarkupSerializeResult,
-  Serialized,
   Rejected,
 }
 import std.markdown {
@@ -139,6 +139,14 @@ fn md_link_form(text: String, url: String, sp: MarkdownSpellings) -> String {
   )
 }
 
+// THE MARKDOWN MEDIUM, FOR THE ONE ROUTE THAT SERIALIZES MARKDOWN AS MARKUP.
+// Its consumer is the convergence witness (test.claim.markup_medium_convergence), which is what this
+// module's serializer claim rests on: fill a medium's rows and the shared serializer follows them, with
+// no per-language arm. Production Markdown takes two other routes and neither uses this value -- Markdown
+// TEXT comes from md_render_inlines composing MarkdownSpellings (Markdown's own spelling, which must pass
+// & and < through raw), and Markdown-to-HTML goes through serialize_markdown_document in std.markdown,
+// which builds an HTML Fragment and uses the HTML medium. So the em/strong/code rows below are read from
+// sp by the witness, and the comment/doctype rows are HTML's, imported rather than retyped.
 fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
   MarkupMedium {
     tag_overrides: [
@@ -151,36 +159,63 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
+    // Read, not retyped, and read as ONE value: CommonMark passes an HTML comment through as an HTML
+    // block (0.30 §6.6 lists "<!--" among the block start conditions) and sends a line starting
+    // "<!DOCTYPE" through the same way (§4.2), so Markdown's comment grammar IS HTML's and a Markdown
+    // doctype IS the HTML doctype. Importing is what makes that sentence enforced rather than
+    // aspirational: re-typing "<!-- " here was a second home for one fact (§3), which review 82174 on
+    // #14351 caught.
+    comment_grammar: CommentGrammar {
+      open: html_comment_open_sequence,
+      close: html_comment_close_sequence,
+      terminators: html_comment_terminators,
+    },
+    document_grammar: DeclaresDocument {
+      open: html_doctype_open_sequence,
+      name_end_whitespace: html_doctype_name_end_whitespace,
+    },
   }
 }
 
-fn md_inline_to_fragment(inline: MarkdownInline, sp: MarkdownSpellings) -> Fragment {
+// MARKDOWN TEXT IS COMPOSED FROM MARKDOWN SPELLINGS, not by borrowing the markup medium.
+//
+// THIS ROUTE PASSES THROUGH UNESCAPED, ON PURPOSE. md_render_inlines hands back Markdown source text,
+// which is fed to an ingest_markdown_source round trip and to committed docs; escaping & or < would
+// corrupt the source. Every sibling helper here already says the same thing -- md_link_form, md_code_block
+// and md_table_row each join sp.* rows directly and never consult a medium. The one exception was this
+// fold, which detoured through Fragment and the medium for three rows it could have read from sp.
+//
+// WHY THE DETOUR WAS REMOVED, AND WHAT IT COST (my own regression, caught by
+// markup_medium_convergence.witness_md_inline_emission_bytes / witness_md_link_named_arm_bytes, which
+// went red at 89a39626b6f and stayed red until this commit). Those three arms called
+// serialize_fragment_with. When #14351 gave that function a result return -- the change the reviews on
+// this PR required -- the fold's `concat(acc, <result>)` became a record in a String position, and the
+// language did not stop it: **b** came out as b, *i* as i, `x` as x. Delimiters vanished from committed
+// documentation, and it compiled. A detour through a foreign medium bought nothing that sp.emphasis_delim
+// does not already say, and it put a String where a result belongs -- exactly the shape §5 forbids, since
+// no plausible output was fabricated and no refusal was raised.
+//
+// THE OTHER ROUTE KEEPS THE MEDIUM, AND THAT IS THE DISTINCTION: serialize_markdown_document builds an
+// HTML Fragment and serializes it through a medium, because there the bytes ARE HTML. Here they are
+// Markdown, so the rows come from the module that owns Markdown's spelling.
+fn md_inline_text(inline: MarkdownInline, sp: MarkdownSpellings) -> String {
   match inline {
-    TextInline { text } =>
-      FragmentText { content: text }
+    TextInline { text } => text
     EmphasisInline { inlines } =>
-      Element { tag: "em", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
+      join([sp.emphasis_delim, md_render_inlines(inlines: inlines, sp: sp), sp.emphasis_delim], "")
     StrongInline { inlines } =>
-      Element { tag: "strong", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
+      join([sp.strong_delim, md_render_inlines(inlines: inlines, sp: sp), sp.strong_delim], "")
     CodeInline { text } =>
-      Element { tag: "code", attributes: [], children: [ FragmentText { content: text } ] }
+      join([sp.code_span_delim, text, sp.code_span_delim], "")
     LinkInline { inlines, url } =>
-      RawNode { content: md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp) }
+      md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp)
     ImageInline { alt, url } =>
-      RawNode { content: join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "") }
+      join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "")
   }
-}
-
-fn md_inlines_to_fragments(inlines: List<MarkdownInline>, sp: MarkdownSpellings) -> List<Fragment> {
-  map(inlines, i => md_inline_to_fragment(inline: i, sp: sp))
 }
 
 fn md_render_inlines(inlines: List<MarkdownInline>, sp: MarkdownSpellings) -> String {
-  fold(
-    md_inlines_to_fragments(inlines: inlines, sp: sp),
-    init: "",
-    f: (acc, fr) => concat(acc, serialize_fragment_with(frag: fr, medium: markdown_markup_medium(sp: sp)))
-  )
+  fold(inlines, init: "", f: (acc, i) => concat(acc, md_inline_text(inline: i, sp: sp)))
 }
 
 fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, depth: Int) -> String {
@@ -614,16 +649,21 @@ fn find_first_rejected_url_in_document(doc: MarkdownDocument) -> RejectedUrlSche
   find_first_rejected_url_in_blocks(blocks: doc.blocks)
 }
 
-fn serialize_markdown_document(doc: MarkdownDocument) -> String {
+fn serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
   serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
 }
 
+// THE URL PASS, THEN THE SERIALIZER. MarkdownDocument is a closed set of typed blocks and no block carries
+// a MarkupComment or a Document node, so today the comment checks have nothing to find here -- but the
+// serializer is the same one and refuses the same way, so the day MarkdownDocument gains a raw-HTML block
+// (the trigger for a comment reaching this route) the guard is already in place rather than a line someone
+// has to remember to add. The separate pre-flight walk this used to run is gone: it checked rules the
+// emitter now checks, from the same medium rows, and a route that skipped it was the defect.
 fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
   match find_first_rejected_url_in_document(doc: doc) {
     Present { value: _ } =>
       Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
-    Absent =>
-      Serialized { html: serialize_markdown_document(doc: doc) }
+    Absent => serialize_markdown_document(doc: doc)
   }
 }
 

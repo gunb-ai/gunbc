@@ -2,9 +2,9 @@ module v2.compiler.emit_semantic_decl
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List, Map }
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
+import v2.compiler.translate { serialize_concrete_syntax_layout_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
-import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclDocumentation, TargetSemanticDeclConformances, TargetSemanticDeclSurfaceProjection, TargetSemanticDeclMember, TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_decl_import_surfaces, target_semantic_decl_surface_with_leading_lines, target_semantic_decl_surface_with_leading_text_lines, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
 import std.optional { Absent, Present }
 import v2.std.witness { map_get_checked }
 import v2.std.qualified_name { declaration_reference_path_optional }
@@ -12,7 +12,7 @@ import v2.std.compilers.target_model {
   TargetModel,
   TargetTypeExprAtom,
   TargetTypeExpression,
-  concrete_syntax_token_list_from_node,
+  concrete_syntax_layout_items_from_node,
   target_atom_type_spelling,
   target_type_expr_declaration_reference_emitted,
   target_type_expression_spelling,
@@ -30,16 +30,32 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Arrow, Occupancy, Instantiation, ComputationNode, Atom, Disj, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Arrow, Instantiation, ComputationNode, Atom, Disj, Conj, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
-import std.algebra { Empty, contains, empty_map }
+import std.algebra { Empty, contains, empty_map, is_empty }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^emit_semantic_decl_unsupported_shape,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_semantic_decl_members_on_coproduct_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_semantic_decl_members_on_coproduct_unwired,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_semantic_decl_field_docs_on_coproduct_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_semantic_decl_field_doc_on_coproduct,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -58,14 +74,14 @@ fn emit_decl_surface(
         o: grammar_relation_row_tokens_root(row: row),
         f: fn(tokens_root) {
           bind_outcome(
-            o: concrete_syntax_token_list_from_node(list_node: tokens_root),
-            f: fn(tokens) {
+            o: concrete_syntax_layout_items_from_node(list_node: tokens_root),
+            f: fn(items) {
               bind_outcome(
                 o: semantic_decl_serialize_target(profile: profile, rules: rules, host_binding_spellings: host_binding_spellings),
                 f: fn(serialize_target) {
-                  serialize_concrete_syntax_tokens_to_source(
+                  serialize_concrete_syntax_layout_to_source(
                     target: serialize_target,
-                    tokens: tokens
+                    items: items
                   )
                 }
               )
@@ -83,10 +99,38 @@ fn emit_decl_surface(
 // target's own binding_spellings. There is no route that
 // binds a type as itself: a type the target cannot spell refuses, located, rather than printing its
 // interned name.
+// The surface exactly as the declaration route prints it: docs, imports then header lead the declaration under the
+// target's own columns, present even when empty (an empty list is the nil their nullable productions consume). Every
+// consumer of a hand-built surface goes through this one wrapper rather than restating the edges.
+fn emit_surface_with_leading_columns(
+  projection: TargetSemanticDeclSurfaceProjection,
+  docs: List<String>,
+  imports: List<Symbol>,
+  header: List<String>,
+  surface: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_semantic_decl_surface_with_leading_text_lines(column: projection.doc_projection, reason: ^target_semantic_decl_doc_unwired, lines: docs, surface: surface),
+    f: fn(bare) {
+      bind_outcome(
+        o: target_semantic_decl_surface_with_leading_lines(column: projection.import_projection, reason: ^target_semantic_decl_imports_unwired, items: target_semantic_decl_import_surfaces(imports: imports), surface: bare),
+        f: fn(with_imports) {
+          target_semantic_decl_surface_with_leading_text_lines(column: projection.header_projection, reason: ^target_semantic_decl_header_unwired, lines: header, surface: with_imports)
+        }
+      )
+    }
+  )
+}
+
 fn emit_semantic_type_decl(
   name: Symbol,
   params: List<Symbol>,
   node: Node,
+  members: List<TargetSemanticDeclMember>,
+  imports: List<Symbol>,
+  header: List<String>,
+  documentation: TargetSemanticDeclDocumentation,
+  conformances: TargetSemanticDeclConformances,
   target: TargetModel,
   realization_host: TargetModel
 ) -> Outcome<Medium<String>> {
@@ -96,6 +140,11 @@ fn emit_semantic_type_decl(
     f: fn(emission) {
       match node.kind {
         TypeNode { connective: Disj } =>
+          if !is_empty(xs: members) {
+            outcome_rejected(d: emit_semantic_decl_members_on_coproduct_diagnostic(node: node))
+          } else if !is_empty(xs: documentation.fields) {
+            outcome_rejected(d: emit_semantic_decl_field_docs_on_coproduct_diagnostic(node: node))
+          } else {
           bind_outcome(
             o: semantic_decl_profile_binding_spellings_over(profile: emission.enum_serialize_profile, base: host_binding_spellings),
             f: fn(spellings) {
@@ -105,19 +154,26 @@ fn emit_semantic_type_decl(
                   name: name,
                   params: params,
                   coproduct: node,
+                  conformances: conformances,
                   type_binding: semantic_decl_type_binding(params: params, resolve: produced_type_binding_over(target: realization_host, spellings: spellings))
                 ),
-                f: fn(surface) {
-                  emit_decl_surface(
-                    surface: surface,
-                    rules: emission.enum_translation_rules,
-                    profile: emission.enum_serialize_profile,
-                    host_binding_spellings: host_binding_spellings
+                f: fn(undecorated) {
+                  bind_outcome(
+                    o: emit_surface_with_leading_columns(projection: emission.surface, docs: documentation.lines, imports: imports, header: header, surface: undecorated),
+                    f: fn(surface) {
+                      emit_decl_surface(
+                        surface: surface,
+                        rules: emission.enum_translation_rules,
+                        profile: emission.enum_serialize_profile,
+                        host_binding_spellings: host_binding_spellings
+                      )
+                    }
                   )
                 }
               )
             }
           )
+          }
         TypeNode { connective: Conj } =>
           bind_outcome(
             o: semantic_decl_profile_binding_spellings_over(profile: emission.struct_serialize_profile, base: host_binding_spellings),
@@ -128,14 +184,22 @@ fn emit_semantic_type_decl(
                   name: name,
                   params: params,
                   record: node,
+                  members: members,
+                  conformances: conformances,
+                  documentation: documentation,
                   type_binding: semantic_decl_type_binding(params: params, resolve: produced_type_binding_over(target: realization_host, spellings: spellings))
                 ),
-                f: fn(surface) {
-                  emit_decl_surface(
-                    surface: surface,
-                    rules: emission.struct_translation_rules,
-                    profile: emission.struct_serialize_profile,
-                    host_binding_spellings: host_binding_spellings
+                f: fn(undecorated) {
+                  bind_outcome(
+                    o: emit_surface_with_leading_columns(projection: emission.surface, docs: documentation.lines, imports: imports, header: header, surface: undecorated),
+                    f: fn(surface) {
+                      emit_decl_surface(
+                        surface: surface,
+                        rules: emission.struct_translation_rules,
+                        profile: emission.struct_serialize_profile,
+                        host_binding_spellings: host_binding_spellings
+                      )
+                    }
                   )
                 }
               )
@@ -143,7 +207,6 @@ fn emit_semantic_type_decl(
           )
         TypeNode { connective: Atom { identity: _ } } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
         TypeNode { connective: Arrow } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
-        TypeNode { connective: Occupancy } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
         TypeNode { connective: Instantiation } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
         ComputationNode { behavior: _ } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
       }

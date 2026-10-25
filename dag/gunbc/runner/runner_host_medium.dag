@@ -203,9 +203,9 @@ fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage
 
 // THE MEDIUM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST of the built image -- its content digest,
 // which the export's readback must equal (gunbc.host.boot_medium boot_medium_readback). Name and terminal
-// derive from rows above, so a runner medium naming another artifact has no spelling. No data row
-// applies this yet: no build of the runner image has run, and authoring a digest no build produced
-// would fabricate it. The row lands with the publish receipt.
+// derive from rows above, so a runner medium naming another artifact has no spelling. The one data
+// row applying it is gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_medium, carrying the digest
+// of the publish receipt (wet publish run 39775218607).
 fn runner_host_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
   BootMedium {
     image_name: ubuntu_seeded_install_media_image_name(image_stem: runner_host_medium_image_stem, output_digest: output_digest),
@@ -412,13 +412,21 @@ fn runner_host_up_over_open(envelope: BoundHostCaptureEnvelope) -> RunnerHostUpR
 fn runner_host_up_readback(capture: String, subject: AdmittedBootSubject) -> RunnerHostUpReadback {
   match subject.medium.terminal {
     BootMediumRunnerHostUp { label: label } =>
-      match host_capture_bind(capture: capture, machine: boot_subject_machine(subject: subject)) {
-        HostCaptureNotBegun => RunnerHostUpPending { reason: "no begin marker for this machine yet" }
-        HostCaptureUnbound { reason: r } => RunnerHostUpRefused { refusals: [RunnerHostCaptureUnbound { reason: r }] }
-        HostCaptureOpen { envelope: e } => runner_host_up_over_open(envelope: e)
-        HostCaptureBound { envelope: e } => runner_host_up_over_closed(envelope: e, label: label)
-      }
+      runner_host_up_readback_of(capture: capture, machine: boot_subject_machine(subject: subject), label: label)
     BootMediumVolumeLabel { label: _ } => RunnerHostUpRefused { refusals: [RunnerHostMediumTerminalNotRunnerHostUp { image: subject.medium.image_name }] }
     BootMediumNoTerminal { reason: _ } => RunnerHostUpRefused { refusals: [RunnerHostMediumTerminalNotRunnerHostUp { image: subject.medium.image_name }] }
+  }
+}
+
+// THE READBACK OVER A MACHINE NAME AND A LABEL, for a consumer that holds a capture and no boot: the
+// boot subject's own readback delegates here, so the bind and the acceptance are one fold. The caller
+// names the machine the envelope must bind to and the label of the medium it expects
+// (runner_host_medium_volume_id for this module's image).
+fn runner_host_up_readback_of(capture: String, machine: NonEmptyStr, label: NonEmptyStr) -> RunnerHostUpReadback {
+  match host_capture_bind(capture: capture, machine: machine) {
+    HostCaptureNotBegun => RunnerHostUpPending { reason: "no begin marker for this machine yet" }
+    HostCaptureUnbound { reason: r } => RunnerHostUpRefused { refusals: [RunnerHostCaptureUnbound { reason: r }] }
+    HostCaptureOpen { envelope: e } => runner_host_up_over_open(envelope: e)
+    HostCaptureBound { envelope: e } => runner_host_up_over_closed(envelope: e, label: label)
   }
 }

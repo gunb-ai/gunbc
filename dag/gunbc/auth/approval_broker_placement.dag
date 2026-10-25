@@ -28,7 +28,7 @@ import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
 // realization there is no such host and each reader refuses through its own arm.
 //
 // This module is deliberately NOT imported by any broker-side module (gunbc.auth.approval_broker_endpoint,
-// approval_decision_store, approval_request_submission, approval_device_enrolment_code): the broker
+// approval_decision_store, approval_request_submission): the broker
 // receives its own host at serve time (approval_broker_serving_base_url) and never reaches the
 // instance roster, which keeps the native broker's closure as #13132 narrowed it.
 type ApprovalBrokerHost

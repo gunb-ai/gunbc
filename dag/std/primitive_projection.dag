@@ -96,10 +96,20 @@ data primitive_to_string: PrimitiveIdentity = primitive_identity_slug(name: "to_
 // helpers. Never has no producer.
 data never_type_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "Never")
 data never_eliminator_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "absurd")
+// THE PER-RESULT-TYPE ELIMINATIONS OF THE ONE DIVERGENT SEAM (std.error_primitives
+// pure_dag_seam_unreachable_int / _float / _string, each absurd over the Never-typed seam). Rust emission
+// gives exactly these items, and absurd, an item-level allow(unreachable_code): rustc refuses a call with
+// an uninhabited argument at the caller, so the elimination lives in these items and no caller allows.
+data never_projection_declarations: List<DeclarationRef> = [
+  decl_ref(module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable_int"),
+  decl_ref(module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable_float"),
+  decl_ref(module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable_string")
+]
 
 fn never_type_qualified_path() -> String {
   concat(never_type_declaration.module_path as String, ".", never_type_declaration.decl_name as String)
 }
+data primitive_list_push: PrimitiveIdentity = primitive_identity_slug(name: "list_push")
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
 data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
 data primitive_machine_word_native_operate: PrimitiveIdentity = primitive_identity_slug(name: "machine_word_native_operate")
@@ -144,6 +154,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_utf8_encode_bytes, module_path: "std.bytes", decl_name: "utf8_encode_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_octets_bytes, module_path: "std.bytes", decl_name: "octets_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_list_push, module_path: "std.algebra", decl_name: "list_push", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_chars, module_path: "std.host_text", decl_name: "chars", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_machine_word_native_operate, module_path: "std.machine_word", decl_name: "machine_word_native_operate", fidelity: HostRealizedSeam),

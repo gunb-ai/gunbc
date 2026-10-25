@@ -25,6 +25,7 @@ fn record_construct_binding_spellings() -> Map<Symbol, String> {
 
 fn record_construct_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
@@ -60,7 +61,7 @@ fn ts_record_construct_emit_accepts(
       projection: ts_value_expression_projection_with_record_literal_naming(
         record_literal_names_type: record_literal_names_type
       ),
-      catalog: ts_operator_realizations_catalog_node()
+      catalog: TargetRealizationCatalog { operators: ts_operator_realizations_catalog_node(), primitives: PrimitiveRealizationsUnwired }
     ),
     f: fn(tokens) {
       serialize_concrete_syntax_tokens_to_source(

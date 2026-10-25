@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data generic_coproduct_argument_unjudged_at_declared_return: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_coproduct_argument_unjudged_at_declared_return" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a fn declared to return one instantiation of a generic coproduct (`Outcome<Node>`) was admitted while its body produced another (`Outcome<ResolvedTree record>`).** DESIGN section 4b puts `values inhabit declared types` on the ordinary compiler floor, so this is below the floor, not a rung. Found by `wise-bat-862` in gunbc#12432, where about 35 test helpers carried the mismatch and nothing refused.",

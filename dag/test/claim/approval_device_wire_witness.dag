@@ -9,14 +9,17 @@ import extdeps.crypto.signature {
   SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed, signature_verification_from_implementation, signature_carrier_refusal,
 }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
+import gunbc.auth.approval_google_enrolment { google_enrolment_transcript }
+import extdeps.apple.app_attest { AttestKeyId }
 import gunbc.auth.approval_device_wire {
-  framed, device_redemption_signing_input, enrolment_transcript, DeviceRedemptionSigningInput, RedemptionChallenge,
+  framed, device_redemption_signing_input, DeviceRedemptionSigningInput, RedemptionChallenge,
   approval_device_audience, MobileIos, MobileAndroid, device_read_client_data,
-  EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion, PushRegistration,
-  WireDecoded, WireRefused, enrolment_request_json, decode_enrolment_request, signed_redemption_json, decode_signed_redemption,
+  GoogleEnrolmentRequest, ApnsRegistration, SignedRedemption, IosAppAttestAssertion, PushRegistration,
+  WireDecoded, WireRefused, google_enrolment_request_json, decode_google_enrolment_request, signed_redemption_json, decode_signed_redemption,
   push_update_json, decode_push_update, ReadAuthentication, read_authentication_json, decode_read_request, PushUpdateRequest, push_update_request_json, decode_push_update_request, path_segment, device_request_path, device_push_update_client_data, decode_path_segment, PathSegmentDecoded, PathSegmentMalformed,
 }
 import extdeps.apple.apns { ApnsProduction }
+import gunbc.auth.approval_device_redemption_fixtures { refusal_vectors, RefusalVector }
 
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
 data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
@@ -104,8 +107,8 @@ test fn witness_signing_input_binds_the_capability_tag() -> Bool {
 }
 
 test fn witness_enrolment_transcript_binds_key_and_platform() -> Bool {
-  enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileIos) != enrolment_transcript(code: "482913", decision_key: key_b, platform: MobileIos)
-    && enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileIos) != enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileAndroid)
+  google_enrolment_transcript(attest_key_id: "k1" as AttestKeyId, decision_key: key_a, platform: MobileIos) != google_enrolment_transcript(attest_key_id: "k1" as AttestKeyId, decision_key: key_b, platform: MobileIos)
+    && google_enrolment_transcript(attest_key_id: "k1" as AttestKeyId, decision_key: key_a, platform: MobileIos) != google_enrolment_transcript(attest_key_id: "k1" as AttestKeyId, decision_key: key_a, platform: MobileAndroid)
 }
 
 // The read transcript binds the path and the enrolment: an assertion for one GET or one device
@@ -120,11 +123,9 @@ test fn witness_read_transcript_binds_path_enrollment_and_time() -> Bool {
 // ── The HTTP wire ────────────────────────────────────────────────────────────────────────────
 data fx_push: PushRegistration = ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2c3" }
 
-fn fx_enrolment() -> EnrolmentRequest {
-  EnrolmentRequest {
-    code: "482913", platform: MobileIos, decision_key: key_a,
-    evidence: IosAppAttestAttestation { attest_key_id: "k1", attestation_b64: "ATT" },
-    push: fx_push,
+fn fx_enrolment() -> GoogleEnrolmentRequest {
+  GoogleEnrolmentRequest {
+    platform: MobileIos, decision_key: key_a, attest_key_id: "k1", attestation_b64: "ATT", id_token: "h.c.s",
   }
 }
 
@@ -143,8 +144,8 @@ fn fx_redemption() -> SignedRedemption {
 
 // ROUND TRIPS: decoding an encoded body and encoding it again yields the same bytes.
 test fn witness_enrolment_request_round_trips() -> Bool {
-  match decode_enrolment_request(text: enrolment_request_json(r: fx_enrolment())) {
-    WireDecoded { value: r } => enrolment_request_json(r: r) == enrolment_request_json(r: fx_enrolment())
+  match decode_google_enrolment_request(text: google_enrolment_request_json(r: fx_enrolment())) {
+    WireDecoded { value: r } => google_enrolment_request_json(r: r) == google_enrolment_request_json(r: fx_enrolment())
     WireRefused { at: _, cause: _ } => false
   }
 }
@@ -216,8 +217,8 @@ test fn witness_decoder_refuses_a_duplicated_member() -> Bool {
 }
 
 test fn witness_decoder_refuses_another_suite() -> Bool {
-  let body = "{\"code\":\"1\",\"platform\":\"ios\",\"decision_key\":{\"suite\":\"ECDSA-P384-SHA384\",\"encoding\":\"SEC1-uncompressed\",\"point_b64url\":\"B\"},\"evidence\":{\"kind\":\"ios_app_attest\",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\"},\"push\":{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}}"
-  match decode_enrolment_request(text: body) {
+  let body = "{\"platform\":\"ios\",\"decision_key\":{\"suite\":\"ECDSA-P384-SHA384\",\"encoding\":\"SEC1-uncompressed\",\"point_b64url\":\"B\"},\"attest_key_id\":\"k\",\"attestation_b64\":\"a\",\"id_token\":\"t\"}"
+  match decode_google_enrolment_request(text: body) {
     WireRefused { at: a, cause: _ } => a as String == "decision_key.suite"
     WireDecoded { value: _ } => false
   }
@@ -228,6 +229,20 @@ test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool {
     WireRefused { at: a, cause: _ } => a as String == "push.kind"
     WireDecoded { value: _ } => false
   }
+}
+
+// The refusal vectors the app's XCTest is joined to: each is refused, the fcm kind with the provider
+// cause at push.kind, and the missing member located under push.
+test fn witness_refusal_vectors_are_refused_with_the_provider_cause_and_push_rooted_member() -> Bool {
+  all(refusal_vectors, v => match decode_push_update(text: v.body) { WireRefused { at: _, cause: _ } => true  WireDecoded { value: _ } => false })
+    && match decode_push_update(text: "{\"kind\":\"fcm\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}") {
+      WireRefused { at: a, cause: c } => a as String == "push.kind" && c as String == "not an admitted push provider"
+      WireDecoded { value: _ } => false
+    }
+    && match decode_push_update(text: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\"}") {
+      WireRefused { at: a, cause: c } => a as String == "push.token" && c as String == "missing"
+      WireDecoded { value: _ } => false
+    }
 }
 
 // PATHS: every identity has a route, "id-" + base64url(UTF-8). The expected strings were computed
@@ -260,10 +275,10 @@ test fn witness_decoder_refuses_another_arms_member() -> Bool {
   }
 }
 
-test fn witness_evidence_decoder_refuses_another_arms_member() -> Bool {
-  let body = "{\"code\":\"1\",\"platform\":\"ios\",\"decision_key\":{\"suite\":\"ECDSA-P256-SHA256\",\"encoding\":\"SEC1-uncompressed\",\"point_b64url\":\"B\"},\"evidence\":{\"kind\":\"ios_app_attest\",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\",\"certificates_der_b64\":[]},\"push\":{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}}"
-  match decode_enrolment_request(text: body) {
-    WireRefused { at: a, cause: _ } => a as String == "evidence"
+test fn witness_enrolment_decoder_refuses_a_retired_member() -> Bool {
+  let body = "{\"platform\":\"ios\",\"code\":\"1\",\"decision_key\":{\"suite\":\"ECDSA-P256-SHA256\",\"encoding\":\"SEC1-uncompressed\",\"point_b64url\":\"B\"},\"attest_key_id\":\"k\",\"attestation_b64\":\"a\",\"id_token\":\"t\"}"
+  match decode_google_enrolment_request(text: body) {
+    WireRefused { at: a, cause: _ } => a as String == "$"
     WireDecoded { value: _ } => false
   }
 }

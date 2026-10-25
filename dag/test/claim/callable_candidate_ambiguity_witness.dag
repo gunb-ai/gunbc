@@ -1,10 +1,8 @@
 module test.claim.callable_candidate_ambiguity_witness
 
 import std.types { String, Bool, Int }
-import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
-import gunbc.compile_diagnostic_census { census_blocking_rows, census_total_count, CensusObserved, CensusNotRunnable }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_exit, CensusVerdict }
 
 // A CALLABLE NAME WITH TWO AUTHORITIES REFUSES, AND ONE WITH A LEXICAL OWNER STILL RESOLVES.
 //
@@ -47,29 +45,19 @@ import gunbc.compile_diagnostic_census { census_blocking_rows, census_total_coun
 // defect never had is worse than no witness, because it goes green and reads as coverage; this
 // one would have certified refusing the compiler core as correct behaviour.
 
-fn census_of(source: String) -> CompileDiagnosticCensus {
-  compile_dag_diagnostic_census(source)
+fn blocking_verdict_for(source: String, wanted: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: blocking_class_census(source: source, wanted_class: wanted), holds: holds)
 }
 
-fn blocking_count_for(source: String, wanted: String) -> Int {
-  match census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
-    Present { value: n } => n
-    Absent => 0 - 1
-  }
-}
-
-// NOT-RUNNABLE IS NOT ZERO, which is why the Absent arm answers -1 rather than 0.
+// NOT-RUNNABLE IS NOT ZERO, which is why a refused census is CensusUnobserved rather than 0.
 //
 // A census that could not run has observed NOTHING, and reporting that as "no diagnostics" would
 // let a broken harness satisfy the green control while making the red unsatisfiable -- the
-// empty-observation narrow, one layer up from the class this file is about. -1 fails in both
-// directions: it is neither the 0 a green asserts nor the positive count a red asserts, so a
+// empty-observation narrow, one layer up from the class this file is about. CensusUnobserved fails
+// in both directions: it is neither the 0 a green asserts nor the positive count a red asserts, so a
 // harness that stops working cannot masquerade as either verdict.
-fn blocking_ambiguous_reference_count(source: String) -> Int {
-  match census_blocking_count_for_class(census: census_of(source: source), wanted: "AmbiguousReference") {
-    Present { value: n } => n
-    Absent => 0 - 1
-  }
+fn blocking_ambiguous_reference_verdict(source: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  blocking_verdict_for(source: source, wanted: "AmbiguousReference", holds: holds)
 }
 
 
@@ -78,7 +66,7 @@ fn blocking_ambiguous_reference_count(source: String) -> Int {
 // produced zero AmbiguousReference rows, and the assertion read `false` -- indistinguishable from
 // "the wall did not fire". Both were true at once, which is why the pair could not diagnose
 // itself. The assertions below are per-class on the two classes this file is about, and the
-// counter answers 0 - 1 on a census that could not run, so a broken harness fails in both
+// verdict is CensusUnobserved on a census that could not run, so a broken harness fails in both
 // directions rather than passing by silence.
 
 // THE BOUNDARY CONTROL, and it is the row that keeps this file's prose honest.
@@ -119,8 +107,8 @@ data green_own_declaration_source: String = "module probe_callable_own_declarati
 // declarer -- it names the primitive, and the primitive's contract is what the caller's
 // Present/Absent arms already expect. The source is the SAME source that once refused; that it
 // now resolves with zero ambiguous references is the repair, witnessed.
-test fn the_dissolved_incident_source_resolves_cleanly() -> Bool {
-  blocking_ambiguous_reference_count(source: red_transitive_reach_source) == 0
+test fn the_dissolved_incident_source_resolves_cleanly() -> ProcessExit {
+  census_exit(blocking_ambiguous_reference_verdict(source: red_transitive_reach_source, holds: fn(n) { n == 0 }))
 }
 
 // THE REFUSAL REPLACES THE SYMPTOM, IT DOES NOT ADD TO IT. Before the candidate set was
@@ -129,8 +117,8 @@ test fn the_dissolved_incident_source_resolves_cleanly() -> Bool {
 // a match arm that was never the problem, because the Outcome-returning declaration had won
 // silently. The wall is not a fourth row on top of those: it is the one row at the call, and
 // they are gone. Asserting their absence is what distinguishes a diagnosis from a check.
-test fn the_refusal_replaces_the_downstream_symptom_rather_than_adding_to_it() -> Bool {
-  blocking_count_for(source: red_transitive_reach_source, wanted: "NonExhaustiveMatch") == 0
+test fn the_refusal_replaces_the_downstream_symptom_rather_than_adding_to_it() -> ProcessExit {
+  census_exit(blocking_verdict_for(source: red_transitive_reach_source, wanted: "NonExhaustiveMatch", holds: fn(n) { n == 0 }))
 }
 
 // PER-CLASS, NOT A BLANKET BLOCKING COUNT. An earlier revision asserted that the GREEN sources
@@ -139,16 +127,20 @@ test fn the_refusal_replaces_the_downstream_symptom_rather_than_adding_to_it() -
 // harness closure lands in the count. A check whose RED is produced by something it does not
 // measure reports a wall failure when the harness sneezes; these assert the two classes this
 // file is actually about.
-test fn a_bare_call_whose_authority_the_author_named_still_resolves() -> Bool {
-  blocking_ambiguous_reference_count(source: green_named_authority_source) == 0
-    && blocking_count_for(source: green_named_authority_source, wanted: "NonExhaustiveMatch") == 0
+test fn a_bare_call_whose_authority_the_author_named_still_resolves() -> ProcessExit {
+  census_verdict_all([
+    blocking_ambiguous_reference_verdict(source: green_named_authority_source, holds: fn(n) { n == 0 }),
+    blocking_verdict_for(source: green_named_authority_source, wanted: "NonExhaustiveMatch", holds: fn(n) { n == 0 })
+  ])
 }
 
-test fn a_listed_import_does_not_exclude_a_transitively_reached_homonym() -> Bool {
-  blocking_ambiguous_reference_count(source: boundary_listed_plus_transitive_homonym_source) >= 1
+test fn a_listed_import_does_not_exclude_a_transitively_reached_homonym() -> ProcessExit {
+  census_exit(blocking_ambiguous_reference_verdict(source: boundary_listed_plus_transitive_homonym_source, holds: fn(n) { n >= 1 }))
 }
 
-test fn a_module_calling_its_own_declaration_of_a_builtin_name_still_resolves() -> Bool {
-  blocking_ambiguous_reference_count(source: green_own_declaration_source) == 0
-    && blocking_count_for(source: green_own_declaration_source, wanted: "NonExhaustiveMatch") == 0
+test fn a_module_calling_its_own_declaration_of_a_builtin_name_still_resolves() -> ProcessExit {
+  census_verdict_all([
+    blocking_ambiguous_reference_verdict(source: green_own_declaration_source, holds: fn(n) { n == 0 }),
+    blocking_verdict_for(source: green_own_declaration_source, wanted: "NonExhaustiveMatch", holds: fn(n) { n == 0 })
+  ])
 }

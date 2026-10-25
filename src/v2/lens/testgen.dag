@@ -1,6 +1,5 @@
 module v2.lens.testgen
 
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -24,6 +23,7 @@ import v2.std.diagnostic {
   UserInputBoundary,
   AmbiguousIntent,
   ExternalContractUnknown,
+  DeclarerRefused,
   Textual,
   WholeFile,
   ByteRange,
@@ -45,7 +45,7 @@ import v2.std.diagnostic {
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.find_witness { PreservationPredicate, verify_witness }
 import v2.std.nat { NatAlgebraLawObligation, nat_declared_algebra_law_obligations }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Edge,
   Node,
@@ -55,7 +55,6 @@ import v2.std.node {
   Conj,
   Disj,
   Arrow,
-  Occupancy,
   Instantiation,
   Behavior,
   Transform,
@@ -64,6 +63,7 @@ import v2.std.node {
   Bind,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.refinement { Refined, Validation, refine, refined_base }
 import v2.extdeps.file_system {
@@ -104,7 +104,6 @@ import v2.std.verification {
   ManualNatMulAssociativity,
   ManualNatMulLeftIdentity,
   ManualTcArrowTwoConj,
-  ManualTcOccupancyEmpty,
   ManualTcConjEmpty,
   ManualTcConjEqualsRefl,
   ManualTcDisjEmpty,
@@ -127,7 +126,6 @@ import v2.test.claim.manual.connective_anchors {
   stub_empty_disj,
   stub_empty_transform,
   claim_arrow_two_conj_compiles,
-  claim_occupancy_empty_rejected,
   claim_conj_empty_compiles,
   claim_conj_equals_refl,
   claim_disj_empty_compiles,
@@ -174,8 +172,6 @@ import v2.std.concept_index {
 import v2.std.node_query {
   coproduct_arm_key_list_from_node
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type TypeConstructionSubject
 
@@ -257,7 +253,6 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
     ManualTcConjEmpty => ^gen_id_tc_conj_empty
     ManualTcDisjEmpty => ^gen_id_tc_disj_empty
     ManualTcArrowTwoConj => ^gen_id_tc_arrow_two_conj
-    ManualTcOccupancyEmpty => ^gen_id_tc_occupancy_empty
     ManualTcInstantiationEmpty => ^gen_id_tc_instantiation_empty
     ManualTcArrowEmpty => ^gen_id_tc_arrow_empty
     ManualTcTransformEmpty => ^gen_id_tc_transform_empty
@@ -476,10 +471,11 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_cons_node } },
         children: [
-          Edge { label: Authored { name: ^refinement_preservation_list_head_edge }, target: h },
+          Edge { label: Authored { name: ^refinement_preservation_list_head_edge }, target: h, declaration: NotADeclaration },
           Edge {
             label: Authored { name: ^refinement_preservation_list_tail_edge },
-            target: tail_node
+            target: tail_node,
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -531,10 +527,6 @@ fn testgen_emit_refinement_preservation_claim(
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
     ManualTcArrowTwoConj =>
-      Rejected {
-        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
-      }
-    ManualTcOccupancyEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
@@ -723,10 +715,6 @@ fn testgen_emit_language_behavior_equivalence_claim(
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
-    ManualTcOccupancyEmpty =>
-      Rejected {
-        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
-      }
     ManualTcInstantiationEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
@@ -797,7 +785,7 @@ fn testgen_emit_algebra_law_claim(
   rhs: Node,
   classification: TestClassification
 ) -> Outcome<TestClaim> {
-  if lhs == rhs {
+  if node_same_occurrence(a: lhs, b: rhs) {
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
@@ -918,16 +906,6 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         )
       }
     ManualTcArrowTwoConj =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: ^algebra_law_anchor_mismatch,
-            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
-        )
-      }
-    ManualTcOccupancyEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -1070,9 +1048,9 @@ fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
-      Edge { label: Authored { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
-      Edge { label: Authored { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+      Edge { label: Authored { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law), declaration: NotADeclaration },
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1082,8 +1060,8 @@ fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
-      Edge { label: Authored { name: ^t19_algebra_law_expression_field }, target: expression },
+      Edge { label: Authored { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^t19_algebra_law_expression_field }, target: expression, declaration: NotADeclaration },
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1101,10 +1079,11 @@ fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^witness_validity_field_algebra }, target: p.algebra },
+      Edge { label: Authored { name: ^witness_validity_field_algebra }, target: p.algebra, declaration: NotADeclaration },
       Edge {
         label: Authored { name: ^witness_validity_field_preservation_rule },
-        target: witness_validity_symbol_atom_node(s: p.preservation_rule)
+        target: witness_validity_symbol_atom_node(s: p.preservation_rule),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -1117,9 +1096,10 @@ fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
     children: [
       Edge {
         label: Authored { name: ^witness_validity_field_property },
-        target: witness_validity_symbol_atom_node(s: w.property)
+        target: witness_validity_symbol_atom_node(s: w.property),
+        declaration: NotADeclaration
       },
-      Edge { label: Authored { name: ^witness_validity_field_evidence }, target: w.evidence }
+      Edge { label: Authored { name: ^witness_validity_field_evidence }, target: w.evidence, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1153,19 +1133,22 @@ fn witness_validity_subject_node(
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Authored { name: ^witness_validity_field_source_facts }, target: source_facts },
-            Edge { label: Authored { name: ^witness_validity_field_candidate }, target: candidate },
+            Edge { label: Authored { name: ^witness_validity_field_source_facts }, target: source_facts, declaration: NotADeclaration },
+            Edge { label: Authored { name: ^witness_validity_field_candidate }, target: candidate, declaration: NotADeclaration },
             Edge {
               label: Authored { name: ^witness_validity_field_predicate },
-              target: witness_validity_predicate_node(p: predicate)
+              target: witness_validity_predicate_node(p: predicate),
+              declaration: NotADeclaration
             },
             Edge {
               label: Authored { name: ^witness_validity_field_witness },
-              target: witness_validity_witness_node(w: witness)
+              target: witness_validity_witness_node(w: witness),
+              declaration: NotADeclaration
             },
             Edge {
               label: Authored { name: ^witness_validity_field_oracle_outcome },
-              target: oracle_outcome
+              target: oracle_outcome,
+              declaration: NotADeclaration
             }
           ],
           occurrence_id: OccurrenceSynthetic
@@ -1186,6 +1169,14 @@ fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
     CorrectionNotModeled =>
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_not_modeled)
+    DeclarerRefused { declarer: d } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: list_map(xs: d, f: fn(s) {
+          Edge { label: Authored { name: ^witness_validity_no_correction_tag_declarer_refused }, target: witness_validity_symbol_atom_node(s: s) }
+        }),
+        occurrence_id: OccurrenceSynthetic
+      }
   }
 }
 
@@ -1195,7 +1186,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Authored { name: ^witness_validity_correction_tag_suggested }, target: n }
+          Edge { label: Authored { name: ^witness_validity_correction_tag_suggested }, target: n, declaration: NotADeclaration }
         ],
         occurrence_id: OccurrenceSynthetic
 }
@@ -1205,7 +1196,8 @@ fn witness_validity_correction_node(c: Correction) -> Node {
         children: [
           Edge {
             label: Authored { name: ^witness_validity_correction_tag_unavailable },
-            target: witness_validity_no_correction_reason_node(r: r)
+            target: witness_validity_no_correction_reason_node(r: r),
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -1244,15 +1236,18 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
                   children: [
                     Edge {
                       label: Authored { name: ^witness_validity_locus_textual_file },
-                      target: witness_validity_symbol_atom_node(s: f)
+                      target: witness_validity_symbol_atom_node(s: f),
+                      declaration: NotADeclaration
                     },
                     Edge {
                       label: Authored { name: ^witness_validity_locus_textual_extent },
-                      target: en
+                      target: en,
+                      declaration: NotADeclaration
                     }
                   ],
                   occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
               }
             ],
             occurrence_id: OccurrenceSynthetic
@@ -1265,7 +1260,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Authored { name: ^witness_validity_locus_tag_node }, target: a.at }
+            Edge { label: Authored { name: ^witness_validity_locus_tag_node }, target: a.at, declaration: NotADeclaration }
           ],
           occurrence_id: OccurrenceSynthetic
 },
@@ -1279,15 +1274,18 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
             children: [
               Edge {
                 label: Authored { name: ^witness_validity_locus_tag_source_port },
-                target: witness_validity_symbol_atom_node(s: a.at)
+                target: witness_validity_symbol_atom_node(s: a.at),
+                declaration: NotADeclaration
               },
               Edge {
                 label: Authored { name: ^witness_validity_locus_source_port_file },
-                target: witness_validity_symbol_atom_node(s: f)
+                target: witness_validity_symbol_atom_node(s: f),
+                declaration: NotADeclaration
               },
               Edge {
                 label: Authored { name: ^witness_validity_locus_source_port_extent },
-                target: en
+                target: en,
+                declaration: NotADeclaration
               }
             ],
             occurrence_id: OccurrenceSynthetic
@@ -1302,11 +1300,13 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
           children: [
             Edge {
               label: Authored { name: ^witness_validity_locus_tag_invariant_port },
-              target: witness_validity_symbol_atom_node(s: a.at)
+              target: witness_validity_symbol_atom_node(s: a.at),
+              declaration: NotADeclaration
             },
             Edge {
               label: Authored { name: ^witness_validity_locus_invariant },
-              target: witness_validity_symbol_atom_node(s: invariant)
+              target: witness_validity_symbol_atom_node(s: invariant),
+              declaration: NotADeclaration
             }
           ],
           occurrence_id: OccurrenceSynthetic
@@ -1322,13 +1322,15 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
             empty: [
               Edge {
                 label: Authored { name: ^witness_validity_locus_tag_declaration },
-                target: witness_validity_symbol_atom_node(s: ^witness_validity_locus_tag_declaration)
+                target: witness_validity_symbol_atom_node(s: ^witness_validity_locus_tag_declaration),
+                declaration: NotADeclaration
               }
             ],
             cons: fn(acc, seg) {
               list_snoc_item(xs: acc, item: Edge {
                 label: Positional,
-                target: witness_validity_symbol_atom_node(s: seg)
+                target: witness_validity_symbol_atom_node(s: seg),
+                declaration: NotADeclaration
               })
             }
           ),
@@ -1347,15 +1349,18 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
         children: [
           Edge {
             label: Authored { name: ^witness_validity_diag_field_reason },
-            target: witness_validity_symbol_atom_node(s: d.reason)
+            target: witness_validity_symbol_atom_node(s: d.reason),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^witness_validity_diag_field_at },
-            target: at_node
+            target: at_node,
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^witness_validity_diag_field_correction },
-            target: witness_validity_correction_node(c: d.correction)
+            target: witness_validity_correction_node(c: d.correction),
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -1379,8 +1384,8 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
             value: Node {
               kind: TypeNode { connective: Conj },
               children: [
-                Edge { label: Authored { name: ^witness_validity_list_cons_head }, target: hn },
-                Edge { label: Authored { name: ^witness_validity_list_cons_tail }, target: prev_node }
+                Edge { label: Authored { name: ^witness_validity_list_cons_head }, target: hn, declaration: NotADeclaration },
+                Edge { label: Authored { name: ^witness_validity_list_cons_tail }, target: prev_node, declaration: NotADeclaration }
               ],
               occurrence_id: OccurrenceSynthetic
 },
@@ -1401,11 +1406,13 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
           children: [
             Edge {
               label: Authored { name: ^witness_validity_diags_field_head },
-              target: hn
+              target: hn,
+              declaration: NotADeclaration
             },
             Edge {
               label: Authored { name: ^witness_validity_diags_field_tail },
-              target: tn
+              target: tn,
+              declaration: NotADeclaration
             }
           ],
           occurrence_id: OccurrenceSynthetic
@@ -1431,7 +1438,8 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
             children: [
               Edge {
                 label: Authored { name: ^witness_validity_diagnostics_tag_some },
-                target: ndn
+                target: ndn,
+                declaration: NotADeclaration
               }
             ],
             occurrence_id: OccurrenceSynthetic
@@ -1457,15 +1465,18 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
                   children: [
                     Edge {
                       label: Authored { name: ^witness_validity_outcome_accepted_value },
-                      target: witness_validity_witness_node(w: w)
+                      target: witness_validity_witness_node(w: w),
+                      declaration: NotADeclaration
                     },
                     Edge {
                       label: Authored { name: ^witness_validity_outcome_accepted_diagnostics },
-                      target: dsn
+                      target: dsn,
+                      declaration: NotADeclaration
                     }
                   ],
                   occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
               }
             ],
             occurrence_id: OccurrenceSynthetic
@@ -1481,7 +1492,8 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
             children: [
               Edge {
                 label: Authored { name: ^witness_validity_outcome_violates },
-                target: dn
+                target: dn,
+                declaration: NotADeclaration
               }
             ],
             occurrence_id: OccurrenceSynthetic
@@ -1659,42 +1671,6 @@ fn nat_algebra_law_schedule_row_from_obligation(
   )
 }
 
-fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
-  match a {
-    ManualNatAddLeftIdentity =>
-      match b {
-        ManualNatAddLeftIdentity => true
-        _ => false
-      }
-    ManualNatAddRightIdentity =>
-      match b {
-        ManualNatAddRightIdentity => true
-        _ => false
-      }
-    ManualNatAddAssociativity =>
-      match b {
-        ManualNatAddAssociativity => true
-        _ => false
-      }
-    ManualNatMulLeftIdentity =>
-      match b {
-        ManualNatMulLeftIdentity => true
-        _ => false
-      }
-    ManualNatMulAnnihilator =>
-      match b {
-        ManualNatMulAnnihilator => true
-        _ => false
-      }
-    ManualNatMulAssociativity =>
-      match b {
-        ManualNatMulAssociativity => true
-        _ => false
-      }
-    _ => false
-  }
-}
-
 fn append_nat_algebra_law_schedule_row_if_anchor_matches(
   found: Outcome<NatAlgebraLawScheduleRow>,
   obligation: NatAlgebraLawObligation,
@@ -1706,7 +1682,7 @@ fn append_nat_algebra_law_schedule_row_if_anchor_matches(
       bind_outcome(
         o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
         f: fn(row) {
-          if nat_manual_anchor_key_eq(a: row.anchor, b: anchor) {
+          if row.anchor == anchor {
             Accepted { value: row, diagnostics: None }
           } else {
             found
@@ -1952,7 +1928,8 @@ fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
         label: Authored { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
           omitted_variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
-        )
+        ),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -2291,7 +2268,6 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
     ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
     ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
     ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
-    ManualTcOccupancyEmpty => Accepted { value: claim_occupancy_empty_rejected, diagnostics: None }
     ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
     ManualTcArrowEmpty => Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
     ManualTcTransformEmpty => Accepted { value: claim_transform_empty_rejected, diagnostics: None }
@@ -2354,10 +2330,6 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
     ManualClaimAnchor { manual_anchor: ManualTcArrowTwoConj } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
-        }, diagnostics: None }
-    ManualClaimAnchor { manual_anchor: ManualTcOccupancyEmpty } =>
-      Accepted { value: TypeConstruction {
-          subject: ConnectiveKernel { connective: Occupancy },
         }, diagnostics: None }
     ManualClaimAnchor { manual_anchor: ManualTcInstantiationEmpty } =>
       Accepted { value: TypeConstruction {
@@ -2487,11 +2459,3 @@ fn bootstrap_claim_generator_for_manual_anchor(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "nat_manual_anchor_key_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: nfr_dissolve_derived_equality,
-    },
-]

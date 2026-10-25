@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.empty_frontier_list_panics_instead_of_typed_refusal
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data empty_frontier_list_panics_instead_of_typed_refusal: RecurringFailureMode = RecurringFailureMode {
   identity: "empty_frontier_list_panics_instead_of_typed_refusal" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE (FOUND): the v1 seed's `non_fold_residue_frontier` reader panicked when a module declared `data non_fold_residue_frontier: List<FrontierRow> = []`. DESIGN section 5: a panic is process death, not a typed located result. DESIGN section 4c: a decl whose only content is no rows is dead data; the union already treats a module with no decl as zero rows, so the empty list is not a legitimate encoding of absence.",

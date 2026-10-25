@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.refusal_reabsorbed_by_intermediate_default
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data refusal_reabsorbed_by_intermediate_default: RecurringFailureMode = RecurringFailureMode {
   identity: "refusal_reabsorbed_by_intermediate_default" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a refusal is only a refusal if it SURVIVES ITS CALLER -- a producer can be correct at its inability boundary while the composed path still fabricates an answer** (INVALID STATE: a producer returns its typed empty or refusal at an explicit inability boundary, and an intermediate consumer reads that outcome as permission to substitute a default, a nickname, a shallower identity, or an empty-success. The composed path widens even though the producing site is correct in isolation. HARM: the fabricated value reaches a judgment site that believes it is comparing real data, so a mismatch that should have been loud is silently admitted -- section 5's forbidden state, reached by a route in which no single frame did anything obviously wrong.)",
@@ -35,6 +37,8 @@ data refusal_reabsorbed_by_intermediate_default: RecurringFailureMode = Recurrin
   ],
 
   evidence: [
-    decl_ref(module_path: "v2.extdeps.languages.bash_orch_if", decl_name: "bash_orch_if_leaf_text"),
+    decl_ref(module_path: "v2.extdeps.languages.bash_orch_if", decl_name: "bash_path_predicate_target_model"),
+    decl_ref(module_path: "v2.extdeps.languages.bash_orch_if", decl_name: "bash_path_intent_invalid_diagnostic"),
+    decl_ref(module_path: "test.claim.path_predicate_bash_lowering_witness", decl_name: "lowered"),
   ],
 }

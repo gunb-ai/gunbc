@@ -1,6 +1,7 @@
 module gunbc.runner.runner_throughput_qualification
 
-import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Timestamp, WorkflowRunId }
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Timestamp }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size_count,
@@ -201,7 +202,7 @@ fn cpu_quota_eq(a: SlotQuotaThreads, b: SlotQuotaThreads) -> Bool {
 // `qualification_run_producer_frontier`; when it lands, `admit_callers` on `observed_run` names
 // it and the witness's fixture route closes.
 type ObservedRunnerQualificationRun sole_constructor {
-  run: WorkflowRunId
+  run: GitHubWorkflowRunId
   attempt_label: NonEmptyStr
   observed_at: Timestamp
   host: HostIdentity
@@ -223,7 +224,7 @@ type ObservedRunnerQualificationRun sole_constructor {
 }
 
 fn observed_run(
-  run: WorkflowRunId,
+  run: GitHubWorkflowRunId,
   attempt_label: NonEmptyStr,
   observed_at: Timestamp,
   host: HostIdentity,
@@ -351,9 +352,9 @@ fn subject_join_axis_wire(a: SubjectJoinAxis) -> String {
 
 type SubjectJoin
   = SubjectJoined
-  | SubjectJoinRefused { run: WorkflowRunId, axis: SubjectJoinAxis, selected: String, observed: String }
+  | SubjectJoinRefused { run: GitHubWorkflowRunId, axis: SubjectJoinAxis, selected: String, observed: String }
 
-fn join_axis(run: WorkflowRunId, axis: SubjectJoinAxis, holds: Bool, selected: String, observed: String) -> SubjectJoin {
+fn join_axis(run: GitHubWorkflowRunId, axis: SubjectJoinAxis, holds: Bool, selected: String, observed: String) -> SubjectJoin {
   if holds { SubjectJoined } else { SubjectJoinRefused { run: run, axis: axis, selected: selected, observed: observed } }
 }
 
@@ -705,18 +706,18 @@ fn qualify_slot_width<P>(selection: SelectedRunnerQualification<P>) -> SlotWidth
 // separate: N runs one after another establish a rate, not a width.
 type RunnerCohortEvidence
   = NoCohortObserved
-  | CohortObserved { seal: CohortSeal<WorkflowRunId> }
+  | CohortObserved { seal: CohortSeal<GitHubWorkflowRunId> }
 
 type ConcurrencyStanding
   = ConcurrencyObservedAtWidth { population: Int }
   | ConcurrencyUnobserved
   | ConcurrencyCohortRefused { cause: NonEmptyStr }
   | ConcurrencyPopulationIsNotTheWidth { population: Int, width: Int }
-  | ConcurrencySeatNotAnAssessedRun { seat: WorkflowRunId }
-  | ConcurrencySeatFailed { seat: WorkflowRunId, cause: NonEmptyStr }
+  | ConcurrencySeatNotAnAssessedRun { seat: GitHubWorkflowRunId }
+  | ConcurrencySeatFailed { seat: GitHubWorkflowRunId, cause: NonEmptyStr }
   | ConcurrencyNotAssessed { because: NonEmptyStr }
 
-fn run_key(r: WorkflowRunId) -> String { r as String }
+fn run_key(r: GitHubWorkflowRunId) -> String { github_workflow_run_id_wire_text(id: r) }
 
 type SeatStanding
   = SeatsHold
@@ -732,12 +733,12 @@ fn qualify_concurrency(cohort: RunnerCohortEvidence, runs: List<ObservedRunnerQu
           match seal {
             CohortRefused { refusal: r } => ConcurrencyCohortRefused { cause: cohort_refusal_wire(r: r, seat_key: run_key) as NonEmptyStr }
             CohortSealed { cohort: c } => {
-              let assessed = fold(runs, init: empty_map(), f: fn(m, r) { map_insert(m: m, key: r.run as String, value: true) })
+              let assessed = fold(runs, init: empty_map(), f: fn(m, r) { map_insert(m: m, key: run_key(r: r.run), value: true) })
               let seats = fold(c.seats, init: SeatsHold, f: (acc, w) =>
                 match acc {
                   SeatStandingRefused { standing: _ } => acc
                   SeatsHold =>
-                    match map_lookup(m: assessed, key: w.seat as String) {
+                    match map_lookup(m: assessed, key: run_key(r: w.seat)) {
                       Absent => SeatStandingRefused { standing: ConcurrencySeatNotAnAssessedRun { seat: w.seat } }
                       Present { value: _ } =>
                         match w.settled {
@@ -776,8 +777,8 @@ fn concurrency_standing_wire(s: ConcurrencyStanding) -> String {
     ConcurrencyUnobserved => "no concurrent cohort was observed, so the width is divided, not observed"
     ConcurrencyCohortRefused { cause: c } => concat("the concurrent cohort was refused: ", c as String)
     ConcurrencyPopulationIsNotTheWidth { population: n, width: w } => join(["the cohort ran ", n as String, " seats but the derived width is ", w as String], "")
-    ConcurrencySeatNotAnAssessedRun { seat: r } => concat("a cohort seat is not one of the assessed runs: ", r as String)
-    ConcurrencySeatFailed { seat: r, cause: c } => join(["cohort seat ", r as String, " failed: ", c as String], "")
+    ConcurrencySeatNotAnAssessedRun { seat: r } => concat("a cohort seat is not one of the assessed runs: ", run_key(r: r))
+    ConcurrencySeatFailed { seat: r, cause: c } => join(["cohort seat ", run_key(r: r), " failed: ", c as String], "")
     ConcurrencyNotAssessed { because: b } => concat("concurrency not assessed: ", b as String)
   }
 }
@@ -861,7 +862,7 @@ type RunnerThroughputAssessment<P> sole_constructor {
   offer: FabricIdentity<P, OfferKey>
   host: HostIdentity
   workload: FloorWorkloadPin
-  runs: List<WorkflowRunId>
+  runs: List<GitHubWorkflowRunId>
   join: SubjectJoin
   throughput: ThroughputStanding
   memory: MemoryEnvelopeStanding
@@ -1016,7 +1017,7 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
       match j {
         SubjectJoined => "subject joined"
         SubjectJoinRefused { run: run, axis: a, selected: s, observed: o } =>
-          join(["run ", run as String, " is not the subject on ", subject_join_axis_wire(a: a), ": selected ", s, ", observed ", o], "")
+          join(["run ", run_key(r: run), " is not the subject on ", subject_join_axis_wire(a: a), ": selected ", s, ", observed ", o], "")
       }
     SamplingDidNotHold { policy: p, observed_runs: n } =>
       match p {
@@ -1047,7 +1048,7 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
 fn assessment_wire<P>(a: RunnerThroughputAssessment<P>) -> NonEmptyStr {
   if a.refusals.length() == 0 {
     join([
-      "offer delivers on ", a.host as String, " from runs ", join(map(a.runs, r => r as String), ","), ": ",
+      "offer delivers on ", a.host as String, " from runs ", join(map(a.runs, r => run_key(r: r)), ","), ": ",
       throughput_standing_wire(s: a.throughput) as String, "; ", memory_standing_wire(s: a.memory) as String,
       "; ", slot_width_wire(s: a.slot_width) as String,
     ], "") as NonEmptyStr

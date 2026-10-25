@@ -65,7 +65,7 @@ import gunbc.live_deploy.desired {
   instance_id_text, desired_deployment_for_instance_id_over, DesiredDeploymentLookup, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
   DesiredRosterRefusal, desired_roster_refusal_detail,
 }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
   operation_argv_bind_text,
@@ -514,7 +514,7 @@ fn presence_cause(p: EntryPresence) -> String? {
 // distinct sighting the adjudication refuses, and a field that cannot be read makes the host
 // unobservable rather than reading as either.
 // WHICH STAT FIELD A LEG READS, as a closed choice over shell.Stat operations. Local dispatch
-// invokes the operation; the remote arm materializes THAT SAME row's argv (v2.std.operation_argv)
+// invokes the operation; the remote arm materializes THAT SAME row's argv (std.operation_argv)
 // and carries it over the transport. The format string is declared once, on the operation.
 type MarkerStatField = MarkerStatMode | MarkerStatOwner | MarkerStatGroup
 
@@ -558,7 +558,10 @@ type MarkerRead
   | MarkerReadRefused { cause: String }
 
 fn read_marker(arm: ObservationArm, path: NonEmptyStr) -> MarkerRead {
-  match unit_document_leg(arm: arm, path: path as String) {
+  // THE CONTRADICTION POLICY: marker_sighting_of has ALREADY established presence via entry_presence
+  // before calling, so a marker missing at read-back contradicts that listing -- which is exactly what
+  // the shared leg refused with before the standing policy existed for the posture member.
+  match unit_document_leg(arm: arm, path: path as String, absent: AbsentContradictsListing) {
     LegRefused { cause } => MarkerReadRefused { cause: cause }
     LegOut { stdout: content } => match stat_leg(arm: arm, path: path as String, field: MarkerStatMode, leg: "reading the marker's mode") {
       LegRefused { cause } => MarkerReadRefused { cause: cause }

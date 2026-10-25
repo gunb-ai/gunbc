@@ -4,7 +4,7 @@ import std.layout { DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nes
 import v2.std.node { Node, Symbol }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { Holds, Violates }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetModel,
   TargetText,
   FixedToken,
@@ -104,6 +104,7 @@ test fn an_unspelled_nest_unit_refuses_and_a_spelled_one_emits() -> Bool {
     Holds { value: row } => {
       let t = verilog_target_model_with_single_row(row: row)
       let unspelled = TargetModel {
+        primitive_realizations: PrimitiveRealizationsUnwired,
         bundle: t.bundle,
         lex: t.lex,
         binding_spellings: verilog_slot_spellings(),

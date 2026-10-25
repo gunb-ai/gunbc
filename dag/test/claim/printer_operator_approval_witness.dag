@@ -10,16 +10,17 @@ import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
 
 import std.types { Bool,String }
-import gunbc.fleet.printer_operator_approval { print_subject, report_allows_start, start_claim_path }
+import gunbc.fleet.printer_actuation { print_subject, report_allows_start, start_claim_path, printer_state_generation, attempt_claim_key }
+import gunbc.fleet.printer_job_monitor { observe_job, JobCompletedAwaitingInspection, JobUnresolved }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 
 test fn approval_subject_changes_with_device_bytes_version_or_attempt() -> Bool {
-  let base = print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a")
+  let base = print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a", printer_state: "s")
   let variants = [
-    print_subject(printer: printer_02, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a"),
-    print_subject(printer: printer_01, digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", version: "1", attempt: "batch-a"),
-    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "2", attempt: "batch-a"),
-    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-b"),
+    print_subject(printer: printer_02, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a", printer_state: "s"),
+    print_subject(printer: printer_01, digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", version: "1", attempt: "batch-a", printer_state: "s"),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "2", attempt: "batch-a", printer_state: "s"),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-b", printer_state: "s"),
   ]
   all(variants, changed => base != changed)
 }
@@ -56,6 +57,37 @@ test fn partial_telemetry_does_not_count_as_a_complete_observation() -> Bool {
 // Path ownership is independent of the request's cryptographic construction.
 // Supplied approval identities must stay in the fixed durable claim directory.
 test fn durable_claim_is_bound_to_approval_identity() -> Bool {
- start_claim_path(escalation_id:"printer-start-a")=="/var/lib/gunbc/printer-starts/printer-start-a.claimed" &&
- start_claim_path(escalation_id:"printer-start-a")!=start_claim_path(escalation_id:"printer-start-b")
+ start_claim_path(key:"printer-start-a")=="/var/lib/gunbc/printer-starts/printer-start-a.claimed" &&
+ start_claim_path(key:"printer-start-a")!=start_claim_path(key:"printer-start-b")
+}
+
+// A FINISH report as an A1 mini sends it in LAN mode (shape of a saved report on the printer host):
+// gcode_file is empty and the job's name survives only in subtask_name.
+fn finish_report(name: String) -> String {
+  join(["{\"print\":{\"gcode_state\":\"FINISH\",\"gcode_file\":\"\",\"subtask_name\":\"", name, "\",\"print_type\":\"idle\",\"print_error\":0,\"task_id\":\"0\"}}"], "")
+}
+
+// The human acknowledges one printer state: any other job in between changes the state the
+// approval's subject carries, so the old approval no longer matches at start.
+test fn the_approval_subject_carries_the_printer_state() -> Bool {
+  match (printer_state_generation(text: finish_report(name: "gunbc-a.3mf"))) {
+    Present { value: a } => match printer_state_generation(text: finish_report(name: "manual.3mf")) {
+      Present { value: b } => a != b &&
+        print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "x", printer_state: a) !=
+        print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "x", printer_state: b)
+      Absent => false
+    }
+    Absent => false
+  } && (match printer_state_generation(text: "{\"print\":{\"gcode_state\":\"IDLE\"}}") { Present { value: _ } => false Absent => true })
+}
+
+// A finished job is recognized by its subtask_name when gcode_file is empty, and only for its own name.
+test fn a_finished_job_is_found_by_subtask_name() -> Bool {
+  (match observe_job(text: finish_report(name: "gunbc-a.3mf"), remote: "gunbc-a.3mf") { JobCompletedAwaitingInspection => true _ => false }) &&
+  (match observe_job(text: finish_report(name: "gunbc-a.3mf"), remote: "gunbc-b.3mf") { JobUnresolved => true _ => false })
+}
+
+// One start claim per attempt, whatever approval is filed for it.
+test fn the_start_claim_is_keyed_by_attempt() -> Bool {
+  attempt_claim_key(attempt: "a") == attempt_claim_key(attempt: "a") && attempt_claim_key(attempt: "a") != attempt_claim_key(attempt: "b")
 }

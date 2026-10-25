@@ -1,0 +1,15 @@
+module v2.test.claim.manual.ctor_tag_arm_naming_probe
+
+// Frontier repro: a PAYLOAD arm cannot be named as a value. This file must NOT compile; its
+// diagnostic is quoted verbatim on the frontier row. Bound to a name rather than compared, so
+// the only diagnostic it raises is the naming refusal (a comparison would add the carrier's
+// equality refusal and bury this one).
+
+import std.primitives { tag_of }
+
+type Pt = P0 | P1 { a: Int }
+
+test fn bare_payload_arm_as_a_value() -> Bool {
+  let arm = tag_of(v: P1)
+  true
+}

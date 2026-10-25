@@ -1,5 +1,10 @@
 module std.markup
 
+import std.layout { DocLine, LayoutProtocol, render }
+import std.types { NonEmptyStr }
+import std.optional { Absent, Optional, Present }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
+
 
 type EscapeContext = TextContext | AttributeContext | UrlContext
 
@@ -13,6 +18,17 @@ type Fragment
   = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
   | FragmentText { content: String }
   | RawNode { content: String }
+  // A markup comment. The BODY is carried, never assembled: the delimiters are the medium's
+  // comment_open / comment_close, so "<!-- " exists once per language model instead of once per
+  // author — which is the whole reason this arm exists (three sites in this repo spelled the
+  // delimiters by hand, and one of them interpolated a value into the middle of them).
+  // The body is emitted as-written, like a raw-text element's content: HTML defines no escape syntax
+  // inside a comment ("comment state" consumes to the first "-->" and decodes nothing), so escaping
+  // would corrupt it rather than protect it. What a body must never do is terminate early, and that
+  // is refused rather than filtered, by the arm that writes those bytes: serialize_fragment_with
+  // consults the medium's CommentGrammar before it emits open + body + close, so no route to a
+  // comment exists that does not check it (review 82279 on #14351).
+  | MarkupComment { body: String }
 
 fn escape_text(s: String) -> String {
   replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
@@ -73,6 +89,42 @@ type TagDelimiter {
 
 type VoidTagRendering = OmitClose | SelfClose
 
+// A language's comment grammar, held as ONE value: the two delimiters the emitter writes, the sequence
+// the tokenizer actually stops on, and whether a body ending in "-" reaches that stop state. They are
+// carried together because they only make sense together -- HTML writes " -->" but stops on "-->", and
+// the gap between those two is exactly where "a-->b" escapes, so a medium that
+// could carry one without the other was a medium that could be wrong by construction.
+//
+// WHY NO "NO COMMENTS" ARM. A NoCommentGrammar variant was considered and rejected: no medium in this
+// repo lacks comments (HTML, XML, Markdown and JSX all have one), so the arm would be a declaration whose
+// only consumer is a hypothetical (§3c), and its serializer arm would have to invent behaviour for a
+// state nothing reaches. When a comment-less medium is actually written, the arm and its behaviour arrive
+// together, from a real need.
+type CommentGrammar {
+  open: NonEmptyStr
+  close: NonEmptyStr
+  // A NON-EMPTY SET, because a tokenizer can end a comment more than one way. HTML ends on "-->" AND on
+  // "--!>" (the comment end bang state, HTML §13.2.5.52); a single row could not say both, and a guard
+  // built from one row passes bodies the tokenizer ends -- review 82474/82482 on #14351, where a body of
+  // "x--!><script>…" contained no "-->" and was serialized as "<!-- x--!><script>… -->", which a browser
+  // then parses as markup. FreeSemigroup is the carrier whose EMPTY inhabitant has no representation
+  // (std.algebra: "the head field is the construction wall"), so a medium cannot declare a comment grammar
+  // with nothing that ends it -- that state was previously nameable as terminator: "".
+  terminators: FreeSemigroup<NonEmptyStr>
+}
+
+type DocumentGrammar
+  = DeclaresDocument {
+    open: NonEmptyStr
+    // The character that ENDS the token after the doctype keyword (HTML §13.1.1 "before the name" state).
+    // It rides here rather than being spelled in std/ because which character that is belongs to the
+    // language that declares a document type -- the same reason CommentGrammar carries `terminator`, and
+    // the shape review 82268 asked for. The angle brackets that also end the token are NOT duplicated
+    // here: the walk reads them off MarkupBracket, the pair the serializer writes.
+    name_end_whitespace: NonEmptyStr
+  }
+  | NoDocumentGrammar
+
 type MarkupMedium {
   tag_overrides: List<TagDelimiter>
   bracket: MarkupBracket
@@ -80,6 +132,32 @@ type MarkupMedium {
   void_tags: List<String>
   void_rendering: VoidTagRendering
   raw_text_tags: List<String>
+  // The language's COMMENT GRAMMAR, as one value. Four facts had to be carried together (open, close,
+  // terminator, and whether a trailing dash closes) and each was a separate required field, which let a
+  // medium be built with delimiters and no terminator -- and a medium with no terminator cannot guard a
+  // comment at all, because there is no string to search for and "body contains the terminator" is then
+  // vacuously false for every body. Bundling them makes that state unnameable rather than refused at
+  // runtime (§5: "Stronger than catching a wrong state is making it unwritable").
+  //
+  // The fields are NonEmptyStr, which retires the empty-string sentinel for good: review 82181 replaced
+  // the ""-means-clean RETURN with a closed sum, and review 82209 (on #14351) correctly pointed out the
+  // sentinel still existed on the INPUT side -- `if medium.comment_terminator == ""` was still a runtime
+  // test standing where a type belonged. Now the empty value is not an inhabitant of the field's type.
+  // Measured, not assumed: a bare "" literal in one of these positions fails to resolve.
+  comment_grammar: CommentGrammar
+  // The language's DOCUMENT-TYPE grammar, as a closed sum with two inhabitants, both of them real.
+  // HTML, XML/SVG and CommonMark DECLARE (CommonMark 0.30 §4.2 passes "<!DOCTYPE" through as an HTML
+  // block); JSX does NOT -- a JSX file is an ECMAScript module, and "<!DOCTYPE html>" inside a JSX
+  // expression container is not valid TSX.
+  //
+  // THE BOOL IT REPLACES, AND WHY ITS ABSENCE WAS A DEFECT. This field was `doctype_open: String` plus
+  // `document_declaration_allowed: Bool`, and JSX set the Bool false while STILL being forced to supply a
+  // doctype keyword -- which its own comment then called "not applicable". That is a sum expressed as a
+  // flag: the type admits an inhabitant that means "there is no such thing, here is a spelling for it",
+  // and the guard had to check the flag at runtime to recover the distinction the type threw away
+  // (review 82209 on #14351). Now a medium that declares no document type has no doctype field to fill,
+  // and the walk matches on the arm.
+  document_grammar: DocumentGrammar
 }
 
 fn tag_in_set(tag: String, tags: List<String>) -> Bool {
@@ -95,6 +173,34 @@ fn escape_text_for(mode: EscapeMode, s: String) -> String {
     EscapeHtml => escape_text(s: s)
     EscapeRaw => s
   }
+}
+
+// A WHOLE DOCUMENT: the document-type declaration and the root element. This is the HTML parser's own
+// node ("the Document node is the root node, with the doctype and <html> as children", HTML Living
+// Standard §13.2.4), which is why the doctype is a FIELD of a document node and not an element: a doctype
+// is not an element and is not inside <html>, so Element or FragmentText could only model it wrongly.
+//
+// WHY IT IS A TYPE OF ITS OWN AND NOT A FRAGMENT ARM. As a Fragment arm it was representable anywhere a
+// Fragment was, including a JSX expression container, where "<!DOCTYPE html>" is not valid TSX. Nothing in
+// the type said "only a medium with a document grammar may hold this", so the refusal had to be written on
+// each route -- and review 82244 on #14351 found the route that had not been written (the unguarded
+// serialize_jsx_fragment / serialize_jsx_component called the serializer directly and would have reached a
+// seam labelled unreachable that in fact diverges). §5: "Stronger than catching a wrong state is making it
+// unwritable." A Fragment now CANNOT contain a document, so:
+//   - every Fragment walker loses the Document arm it had to carry -- those arms existed only because the
+//     type allowed the shape, so removing the shape removes them,
+//   - a document is serialized only through serialize_document_with, whose refusal is a typed result.
+// serialize_fragment_with is NOT total, and never was the safety: it returns MarkupSerializeResult because
+// two of its own arms check what they are about to write (a comment body against the medium's terminator,
+// raw-text content against its own close sequence). That is where these checks have to live -- review 82279
+// on #14351 found them in a walk beside the emitter, and three routes had simply not called the walk.
+// The keyword is the NAME after <!DOCTYPE ("html" selects standards mode); the "<!DOCTYPE " prefix is the
+// medium's spelling, so a document cannot carry its own punctuation. The name is NonEmptyStr: an empty
+// name is not a document type, and `MarkupDocument { doctype: "", .. }` fails to resolve (measured), so no
+// check anywhere asks whether it is empty.
+type MarkupDocument {
+  doctype: NonEmptyStr
+  root: Fragment
 }
 
 type TagLookup
@@ -117,45 +223,94 @@ fn serialize_attribute_with(a: Attribute, bracket: MarkupBracket) -> String {
 fn serialize_attributes_with(attrs: List<Attribute>, bracket: MarkupBracket) -> String {
   fold(attrs, init: "", f: (acc, a) => concat(acc, serialize_attribute_with(a: a, bracket: bracket)))
 }
-
-fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
+// THE ONLY WAY MARKUP BECOMES TEXT, AND IT IS FALLIBLE ON PURPOSE.
+//
+// The comment used to be WRITTEN here and CHECKED somewhere else, in a walk only the routes remembering to
+// call it got (review 82279 on #14351): serialize_jsx_fragment, serialize_jsx_component,
+// serialize_svg_document and html_fragment's serialize_fragment came straight here, so
+// MarkupComment { body: "*/ evil" } closed its comment early and the rest was emitted as TSX. The module
+// comment claimed a new medium "cannot forget to call" the check, which was false as written: a safety
+// property that depends on every caller remembering is validation, not construction (§5).
+//
+// So the checks that are about WRITING -- a body that would end its own comment, raw-text content that
+// would end its element early, a doctype name that is not one bare token -- happen in the arm that emits
+// those bytes, reading the medium's own grammar. Producing the bytes now REQUIRES passing those tests, so
+// there is no route that can skip them, no walk to forget, and no second copy to drift from the emitter
+// (§3). That is also why "did the walk recurse into that arm?" is no longer a question needing a control.
+//
+// Refusal, not repair. A comment cannot be escaped into safety: comments decode nothing, so "a-->b" has no
+// legal spelling as a comment and the author must restructure it. Emitting the text with the sequence
+// stripped would silently change what the comment SAYS -- §5's fabricated output.
+fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> MarkupSerializeResult {
   match frag {
-    FragmentText { content: c } => escape_text_for(mode: medium.text_escape, s: c)
-    RawNode { content: c } => c
+    FragmentText { content: c } => Serialized { html: escape_text_for(mode: medium.text_escape, s: c) }
+    RawNode { content: c } => Serialized { html: c }
+    MarkupComment { body: b } =>
+      match comment_body_hazard(body: b, grammar: medium.comment_grammar) {
+        HazardFound { reason: why } => Rejected { reason: why }
+        HazardFree => Serialized { html: join([medium.comment_grammar.open as String, b, medium.comment_grammar.close as String], "") }
+      }
     Element { tag: t, attributes: attrs, children: kids } => {
       let attrs_str = serialize_attributes_with(attrs: attrs, bracket: medium.bracket)
       if is_void_tag(tag: t, void_tags: medium.void_tags) {
         match medium.void_rendering {
           OmitClose =>
-            join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close], "")
+            Serialized { html: join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close], "") }
           SelfClose =>
-            join([medium.bracket.tag_open, t, attrs_str, " /", medium.bracket.tag_close], "")
+            Serialized { html: join([medium.bracket.tag_open, t, attrs_str, " /", medium.bracket.tag_close], "") }
         }
       } else {
         let child_medium = if tag_in_set(tag: t, tags: medium.raw_text_tags) {
-          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags }
+          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags, comment_grammar: medium.comment_grammar, document_grammar: medium.document_grammar }
         } else {
           medium
         }
-        let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: child_medium)))
-        match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
-          FoundTag { delim: d } =>
-            join([d.open, inner, d.close], "")
-          NoTag =>
-            join([
-              medium.bracket.tag_open,
-              t,
-              attrs_str,
-              medium.bracket.tag_close,
-              inner,
-              medium.bracket.end_tag_open,
-              t,
-              medium.bracket.tag_close
-            ], "")
+        // THE RAW-TEXT GUARD CHECKS THE BYTES THE EMITTER WRITES, not a re-derived summary of the children.
+        // Children are serialized FIRST; what comes back is exactly what would sit between the tags, so the
+        // close-sequence test is run over the real output. Review 82504 on #14351 is why the previous shape
+        // was not enough: it called raw_text_children_text, a hand-written fold over the child shapes it
+        // thought carry bytes, and that fold dropped MarkupComment bodies (`MarkupComment { body: _ } => acc`)
+        // and nested Elements (`Element { ... } => acc`). So
+        //   Element { tag: "script", children: [MarkupComment { body: "</script><img src=x onerror=alert(1)>"}] }
+        // passed the raw-text check, then passed the comment check (its body holds no comment terminator),
+        // and serialized as <script><!-- </script><img ...> --></script> -- inside <script> the tokenizer is
+        // in raw-text state, "<!--" starts nothing, "</script" ends the element, and the <img> is live.
+        // A guard that re-implements "which children carry bytes" is a second authority over the emitter and
+        // drifts the way this one did (§3), and every new Fragment arm would silently widen it.
+        //
+        // The close sequence is still read from the MEDIUM (bracket.end_tag_open -- the same field the line
+        // below emits, review 82268), so checker and emitter cannot disagree about the SPELLING either.
+        match serialize_children(children: kids, medium: child_medium) {
+          Rejected { reason: why } => Rejected { reason: why }
+          Serialized { html: inner } =>
+            if tag_in_set(tag: t, tags: medium.raw_text_tags) && string_contains(s: inner, pattern: concat(medium.bracket.end_tag_open, t)) {
+              Rejected { reason: join(["raw-text element <", t, "> content contains its own close sequence '", medium.bracket.end_tag_open, t, "' — refusing to serialize (the remainder would be parsed as markup); restructure the content"], "") }
+            } else { match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
+              FoundTag { delim: d } =>
+                Serialized { html: join([d.open, inner, d.close], "") }
+              NoTag =>
+                Serialized { html: join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close, inner, medium.bracket.end_tag_open, t, medium.bracket.tag_close], "") }
+            } }
         }
       }
     }
   }
+}
+
+// THE FOLD THAT PROPAGATES A REFUSAL. Accumulating the RESULT rather than a String is what makes the
+// guarantee real: a child that refuses stops its whole element, so no page is half-serialized and no
+// caller can obtain the text of a subtree that failed. The refusal rides in the accumulator, so it cannot
+// be dropped by a caller that forgot to look at it.
+fn serialize_children(children: List<Fragment>, medium: MarkupMedium) -> MarkupSerializeResult {
+  fold(children,
+    init: Serialized { html: "" },
+    f: (acc, c) => match acc {
+      Rejected { reason: r } => Rejected { reason: r }
+      Serialized { html: h } => match serialize_fragment_with(frag: c, medium: medium) {
+        Serialized { html: part } => Serialized { html: concat(h, part) }
+        Rejected { reason: r } => Rejected { reason: r }
+      }
+    })
 }
 
 fn attr_is_url_attr(name: String) -> Bool {
@@ -178,6 +333,190 @@ fn attr(name: String, value: String) -> Attribute {
   }
 }
 
+// THE ONLY WAY A DOCUMENT IS WRITTEN, and it owns every check that guards a doctype.
+//
+// A typed result rather than a String, for two reasons. A medium with NoDocumentGrammar has no spelling for
+// a document-type declaration, so there is no string to return, and the earlier alternative -- a
+// labelled-unreachable seam -- was measured to diverge (review 82244 on #14351). And the doctype NAME check
+// lives here rather than in a walk, because a separate walk is a check a route can skip, which is exactly
+// what review 82279 found for comments on the same day. This function is the only place a doctype is ever
+// spelled, so checking it here is checking it always.
+fn serialize_document_with(doc: MarkupDocument, medium: MarkupMedium) -> MarkupSerializeResult {
+  match medium.document_grammar {
+    NoDocumentGrammar =>
+      // Located: it names the medium's own grammar as the reason, and what to do instead.
+      Rejected { reason: "this medium declares no document grammar (DocumentGrammar is NoDocumentGrammar), so a document-type declaration has no spelling in it — serialize the root Fragment instead" }
+    DeclaresDocument { open: kw, name_end_whitespace: ws } =>
+      match doctype_name_hazard(keyword: doc.doctype, name_end_whitespace: ws, bracket: medium.bracket) {
+        HazardFound { reason: why } => Rejected { reason: why }
+        HazardFree => match serialize_fragment_with(frag: doc.root, medium: medium) {
+          Serialized { html: body } =>
+            Serialized { html: join([kw as String, doc.doctype as String, medium.bracket.tag_close, document_line_ending(), body], "") }
+          Rejected { reason: why } => Rejected { reason: why }
+        }
+      }
+  }
+}
+
+
+fn document_line_ending() -> String {
+  render(doc: DocLine, proto: LayoutProtocol { indent_unit: "" })
+}
+
 type MarkupSerializeResult
   = Serialized { html: String }
   | Rejected { reason: String }
+
+// THE CLOSED OUTCOME OF A HAZARD CHECK, for every medium and every hazard in this layer.
+//
+// WHY A SUM AND NOT A STRING. The first shape of these checks returned String, with "" meaning
+// "clean" and any other value the diagnostic (review 82181 on #14351). That makes the empty string
+// carry the load-bearing answer, so a check that ever returns "" — a bug, a stub, a copy-paste of
+// itself — PASSES, and the two states are indistinguishable at every call site: `if hazard == ""`
+// is a string test, not a type test. DESIGN §5: "every path succeeds fully or fails with a typed,
+// located diagnostic, and no plausible output is fabricated." A closed sum means the caller has to
+// name both outcomes to compile, and there is no inhabitant that means both.
+//
+// ONE SUM FOR ALL THE HAZARDS, not one per hazard: the caller's job is "may I serialize this, and
+// if not why", which does not vary by hazard. Each reason is located (it names the terminator or
+// tag involved) and the hazard that fired is recoverable from its text, which is what a refusal
+// surface needs; nothing branches on WHICH hazard.
+type MarkupHazard
+  = HazardFree
+  | HazardFound { reason: String }
+
+// ── THE HAZARDS A SERIALIZER REFUSES ─────────────────────────────────────────────────────────────
+// WHY THESE LIVE HERE AND NOT BESIDE THE HTML ROWS. The first shape of this check existed once per
+// language (review 82181 on #14351): the HTML guarded route consulted a comment hazard and its JSX
+// sibling did not, so a comment body containing "*/" closed early and the remainder was parsed as
+// TSX — both came back JsxOk. That is §6b's repeated pattern left un-generalized. And as soon as the
+// check became one walk beside the emitter, review 82279 found the next hole: serialize_jsx_fragment,
+// serialize_jsx_component and the SVG document route never called the walk, so the check was still a
+// call a route could omit. Both shapes are answered by putting each check in the arm that writes the
+// bytes it protects, in the layer that owns Fragments and Media. A new medium gets coverage by filling
+// in its own grammar rows; there is no call to remember and no second copy to drift.
+//
+// THREE HAZARDS, THREE CALL SITES, ALL IN THE EMITTER:
+//   1. comment_body_hazard — on the MarkupComment arm, before open + body + close is written; both of
+//      its tests read CommentGrammar.close and .terminators, so there is no per-language flag to set
+//      correctly and no rule to keep in sync with the rows the emitter already uses;
+//   2. doctype_name_hazard — in serialize_document_with, the only place a doctype is spelled;
+//   3. the raw-text close check — on the arm that writes an element's raw children, built from the
+//      medium's own bracket fields rather than a hand-typed "</".
+// Each is refused rather than filtered: escaping cannot fix (1) — a comment decodes nothing — and
+// stripping the sequence would change what the comment says. (2) is refused because the tokenizer
+// reads ONE token after the keyword, so anything else changes how the document parses. (3) is
+// refused for the same reason <script> content is: the browser would end the element early.
+//
+// NONE OF THEM ASKS WHETHER A GRAMMAR FIELD IS EMPTY. That question was review 82209's second finding --
+// the closed sum (HazardFree | HazardFound) had retired "" as a RETURN value while "" remained a legal
+// INPUT, so the check had to test for it at runtime. CommentGrammar.terminators is FreeSemigroup, which has
+// no empty inhabitant at all: the check is gone because the state is gone, and the witness that used
+// to pin that refusal went with it, rather than staying to assert a value the type no longer admits.
+
+// TWO TESTS, BOTH READ FROM THE MEDIUM'S OWN ROWS, and nothing else:
+//   1. MEDIUM DEFECT — if none of CommentGrammar.terminators occurs in the close the emitter writes, then
+//      NO body can be safe: the emitter would open a comment nothing closes, and every byte after it
+//      becomes comment text. That is worse than closing early, so it is refused on every body, and the
+//      refusal names both the close and the whole set it searched — a refusal that does not say which rows
+//      disagree is not located (§5).
+//   2. BODY CLOSES ITS OWN COMMENT EARLY — the body holds one of the terminators. Asked of EVERY member,
+//      because consulting one and not the others is what let "--!>" through (reviews 82474/82482): the
+//      tokenizer reaches the comment end bang state on the "!" after "--" and closes on the next ">", so a
+//      body of "x--!><script>…" with a single-"-->" grammar was serialized as a comment that had already
+//      ended. The refusal names WHICH member fired.
+//
+// NO DASH RULE. This function also used to refuse any body ending in "-" under a Bool
+// `trailing_dash_closes`, justified as: the emitter's close contributes a "-", so "--" + that "-" reaches
+// the comment end state. Review 82417: the premise is false for the row cited — html_comment_close_sequence
+// is " -->", which begins with a SPACE, so a body ending in "-" emits "- -->" and the only "-->" in it is
+// the close. HTML §13.1.1's state machine accepts it. §4d: "Do not over-generalize a prohibition"; the cost
+// here was any comment ending in a dash -- an em-dash, a bullet, a truncated date.
+//
+// MEASURED, NOT ASSERTED. The rule was walked against that state machine: all four shipped media (HTML,
+// XML, raw-dash, JSX) x every string up to length 5 over the eight characters {-, /, >, *, !, space, '}', x}
+// = 149,796 bodies. This rule: 0 disagreements. With the trailing-dash refusal added back: 18,462, all of
+// them over-refusals. The single-terminator version the reviews caught: 51, all of them escapes. The
+// review's suggested wording verbatim ("whether concat(body, close) contains terminator anywhere before the
+// real close"): 35,268, because the JSX terminator "*/" occurs INSIDE the JSX close " */}" at an index
+// before that close ends -- it would refuse every JSX comment, 37,449 of 37,449, the empty body included.
+// So the occurrence is searched in the BODY, where a body can add one, and the close is asked only what it
+// can answer about itself. The walk's two outputs are in the witness as data, not as a number in a comment:
+// witness_every_swept_escape_body_is_refused carries the 17 escape bodies and
+// witness_swept_safe_bodies_serialize carries the dash-shaped bodies the tokenizer accepts.
+fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
+  match first_terminator_in(s: grammar.close as String, terms: grammar.terminators) {
+    Absent => HazardFound { reason: join(["none of this medium's comment terminators (", terminators_csv(grammar.terminators), ") occurs in the close sequence '", grammar.close as String, "' it emits — no body could close this comment, so nothing may be emitted through it; fix the medium's rows"], "") }
+    Present { value: _ } => match first_terminator_in(s: body, terms: grammar.terminators) {
+      Present { value: t } => HazardFound { reason: join(["markup comment body contains the comment terminator '", t as String, "' — refusing to serialize (the remainder would be parsed as markup); restructure the comment"], "") }
+      Absent => HazardFree
+    }
+  }
+}
+
+// THE ONE MEMBERSHIP QUESTION, asked of the whole set. Recursive over the tail because the set has no
+// upper bound and the check must not stop early: a grammar that gains a third terminator gains it in the
+// tail and is covered without this function changing, which is the point of the carrier.
+fn first_terminator_in_monoid(s: String, xs: FreeMonoid<NonEmptyStr>) -> Optional<NonEmptyStr> {
+  match xs {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if string_contains(s: s, pattern: h as String) { Present { value: h } } else { first_terminator_in_monoid(s: s, xs: t) }
+  }
+}
+
+// Every terminator, for a diagnostic that has to be LOCATED (§5): the medium-defect refusal above names
+// the close it emitted but not the set it searched, and without the set a reader cannot tell which row is
+// wrong. Materialized here rather than re-derived at each call site so the set has one rendering.
+fn terminators_csv(terms: FreeSemigroup<NonEmptyStr>) -> String {
+  join([terms.head as String], terminator_tail_csv(xs: terms.tail))
+}
+
+fn terminator_tail_csv(xs: FreeMonoid<NonEmptyStr>) -> String {
+  match xs {
+    Empty => ""
+    Cons { head: h, tail: t } => join([", ", h as String], terminator_tail_csv(xs: t))
+  }
+}
+
+fn first_terminator_in(s: String, terms: FreeSemigroup<NonEmptyStr>) -> Optional<NonEmptyStr> {
+  if string_contains(s: s, pattern: terms.head as String) {
+    Present { value: terms.head }
+  } else {
+    first_terminator_in_monoid(s: s, xs: terms.tail)
+  }
+}
+
+// A <!DOCTYPE> name is a production, not free text: the tokenizer reads at most ONE token after the
+// keyword, so a name holding whitespace or an angle bracket makes the declaration swallow text and the
+// document parse in the wrong mode (a page can silently land in quirks mode).
+//
+// WHICH CHARACTERS, AND WHERE THEY COME FROM (review 82268 on #14351). This read "<", ">" and " " as
+// literals inside std/, which is twice wrong: which characters end that token is a fact about the tokenizer
+// of the language that declares a doctype (§4: "a new target language is rows in extdeps/languages/, never
+// an edit to the fold"), and the two angle brackets were a SECOND home for a spelling the medium already
+// carries, since MarkupBracket.tag_open / tag_close are what serialize_fragment_with writes for every tag.
+// So the brackets are READ off the bracket and the whitespace is the caller's DeclaresDocument row.
+//
+// WHY THE BOUNDARY IS A PARAMETER AND NOT A MATCH ON THE GRAMMAR. An earlier shape took the whole
+// DocumentGrammar, matched it, and returned "no boundary" for NoDocumentGrammar -- reintroducing, on the
+// input side, the empty-string-as-meaning convention this module had just retired on the output side
+// (review 82279 on #14351, §5: "no plausible output is fabricated"). It also invented an answer for a state
+// the only caller has already refused. So the caller -- serialize_document_with, which has matched
+// DeclaresDocument and holds both rows -- hands them in. There is no absent case to answer, and no arm to
+// hand a fabricated one to.
+//
+// NO EMPTINESS CHECK on the name itself: NonEmptyStr has no empty inhabitant (measured against the
+// checker), so asserting a refusal of one would be asserting an invalid value as expected.
+fn doctype_name_hazard(keyword: NonEmptyStr, name_end_whitespace: NonEmptyStr, bracket: MarkupBracket) -> MarkupHazard {
+  let s = keyword as String
+  if string_contains(s: s, pattern: bracket.tag_open)
+    || string_contains(s: s, pattern: bracket.tag_close)
+    || string_contains(s: s, pattern: name_end_whitespace as String) {
+    HazardFound { reason: join(["doctype name '", s, "' is not a single bare token — the tokenizer reads one token after the doctype keyword; anything else changes how the document parses"], "") }
+  } else {
+    HazardFree
+  }
+}
+
+

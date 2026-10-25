@@ -13,6 +13,7 @@ pub use crate::extdeps_version::{
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_algebra::{trim, Ordering};
 pub use crate::std_coercion::unicode_scalar_fold;
+pub use crate::std_host_text::chars;
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
@@ -275,7 +276,7 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
 pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
     {
         let parts = Rc::new(
-            crate::std_algebra::trim(text.clone())
+            crate::std_algebra::trim(text)
                 .split(&".".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -289,12 +290,7 @@ pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
                     std::option::Option::None => std::option::Option::None,
                     Some(minor) => {
                         if ((parts.clone().len() as i64) == 2) {
-                            match semver_numeric_field(Rc::new(
-                                "0".to_string()
-                                    .chars()
-                                    .map(|c| c as i64)
-                                    .collect::<Vec<_>>(),
-                            )) {
+                            match semver_numeric_field(v1_rt::chars(&"0".to_string())) {
                                 std::option::Option::None => std::option::Option::None,
                                 Some(zero) => Some(Rc::new(SemVerVersion {
                                     major: major.clone(),
@@ -326,9 +322,7 @@ pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
 pub fn semver_dotted_part(parts: Rc<Vec<String>>, index: i64) -> Option<Rc<SemVerNumericField>> {
     match parts.clone().get((index.clone()) as usize).cloned() {
         std::option::Option::None => std::option::Option::None,
-        Some(w) => semver_numeric_field(Rc::new(
-            w.clone().chars().map(|c| c as i64).collect::<Vec<_>>(),
-        )),
+        Some(w) => semver_numeric_field(v1_rt::chars(&w.clone())),
     }
 }
 
@@ -401,7 +395,7 @@ pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
 }
 
 pub fn semver_to_version_identity(v: Rc<SemVerVersion>) -> NonEmptyStr {
-    semver_version_label(v.clone())
+    semver_version_label(v)
 }
 
 pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Rc<VersionComparison> {
@@ -425,7 +419,7 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Rc<VersionComp
 }
 
 pub fn semver_identity_code_points(label: NonEmptyStr) -> Rc<Vec<i64>> {
-    Rc::new(label.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+    v1_rt::chars(&label.clone())
 }
 
 pub fn semver_is_ascii_digit(cp: i64) -> bool {
@@ -523,7 +517,7 @@ pub fn semver_numeric_run_without_leading_zero(cps: Rc<Vec<i64>>) -> bool {
 }
 
 pub fn semver_label_from_code_points(cps: Rc<Vec<i64>>) -> String {
-    crate::std_coercion::unicode_scalar_fold(cps.clone())
+    crate::std_coercion::unicode_scalar_fold(cps)
 }
 
 pub fn semver_core_fields_parse(
@@ -568,7 +562,7 @@ pub fn semver_core_fields_parse(
 }
 
 pub fn semver_core_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {
-    match semver_core_fields_parse(cps.clone(), 3) {
+    match semver_core_fields_parse(cps, 3) {
         std::option::Option::None => std::option::Option::None,
         Some(fields) => {
             if ((fields.clone().len() as i64) != 3) {
@@ -651,11 +645,11 @@ pub fn semver_identifier_list_parse(
 }
 
 pub fn semver_pre_release_parse(cps: Rc<Vec<i64>>) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
-    semver_identifier_list_parse(semver_split_on(46, cps.clone(), Rc::new(vec![])), true)
+    semver_identifier_list_parse(semver_split_on(46, cps, Rc::new(vec![])), true)
 }
 
 pub fn semver_build_parse(cps: Rc<Vec<i64>>) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
-    semver_identifier_list_parse(semver_split_on(46, cps.clone(), Rc::new(vec![])), false)
+    semver_identifier_list_parse(semver_split_on(46, cps, Rc::new(vec![])), false)
 }
 
 pub fn semver_identity_head_parse(
@@ -693,7 +687,7 @@ pub fn semver_identity_head_parse(
 }
 
 pub fn semver_identity_parse(label: NonEmptyStr) -> Option<Rc<SemVerVersion>> {
-    semver_version_parse(semver_identity_code_points(label.clone()))
+    semver_version_parse(semver_identity_code_points(label))
 }
 
 pub fn semver_version_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {

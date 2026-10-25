@@ -1,0 +1,843 @@
+module v2.test.claim.activation_dependency
+
+import std.algebra { Cons, Empty, FreeSemigroup, fold_list, length, list_snoc_item, zip_eq }
+import extdeps.communication.medium { Lossless, Medium }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Optional, Present, optional_absent, optional_eq, optional_present }
+import std.types { Bool, Int, List }
+import v2.compiler.activation_dependency {
+  ActivationDependencies,
+  BranchNotConditionThenElse,
+  MatchArmMalformed,
+  MatchScrutineeAbsent,
+  activation_dispositions,
+  activation_dispositions_of_root
+}
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.body_lowering { MatchArmPatternEdge, MatchArmBodyEdge }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.dependency { ActivationAlternative, ActivationDemand, SelectedByBranchSlot, SelectedByPattern }
+import v2.std.diagnostic { Accepted, Diagnostic, Locus, LocusAnchor, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.node { node_same_occurrence,
+  NotADeclaration,
+  Atom,
+  Branch,
+  BranchConditionSlot,
+  BranchElseSlot,
+  BranchThenSlot,
+  ComputationNode,
+  Conj,
+  Edge,
+  Match,
+  MatchScrutineeSlot,
+  Node,
+  Positional,
+  PositionalOrdinal,
+  Symbol,
+  TypeNode,
+  branch_slot_target,
+  core_edge_label,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  match_slot_target,
+  node_subtree_nodes
+}
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT A BRANCH OR A MATCH DEMANDS (v2.compiler.activation_dependency). The subject is the derivation's one
+// interface: given a resolved program, which ActivationDemands does it produce? The front-end claims run it
+// through the REAL route (assemble_program_from_ingest) because the fact under test is the shape the front
+// end writes; the shared-node and malformed-site claims hand it a bare root, because the front end never
+// writes those shapes and a hypothesis has to be supplied. The inhabitance claim (acd_j) is the pairing
+// obligation for those supplied shapes: it asserts the real front end writes the three-positional Branch and
+// the (pattern, body) arms the derivation reads.
+//
+// WHAT EACH CLAIM DISCRIMINATES. acd_b: an alternative root appears under exactly one selected_by, so what a
+// site waits on after the selector is the CHOSEN root only. A derivation that gave both slots one root, or
+// listed every arm under every slot, fails it. acd_c: a use inside an arm reaches the selector only through
+// the demand whose alternative contains it, and is outside the other alternative. acd_f and acd_g: the
+// condition (scrutinee) node equals an arm node, so the edges compare equal and only the slot tells the
+// roles apart; a derivation locating the arm "by the edge equal to X" or "the first positional" returns the
+// wrong root.
+
+data acd_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^acd_artifact,
+  file_path: "src/v2/test/fixture/activation_dependency.dag"
+}
+
+fn acd_assemble(src: String) -> Optional<ResolvedTree> {
+  acd_assemble_with(src: src, peers: Empty)
+}
+
+// A peer module the source imports (std.error_primitives for Never), ingested beside the source.
+fn acd_never_peer() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: "module std.error_primitives\n\ntype Never\n", fidelity: Lossless },
+    artifact: acd_artifact,
+    compilation_unit: ^acd_cu,
+    source_root: V2Tree
+  }
+}
+
+fn acd_assemble_with(src: String, peers: List<DagSourceReadWitness>) -> Optional<ResolvedTree> {
+  match assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: acd_artifact,
+        compilation_unit: ^acd_cu,
+        source_root: V2Tree
+      },
+      tail: peers
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^acd, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+data acd_branch_source: String = "module acd\n\n\nfn f(c: Bool, a: Int, b: Int) -> Int {\n  if c { a + 1 } else { b + 2 }\n}\n"
+data acd_use_source: String = "module acd\n\n\nfn f(c: Bool, a: Int) -> Int {\n  if c {\n    let x = a + 1\n    x * 2\n  } else {\n    0\n  }\n}\n"
+data acd_match_source: String = "module acd\n\ntype Shade = Dark | Light\n\nfn f(s: Shade, a: Int) -> Int {\n  match s {\n    Dark => a + 1\n    Light => a + 2\n  }\n}\n"
+data acd_nested_source: String = "module acd\n\n\ntype Shade = Dark | Light\n\nfn f(s: Shade, c: Bool, a: Int) -> Int {\n  match s {\n    Dark => if c { a + 1 } else { a + 2 }\n    Light => a + 3\n  }\n}\n"
+
+// ---- claim-side judgements -------------------------------------------------------------------------
+
+fn acd_in(xs: List<Node>, n: Node) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || node_same_occurrence(a: x, b: n) })
+}
+
+fn acd_within(n: Node, root: Node) -> Bool {
+  acd_in(xs: node_subtree_nodes(root: root), n: n)
+}
+
+fn acd_demand_count(d: ActivationDependencies) -> Int {
+  length(xs: d.demands)
+}
+
+fn acd_alternative_list(demand: ActivationDemand<Node>) -> List<ActivationAlternative<Node>> {
+  Cons { head: demand.alternatives.head, tail: demand.alternatives.tail }
+}
+
+fn acd_alternative_count(demand: ActivationDemand<Node>) -> Int {
+  length(xs: acd_alternative_list(demand: demand))
+}
+
+fn acd_first_demand(d: ActivationDependencies) -> Optional<ActivationDemand<Node>> {
+  match d.demands {
+    Cons { head: x, tail: _ } => optional_present(value: x)
+    Empty => optional_absent()
+  }
+}
+
+// THE PREREQUISITES OF A SITE ONCE ITS SELECTOR HAS CHOSEN: the selector and the chosen alternative's root,
+// the whole of what activation lets the site wait on. `chosen` is the index into the alternatives.
+fn acd_waits_on(demand: ActivationDemand<Node>, chosen: Int) -> List<Node> {
+  match acd_nth_root(alts: acd_alternative_list(demand: demand), index: chosen) {
+    Present { value: root } => [demand.selector, root]
+    Absent => [demand.selector]
+  }
+}
+
+fn acd_nth_root(alts: List<ActivationAlternative<Node>>, index: Int) -> Optional<Node> {
+  match alts {
+    Empty => optional_absent()
+    Cons { head: a, tail: rest } =>
+      if index == 0 {
+        optional_present(value: a.root)
+      } else {
+        acd_nth_root(alts: rest, index: index - 1)
+      }
+  }
+}
+
+fn acd_sites(root: Node) -> Int {
+  fold_list(xs: node_subtree_nodes(root: root), empty: 0, cons: fn(acc, n) { acc + acd_is_site(n: n) })
+}
+
+fn acd_is_site(n: Node) -> Int {
+  match n.kind {
+    ComputationNode { behavior: Branch } => 1
+    ComputationNode { behavior: Match } => 1
+    _ => 0
+  }
+}
+
+// EVERY SITE IS IN EXACTLY ONE POPULATION, BY IDENTITY AND MULTIPLICITY: for each site occurrence in the tree,
+// the number of rows (demand, not_derived, zero_alternatives) naming that node equals the number of times the
+// node occurs, so an omitted site and a duplicated one cannot cancel, and a shared node occurring twice is
+// owed two rows. No row names a node that is not a site.
+fn acd_total(d: ActivationDependencies, root: Node) -> Bool {
+  acd_rows_total(d: d) == acd_sites(root: root)
+    && fold_list(
+      xs: node_subtree_nodes(root: root),
+      empty: true,
+      cons: fn(ok, n) { ok && (acd_is_site(n: n) == 0 || acd_rows_at(d: d, site: n) == acd_occurrences(root: root, n: n)) }
+    )
+}
+
+fn acd_rows_total(d: ActivationDependencies) -> Int {
+  length(xs: d.demands) + length(xs: d.not_derived) + length(xs: d.zero_alternatives)
+}
+
+fn acd_rows_at(d: ActivationDependencies, site: Node) -> Int {
+  fold_list(xs: d.demands, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: node_same_occurrence(a: x.site, b: site)) })
+    + fold_list(xs: d.not_derived, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: node_same_occurrence(a: x.site, b: site)) })
+    + fold_list(xs: d.zero_alternatives, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: node_same_occurrence(a: x.site, b: site)) })
+}
+
+fn acd_hit(b: Bool) -> Int {
+  if b { 1 } else { 0 }
+}
+
+fn acd_occurrences(root: Node, n: Node) -> Int {
+  fold_list(xs: node_subtree_nodes(root: root), empty: 0, cons: fn(acc, x) { acc + acd_hit(b: node_same_occurrence(a: x, b: n)) })
+}
+
+fn acd_branch_slots_are_then_else(demand: ActivationDemand<Node>) -> Bool {
+  match demand.alternatives.head.selected_by {
+    SelectedByBranchSlot { slot: BranchThenSlot } =>
+      match demand.alternatives.tail {
+        Cons { head: e, tail: Empty } =>
+          match e.selected_by {
+            SelectedByBranchSlot { slot: BranchElseSlot } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn acd_branch_demand_reads_the_slots(demand: ActivationDemand<Node>) -> Bool {
+  match branch_slot_target(n: demand.site, slot: BranchConditionSlot) {
+    Present { value: c } =>
+      match branch_slot_target(n: demand.site, slot: BranchThenSlot) {
+        Present { value: t } =>
+          match branch_slot_target(n: demand.site, slot: BranchElseSlot) {
+            Present { value: e } =>
+              node_same_occurrence(a: demand.selector, b: c)
+                && node_same_occurrence(a: demand.alternatives.head.root, b: t)
+                && optional_eq(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: e), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn acd_site_of_kind(root: Node, want_match: Bool) -> Optional<Node> {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: optional_absent(),
+    cons: fn(acc, n) { acd_pick_site(acc: acc, n: n, want_match: want_match) }
+  )
+}
+
+fn acd_pick_site(acc: Optional<Node>, n: Node, want_match: Bool) -> Optional<Node> {
+  match acc {
+    Present { value: x } => optional_present(value: x)
+    Absent =>
+      match n.kind {
+        ComputationNode { behavior: Branch } => if want_match { optional_absent() } else { optional_present(value: n) }
+        ComputationNode { behavior: Match } => if want_match { optional_present(value: n) } else { optional_absent() }
+        _ => optional_absent()
+      }
+  }
+}
+
+fn acd_demand_for(d: ActivationDependencies, site: Node) -> Optional<ActivationDemand<Node>> {
+  fold_list(
+    xs: d.demands,
+    empty: optional_absent(),
+    cons: fn(acc, x) { acd_pick_demand(acc: acc, x: x, site: site) }
+  )
+}
+
+fn acd_pick_demand(acc: Optional<ActivationDemand<Node>>, x: ActivationDemand<Node>, site: Node) -> Optional<ActivationDemand<Node>> {
+  match acc {
+    Present { value: y } => optional_present(value: y)
+    Absent => if node_same_occurrence(a: x.site, b: site) { optional_present(value: x) } else { optional_absent() }
+  }
+}
+
+// ---- front-end claims ------------------------------------------------------------------------------
+
+// (a) A BRANCH demands its condition, then one of exactly two alternatives, keyed by the THEN and ELSE slots,
+// whose roots are what the slot table reads at those slots.
+test fn acd_a_branch_selects_one_of_then_else_holds() -> Bool {
+  match acd_assemble(src: acd_branch_source) {
+    Absent => false
+    Present { value: tree } =>
+      match activation_dispositions(tree: tree) {
+        d =>
+          match acd_first_demand(d: d) {
+            Absent => false
+            Present { value: demand } =>
+              acd_demand_count(d: d) == 1
+                && length(xs: d.not_derived) == 0
+                && acd_alternative_count(demand: demand) == 2
+                && acd_branch_slots_are_then_else(demand: demand)
+                && acd_branch_demand_reads_the_slots(demand: demand)
+                && acd_total(d: d, root: tree.root)
+          }
+      }
+  }
+}
+
+// (b) AN UNTAKEN ARM CONTRIBUTES NO PREREQUISITE: choosing then, the site waits on the selector and the then
+// root and NOT the else root; choosing else, the converse. The two roots differ, so a derivation that reuses
+// one root for both alternatives fails here.
+test fn acd_b_untaken_arm_contributes_no_prerequisite_holds() -> Bool {
+  match acd_assemble(src: acd_branch_source) {
+    Absent => false
+    Present { value: tree } =>
+      match acd_first_demand(d: activation_dispositions(tree: tree)) {
+        Absent => false
+        Present { value: demand } =>
+          match acd_nth_root(alts: acd_alternative_list(demand: demand), index: 0) {
+            Present { value: then_root } =>
+              match acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) {
+                Present { value: else_root } =>
+                  !node_same_occurrence(a: then_root, b: else_root)
+                    && acd_in(xs: acd_waits_on(demand: demand, chosen: 0), n: then_root)
+                    && !acd_in(xs: acd_waits_on(demand: demand, chosen: 0), n: else_root)
+                    && acd_in(xs: acd_waits_on(demand: demand, chosen: 1), n: else_root)
+                    && !acd_in(xs: acd_waits_on(demand: demand, chosen: 1), n: then_root)
+                Absent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+// (c) A USE INSIDE AN ARM is reached by the selector only through the alternative containing it: the use of
+// x in the then arm lies within the then root and not within the else root, and the one demand's selector is
+// the condition. Its value dependence (x's value) is A1's row, not an activation fact.
+test fn acd_c_use_in_arm_depends_on_selector_and_own_alternative_holds() -> Bool {
+  match acd_assemble(src: acd_use_source) {
+    Absent => false
+    Present { value: tree } =>
+      match acd_first_demand(d: activation_dispositions(tree: tree)) {
+        Absent => false
+        Present { value: demand } =>
+          match acd_nth_root(alts: acd_alternative_list(demand: demand), index: 0) {
+            Present { value: then_root } =>
+              match acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) {
+                Present { value: else_root } =>
+                  acd_within(n: then_root, root: tree.root)
+                    && !acd_within(n: then_root, root: else_root)
+                    && !acd_within(n: else_root, root: then_root)
+                    && !acd_within(n: demand.selector, root: then_root)
+                Absent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+// (d) A MATCH demands its scrutinee and one arm per alternative, selected by the arm's pattern at its
+// positional ordinal (1 and 2: the scrutinee holds 0).
+test fn acd_d_match_selects_one_arm_by_pattern_holds() -> Bool {
+  match acd_assemble(src: acd_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match acd_first_demand(d: activation_dispositions(tree: tree)) {
+        Absent => false
+        Present { value: demand } =>
+          acd_alternative_count(demand: demand) == 2
+            && acd_match_ordinals_are(demand: demand, first: 1, second: 2)
+            && optional_eq(a: match_slot_target(n: demand.site, slot: MatchScrutineeSlot), b: optional_present(value: demand.selector), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+      }
+  }
+}
+
+fn acd_match_ordinals_are(demand: ActivationDemand<Node>, first: Int, second: Int) -> Bool {
+  match demand.alternatives.head.selected_by {
+    SelectedByPattern { ordinal: PositionalOrdinal { index: i }, pattern: _ } =>
+      i == first
+        && match demand.alternatives.tail {
+          Cons { head: b, tail: Empty } =>
+            match b.selected_by {
+              SelectedByPattern { ordinal: PositionalOrdinal { index: j }, pattern: _ } => j == second
+              _ => false
+            }
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// (e) A BRANCH NESTED IN A MATCH ARM: two demands; the inner Branch lies within exactly one Match
+// alternative (Dark's) and not the other's, and the Match demand's alternatives do not contain each other.
+test fn acd_e_nested_branch_in_match_holds() -> Bool {
+  match acd_assemble(src: acd_nested_source) {
+    Absent => false
+    Present { value: tree } =>
+      match activation_dispositions(tree: tree) {
+        d =>
+          acd_demand_count(d: d) == 2
+            && length(xs: d.not_derived) == 0
+            && acd_total(d: d, root: tree.root)
+            && acd_nested_inner_in_first_arm_only(d: d, root: tree.root)
+      }
+  }
+}
+
+fn acd_nested_inner_in_first_arm_only(d: ActivationDependencies, root: Node) -> Bool {
+  match acd_site_of_kind(root: root, want_match: true) {
+    Absent => false
+    Present { value: outer } =>
+      match acd_site_of_kind(root: root, want_match: false) {
+        Absent => false
+        Present { value: inner } =>
+          match acd_demand_for(d: d, site: outer) {
+            Absent => false
+            Present { value: od } =>
+              match acd_nth_root(alts: acd_alternative_list(demand: od), index: 0) {
+                Present { value: dark } =>
+                  match acd_nth_root(alts: acd_alternative_list(demand: od), index: 1) {
+                    Present { value: light } =>
+                      acd_within(n: inner, root: dark) && !acd_within(n: inner, root: light)
+                    Absent => false
+                  }
+                Absent => false
+              }
+          }
+      }
+  }
+}
+
+// (j) INHABITANCE (DESIGN section 3, the pairing obligation for acd_f..acd_i): the real front end writes a
+// Branch of three positionals and a Match whose arms are (pattern, body), and the derivation turns them into
+// demands. Deleting the real route makes acd_assemble answer Absent and this claim false.
+test fn acd_j_front_end_writes_the_shape_the_derivation_reads_holds() -> Bool {
+  match acd_assemble(src: acd_nested_source) {
+    Absent => false
+    Present { value: tree } =>
+      match acd_site_of_kind(root: tree.root, want_match: false) {
+        Absent => false
+        Present { value: branch } =>
+          length(xs: branch.children) == 3
+            && match acd_site_of_kind(root: tree.root, want_match: true) {
+              Absent => false
+              Present { value: m } =>
+                length(xs: m.children) == 3
+                  && match activation_dispositions(tree: tree) {
+                    d => acd_demand_count(d: d) == 2 && length(xs: d.not_derived) == 0
+                  }
+            }
+      }
+  }
+}
+
+// ---- supplied-shape claims -------------------------------------------------------------------------
+
+fn acd_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn acd_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
+}
+
+fn acd_branch_of(children: List<Edge>) -> Node {
+  Node { kind: ComputationNode { behavior: Branch }, children: children, occurrence_id: OccurrenceSynthetic }
+}
+
+fn acd_match_of(children: List<Edge>) -> Node {
+  Node { kind: ComputationNode { behavior: Match }, children: children, occurrence_id: OccurrenceSynthetic }
+}
+
+fn acd_arm(pattern: Node, body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// (f) SHARED NODE, BRANCH: the condition IS the else arm (one node, equal edges), and the then arm differs. The
+// selector is the shared node, the THEN root is the other node and the ELSE root is the shared node, so a
+// derivation that read the condition through the then slot, or an arm by edge equality, goes red.
+test fn acd_f_branch_condition_equal_to_arm_resolves_by_slot_holds() -> Bool {
+  match activation_dispositions_of_root(root: acd_branch_of(children: [
+    acd_positional(target: acd_atom(s: ^acd_shared)),
+    acd_positional(target: acd_atom(s: ^acd_then)),
+    acd_positional(target: acd_atom(s: ^acd_shared))
+  ])) {
+    d =>
+      match acd_first_demand(d: d) {
+        Absent => false
+        Present { value: demand } =>
+          acd_branch_slots_are_then_else(demand: demand)
+            && node_same_occurrence(a: demand.selector, b: acd_atom(s: ^acd_shared))
+            && node_same_occurrence(a: demand.alternatives.head.root, b: acd_atom(s: ^acd_then))
+            && optional_eq(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: acd_atom(s: ^acd_shared)), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+      }
+  }
+}
+
+// (g) SHARED NODE, MATCH: the scrutinee IS the first arm's body, and the second arm's body is the same node
+// too. Two alternatives at ordinals 1 and 2, each rooted at that node, the selector the same node.
+test fn acd_g_match_scrutinee_equal_to_arm_body_resolves_by_slot_holds() -> Bool {
+  match activation_dispositions_of_root(root: acd_match_of(children: [
+    acd_positional(target: acd_atom(s: ^acd_shared)),
+    acd_positional(target: acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_shared))),
+    acd_positional(target: acd_arm(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_other)))
+  ])) {
+    d =>
+      match acd_first_demand(d: d) {
+        Absent => false
+        Present { value: demand } =>
+          node_same_occurrence(a: demand.selector, b: acd_atom(s: ^acd_shared))
+            && acd_match_ordinals_are(demand: demand, first: 1, second: 2)
+            && node_same_occurrence(a: demand.alternatives.head.root, b: acd_atom(s: ^acd_shared))
+            && optional_eq(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: acd_atom(s: ^acd_other)), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+      }
+  }
+}
+
+// (k) ARM ORDER IS SELECTION PRIORITY: the same two overlapping arms (a specific pattern and a wildcard) in
+// both orders. The head alternative -- the one tried first -- is the specific arm in one tree and the wildcard
+// in the other, so reordering changes which arm is selected and the derivation reports that change, and it
+// does so without relating the arms.
+test fn acd_k_match_arm_order_is_selection_priority_holds() -> Bool {
+  optional_eq(a: acd_head_pattern_of(arms: [
+    acd_arm(pattern: acd_atom(s: ^acd_specific), body: acd_atom(s: ^acd_b1)),
+    acd_arm(pattern: acd_atom(s: ^acd_wild), body: acd_atom(s: ^acd_b2))
+  ]), b: optional_present(value: acd_atom(s: ^acd_specific)), eq: fn(x, y) { node_same_occurrence(a: x, b: y) })
+    && optional_eq(a: acd_head_pattern_of(arms: [
+      acd_arm(pattern: acd_atom(s: ^acd_wild), body: acd_atom(s: ^acd_b2)),
+      acd_arm(pattern: acd_atom(s: ^acd_specific), body: acd_atom(s: ^acd_b1))
+    ]), b: optional_present(value: acd_atom(s: ^acd_wild)), eq: fn(x, y) { node_same_occurrence(a: x, b: y) })
+}
+
+fn acd_head_pattern_of(arms: List<Node>) -> Optional<Node> {
+  match activation_dispositions_of_root(root: acd_match_of(children: acd_scrutinee_then(arms: arms))) {
+    d =>
+      match acd_first_demand(d: d) {
+        Absent => optional_absent()
+        Present { value: demand } =>
+          match demand.alternatives.head.selected_by {
+            SelectedByPattern { ordinal: _, pattern: p } => optional_present(value: p)
+            _ => optional_absent()
+          }
+      }
+  }
+}
+
+fn acd_scrutinee_then(arms: List<Node>) -> List<Edge> {
+  Cons { head: acd_positional(target: acd_atom(s: ^acd_scrut)), tail: fold_list(xs: arms, empty: Empty, cons: fn(acc, a) { list_snoc_item(xs: acc, item: acd_positional(target: a)) }) }
+}
+
+// (l) AN ILL-TYPED UNTAKEN ARM STILL REFUSES AT COMPILE TIME, BY INFERENCE: activation is a runtime demand
+// fact, so inference judges every arm. The condition is the literal `true`, so the else arm is statically
+// untaken; it adds a Bool to an Int. The stages are separate and each must hold: both fixtures ASSEMBLE (an
+// assembly defect in the negative fixture is a failure of this test, never the refusal), the valid fixture
+// INFERS, and the invalid one is REJECTED BY INFERENCE with the transform-operand mismatch located INSIDE the
+// else arm's alternative root (read from the derivation) and not inside the then arm's.
+test fn acd_l_ill_typed_untaken_arm_still_refuses_at_compile_time_holds() -> Bool {
+  match acd_assemble(src: acd_well_typed_source) {
+    Absent => false
+    Present { value: good } =>
+      match acd_assemble(src: acd_ill_typed_source) {
+        Absent => false
+        Present { value: bad } =>
+          acd_inference_accepts(tree: good) && acd_rejection_is_in_the_else_arm(tree: bad)
+      }
+  }
+}
+
+fn acd_inference_accepts(tree: ResolvedTree) -> Bool {
+  match infer(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn acd_rejection_is_in_the_else_arm(tree: ResolvedTree) -> Bool {
+  match infer(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^infer_transform_operand_type_mismatch
+        && match acd_first_demand(d: activation_dispositions(tree: tree)) {
+          Absent => false
+          Present { value: demand } =>
+            match acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) {
+              Absent => false
+              Present { value: else_root } =>
+                match acd_locus_node(l: diagnostics_fatal(d: d).at) {
+                  Absent => false
+                  Present { value: at } =>
+                    acd_within(n: at, root: else_root) && !acd_within(n: at, root: demand.alternatives.head.root)
+                }
+            }
+        }
+  }
+}
+
+fn acd_locus_node(l: Locus) -> Optional<Node> {
+  match l {
+    NodeLocus { anchor: a } => optional_present(value: a.at)
+    _ => optional_absent()
+  }
+}
+
+data acd_well_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int {\n  if true { a } else { a + 1 }\n}\n"
+data acd_ill_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int {\n  if true { a } else { a + c }\n}\n"
+
+// (m) AN ARM'S STORAGE ORDER IS NOT ITS MEANING: the same Match twice, the second with ONE arm's pattern and
+// body edges stored in the opposite order. The selector, each arm's pattern, ordinal and alternative root are
+// the same. (Reordering whole arms is a different thing and is acd_k.)
+test fn acd_m_arm_edge_storage_order_does_not_change_the_alternative_holds() -> Bool {
+  acd_summary_optional_same(a: acd_match_summary(arms: [
+    acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
+    acd_arm(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
+  ]), b: acd_match_summary(arms: [
+    acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
+    acd_arm_body_first(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
+  ]))
+    && acd_summary_present(o: acd_match_summary(arms: [
+      acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
+      acd_arm_body_first(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
+    ]))
+}
+
+fn acd_arm_body_first(pattern: Node, body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn acd_summary_present(o: Optional<AcdSummary>) -> Bool {
+  match o {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// AcdSummary carries Nodes, so it is compared field-wise: the Node fields ask the identity question
+// derived `==` asked, the ordinals stay `==`.
+fn acd_summary_optional_same(a: Optional<AcdSummary>, b: Optional<AcdSummary>) -> Bool {
+  optional_eq(a: a, b: b, eq: fn(x, y) { acd_summary_same(x: x, y: y) })
+}
+
+fn acd_summary_same(x: AcdSummary, y: AcdSummary) -> Bool {
+  node_same_occurrence(a: x.selector, b: y.selector)
+    && zip_eq(a: x.roots, b: y.roots, eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+    && zip_eq(a: x.patterns, b: y.patterns, eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+    && (x.ordinals == y.ordinals)
+}
+
+type AcdSummary {
+  selector: Node
+  roots: List<Node>
+  patterns: List<Node>
+  ordinals: List<Int>
+}
+
+fn acd_match_summary(arms: List<Node>) -> Optional<AcdSummary> {
+  match acd_first_demand(d: activation_dispositions_of_root(root: acd_match_of(children: acd_scrutinee_then(arms: arms)))) {
+    Absent => optional_absent()
+    Present { value: demand } =>
+      optional_present(value: AcdSummary {
+        selector: demand.selector,
+        roots: acd_map_alts(alts: acd_alternative_list(demand: demand), which: 0),
+        patterns: acd_map_alts(alts: acd_alternative_list(demand: demand), which: 1),
+        ordinals: acd_alt_ordinals(alts: acd_alternative_list(demand: demand))
+      })
+  }
+}
+
+fn acd_map_alts(alts: List<ActivationAlternative<Node>>, which: Int) -> List<Node> {
+  fold_list(
+    xs: alts,
+    empty: [],
+    cons: fn(acc, a) { list_snoc_item(xs: acc, item: acd_alt_node(a: a, which: which)) }
+  )
+}
+
+fn acd_alt_node(a: ActivationAlternative<Node>, which: Int) -> Node {
+  if which == 0 {
+    a.root
+  } else {
+    match a.selected_by {
+      SelectedByPattern { ordinal: _, pattern: p } => p
+      SelectedByBranchSlot { slot: _ } => a.root
+    }
+  }
+}
+
+fn acd_alt_ordinals(alts: List<ActivationAlternative<Node>>) -> List<Int> {
+  fold_list(
+    xs: alts,
+    empty: [],
+    cons: fn(acc, a) { list_snoc_item(xs: acc, item: acd_alt_ordinal(a: a)) }
+  )
+}
+
+fn acd_alt_ordinal(a: ActivationAlternative<Node>) -> Int {
+  match a.selected_by {
+    SelectedByPattern { ordinal: PositionalOrdinal { index: i }, pattern: _ } => i
+    _ => -1
+  }
+}
+
+// (n) A MISSING OR DUPLICATE MARKER IS STILL A TYPED not_derived ROW: an arm with two pattern edges, one with
+// no body edge, and one with two body edges are each MatchArmMalformed, never read as an alternative.
+test fn acd_n_missing_or_duplicate_arm_marker_is_not_derived_holds() -> Bool {
+  acd_arm_is_malformed(arm: acd_conj_of(edges: [acd_pattern_edge(t: ^acd_p1), acd_pattern_edge(t: ^acd_p2), acd_body_edge(t: ^acd_b1)]))
+    && acd_arm_is_malformed(arm: acd_conj_of(edges: [acd_pattern_edge(t: ^acd_p1)]))
+    && acd_arm_is_malformed(arm: acd_conj_of(edges: [acd_pattern_edge(t: ^acd_p1), acd_body_edge(t: ^acd_b1), acd_body_edge(t: ^acd_b2)]))
+}
+
+fn acd_conj_of(edges: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: edges, occurrence_id: OccurrenceSynthetic }
+}
+
+fn acd_pattern_edge(t: Symbol) -> Edge {
+  Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: acd_atom(s: t), declaration: NotADeclaration }
+}
+
+fn acd_body_edge(t: Symbol) -> Edge {
+  Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: acd_atom(s: t), declaration: NotADeclaration }
+}
+
+fn acd_arm_is_malformed(arm: Node) -> Bool {
+  match activation_dispositions_of_root(root: acd_match_of(children: acd_scrutinee_then(arms: [arm]))) {
+    d =>
+      acd_demand_count(d: d) == 0
+        && length(xs: d.zero_alternatives) == 0
+        && match d.not_derived {
+          Cons { head: r, tail: Empty } =>
+            match r.reason {
+              MatchArmMalformed { arm: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+  }
+}
+
+// (o) A SCRUTINEE-ONLY MATCH IS ITS OWN CASE, NEVER A FABRICATED ALTERNATIVE OR A DROPPED SELECTOR, AND ITS
+// VALIDITY IS INFERENCE'S: `fn f(n: Never) -> Int { match (n) { } }` is fed through the real front end, and
+// the derivation records ActivationZeroAlternatives with the scrutinee as selector, no demand and nothing
+// malformed. This claim does not assert that inference accepts it (see the note above acd_never_source). The
+// paired control is an INHABITED scrutinee with the same empty Match: the derivation gives the same
+// disposition (it does not infer uninhabitedness from the absence of arms) and inference refuses it -- any
+// refusal; the claim does not pin which diagnostic -- so the zero-alternative row does not itself certify
+// validity.
+test fn acd_o_scrutinee_only_match_is_its_own_case_and_validity_is_inferences_holds() -> Bool {
+  acd_zero_alternatives_then_infers(src: acd_never_source, check_inference: false, accepted: true)
+    && acd_zero_alternatives_then_infers(src: acd_inhabited_empty_source, check_inference: true, accepted: false)
+}
+
+fn acd_zero_alternatives_then_infers(src: String, check_inference: Bool, accepted: Bool) -> Bool {
+  match acd_assemble_with(src: src, peers: Cons { head: acd_never_peer(), tail: Empty }) {
+    Absent => false
+    Present { value: tree } =>
+      match activation_dispositions(tree: tree) {
+        d =>
+          acd_demand_count(d: d) == 0
+            && length(xs: d.not_derived) == 0
+            && acd_total(d: d, root: tree.root)
+            && match d.zero_alternatives {
+              Cons { head: z, tail: Empty } =>
+                optional_eq(a: match_slot_target(n: z.site, slot: MatchScrutineeSlot), b: optional_present(value: z.selector), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+                  && length(xs: z.site.children) == 1
+              _ => false
+            }
+            && (!check_inference || acd_inference_accepts(tree: tree) == accepted)
+      }
+  }
+}
+
+// The Never half asserts only the disposition: infer's ACCEPTANCE of an empty match on Never is its own
+// claim (dag/test/claim/never_eliminator_witness, through the full compile), and a one-module peer tree
+// does not reproduce that route, so it is not re-asserted here. The inhabited half asserts infer REFUSES,
+// which is what shows the zero-alternative row does not itself certify validity.
+data acd_never_source: String = "module acd\n\nfn f(n: std.error_primitives.Never) -> Int {\n  match (n) {\n  }\n}\n"
+data acd_inhabited_empty_source: String = "module acd\n\ntype T = A | B\n\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
+
+// (h) A MALFORMED SITE IS A TYPED ROW, NEVER A DEMAND OR A SKIP: a two-child Branch, a Match with no arms, a
+// Match with no children at all, and a Match whose arm is not (pattern, body).
+test fn acd_h_malformed_sites_are_typed_not_derived_holds() -> Bool {
+  match activation_dispositions_of_root(root: acd_branch_of(children: [
+    acd_positional(target: acd_atom(s: ^acd_c)),
+    acd_positional(target: acd_atom(s: ^acd_t))
+  ])) {
+    d =>
+      acd_demand_count(d: d) == 0
+        && match d.not_derived {
+          Cons { head: r, tail: Empty } =>
+            match r.reason {
+              BranchNotConditionThenElse { children: 2, positional: 2 } => true
+              _ => false
+            }
+          _ => false
+        }
+  }
+    && match activation_dispositions_of_root(root: acd_match_of(children: [])) {
+      d =>
+        acd_demand_count(d: d) == 0
+          && match d.not_derived {
+            Cons { head: r, tail: Empty } =>
+              match r.reason {
+                MatchScrutineeAbsent => true
+                _ => false
+              }
+            _ => false
+          }
+    }
+    && match activation_dispositions_of_root(root: acd_match_of(children: [
+      acd_positional(target: acd_atom(s: ^acd_s)),
+      acd_positional(target: acd_atom(s: ^acd_not_an_arm))
+    ])) {
+      d =>
+        acd_demand_count(d: d) == 0
+          && match d.not_derived {
+            Cons { head: r, tail: Empty } =>
+              match r.reason {
+                MatchArmMalformed { arm: _ } => true
+                _ => false
+              }
+            _ => false
+          }
+    }
+}
+
+// (i) TOTALITY on the front-end fixtures: every Branch and Match is in exactly one population.
+test fn acd_i_every_site_has_a_disposition_holds() -> Bool {
+  acd_total_for(src: acd_branch_source) && acd_total_for(src: acd_use_source) && acd_total_for(src: acd_match_source) && acd_total_for(src: acd_nested_source)
+}
+
+fn acd_total_for(src: String) -> Bool {
+  match acd_assemble(src: src) {
+    Absent => false
+    Present { value: tree } => acd_total(d: activation_dispositions(tree: tree), root: tree.root)
+  }
+}

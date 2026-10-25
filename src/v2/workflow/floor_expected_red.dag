@@ -1122,18 +1122,6 @@ fn floor_expected_red_chunk_shell_dag_cron_entry_line_builder() -> List<String> 
   Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_schedule_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_command_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_log_path_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_tag_field_renders_no_shell_control_word", tail: Empty {} } } } }
 }
 
-// SHELL-DAG-FLOOR-PEAK-CALIBRATION-ROWS' ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
-// chunk above states the admission shape. Three identities from
-// dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness.dag: the two red arms
-// over the pre-calibration surface (the echo reset row's 2>/dev/null swallow) and the acceptance
-// conjunction. Each reaches its subject and answers Bool(false) on BEHAVIOR — the module's two
-// positive controls pass on the same run. The worker rebinds the ci_floor_peak_*_command rows to
-// typed filesystem observation leaves; when the arms pass, this roster's self-emptying arm names
-// them for removal (DESIGN 4b(4)).
-fn floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness.pre_calibration_surface_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness.pre_calibration_reset_is_not_a_swallowed_echo", tail: Empty {} } }
-}
-
 // SHELL-DAG-CI-FMT-GATE-LINE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry chunk
 // above states the admission shape. Two identities from
 // dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag: the red arm (the hand-spelled
@@ -1242,43 +1230,135 @@ fn floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded() -> List<String>
 }
 
 // TWO IDENTITIES ENROLLED 2026-10-01, AUTHORED red: the controls for top-down CHECKING MODE in
-// v2.compiler.infer. Each hands infer a generic record construct whose type its field values cannot
-// fix -- a phantom parameter (`Ph<T> { n: Int }`), or one that occurs only inside a field whose own
-// value is a construct only the context can type (`Two<T> { a: Ph<T>, b: T }`) -- at a position that
-// DECLARES the instantiation (`data p: Ph<Bool> = ...`). infer is a bottom-up fold, so the construct's
-// row decides before its expected type is known, and both answer the wrong way today: the phantom
-// and the nested construct are accepted with a counted obligation where they should be decided.
-// The discriminating refusal (`b: 3` at a declared Two<Bool> is accepted where it should refuse at
-// the value) is NOT enrolled here: while red it runs the whole member and exceeds the floor's
-// new-witness budget. Checking mode enrolls it green, per docs/plans/infer-checking-mode-plan.md.
-//
-// TRIGGER, the capability and not an artifact: checking mode carries a declared position's expected
-// type INTO the construct's row before that row decides -- infer's gather run as
-// v2.std.node fold_node_topdown, whose child_context hands each child the type its parent expects --
-// so the construct forms R<instances> itself. Sufficient for both to pass unchanged and for the refusal to be enrolled green. Owner:
-// smart-newt-725, sequenced after eager-newt-412's site-keyed facts store (branch
-// eager-newt-412/facts-site-key), which makes a child's site addressable from its parent and keeps
-// one fact per site; checking mode must deliver the expected type before a row decides, never
-// revise a fact after it. The plan is docs/plans/infer-checking-mode-plan.md. A consumer-side
-// re-judgment that made these pass without checking mode was built and withdrawn (gunbc#12935):
-// it was a second route checking mode would have deleted.
+// v2.compiler.infer (a generic record construct whose type its field values cannot fix, at a position
+// that DECLARES the instantiation). Their disposition and restoration trigger are the typed stall
+// gunbc.guarantee_stall.infer_checking_mode_expected_red_pair_stall.
 fn floor_expected_red_chunk_infer_checking_mode() -> List<String> {
   Cons { head: "v2.test.claim.compiler.infer_expected_type_record_instantiation_witness.etr_a_phantom_binder_is_fixed_by_the_declared_type_holds", tail: Cons { head: "v2.test.claim.compiler.infer_expected_type_record_instantiation_witness.etr_a_nested_construct_typed_only_by_its_context_is_decided_at_its_declared_return_holds", tail: Empty {} } }
 }
 
-// A RECORD VALUE ESCAPES A DECLARED OPTIONAL (OR COPRODUCT) RETURN, AND == ACCEPTS UNRELATED TYPES.
-// Specimen: snappy-seal-211's soc_family_architecture at e5d277c5c42, which emptied the reset roster
-// with zero blocking diagnostics. Each row is a LIVE defect measured on the seed built from this tree.
-// Remaining rows are the cross-type == pair, class gunbc.recurring_failure_mode
-// cross_type_comparison_answers_instead_of_refusing; the Present-payload and coproduct-return rows (classes A and B of
-// record_value_escapes_declared_optional_return) were refused by declared_type_conformance_diags_core and left this roster; their
-// claims stay as permanent regression controls (DESIGN 4b(4)).
-fn floor_expected_red_chunk_record_escapes_declared_optional_return() -> List<String> {
-  Cons { head: "test.claim.record_escapes_declared_optional_return_witness.w_an_equality_between_a_coproduct_and_a_record_is_refused", tail: Cons { head: "test.claim.record_escapes_declared_optional_return_witness.w_an_equality_between_unrelated_records_is_refused", tail: Empty {} } }
+fn floor_expected_red_chunk_cursor_dispatch_credential_wet_red() -> List<String> {
+  // C4-F3. The strongest of the seven, because it needs no host at all and still fails: both claims
+  // build argv from fixture data (`fx_launch` / `inner_for_launch`) and fold it through the product
+  // argv builder and `ready_argv`. Nothing is spawned on srv2; `cursor-agent` appears only as an
+  // argv token, and the `CursorProviderOffCustodyHost` gate is a string equality over DECLARED
+  // `HostIdentity` values (custody host == acting host, so it does not even fire).
+  //
+  // WHAT THEY ASK FOR: one argv containing `--force`, `--trust` and the pair `--sandbox` `enabled`.
+  // `extdeps.llm.cursor_cli` `cursor_common_arguments` does emit `--force`/`--trust`, so the defect is
+  // UPSTREAM of that builder -- in the `CursorRunShape` handed to it for this turn -- and no other
+  // claim in that file asserts those tokens, so nothing else in the repo pins them. Whether the fix is to build
+  // them or to stop asserting them is the owner's call, not this roster's; a row here only records
+  // that the claim ran and said false.
+  Cons {
+    head: "test.claim.dispatch_credential_snapshot_wet_witness.a_cursor_turn_on_srv2_binds_the_taken_snapshot_through_the_env_wrapper",
+    tail: Cons {
+      head: "test.claim.dispatch_credential_snapshot_wet_witness.an_abandoned_cursor_attempt_leaves_a_tombstone",
+      tail: Empty {}
+    }
+  }
 }
 
+fn floor_expected_red_chunk_pair_serving_authority_wet_red() -> List<String> {
+  // C4-F2. Two claims over a real journal store under `shell.Mktemp.Dir()` (writable, and the rest of
+  // the file -- including other temp-dir scenarios -- passes, which is what says the store root was
+  // usable in the run). "Hosts" here are
+  // DECLARED `HostIdentity` values and `fabric_group_hosts()` is repo data: no ssh, no network, no
+  // live roster, so nothing host-shaped was absent from the run. The refusal text one of them
+  // asserts is real product text -- the `OccupiedByServingArm` arm of
+  // `gunbc.spark.host_commitment` `spark_authority_commitment_wire` -- so these are not claims
+  // chasing a string the product never builds.
+  Cons {
+    head: "test.claim.spark.pair_serving_authority_log_real_execution.a_claim_on_an_unestablished_groups_host_fences_its_establishment_by_real_execution",
+    tail: Cons {
+      head: "test.claim.spark.pair_serving_authority_log_real_execution.a_serving_arm_host_is_refused_by_the_real_commitment_and_nothing_is_appended_by_real_execution",
+      tail: Empty {}
+    }
+  }
+}
+
+// THE CASOUTCOME SEAL'S DELIBERATE RED, held while std.durable_compare_and_set does not seal `CasOutcome`
+// (trigger: the sealing change, gunbc#14447 — only admitted realizations mint `CasCommitted`). The claim
+// hands the compiler a fixture that authors `CasCommitted` outside its realizing module and asserts the
+// SoleConstructorViolation the seal will raise; it fails today because nothing refuses the forgery. When
+// the seal lands it passes, this roster reports it stale and the row is deleted, leaving the claim as a
+// permanent regression control (DESIGN 4b(4)).
+fn floor_expected_red_chunk_cas_outcome_seal() -> List<String> {
+  Cons { head: "test.claim.cas_outcome_seal_witness.a_forged_cas_committed_literal_is_refused_at_compile", tail: Empty {} }
+}
+
+// THE WET REAL-EXECUTION REDS THAT CHARTER 4 MEASURED AND OWNED AND NO LEAF HAS FIXED YET (seven were measured; the belt recapture leaf fixed its three and deleted its chunk, as this paragraph requires), in two chunks, grouped by
+// the leaf that fixes each. They are WET claims: their entry files are scheduled in
+// `v2.workflow.local_repo_wet_terminal` `local_repo_wet_schedule` with `ExpectedToHold`, and they
+// were executed on a real host, not through a hermetic mock.
+//
+// CLASSIFICATION, per claim, from the instrument's own three-way split (`resolve-failure` versus
+// `evaluated-and-false` is the axis that matters, and only the second is a real assertion failure):
+// all of them, the three since fixed included, were EVALUATED AND FALSE, with NO HOST EFFECT MISSING from the run. The host effect each
+// needs, and whether the run had it, is recorded per chunk below; that per-claim reading is what
+// makes them reds rather than honest refusals of wet claims to run off their host.
+//
+// EVIDENCE IS AN INSTRUMENT, NOT A NUMBER COPIED HERE. `gunbc test
+// //gunbc/instruments:known-red-derivation` runs the whole wet population at whatever head it runs at
+// and reads each verdict from the child that printed it. The identities below are the ones it reports
+// for the three entry files named per chunk, and the disposition it gives them says which side of the
+// enrolment a reader is standing on: with no row here they come back
+// `UnaccountedRedWithoutEnrolment` -- executed, failed, and excused by nothing, which is the state
+// these rows exist to end -- and with the row they come back `KnownRedHeld`, which is what makes the
+// debt an accounted fact rather than a printout. Both names are read from
+// `gunbc.instruments.known_red_derivation` `known_red_disposition_name`; this comment states the
+// pairing and does not restate it as a status.
+//
+// Corroboration is stated so nobody over-reads it: the instrument agrees with itself across hosts, but
+// every run so far is arm64 Linux in this same control plane -- agreeing hosts beat one host, none is
+// an independent environment, and no claim below has ever been observed PASSING anywhere.
+//
+// WHAT DISCHARGES EACH ROW IS THE FIX, NEVER THIS FILE. These are real assertion failures, so no
+// repair route or deferred step discharges them; the leaf that fixes its claims deletes its whole
+// chunk, and a row surviving its own fix is a `KnownRedNowPassing` refusal the instrument raises on
+// purpose. That is also why there are separate chunks instead of one: the groups have different
+// different owners, and a chunk that a leaf has to edit around is a chunk someone leaves in place.
+//
+// One fact the leaves need and should not have to rediscover: some of these identities ALSO
+// hold a `FloorRouteGapExpectation` in `v2.workflow.floor_route_gap` (a DRY-lane hold: the hermetic
+// route has no arm for the `Dir` operation, so on that lane the claim refuses before it can run).
+// The two rosters are per-lane and the native route resolves the conflict in
+// `v2.workflow.v2_native_route` `native_route_reference_for` by checking `route_gap` FIRST, so the
+// dry-lane hold still wins there. This enrolment adds the missing WET-lane standing and changes no
+// dry-lane reading; a leaf that fixes a claim should remove it from both rosters, or neither, or the
+// surviving one will be asserting a state the fix already removed.
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_record_escapes_declared_optional_return(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_expected_red_chunk_cas_outcome_seal(), tail: Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
+}
+
+// THE TWO CONSTRUCTOR-TAG QUARANTINE PROBES THAT ARE LIVE REDS, enrolled as expected reds. These are
+// not wet claims and are not in the wet schedule: they are `QuarantineProbeExpectRed` admissions in
+// `gunbc.explicit_witness_admission`, and the probe files stay in the tree. They belong here because
+// the assertion RUNS and answers false, where the compiler floor (DESIGN section 4b, values inhabit
+// declared types) owes a typecheck refusal -- `same_arm<T>(a: T, b: T)` accepts `P1` (coproduct `Pa`)
+// together with `Q1` (coproduct `Pb`), binding one type variable to two distinct coproducts. That is a
+// recurring-failure-mode specimen, `gunbc.recurring_failure_mode
+// one_type_variable_bound_to_two_distinct_coproducts`, not a flake and not an environment effect: the
+// same false answer comes back on the v1 route and on the v2 route.
+//
+// WHY ENROLMENT AND NOT DELETION. An admitted probe must be held by exactly one carrier or the
+// quarantine ledger reports it as an alarm, and the only honest dispositions for a probe that executes
+// and fails are a fix or an explicit standing here. Deleting the admission would hide a live compiler
+// defect; leaving it unheld would make the ledger claim
+// `every_admitted_probe_row_has_at_least_one_holder` in
+// `dag/test/claim/quarantine_probe_disposition_witness.dag` refuse, which is the state that claim was
+// written to make loud. Both copies are enrolled (the `dag/test/claim` route and the
+// `src/v2/test/claim/manual` route) because both are admitted and the fold derives one disposition per
+// identity -- a single row would leave the other copy unheld.
+//
+// WHAT DISCHARGES THIS CHUNK IS THE FIX, NOT THIS FILE. PR #14152 PR-2 (session gentle-carp-16) owns
+// the compiler repair; those two probes are its acceptance reds, and when it flips them it deletes this
+// chunk along with the probe files and the admission rows (its permanent Rust control is
+// `src/v1/tests/src/cross_coproduct_probe_discharge_test.rs`). A row that survives its own fix is a
+// `KnownRedNowPassing` refusal, which is deliberate: it is how an expired standing becomes loud instead
+// of rotting.
+fn floor_expected_red_chunk_constructor_tag_route_probe_red() -> List<String> {
+  Cons { head: "test.claim.constructor_tag_route_probe_red.same_arm_one_t_two_coproducts_must_refuse", tail: Cons { head: "v2.test.claim.manual.constructor_tag_route_probe_red.same_arm_one_t_two_coproducts_must_refuse", tail: Empty {} } }
 }
 
 // The three compile_accepted_unevaluable_program_control rows in chunk 21 are live again: run
