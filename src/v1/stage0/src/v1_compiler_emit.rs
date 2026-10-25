@@ -28,7 +28,7 @@ pub use crate::gunbc_rust_emitted_edge::module_to_filename;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 use crate::std_coercion::TypeRealizationDecision::*;
-pub use crate::std_coercion::{dag_refinement_inclusion, TypeRealizationDecision};
+pub use crate::std_coercion::{dag_refinement_inclusion, TypeCheckpoint, TypeRealizationDecision};
 use crate::std_compiler_entry::CompilerEntryDriver::{
     DirectIngestDriver, NativeClaimDriver, NativeCliDriver, NativeServeDriver,
     RetainedHostCliKernel, SourceRootEvalDriver,
@@ -56,8 +56,8 @@ pub use crate::std_unicode_scalar::ascii_lowercase;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
-    can_cast, coerce_container_template, coerce_primitive_type, literal_suffix,
-    realized_checkpoint, render_cast, target_callable, target_optional_template,
+    can_cast, coerce_container_template, coerce_primitive_type, declaration_realization,
+    literal_suffix, realized_checkpoint, render_cast, target_callable, target_optional_template,
     type_realization_decision, type_reference_realization,
 };
 pub use crate::v1_compiler_emit_core_support::{
@@ -82,9 +82,9 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
-    type_reference_declaration_ref, GlobalBareLookupState, TypeBinding, TypeEnv,
-    TypeReferenceDeclarationReading,
+    authored_name, declaration_binding_of_ref, empty_symbol_index, lookup_type_for,
+    type_reference_declaration_reading, type_reference_declaration_ref, GlobalBareLookupState,
+    TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{
     item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
@@ -6856,29 +6856,52 @@ pub fn cast_source_type_node(expr: Rc<Node>) -> Option<Rc<Node>> {
     }
 }
 
-pub fn cast_is_declared_refinement_inclusion(
+pub fn cast_declared_refinement_inclusion_source(
     source_type: Rc<Node>,
     cast_target_node: Rc<Node>,
     env: Rc<TypeEnv>,
-) -> bool {
+) -> Option<Rc<DeclarationRef>> {
     match crate::v1_compiler_infer_env::type_reference_declaration_ref(
         source_type,
         env.source_indices.clone(),
         env.clone(),
     ) {
-        Some(d) => crate::std_coercion::dag_refinement_inclusion(
-            d.clone(),
-            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-                env.source_indices.clone(),
-                cast_target_node,
-            )),
+        Some(d) => {
+            if crate::std_coercion::dag_refinement_inclusion(
+                d.clone(),
+                crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                    env.source_indices.clone(),
+                    cast_target_node,
+                )),
+            ) {
+                Some(d.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn declared_carrier_checkpoint(
+    d: Rc<DeclarationRef>,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<TypeCheckpoint>> {
+    match crate::v1_compiler_infer_env::declaration_binding_of_ref(d.clone(), env) {
+        Some(b) => crate::v1_compiler_coercion::realized_checkpoint(
+            crate::v1_compiler_coercion::declaration_realization(
+                b.resolved.clone(),
+                d.decl_name.clone(),
+                target,
+            ),
         ),
-        std::option::Option::None => false,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn realize_declared_refinement_inclusion(
-    source_type: Rc<Node>,
+    source: Rc<DeclarationRef>,
     cast_target_node: Rc<Node>,
     src_ty: String,
     ty_str: String,
@@ -6887,17 +6910,11 @@ pub fn realize_declared_refinement_inclusion(
 ) -> Rc<CastRealization> {
     {
         let si = env.source_indices.clone();
-        let source_carrier = crate::v1_compiler_coercion::realized_checkpoint(
-            crate::v1_compiler_coercion::type_reference_realization(
-                source_type.clone(),
-                crate::v1_std_core::authored_name_at(si.clone(), source_type.clone()),
-                target.clone(),
-            ),
-        );
+        let source_carrier = declared_carrier_checkpoint(source, target.clone(), env.clone());
         let target_carrier = crate::v1_compiler_coercion::realized_checkpoint(
             crate::v1_compiler_coercion::type_reference_realization(
                 cast_target_node.clone(),
-                crate::v1_std_core::authored_name_at(si.clone(), cast_target_node.clone()),
+                crate::v1_std_core::authored_name_at(si, cast_target_node.clone()),
                 target.clone(),
             ),
         );
@@ -6964,28 +6981,25 @@ pub fn cast_realization(
                 Rc::new(CastRealization::CastOperandUnchanged)
             } else {
                 match source_type.clone() {
-                    Some(st) => {
-                        if cast_is_declared_refinement_inclusion(
-                            st.clone(),
+                    Some(st) => match cast_declared_refinement_inclusion_source(
+                        st.clone(),
+                        cast_target_node.clone(),
+                        env.clone(),
+                    ) {
+                        Some(d) => realize_declared_refinement_inclusion(
+                            d.clone(),
                             cast_target_node.clone(),
+                            src_ty.clone(),
+                            ty_str.clone(),
+                            target.clone(),
                             env.clone(),
-                        ) {
-                            realize_declared_refinement_inclusion(
-                                st.clone(),
-                                cast_target_node.clone(),
-                                src_ty.clone(),
-                                ty_str.clone(),
-                                target.clone(),
-                                env.clone(),
-                            )
-                        } else {
-                            cast_through_target_syntax_or_refuse(
-                                src_ty.clone(),
-                                ty_str.clone(),
-                                target.clone(),
-                            )
-                        }
-                    }
+                        ),
+                        std::option::Option::None => cast_through_target_syntax_or_refuse(
+                            src_ty.clone(),
+                            ty_str.clone(),
+                            target.clone(),
+                        ),
+                    },
                     std::option::Option::None => cast_through_target_syntax_or_refuse(
                         src_ty.clone(),
                         ty_str.clone(),

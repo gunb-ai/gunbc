@@ -7,7 +7,7 @@ import std.compiler_entry {
 }
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
-import std.coercion { TypeRealizationDecision, dag_refinement_inclusion }
+import std.coercion { TypeRealizationDecision, TypeCheckpoint, dag_refinement_inclusion }
 import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
@@ -43,7 +43,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, type_reference_declaration_ref }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, type_reference_declaration_ref, declaration_binding_of_ref }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -53,7 +53,7 @@ import v1.compiler.infer_types { resolved_type, is_product_type, child_type_node
 
 import std.types { is_container_type }
 
-import v1.compiler.coercion { realized_checkpoint, coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_realization, type_realization_decision, DeclarationIdentityAbsent }
+import v1.compiler.coercion { realized_checkpoint, coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_realization, type_realization_decision, declaration_realization, DeclarationIdentityAbsent }
 
 import v1.compiler.infer_emit_info { DataVariantWireSpelling, DataVariantInternalTagged, DataVariantBareString, DataVariantUntagged, DataVariantSpellingRefused }
 
@@ -3420,11 +3420,28 @@ fn cast_source_type_node(expr: Node) -> Node? {
 // THE DECLARED INCLUSION, READ FROM ITS ONE AUTHORITY (std.coercion dag_refinement_inclusion). The
 // source is keyed by the declaration it resolves to, so a user coproduct spelled Nat has no route;
 // the target is keyed by its authored spelling because that is how the refinement row keys its
-// carrier. Legality is the row's; what follows only decides what this target spells.
-fn cast_is_declared_refinement_inclusion(source_type: Node, cast_target_node: Node, env: TypeEnv) -> Bool {
+// carrier. Legality is the row's; what follows only decides what this target spells. The answer is
+// the source DECLARATION the route was keyed on, so its realization below reads that declaration
+// rather than looking the reference up a second way.
+fn cast_declared_refinement_inclusion_source(source_type: Node, cast_target_node: Node, env: TypeEnv) -> DeclarationRef? {
   match type_reference_declaration_ref(n: source_type, source_indices: env.source_indices, env: env) {
-    Present { value: d } => dag_refinement_inclusion(source: d, target_type: qualified_last_segment(name: authored_name_at(source_indices: env.source_indices, node: cast_target_node)))
-    Absent => false
+    Present { value: d } =>
+      if dag_refinement_inclusion(source: d, target_type: qualified_last_segment(name: authored_name_at(source_indices: env.source_indices, node: cast_target_node))) {
+        Present { value: d }
+      } else { none }
+    Absent => none
+  }
+}
+
+// THE SOURCE CARRIER IS THE ROUTE'S DECLARATION, REALIZED AS A DECLARATION. A reference to std.nat
+// Nat from a module that does not import it carries no provenance of its own declaration, which is
+// why it renders by name (`Nat`, the emitted alias) and why a reference-keyed realization answers
+// nothing for it. The declaration the route names is realized exactly as the emitter realizes it
+// at its declaration site (std_nat's `pub type Nat = i64;`).
+fn declared_carrier_checkpoint(d: DeclarationRef, target: RenderTarget, env: TypeEnv) -> TypeCheckpoint? {
+  match declaration_binding_of_ref(d: d, env: env) {
+    Present { value: b } => realized_checkpoint(decision: declaration_realization(item: b.resolved, dag_name: d.decl_name as String, target: target))
+    Absent => none
   }
 }
 
@@ -3434,9 +3451,9 @@ fn cast_is_declared_refinement_inclusion(source_type: Node, cast_target_node: No
 // unrelated types and was emitted as a runtime panic. The grounding spelling is the host type each
 // declaration is realized in, so equal groundings need no operation, and different ones are spelled
 // by the target's CastSyntax over those groundings -- the table realizing a route it did not judge.
-fn realize_declared_refinement_inclusion(source_type: Node, cast_target_node: Node, src_ty: String, ty_str: String, target: RenderTarget, env: TypeEnv) -> CastRealization {
+fn realize_declared_refinement_inclusion(source: DeclarationRef, cast_target_node: Node, src_ty: String, ty_str: String, target: RenderTarget, env: TypeEnv) -> CastRealization {
   let si = env.source_indices
-  let source_carrier = realized_checkpoint(decision: type_reference_realization(n: source_type, dag_name: authored_name_at(source_indices: si, node: source_type), target: target))
+  let source_carrier = declared_carrier_checkpoint(d: source, target: target, env: env)
   let target_carrier = realized_checkpoint(decision: type_reference_realization(n: cast_target_node, dag_name: authored_name_at(source_indices: si, node: cast_target_node), target: target))
   let refused = CastNotRealized { refusal: CastRouteNotRealizedByTarget { source_type: src_ty, target_type: ty_str, route: "std.coercion dag_refinement_inclusion" } }
   match source_carrier {
@@ -3477,10 +3494,9 @@ fn cast_realization(expr: Node, cast_target_node: Node, target: RenderTarget, en
   } else {
     match source_type {
       Present { value: st } =>
-        if cast_is_declared_refinement_inclusion(source_type: st, cast_target_node: cast_target_node, env: env) {
-          realize_declared_refinement_inclusion(source_type: st, cast_target_node: cast_target_node, src_ty: src_ty, ty_str: ty_str, target: target, env: env)
-        } else {
-          cast_through_target_syntax_or_refuse(src_ty: src_ty, ty_str: ty_str, target: target)
+        match cast_declared_refinement_inclusion_source(source_type: st, cast_target_node: cast_target_node, env: env) {
+          Present { value: d } => realize_declared_refinement_inclusion(source: d, cast_target_node: cast_target_node, src_ty: src_ty, ty_str: ty_str, target: target, env: env)
+          Absent => cast_through_target_syntax_or_refuse(src_ty: src_ty, ty_str: ty_str, target: target)
         }
       Absent => cast_through_target_syntax_or_refuse(src_ty: src_ty, ty_str: ty_str, target: target)
     }
