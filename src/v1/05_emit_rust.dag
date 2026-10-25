@@ -2917,11 +2917,15 @@ fn emit_coproduct_wire_contract_target_validation(contract_item: Node, target_mo
             }
           }
         Absent =>
-          // A row whose DeclarationRef.module_path cannot be read is indexed NOWHERE by the
-          // authority (build_coproduct_wire_contract_index returns None when either read fails),
-          // so it is nobody's obligation and governs no policy -- the same judgment the interpreter
-          // makes, not the name-only check that let a foreign row masquerade here.
-          ""
+          // AN UNREADABLE module_path IS A MALFORMED ROW, REPORTED -- symmetric with the
+          // unreadable-decl_name arm above, as DESIGN section 5 requires (every path succeeds
+          // fully or fails with a typed, located diagnostic; a silent widen is a hard reject).
+          // The authority's judgment "indexed nowhere" (build_coproduct_wire_contract_index
+          // returns None when either read fails) governs POLICY APPLICATION -- such a row
+          // governs no coproduct, which is what coproduct_wire_contract_targets encodes by
+          // matching nothing. It does not license the emitter to stay quiet: an author who
+          // wrote the row believes it governs a declaration, and it silently governs none.
+          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a DeclarationRef with a string module_path")
       }
     Absent =>
       emit_rust_compile_error_item(message: "CoproductWireContract row missing initializer body")
