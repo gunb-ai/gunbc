@@ -6039,7 +6039,8 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
 
 // C1: ONE OWNED DIRECTORY, ENSURED THROUGH THE ONE PROVIDER. The reads are the privileged list and stat
 // of the directory's parent chain (the same ones gunbc.live_deploy.member_observe makes), each keeping
-// its origin typed; the install is the provider's plan elevated; the verdict is the provider's
+// its origin typed; the install is the provider's plan as the EnsureOwnedDirectory operation, so its
+// words are exactly the ones a job user's sudoers grant names (gunbc.executor_privileged_operation); the verdict is the provider's
 // independent second stat, never the install's exit status.
 fn deploy_apply_directory_read(op: ExecutorPrivilegedOperation, transport: HostEffectTransport) -> ObserverRead {
   match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: transport) {
@@ -6067,7 +6068,9 @@ fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, tran
     target: target,
     observe: p => deploy_apply_directory_observe(path: p, transport: transport),
     run: plan => match run_argv_over_host_effect_transport(
-      command: sudo_elevate_command(command: owned_directory_install_argv(plan: plan)),
+      command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
+        path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode,
+      }),
       transport: transport,
     ) {
       RunArgvTransportRefused { reason: _ } => false
