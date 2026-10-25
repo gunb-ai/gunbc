@@ -15,7 +15,7 @@ data a_write_control_renders_disabled_with_no_visible_reason: RecurringFailureMo
 
     "THE REPAIR: gunbc.roadmap.roadmap_page issue_lineage_retire_panel_nodes renders, without a session, a visible sign-in prompt linking to the login route in place of the button; witness_lineage_retire_offer_shows_a_sign_in_prompt_without_a_session asserts the link, the sentence and the absence of any button.",
 
-    "RECOGNITION RULE: grep page renderers for attr(name: \"disabled\") conditioned on a session or permission and confirm each has visible text naming the cause and the remedy beside it. SIBLINGS NOT YET REPAIRED: the comment and create-issue composers (roadmap_page, title "Sign in to post a comment" / "Sign in to create an issue") and the allocation fieldset. ATTAINABLE CEILING: a control constructor that takes a typed refusal reason and cannot render disabled without one (structurally guaranteed); the page today sits at mitigatable. NEXT-RUNG TRIGGER: a disabled-control census over the rendered page corpus.",
+    "RECOGNITION RULE: grep page renderers for attr(name: \"disabled\") conditioned on a session or permission and confirm each has visible text naming the cause and the remedy beside it. SIBLINGS NOT YET REPAIRED: the comment and create-issue composers (roadmap_page, title \"Sign in to post a comment\" / \"Sign in to create an issue\") and the allocation fieldset. ATTAINABLE CEILING: a control constructor that takes a typed refusal reason and cannot render disabled without one (structurally guaranteed); the page today sits at mitigatable. NEXT-RUNG TRIGGER: a disabled-control census over the rendered page corpus.",
   ],
 
   evidence: [],
