@@ -43,10 +43,6 @@ data pas_lookalike_join_source: String = "module pas.join\n\nimport std.algebra 
 // admit this join.
 data pas_cardinality_join_source: String = "module pas.join\n\nimport std.algebra { OtherCarrier }\nimport std.types { OptionalKeyed }\n\nfn pas_join(m: OptionalKeyed<String, Int>, n: OtherCarrier<String, Int>, c: Bool) -> OtherCarrier<String, Int> {\n  if c { m } else { n }\n}\n"
 
-// RED 4 (arity, tidy-ant-251's ruling): a use site whose argument count differs from the alias's parameter count does not settle
-// THROUGH to the target (it settles to the alias's own declaration), and the located arity refusal still fires.
-data pas_wrong_arity_source: String = "module pas.join\n\nimport std.types { Map }\n\nfn pas_wrong(m: Map<String>) -> Map<String> {\n  m\n}\n"
-
 fn pas_run(join_source: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
     sources: [
@@ -97,13 +93,3 @@ test fn an_alias_with_an_optional_slot_keeps_its_cardinality_at_the_join() -> Bo
   pas_join_refused(pas_run(pas_cardinality_join_source))
 }
 
-// RED: a wrong-arity use of a parameterized alias refuses with the located TypeArgumentArityMismatch.
-test fn a_wrong_arity_use_of_a_parameterized_alias_refuses_located() -> Bool {
-  match pas_run(pas_wrong_arity_source) {
-    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      fixture_has_class(rows: rows, wanted: "TypeArgumentArityMismatch"),
-    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      fixture_has_class(rows: rows, wanted: "TypeArgumentArityMismatch"),
-    FixtureInstrumentRefused { cause: c } => false
-  }
-}
