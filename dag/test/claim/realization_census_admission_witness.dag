@@ -141,3 +141,10 @@ test fn evidence_citations_split_into_references_and_text() -> Bool {
     Absent => false
   }
 }
+
+// The classes tab's module_list is determined by class_id; a cell changed in that column alone
+// refuses, at that cell.
+test fn a_module_list_pointer_naming_another_class_refuses() -> Bool {
+  let bad = replace(c1, "class_id = storage_root", "class_id = something_else")
+  refused_once_at(a: admit(modules: [mh, m1, m2], findings: [fh, f1, f2], classes: [ch, bad]), table: "classes.tsv", line: 2, column: "module_list")
+}

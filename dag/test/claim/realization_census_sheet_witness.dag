@@ -57,6 +57,9 @@ import gunbc.review_sheet_format_actuator {
   FormatPlanRefused,
   format_request_plan,
   standing_admitted_color,
+  HeaderRangeWire,
+  HeaderRangeUnqualifiable,
+  review_sheet_header_range,
 }
 import gunbc.review_sheet_kind {
   ReviewSheetKind,
@@ -75,6 +78,7 @@ import gunbc.review_sheet_ci_prospect_kind { ci_prospect_review_sheet_kind }
 import gunbc.realization_census_sheet {
   realization_census_review_sheet_kind,
   realization_census_module_observation,
+  realization_census_population,
   census_schema,
   realization_census_module_column_names,
 }
@@ -400,3 +404,43 @@ test fn the_module_observation_counts_its_rows_by_projection() -> Bool {
   repository_census_row_count(observation: realization_census_module_observation()) == count(realization_census_module_rows)
 }
 
+
+// THE FORMAT READBACK SPANS EACH TAB'S OWN HEADER. The range was the constant A1:Q1 (seventeen
+// columns), so the nineteen-column modules tab and the eighteen-column classes tab never read back
+// their trailing widths and could never verify. This is the range read_format sends, for the real
+// located tabs and validated schemas; the letters are the tab widths the header-init claims above
+// fix independently (S, N, R).
+fn format_read_range(title: String) -> String {
+  match admitted_tab(title: title) {
+    Absent => "no such tab"
+    Present { value: at } =>
+      match locate_review_tab(spreadsheet_id: w_spreadsheet, title: at.tab.title) {
+        TabLocated { tab: t } =>
+          match review_sheet_header_range(tab: t, validated: at.validated) {
+            HeaderRangeWire { range: r } => r
+            HeaderRangeUnqualifiable { cause: c } => c as String
+          }
+        _ => "not located"
+      }
+  }
+}
+
+test fn the_format_readback_covers_the_nineteen_and_eighteen_column_tabs() -> Bool {
+  format_read_range(title: "modules") == "'modules'!A1:S1"
+    && format_read_range(title: "classes") == "'classes'!A1:R1"
+    && format_read_range(title: "findings") == "'findings'!A1:N1"
+}
+
+// THE POPULATION'S ROOTS ARE EXACTLY THE THREE THE CENSUS READ, and every row the census names by
+// path sits under one of them: a row under an undeclared root, or a root dropped, fails here.
+fn census_roots() -> List<String> {
+  concat([realization_census_population.first_source_root as String], map(realization_census_population.additional_source_roots, r => r as String))
+}
+
+test fn the_population_roots_are_dag_src_v1_and_src_v2_and_cover_every_path_row() -> Bool {
+  join(census_roots(), ",") == "dag,src/v1,src/v2"
+    && count(filter(realization_census_module_rows, m =>
+         string_contains(s: m.module as String, pattern: "/")
+           && count(filter(census_roots(), r => starts_with(s: m.module as String, prefix: concat(r, "/")))) == 0)) == 0
+    && count(filter(realization_census_module_rows, m => starts_with(s: m.module as String, prefix: "src/v1/"))) > 0
+}

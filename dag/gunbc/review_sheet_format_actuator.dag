@@ -28,6 +28,7 @@ import gunbc.review_sheet_projection {
   review_sheet_header_names,
   review_sheet_header_count,
   validated_schema,
+  a1_column_letter,
   ReviewColumn,
   ReviewColumnKind,
   DerivedField,
@@ -707,7 +708,17 @@ data review_sheet_format_meta_field_mask: String = sheets_field_mask(paths: [she
 // would hit the first tab" -- and this module was sending one. The title comes from the located
 // tab, never from the Drive file's display name: they are written by different systems into
 // different places and renaming one does not touch the other.
-data review_sheet_header_cells: String = "A1:Q1"
+//
+// THE RANGE SPANS THE TAB'S OWN HEADER, NOT A CONSTANT. It was "A1:Q1", seventeen columns, written
+// when one kind existed; a census tab of eighteen or nineteen columns then never read back its
+// trailing widths, so the formatter re-applied on every run and the tab never verified. The extent
+// is the validated header's, so a wider schema widens its read and nothing else.
+fn review_sheet_header_cells(validated: ValidatedHeaderSchema) -> String? {
+  match a1_column_letter(index: review_sheet_header_count(validated: validated) - 1) {
+    Present { value: last } => Present { value: join(["A1:", last, "1"], "") }
+    Absent => none
+  }
+}
 
 // THE FIRST ELEMENT OF A LIST, ONCE PER TYPE, AND THE GENERIC IT REPLACES DID NOT SURVIVE CONTACT.
 // An earlier revision wrote one generic first_of<T> folding over List<T> with `none` as the initial
@@ -883,8 +894,15 @@ type HeaderRangeStanding
   = HeaderRangeWire { range: String }
   | HeaderRangeUnqualifiable { cause: NonEmptyStr }
 
-fn review_sheet_header_range(tab: LocatedReviewTab) -> HeaderRangeStanding {
-  match a1_range_encode(title: tab.title, cells: Present { value: review_sheet_header_cells }) {
+fn review_sheet_header_range(tab: LocatedReviewTab, validated: ValidatedHeaderSchema) -> HeaderRangeStanding {
+  match review_sheet_header_cells(validated: validated) {
+    Absent => HeaderRangeUnqualifiable { cause: "the header is wider than the A1 letters this module spells (A-Z), so no range covers it" as NonEmptyStr }
+    Present { value: cells } => review_sheet_header_range_at(tab: tab, cells: cells)
+  }
+}
+
+fn review_sheet_header_range_at(tab: LocatedReviewTab, cells: String) -> HeaderRangeStanding {
+  match a1_range_encode(title: tab.title, cells: Present { value: cells }) {
     A1RangeEncoded { wire: w } => HeaderRangeWire { range: w }
     A1TitleApostropheUnsupported { title: t } =>
       HeaderRangeUnqualifiable {
@@ -893,8 +911,8 @@ fn review_sheet_header_range(tab: LocatedReviewTab) -> HeaderRangeStanding {
   }
 }
 
-fn read_format(tab: LocatedReviewTab) -> FormatObservation {
-  match review_sheet_header_range(tab: tab) {
+fn read_format(tab: LocatedReviewTab, validated: ValidatedHeaderSchema) -> FormatObservation {
+  match review_sheet_header_range(tab: tab, validated: validated) {
     HeaderRangeUnqualifiable { cause: c } =>
       FormatUnreadable {
         cause: join(["the located tab's title cannot qualify an A1 range, so the header read would have been unqualified and would have hit whichever tab is first: ", c as String], "") as NonEmptyStr
@@ -1058,20 +1076,21 @@ fn converge_with_desired(
     FormatPlanRefused { cause: c } => FormatConvergeRefused { cause: c }
     FormatPlanned { plan: plan } =>
       converge_planned(
-        tab: tab, plan: plan, desired_rules: count(rules),
+        tab: tab, validated: validated, plan: plan, desired_rules: count(rules),
         inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg)
   }
 }
 
 fn converge_planned(
   tab: LocatedReviewTab,
+  validated: ValidatedHeaderSchema,
   plan: FormatRequestPlan,
   desired_rules: Int,
   inclusive_max: Int,
   header_bg: SheetsColor,
   header_fg: SheetsColor,
 ) -> FormatConvergeOutcome {
-  let observed = read_format(tab: tab)
+  let observed = read_format(tab: tab, validated: validated)
   match observed {
     FormatUnreadable { cause: c } =>
       FormatConvergeRefused {
@@ -1083,6 +1102,7 @@ fn converge_planned(
       } else {
         verify_applied_format(
           tab: tab,
+          validated: validated,
           report: format_review_sheet(plan: plan),
           desired_rules: desired_rules,
           desired_widths: plan.widths,
@@ -1096,6 +1116,7 @@ fn converge_planned(
 
 fn verify_applied_format(
   tab: LocatedReviewTab,
+  validated: ValidatedHeaderSchema,
   report: FormatReport,
   desired_rules: Int,
   desired_widths: List<ColumnWidthRequest>,
@@ -1104,7 +1125,7 @@ fn verify_applied_format(
   header_fg: SheetsColor,
 ) -> FormatConvergeOutcome {
   if format_report_all_applied(r: report) {
-    if format_is_converged(o: read_format(tab: tab), desired_rules: desired_rules, desired_widths: desired_widths, inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg) {
+    if format_is_converged(o: read_format(tab: tab, validated: validated), desired_rules: desired_rules, desired_widths: desired_widths, inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg) {
       FormatAppliedAndVerified { report: report }
     } else {
       FormatAppliedUnverified {
