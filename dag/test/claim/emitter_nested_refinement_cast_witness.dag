@@ -123,6 +123,17 @@ fn w_alias_of_refinement_cast_emits_the_operand() -> Bool {
   )
 }
 
+// AN EMPTY LIST LITERAL CAST TO A LIST TYPE IS TYPED BY THE CAST, so it emits the empty vector and
+// neither a fabricated abort nor a refusal: the specimen is extdeps.linux.cgroup_v2's fold seed.
+fn w_empty_list_cast_emits_the_operand() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_empty_list\n\nimport std.types \{ Int, List }\n\nfn seed() -> List<Int> \{\n  [] as List<Int>\n}\n",
+    "src/emitnested_empty_list.rs",
+    ["fn seed"],
+    ["unsupported cast", "compile_error!", "panic!"]
+  )
+}
+
 // A GENUINE HOST CONVERSION MUST STILL BE ONE. Int -> Float is a real Rust cast (`{expr} as
 // {type}`), so it must be selected from the target's CastSyntax and not erased to the operand by
 // the identity decision sitting in front of it.
