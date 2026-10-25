@@ -6,7 +6,7 @@ import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.instruments.namespace_wave_binding_shard { shard_owned_rewritten }
-import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitCall, AmbientNameKitType, ambient_name_homes, ambient_name_candidates }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitProbe, KitCallProbe, KitTypeUseProbe, AmbientNameKitType, ambient_name_homes, ambient_name_candidates, kit_int }
 
 // HOW `gunbc test //gunbc/instruments:ambient-name-census` READS ITS RUNS. The census is native: the
 // emitted v2 compiler's census walk prints one `binding` line per module-level reference occurrence,
@@ -380,19 +380,36 @@ fn kit_type_imports(t: AmbientNameKitType) -> List<String> {
   })
 }
 
-fn kit_call_imports(c: AmbientNameKitCall) -> List<String> {
-  fold(c.params |> map(p => p.type_ref) + [c.result], init: [], f: fn(acc, t) {
+fn kit_types_imports(types: List<AmbientNameKitType>) -> List<String> {
+  fold(types, init: [], f: fn(acc, t) {
     fold(kit_type_imports(t: t), init: acc, f: fn(seen, i) { if count(seen |> filter(x => x == i)) == 0 { seen + [i] } else { seen } })
   })
 }
 
+// The probe's signature types and its one use of the row's spelling, by probe kind. The type-use probe's result is Int,
+// so its body is a literal and the parameter annotation is the spelling's only occurrence.
+fn kit_probe_types(probe: AmbientNameKitProbe) -> List<AmbientNameKitType> {
+  match probe {
+    KitCallProbe { call: c } => c.params |> map(p => p.type_ref) + [c.result]
+    KitTypeUseProbe { arguments: args } => args + [kit_int()]
+  }
+}
+
+fn kit_probe_text(row: AmbientNameHome) -> String {
+  match row.kit_probe {
+    KitCallProbe { call: c } =>
+      "fn probe(" + (c.params |> map(p => p.name + ": " + kit_type_text(t: p.type_ref)) |> join(separator: ", ")) + ") -> " + kit_type_text(t: c.result)
+        + " { " + row.name + "(" + (c.params |> map(p => p.name) |> join(separator: ", ")) + ") }\n"
+    KitTypeUseProbe { arguments: args } =>
+      "fn probe(m: " + row.name + (if count(args) == 0 { "" } else { "<" + (args |> map(a => kit_type_text(t: a)) |> join(separator: ", ")) + ">" }) + ") -> Int { 0 }\n"
+  }
+}
+
 fn ambient_census_kit_source(row: AmbientNameHome, imported: Bool) -> String {
-  let c = row.kit_call
   "module " + ambient_census_kit_module(row: row, imported: imported) + "\n"
-    + (kit_call_imports(c: c) |> map(i => i + "\n") |> join(separator: ""))
+    + (kit_types_imports(types: kit_probe_types(probe: row.kit_probe)) |> map(i => i + "\n") |> join(separator: ""))
     + (if imported { "import " + row.home + " { " + row.name + " }\n" } else { "" })
-    + "fn probe(" + (c.params |> map(p => p.name + ": " + kit_type_text(t: p.type_ref)) |> join(separator: ", ")) + ") -> " + kit_type_text(t: c.result)
-    + " { " + row.name + "(" + (c.params |> map(p => p.name) |> join(separator: ", ")) + ") }\n"
+    + kit_probe_text(row: row)
 }
 
 fn ambient_census_kit_files() -> List<AmbientCensusFixtureFile> {
