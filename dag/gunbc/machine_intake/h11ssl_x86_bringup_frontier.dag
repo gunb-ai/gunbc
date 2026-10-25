@@ -29,9 +29,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //    none exists.
 //
 // G3 x86 network boot at the srv4 PXE edge. Exists: gunbc.network_boot_delivery
-//    (join_network_boot_delivery, whose client admission is the arm64 UEFI spellings -- the network
-//    boot delivery client-mode refusal) and gunbc.site_uefi_arm64_pxe_edge (site_pxe_edge_standing,
-//    around gunbc.ci.ci_fleet first_slice_admitted_architectures, an Aarch64-only roster);
+//    (join_network_boot_delivery, whose client admission is the UEFI projection of the rows of
+//    uefi_pxe_admitted_architectures, now Aarch64 and X86_64) and gunbc.site_pxe_edge (one pxe-service
+//    per served chain; the converge's amd64 row is Unpinned until its grub.cfg rendering is bound);
 //    extdeps.firmware.ipxe ships ipxe_arm64_efi_snponly and no x86_64 target -- and per the route
 //    settled 2026-10-24 (gunbc.plans.network_install_architecture_rows, #15060) the x86 first stages
 //    are the Ubuntu signed chain (shim + grub netboot builds), not an x86 iPXE. For x86 UEFI
@@ -90,7 +90,7 @@ data h11ssl_x86_bringup_dimm_reader_gap_subject: DeclarationRef = decl_ref(modul
 data h11ssl_x86_bringup_storage_reader_gap_subject: DeclarationRef = decl_ref(module_path: "extdeps.boards.supermicro_h11ssl", decl_name: "supermicro_h11ssl_storage_support")
 data h11ssl_x86_bringup_adoption_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.host.host_identity_adopt", decl_name: "HostIdentityAdoptReceipt")
 data h11ssl_x86_bringup_seed_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "admit_altra_autoinstall_target")
-data h11ssl_x86_bringup_pxe_edge_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.ci.ci_fleet", decl_name: "first_slice_admitted_architectures")
+data h11ssl_x86_bringup_pxe_edge_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "uefi_pxe_admitted_architectures")
 data h11ssl_x86_bringup_install_route_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.srv3.srv3_os_install_actuate", decl_name: "srv3_os_install_actuator_plan_refuses_on_unestablished_path")
 
 // ---- G4a: BMC firmware family for the AST2500/ATEN BMC (fill-order step 1) ----
@@ -171,12 +171,12 @@ data h11ssl_x86_autoinstall_seed_frontier: FrontierRow = frontier_row_decl(
 // ---- G3: x86 network boot at the srv4 PXE edge (fill-order step 5) ----
 
 data h11ssl_x86_network_boot_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: the srv4 PXE edge serves an x86_64 UEFI client end to end THROUGH THE APPROVED LOADER ROUTE -- the signed Ubuntu chain (shimx64.efi.signed.latest, grubnetx64.efi.signed served as grubx64.efi, grub.cfg, casper vmlinuz, initrd) served whole as loader-chain rows per gunbc.plans.network_install_architecture_rows (the route settled 2026-10-24 by merry-fox-82, PR #15060): gunbc.ci.ci_fleet first_slice_admitted_architectures admits the x86_64 UEFI spelling, gunbc.network_boot_delivery's client-mode admission admits it, the chain's members carry pins verified at placement and at readback, and a site PXE edge standing covers that client with a witnessed DHCP/BOOTP offer on the LAN. NOT this trigger: an x86 iPXE build (iPXE is the ARM row's one-member chain and stays that way), a BIOS-mode-only path, a chain member placed without its pin check, or an admission constant flipped without the standing and the witness." as NonEmptyStr
+  description: "TRIGGER: the srv4 PXE edge serves an x86_64 UEFI client end to end THROUGH THE APPROVED LOADER ROUTE -- the signed Ubuntu chain (shimx64.efi.signed.latest, grubnetx64.efi.signed served as grubx64.efi, grub.cfg, casper vmlinuz, initrd) served whole as loader-chain rows per gunbc.plans.network_install_architecture_rows (the route settled 2026-10-24 by merry-fox-82, PR #15060): gunbc.network_boot_delivery uefi_pxe_admitted_architectures admits the x86_64 UEFI spelling, gunbc.network_boot_delivery's client-mode admission admits it, the chain's members carry pins verified at placement and at readback, and a site PXE edge standing covers that client with a witnessed DHCP/BOOTP offer on the LAN. NOT this trigger: an x86 iPXE build (iPXE is the ARM row's one-member chain and stays that way), a BIOS-mode-only path, a chain member placed without its pin check, or an admission constant flipped without the standing and the witness." as NonEmptyStr
 )
 
 data h11ssl_x86_network_boot_frontier: FrontierRow = frontier_row_decl(
   ref: h11ssl_x86_bringup_pxe_edge_gap_subject,
-  reason: "the srv4 PXE edge is arm64 end to end: first_slice_admitted_architectures is Aarch64-only, join_network_boot_delivery's client-mode admission is arm64 spellings only, and the only loader artifact is iPXE's arm64 EFI target -- the approved x86 route (signed shim+grub chain, #15060) has no edge row yet",
+  reason: "x86_64 UEFI is admitted as a row (gunbc.network_boot_delivery uefi_pxe_admitted_architectures) and the edge renders the Ubuntu amd64 signed chain, but gunbc.fleet.site_pxe_edge_converge site_pxe_edge_chain_pins holds the amd64 row Unpinned until its grub.cfg rendering binds the seed origin, nothing is placed on srv4, and no x86 client has been served",
   dissolution: h11ssl_x86_network_boot_dissolution,
 )
 
