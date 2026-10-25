@@ -1,6 +1,6 @@
 module gunbc.compute.attempt_lifecycle
 
-import std.types { String, Bool, Int, NonEmptyStr, EpochSecs, Seconds }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Seconds }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set {
@@ -13,8 +13,8 @@ import std.durable_compare_and_set {
 }
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
-  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly,
-  observe_cas_slot_state,
+  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly, SlotStore, slot_observe, slot_commit, slot_keys,
+  CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused,
 }
 import std.decl_ref { decl_ref }
 import gunbc.compute.work_request { WorkEnding, work_ending_wire, work_ending_decode }
@@ -357,18 +357,46 @@ fn attempt_state_decode(word: String, detail: String) -> AttemptState? {
   }
 }
 
-fn attempt_slot_read(root: NonEmptyStr, reference: NonEmptyStr) -> AttemptSlotReading {
-  match observe_cas_slot_state(root: root, key: reference) {
-    CasObservedUnreadable { cause: c } => AttemptSlotUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+fn attempt_slot_read(store: SlotStore, reference: NonEmptyStr) -> AttemptSlotReading {
+  match attempt_payload_read(store: store, reference: reference, codec: attempt_record_codec()) {
+    AttemptPayloadAbsent => AttemptSlotAbsent
+    AttemptPayloadHeld { record: rec, generation: g } => AttemptSlotHeld { record: rec, generation: g }
+    AttemptPayloadUnreadable { detail: d } => AttemptSlotUnreadable { detail: d }
+  }
+}
+
+// A TYPED PAYLOAD READ AND THE ENUMERATION OF A STORE'S ATTEMPTS, so a payload domain (the worktree claim)
+// reads and lists through this layer and never imports the CAS library. Both answer through the store it
+// was handed; neither takes or returns a path (a refusal names the store by what it could not do).
+type AttemptPayloadReading<P>
+  = AttemptPayloadAbsent
+  | AttemptPayloadHeld { record: P, generation: CasGeneration }
+  | AttemptPayloadUnreadable { detail: String }
+
+fn attempt_payload_read<P>(store: SlotStore, reference: NonEmptyStr, codec: AttemptPayloadCodec<P>) -> AttemptPayloadReading<P> {
+  match slot_observe(store: store, key: reference) {
+    CasObservedUnreadable { cause: c } => AttemptPayloadUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
     CasObservedReadable { readable: r } =>
       match r {
-        CasReadableAbsent => AttemptSlotAbsent
+        CasReadableAbsent => AttemptPayloadAbsent
         CasReadablePresent { version: v } =>
-          match attempt_record_decode(text: v.value as String) {
-            Absent => AttemptSlotUnreadable { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
-            Present { value: rec } => AttemptSlotHeld { record: rec, generation: v.generation }
+          match codec.decode(v.value as String) {
+            Absent => AttemptPayloadUnreadable { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
+            Present { value: rec } => AttemptPayloadHeld { record: rec, generation: v.generation }
           }
       }
+  }
+}
+
+type AttemptSlotKeysReading
+  = AttemptSlotKeysListed { keys: List<NonEmptyStr> }
+  | AttemptSlotKeysRefused { detail: String }
+
+fn attempt_slot_keys(store: SlotStore) -> AttemptSlotKeysReading {
+  match slot_keys(store: store) {
+    CasSlotKeysListed { keys: ks } => AttemptSlotKeysListed { keys: ks }
+    CasSlotKeysListingRefused { root: _, detail: d } => AttemptSlotKeysRefused { detail: join(["the attempt store could not be listed: ", d], "") }
+    CasSlotKeysSubjectRefused { root: _, cause: c } => AttemptSlotKeysRefused { detail: join(["the attempt store is not admissible: ", c], "") }
   }
 }
 
@@ -416,7 +444,7 @@ fn attempt_record_codec() -> AttemptPayloadCodec<AttemptRecord> {
 }
 
 fn attempt_commit_bytes(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   state: AttemptState,
   payload: NonEmptyStr,
@@ -437,7 +465,7 @@ fn attempt_commit_bytes(
     CasAttemptDigestMismatch { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest did not match its bytes" }
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest was incomparable" }
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+      match slot_commit(store: store, publication: DefaultAccessCreateOnly, verified: v) {
         CasCommitted { committed: c } => AttemptAdvanced { state: state, generation: c.generation }
         CasPreconditionFailed { expected: e, observed: o } =>
           AttemptLostRace {
@@ -481,7 +509,7 @@ fn attempt_commit_bytes(
 data compute_pre_launch_ceiling_seconds: Seconds = 300
 
 fn attempt_advance_payload<P>(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   expected: CasGeneration,
   next_state: AttemptState,
@@ -493,7 +521,7 @@ fn attempt_advance_payload<P>(
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_terminate_payload"),
   ]
 {
-  match observe_cas_slot_state(root: root, key: reference) {
+  match slot_observe(store: store, key: reference) {
     CasObservedUnreadable { cause: c } =>
       AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
     CasObservedReadable { readable: r } =>
@@ -522,7 +550,7 @@ fn attempt_advance_payload<P>(
                     match codec.state_of(rec) {
                       AttemptReserved =>
                         attempt_commit_bytes(
-                          root: root,
+                          store: store,
                           reference: reference,
                           state: next_state,
                           payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
@@ -536,7 +564,7 @@ fn attempt_advance_payload<P>(
                     AttemptTransitionRefused { detail: "advance will not rewrite a slot back to Reserved" }
                   AttemptTerminal { verdict: _, detail: _ } =>
                     attempt_commit_bytes(
-                      root: root,
+                      store: store,
                       reference: reference,
                       state: next_state,
                       payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
@@ -549,13 +577,13 @@ fn attempt_advance_payload<P>(
 }
 
 fn attempt_advance(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   expected: CasGeneration,
   next_state: AttemptState,
 ) -> AttemptTransition {
   attempt_advance_payload(
-    root: root,
+    store: store,
     reference: reference,
     expected: expected,
     next_state: next_state,
@@ -566,7 +594,7 @@ fn attempt_advance(
 // ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
 // somebody else's attempt. Unit and grant are established here and never resupplied on later
 // transitions.
-fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCodec<P>) -> AttemptTransition
+fn attempt_open_payload<P>(store: SlotStore, record: P, codec: AttemptPayloadCodec<P>) -> AttemptTransition
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open"),
     decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_open"),
@@ -593,7 +621,7 @@ fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCo
     }
   } else {
     attempt_commit_bytes(
-      root: root,
+      store: store,
       reference: codec.reference_of(reserved) as NonEmptyStr,
       state: AttemptReserved,
       payload: codec.encode(reserved) as NonEmptyStr,
@@ -601,15 +629,15 @@ fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCo
   }
 }
 
-fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
-  attempt_open_payload(root: root, record: record, codec: attempt_record_codec())
+fn attempt_open(store: SlotStore, record: AttemptRecord) -> AttemptTransition {
+  attempt_open_payload(store: store, record: record, codec: attempt_record_codec())
 }
 
 // THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,
 // changes only state, and re-encodes the unit and grant the open wrote. A caller cannot hand
 // another unit or grant into this generation.
 fn attempt_begin_launch_payload<P>(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   expected: CasGeneration,
   codec: AttemptPayloadCodec<P>,
@@ -620,22 +648,22 @@ fn attempt_begin_launch_payload<P>(
   ]
 {
   attempt_advance_payload(
-    root: root,
+    store: store,
     reference: reference,
     expected: expected,
     next_state: AttemptLaunching,
     codec: codec)
 }
 
-fn attempt_begin_launch(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration) -> AttemptTransition {
-  attempt_begin_launch_payload(root: root, reference: reference, expected: expected, codec: attempt_record_codec())
+fn attempt_begin_launch(store: SlotStore, reference: NonEmptyStr, expected: CasGeneration) -> AttemptTransition {
+  attempt_begin_launch_payload(store: store, reference: reference, expected: expected, codec: attempt_record_codec())
 }
 
 // THE TERMINAL TRANSITION. Carries the verdict AND why, so the generation that records the end also
 // records the reason -- history the next reader can act on rather than a bare flag. Same read and
 // state-only rewrite as begin_launch: unit and grant are not parameters.
 fn attempt_terminate_payload<P>(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   expected: CasGeneration,
   verdict: AttemptVerdict,
@@ -649,16 +677,16 @@ fn attempt_terminate_payload<P>(
   ]
 {
   attempt_advance_payload(
-    root: root,
+    store: store,
     reference: reference,
     expected: expected,
     next_state: AttemptTerminal { verdict: verdict, detail: detail },
     codec: codec)
 }
 
-fn attempt_terminate(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
+fn attempt_terminate(store: SlotStore, reference: NonEmptyStr, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
   attempt_terminate_payload(
-    root: root,
+    store: store,
     reference: reference,
     expected: expected,
     verdict: verdict,
