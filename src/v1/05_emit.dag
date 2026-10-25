@@ -3392,7 +3392,7 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
 // grounded carriers by the derived crossing (std.literal_elaboration kernel_grounding_crossing over
 // gunbc.structural_realization_bindings kernel_grounding_rows, read in v1.compiler.infer validate_cast), and a
 // grounded natural onto the kernel Int by the name-keyed chain stern-bat-401's ruling keeps for it
-// (gunbc.rung_drop nat_cast_onto_the_kernel_integer_is_unjudged). Emit adds only the realization: every carrier a
+// (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged). Emit adds only the realization: every carrier a
 // row grounds IS the kernel integer on every route, as the kernel Int is, so the target performs no operation.
 // Read from the rows on the exact declarations, never from how a route spells the type: std.nat Nat renders as
 // the Rust alias `Nat` (= i64), which is no host numeric ground, so a spelling comparison could not see the
@@ -3441,10 +3441,8 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
-    // RESIDUAL GAP, NOT AN INVARIANT: validate_cast (04_infer) refuses a cast from a grounded natural
-    // with no derived route; a cast outside the cast domain (a user-declared Nat `as Int`) is skipped by
-    // the checker and reaches this arm as a runtime abort. Below ceiling; trigger: every `as` without a
-    // declared route refuses at type check, after a corpus cast census.
+    // A cast the checker abstained on and no route here realizes aborts at runtime: the emitted-route form
+    // of gunbc.recurring_failure_mode the_checker_admits_a_cast_the_evaluator_refuses.
     emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
   }
 }

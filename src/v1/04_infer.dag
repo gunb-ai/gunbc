@@ -7633,8 +7633,8 @@ fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String
 // inside the target's, so `Nat as Int` at std.integer Int is the identity re-typing and the converse refuses.
 // A grounded NATURAL source has no route to any other target, so its cast refuses here ("no declared
 // conversion route"), EXCEPT onto the kernel Int: that cast is not an inclusion (the naturals are not inside
-// the 64-bit integers), and stern-bat-401's ruling keeps it on the name-keyed chain below as a declared
-// residual (gunbc.rung_drop nat_cast_onto_the_kernel_integer_is_unjudged). A target that carries no identity
+// the 64-bit integers), and stern-bat-401's ruling keeps it on the name-keyed chain below, a declared
+// below-ceiling class (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged). A target that carries no identity
 // (unidentified, or a type variable) is not decided here either: a missing identity is not evidence of a different
 // target, so the name-keyed chain below keeps the answer it gave before. A source no row grounds is not decided here.
 type GroundedCastVerdict

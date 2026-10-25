@@ -18,10 +18,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // carriers it is the derived crossing (std.literal_elaboration kernel_grounding_crossing over
 // gunbc.structural_realization_bindings kernel_grounding_rows): std.nat Nat onto std.integer Int is a total
 // widening and the converse refuses. A grounded natural onto any other target refuses at TYPE CHECK ("no
-// declared conversion route"), except onto the KERNEL Int, which stays on the name-keyed chain as the declared
-// residual gunbc.rung_drop nat_cast_onto_the_kernel_integer_is_unjudged. Emit realizes both admitted shapes as
-// the identity. The emitter's unsupported-cast arm remains a RESIDUAL GAP, not an invariant: a cast the
-// checker skips still reaches it as a runtime abort.
+// declared conversion route"), except onto the KERNEL Int, which stays on the name-keyed chain, the declared
+// below-ceiling class gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged. Emit realizes both admitted shapes as
+// the identity. A cast the checker skips still reaches the emitter's unsupported-cast abort: gunbc.recurring_failure_mode
+// the_checker_admits_a_cast_the_evaluator_refuses.
 //
 // NOT CLAIMED: a user `type Nat` passed at an Int formal. That is the known declared-type-wall gap, which this
 // change neither opens nor closes. Trigger: #14430 closes it; claim it there.

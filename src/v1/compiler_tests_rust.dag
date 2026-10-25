@@ -2282,7 +2282,7 @@ fn ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test() ->
 }
 
 // A natural beyond the 64-bit range refuses on the emitted route, so the identity realization of a grounded
-// natural cast onto the kernel Int never sees one (gunbc.rung_drop nat_cast_onto_the_kernel_integer_is_unjudged).
+// natural cast onto the kernel Int never sees one (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged).
 // The interpreter route's controls are v1_interpreter add_overflow_refuses and its multiplication sibling.
 fn ct_nat_beyond_the_64_bit_range_refuses_on_the_emitted_route_test() -> String {
   concat(
