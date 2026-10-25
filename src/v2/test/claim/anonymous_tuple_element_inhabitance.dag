@@ -23,12 +23,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // kernel `enumerate` template) at a declared collection position whatever the declared element is.
 //
 // WHAT v2 ESTABLISHES, in two parts, because v2 has no anonymous tuple at all:
-// (A) UNCONSTRUCTIBLE. There is no `enumerate` declaration for an application to bind (resolve refuses
-//     resolve_reason_unbound_symbol) and no tuple production in the grammar (a tuple type or literal
-//     refuses at parse), beside a control that differs only in not being a tuple. So the seed's
-//     specimen has no v2 counterpart to admit or refuse.
-// (B) THE ONLY TUPLE-LIKE ELEMENT v2 CAN WRITE IS A DECLARED PRODUCT, and at the two seed positions it
-//     is judged: a Seq<Pair<Int, Bool>> refuses where Seq<Bool> is declared, and where a generic's
+// (A) OUTSIDE v2'S CURRENT REACH. There is no `enumerate` declaration for an application to bind
+//     (resolve refuses resolve_reason_unbound_symbol) and no tuple production in the grammar (a tuple
+//     type or literal refuses at parse), beside a control that differs only in not being a tuple. So
+//     the seed's specimen has no v2 counterpart to admit or refuse. TRIGGER: v2 gaining an enumerate or
+//     a tuple production; then these arms are rewritten to construct the anonymous element and assert
+//     its refusal.
+// (B) NOT COVERAGE OF THE ANONYMOUS ROUTE. The only tuple-like element v2 can write is a declared
+//     product, and at the two seed positions it is judged: a Seq<Pair<Int, Bool>> refuses where Seq<Bool> is declared, and where a generic's
 //     element is fixed at Int by another argument. This is the case the seed also judges (a named
 //     element); it is recorded so the defence reads "unconstructible, and its nearest writable form is
 //     refused", not "refused".
