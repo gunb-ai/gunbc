@@ -1,7 +1,7 @@
 module v2.test.claim.derived_roster
 
-import std.types { Bool, List }
-import std.algebra { fold_list, length, list_find_first, list_map, collection_concat_shape, collection_join_shape }
+import std.types { Bool, List, Map }
+import std.algebra { empty_map, fold_list, length, list_find_first, list_map, map_insert, collection_concat_shape, collection_join_shape }
 import std.optional { Absent, Present }
 import v2.compiler.module_acquisition {
   AcquiredDerivedRoster,
@@ -15,13 +15,23 @@ import v2.compiler.module_acquisition {
   AcquisitionVerified,
   BoundModulesListed,
   BoundModulesRefused,
+  DerivedRosterDerivationRefused,
+  DerivedRosterDerived,
+  DerivedRosterAbsent,
   DerivedRosterMisplacedRow,
   DerivedRosterOccupied,
+  DerivedRosterSiblingMisfiled,
+  HeldSourceAbsent,
+  HeldSourcePresent,
+  HeldSourceRead,
+  HeldSourceRefused,
   PopulationMemberRead,
   PopulationMemberRefused,
   SourceRootBinding,
   acquire_closure_of,
   acquire_verified,
+  acquisition_read_source,
+  derived_roster_derive,
   enumerate_bound_modules,
   population_member
 }
@@ -29,6 +39,7 @@ import v2.compiler.source_authority {
   DerivedRosterRowMisplaced,
   DerivedRosterSelected,
   DerivedRosterSibling,
+  ModuleFileRef,
   SourceStorageLayout,
   StorageDerivedRoster,
   StorageNamespaceRoot,
@@ -199,6 +210,57 @@ test fn a_sibling_already_acquired_is_not_read_again() -> Bool {
       length(xs: filter(reads, key => key == "v2:fx/ledger/helper.dag")) == 1
         && length(xs: member_named(modules: modules, name: "v2.fx.ledger.roster")) == 1
   }
+}
+
+// ---- what the derivation may take as a sibling's bytes ------------------------------------------------
+//
+// A held sibling is a HeldSourceRead, which only acquisition_read_source constructs (sole_constructor;
+// a construction in this module would be refused, v2.compiler.infer infer_sole_constructor_diags, whose
+// own red is v2.test.claim.long.sole_constructor_native_wall_red). So the one way to hand the derivation
+// bytes that are not a sibling's is to file a REAL read of another file under the sibling's key, and
+// that refuses rather than changing the roster. The positive control is that a held read IS consumed
+// (the sibling is not read again), so the red is a refusal of the held route and not a route never taken.
+
+fn fx_ledger_file(stem: String) -> ModuleFileRef {
+  ModuleFileRef { tree: V2Tree {}, relative_path: concat("fx/ledger/", stem, ".dag") }
+}
+
+fn fx_held(sibling: String, read_of: String) -> Map<String, HeldSourceRead> {
+  match acquisition_read_source(host_directory: "fixtures/derived_roster/v2", file: fx_ledger_file(stem: read_of)) {
+    HeldSourcePresent { read: read } => map_insert(m: empty_map(), key: concat("v2:fx/ledger/", sibling, ".dag"), value: read)
+    HeldSourceAbsent { file: _ } => empty_map()
+    HeldSourceRefused { file: _, cause: _ } => empty_map()
+  }
+}
+
+fn fx_derive(held: Map<String, HeldSourceRead>) -> String {
+  match derived_roster_derive(roster: fx_ledger(), file: fx_ledger_file(stem: "roster"), host_directory: "fixtures/derived_roster/v2", held: held) {
+    DerivedRosterAbsent => "absent"
+    DerivedRosterDerivationRefused { refusal: refusal } =>
+      match refusal {
+        DerivedRosterSiblingMisfiled { file: file, held: other } => concat("misfiled:", file.relative_path, "<-", other.relative_path)
+        _ => "refused-other"
+      }
+    DerivedRosterDerived { content: content, inputs: _, members: _, siblings: siblings } =>
+      concat(
+        if content == fx_ledger_expected_text() { "derived" } else { "derived-other-text" },
+        ":fresh=",
+        join(list_map(xs: filter(siblings, s => s.fresh), f: fn(s) { s.read.file.relative_path }), ",")
+      )
+  }
+}
+
+// THE RED: the helper's real bytes filed as beta's. The helper declares no row, so if those bytes stood
+// for beta the roster would silently lose beta and be derived as [alpha]; instead it refuses, located.
+test fn a_read_filed_under_another_siblings_key_refuses_the_roster() -> Bool {
+  fx_derive(held: fx_held(sibling: "beta", read_of: "helper")) == "misfiled:fx/ledger/beta.dag<-fx/ledger/helper.dag"
+}
+
+// THE POSITIVE CONTROL: beta's read filed as beta's is taken, not read again, and the roster is the one
+// derived with nothing held.
+test fn a_read_filed_under_its_own_key_is_taken_and_the_roster_is_unchanged() -> Bool {
+  fx_derive(held: fx_held(sibling: "beta", read_of: "beta")) == "derived:fresh=fx/ledger/alpha.dag,fx/ledger/helper.dag"
+    && fx_derive(held: empty_map()) == "derived:fresh=fx/ledger/alpha.dag,fx/ledger/beta.dag,fx/ledger/helper.dag"
 }
 
 fn refusal_of(acquisition: Acquisition) -> String {

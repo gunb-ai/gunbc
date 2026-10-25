@@ -997,7 +997,7 @@ fn idle_acquisition_state(known: Map<String, Bool>) -> AcquisitionState {
     absent: empty_map(),
     absent_probes: 0,
     reads: [],
-    prefetched: empty_map()
+    held: empty_map()
   }
 }
 
