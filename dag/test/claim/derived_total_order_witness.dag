@@ -1,0 +1,27 @@
+module test.claim.derived_total_order_witness
+
+import std.types { Bool, List, String }
+import std.algebra { list_sort_by_key, list_map, string_concat_join, string_total_order }
+import v2.std.node { Symbol, symbol_intern_lexeme, symbol_lexeme, symbol_total_order }
+
+// THE DERIVED ORDERS AGREE WITH THE HOST sort_by ON SUPPLIED ROWS (tidy-ant-251's ruling for the sort_by
+// wave): each pair sorts the same supplied values through the host sort_by and through
+// list_sort_by_key with the derived order, and the two results must be equal element for element.
+// Rows include a non-ASCII lexeme and a case pair, where a byte order and a scalar order would be
+// the first to disagree if UTF-8 did not preserve scalar order.
+
+fn joined(xs: List<String>) -> String { string_concat_join(fields: xs, separator: "|") }
+
+fn lexemes() -> List<String> { ["beta", "Beta", "alpha", "été", "a", "z中", "zz"] }
+
+fn symbols() -> List<Symbol> { list_map(xs: lexemes(), f: fn(l) { symbol_intern_lexeme(lexeme: l) }) }
+
+test fn symbol_order_agrees_with_host_sort_by() -> Bool {
+  let host = list_map(xs: sort_by(symbols(), s => symbol_lexeme(sym: s)), f: fn(s) { symbol_lexeme(sym: s) })
+  let derived = list_map(xs: list_sort_by_key(xs: symbols(), key: fn(s) { s }, order: symbol_total_order()), f: fn(s) { symbol_lexeme(sym: s) })
+  joined(xs: host) == joined(xs: derived)
+}
+
+test fn string_order_agrees_with_host_sort_by() -> Bool {
+  joined(xs: sort_by(lexemes(), s => s)) == joined(xs: list_sort_by_key(xs: lexemes(), key: fn(s) { s }, order: string_total_order()))
+}
