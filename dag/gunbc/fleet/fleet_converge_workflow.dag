@@ -6459,6 +6459,17 @@ fn fleet_converge_namecheap_observe_job() -> Job {
 // Preparation (CAD and slicing) plus the 15-minute bed-clear approval window must fit one pass.
 data printer_converge_step_timeout_minutes: Duration = 45
 
+// THE PRINTER CREDENTIAL IS SIGNED IN ONLY ON REVIEWED MAIN (operator ruling 2026-10-25, design A).
+// A branch run may prepare and record a request, which needs no credential; the approval-and-start
+// pass is main's code (gunbc.fleet.print_converge print_pass_route), so off main the job holds no
+// printer token at all. The printer-lan pool is pinned to main as well; this keeps branch code from
+// ever asking.
+fn fleet_converge_printer_wif_auth_step() -> Step {
+  ci_wif_auth_step_with_condition(name: "WIF auth (dedicated printer credential reader; reviewed main only)", id: "wif_auth",
+    provider_resource: printer_provider_resource(), service_account: printer_service_account as String,
+    if_condition: Present { value: serialize_expression(expression: fleet_converge_github_ref_is_reviewed_main()) })
+}
+
 fn fleet_converge_printer_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
@@ -6466,8 +6477,7 @@ fn fleet_converge_printer_job() -> Job {
     environment: Present { value: printer_environment as String },
     steps: [
       fleet_converge_event_sha_checkout_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(),
-      ci_wif_auth_step_for(name: "WIF auth (dedicated printer credential reader)",
-        provider_resource: printer_provider_resource(), service_account: printer_service_account as String),
+      fleet_converge_printer_wif_auth_step(),
       RunStep {
         name: Present { value: "Printer: observe the credential or converge one print request" },
         id: Present { value: "printer" }, run: gunbc_ci_printer_workflow_invoke(), shell: none,
