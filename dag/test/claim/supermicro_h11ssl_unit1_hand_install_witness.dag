@@ -2,6 +2,8 @@ module test.claim.supermicro_h11ssl_unit1_hand_install_witness
 
 import std.types { Bool }
 import std.optional { Present, Absent }
+import extdeps.network.ipv4 { Ipv4Parsed, Ipv4ParseFailed, parse_ipv4_address, ipv4_address_eq, render_ipv4_address }
+import gunbc.machine_intake.supermicro_h11ssl_first_contact { supermicro_h11ssl_first_contact_receipt }
 import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt {
   supermicro_h11ssl_unit1_hand_install,
   supermicro_h11ssl_unit1_install_media_held,
@@ -98,10 +100,17 @@ test fn w_the_relayed_companion_report_is_distinguishable_from_the_unknowns() ->
     }
 }
 
-// THE UNIT KEY IS THE UNIT THAT WAS RULED ABOUT. BMC 192.168.1.252 is unit 1 per
-// gunbc.machine_intake.supermicro_h11ssl_first_contact; the receipt must key on the same unit, not
-// a sibling. If the two records ever disagree about which unit 252 is, this row says so.
+// THE UNIT KEY IS THE UNIT THAT WAS RULED ABOUT, TYPED AND CROSS-CHECKED. The BMC address is an
+// extdeps.network.ipv4 Ipv4Address (named octets, not an opaque string -- §2's anemic-modeling
+// rule), and the single authority for "which unit 252 is" is the identity row in
+// gunbc.machine_intake.supermicro_h11ssl_first_contact: parsing ITS bmc_address and asserting typed
+// equality means a mistyped octet in either record, or a receipt pointed at a sibling unit, fails
+// here rather than reading as consistent (§3).
 test fn w_the_receipt_keys_on_the_bmc_252_unit() -> Bool {
-  supermicro_h11ssl_unit1_hand_install.bmc_ipv4 == "192.168.1.252"
+  match parse_ipv4_address(supermicro_h11ssl_first_contact_receipt.bmc_address as String) {
+    Ipv4Parsed { address: a } => ipv4_address_eq(a: a, b: supermicro_h11ssl_unit1_hand_install.bmc_ipv4)
+    Ipv4ParseFailed { error: _ } => false
+  }
     && supermicro_h11ssl_unit1_hand_install.unit_key == "supermicro-h11ssl-unit1"
+    && (render_ipv4_address(supermicro_h11ssl_unit1_hand_install.bmc_ipv4) as String) == "192.168.1.252"
 }

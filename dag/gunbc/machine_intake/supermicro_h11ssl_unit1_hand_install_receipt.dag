@@ -4,11 +4,13 @@ import std.types { List, NonEmptyStr }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { TranscribedUncited }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet.provider_acquisition { AcquisitionRealization }
 import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure }
 
-// THE HAND OS INSTALL OF SUPERMICRO H11SSL UNIT 1, RECORDED AS A RECEIPT OF AN OPERATOR-PERFORMED
-// EFFECT, NOT AS A CONVERGED STATE (DESIGN §4d, §5; 2026-10-24).
+// THE HAND OS INSTALL OF SUPERMICRO H11SSL UNIT 1, RECORDED AS A RECEIPT OF AN OPERATOR-DECLARED
+// PROCEDURE -- not a converged state, and (until the operator relays completion) not a completed
+// effect either (DESIGN §4d, §5; 2026-10-24).
 //
 // On 2026-10-24 the operator ruled: this unit's OS goes on BY HAND this time -- the install is an
 // effect performed at the physical console, OUTSIDE any modeled route. No modeled route produced it:
@@ -130,7 +132,7 @@ fn hand_install_completed_step(realization: HandInstallRealization) -> Optional<
 // read-only intake lands).
 type SupermicroH11sslUnit1HandInstall {
   unit_key: NonEmptyStr
-  bmc_ipv4: NonEmptyStr
+  bmc_ipv4: Ipv4Address
   ruling: NonEmptyStr
   realization: HandInstallRealization
   install_media: InstallMedia
@@ -166,7 +168,7 @@ fn hand_install_field_figure(field: HandInstallRecordedField) -> Optional<H11ssl
 // unrelayed field by inference.
 data supermicro_h11ssl_unit1_hand_install: SupermicroH11sslUnit1HandInstall = SupermicroH11sslUnit1HandInstall {
   unit_key: "supermicro-h11ssl-unit1",
-  bmc_ipv4: "192.168.1.252",
+  bmc_ipv4: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 252),
   ruling: "operator, 2026-10-24: install by hand this time; record the gaps, fill them afterwards",
   realization: DeclaredByOperator {
     ruled_on: "2026-10-24",
