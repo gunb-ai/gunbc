@@ -108,7 +108,7 @@ type NginxDirective
   | InternalLocationOnly
   | ProxyMethodPost
   | LuaPhaseBlock { phase: LuaPhase, lines: List<String> }
-  | LuaSharedDict { name: NginxToken, size: NginxToken }
+  | LuaSharedDict { name: NginxToken, size: ByteSize }
   | ClientMaxBodySize { size: ByteSize }
   | ClientBodyBufferSize { size: ByteSize }
 
@@ -176,7 +176,7 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ClientBodyBufferSize { size: z } => nginx_line(text: "client_body_buffer_size " + to_string(byte_size_count(b: z)), indent: indent)
     LuaPhaseBlock { phase: ph, lines: ls } =>
       indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(ls, "\n" + indent + "  ") + "\n" + indent + "}\n"
-    LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + (z as String), indent: indent)
+    LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + to_string(byte_size_count(b: z)), indent: indent)
   }
 }
 

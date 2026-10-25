@@ -139,7 +139,7 @@ fn fixture_directives() -> List<NginxDirective> {
     "ngx.say('data: two') ngx.say('')",
   ])
   let dict = match tok(text: "seen") {
-    Present { value: n } => match tok(text: "1m") { Present { value: z } => [LuaSharedDict { name: n, size: z }] Absent => no_directives() }
+    Present { value: n } => [LuaSharedDict { name: n, size: byte_size(count: 1048576) }]
     Absent => no_directives()
   }
   [
