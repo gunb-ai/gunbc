@@ -132,7 +132,9 @@ fn fixture_directives() -> List<NginxDirective> {
     "local upstream = '127.0.0.1:19003'",
     "if case == 'badupstream' then upstream = 'not an address' elseif case == 'badport0' then upstream = '127.0.0.1:0' elseif case == 'badporthigh' then upstream = '127.0.0.1:70000' end",
     "if case ~= 'noupstream' then ngx.header['x-upstream'] = upstream end",
-    "local body = ngx.req.get_body_data() or ''",
+    "local body = ngx.req.get_body_data()",
+    "if not body then local f = ngx.req.get_body_file() if f then local h = io.open(f, 'rb') body = h:read('*a') h:close() end end",
+    "body = body or ''",
     "local permit = 'p-' .. case .. '-' .. model",
     "if case == 'large' then permit = permit .. '-' .. #body .. '-' .. ngx.md5(body) end",
     "if case ~= 'nopermit' then ngx.header['x-seat-permit'] = permit end",
@@ -338,6 +340,18 @@ fn unsafe_tokens_are_absent() -> Bool {
   quote && dollar && hash && dash && safe
 }
 
+fn emitted_text() -> String {
+  text_of(r: router_proxy_config(listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port))
+}
+
+// Fixed literals per fragment, each from the concrete ports, so a mis-rendered arm goes red.
+fn fragments_held(t: String) -> Bool {
+  contains(s: t, p: "location = /_authz") && contains(s: t, p: "listen 127.0.0.1:18443;") && contains(s: t, p: "proxy_pass http://127.0.0.1:19001/authz;")
+    && contains(s: t, p: "ngx.exit(503)") && contains(s: t, p: "s:connect('127.0.0.1', 19002)") && contains(s: t, p: "always_forward_body = true")
+    && contains(s: t, p: "client_max_body_size 16777216;") && contains(s: t, p: "client_body_buffer_size 1048576;")
+    && contains(s: t, p: "tonumber(string.match(v, ':(%d+)$')) <= 65535")
+}
+
 fn row_cases() -> List<FalsifierCase> {
   let body = v1_body(ds: rows())
   let passes = count(filter(body, d => is_pass(d: d)))
@@ -346,6 +360,8 @@ fn row_cases() -> List<FalsifierCase> {
     case_of(identity: "rows_router_location_proxies_only_to_the_authz_supplied_upstream", held: passes == 1 && fixed == 0, observed: concat(concat(to_string(passes), "/"), to_string(fixed))),
     case_of(identity: "rows_retries_and_buffering_are_off", held: count(filter(body, d => is_retry_off(d: d))) == 1 && count(filter(body, d => is_buffering_off(d: d))) == 2, observed: to_string(count(body))),
     case_of(identity: "rows_one_authz_hook_and_one_stream_end_hook", held: count(filter(body, d => is_access_hook(d: d))) == 1 && count(filter(body, d => is_log_hook(d: d))) == 1, observed: to_string(count(body))),
+    case_of(identity: "rows_rendering_follows_the_rows", held: emitted_text() != "" && emitted_text() == render_nginx_directives(rows: rows()), observed: "rendered"),
+    case_of(identity: "rows_the_rendered_text_holds_the_expected_fragments", held: fragments_held(t: emitted_text()), observed: "fragments"),
     case_of(identity: "rows_red_unsafe_tokens_have_no_constructor_result", held: unsafe_tokens_are_absent(), observed: "tokens"),
   ]
 }
@@ -456,6 +472,8 @@ fn falsifier_expected_identities() -> List<String> {
     "rows_router_location_proxies_only_to_the_authz_supplied_upstream",
     "rows_retries_and_buffering_are_off",
     "rows_one_authz_hook_and_one_stream_end_hook",
+    "rows_rendering_follows_the_rows",
+    "rows_the_rendered_text_holds_the_expected_fragments",
     "rows_red_unsafe_tokens_have_no_constructor_result",
     "daemon_red_absent_daemon_reads_unavailable",
     "world_starts",
@@ -506,13 +524,21 @@ fn case_row(c: FalsifierCase) -> String {
   join(["case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", one_line(s: c.observed), "\n"], "")
 }
 
+// THE ROW CASES RUN FIRST AND ON EVERY HOST: they read the emitted rows and text and need no effect, so a
+// host without a daemon still reports them, and a red row case is not held there either. Only the process
+// cases wait on the daemon.
 fn native_claim_report() -> NativeClaimReport {
+  let rows_first = row_cases()
+  let rows_failed = map(filter(rows_first, c => !c.held), c => c.identity)
   let probe = DockerCli.Version(docker: docker())
   match daemon_reading(exit_code: probe.exit_code, stderr: probe.stderr) {
-    DaemonUnavailable { stderr: e } => NativeClaimReport { stdout: "", terminal: NativeClaimNoObservation { reason: concat("docker daemon unavailable: ", e) } }
+    DaemonUnavailable { stderr: e } => NativeClaimReport {
+      stdout: join(map(rows_first, c => case_row(c: c)), ""),
+      terminal: if count(rows_failed) == 0 { NativeClaimNoObservation { reason: concat("row cases held; docker daemon unavailable for the process cases: ", e) } } else { not_held_terminal(reason: concat("not held: ", join(rows_failed, ","))) },
+    }
     DaemonAnswered => {
       let control = DockerCli.VersionAtHost(docker: docker(), host: absent_daemon())
-      let cases = concat(row_cases(), falsifier_cases(daemon_control: daemon_reading(exit_code: control.exit_code, stderr: control.stderr)))
+      let cases = concat(rows_first, falsifier_cases(daemon_control: daemon_reading(exit_code: control.exit_code, stderr: control.stderr)))
       let roster = join(["roster ", join(falsifier_expected_identities(), ","), "\n"], "")
       let failed = map(filter(cases, c => !c.held), c => c.identity)
       let terminal = if count(failed) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", join(failed, ","))) }
