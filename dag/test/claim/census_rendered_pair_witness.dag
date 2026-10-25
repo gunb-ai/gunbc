@@ -1,0 +1,193 @@
+module test.claim.census_rendered_pair_witness
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.optional { Present, Absent }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  CompileDiagnosticCensusRow,
+  Uniform,
+  Varied,
+  census_blocking_rows_of_class_at_subject,
+  census_rows_of_class,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THIS WITNESS PINS. A census row's rendered_pair, the typed half of the diagnostic text a
+// refusal actually carried. The fold (v1_compiler.cli_run's compile_diagnostic_census_rows) groups
+// diagnostics by (class, subject, blocking) and asks one question of each group: do all its
+// diagnostics render the SAME expected/got pair? One distinct pair yields Uniform{expected, got};
+// more than one yields Varied{distinct_pair_count}; a group whose diagnostics carry no pair at all
+// yields Absent. Whether a class carries a pair is decided by
+// compile_clean_diagnostic_rendered_pair, a total match over the diagnostic population that answers
+// a pair for exactly the classes declaring an expected and a got -- so one group is never mixed,
+// and the Absent arm below is a claim about the class, not a default.
+//
+// WHY THE SUBJECTS AND PAIRS ARE MEASURED, NOT INVENTED (DESIGN §5, done means executed). The two
+// pair-bearing cells read fold keys and pair strings printed by a probe round executed against this
+// compiler -- the key and the pair of each cell are quoted below exactly as that probe printed
+// them. Each cell also asserts its row's PRESENCE and SINGLENESS at the key, so a cell cannot go
+// green on an empty selection, and the sentinel helper below hands back an Absent-paired row that
+// every predicate refuses, so a missing row is a red rather than a panic.
+//
+// THE DISCRIMINATING PAIRING, AND THE CONTROL THAT KEEPS IT HONEST. Row A is the applied-generics
+// arm: its pair text comes from node_type_shape's applied-node branch in src/v1/04_types.dag (the
+// Node(name<args>) case). Collapsing that ONE branch to print a bare Node(name) -- the mutation
+// this PR was measured with, on a scratch branch, never landed -- makes row A Uniform with expected
+// EQUAL to got, which the first cell refuses: carrying the pair is the whole point, because
+// Wrapper<KindA> and Wrapper<KindB> must not print alike. Row B is the stated CONTROL the parent
+// asked for: same compile, but its pair text comes from the PRODUCT branch of the same function.
+// Under that same mutation row B STAYS Uniform with expected not equal to got. A mutation that
+// broke the renderer wholesale would turn BOTH cells red, so red-A-while-green-B is the evidence
+// that the mutation is scoped to the applied-generics arm.
+//
+// THE ABSENT ARM HAS ITS OWN CELL because Absent must not be a green-by-default: the cell first
+// requires the rows to EXIST, so an empty selection cannot fake the Absents. Its positive control
+// against "everything reads Absent" is the two cells above reading Present.
+//
+// WHAT THESE CELLS DO NOT CLAIM. They pin the fold's output for these fixtures; they do not claim
+// the fold agrees with an independent notion of pair-equality, and the Varied count is exercised
+// only against the two-call fixture below.
+
+// Row A's fixture. The module text is the one the inhabitance wall proves is refused
+// (test.claim.declared_type_inhabitance_direct_call_witness's applied_distinct_type_argument_source);
+// copied here rather than imported because this witness measures the census projection of that
+// refusal -- a different subject from the wall's -- and two claims that must fail independently
+// must not share fixture data.
+data applied_generics_row_a_source: String = "module probe_inhabit_applied_arg\nimport std.types { String }\ntype KindA { ka: String }\ntype KindB { kb: String }\ntype Wrapper<K> { v: String }\nfn mk_b() -> Wrapper<KindB> { Wrapper { v: \"z\" } }\nfn takes_a(x: Wrapper<KindA>) -> String { x.v }\nfn probe() -> String { takes_a(x: mk_b()) }\n"
+
+// The Absent arm's fixture: a module the PARSE stage refuses -- the service block is left
+// unterminated, so no later stage is reached and the census rows for this compile carry the class
+// ParseError. A parse diagnostic names no expected and got, so its rows must read Absent, and the
+// cell below first requires the rows to exist. (The sibling witnesses transport_field_refusal /
+// transport_emission_not_modeled reach their classes through emit routes documented in
+// gunbc.fixture_render_selection_seed_growth's corrected boundary; this cell reaches ParseError
+// through the census route, which since the census stopped demanding a render subject reports
+// parse diagnostics directly.) The module is named uniquely so this file's compile cannot agree
+// with another witness's by name.
+data pairless_parse_error_source: String = "module rfp_parse_error\nservice Fs \{\n  operation Write \{\n"
+
+// The Varied arm's fixture: two calls, both arguments at a parameter named x, each refused at the
+// SAME fold key -- so ONE group carries two diagnostics whose pairs differ.
+data two_distinct_applied_generics_source: String = "module probe_rendered_pair_varied\nimport std.types { String }\ntype KindA { ka: String }\ntype KindB { kb: String }\ntype KindC { kc: String }\ntype Wrapper<K> { v: String }\nfn mk_b() -> Wrapper<KindB> { Wrapper { v: \"b\" } }\nfn mk_c() -> Wrapper<KindC> { Wrapper { v: \"c\" } }\nfn takes_a(x: Wrapper<KindA>) -> String { x.v }\nfn use_b() -> String { takes_a(x: mk_b()) }\nfn use_c() -> String { takes_a(x: mk_c()) }\n"
+
+// A row whose pair is Absent, for a key no real row occupies. Every predicate below refuses it, so
+// handing it back when a selection came up empty turns "no row at the key" into a red, never a
+// green and never a failed access.
+fn absent_pair_sentinel_row() -> CompileDiagnosticCensusRow {
+  CompileDiagnosticCensusRow {
+    diagnostic_class: "AbsentSentinel" as NonEmptyStr,
+    subject_name: "<no row at the key>",
+    blocking: true,
+    count: 0,
+    rendered_pair: Absent {},
+  }
+}
+
+fn first_row_or_sentinel(rows: List<CompileDiagnosticCensusRow>) -> CompileDiagnosticCensusRow {
+  match rows |> first {
+    Present { value: row } => row
+    Absent => absent_pair_sentinel_row()
+  }
+}
+
+fn rows_at(source: String, wanted_class: String, wanted_subject: String) -> List<CompileDiagnosticCensusRow> {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: wanted_class, wanted_subject: wanted_subject)
+    CensusNotRunnable { cause: _ } => []
+  }
+}
+
+fn census_parse_error_rows(source: String) -> List<CompileDiagnosticCensusRow> {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_rows_of_class(rows: rows, wanted: "ParseError")
+    CensusNotRunnable { cause: _ } => []
+  }
+}
+
+fn rendered_pair_is_uniform(row: CompileDiagnosticCensusRow, wanted_expected: String, wanted_got: String) -> Bool {
+  match row.rendered_pair {
+    Present { value: p } => match p {
+      Uniform { expected: expected, got: got } => expected == wanted_expected && got == wanted_got && expected != got
+      Varied { distinct_pair_count: _ } => false
+    }
+    Absent => false
+  }
+}
+
+fn rendered_pair_is_absent(row: CompileDiagnosticCensusRow) -> Bool {
+  match row.rendered_pair {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn rendered_pair_is_varied_with(row: CompileDiagnosticCensusRow, wanted_count: Int) -> Bool {
+  match row.rendered_pair {
+    Present { value: p } => match p {
+      Uniform { expected: _, got: _ } => false
+      Varied { distinct_pair_count: n } => n == wanted_count
+    }
+    Absent => false
+  }
+}
+
+fn all_rendered_pairs_absent(rows: List<CompileDiagnosticCensusRow>) -> Bool {
+  (rows |> filter(row => rendered_pair_is_absent(row)) |> count) == (rows |> count)
+}
+
+// ROW A -- THE APPLIED-GENERICS ARM, UNIFORM AND DISTINGUISHING. One row at the executed key, its
+// pair Present/Uniform, and the two renderings NOT equal: the refusal carried two type texts that
+// differ, and the census keeps both instead of folding them into a count.
+test fn w_rendered_pair_on_direct_call_argument_row_is_uniform_and_distinguishing() -> Bool {
+  let rows = rows_at(
+    source: applied_generics_row_a_source,
+    wanted_class: "DeclaredTypeNotInhabited",
+    wanted_subject: "direct call argument for parameter 'x'",
+  )
+  (rows |> count) == 1 && rendered_pair_is_uniform(
+    row: first_row_or_sentinel(rows: rows),
+    wanted_expected: "Node(Wrapper<Product(KindA)>)",
+    wanted_got: "Node(Wrapper<Product(KindB)>)",
+  )
+}
+
+// ROW B -- THE STATED CONTROL. Same compile, the generic type argument's own group, pair text from
+// the product branch: Uniform with expected not equal to got. Under the applied-generics mutation
+// this cell STAYS GREEN while row A's cell goes red -- that asymmetry is the evidence that the
+// mutation is scoped to the applied-generics arm and is not breaking the renderer wholesale.
+test fn w_rendered_pair_control_non_applied_row_stays_uniform_expected_not_equal_got() -> Bool {
+  let rows = rows_at(
+    source: applied_generics_row_a_source,
+    wanted_class: "DeclaredTypeNotInhabited",
+    wanted_subject: "generic type argument",
+  )
+  (rows |> count) == 1 && rendered_pair_is_uniform(
+    row: first_row_or_sentinel(rows: rows),
+    wanted_expected: "Product(KindA)",
+    wanted_got: "Product(KindB)",
+  )
+}
+
+// THE ABSENT ARM, WITH ITS POSITIVE CONTROL IN THE SAME CELL. The parse class carries no pair, so
+// every row reads Absent -- and the cell first requires the rows to EXIST, so an empty selection
+// cannot fake the Absents green.
+test fn w_rendered_pair_absent_for_a_class_that_carries_no_pair() -> Bool {
+  let rows = census_parse_error_rows(source: pairless_parse_error_source)
+  (rows |> count) > 0 && all_rendered_pairs_absent(rows: rows)
+}
+
+// THE VARIED ARM. Two refusals at one fold key, two distinct pairs: the group reports Varied with
+// the distinct-pair count, because a group that hides WHICH pairs differed cannot separate the
+// fixtures the pair exists to separate.
+test fn w_rendered_pair_varied_counts_distinct_pairs() -> Bool {
+  let rows = rows_at(
+    source: two_distinct_applied_generics_source,
+    wanted_class: "DeclaredTypeNotInhabited",
+    wanted_subject: "direct call argument for parameter 'x'",
+  )
+  (rows |> count) == 1 && rendered_pair_is_varied_with(row: first_row_or_sentinel(rows: rows), wanted_count: 2)
+}

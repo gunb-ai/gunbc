@@ -1,0 +1,55 @@
+module gunbc.census_rendered_pair_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the census rendered pair. The census row already said WHICH
+// diagnostic class fired at WHICH subject, how many times, and at what severity; what it threw
+// away was the diagnostic TEXT's typed half -- a refusal carried an expected shape and a got shape
+// (v1.std.core CompilerDiagnostic's TypeMismatch / TextCrossingHasNoImplicitRoute /
+// DeclaredTypeNotInhabited declare them as String fields) and the fold collapsed them into the
+// count. Two different refusals at one key, e.g. an argument that should have been Wrapper<KindA>
+// and one that should have been Wrapper<KindB>, produced the same row. This receipt adds the typed
+// half back as data: a census row now carries its group's rendered pair as Optional<RenderedPair>
+// -- Uniform{expected, got} when the group's diagnostics all render the same pair,
+// Varied{distinct_pair_count} when a group hides more than one distinct pair, Absent when the
+// class declares no pair at all.
+//
+// WHY HAND AND NOT MODELED. The census is a host builtin: compile_dag_diagnostic_census in
+// v1_compiler.cli_run calls the seed's compile pipeline synchronously, and the fold
+// compile_diagnostic_census_rows aggregates the resulting diagnostics in host Rust (same reason
+// gunbc.fixture_render_selection_seed_growth exists). Whether a diagnostic carries a pair is
+// decided by one total match over v1.std.core CompilerDiagnostic -- the SAME total-match authority
+// the histogram key uses, kept in the same hand file for the same reason; the model module
+// gunbc.compile_diagnostic_census stays a PROJECTION (§3): it names the arms, it does not re-derive
+// them. The fold groups first and asks the pair question per group, so a group is never mixed: the
+// pair-bearing classes are fixed by the extractor's match, not by data.
+//
+// HAND-ITEM DELTA: +2 citable declarations and 1 named field, all listed below; no uncitable items
+// (no thread_locals, no Display impls -- the fold's per-group distinct-pair bookkeeping is local
+// state inside the existing fn). The model-side arms (gunbc.compile_diagnostic_census's
+// RenderedPair/Uniform/Varied) are modeled seed, not hand Rust, and are not this receipt's
+// population.
+//
+// RUNG OF THE WITNESSES. test.claim.census_rendered_pair_witness's four cells are fleet cells run
+// by the claim_batch wet fleet (self-discovered under dag/test/claim, like every other witness).
+// Their fold keys and pair strings were first established by an executed probe round against this
+// compiler (a scratch measurement branch, since deleted; the same probe measured which fold keys
+// the applied-generics arm reaches, per DESIGN §5's done-means-executed), and the cells re-measure
+// them per head through the census host builtin itself. The discriminating pairing (collapse the
+// applied-generics rendering branch in src/v1/04_types.dag -> the applied-generics cell goes RED
+// while the stated CONTROL cell, whose pair text comes from the product branch, stays GREEN) was
+// executed on a scratch mutation branch that was measured and never landed; the asymmetry is what
+// shows the mutation was scoped to that one branch rather than the renderer.
+data census_rendered_pair_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "RenderedPair", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "CompileDiagnosticCensusRow", field: NamedField { field_name: "rendered_pair" } },
+    DeclarationRef { module_path: "v1_compiler.cli_run.compile_clean", decl_name: "compile_clean_diagnostic_rendered_pair", field: WholeDeclaration }
+  ],
+  reason: "The pair lives in the host because the census is a host builtin and the diagnostic population is a host type: v1.std.core CompilerDiagnostic declares expected and got as String fields on exactly the pair-bearing variants, and the ONLY authority that names those variants is a total match over that type -- which is hand Rust by the same law that put compile_clean_diagnostic_histogram_key there (gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror forbids hand items in the generated mirrors, so the extractor cannot sit beside them in the emitted file). The fold asks the pair question per group after grouping, so Uniform/Varied/Absent is a property of a group's CLASS, established by the extractor's totality, never by per-diagnostic data. REJECTED alternatives: (a) a String pair field -- re-invents the diagnostic text as an untyped string the witness would have to parse, the medium-as-string class DESIGN §3 refuses; (b) a three-arm enum without Absent -- would force every pairless class to fabricate a pair, which is inventing output the compiler did not produce; (c) putting the distinct-pair LIST on Varied -- what a group hides is HOW MANY pairs it merged, and the count is the property the census row needs (the individual pairs of a varied group belong to the diagnostic, not to the aggregate).",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Same trigger as gunbc.fixture_render_selection_seed_growth: when compile_dag_diagnostic_census is a MODELED operation rather than a host builtin, the diagnostic population is a modeled type, its pair-bearing variants are modeled fields, and this fold, its extractor, and this receipt's enum are substrate work -- delete the rows then and migrate the witnesses with the instrument.",
+  current_boundary: "Confined to the census surface: the fold, its extractor, the interpreter's row projection, and the model's RenderedPair arms. The pair POPULATION is exactly the v1.std.core variants that declare String expected and String got -- read off the type by the extractor's exhaustive match, not enumerated by hand here (a hand count would be a §6 transcription). ArityMismatch carries an i64 arity pair, not a rendered shape, and is non-pair by that rule. The fold groups on (class, subject, blocking) exactly as before; the pair is an added field, not a new key, so no existing row's identity moved and every pre-existing census witness keeps its assertions (they construct rows with rendered_pair Absent). What this does NOT claim: that the fold's pair agrees with an independent notion of pair-equality (the witnesses pin the fold's output for named fixtures), and nothing here touches the emit-check route, the histogram key, or the counters policed by census_no_render_subject_control.rs. The discriminating mutation (applied-generics arm collapse in src/v1/04_types.dag's node_type_shape) is a MEASUREMENT recorded in the PR that introduced this field; it is not a landed state and must not be read as one."
+}
