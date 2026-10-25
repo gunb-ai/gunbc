@@ -2,9 +2,10 @@
 // Source module: v1.compiler.expected_red_roster_join
 
 use self::BudgetVerdictCompletion::*;
+use self::EffectRefusalGround::*;
+use self::EffectRefusalMode::*;
 use self::ExpectedRedJoinDisposition::*;
 use self::ExpectedRedSuppressionGround::*;
-use self::HermeticEffectGround::*;
 use self::WitnessEvalVerdict::*;
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
@@ -27,10 +28,20 @@ pub enum BudgetVerdictCompletion {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
-pub enum HermeticEffectGround {
+pub enum EffectRefusalGround {
     UnpublishedMockCase,
     NoMockResponse,
     FilesystemRemoval,
+    FrameNotRealizableUnderMode,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum EffectRefusalMode {
+    RefusedUnderHermetic,
+    RefusedUnderWet,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -50,7 +61,7 @@ pub enum WitnessEvalVerdict {
     },
     HostEffectRefused {
         operation: String,
-        ground: HermeticEffectGround,
+        ground: EffectRefusalGround,
     },
     BudgetExceeded {
         elapsed_ms: i64,
@@ -101,150 +112,49 @@ pub struct ExpectedRedRosterJoinReport {
     pub rows: Rc<Vec<Rc<ExpectedRedRosterJoinRow>>>,
 }
 
-pub fn new_expected_red_roster_join_report(
-    run_head: Option<String>,
-    run_note: String,
-    roster: Rc<Vec<String>>,
-) -> Rc<ExpectedRedRosterJoinReport> {
-    Rc::new(ExpectedRedRosterJoinReport {
-        run_head: run_head.clone(),
-        run_note: run_note.clone(),
-        rows: Rc::new({
-            let mut __result = Vec::new();
-            for identity in roster.iter().cloned() {
-                __result.push(Rc::new(ExpectedRedRosterJoinRow {
-                    identity: identity.clone(),
-                    disposition: Rc::new(ExpectedRedJoinDisposition::NotEvaluated {
-                        reason: "not_observed".to_string(),
-                    }),
-                    detail: "".to_string(),
-                }));
-            }
-            __result
-        }),
-    })
-}
-
-pub fn expected_red_roster_join_roster_len(report: Rc<ExpectedRedRosterJoinReport>) -> i64 {
-    (report.rows.clone().len() as i64)
-}
-
-pub fn is_still_red(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::StillRed => true,
-        _ => false,
-    }
-}
-
-pub fn is_now_passes(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::NowPasses => true,
-        _ => false,
-    }
-}
-
-pub fn is_suppressed(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::Suppressed { ground: _, .. } => true,
-        _ => false,
-    }
-}
-
-pub fn suppression_ground_label(ground: ExpectedRedSuppressionGround) -> String {
-    match ground.clone() {
-        ExpectedRedSuppressionGround::OutsideRequiredGate => {
-            "suppressed_outside_required_gate".to_string()
-        }
-        ExpectedRedSuppressionGround::WithheldCostDebt => {
-            "suppressed_withheld_cost_debt".to_string()
-        }
-        ExpectedRedSuppressionGround::DeclinedNoCiWetLane => {
-            "suppressed_declined_no_ci_wet_lane".to_string()
-        }
-    }
-}
-
-pub fn suppression_ground_detail(ground: ExpectedRedSuppressionGround) -> String {
-    match ground.clone() {
-    ExpectedRedSuppressionGround::OutsideRequiredGate => "enrolled, but its module is outside the required gate and was never loaded, so this run could not attempt it -- dormant, not deleted".to_string(),
-    ExpectedRedSuppressionGround::WithheldCostDebt => "enrolled, but the cost-debt roster withholds it from execution in this run -- dormant, not deleted".to_string(),
-    ExpectedRedSuppressionGround::DeclinedNoCiWetLane => "enrolled and changed by this run, but its file is a declared BinWitnessWet row no CI lane executes (gunbc.rung_drop edited_bin_witness_wet_rows_not_executed_by_ci), so the changed-witness sublane declined it -- dormant, not deleted".to_string(),
-}
-}
-
-pub fn is_not_evaluated(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::NotEvaluated { reason: _, .. } => true,
-        _ => false,
-    }
-}
-
-pub fn expected_red_roster_join_still_red(report: Rc<ExpectedRedRosterJoinReport>) -> i64 {
-    (Rc::new({
-        let mut __result = Vec::new();
-        for row in report.rows.clone().iter().cloned() {
-            if is_still_red(row.disposition.clone()) {
-                __result.push(row);
-            }
-        }
-        __result
-    })
-    .len() as i64)
-}
-
-pub fn expected_red_roster_join_now_passes(report: Rc<ExpectedRedRosterJoinReport>) -> i64 {
-    (Rc::new({
-        let mut __result = Vec::new();
-        for row in report.rows.clone().iter().cloned() {
-            if is_now_passes(row.disposition.clone()) {
-                __result.push(row);
-            }
-        }
-        __result
-    })
-    .len() as i64)
-}
-
-pub fn expected_red_roster_join_not_evaluated(report: Rc<ExpectedRedRosterJoinReport>) -> i64 {
-    (Rc::new({
-        let mut __result = Vec::new();
-        for row in report.rows.clone().iter().cloned() {
-            if is_not_evaluated(row.disposition.clone()) {
-                __result.push(row);
-            }
-        }
-        __result
-    })
-    .len() as i64)
-}
-
-pub fn expected_red_roster_join_suppressed(report: Rc<ExpectedRedRosterJoinReport>) -> i64 {
-    (Rc::new({
-        let mut __result = Vec::new();
-        for row in report.rows.clone().iter().cloned() {
-            if is_suppressed(row.disposition.clone()) {
-                __result.push(row);
-            }
-        }
-        __result
-    })
-    .len() as i64)
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VerdictClassification {
     pub disposition: Rc<ExpectedRedJoinDisposition>,
     pub detail: String,
 }
 
-pub fn hermetic_effect_ground_label(ground: HermeticEffectGround) -> String {
+pub fn effect_refusal_mode(ground: EffectRefusalGround) -> EffectRefusalMode {
     match ground.clone() {
-        HermeticEffectGround::UnpublishedMockCase => {
+        EffectRefusalGround::UnpublishedMockCase => EffectRefusalMode::RefusedUnderHermetic,
+        EffectRefusalGround::NoMockResponse => EffectRefusalMode::RefusedUnderHermetic,
+        EffectRefusalGround::FilesystemRemoval => EffectRefusalMode::RefusedUnderHermetic,
+        EffectRefusalGround::FrameNotRealizableUnderMode => EffectRefusalMode::RefusedUnderWet,
+    }
+}
+
+pub fn effect_refusal_ground_label(ground: EffectRefusalGround) -> String {
+    match ground.clone() {
+        EffectRefusalGround::UnpublishedMockCase => {
             "no published mock case for a corpus-governed service".to_string()
         }
-        HermeticEffectGround::NoMockResponse => "operation declares no mock_response".to_string(),
-        HermeticEffectGround::FilesystemRemoval => {
+        EffectRefusalGround::NoMockResponse => "operation declares no mock_response".to_string(),
+        EffectRefusalGround::FilesystemRemoval => {
             "filesystem removal has no mock arm; only a wet route can run it".to_string()
+        }
+        EffectRefusalGround::FrameNotRealizableUnderMode => {
+            "a modeled witness frame is admitted only under Hermetic execution".to_string()
+        }
+    }
+}
+
+pub fn effect_refusal_mode_label(mode: EffectRefusalMode) -> String {
+    match mode.clone() {
+        EffectRefusalMode::RefusedUnderHermetic => "hermetic route has no arm for".to_string(),
+        EffectRefusalMode::RefusedUnderWet => "wet run cannot realize".to_string(),
+    }
+}
+
+pub fn effect_refusal_remedy(mode: EffectRefusalMode) -> String {
+    match mode.clone() {
+        EffectRefusalMode::RefusedUnderHermetic => "re-run with --wet".to_string(),
+        EffectRefusalMode::RefusedUnderWet => {
+            "re-run under Hermetic execution (`gunbc --dry-run run`, or claim_batch without --wet)"
+                .to_string()
         }
     }
 }
@@ -299,12 +209,15 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            "hermetic route has no arm for ".to_string(),
+                            v1_rt::concat(
+                                effect_refusal_mode_label(effect_refusal_mode(ground.clone())),
+                                " ".to_string(),
+                            ),
                             operation.clone(),
                         ),
                         " (".to_string(),
                     ),
-                    hermetic_effect_ground_label(ground.clone()),
+                    effect_refusal_ground_label(ground.clone()),
                 ),
                 ") — the witness never reached its subject, so this is a route gap, not a verdict"
                     .to_string(),
@@ -392,96 +305,6 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
     }
 }
 
-pub fn disposition_label(disposition: Rc<ExpectedRedJoinDisposition>) -> String {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::StillRed => "still_red".to_string(),
-        ExpectedRedJoinDisposition::NowPasses => "now_passes".to_string(),
-        ExpectedRedJoinDisposition::NotEvaluated { reason: _, .. } => "not_evaluated".to_string(),
-        ExpectedRedJoinDisposition::Suppressed { ground: _, .. } => "suppressed".to_string(),
-    }
-}
-
-pub fn disposition_reason(disposition: Rc<ExpectedRedJoinDisposition>) -> String {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::NotEvaluated { reason: reason, .. } => reason.clone(),
-        ExpectedRedJoinDisposition::Suppressed { ground: ground, .. } => {
-            suppression_ground_label(ground.clone())
-        }
-        _ => "".to_string(),
-    }
-}
-
-pub fn not_evaluated_reason(disposition: Rc<ExpectedRedJoinDisposition>) -> String {
-    match (*disposition.clone()).clone() {
-        ExpectedRedJoinDisposition::NotEvaluated { reason: reason, .. } => reason.clone(),
-        _ => "".to_string(),
-    }
-}
-
-pub fn record_suppressed(
-    report: Rc<ExpectedRedRosterJoinReport>,
-    identity: String,
-    ground: ExpectedRedSuppressionGround,
-) -> Rc<ExpectedRedRosterJoinReport> {
-    Rc::new(ExpectedRedRosterJoinReport {
-        run_head: report.run_head.clone(),
-        run_note: report.run_note.clone(),
-        rows: Rc::new({
-            let mut __result = Vec::new();
-            for row in report.rows.clone().iter().cloned() {
-                __result.push(if (row.identity.clone() == identity.clone()) {
-                    Rc::new(ExpectedRedRosterJoinRow {
-                        identity: row.identity.clone(),
-                        disposition: Rc::new(ExpectedRedJoinDisposition::Suppressed {
-                            ground: ground.clone(),
-                        }),
-                        detail: suppression_ground_detail(ground.clone()),
-                    })
-                } else {
-                    row.clone()
-                });
-            }
-            __result
-        }),
-    })
-}
-
-pub fn row_with_recorded_verdict(
-    row: Rc<ExpectedRedRosterJoinRow>,
-    verdict: Rc<WitnessEvalVerdict>,
-) -> Rc<ExpectedRedRosterJoinRow> {
-    {
-        let classification = classify_verdict(verdict.clone());
-        Rc::new(ExpectedRedRosterJoinRow {
-            identity: row.identity.clone(),
-            disposition: classification.disposition.clone(),
-            detail: classification.detail.clone(),
-        })
-    }
-}
-
-pub fn record_observed(
-    report: Rc<ExpectedRedRosterJoinReport>,
-    identity: String,
-    verdict: Rc<WitnessEvalVerdict>,
-) -> Rc<ExpectedRedRosterJoinReport> {
-    Rc::new(ExpectedRedRosterJoinReport {
-        run_head: report.run_head.clone(),
-        run_note: report.run_note.clone(),
-        rows: Rc::new({
-            let mut __result = Vec::new();
-            for row in report.rows.clone().iter().cloned() {
-                __result.push(if (row.identity.clone() == identity.clone()) {
-                    row_with_recorded_verdict(row.clone(), verdict.clone())
-                } else {
-                    row.clone()
-                });
-            }
-            __result
-        }),
-    })
-}
-
 pub fn is_not_observed(disposition: Rc<ExpectedRedJoinDisposition>) -> bool {
     match (*disposition.clone()).clone() {
         ExpectedRedJoinDisposition::NotEvaluated { reason: reason, .. } => {
@@ -510,10 +333,10 @@ pub fn row_finalized_if_not_observed(
 pub fn finalize_not_observed(
     report: Rc<ExpectedRedRosterJoinReport>,
 ) -> Rc<ExpectedRedRosterJoinReport> {
-    Rc::new(ExpectedRedRosterJoinReport {
-        run_head: report.run_head.clone(),
-        run_note: report.run_note.clone(),
-        rows: Rc::new(
+    {
+        let __rb_0_0 = report.run_head.clone();
+        let __rb_1_0 = report.run_note.clone();
+        let __rb_2_0 = Rc::new(
             report
                 .rows
                 .clone()
@@ -521,8 +344,24 @@ pub fn finalize_not_observed(
                 .cloned()
                 .map(row_finalized_if_not_observed)
                 .collect::<Vec<_>>(),
-        ),
-    })
+        );
+        let mut __rb_h = report;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.run_head = __rb_0_0;
+                __rb_r.run_note = __rb_1_0;
+                __rb_r.rows = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(ExpectedRedRosterJoinReport {
+                    run_head: __rb_0_0,
+                    run_note: __rb_1_0,
+                    rows: __rb_2_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -535,6 +374,12 @@ pub struct UnpublishedMockCase;
 pub struct NoMockResponse;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FilesystemRemoval;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FrameNotRealizableUnderMode;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedUnderHermetic;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedUnderWet;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OutsideRequiredGate;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

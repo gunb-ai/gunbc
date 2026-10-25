@@ -1,0 +1,30 @@
+module test.claim.fleet.fleet_ssh_teardown_order_witness
+
+import std.types { Bool, String }
+import std.algebra { list_head }
+import gunbc.fleet.fleet_workflow_steps { ci_fleet_key_agent_cleanup_script, fleet_ssh_multiplex_teardown_admitted }
+
+// THE ROUTE: the always() step the fleet jobs run (gunbc.fleet.fleet_workflow_steps
+// ci_fleet_key_agent_cleanup_step) ends the ssh masters and removes their directory BEFORE it kills
+// the agent, because a master stays authenticated after the agent dies.
+// TEARDOWN: every master is asked to exit and the directory removed BEFORE the agent is killed.
+// The text before a marker is the first split segment; a marker absent leaves the whole text.
+fn before(s: String, marker: String) -> String {
+  match list_head(xs: split(s: s, delimiter: marker)) {
+    Absent => s
+    Present { value: head } => head
+  }
+}
+
+test fn w_the_job_teardown_ends_masters_before_the_agent() -> Bool {
+  let script = ci_fleet_key_agent_cleanup_script()
+  let exit_words = "'-exec' 'ssh' '-F' 'none' '-S' '\{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'"
+  let remove_words = "'rm' '-rf' '--' \"$MUX_DIR\""
+  let before_kill = before(s: script, marker: "ssh-agent -k")
+  fleet_ssh_multiplex_teardown_admitted()
+    && contains(script, "fleet-ssh-mux")
+    && contains(script, "ssh-agent -k")
+    && before_kill != script
+    && contains(before_kill, remove_words)
+    && contains(before(s: before_kill, marker: remove_words), exit_words)
+}

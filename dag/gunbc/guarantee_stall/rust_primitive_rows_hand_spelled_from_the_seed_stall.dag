@@ -1,0 +1,25 @@
+module gunbc.guarantee_stall.rust_primitive_rows_hand_spelled_from_the_seed_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// A STANDING DEFICIT, NOT A DROP: the Rust spelling of these std.primitives contracts was never derived from the
+// contract, so no higher rung was held and none fell. The string_length and join rows are copied from tables the
+// frozen v1 seed exposes (rt_function_registry, rust_simple_method_specs) and are compared to them by
+// test.claim.emit.rust_primitive_seed_differential. The to_string row is transcribed from the free-call to_string arm
+// of v1.compiler.emit_rust control flow, which no table exposes, so only the emitted-text claim in
+// test.claim.emit.rust_primitive_realization_emit and a manual rustc receipt back it. map has no row because a row
+// carries no receiver type (see rust_primitive_realization_rows).
+data rust_primitive_rows_hand_spelled_from_the_seed_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the Rust primitive realization rows spell std.primitives contracts by hand from the frozen v1 seed (two from its tables, to_string from its emit_rust control flow), not from the contracts",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  population: BoundedPopulation { members: [
+      "v2.extdeps.languages.rust::rust_primitive_realization_rows string_length (mirrors rt_function_registry)",
+      "v2.extdeps.languages.rust::rust_primitive_realization_rows join (mirrors rust_simple_method_specs)",
+      "v2.extdeps.languages.rust::rust_primitive_realization_rows to_string (transcribed from v1.compiler.emit_rust control flow)"
+    ] },
+  next_rung_trigger: climbs_when(capability: "native emit of std.primitives derives the Rust spelling of each contract from the contract, so the rows are generated and the hand-spelled rows are deleted. The seed differential (test.claim.emit.rust_primitive_seed_differential) stays enrolled as a regression control comparing the native derivation against the seed (DESIGN 4b, dissolution on climb deletes production machinery, never the evidence). NOT satisfied by adding more hand-spelled rows or a second differential.")
+}

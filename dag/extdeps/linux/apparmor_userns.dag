@@ -1,0 +1,37 @@
+module extdeps.linux.apparmor_userns
+
+import std.types { NonEmptyStr, Int }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Ubuntu's kernel.apparmor_restrict_unprivileged_userns sysctl: 1 means unprivileged user
+// namespaces are restricted. THIS MODULE OWNS THE SYSCTL NAME AND THE UPSTREAM MEANING, not
+// whether any host has it set. A host's reading is a receipt in gunbc.host.host_software_surface.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.apparmor_userns",
+      decl_name: "apparmor_restrict_unprivileged_userns_sysctl_name",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data apparmor_restrict_unprivileged_userns_sysctl_name: NonEmptyStr = "kernel.apparmor_restrict_unprivileged_userns"
+
+data apparmor_unprivileged_userns_restricted: Int = 1
+
+fn apparmor_userns_restriction_standing() -> CitedFigureStanding {
+  CitedToAuthority { authority: extdeps_external_authority_anchor }
+}

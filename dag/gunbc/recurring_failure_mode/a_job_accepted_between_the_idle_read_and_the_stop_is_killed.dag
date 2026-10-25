@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_job_accepted_between_the_idle_read_and_the_stop_is_killed
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_job_accepted_between_the_idle_read_and_the_stop_is_killed: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_job_accepted_between_the_idle_read_and_the_stop_is_killed" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: gunbc.runner.runner_slot_actuation drain_and_mask_runner_slot_over reads a slot idle (no Runner.Worker owned by the unit, extdeps.procps.ps ps_unit_comm_listing_argv) and then stops it. The GitHub Actions runner's listener can accept a job in the window between that read and the stop, and the stop then kills the job the drain exists never to kill.",
+
+    "HARM: one CI job killed mid-run per lost race; the window is one SSH round trip per drained idle slot, so the exposure is small but not zero, and nothing on the host refuses it.",
+
+    "DISTINGUISHING FACTS: the job's Runner.Worker started after the ps listing and before systemctl stop; the slot was masked first, so the runner does not restart, but the masked mid-job listener already holds the new job.",
+
+    "RUNG FOUND AT: mitigatable (mask-first narrows admission to the already-running listener; the read and the stop are adjacent legs). CEILING: structurally impossible -- the runner is removed from GitHub's scheduling before it is stopped, so no job can be assigned in the window. NEXT TRIGGER: GitHub Actions self-hosted runner deregistration (DELETE /orgs/ORG/actions/runners/RUNNER_ID, the GitHub REST operation that deletes a self-hosted runner from an organization) modeled in extdeps for the Actions API and consumed by drain_and_mask_runner_slot_over before the stop leg, with a read-back that the runner is gone from the org roster.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.runner.runner_slot_actuation", decl_name: "drain_and_mask_runner_slot_over"),
+    decl_ref(module_path: "gunbc.runner.runner_slot_actuation", decl_name: "slot_drain_plan"),
+  ],
+}

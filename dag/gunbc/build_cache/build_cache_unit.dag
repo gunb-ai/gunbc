@@ -19,7 +19,7 @@ import extdeps.cache.sccache {
   SccacheServerTcpPort, SccacheServerUnixSocket, sccache_installed_binary_path,
   sccache_start_server_env_assignment, sccache_no_daemon_env_assignment,
   sccache_idle_timeout_never_env_assignment,
-  sccache_cache_dir_env_var, sccache_cache_size_env_var,
+  sccache_cache_dir_env_var, sccache_cache_size_env_var, sccache_server_uds_env_var,
 }
 
 data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
@@ -87,11 +87,14 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 // a sibling line, yielding a trailing BLANK line -- the write site concatenates rather than joins,
 // which is why the bytes hold.
 //
-// The receipt: gunbc.host.host_effect_realize build_cache_ensure_daemon_body was rendered on this tree
-// and on origin/main with one compiler, for the CI instance (absent capacity) and the session
-// instance (present capacity), and the two bodies are byte-identical -- with a control confirming
-// the two trees genuinely differ, because two runs that silently measure the same tree agree for a
-// reason that has nothing to do with the code. What DOES change is the line-view projection:
+// The receipt is reproducible: `build_cache_unit_text` is the one producer of these bytes, reached from the
+// effect through `build_cache_unit_bytes` in gunbc.host.build_cache_daemon_ensure, and `render_build_cache_unit`
+// is its line view. Pinned by dag/test/claim/build_cache_ensure.dag (the CI instance with capacity absent and the
+// session instance with capacity present -- the two shapes that differ in exactly one directive) and by
+// dag/test/claim/host/host_build_cache_provision_design_witness.dag on the ensure route. The byte-identity claim
+// itself was measured against the script body this series retires; that body is in git history under
+// gunbc.host.host_effect_realize, so the comparison can be re-run by rendering this module against it rather than
+// taken on faith. What DID change is only the line-view projection:
 // render_build_cache_unit and render_compile_pool_slice now carry a trailing empty element, the
 // faithful decomposition of a file that ends in a newline. That view reaches tests and
 // gunbc.compile_pool_ensure's admission, and reaches no host.
@@ -113,7 +116,7 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 fn sccache_endpoint_env_assignment(instance: BuildCacheInstance) -> NonEmptyStr {
   match instance.endpoint {
     SccacheServerUnixSocket { path: p } =>
-      concat("SCCACHE_SERVER_UDS=", p as String) as NonEmptyStr
+      concat(concat(sccache_server_uds_env_var as String, "="), p as String) as NonEmptyStr
     SccacheServerTcpPort { port: n } =>
       concat("SCCACHE_SERVER_PORT=", to_string(n)) as NonEmptyStr
   }
@@ -232,6 +235,16 @@ fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
   }
 }
 
+// THE UNIT'S DESTINATION, kept beside the unit's BODY (build_cache_unit_text) rather than in the effect
+// realizer that installs it: where the file goes and what it says are two readings of one artifact, and
+// the enable contract in this file's render points WantedBy at a location, so a second path spelling
+// elsewhere would be a second representation of the same fact. Moved out of
+// gunbc.host.host_effect_realize, where its only consumer was the bash ensure body retired by
+// gunbc.host.build_cache_daemon_ensure.
+fn build_cache_unit_system_path(instance: BuildCacheInstance) -> String {
+  concat("/etc/systemd/system/", instance.intended_unit as String)
+}
+
 fn build_cache_unit_text(instance: BuildCacheInstance) -> String {
   serialize_systemd_unit_file(file: build_cache_unit_file(instance: instance))
 }
@@ -270,7 +283,7 @@ fn render_build_cache_unit(instance: BuildCacheInstance) -> List<String> {
 // swap pointed them at this render. The wall built for the hand-written unit caught the generated
 // one on its first contact.
 
-// THE COMPILE-POOL SLICE, RENDERED FROM THE SAME AUTHORITY THAT SIZES IT. The slice's memory ceiling is not a number this module chooses: gunbc.fleet.fleet_host_budget derives it through compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, the same cited knob that bounds build concurrency, so the pool holds exactly the compiles the jobserver admits. Taking the size as a parameter here rather than computing one keeps that single authority intact — this module renders, it does not decide.
+// THE COMPILE-POOL SLICE, RENDERED FROM THE SAME AUTHORITY THAT SIZES IT. The slice's memory ceiling is not a number this module chooses: gunbc.fleet.fleet_host_budget derives it through compile_pool_bytes_for, which since the jobserver retirement (A2) refuses a declared slice rather than sizing one. Taking the size as a parameter here rather than computing one keeps that single authority intact — this module renders, it does not decide.
 //
 // memory.max and memory.high are both set from it. max is the hard ceiling that actually bounds the cgroup; high is a throttling watermark the kernel permits to be exceeded. gunbc.host.host_compile_pool's readiness check compares the OBSERVED memory.max against the derived size for the same reason, so the render and the check agree on which of the two is the bound.
 fn compile_pool_slice_unit_file(slice_unit: NonEmptyStr, sized: ByteSize) -> SystemdUnitFile {

@@ -28,10 +28,7 @@ type WorkspaceGatewayEvidence {
 }
 
 fn workspace_gateway_refusal(slot: RunnerSlotIdentity, evidence: WorkspaceGatewayEvidence, now: Timestamp) -> NonEmptyStr? {
-  if string_contains(s: evidence.known_host as String, pattern: "\n") || !(match render_network_host(host: evidence.subject.relay) {
-    Present { value: relay_name } => starts_with(s: evidence.known_host as String, prefix: concat(relay_name as String, " "))
-    Absent => false
-  }) { Present { value: "gateway public host-key row does not name the observed relay" } }
+  if string_contains(s: evidence.known_host as String, pattern: "\n") || !starts_with(s: evidence.known_host as String, prefix: concat(render_network_host(host: evidence.subject.relay) as String, " ")) { Present { value: "gateway public host-key row does not name the observed relay" } }
   else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: evidence.observed_at) {
     Present { value: "gateway forwarding observation has no canonical time" }
   } else if utc_instant_seconds_after(later: now, earlier: evidence.observed_at) < 0
@@ -52,8 +49,7 @@ fn workspace_gateway_refusal(slot: RunnerSlotIdentity, evidence: WorkspaceGatewa
         }
         if !principal_matches || observed_subject.direction != LocalForward || observed_subject.target.port != 22 {
           Present { value: "forwarding observation names another principal, direction, or target port" }
-        } else if !(match relay { Present { value: actual_relay } => actual_relay == expected_gateway.tailnet_name Absent => false })
-          || !(match target { Present { value: actual_target } => (actual_target as String) == expected_target Absent => false }) {
+        } else if relay != expected_gateway.tailnet_name || (target as String) != expected_target {
           Present { value: "forwarding observation names another relay or guest address" }
         } else { none }
       }

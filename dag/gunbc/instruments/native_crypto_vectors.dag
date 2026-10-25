@@ -1,8 +1,10 @@
 module gunbc.instruments.native_crypto_vectors
 
-import std.types { Int, List, String, Bool }
+import std.measure { nanosecond_count }
+import std.types { Int, List, String, Bool, bool_text }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
+import std.machine_word { machine_word_apply, machine_word_native_operate, OperatorAnd, OperatorOr, OperatorXor, OperatorNot, OperatorShiftRight, OperatorShiftLeft, OperatorRotateRight, OperatorAddWrapping, Width8, Width32 }
 import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub, bignat_add }
 import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.crypto.sha2 { sha256_hex, sha384 }
@@ -11,6 +13,7 @@ import extdeps.crypto.nist_p384 { p384_curve, p384_on_curve, p384_point_octets_o
 import extdeps.crypto.nist_prime_curve { jacobian_is_infinity, curve_affine, curve_double, curve_add, curve_negate, curve_jacobian_on_curve }
 import extdeps.apple.app_attest { attestation_parts, AttestationPartsOk, AttestationPartsRefused, app_attest_certificate, app_attest_root }
 import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets }
+import gunbc.instruments.native_crypto_cost { CostRow, native_crypto_cost_rows, native_crypto_cost_expected_identities }
 import extdeps.standards.fips_180 { Fips180DigestVector, fips180_sha256_vectors, fips180_sha384_vectors }
 import extdeps.standards.rfc_6979 {
   rfc6979_a25_p256_public_key, rfc6979_a25_message_sample, rfc6979_a25_message_test,
@@ -22,6 +25,7 @@ import extdeps.wycheproof.ecdsa_secp256r1_sha256_p1363 {
   wycheproof_p256_sha256_p1363_group1_public_key,
   wycheproof_p256_sha256_p1363_group1_cases,
 }
+import std.host_text { chars }
 
 // THE NATIVE CRYPTO INSTRUMENT'S PROGRAM: the emitted .dag verifiers executed over their published
 // vectors, as a NativeClaimDriver entry (std.compiler_entry). `gunbc test
@@ -184,9 +188,6 @@ fn apples_p384_keys_on_curve() -> Bool {
   }
 }
 
-fn bool_text(b: Bool) -> String {
-  if b { "true" } else { "false" }
-}
 
 fn curve_parameter_cases() -> List<NativeCryptoCase> {
   let g = curve_affine(c: p384_curve, x: p384_gx, y: p384_gy)
@@ -211,10 +212,43 @@ fn curve_parameter_cases() -> List<NativeCryptoCase> {
   ]
 }
 
+// ── std.machine_word: the EMIT-TIME LOWERING of a literal-operator call is checked by EXECUTION against
+// the label-keyed seam it replaces. Each machine_word_apply below names its operator and width as
+// constructor literals, so the emitted program runs the lowered row; machine_word_native_operate with
+// the label spelled out is the seam call, which no literal lowers. Same inputs, so a lowering that
+// picked the wrong row, width or refusal answers differently here (the FIPS vectors above check the
+// answers; this checks the route and the answer for every operator and a second width).
+fn machine_word_lowering_agrees() -> Bool {
+  let a = 3405691582
+  let b = 305419896
+  let n = 13
+  let c = 181
+  let d = 102
+  machine_word_apply(op: OperatorAnd, width: Width32, a: a, b: b) == machine_word_native_operate(op: "and", bits: 32, a: a, b: b)
+    && machine_word_apply(op: OperatorOr, width: Width32, a: a, b: b) == machine_word_native_operate(op: "or", bits: 32, a: a, b: b)
+    && machine_word_apply(op: OperatorXor, width: Width32, a: a, b: b) == machine_word_native_operate(op: "xor", bits: 32, a: a, b: b)
+    && machine_word_apply(op: OperatorNot, width: Width32, a: a, b: 0) == machine_word_native_operate(op: "not", bits: 32, a: a, b: 0)
+    && machine_word_apply(op: OperatorShiftRight, width: Width32, a: a, b: n) == machine_word_native_operate(op: "shift_right", bits: 32, a: a, b: n)
+    && machine_word_apply(op: OperatorShiftLeft, width: Width32, a: a, b: n) == machine_word_native_operate(op: "shift_left", bits: 32, a: a, b: n)
+    && machine_word_apply(op: OperatorRotateRight, width: Width32, a: a, b: n) == machine_word_native_operate(op: "rotate_right", bits: 32, a: a, b: n)
+    && machine_word_apply(op: OperatorAddWrapping, width: Width32, a: a, b: b) == machine_word_native_operate(op: "add_wrapping", bits: 32, a: a, b: b)
+    && machine_word_apply(op: OperatorRotateRight, width: Width8, a: c, b: 3) == machine_word_native_operate(op: "rotate_right", bits: 8, a: c, b: 3)
+    && machine_word_apply(op: OperatorAddWrapping, width: Width8, a: c, b: d) == machine_word_native_operate(op: "add_wrapping", bits: 8, a: c, b: d)
+    && machine_word_apply(op: OperatorNot, width: Width8, a: c, b: 0) == machine_word_native_operate(op: "not", bits: 8, a: c, b: 0)
+}
+
+fn machine_word_lowering_case() -> NativeCryptoCase {
+  NativeCryptoCase { identity: "machine_word_literal_lowering_agrees_with_the_seam", held: machine_word_lowering_agrees(), observed: bool_text(b: machine_word_lowering_agrees()) }
+}
+
+fn cost_case(r: CostRow) -> NativeCryptoCase {
+  NativeCryptoCase { identity: r.identity, held: r.held, observed: concat("nanos:", to_string(nanosecond_count(n: r.nanos))) }
+}
+
 fn native_crypto_cases() -> List<NativeCryptoCase> {
   concat(
     concat(fips180_sha256_vectors |> flat_map(v => sha256_cases(v: v)), fips180_sha384_vectors |> flat_map(v => sha384_cases(v: v))),
-    concat(concat(p256_cases(), order_n_cases()), curve_parameter_cases())
+    concat(concat(concat(concat(p256_cases(), order_n_cases()), curve_parameter_cases()), native_crypto_cost_rows() |> map(r => cost_case(r: r))), [machine_word_lowering_case()])
   )
 }
 
@@ -230,7 +264,7 @@ fn case_row(c: NativeCryptoCase) -> String {
 // Growing the program means adding the case AND its identity here; a case computed but not rostered
 // is an extra row, which refuses the same way. It is monotone by review: removing an identity is
 // retiring a check and is visible as a deleted line here.
-data native_crypto_expected_identities: List<String> = [
+data native_crypto_vector_identities: List<String> = [
   "sha256_empty",
   "sha256_empty_red_one_octet_appended",
   "sha256_abc",
@@ -262,12 +296,17 @@ data native_crypto_expected_identities: List<String> = [
   "p384_red_a_point_with_a_coordinate_at_p_is_not_admitted",
   "p384_doubling_and_adding_the_base_point_stay_on_the_curve",
   "p384_red_doubling_an_off_curve_point_stays_off_the_curve",
-  "p384_apples_ca_and_root_keys_are_on_the_curve"
+  "p384_apples_ca_and_root_keys_are_on_the_curve",
+  "machine_word_literal_lowering_agrees_with_the_seam"
 ]
+
+fn native_crypto_expected_identities() -> List<String> {
+  concat(native_crypto_vector_identities, native_crypto_cost_expected_identities)
+}
 
 fn native_claim_report() -> NativeClaimReport {
   let cases = native_crypto_cases()
-  let roster = concat("roster ", concat(native_crypto_expected_identities |> join(separator: ","), "\n"))
+  let roster = concat("roster ", concat(native_crypto_expected_identities() |> join(separator: ","), "\n"))
   let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
   let terminal = if (failed |> count) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", failed |> join(separator: ","))) }
   NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }

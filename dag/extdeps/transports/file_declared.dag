@@ -1,7 +1,7 @@
 module extdeps.transports.file_declared
 
 import std.types { String }
-import std.optional { Present }
+import std.optional { optional_absent, optional_present }
 
 // THE DECLARED VOCABULARY OF THE FILE TRANSPORT (XL-2 PR3a, moved here in PR3b-i): what an operation
 // AUTHORS for this transport -- its binding fields, the channels its `from "key"` names -- apart from
@@ -23,13 +23,13 @@ type FileOutputChannel
   | FileContent
 
 fn file_output_channel_of_key(key: String) -> FileOutputChannel? {
-  if key == "write_success" || key == "read_success" || key == "delete_success" || key == "list_success" || key == "success" { Present { value: FileSuccess } }
-  else if key == "bytes_written" || key == "bytes" || key == "byte_count" { Present { value: FileByteCount } }
-  else if key == "path" { Present { value: FilePath } }
-  else if key == "error" { Present { value: FileError } }
-  else if key == "error_kind" { Present { value: FileErrorKind } }
-  else if key == "content" || key == "entries" { Present { value: FileContent } }
-  else { none }
+  if key == "write_success" || key == "read_success" || key == "delete_success" || key == "list_success" || key == "success" { optional_present(value: FileSuccess) }
+  else if key == "bytes_written" || key == "bytes" || key == "byte_count" { optional_present(value: FileByteCount) }
+  else if key == "path" { optional_present(value: FilePath) }
+  else if key == "error" { optional_present(value: FileError) }
+  else if key == "error_kind" { optional_present(value: FileErrorKind) }
+  else if key == "content" || key == "entries" { optional_present(value: extdeps.transports.file_declared.FileContent) }
+  else { optional_absent() }
 }
 
 // THE FIELDS A `transport file { .. }` BLOCK DECLARES: the operation's declared request, not
@@ -39,9 +39,9 @@ type FileBindingField
   | FileBindingVerb
 
 fn file_binding_field_of_key(key: String) -> FileBindingField? {
-  if key == "path" { Present { value: FileBindingPath } }
-  else if key == "verb" { Present { value: FileBindingVerb } }
-  else { none }
+  if key == "path" { optional_present(value: FileBindingPath) }
+  else if key == "verb" { optional_present(value: FileBindingVerb) }
+  else { optional_absent() }
 }
 
 // WHAT THE AUTHOR WRITES AT EACH FIELD. path is Template<OperationInputName> (or a list of those);

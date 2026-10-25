@@ -64,6 +64,23 @@ fn http_client_get_unix_socket_argv(socket: NonEmptyStr, url: NonEmptyStr, max_t
   ]
 }
 
+// The argv for a bounded GET that must KNOW HOW the server failed (the GET_WITH_STATUS_BODY op), with the
+// one split authority's suffix: extdeps.tools.curl's curl_body_before_http_code /
+// classify_curl_http_code_after_newline read the LAST line as the status and everything before it as the body.
+fn http_client_get_with_status_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
+  [
+    "curl",
+    "-sS",
+    "--connect-timeout",
+    http_client_localhost_connect_timeout_flag(),
+    "--max-time",
+    http_client_max_time_flag(max_time: max_time) as String,
+    url as String,
+    "-w",
+    "\n%\{http_code\}",
+  ]
+}
+
 // THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one DESIGN
 // section 3 draws between an interface fact and a policy fact. How long a caller is willing to wait
 // for ITS backend is the caller's business; curl's ability to bound a request is ours. A number
@@ -232,6 +249,50 @@ service http.Client {
     }
   }
 
+  // A BOUNDED GET FOR A CALLER THAT MUST KNOW HOW THE SERVER FAILED, not only whether it answered.
+  // GetWithin carries -f, which makes curl exit 22 on any 4xx/5xx AND DISCARD THE BODY: over that op
+  // a crash-looping serve and an unreachable one arrive as the same transport failure. That collapse
+  // is the harm gunbc.recurring_failure_mode a_deploy_that_observes_its_own_service_cannot_repair_it
+  // names -- the only modeled route to repair a service required the service to be healthy, so a
+  // deploy over a sick service refused and recovery went out of band.
+  //
+  // THE DIFFERENCE THIS OP PRESERVES IS AN ANSWER VERSUS NO ANSWER, and it is preserved by curl's own
+  // exit, not by a guess: without -f curl exits 0 for ANY reply it received (200, 403, 503) and exits
+  // nonzero only when no reply was obtained (7 refused, 28 timed out, 6 unresolvable -- curl(1) EXIT
+  // CODES). The status is appended by `-w '\n%{http_code}'` -- the spelling extdeps.tools.curl
+  // classify_curl_http_code_after_newline and curl_body_before_http_code already own -- so the caller
+  // splits a real status from a real body with the one authority for that format, and a reply that
+  // identifies a release is still read as that release.
+  //
+  // THE CONNECT DEADLINE IS A DECLARED INPUT, spelled exactly as the module's nearest sibling spells
+  // it (GetQueryStdinWithin, which also writes the `-w "\n%{http_code}"` reply line): the op binds
+  // `{connect_seconds}` and the CALLER supplies it from the one authority,
+  // `http_client_localhost_connect_timeout_flag` (value `curl_localhost_connect_timeout` in
+  // extdeps.tools.curl). So the local op and the remote-shell builder
+  // `http_client_get_with_status_argv` are two bound transports of ONE shape -- the module's standing
+  // pattern, the peer pair being GetWithin / http_client_get_argv -- where the argv ROWS are spelled
+  // per transport but every VALUE in them resolves to one place. A probe's connect-deadline behaviour
+  // no longer depends on which route ran (review on #14194: the two copies differed; they do not now).
+  // An argv ELEMENT expression is not used here because std.operation_argv refuses to evaluate
+  // one (ArgvExpressionUnsupported, a pinned deficit) -- binding it as an input is the form that
+  // carries the same fact without growing that deficit.
+  operation GetWithinWithStatus {
+    requires Network
+    input { url: NonEmptyStr, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "{url}", "-w", "\n%\{http_code\}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "http client GET within a caller deadline obtained no response"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body or a status"
+    }
+  }
+
   operation GetWithinUnixSocket {
     requires Network
     input { socket: NonEmptyStr, url: NonEmptyStr, max_seconds: NonEmptyStr }
@@ -295,6 +356,34 @@ service http.Client {
     exit {
       0 => Unit
       nonzero => String "curl POST from stdin did not complete"
+    }
+    mock_response {
+      0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
+    }
+  }
+
+  // PostStdinWithinRetryingRefused IS PostStdinWithin FOR A SERVER THAT MAY STILL BE BINDING: curl itself retries a REFUSED
+// connection (--retry-connrefused, curl(1)) once a second (--retry-delay 1) until the caller's startup window closes
+// (--retry-max-time) or the retry count, which is that same window in seconds, is spent. The window is the caller's input,
+// derived from the server's own declared startup bound, never a literal here; no caller-side sleep, and a refusal past the
+// window is still exit 7 for the caller to classify. curl retries only transient transfer errors besides the refusal, so
+// an ANSWER (any HTTP status the server gives) is not retried by this flag set except the transient statuses curl(1) lists.
+  operation PostStdinWithinRetryingRefused {
+    requires Network
+    input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr, startup_seconds: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      body: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["curl", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--retry-connrefused", "--retry", "{startup_seconds}", "--retry-delay", "1", "--retry-max-time", "{startup_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
+      stdin: request_body
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl POST from stdin did not complete within the startup window"
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"

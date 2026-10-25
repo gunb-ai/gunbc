@@ -4,6 +4,7 @@ import std.measure { Second, second }
 import extdeps.bmc.http
 import std.scoped_authorization { ScopedAuthorization }
 import std.types { FilePath, Timestamp }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.workflow_escalation {
   workflow_destructive_step_refusal_reason
@@ -138,11 +139,6 @@ fn srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject
 // next actions: a plain failure can be retried, a residue failure means a file that may hold this
 // BMC's credential is still on disk and must be cleaned before any retry. No locator is carried at
 // all -- what crosses is the fact, not the path.
-//
-// THIS NOTE SITS HERE, ABOVE THE DECLARATION, BECAUSE THAT IS THE ONLY GRAIN 4C MODELS. It was
-// first written inside the match and the floor lane refused it, four lines at once -- the fourth
-// time this session I have put an annotation inside a declaration body. A match arm is a
-// declaration body; so is a service body. The rule has no in-body form to reach for.
 fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
 {
   let plan = srv3_onboarding_plan

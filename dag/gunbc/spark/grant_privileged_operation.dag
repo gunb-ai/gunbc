@@ -20,6 +20,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
+  SshTargetResolution,
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
+  ssh_target_refusal_text,
   portable_remote_words,
   portable_remote_words_strings,
 }
@@ -75,6 +80,7 @@ import gunbc.spark.managed_access_bootstrap {
   GrantProbeRefused,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import std.host_text { chars }
 
 // THE JOIN BETWEEN AUTHORIZATION AND EXECUTION, which is the one thing this vertical was missing.
 //
@@ -523,7 +529,7 @@ fn classify_credential_read(
     BootstrapCredentialNotMaterialized {
       cause: "the materialized credential file is empty, which is a failed materialization and never a blank password" as NonEmptyStr,
     }
-  } else if credential_carries_line_break(code_points: chars(s: content)) {
+  } else if credential_carries_line_break(code_points: chars(text: content)) {
     BootstrapCredentialNotMaterialized {
       cause: "the materialized credential carries a line break, and sudo -S reads only the first line of stdin as the password; this lane will not strip it, because the enrolled bytes are the credential and delivering a truncated one would authenticate as something other than what is enrolled" as NonEmptyStr,
     }
@@ -614,12 +620,13 @@ fn run_privileged_step(
                 stderr: "the admitted root argv is not portable under the far-side shell re-parse",
               }
             Present { value: words } =>
+              match spark_grant_install_target(host: effective_host, principal: effective_lease.subject.bootstrap_principal) {
+              SshTargetRefused { endpoint: e, refusal: why } =>
+                CredentialNotMaterialized { lease: effective_lease, cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+              SshTargetResolved { target: lease_target } =>
               match exec_as_fleet_principal_with_stdin(
                 context: context,
-                target: SshTarget {
-                  endpoint: fleet_probe_endpoint_for(host: effective_host as String) as NonEmptyStr,
-                  principal: effective_lease.subject.bootstrap_principal,
-                },
+                target: lease_target,
                 words: words,
                 stdin_payload: join([secret, "\n"], ""),
                 credential: BootstrapCredentialInRunEnvironment,
@@ -638,6 +645,7 @@ fn run_privileged_step(
                       stderr: result.stderr,
                     }
                   }
+              }
               }
           }
       }
@@ -862,18 +870,12 @@ fn spark_grant_install_plan_wire(plan: SparkGrantInstallPlan) -> String {
 // that assumed otherwise would fail with a password demand and no statement of who could have done
 // it instead. Naming the transport principal makes "who installs privilege" a modeled fact rather
 // than an assumption buried in a target constructor.
-fn spark_grant_install_transport(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-  principal: NonEmptyStr,
-) -> HostEffectTransport {
-  FleetSsh {
-    target: SshTarget {
-      endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-      principal: principal,
-    },
-    context: context,
-  }
+fn spark_grant_install_target(host: HostIdentity, principal: NonEmptyStr) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: principal)
+}
+
+fn spark_grant_install_transport(context: FleetSshExecutionContext, target: SshTarget) -> HostEffectTransport {
+  FleetSsh { target: target, context: context }
 }
 
 // AWAITING A CREDENTIAL IS NOT A FLOOR, and calling it one was the error this arm is named for. An
@@ -984,14 +986,21 @@ fn spark_grant_install_execute(
             outcome: SparkGrantInstallAwaitingOperatorCredential { host: host, grant: g, principal: principal },
             confirmed: none,
           }
-        CredentialMaterialized { ref: _ } => {
+        CredentialMaterialized { ref: _ } =>
+          match spark_grant_install_target(host: host, principal: principal) {
+          SshTargetRefused { endpoint: e, refusal: why } =>
+            SparkGrantInstallStep {
+              outcome: SparkGrantInstallNotAttempted { host: host, grant: g, cause: ssh_target_refusal_text(endpoint: e, refusal: why) as NonEmptyStr },
+              confirmed: none,
+            }
+          SshTargetResolved { target: install_target } => {
           let lease = spark_bootstrap_credential_lease(
             host: host,
             administrator: administrator,
             grant: g,
             attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
           )
-          let transport = spark_grant_install_transport(context: context, host: host, principal: principal)
+          let transport = spark_grant_install_transport(context: context, target: install_target)
           let cleanup_planned = cleanup_grant_staging_step(grant: g, cleanup: cleanup_step)
           let staged = run_remote_step_sequence(
             steps: [stage_grant_file_step(grant: g, stage: staged_step)],
@@ -1059,6 +1068,7 @@ fn spark_grant_install_execute(
             }
           }
         }
+          }
       }
   }
 }
@@ -1235,20 +1245,20 @@ fn spark_grant_probe_outcome(
   host: HostIdentity,
 ) -> SparkGrantOutcome
 {
-  match run_typed_argv_transport(
-    argv: ["sudo", "-n", "-l"],
-    transport: spark_grant_install_transport(
-      context: context,
-      host: host,
-      principal: spark_managed_executor_login as NonEmptyStr,
-    ),
-  ) {
-    TypedArgvExecRefused { reason: why } => GrantProbeRefused { cause: why }
-    TypedArgvExecConverged { result: r } =>
-      if r.success {
-        GrantEnumerated { listing: r.stdout }
-      } else {
-        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+  match spark_grant_install_target(host: host, principal: spark_managed_executor_login as NonEmptyStr) {
+    SshTargetRefused { endpoint: e, refusal: why } => GrantProbeRefused { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+    SshTargetResolved { target: target } =>
+      match run_typed_argv_transport(
+        argv: ["sudo", "-n", "-l"],
+        transport: spark_grant_install_transport(context: context, target: target),
+      ) {
+        TypedArgvExecRefused { reason: why } => GrantProbeRefused { cause: why }
+        TypedArgvExecConverged { result: r } =>
+          if r.success {
+            GrantEnumerated { listing: r.stdout }
+          } else {
+            GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+          }
       }
   }
 }

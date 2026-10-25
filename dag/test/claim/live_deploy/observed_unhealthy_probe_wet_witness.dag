@@ -1,0 +1,370 @@
+module test.claim.live_deploy.observed_unhealthy_probe_wet_witness
+
+// CLAIM 5 OF DEPLOY-UNHEALTHY-1 -- THE INHABITANCE. The dry claims
+// (test.claim.live_deploy.observed_unhealthy_deploy_witness) SUPPLY the probe reply at the fold's
+// interface, which is what makes the decision testable without a host. A supplied value proves the
+// DECISION; it does not prove the WORLD. This file supplies nothing: it starts a REAL listener that
+// answers 503 over loopback and probes it with BOTH bound transports of the one GET-with-status
+// operation -- the local route's declared operation (http.Client.GetWithinWithStatus) and, spawned
+// for real as curl, the argv the fleet route actually carries over ssh
+// (extdeps.http.client http_client_get_with_status_argv, the words typed_argv_exec_over_fleet_ssh
+// ships). Each route is inhabited by the transport that owns it (DESIGN 3: an inhabitance claim
+// asserts the ROUTE); a dry claim on the other side compares the FLAGS the two spell. Both show the
+// shape the dry claims supply is what the real probe yields -- curl exits 0 on a 503 (so the read is
+// ANSWERED) and the status line it appended splits into a real status and a real body. This is the
+// pair the model conflated on 2026-10-15: answering-sick and never-answering are different
+// observations, witnessed here against a socket on BOTH sides rather than asserted.
+//
+// WET, AND IT HAS TO BE. The operations it calls (extdeps.posix.process StartDetached/Reap,
+// posix.Signal.TerminateProcess, http.Client.GetWithinWithStatus) carry no mock_response that could
+// carry this: a replayed curl stdout IS the value the dry witness already supplies, so a hermetic
+// replay would make the inhabitation claim vacuous -- the same shape
+// gunbc.ci.ci_layer_roots excl_process_lifecycle_reason records for its own file. It is therefore
+// excluded from hermetic discovery as LocalRepoWetLane (excl_observed_unhealthy_probe_reason) and
+// enrolled per fn on the required floor's wet lane (v2.workflow.local_repo_wet_terminal).
+// Local recipe: claim_batch --wet --source-root dag --source-root src/v2
+// --entry dag/test/claim/live_deploy/observed_unhealthy_probe_wet_witness.dag
+//
+// IT FAILS LOUDLY, NOT VACUOUSLY. If `node` cannot start the listener, or the listener never answers
+// within the poll budget, the fold reads a refusal and the 503 claim is DID NOT HOLD -- the honest
+// reading of "this host did not exhibit the shape", never a pass by absence.
+
+import std.types { Bool, String, Int, NonEmptyStr, HttpStatus, http_status_of }
+import std.optional { Present, Absent }
+import std.algebra { list_head, list_tail }
+import extdeps.posix.process
+import extdeps.posix.signal
+import extdeps.http.client
+import extdeps.tools.sleep
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.instruments.emit_host_transport { node_http_serve_port_seed, node_http_await_reaped }
+import extdeps.http.client {
+  http_client_get_with_status_argv,
+  http_client_localhost_connect_timeout_flag,
+}
+import std.measure { second }
+import gunbc.roadmap.roadmap_site_surface_types {
+  HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused,
+}
+import gunbc.live_deploy.readiness { healthz_effective_read_from_status_get }
+
+// THE WITNESS'S OWN INPUT-DOMAIN STATEMENT (std.live_tree: the authority is this row, in the entry
+// file). ReadsLiveTree, not SubstrateInputsOnly, and honestly so: the evaluation runs the `node`
+// binary found on the host's PATH, which no resolved substrate closure contains, and it reads the
+// loopback stack. A SubstrateInputsOnly stamp here would claim the result depends on nothing outside
+// the closure -- which is exactly what this witness exists to test about the host.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SICK SERVE, as a model value (the bytes reach disk only through Filesystem.Write below, so no
+// file template crosses a boundary -- the same shape the process-lifecycle wet witness uses). One
+// line; braces are escaped (`\{`, `\}`) because inside a string literal an unescaped `{` begins
+// interpolation. It answers EVERY request with the status its environment names, so the status code
+// under test is set by the claim, not baked into the fixture.
+data unhealthy_listener_source: String = "const http=require('http');const server=http.createServer((req,res)=>\{res.writeHead(Number(process.env.UNHEALTHY_STATUS)||503,\{'content-type':'application/json'\});res.end(process.env.UNHEALTHY_BODY||'\{\"status\":\"starting\"\}');\});server.listen(Number(process.env.PORT),process.env.HOST||'127.0.0.1',()=>\{console.log('unhealthy witness listening');\});"
+
+// WHAT THE SICK SERVE ANSWERED IN THE INCIDENT: a reply that names no release. The body is what the
+// identity authority must fail to read a release from, so it is asserted rather than incidental.
+data incident_healthz_body: String = "{\"status\":\"starting\"}"
+
+// THE POLL, in the model rather than in a script: bounded attempts, each one a REAL bounded GET, and
+// the budget named at the call site. The first attempts may legitimately refuse while node binds the
+// port, so the race becomes an observation instead of a flake. An answered attempt carries curl's
+// whole stdout -- body plus the status line `-w` appended -- which is exactly the value the fold under
+// test consumes.
+type UnhealthyProbeAttempt {
+  answered: Bool
+  attempts_used: Int
+  body: String
+}
+
+fn unhealthy_probe_poll(url: NonEmptyStr, attempts_left: Int, attempts_used: Int) -> UnhealthyProbeAttempt {
+  if attempts_left <= 0 {
+    UnhealthyProbeAttempt { answered: false, attempts_used: attempts_used, body: "" }
+  } else {
+    // THE LOCAL ROUTE'S OWN WORDS: the declared operation, with the connect deadline supplied from the
+    // same authority the production probe leg uses (gunbc.live_deploy.readiness), so the witness probes
+    // with the argv that actually ships.
+    let probe = http.Client.GetWithinWithStatus(
+      url: url,
+      connect_seconds: http_client_localhost_connect_timeout_flag(),
+      max_seconds: "3"
+    )
+    if probe.success {
+      UnhealthyProbeAttempt { answered: true, attempts_used: attempts_used + 1, body: probe.body }
+    } else {
+      let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
+      unhealthy_probe_poll(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1)
+    }
+  }
+}
+
+// THE STATUS THE INCIDENT SHOWED, checked into the model's own range rather than trusted as a
+// literal: 503 Service Unavailable, in the server-error class the fold asks http_status_class_of
+// about. If the range rejected it the claim would fail here, not silently elsewhere.
+fn incident_status() -> HttpStatus? { http_status_of(n: 503) }
+
+// THE CLAIM. A real listener answering 503, probed by the real bounded GET, yields the shape the dry
+// claims supply -- success true (curl received a response, so curl exited 0), the body preserved, the
+// 503 present in what curl wrote -- and the fold reads that pair as HealthzAnsweredUnhealthy: not
+// HealthzBodyRead (no release is named) and not HealthzProbeRefused (an answer WAS received). The
+// listener is reaped and confirmed, and the witness's own tempdir is removed.
+test fn the_real_probe_answers_a_503_as_answered_unhealthy() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let witnessed = match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let listener_js = Filesystem.Write(
+        path: concat(dir.path, "/unhealthy.js"),
+        content: unhealthy_listener_source
+      )
+      let spawn = posix.Process.StartDetached(
+        program: "env" as NonEmptyStr,
+        arguments: [
+          "-C",
+          dir.path,
+          "HOST=127.0.0.1",
+          concat("PORT=", to_string(port)),
+          "UNHEALTHY_STATUS=503",
+          concat("UNHEALTHY_BODY=", incident_healthz_body),
+          "node",
+          concat(dir.path, "/unhealthy.js"),
+        ],
+        stdout_file: concat(dir.path, "/unhealthy.stdout.log") as NonEmptyStr,
+        stderr_file: concat(dir.path, "/unhealthy.stderr.log") as NonEmptyStr
+      )
+      match spawn.spawn {
+        Spawned { pid: pid } => {
+          let attempt = unhealthy_probe_poll(
+            url: concat("http://127.0.0.1:", to_string(port), "/healthz") as NonEmptyStr,
+            attempts_left: 12,
+            attempts_used: 0
+          )
+          let read = healthz_effective_read_from_status_get(
+            success: attempt.answered,
+            stdout: attempt.body,
+            error: if attempt.answered { "" } else { "the listener never answered within the poll budget" }
+          )
+          let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+          let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
+          let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+          listener_js.success
+            && cleanup.success
+            && kill.success
+            && (match reaped {
+              Absent => false
+              Present { value: outcome } =>
+                match outcome {
+                  Signaled { signal: signal } => signal == 15
+                  StillRunning => false
+                  Exited { code: _ } => false
+                  ReapRefused { cause: _ } => false
+                }
+            })
+            && attempt.answered
+            && string_contains(s: attempt.body, pattern: incident_healthz_body)
+            && (match read {
+              HealthzAnsweredUnhealthy { status, detail } =>
+                match incident_status() {
+                  Present { value: expected } =>
+                    status == expected
+                      && string_contains(s: detail, pattern: "server error")
+                      && string_contains(s: detail, pattern: "starting")
+                  Absent => false
+                }
+              HealthzBodyRead { body: _ } => false
+              HealthzProbeRefused { probe_error: _ } => false
+            })
+        }
+        SpawnRefused { program: _, cause: _ } => false
+      }
+    }
+  }
+  let _ensure_dir_gone = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// THE SSH ROUTE'S OWN WORDS, RUN FOR REAL. The review on #14194 caught that this file claimed to
+// inhabit "the curl argv behind http_client_get_with_status_argv" while only ever calling the LOCAL
+// operation -- so the argv the fleet route actually runs was never put against a socket, and the
+// header asserted an inhabitance it did not perform (DESIGN 4b rung honesty; 3's "every supplied
+// boundary owes ONE INHABITANCE CLAIM that the real producer emits that shape, asserting the ROUTE").
+// It now performs it: the argv `http_client_get_with_status_argv` BUILDS -- the exact words
+// typed_argv_exec_over_fleet_ssh would carry over ssh -- is spawned as a real curl against the real
+// 503 listener, its stdout read back from the file curl wrote, and fed to the same fold. So BOTH bound
+// transports of the one probe operation are inhabited, each by the route that owns it, and the dry
+// equivalence claim (test.claim.live_deploy.observed_unhealthy_deploy_witness
+// the_two_bound_transports_of_the_probe_agree_on_every_flag) is what makes the two agree on the FLAGS.
+test fn the_ssh_route_argv_answers_a_503_as_answered_unhealthy_too() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let witnessed = match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let listener_js = Filesystem.Write(
+        path: concat(dir.path, "/unhealthy.js"),
+        content: unhealthy_listener_source
+      )
+      let spawn_listener = posix.Process.StartDetached(
+        program: "env" as NonEmptyStr,
+        arguments: [
+          "-C",
+          dir.path,
+          "HOST=127.0.0.1",
+          concat("PORT=", to_string(port)),
+          "UNHEALTHY_STATUS=503",
+          concat("UNHEALTHY_BODY=", incident_healthz_body),
+          "node",
+          concat(dir.path, "/unhealthy.js"),
+        ],
+        stdout_file: concat(dir.path, "/unhealthy.stdout.log") as NonEmptyStr,
+        stderr_file: concat(dir.path, "/unhealthy.stderr.log") as NonEmptyStr
+      )
+      match spawn_listener.spawn {
+        Spawned { pid: listener_pid } => {
+          let url = concat("http://127.0.0.1:", to_string(port), "/healthz") as NonEmptyStr
+          // Wait for the listener with the LOCAL transport first, then send the SSH route's words
+          // exactly once: the two probes are then over the same socket, and a difference between them
+          // can only be the argv, which is what is under test.
+          let warm = unhealthy_probe_poll(url: url, attempts_left: 12, attempts_used: 0)
+          let ssh_argv = http_client_get_with_status_argv(
+            url: url,
+            max_time: second(count: 30)
+          )
+          // concat gives a String; the spawn ops want the NonEmpty form, Filesystem.Read wants the
+          // plain one -- the same file name, no second spelling.
+          let probe_out = concat(dir.path, "/curl-ssh-route.stdout")
+          let probe_err = concat(dir.path, "/curl-ssh-route.stderr")
+          // THE BUILDER'S OWN argv, SPAWNED. No fallback spawn: an argv with no head is the builder
+          // producing nothing, which this claim must FAIL on rather than paper over with a bare curl.
+          let ran = match list_head(xs: ssh_argv) {
+            Present { value: program } =>
+              match list_tail(xs: ssh_argv) {
+                Present { value: words } =>
+                  Present {
+                    value: posix.Process.StartDetached(
+                      program: program as NonEmptyStr,
+                      arguments: words,
+                      stdout_file: probe_out as NonEmptyStr,
+                      stderr_file: probe_err as NonEmptyStr
+                    )
+                  }
+                Absent => Absent
+              }
+            Absent => Absent
+          }
+          let curl_pid = match ran {
+            Present { value: outcome } =>
+              match outcome.spawn {
+                Spawned { pid: pid } => Present { value: pid }
+                SpawnRefused { program: _, cause: _ } => Absent
+              }
+            Absent => Absent
+          }
+          let reaped = match curl_pid {
+            Present { value: pid } => node_http_await_reaped(pid: pid, attempts_left: 20)
+            Absent => Absent
+          }
+          let wrote = Filesystem.Read(path: probe_out as String)
+          let killed = posix.Signal.TerminateProcess(pid: to_string(listener_pid) as NonEmptyStr)
+          let listener_reaped = node_http_await_reaped(pid: listener_pid, attempts_left: 20)
+          let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+          let curl_gone = match reaped {
+            Present { value: outcome } =>
+              match outcome {
+                Exited { code: _ } => true
+                Signaled { signal: _ } => true
+                StillRunning => false
+                ReapRefused { cause: _ } => false
+              }
+            Absent => false
+          }
+          // CURL'S OWN EXIT BIT, not "it finished". The whole answered-vs-silent distinction rests on
+          // curl's exit status, so the value fed to the fold is the one the SSH route gets from
+          // typed_argv_exec (`success` = exit 0), derived here from the reaped code. A nonzero exit is
+          // passed through as false, and the fold must then refuse -- which is why a curl that failed to
+          // connect cannot make this claim pass.
+          let curl_answered = match reaped {
+            Present { value: Exited { code: code } } => code == 0
+            Present { value: _ } => false
+            Absent => false
+          }
+          let listener_gone = match listener_reaped {
+            Present { value: outcome } =>
+              match outcome {
+                Signaled { signal: signal } => signal == 15
+                StillRunning => false
+                Exited { code: _ } => false
+                ReapRefused { cause: _ } => false
+              }
+            Absent => false
+          }
+          // THE FOLD OVER THE SSH ROUTE'S OWN OUTPUT. curl wrote body + status line; the fold must
+          // read it as answered-unhealthy exactly as it reads the local transport's reply.
+          let read = healthz_effective_read_from_status_get(
+            success: curl_answered,
+            stdout: if wrote.success { wrote.content } else { "" },
+            error: if curl_answered { "" } else { "the ssh-route curl obtained no response" }
+          )
+          listener_js.success
+            && cleanup.success
+            && killed.success
+            && warm.answered
+            && curl_gone
+            && listener_gone
+            && wrote.success
+            && string_contains(s: wrote.content, pattern: incident_healthz_body)
+            && (match read {
+              HealthzAnsweredUnhealthy { status, detail } =>
+                match incident_status() {
+                  Present { value: expected } =>
+                    status == expected
+                      && string_contains(s: detail, pattern: "server error")
+                      && string_contains(s: detail, pattern: "starting")
+                  Absent => false
+                }
+              HealthzBodyRead { body: _ } => false
+              HealthzProbeRefused { probe_error: _ } => false
+            })
+        }
+        SpawnRefused { program: _, cause: _ } => false
+      }
+    }
+  }
+  let _ensure_dir_gone = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// THE CONTROL ON THE SAME PORT: with NO listener at all, the same real op obtains no response -- curl
+// exits nonzero, having written nothing to be read as a status -- and the fold keeps refusing. The
+// distinction between answering-sick and never-answering is carried by the transport's own answer on
+// a real socket, not by parsing text: this is the arm whose loss would have made an unreachable host
+// plan a replacement, which is the opposite of the defect.
+test fn the_real_probe_still_refuses_when_nothing_listens() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let witnessed = match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let attempt = unhealthy_probe_poll(
+        url: concat("http://127.0.0.1:", to_string(port), "/healthz") as NonEmptyStr,
+        attempts_left: 3,
+        attempts_used: 0
+      )
+      let read = healthz_effective_read_from_status_get(
+        success: attempt.answered,
+        stdout: attempt.body,
+        error: if attempt.answered { "" } else { "curl obtained no response" }
+      )
+      let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+      cleanup.success
+        && !attempt.answered
+        && (match read {
+          HealthzProbeRefused { probe_error } => string_contains(s: probe_error, pattern: "obtained no response")
+          HealthzAnsweredUnhealthy { status: _, detail: _ } => false
+          HealthzBodyRead { body: _ } => false
+        })
+    }
+  }
+  let _ensure_dir_gone = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}

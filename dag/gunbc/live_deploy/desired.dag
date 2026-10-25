@@ -10,7 +10,6 @@ import std.keyed_roster {
   KeyedRosterBuilt,
   KeyedRosterBuildDuplicateKey,
 }
-import extdeps.tailscale.serve { ScopedRemovalUnobserved }
 import gunbc.fleet.fleet_intent { srv2_host }
 import gunbc.fleet.fleet_intent_network {
   srv2_tailscale_endpoint,
@@ -32,8 +31,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
+  dispatch_base_branch,
 }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.deployment_risk { ProdRoleSelection }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -45,10 +45,15 @@ import gunbc.live_deploy.spec {
   srv1_live_deployment_names,
   derived_deployment_names,
   srv1_lab_deployment_names,
-  ubuntu_noble_os_package_manager,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
+}
+import gunbc.live_deploy.lab_host_plan { lab_deploy_plan_for_compute_host }
+import gunbc.host.host_software_surface {
+  host_software_surface_for_identity,
+  host_os_package_manager_optional,
+  host_tailscale_client,
 }
 
 // SELECTION, NOT CONVERGENCE. This roster names the desired realizations a live_deploy
@@ -59,11 +64,16 @@ import gunbc.live_deploy.spec {
 // selected_identity IS THE SELECTION RECEIPT FIELD (std.decision SelectionReceipt), carried
 // on the row it admits against. Convergence does not re-derive which declaration was
 // selected. The LiveDeploy FleetConvergeRequest arm binds admission to this field.
+// admitted_branch is a fact of the row. NonEmptyStr makes an undeclared branch unwritable;
+// there is no class default and no empty-string stand-in.
+data production_admitted_branch: NonEmptyStr = "main"
+
 type DesiredDeployment {
   instance: HostDashboardInstance
   target: DeploymentHostTarget
   names: DeploymentNames
   selected_identity: DeclarationRef
+  admitted_branch: NonEmptyStr
 }
 
 fn desired_module_path() -> String {
@@ -98,9 +108,12 @@ fn srv1_production_desired_deployment() -> DesiredDeployment {
     target: deployment_srv1_target(),
     names: srv1_live_deployment_names(instance: instance),
     selected_identity: srv1_production_selected_identity(),
+    admitted_branch: production_admitted_branch,
   }
 }
 
+// THE LAB ADMITS ITS OWN INTEGRATION BRANCH, read from the instance rather than restated. The lab
+// publishes into that branch and deploys builds of it, so the branch is one fact of the instance.
 fn srv1_lab_desired_deployment() -> DesiredDeployment {
   let instance = srv1_lab_dashboard_instance()
   DesiredDeployment {
@@ -108,19 +121,20 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     target: deployment_srv1_target(),
     names: srv1_lab_deployment_names(instance: instance),
     selected_identity: srv1_lab_selected_identity(),
+    admitted_branch: dispatch_base_branch(instance: instance),
   }
 }
 
 fn deployment_srv2_target() -> DeploymentHostTarget {
+  let surface = host_software_surface_for_identity(identity: srv2_host.identity)
   DeploymentHostTarget {
     host: srv2_host,
     ssh_host: operator_host_srv2 as NonEmptyStr,
     tailscale_endpoint: srv2_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: ubuntu_noble_os_package_manager(),
-    tailscale_client: ScopedRemovalUnobserved {
-      reason: "srv2 tailscale Serve scoped-removal capability has not been observed",
-    },
+    lab_plan: lab_deploy_plan_for_compute_host(host: srv2_host),
+    os_package_manager: host_os_package_manager_optional(surface: surface),
+    tailscale_client: host_tailscale_client(surface: surface),
     host_directories: [],
   }
 }
@@ -136,6 +150,7 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
     target: deployment_srv2_target(),
     names: derived_deployment_names(instance: instance),
     selected_identity: srv2_deploy_selected_identity(),
+    admitted_branch: production_admitted_branch,
   }
 }
 
@@ -426,7 +441,7 @@ data apply_script_only_path_discrimination_unproven_dissolution: DissolutionCond
 )
 
 data apply_script_only_path_discrimination_unproven: FrontierRow = frontier_row_path(
-  path: "gunbc.live_deploy.emit.live_deploy_apply_script_for",
-  reason: "paths that appear in the apply script but not in the serve unit are unproven at the floor; every path the unit names is already discriminated there",
+  path: "gunbc.live_deploy.apply_legs.deploy_apply_plan_legs",
+  reason: "paths that appear in the apply plan's legs but not in the serve unit are unproven at the floor; every path the unit names is already discriminated there",
   dissolution: apply_script_only_path_discrimination_unproven_dissolution,
 )

@@ -1,5 +1,6 @@
 module gunbc.instruments.fabric_control_plane_live_probe
 
+import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
 import product.fabric.provider_route {
   CompliancePostureRevision, ProviderRouteFacts, ProviderDataPathClosure,
   ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
@@ -123,7 +124,7 @@ import gunbc.fabric.fabric_cell_converge {
   fabric_cell_observation_refusal_identity,
 }
 import gunbc.fabric.fabric_witness_run {
-  RequiredBuildWorkBinding, RequiredBuildWorkBound, RequiredBuildWorkRefused, RequiredBuildCoordinateMissing,
+  FabricCiWorkBinding, FabricCiWorkBound, FabricCiWorkRefused, FabricCiCoordinateMissing,
   ExactGitSource, GitCommitTreeVerified, GitCommitTreeMismatch,
   required_witnesses_build_work, verify_git_commit_tree,
 }
@@ -352,7 +353,6 @@ fn cp_probe_demand() -> Demand<NonEmptyStr> {
 // required_witnesses_build_work; it is never transcribed into this probe.
 data fci1_work_source_commit: NonEmptyStr = "e9eaa579ed0b6585a48965842b43ee09af5671a1"
 data fci1_work_source_tree: NonEmptyStr = "c8983a3d8412a5e37a309b2d90ceafc698856619"
-data fci1_installed_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
 data fci1_projected_sudoers_path: NonEmptyStr = "provisioning/srv3/gunbc-ghrunner.sudoers"
 
 fn fci1_root_owner() -> PosixOwnerSpec {
@@ -374,7 +374,7 @@ fn fci1_assert_host_preconditions() -> ProcessExit {
   let cell_root = fabric_cell_root_path(slot: slot) as NonEmptyStr
   let attempts = fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr
   let mode = fci1_directory_mode_unobserved(path: cell_root, desired_mode: "0755")
-  match sha256sum_file_digest_via_shell(path: fci1_installed_sudoers_path) {
+  match sha256sum_file_digest_via_shell(path: runner_host_sudoers_install_path) {
     Sha256FileDigestUnavailable { path: _, reason: _ } => exit_failure(reason: "FCI-1 sudoers readback unavailable")
     Sha256FileDigest { digest: observed_digest } =>
       match sha256sum_file_digest_via_shell(path: fci1_projected_sudoers_path) {
@@ -409,22 +409,22 @@ fn fci1_assert_host_preconditions() -> ProcessExit {
   }
 }
 
-fn fci1_required_build_work() -> RequiredBuildWorkBinding {
+fn fci1_required_build_work() -> FabricCiWorkBinding {
   match git_sha1_object_id(hex: fci1_work_source_commit) {
-    Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-commit" } }
+    Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "source-commit" } }
     Present { value: commit } => match git_sha1_object_id(hex: fci1_work_source_tree) {
-      Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-tree" } }
+      Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "source-tree" } }
       Present { value: tree } => {
         let repo = git.Inspect.Toplevel()
         let observed = git.Core.CommitTreeInRepo(repository_path: repo.path as String, commit: fci1_work_source_commit as GitRef)
         if observed.exit_code != 0 {
-          RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+          FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "observed-commit-tree" } }
         } else {
           match git_sha1_object_id(hex: trim(s: observed.tree)) {
-            Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+            Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "observed-commit-tree" } }
             Present { value: observed_tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: observed_tree) {
               GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } =>
-                RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "commit-tree-verification" } }
+                FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "commit-tree-verification" } }
               GitCommitTreeVerified { subject } => required_witnesses_build_work(source: ExactGitSource { subject: subject })
             }
           }
@@ -437,8 +437,8 @@ fn fci1_required_build_work() -> RequiredBuildWorkBinding {
 // The frozen FCI-0 handoff is an assertion over the producer's result, never an input replacing it.
 fn fci1_assert_frozen_work_key() -> ProcessExit {
   match fci1_required_build_work() {
-    RequiredBuildWorkRefused { cause: _ } => exit_failure(reason: "FCI-0 Work producer refused")
-    RequiredBuildWorkBound { work: work } =>
+    FabricCiWorkRefused { cause: _ } => exit_failure(reason: "FCI-0 Work producer refused")
+    FabricCiWorkBound { work: work } =>
       if work.id.key == "ab8f7e2ca026301b" { ExitSuccess }
       else { exit_failure(reason: join(["FCI-0 frozen WorkKey changed; observed=", work.id.key as String], "")) }
   }
@@ -450,8 +450,8 @@ type Fci1DemandBinding
 
 fn fci1_probe_demand() -> Fci1DemandBinding {
   match fci1_required_build_work() {
-    RequiredBuildWorkRefused { cause: _ } => Fci1DemandRefused
-    RequiredBuildWorkBound { work: work, source_tree_digest: _, environment_materialization_digest: _ } =>
+    FabricCiWorkRefused { cause: _ } => Fci1DemandRefused
+    FabricCiWorkBound { work: work, source_tree_digest: _, environment_materialization_digest: _ } =>
       Fci1DemandBound { demand: floor_demand(
         id: cp_probe_demand_id(key: "demand-floor-1"),
         work: work.id,

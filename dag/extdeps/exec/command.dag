@@ -2,9 +2,16 @@ module extdeps.exec.command
 import std.optional { Absent, Optional, Present }
 
 
-import extdeps.exec.program { ProgramIdentity, cataloged_program }
+import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_program }
 
 import std.types { NonEmptyStr, String, List }
+import std.algebra { Cons, Empty }
+import std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  OperationInputBinding,
+  operation_argv_cause_label,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -85,10 +92,20 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command_in"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "operation_row_argv_command"),
+    decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_fork_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_bounded_get_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_command"),
+    decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_stats_query_command"),
+    decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_stdin_then_exec_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_receipt_object_command"),
+    decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_sandbox_preflight_command"),
+    decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_key_probe_command"),
+    decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_environment_authenticated_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_create_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_start_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_stop_command"),
@@ -110,6 +127,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_logs_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_list_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_reproducible_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_list_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_two_lists_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_list_sizes_command"),
@@ -121,6 +139,11 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.kopia", decl_name: "kopia_snapshot_create_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_files_sha256_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owner_executable_files_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_metadata_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_regular_files_sha256_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_children_named_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_untrusted_entries_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_other_children_exec_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_file_size_mtime_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mv_exact_destination_command"),
@@ -150,14 +173,28 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.linux.ethtool_ioctl", decl_name: "linux_ethtool_channels_command"),
     decl_ref(module_path: "extdeps.tools.make", decl_name: "make_command"),
     decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_command_of"),
-    decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_install_pinned_command"),
-    decl_ref(module_path: "extdeps.package_managers.conda_forge", decl_name: "micromamba_create_command"),
+    decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_module_install_command"),
+    decl_ref(module_path: "extdeps.package_managers.micromamba", decl_name: "micromamba_create_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
+    decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_extract_bbl_profiles_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_run_program_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_import_probe_command"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
+    decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_get_install_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_clippy_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_build_release_bin_offline_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_vendor_command_from"),
+    decl_ref(module_path: "extdeps.rust.standalone_installer", decl_name: "rust_standalone_install_command"),
+    decl_ref(module_path: "extdeps.rust.rustc", decl_name: "rustc_version_command"),
+    decl_ref(module_path: "extdeps.gnupg.gpgv", decl_name: "gpgv_verify_cleartext_command"),
+    decl_ref(module_path: "extdeps.tools.xz", decl_name: "xz_decompress_keep_command"),
+    decl_ref(module_path: "extdeps.glibc.ldconfig", decl_name: "ldconfig_root_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_preserve_if_absent_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_hash_object_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_run_release_manifest_offline_command"),
+    decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_control_fields_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_version_command"),
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_command"),
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_tree_command"),
@@ -170,6 +207,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "dd_overwrite_path_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_create_only_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_create_only_with_mode_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_hard_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_numeric_command"),
@@ -178,6 +216,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_one_file_system_command"),
     decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_command"),
+    decl_ref(module_path: "extdeps.tools.util_linux_findmnt", decl_name: "findmnt_fstype_for_path_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_symbolic_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "timeout_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_command"),
@@ -186,10 +225,17 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "pwd_command"),
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_passwd_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
+    decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),
+    decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_versions_add_stdin_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "tee_append_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_almost_all_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_regroup_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_group_writable_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_mode_readback_command"),
+
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
@@ -225,15 +271,20 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_regular_file_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_exists_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_symbolic_link_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_writable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_directory_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_names_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_name_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_gid_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_version_command"),
     decl_ref(module_path: "extdeps.virtualization.qemu", decl_name: "qemu_version_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_run_config_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_jailer_run_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_public_key_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_generate_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_fingerprint_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_known_hosts_find_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keyscan_command"),
@@ -242,10 +293,27 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_upload_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_enable_now_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_absolute_git_dir_premise_argv"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_shared_repository_group_config_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_gc_auto_disabled_config_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_maintenance_auto_disabled_config_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_repack_quiet_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_pack_refs_all_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_local_config_get_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_branch_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_show_ref_verify_quiet_command"),
+
     decl_ref(module_path: "extdeps.git", decl_name: "git_clone_shallow_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_shallow_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_rev_parse_head_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_init_quiet_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_rev_parse_tree_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_archive_tar_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_show_file_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_add_all_force_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_commit_snapshot_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_diff_tree_equal_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_status_porcelain_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_apply_check_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_apply_reverse_check_command"),
@@ -258,7 +326,11 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.crypto.hash", decl_name: "sha256sum_file_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_as_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_list_command_as"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_version_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_command"),
+    decl_ref(module_path: "extdeps.sudo.visudo", decl_name: "visudo_check_command"),
+    decl_ref(module_path: "extdeps.sudo.visudo", decl_name: "visudo_policy_check_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mtime_epoch_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_ctime_epoch_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_birth_epoch_command"),
@@ -271,13 +343,17 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
     decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
+    decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_off_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_default_report_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_is_socket_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_inode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_dereferenced_inode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_uid_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_size_bytes_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_empty_file_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command_at"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_exact_command_at"),
@@ -285,10 +361,68 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_argument_command"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),
   ]
   = ArgvCommand { program: program, arguments: arguments }
+
+// AN OPERATION ROW, MATERIALIZED INTO A SEALED COMMAND -- the ONE repartition. A service declares an
+// operation with `transport shell { argv: [...] }` in ITS OWN extdeps module (that row is the single
+// authority for the words); the argv transports here take a sealed ArgvCommand -- a ProgramIdentity
+// beside its operand tail. Turning materialized row argv into that carrier is ONE concept, so it is
+// modeled once, here, beside the wall whose single mint it passes through (DESIGN §2: model a concept
+// once and derive every use; a per-tool copy of this match would re-mint the concept per row, and the
+// next row that needs it would make a third copy).
+//
+// THE HEAD IS THE PROGRAM, NOT A CHECKED LITERAL: the row's executable token becomes the sealed
+// command's ProgramIdentity directly, so a row that changes which binary it names changes every
+// command built from it -- a literal program word checked beside the row would be a second authority
+// for "which program runs" and would refuse on drift instead of following the row. WHAT IS refused is
+// what cannot be a command at all: an argv that materialized nothing, an empty executable token, and
+// any materialization refusal from the kernel -- each a typed Refused naming its cause, so a caller
+// that cannot tell refuses before its leg runs rather than execing a plausible-looking command
+// (DESIGN §5: every path succeeds fully or fails with a typed, located diagnostic; refuse, never
+// widen). Callers keep their own row coordinates and their own domain-flavoured refusal type by
+// naming this one's cause; none may re-spell the words.
+type OperationRowArgvCommand
+  = OperationRowArgvCommandReady { command: ArgvCommand }
+  | OperationRowArgvCommandRefused { cause: String }
+
+fn operation_row_argv_command(
+  path: String,
+  service: String,
+  operation: String,
+  binds: List<OperationInputBinding>,
+) -> OperationRowArgvCommand {
+  match shell_materialize_operation_argv(path, service, operation, binds) {
+    ArgvMaterialized { argv: materialized } =>
+      match materialized {
+        Cons { head: head, tail: tail } =>
+          if head == "" {
+            OperationRowArgvCommandRefused {
+              cause: concat("operation row ", service, " ", operation, " materialized an empty token in its executable position"),
+            }
+          } else {
+            OperationRowArgvCommandReady {
+              command: argv_command(
+                program: uncataloged_program(invocation: head as NonEmptyStr),
+                arguments: tail,
+              ),
+            }
+          }
+        Empty =>
+          OperationRowArgvCommandRefused {
+            cause: concat("operation row ", service, " ", operation, " materialized an empty argv"),
+          }
+      }
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      OperationRowArgvCommandRefused {
+        cause: concat("operation row ", service, " ", operation, " refused materialization: ", operation_argv_cause_label(cause: c)),
+      }
+  }
+}
 
 // The words a process would receive, program first. Renderers and transports that need one flat
 // vector derive it here rather than each re-deciding that argv[0] is the program.

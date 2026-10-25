@@ -148,11 +148,6 @@ fn external_consumers() -> List<BoundaryConsumer> {
       justification: "ssh target addressing for the locus",
     ),
     endpoint_consumer(
-      module_path: "gunbc.spark.grant_privileged_operation",
-      decl_name: "classify_credential_read",
-      justification: "credential read transport endpoint",
-    ),
-    endpoint_consumer(
       module_path: "gunbc.spark.managed_access_apply",
       decl_name: "privileged_leg",
       justification: "privileged leg transport endpoint",
@@ -164,8 +159,43 @@ fn external_consumers() -> List<BoundaryConsumer> {
     ),
     endpoint_consumer(
       module_path: "gunbc.spark.grant_privileged_operation",
-      decl_name: "spark_grant_install_transport",
-      justification: "grant install transport endpoint",
+      decl_name: "spark_grant_install_target",
+      justification: "the one fleet_probe_endpoint_for call in the grant module; the install transport, the grant probe and the privileged lease leg all take the target it resolves (the census's earlier classify_credential_read and spark_grant_install_transport rows named declarations that no longer reach X)",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.auth.approval_keyring_converge",
+      decl_name: "keyring_ssh_target",
+      justification: "keyring install target",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.runner.runner_microvm_network_apply",
+      decl_name: "runner_microvm_administrator_target",
+      justification: "microvm network administrator target, apply and observe",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.runner.runner_host_file_converge",
+      decl_name: "administrator_ssh_target",
+      justification: "runner host file and credential custody administrator target",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.runner.runner_password_session_tool_converge",
+      decl_name: "password_session_tool_subject",
+      justification: "password session tool subject target",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.runner.runner_browser_toolchain",
+      decl_name: "browser_toolchain_admin_target",
+      justification: "browser toolchain administrator target",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.fleet.site_pxe_edge_converge",
+      decl_name: "site_pxe_edge_subject",
+      justification: "site PXE edge subject target",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.spark.fabric_reach",
+      decl_name: "spark_reach_endpoint",
+      justification: "management-LAN arm of the Spark reach endpoint",
     ),
     endpoint_consumer(
       module_path: "gunbc.spark.serving_converge_slice_wet",

@@ -23,7 +23,7 @@ import v2.std.symbol_index { empty_symbol_index }
 import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.runtime { RuntimeValue }
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual, RuntimeValue }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List }
@@ -108,9 +108,9 @@ fn lel_eval_call_bool(inferred: InferredTree, name: Symbol) -> Optional<Bool> {
       match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: v, diagnostics: _ } =>
-          if v == v2_eval_bool_runtime_value(is_true: true) {
+          if (runtime_value_equality(a: v, b: v2_eval_bool_runtime_value(is_true: true)) == RuntimeValuesEqual) {
             optional_present(value: true)
-          } else if v == v2_eval_bool_runtime_value(is_true: false) {
+          } else if (runtime_value_equality(a: v, b: v2_eval_bool_runtime_value(is_true: false)) == RuntimeValuesEqual) {
             optional_present(value: false)
           } else {
             optional_absent()
@@ -166,7 +166,7 @@ fn lel_int_type() -> Node {
 }
 
 fn lel_elaborates(literal: Node, expected: Node) -> Bool {
-  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index()) {
+  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     InferLiteralElaboratesTo { destination_type: _ } => true
     InferLiteralNotElaborated => false
     InferLiteralElaborationRefused { cause: _ } => false
@@ -174,7 +174,7 @@ fn lel_elaborates(literal: Node, expected: Node) -> Bool {
 }
 
 fn lel_not_elaborated(literal: Node, expected: Node) -> Bool {
-  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index()) {
+  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     InferLiteralElaboratesTo { destination_type: _ } => false
     InferLiteralNotElaborated => true
     InferLiteralElaborationRefused { cause: _ } => false
@@ -201,7 +201,7 @@ test fn lel_literal_at_a_type_without_a_row_is_not_elaborated() -> Bool {
 // RANGE's reason so a later parse change (a signed literal token) cannot make it silent and so the refusal is the
 // grounding row's, not a check of infer's own. Before #13320 it was admitted at Nat.
 test fn lel_negative_literal_at_nat_refuses() -> Bool {
-  match infer_literal_elaborates_at(literal_node: lower_unary_prefix(operator: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_minus } }, children: []), operand: lel_literal(lexeme: "1")), expected: lel_nat_type(), declarations: empty_symbol_index()) {
+  match infer_literal_elaborates_at(literal_node: lower_unary_prefix(operator: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_minus } }, children: []), operand: lel_literal(lexeme: "1")), expected: lel_nat_type(), declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     InferLiteralElaborationRefused { cause: c } => c == ^infer_reason_literal_outside_kernel_grounding_range
     InferLiteralElaboratesTo { destination_type: _ } => false
     InferLiteralNotElaborated => false

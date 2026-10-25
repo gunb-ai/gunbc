@@ -2,12 +2,33 @@ module test.claim.live_deploy.apply
 
 import gunbc.live_deploy.apply {
   live_deploy_apply_readiness_gate_with_readiness,
+  live_deploy_digest_readback_effect,
   LiveDeployAppliedSubject,
 }
 import gunbc.roadmap.roadmap_static_site {
-  roadmap_site_digest_readback_script,
-  roadmap_site_dispatch_url_path,
+  roadmap_site_dispatch_json_artifact,
+  roadmap_site_dispatch_json_body,
+  roadmap_site_dispatch_json_body_over,
 }
+import gunbc.roadmap.roadmap_site_surface_observe { render_roadmap_site_surface_bundle_for_projection }
+import gunbc.roadmap.roadmap_site_surface_render { site_artifact_digest, roadmap_site_dispatch_url_path }
+import gunbc.roadmap.roadmap_authority {
+  RoadmapAuthorityProjection,
+  RoadmapAuthorityProjectionRefused,
+  roadmap_authority_projection_with,
+  roadmap_acceptance_event_history_load,
+}
+import gunbc.roadmap.roadmap_task_store { roadmap_task_minted }
+import test.claim.roadmap.roadmap_task_record_witness { sample_task }
+import gunbc.host.host_effect_realize {
+  live_deploy_digest_readback_verdict,
+  live_deploy_digest_readback_argv,
+  host_effect_apply,
+}
+import extdeps.http.client { http_client_localhost_connect_timeout_flag, http_client_max_time_flag }
+import extdeps.tools.curl { curl_localhost_max_time }
+import std.content_hash { content_hash_atom }
+import std.materialization_ladder { string_list_contains }
 import gunbc.live_deploy.spec { deployment_plan_listen_port }
 import gunbc.live_deploy.readiness {
   ServiceReadiness,
@@ -26,7 +47,18 @@ import gunbc.live_deploy.service_ready {
 import gunbc.host.host_effect {
   HostEffectEvidence,
   ShellEffectApplied,
+  ConvergePlanApplied,
+  ToolchainHomeInterferenceDiscriminated,
+  BootstrapFragment,
+  ThinInvocation,
+  HostEffectIntent,
+  LocalShell,
+  HostOs,
+  LiveDeployDigestReadback,
+  host_effect_identity_evidence,
 }
+import gunbc.fleet.fleet_intent { srv1_host }
+import std.algebra { string_contains }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import std.content_hash { Fnv1a64Structural }
@@ -75,6 +107,7 @@ fn fixture_converged_mutation() -> Reconciliation<LiveDeployAppliedSubject, Host
       candidate: CandidateRelease {
         revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha,
         expected_surface_identity: Fnv1a64Structural { digest: "0123456789abcdef" as NonEmptyStr },
+        expected_dispatch_digest: Fnv1a64Structural { digest: "0123456789abcdef" as NonEmptyStr },
       },
     },
   }
@@ -126,13 +159,242 @@ test fn witness_red_control_pending_readiness_cannot_converge() -> Bool {
   )
 }
 
-test fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {
-  let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
-  let script = roadmap_site_digest_readback_script(port: port)
-  string_contains(s: script, pattern: roadmap_site_dispatch_url_path)
-    && string_contains(s: script, pattern: "digest mismatch")
-    && string_contains(s: script, pattern: "roadmap-site-readback")
-    && string_contains(s: script, pattern: "--connect-timeout")
-    && string_contains(s: script, pattern: "--max-time")
-    && !string_contains(s: script, pattern: "healthz json parse failed")
+// THE DIGEST READ-BACK PROBE, as a TYPED READ (the site's retained bash script dissolved;
+// delete-first with its builder). The boundary legs are asserted here with each boundary value
+// SUPPLIED (§3 witness rule), and the old script's bounded-get pins survive as typed argv words.
+// Every refusal string is the dissolved script's own, verbatim.
+fn digest_readback_boundary_port() -> Int {
+  deployment_plan_listen_port(spec: deployment_spec_srv1())
+}
+
+fn digest_readback_boundary_intent() -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: srv1_host },
+    effect: LiveDeployDigestReadback { port: digest_readback_boundary_port(), expected_digest: roadmap_site_dispatch_json_artifact().digest },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+    privilege_denial: none,
+  }
+}
+
+fn digest_readback_url() -> String {
+  concat(
+    concat("http://127.0.0.1:", to_string(digest_readback_boundary_port())),
+    roadmap_site_dispatch_url_path as String,
+  )
+}
+
+// (1) curl failed — the hermetic http GET mock's shape (success:false, body:"") supplied as the
+// boundary: the read did not happen, so the observation must refuse on the curl leg.
+test fn witness_digest_readback_curl_failure_refuses_verbatim() -> Bool {
+  match live_deploy_digest_readback_verdict(
+    intent: digest_readback_boundary_intent(),
+    url: digest_readback_url(),
+    success: false,
+    body: "",
+    expected: roadmap_site_dispatch_json_artifact().digest,
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "roadmap-site-readback: curl failed url=")
+        && string_contains(s: r, pattern: roadmap_site_dispatch_url_path as String)
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// (2) digest mismatch — supplied boundaries: the empty body (a mock stdout; its FNV-1a-64 is the
+// offset basis, never the dispatch digest) and a wrong-but-non-empty body both refuse on the
+// DIGEST leg, never silently converging.
+test fn witness_digest_readback_digest_mismatch_refuses() -> Bool {
+  let url = digest_readback_url()
+  let empty_leg = match live_deploy_digest_readback_verdict(
+    intent: digest_readback_boundary_intent(),
+    url: url,
+    success: true,
+    body: "",
+    expected: roadmap_site_dispatch_json_artifact().digest,
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "roadmap-site-readback: digest mismatch url=")
+    Converged { evidence: _, applied: _ } => false
+  }
+  let wrong_leg = match live_deploy_digest_readback_verdict(
+    intent: digest_readback_boundary_intent(),
+    url: url,
+    success: true,
+    body: "{\"not\": \"the dispatch artifact\"}",
+    expected: roadmap_site_dispatch_json_artifact().digest,
+  ) {
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "digest mismatch")
+    Converged { evidence: _, applied: _ } => false
+  }
+  empty_leg && wrong_leg
+}
+
+// (2b) the positive boundary: the ACTUAL dispatch body against its ACTUAL digest converges, and
+// the read-back bytes ARE the evidence — more faithful than the old script's static receipt echo.
+test fn witness_digest_readback_dispatch_body_converges_with_readback_bytes() -> Bool {
+  let body = roadmap_site_dispatch_json_body()
+  match live_deploy_digest_readback_verdict(
+    intent: digest_readback_boundary_intent(),
+    url: digest_readback_url(),
+    success: true,
+    body: body,
+    expected: roadmap_site_dispatch_json_artifact().digest,
+  ) {
+    Converged { evidence: ShellEffectApplied { exit_code: code, stdout: out, stderr: err }, applied: _ } =>
+      code == 0 && out == body && err == ""
+    // the readback's own evidence is the shell's applied receipt; the other two HostEffectEvidence
+    // shapes (a 3-variant sum) are the exhaustive fallthrough for the specific pattern above.
+    Converged { evidence: ConvergePlanApplied { exit_code: _, stdout: _ }, applied: _ } => false
+    Converged { evidence: ToolchainHomeInterferenceDiscriminated, applied: _ } => false
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+// (3) dispatch json parse failed — the supplied boundary no digest check can reach: a body that is
+// not JSON, checked against ITS OWN digest (digest leg passes; only the parse leg can fire). This
+// is why the expected digest is a parameter rather than re-derived inside.
+test fn witness_digest_readback_unparseable_body_fails_parse_leg() -> Bool {
+  let body = "not json at all"
+  match live_deploy_digest_readback_verdict(
+    intent: digest_readback_boundary_intent(),
+    url: digest_readback_url(),
+    success: true,
+    body: body,
+    expected: content_hash_atom(value: body as NonEmptyStr),
+  ) {
+    NotConverged { reason: r, applied: _ } => r == "roadmap-site-readback: dispatch json parse failed"
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// The bounded-get pins the old script carried (--connect-timeout, --max-time 5, the dispatch url)
+// survive as TYPED ARGV WORDS — no shell, no quoting, the url a parameter, the bounds kernel ops.
+test fn witness_digest_readback_argv_is_bounded_typed_words() -> Bool {
+  let argv = live_deploy_digest_readback_argv(port: digest_readback_boundary_port())
+  string_list_contains(xs: argv, wanted: "curl")
+    && string_list_contains(xs: argv, wanted: "-fsS")
+    && string_list_contains(xs: argv, wanted: "--connect-timeout")
+    && string_list_contains(xs: argv, wanted: "--max-time")
+    && string_list_contains(xs: argv, wanted: http_client_localhost_connect_timeout_flag())
+    && string_list_contains(xs: argv, wanted: http_client_max_time_flag(max_time: curl_localhost_max_time) as String)
+    && string_list_contains(xs: argv, wanted: digest_readback_url())
+}
+
+// Inhabitance on the REAL ROUTE (§3): host_effect_apply(LiveDeployDigestReadback, LocalShell)
+// reaches the typed read and, under the hermetic GET mock ({success:false, body:""}), refuses on
+// the curl leg — an observation never silently Converges when the read did not happen.
+test fn witness_digest_readback_local_route_typed_curl_failure() -> Bool {
+  match host_effect_apply(
+    target: HostOs { node: srv1_host },
+    effect: LiveDeployDigestReadback { port: digest_readback_boundary_port(), expected_digest: roadmap_site_dispatch_json_artifact().digest },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "roadmap-site-readback: curl failed url=")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// RED (discriminating): EmitArtifactThenThinRun has no thin argv against an observation and keeps
+// its refusal — now in the per-effect template's TYPED words, no longer the shell carrier's. It
+// must NOT read as a retained-shell refusal (that marker died with the script).
+test fn witness_digest_readback_emit_transport_refuses_typed_not_shell() -> Bool {
+  match host_effect_apply(
+    target: HostOs { node: srv1_host },
+    effect: LiveDeployDigestReadback { port: digest_readback_boundary_port(), expected_digest: roadmap_site_dispatch_json_artifact().digest },
+    evidence: host_effect_identity_evidence,
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "" },
+      invocation: ThinInvocation { argv: [] },
+    },
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "typed mismatch")
+        && string_contains(s: r, pattern: "LiveDeployDigestReadback")
+        && !string_contains(s: r, pattern: "retained shell")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+fn supplied_refused_projection() -> RoadmapAuthorityProjection {
+  RoadmapAuthorityProjectionRefused {
+    detail: "runtime task roster is unreadable; the plan is refused rather than shown without its runtime tasks",
+  }
+}
+
+fn fixture_candidate_with_dispatch_digest(digest: Fnv1a64Structural) -> CandidateRelease {
+  CandidateRelease {
+    revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha,
+    expected_surface_identity: Fnv1a64Structural { digest: "0123456789abcdef" as NonEmptyStr },
+    expected_dispatch_digest: digest,
+  }
+}
+
+// THE ROUTE'S BODY CONVERGES AGAINST THE CANDIDATE'S DIGEST through the typed readback verdict, so the
+// expectation is judged where the route answers, not by reading a script's text.
+fn readback_expected_matches_route(proj: RoadmapAuthorityProjection) -> Bool {
+  let bundle = render_roadmap_site_surface_bundle_for_projection(proj: proj)
+  let route_body = roadmap_site_dispatch_json_body_over(plan: proj)
+  let route_digest = site_artifact_digest(body: route_body)
+  bundle.dispatch_json.digest == route_digest
+    && match live_deploy_digest_readback_verdict(
+      intent: digest_readback_boundary_intent(),
+      url: digest_readback_url(),
+      success: true,
+      body: route_body,
+      expected: bundle.dispatch_json.digest,
+    ) {
+      Converged { evidence: _, applied: _ } => true
+      NotConverged { reason: _, applied: _ } => false
+    }
+}
+
+test fn witness_nonempty_runtime_roster_readback_expected_digest_equals_route() -> Bool {
+  let task = roadmap_task_minted(operation_key: "readback-nonempty-roster" as NonEmptyStr, draft: sample_task())
+  let proj = roadmap_authority_projection_with(history: roadmap_acceptance_event_history_load(), runtime: [task])
+  readback_expected_matches_route(proj: proj)
+    && render_roadmap_site_surface_bundle_for_projection(proj: proj).dispatch_json.digest
+      != roadmap_site_dispatch_json_artifact().digest
+}
+
+test fn witness_refused_projection_readback_expected_digest_equals_route() -> Bool {
+  let proj = supplied_refused_projection()
+  readback_expected_matches_route(proj: proj)
+    && render_roadmap_site_surface_bundle_for_projection(proj: proj).dispatch_json.digest
+      != roadmap_site_dispatch_json_artifact().digest
+}
+
+test fn witness_empty_runtime_roster_readback_expected_digest_equals_static_and_route() -> Bool {
+  let proj = roadmap_authority_projection_with(history: roadmap_acceptance_event_history_load(), runtime: [])
+  let bundle = render_roadmap_site_surface_bundle_for_projection(proj: proj)
+  let route_digest = site_artifact_digest(body: roadmap_site_dispatch_json_body_over(plan: proj))
+  let static_digest = roadmap_site_dispatch_json_artifact().digest
+  readback_expected_matches_route(proj: proj)
+    && bundle.dispatch_json.digest == static_digest
+    && route_digest == static_digest
+}
+
+test fn witness_readback_expected_digest_comes_from_the_candidate() -> Bool {
+  let expected = Fnv1a64Structural { digest: "cafebabedeadbeef" as NonEmptyStr }
+  let candidate = fixture_candidate_with_dispatch_digest(digest: expected)
+  let effect = live_deploy_digest_readback_effect(spec: deployment_spec_srv1(), candidate: candidate)
+  match effect {
+    LiveDeployDigestReadback { port: _, expected_digest: d } =>
+      d == expected
+        && d == candidate.expected_dispatch_digest
+        // the static artifact's body no longer satisfies a candidate-specific expectation
+        && match live_deploy_digest_readback_verdict(
+          intent: digest_readback_boundary_intent(),
+          url: digest_readback_url(),
+          success: true,
+          body: roadmap_site_dispatch_json_body(),
+          expected: d,
+        ) {
+          NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "digest mismatch")
+          Converged { evidence: _, applied: _ } => false
+        }
+    other => false
+  }
 }

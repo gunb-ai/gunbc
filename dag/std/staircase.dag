@@ -2,7 +2,7 @@ module std.staircase
 
 import std.types { List, String, NonEmptyStr }
 import std.list { first_duplicate_by_key }
-import v2.std.collection { list_at_optional }
+import std.algebra { list_at_optional }
 
 // A STAIRCASE IS AN ORDERED PLAN OF LEVELS, READ ONE LEVEL AT A TIME, THAT STOPS AT THE FIRST LEVEL A
 // CALLER'S RULE REFUSES. It is the shape shared by every capacity search that raises a population

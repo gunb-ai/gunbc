@@ -1,7 +1,10 @@
 module gunbc.instruments.native_emission_controls
 
-import std.types { Bool, Int, List, NonEmptyStr, Set, String }
+import std.types { Bool, Int, List, Map, NonEmptyStr, Set, String }
 import std.algebra { length }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import gunbc.instruments.native_emission_controls_alias { ControlWords, control_words_of }
 import std.list { duplicated_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }
@@ -597,6 +600,33 @@ fn control_collected_count(o: ControlOutcome<List<String>, String>) -> Int {
   }
 }
 
+// RULE: a fold seeded with a bare variant of a declaration that its result type instantiates takes the
+// result type as its accumulator (v1.compiler.infer inhabited_join_types), keyed by the declaration
+// the arms resolve to. Seeded with `Absent`, the accumulator used to type as the kernel Optional
+// declaration with its payload arm as the argument, `Option<Present<_>>`, which is no Rust type: the
+// closure stops compiling. The corpus coproduct is the same shape through `Node.declaration`.
+fn control_first_over(xs: List<Int>, floor: Int) -> Int? {
+  fold(xs, init: Absent, f: (st, x) => match st {
+    Present { value: v } => Present { value: v }
+    Absent => if x > floor { Present { value: x } } else { Absent }
+  })
+}
+
+fn control_first_over_or(xs: List<Int>, floor: Int) -> Int {
+  match control_first_over(xs: xs, floor: floor) {
+    Present { value: v } => v
+    Absent => 0 - 1
+  }
+}
+
+fn bare_variant_fold_init_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "bare_init_fold_keeps_the_first_match", held: control_first_over_or(xs: [1, 5, 9], floor: 2) == 5 },
+    NativeEmissionCase { identity: "bare_init_fold_red_is_not_the_last_match", held: control_first_over_or(xs: [1, 5, 9], floor: 2) != 9 },
+    NativeEmissionCase { identity: "bare_init_fold_without_a_match_stays_absent", held: control_first_over_or(xs: [1, 2], floor: 2) == 0 - 1 }
+  ]
+}
+
 fn variant_literal_application_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "variant_literal_application_collects_every_element", held: control_collected_count(o: control_collect_nonempty(xs: ["a", "b", "c"])) == 3 },
@@ -717,11 +747,117 @@ data native_emission_expected_identities: List<String> = [
   "optional_type_param_holds_absent",
   "optional_type_param_red_present_is_not_absent",
   "optional_type_param_holds_present_value",
-  "optional_type_param_red_absent_reads_no_value"
+  "optional_type_param_red_absent_reads_no_value",
+  "nested_variant_match_reads_the_innermost_payload",
+  "nested_variant_match_red_other_kinds_are_not_the_payload",
+  "nested_variant_match_red_sibling_variant_selects_its_own_arm",
+  "nested_variant_match_red_outer_rejection_selects_its_own_arm",
+  "alias_empty_map_seed_in_match_arm_indexes_each_name",
+  "alias_empty_map_seed_in_match_arm_nothing_is_empty",
+  "alias_empty_map_seed_cross_module_indexes_each_name",
+  "alias_empty_map_seed_indexes_each_name",
+  "alias_empty_map_seed_empty_input_yields_empty_map",
+  "alias_empty_map_seed_typed_control_agrees",
+  "bare_init_fold_keeps_the_first_match",
+  "bare_init_fold_red_is_not_the_last_match",
+  "bare_init_fold_without_a_match_stays_absent"
 ]
 
+// RULE: a match whose only coverage of an outer variant is nested two levels deep is emitted
+// exhaustively, not with every arm guarded (gunbc.recurring_failure_mode
+// an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded). The shape is
+// v2.compiler.resolve type_parameter_binding_value_reading before it was split: Accepted over
+// BoundInFrame over a kind variant, beside its enumerated sibling kinds, a unit variant and a Rejected arm.
+// Guarded arms are invisible to rustc's exhaustiveness check, so the match used to refuse E0004 and
+// this program did not compile -- the red is the label's.
+type ControlFrameKind
+  = ControlTypeFrame { width: Int }
+  | ControlLexicalFrame { width: Int }
+  | ControlParameterFrame { width: Int }
+
+type ControlScopeBinding
+  = ControlInFrame { canonical: String, kind: ControlFrameKind }
+  | ControlAtRoot { canonical: String }
+  | ControlScopeUnbound
+
+type ControlLookup
+  = ControlFound { value: ControlScopeBinding }
+  | ControlMissing { reason: String }
+
+fn control_nested_reading(l: ControlLookup) -> Int {
+  match l {
+    ControlFound { value: ControlInFrame { canonical: _, kind: ControlTypeFrame { width: w } } } => w
+    ControlFound { value: ControlInFrame { canonical: _, kind: ControlLexicalFrame { width: _ } } } => 0 - 1
+    ControlFound { value: ControlInFrame { canonical: _, kind: ControlParameterFrame { width: _ } } } => 0 - 5
+    ControlFound { value: ControlAtRoot { canonical: _ } } => 0 - 2
+    ControlFound { value: ControlScopeUnbound } => 0 - 3
+    ControlMissing { reason: _ } => 0 - 4
+  }
+}
+
+fn nested_variant_match_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "nested_variant_match_reads_the_innermost_payload", held: control_nested_reading(l: ControlFound { value: ControlInFrame { canonical: "a", kind: ControlTypeFrame { width: 7 } } }) == 7 },
+    NativeEmissionCase { identity: "nested_variant_match_red_other_kinds_are_not_the_payload", held: control_nested_reading(l: ControlFound { value: ControlInFrame { canonical: "a", kind: ControlLexicalFrame { width: 7 } } }) == 0 - 1 && control_nested_reading(l: ControlFound { value: ControlInFrame { canonical: "a", kind: ControlParameterFrame { width: 7 } } }) == 0 - 5 },
+    NativeEmissionCase { identity: "nested_variant_match_red_sibling_variant_selects_its_own_arm", held: control_nested_reading(l: ControlFound { value: ControlAtRoot { canonical: "a" } }) == 0 - 2 && control_nested_reading(l: ControlFound { value: ControlScopeUnbound }) == 0 - 3 },
+    NativeEmissionCase { identity: "nested_variant_match_red_outer_rejection_selects_its_own_arm", held: control_nested_reading(l: ControlMissing { reason: "r" }) == 0 - 4 }
+  ]
+}
+
+// RULE: an untyped empty-map fold seed is emitted with its inferred application, never the bare head
+// of an alias (gunbc.recurring_failure_mode an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head).
+// GUARD, not a proven discriminator: the RFM row records E0107 from pre-merge #14084 heads; these programs emit
+// and compile on main and were not run against those heads, so whether they red when the defect returns is unmeasured.
+// The map's value type is an alias of a generic (QualifiedName = FreeMonoid<Symbol>) and the seed carries no annotation.
+// control_word_index_typed is the typed-let form of the same fold.
+fn control_word_index(names: List<Symbol>) -> Map<Symbol, QualifiedName> {
+  let p = qualified_name_from_dotted_string(dotted: "a.b")
+  fold(names, init: empty_map(), f: fn(acc, name) {
+    map_insert(acc, name, qualified_name_snoc(qn: p, segment: name))
+  })
+}
+
+fn control_word_index_typed(names: List<Symbol>) -> Map<Symbol, QualifiedName> {
+  let p = qualified_name_from_dotted_string(dotted: "a.b")
+  let seed: Map<Symbol, QualifiedName> = empty_map()
+  fold(names, init: seed, f: fn(acc, name) {
+    map_insert(acc, name, qualified_name_snoc(qn: p, segment: name))
+  })
+}
+
+fn control_word_index_cross_module(names: List<String>) -> Map<String, ControlWords> {
+  fold(names, init: empty_map(), f: fn(acc, name) {
+    map_insert(acc, name, control_words_of(name: name))
+  })
+}
+
+type ControlDeclaring = ControlDeclaringAt { path: QualifiedName } | ControlDeclaringNothing
+
+// The shape resolve.dag type_param_value_binders had: the untyped seed sits in a match arm over a payload-bound
+// alias value, beside arms that return a bare empty_map().
+fn control_declared_index(declaring: ControlDeclaring, names: List<Symbol>) -> Map<Symbol, QualifiedName> {
+  match declaring {
+    ControlDeclaringAt { path: path } =>
+      fold(names, init: empty_map(), f: fn(acc, name) {
+        map_insert(acc, name, qualified_name_snoc(qn: path, segment: name))
+      })
+    ControlDeclaringNothing => empty_map()
+  }
+}
+
+fn alias_empty_map_seed_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "alias_empty_map_seed_in_match_arm_indexes_each_name", held: map_keys(control_declared_index(declaring: ControlDeclaringAt { path: qualified_name_from_dotted_string(dotted: "a.b") }, names: [symbol_intern_lexeme(lexeme: "a"), symbol_intern_lexeme(lexeme: "b")])) |> count == 2 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_in_match_arm_nothing_is_empty", held: map_keys(control_declared_index(declaring: ControlDeclaringNothing, names: [symbol_intern_lexeme(lexeme: "a")])) |> count == 0 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_cross_module_indexes_each_name", held: map_keys(control_word_index_cross_module(names: ["a", "b"])) |> count == 2 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_indexes_each_name", held: map_keys(control_word_index(names: [symbol_intern_lexeme(lexeme: "a"), symbol_intern_lexeme(lexeme: "b")])) |> count == 2 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_empty_input_yields_empty_map", held: map_keys(control_word_index(names: [])) |> count == 0 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_typed_control_agrees", held: map_keys(control_word_index_typed(names: [symbol_intern_lexeme(lexeme: "a"), symbol_intern_lexeme(lexeme: "b")])) |> count == 2 }
+  ]
+}
+
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases())
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), bare_variant_fold_init_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

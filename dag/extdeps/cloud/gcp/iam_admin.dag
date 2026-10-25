@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.iam_admin
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, WifPoolWire, WifProviderWire, WifProviderListWire }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, WifPoolWire, WifProviderWire, WifProviderListWire, GcpOperation, GoogleRpcStatus }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpPermissionProbeWire }
 import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
 import extdeps.ietf.http_semantics { GET, POST }
@@ -43,10 +43,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //
 // CreateWorkloadIdentityPool caps display_name at 32 CHARACTERS: a longer one answers 400
 // INVALID_ARGUMENT, "The WorkloadIdentityPool's display name must be less than or equal to 32
-// characters." Nothing here enforces it -- NonEmptyStr carries no length -- so consumers hold the
-// bound with a claim over their own declared name. That gap is rostered as
-// gunbc.recurring_failure_mode upstream_input_constraint_held_only_by_prose, whose ceiling is a
-// length-refined carrier on this input, after which an over-long literal has no constructor.
+// characters." The cap is workload_identity_pool_display_name_max_characters, and NonEmptyStr still
+// carries no length, so the compiler admits an over-long literal; a consumer that creates pools
+// refuses its own creation population through workload_identity_pool_display_name_admitted before it
+// reads a token (gunbc.auth.heal_publisher_provision dedicated_federation_input_refusals). That
+// gap is rostered as gunbc.recurring_failure_mode upstream_input_constraint_held_only_by_prose, whose
+// ceiling is a length-refined carrier on this input, after which an over-long literal has no constructor.
+//
+// A WORKLOAD IDENTITY POOL ID AND A PROVIDER ID SHARE ONE SYNTAX: 4 to 32 characters drawn from
+// [a-z0-9-], and the prefix gcp- is reserved by Google and may not be specified
+// (cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools create and
+// .providers create, workloadIdentityPoolId / workloadIdentityPoolProviderId). The provider half was
+// observed 2026-10-15: 400 INVALID_ARGUMENT, "valid characters being lowercase [a-z], digits [0-9],
+// and dashes [-]. The WorkloadIdentityPoolProvider ID length must be between 4 and 32 characters."
+// It is held by workload_identity_resource_id_admitted, read by the same refusal fold for both ids.
 //
 // BOTH POLICY OPERATIONS declare bindings and version OPTIONAL because an empty policy omits them:
 // an account created seconds earlier answers 200 with an etag alone. Declaring them required made
@@ -75,6 +85,35 @@ type GcpCustomRoleWire {
 // Only presence is consumed: pool policies with audit configuration are refused
 // by this bootstrap rather than reconstructed without their logging settings.
 type GcpPoolAuditConfigWire { service: String? }
+
+data workload_identity_pool_display_name_max_characters: Int = 32
+
+fn workload_identity_pool_display_name_admitted(name: NonEmptyStr) -> Bool {
+  string_length(s: name as String) <= workload_identity_pool_display_name_max_characters
+}
+
+data workload_identity_resource_id_min_characters: Int = 4
+
+data workload_identity_resource_id_max_characters: Int = 32
+
+data workload_identity_resource_id_reserved_prefix: String = "gcp-"
+
+fn workload_identity_resource_id_code_point_admitted(cp: Int) -> Bool {
+  (cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp == 45
+}
+
+fn workload_identity_resource_id_code_points_from(id: String, index: Int) -> Bool {
+  if index >= string_length(s: id) { true }
+  else if !workload_identity_resource_id_code_point_admitted(cp: code_point(substring(s: id, start: index, end: index + 1))) { false }
+  else { workload_identity_resource_id_code_points_from(id: id, index: index + 1) }
+}
+
+fn workload_identity_resource_id_admitted(id: NonEmptyStr) -> Bool {
+  string_length(s: id as String) >= workload_identity_resource_id_min_characters
+    && string_length(s: id as String) <= workload_identity_resource_id_max_characters
+    && workload_identity_resource_id_code_points_from(id: id as String, index: 0)
+    && !starts_with(s: id as String, prefix: workload_identity_resource_id_reserved_prefix)
+}
 
 type GcpPoolPolicyWire {
   audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs"
@@ -295,7 +334,7 @@ service gcp.IamAdmin {
       pool_id: NonEmptyStr
       display_name: NonEmptyStr
     }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
 
     idempotent
     transport rest {
@@ -325,7 +364,7 @@ service gcp.IamAdmin {
       attribute_mapping: Map<String, String>
       attribute_condition: NonEmptyStr
     }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
 
     idempotent
     transport rest {
@@ -379,6 +418,48 @@ service gcp.IamAdmin {
     }
     response {
       200 => WifProviderListWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  // THE OPERATIONS A CREATE ANSWERS WITH ARE READ HERE, one get per resource kind, each path hole one
+  // SEGMENT (cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools.operations/get
+  // and .providers.operations/get). project_id receives the project NUMBER the create's operation name
+  // carries, parsed out of that name (gcp wif_operation_name_parse).
+  operation GetWorkloadIdentityPoolOperation {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, operation_id: NonEmptyStr }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}/operations/\{operation_id\}"
+    }
+    response {
+      200 => GcpOperation
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetWorkloadIdentityPoolProviderOperation {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, provider_id: NonEmptyStr, operation_id: NonEmptyStr }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}/providers/\{provider_id\}/operations/\{operation_id\}"
+    }
+    response {
+      200 => GcpOperation
       401 => GcpErrorShape
       403 => GcpErrorShape
       404 => GcpErrorShape

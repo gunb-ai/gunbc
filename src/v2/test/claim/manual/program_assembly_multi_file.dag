@@ -8,7 +8,7 @@ import v2.compiler.normalized_tree {
   no_type_declaration_kinds, no_type_declaration_modifiers
 }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
   Admission,
@@ -34,7 +34,9 @@ import v2.std.diagnostic {
   Accepted,
   None,
   Outcome,
-  Rejected
+  Rejected,
+  Textual,
+  WholeFile
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.namespace_graft { module_header_containment_graft }
@@ -46,7 +48,8 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.qualified_name { QualifiedName }
 
@@ -88,7 +91,8 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -111,7 +115,8 @@ fn pa_subject_with_import_use() -> Node {
           kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -139,6 +144,13 @@ fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
     root: pa_graft_module_root(root: pa_subject_with_import_use()),
     test_markers: test_marker_channel_empty(),
     import_bindings: pa_subject_import_bindings(),
+    imported_modules: Cons {
+      head: CapturedImportTarget {
+        target: Cons { head: ^pa_imported_seg, tail: Empty },
+        at: Textual { file: ^pa_imported_seg, extent: WholeFile }
+      },
+      tail: Empty
+    },
     type_declaration_kinds: no_type_declaration_kinds(),
     type_declaration_modifiers: no_type_declaration_modifiers(),
     diagnostics: None

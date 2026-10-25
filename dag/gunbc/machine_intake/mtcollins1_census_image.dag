@@ -11,6 +11,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaBuildInput,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
   ubuntu_seeded_install_media_image_name,
+  ubuntu_seeded_install_media_record_path,
 }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
@@ -23,6 +24,8 @@ import gunbc.machine_intake.host_capture_envelope {
   host_capture_program,
 }
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
+import gunbc.host.boot_medium_served_readback { BootMediumServedCheck, BootMediumServedMeasureOnly, BootMediumServedRecordFirst, BootMediumServedCheckRefused }
 
 // THE CENSUS IMAGE FOR MT. COLLINS UNIT 1: the 24.04.3 arm64 live-server medium with a NoCloud seed
 // that runs the host-capture census in the LIVE environment and powers off. It is a derived artifact
@@ -98,30 +101,50 @@ data mtcollins1_census_volume_id: NonEmptyStr = "GUNBC_MTC1_CENSUS_2404_3"
 
 data mtcollins1_census_image_stem: NonEmptyStr = "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64"
 
-fn mtcollins1_census_capture_program(stages: List<HostCaptureStage>) -> NonEmptyStr {
+// THE CENSUS CAPTURE PROGRAM FOR A SUBJECT: the census stages run before any installer section and
+// the envelope ends by the subject's halt command on the subject's console. The machine, the console
+// device and the halt command are the subject's facts, passed by the caller; for mt. collins unit 1
+// they are the receipt rows below, so the mt. collins program is exactly this applied to that row.
+fn census_capture_program(machine: NonEmptyStr, console_device: NonEmptyStr, halt_command: NonEmptyStr, stages: List<HostCaptureStage>) -> NonEmptyStr {
   host_capture_program(
-    machine: mtcollins1_census_machine,
-    console_device: mtcollins1_census_console_device,
+    machine: machine,
+    console_device: console_device,
     stages: stages,
-    halt_command: mtcollins1_census_halt_command,
+    halt_command: halt_command,
   )
 }
 
-fn mtcollins1_census_program_on_medium() -> NonEmptyStr {
-  concat("/cdrom/", mtcollins1_census_nocloud_dir as String, "/", mtcollins1_census_program_file as String) as NonEmptyStr
+// THE PATH THE CAPTURE PROGRAM RIDES ON, INSIDE THE MEDIUM'S SEED DIRECTORY. The seed directory and
+// the program's filename are the subject's facts, passed by the caller.
+fn census_program_on_medium(nocloud_dir: NonEmptyStr, program_file: NonEmptyStr) -> NonEmptyStr {
+  concat("/cdrom/", nocloud_dir as String, "/", program_file as String) as NonEmptyStr
 }
 
 // THE STAGE ROSTER IS THE PARAMETER. The census image is this function applied to the census roster;
 // a roster that appends stages after the census ones yields a different image with a different
 // digest and name, built by the same derivation. Nothing here may run before the census stages or
 // between them and the envelope's END.
-// THE SEED'S USER-DATA: run the census program before any installer section, leave every section
-// to a human. The rendered body is the one build input that is not a constant or a parameter of
-// this module, so it is the parameter of the input below and the derivation renders it once.
-data mtcollins1_census_live_commands: UbuntuAutoinstallLiveCommands = UbuntuAutoinstallLiveCommands {
-  autoinstall_version: 1,
-  early_commands: [concat("sh ", mtcollins1_census_program_on_medium() as String) as NonEmptyStr],
+// THE SEED'S EARLY COMMANDS: the single helper that builds the user-data payload from the seed's
+// location -- one fact in one place (DESIGN 3 minimization). Both the derivation (census_image_derivation) and the
+// mt. collins receipt row below consume it, so the early command and the seed file cannot drift:
+// the command the installer runs and the file the seed carry are built from the same
+// (nocloud_dir, program_file) by this one author.
+fn census_live_commands(nocloud_dir: NonEmptyStr, program_file: NonEmptyStr) -> UbuntuAutoinstallLiveCommands {
+  UbuntuAutoinstallLiveCommands {
+    autoinstall_version: 1,
+    early_commands: [concat("sh ", census_program_on_medium(nocloud_dir: nocloud_dir, program_file: program_file) as String) as NonEmptyStr],
+  }
 }
+
+// THE SEED'S USER-DATA: run the census program before any installer section, leave every section
+// to a human. The derivation builds the payload from the seed's location via census_live_commands,
+// so this row is the MEASURED RECEIPT for mt. collins unit 1 -- the payload the derivation builds
+// for its seed directory and program file, and what the seeded user-data of the pinned image
+// records. Built by the same helper the derivation uses, so the two cannot drift.
+data mtcollins1_census_live_commands: UbuntuAutoinstallLiveCommands = census_live_commands(
+  nocloud_dir: mtcollins1_census_nocloud_dir,
+  program_file: mtcollins1_census_program_file,
+)
 
 // THE KERNEL CMDLINE, IN TWO ROWS. The PINNED row is the cmdline of the image the boot medium row pins
 // (output 30ca88d4..., built under builder revision 1 as key 8d357a525f078cb4): the census seed and the
@@ -141,30 +164,29 @@ data mtcollins1_census_grub_cmdline: NonEmptyStr = concat(
   mtcollins1_census_module_identity_args as String,
 ) as NonEmptyStr
 
-fn mtcollins1_seeded_image_input(
-  stages: List<HostCaptureStage>,
-  image_stem: NonEmptyStr,
-  volume_id: NonEmptyStr,
-  user_data_body: NonEmptyStr,
-) -> UbuntuSeededInstallMediaBuildInput {
-  mtcollins1_seeded_image_input_with_cmdline(stages: stages, image_stem: image_stem, volume_id: volume_id, user_data_body: user_data_body, grub_kernel_cmdline: mtcollins1_census_grub_cmdline)
-}
-
-fn mtcollins1_seeded_image_input_with_cmdline(
-  stages: List<HostCaptureStage>,
+// THE CENSUS IMAGE INPUT: the stock 24.04.3 arm64 live-server medium with a NoCloud seed that carries
+// the census capture program. Every subject fact is a PARAMETER -- the image stem, the volume id, the
+// rendered user-data body, the kernel cmdline, the seed directory, the program's filename, and the
+// program's rendered body. The stock artifact, the pinned dates and the builder revision are the shared
+// seeded-media policy (gunbc.provisioning.seeded_install_media_policy); the subject facts name the
+// artifact. The mt. collins rows feed the mt. collins readings.
+fn census_seeded_image_input(
   image_stem: NonEmptyStr,
   volume_id: NonEmptyStr,
   user_data_body: NonEmptyStr,
   grub_kernel_cmdline: NonEmptyStr,
+  nocloud_dir: NonEmptyStr,
+  program_file: NonEmptyStr,
+  program_content: NonEmptyStr,
 ) -> UbuntuSeededInstallMediaBuildInput {
   UbuntuSeededInstallMediaBuildInput {
     stock_artifact: noble_numbat_2404_3_live_server_arm64,
-    nocloud_dir_on_iso: mtcollins1_census_nocloud_dir,
+    nocloud_dir_on_iso: nocloud_dir,
     user_data_body: user_data_body,
     seed_files: [
       NoCloudSeedFile {
-        name: mtcollins1_census_program_file,
-        content: mtcollins1_census_capture_program(stages: stages),
+        name: program_file,
+        content: program_content,
       },
     ],
     seed_artifacts: [],
@@ -176,64 +198,111 @@ fn mtcollins1_seeded_image_input_with_cmdline(
   }
 }
 
+// THE CENSUS IMAGE: a derived artifact with its own identity -- the bytes differ from stock, so it
+// never takes the stock name and the stock file in the export is never touched.
+//
 // THE DERIVATION CARRIES THE RENDERER'S REFUSAL, because the census image IS its rendered
 // user-data: the body is written into the medium's seed and is in the build key, so a document the
 // YAML writer will not write leaves no image to build, publish, or resolve. Publication and
 // resolution below carry it through the refusal arms gunbc.provisioning.seeded_install_media_publish already has.
-type Mtcollins1CensusImage
-  = Mtcollins1CensusImageDerived { input: UbuntuSeededInstallMediaBuildInput }
-  | Mtcollins1CensusImageRefused { reason: String }
+type CensusImage
+  = CensusImageDerived { input: UbuntuSeededInstallMediaBuildInput }
+  | CensusImageRefused { reason: String }
 
-fn mtcollins1_census_image_derivation(stages: List<HostCaptureStage>, image_stem: NonEmptyStr, volume_id: NonEmptyStr) -> Mtcollins1CensusImage {
-  mtcollins1_census_image_derivation_with_cmdline(stages: stages, image_stem: image_stem, volume_id: volume_id, grub_kernel_cmdline: mtcollins1_census_grub_cmdline)
-}
-
-fn mtcollins1_census_image_derivation_with_cmdline(stages: List<HostCaptureStage>, image_stem: NonEmptyStr, volume_id: NonEmptyStr, grub_kernel_cmdline: NonEmptyStr) -> Mtcollins1CensusImage {
-  match autoinstall_live_commands_user_data(payload: mtcollins1_census_live_commands) {
-    AutoinstallUserDataRefused { reason: r } => Mtcollins1CensusImageRefused { reason: r }
+// THE SUBJECT'S FACTS ARE THE PARAMETERS. The census stages run before any installer section and the
+// envelope ends by the subject's halt command on the subject's console; the seed carries the program
+// off the medium's seed directory; the volume id, the image stem, the kernel cmdline and the seed's
+// user-data name the artifact. A DIFFERENT SUBJECT'S FACTS GIVE A DIFFERENT IMAGE AND A DIFFERENT NAME
+// through this same derivation -- that is the discriminating control of the cut. The mt. collins rows
+// below are the caller that feeds the mt. collins readings, and they stay this row's receipt.
+// THE EARLY COMMAND AND THE SEED FILE CANNOT DISAGREE: the user-data's early command is BUILT from
+// the seed's location inside this derivation (census_program_on_medium), so the command the installer
+// runs and the file the seed carries are one fact, not two parameters a caller can cross -- a path
+// mismatch is unwritable, not a validation.
+fn census_image_derivation(
+  stages: List<HostCaptureStage>,
+  machine: NonEmptyStr,
+  console_device: NonEmptyStr,
+  halt_command: NonEmptyStr,
+  image_stem: NonEmptyStr,
+  volume_id: NonEmptyStr,
+  grub_kernel_cmdline: NonEmptyStr,
+  nocloud_dir: NonEmptyStr,
+  program_file: NonEmptyStr,
+) -> CensusImage {
+  let program = census_capture_program(machine: machine, console_device: console_device, halt_command: halt_command, stages: stages)
+  let live_commands = census_live_commands(nocloud_dir: nocloud_dir, program_file: program_file)
+  match autoinstall_live_commands_user_data(payload: live_commands) {
+    AutoinstallUserDataRefused { reason: r } => CensusImageRefused { reason: r }
     AutoinstallUserDataRendered { content: body } =>
-      Mtcollins1CensusImageDerived {
-        input: mtcollins1_seeded_image_input_with_cmdline(stages: stages, image_stem: image_stem, volume_id: volume_id, user_data_body: body as NonEmptyStr, grub_kernel_cmdline: grub_kernel_cmdline),
+      CensusImageDerived {
+        input: census_seeded_image_input(
+          image_stem: image_stem,
+          volume_id: volume_id,
+          user_data_body: body as NonEmptyStr,
+          grub_kernel_cmdline: grub_kernel_cmdline,
+          nocloud_dir: nocloud_dir,
+          program_file: program_file,
+          program_content: program,
+        ),
       }
   }
 }
 
-data mtcollins1_census_image: Mtcollins1CensusImage = mtcollins1_census_image_derivation(
+data mtcollins1_census_image: CensusImage = census_image_derivation(
   stages: mtcollins1_census_stages,
+  machine: mtcollins1_census_machine,
+  console_device: mtcollins1_census_console_device,
+  halt_command: mtcollins1_census_halt_command,
   image_stem: mtcollins1_census_image_stem,
   volume_id: mtcollins1_census_volume_id,
+  grub_kernel_cmdline: mtcollins1_census_grub_cmdline,
+  nocloud_dir: mtcollins1_census_nocloud_dir,
+  program_file: mtcollins1_census_program_file,
 )
 
 // THE PRE-INSTRUMENT DERIVATION: the inputs of the image the boot medium row pins (30ca88d4..., built under
 // builder revision 1). Under the attribute-pinning builder its key is bf916c060d072e72 and its hermetic
 // output eb23f174... (gunbc.machine_intake.mtcollins1_census_image_publish).
-data mtcollins1_census_pinned_image: Mtcollins1CensusImage = mtcollins1_census_image_derivation_with_cmdline(
+data mtcollins1_census_pinned_image: CensusImage = census_image_derivation(
   stages: mtcollins1_census_stages,
+  machine: mtcollins1_census_machine,
+  console_device: mtcollins1_census_console_device,
+  halt_command: mtcollins1_census_halt_command,
   image_stem: mtcollins1_census_image_stem,
   volume_id: mtcollins1_census_volume_id,
   grub_kernel_cmdline: mtcollins1_census_pinned_grub_cmdline,
+  nocloud_dir: mtcollins1_census_nocloud_dir,
+  program_file: mtcollins1_census_program_file,
 )
 
 // THE STOCK MEDIUM THE CENSUS IMAGE IS BUILT FROM, as it is served in its export. The effectful
 // half -- the srv2-side regression, the build, the create-only publication and its receipt -- lives in
 // gunbc.machine_intake.mtcollins1_census_image_publish.
-fn mtcollins1_census_image_stock_path() -> NonEmptyStr {
+fn census_image_stock_path() -> NonEmptyStr {
   boot_image_published_path(export_dir: stock_installer_boot_medium.export.dir, image_name: stock_installer_boot_medium.image_name)
 }
 
 // THE CENSUS MEDIUM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST from the publish receipt. The image
-// name derives from that digest through the same stem row the census build input is built from, and
-// the terminal is the same volume-id row, so a census medium naming a stock installer, or any
-// artifact but the census image, has no spelling: the medium cannot disagree with the label the
-// verdict binds to (review 5261662425). The published file's name is its digest, so the digest is
-// also the sha256 the admitted boot subject and the attach carry. It is a gunbc.host.managed_host_boot
-// BootMedium like any other: the boot subject takes it as a value and does not import this module.
-fn mtcollins1_census_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
+// name derives from that digest through the subject's stem row, and the volume-label terminal is the
+// subject's volume-id row, so a census medium naming a stock installer, or any artifact but the census
+// image, has no spelling: the medium cannot disagree with the label the verdict binds to (review
+// 5261662425). The published file's name is its digest, so the digest is also the sha256 the admitted
+// boot subject and the attach carry. It is a gunbc.host.boot_medium BootMedium like any other: the
+// boot subject takes it as a value and does not import this module.
+//
+// IT COMPUTES ONLY THE ARTIFACT IDENTITY (the stem, the volume id, the digest). The image name and
+// the digest are the artifact; the volume-label terminal is the one terminal a seeded medium carries.
+// The export is the one the census is published to and read back from (bmc_boot_image_export) -- a
+// constant of this lane, not a subject fact. No delivery (served path) and no other terminal fact is
+// a parameter of this function, so the later split of a medium into artifact, delivery, target and
+// terminal demand does not have to unpick it.
+fn census_boot_medium(image_stem: NonEmptyStr, volume_id: NonEmptyStr, output_digest: NonEmptyStr) -> BootMedium {
   BootMedium {
-    image_name: ubuntu_seeded_install_media_image_name(image_stem: mtcollins1_census_image_stem, output_digest: output_digest),
+    image_name: ubuntu_seeded_install_media_image_name(image_stem: image_stem, output_digest: output_digest),
     digest: output_digest,
     export: bmc_boot_image_export,
-    terminal: BootMediumVolumeLabel { label: mtcollins1_census_volume_id },
+    terminal: BootMediumVolumeLabel { label: volume_id },
   }
 }
 
@@ -246,15 +315,21 @@ fn mtcollins1_census_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
 // back from the supported one, whose bytes it never named. DECLARED FRONTIER: honoring an arbitrary
 // exporter throughout the readers (and binding the controller share to it) is the generalization; until
 // then the limitation is held here, at admission, and never by substituting the supported export.
+//
+// A MEDIUM IS QUALIFIED ONLY AGAINST ITS OWN SUBJECT'S ARTIFACT IDENTITY (the stem and the volume
+// label it was built from), passed by the caller. A medium whose image name or volume label does not
+// match the subject's stem and volume id is refused as not the census -- so a MISMATCHED BINDING (a
+// medium row that names a stem or volume id different from the subject it is read for) refuses here,
+// before any effect, which is the discriminating control of the cut.
 type CensusMediumQualification
   = CensusMediumQualified { digest: NonEmptyStr, export: BootImageExport }
   | CensusMediumNotCensus
   | CensusMediumExporterUnsupported { supported: BootImageExport, named: BootImageExport }
 
-fn mtcollins1_census_medium_qualification(medium: BootMedium) -> CensusMediumQualification {
-  let census = mtcollins1_census_boot_medium(output_digest: medium.digest)
+fn census_medium_qualification(image_stem: NonEmptyStr, volume_id: NonEmptyStr, medium: BootMedium) -> CensusMediumQualification {
+  let census = census_boot_medium(image_stem: image_stem, volume_id: volume_id, output_digest: medium.digest)
   let labelled = match medium.terminal {
-    BootMediumVolumeLabel { label: l } => (l as String) == (mtcollins1_census_volume_id as String)
+    BootMediumVolumeLabel { label: l } => (l as String) == (volume_id as String)
     BootMediumNoTerminal { reason: _ } => false
     BootMediumRunnerHostUp { label: _ } => false
   }
@@ -268,7 +343,40 @@ fn mtcollins1_census_medium_qualification(medium: BootMedium) -> CensusMediumQua
 }
 
 fn boot_image_export_text(export: BootImageExport) -> String {
-  concat(export.target.principal as String, "@", export.target.endpoint as String, ":", export.dir as String)
+  concat(export.target.principal as String, "@", known_hosts_host_field(address: export.target.address) as String, ":", export.dir as String)
+}
+
+// THE CENSUS DERIVATION RECORD: the publish writes the output digest of the current build input beside
+// the served image, keyed by the build key, in the one export the census is published to.
+fn census_record_path(input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
+  ubuntu_seeded_install_media_record_path(dir: bmc_boot_image_export.dir, input: input)
+}
+
+// WHAT A BOOT OF THIS MEDIUM OWES BEFORE ITS SERVED BYTES ARE MEASURED (gunbc.host.boot_medium_served_readback).
+// A medium whose terminal is the census volume label is a census medium: that terminal is printed by the
+// census program and nothing else (gunbc.host.boot_medium BootMediumTerminal). Its row describes the
+// current derivation only if the derivation record of the current build input repeats its digest, so it
+// is read back record first. It is qualified against the image first, so a mismatched binding (a medium
+// naming another stem or volume label) and a census medium naming an exporter the census is not
+// published to refuse before either leg, never read back from the supported export; and a census build
+// input with no derivation has no build key to find a record by. Any other medium owes the measurement
+// alone.
+fn census_served_check(medium: BootMedium, image: CensusImage) -> BootMediumServedCheck {
+  match medium.terminal {
+    BootMediumVolumeLabel { label: _ } =>
+      match image {
+        CensusImageRefused { reason: why } => BootMediumServedCheckRefused { cause: concat("the census build input has no derivation (", why, "), so there is no build key to find a record by; refusing") }
+        CensusImageDerived { input: input } =>
+          match census_medium_qualification(image_stem: input.image_stem, volume_id: input.volume_id, medium: medium) {
+            CensusMediumQualified { digest: _, export: _ } => BootMediumServedRecordFirst { record_path: census_record_path(input: input) }
+            CensusMediumNotCensus => BootMediumServedCheckRefused { cause: concat("the medium ", medium.image_name as String, " carries a census volume label but is not the census image of the current derivation, so there is no derivation record to read back") }
+            CensusMediumExporterUnsupported { supported: sup, named: n } =>
+              BootMediumServedCheckRefused { cause: concat("the census medium names the exporter ", boot_image_export_text(export: n), " but the census is published to and read back from ", boot_image_export_text(export: sup), "; refusing rather than reading back bytes the medium does not name") }
+          }
+      }
+    BootMediumNoTerminal { reason: _ } => BootMediumServedMeasureOnly
+    BootMediumRunnerHostUp { label: _ } => BootMediumServedMeasureOnly
+  }
 }
 
 // CENSUS STAGE 0D: THE MEDIUM MT. COLLINS UNIT 1 BOOTS. The digest is the publish receipt of the gated
@@ -281,9 +389,12 @@ fn boot_image_export_text(export: BootImageExport) -> String {
 // because #12594 bumped builder_revision, so the previous image (30ca88d4..., build_key
 // 8d357a525f078cb4) no longer describes the current derivation and the boot refuses it (run
 // 36660907341). This row is publication-time evidence only:
-// gunbc.machine_intake.mtcollins1_census_medium_readback re-measures the served path on srv2 before
-// the boot subject is admitted, every run. Switching it to stock_installer_boot_medium makes every
+// the mtcollins1 boot run selects the runner medium, re-measured by
+// gunbc.host.boot_medium_served_readback; a boot that selects this one is read back record first
+// (census_served_check) before the boot subject is admitted. Switching it to stock_installer_boot_medium makes every
 // census verdict refuse at the gate, before any controller write.
-data mtcollins1_boot_medium: BootMedium = mtcollins1_census_boot_medium(
+data mtcollins1_census_boot_medium: BootMedium = census_boot_medium(
+  image_stem: mtcollins1_census_image_stem,
+  volume_id: mtcollins1_census_volume_id,
   output_digest: "161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513",
 )

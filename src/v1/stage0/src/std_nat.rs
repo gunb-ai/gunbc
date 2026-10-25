@@ -6,7 +6,9 @@ use self::DecimalDigitSuccessor::*;
 use self::NatDivision::*;
 use self::NatSubtraction::*;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_algebra::{CommutativeMonoid, CommutativeSemiring, Ordering};
+pub use crate::std_algebra::{
+    collection_concat_shape, CommutativeMonoid, CommutativeSemiring, Ordering,
+};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List};
 use crate::v1_rt;
@@ -146,7 +148,7 @@ pub fn nat_div_rem(a: Nat, b: Nat) -> Rc<NatDivision> {
         {
             let divisor_prev = v1_rt::int_sub(b.clone(), 1);
             {
-                let q = nat_div_rem_by_succ(a.clone(), divisor_prev.clone());
+                let q = nat_div_rem_by_succ(a, divisor_prev.clone());
                 Rc::new(NatDivision::NatQuotientRemainder {
                     quotient: q.quotient.clone(),
                     remainder: q.remainder.clone(),
@@ -213,7 +215,7 @@ pub fn nat_semiring() -> Rc<CommutativeSemiring<i64>> {
 }
 
 pub fn nat_range_inclusive(lo: Nat, hi: Nat) -> Rc<Vec<i64>> {
-    nat_range_accumulate(lo.clone(), hi.clone(), Rc::new(vec![]))
+    nat_range_accumulate(lo, hi, Rc::new(vec![]))
 }
 
 pub fn nat_range_accumulate(
@@ -378,20 +380,48 @@ pub fn nat_decimal_split(value: Nat) -> Rc<NatDecimalSplit> {
 
 pub fn nat_decimal_split_advance(s: Rc<NatDecimalSplit>) -> Rc<NatDecimalSplit> {
     match (*decimal_digit_successor(s.units.clone())).clone() {
-        DecimalDigitSuccessor::DecimalDigitNext { digit: d, .. } => Rc::new(NatDecimalSplit {
-            quotient: s.quotient.clone(),
-            units: d.clone(),
-        }),
-        DecimalDigitSuccessor::DecimalDigitCarry => Rc::new(NatDecimalSplit {
-            quotient: v1_rt::int_add(s.quotient.clone(), 1),
-            units: DecimalDigit::D0,
-        }),
+        DecimalDigitSuccessor::DecimalDigitNext { digit: d, .. } => {
+            let __rb_0_0 = s.quotient.clone();
+            let __rb_1_0 = d.clone();
+            let mut __rb_h = s;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.quotient = __rb_0_0;
+                    __rb_r.units = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(NatDecimalSplit {
+                        quotient: __rb_0_0,
+                        units: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
+        DecimalDigitSuccessor::DecimalDigitCarry => {
+            let __rb_0_0 = v1_rt::int_add(s.quotient.clone(), 1);
+            let __rb_1_0 = DecimalDigit::D0;
+            let mut __rb_h = s;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.quotient = __rb_0_0;
+                    __rb_r.units = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(NatDecimalSplit {
+                        quotient: __rb_0_0,
+                        units: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 
 pub fn nat_to_decimal_string(value: Nat) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let q = nat_div_rem_by_succ(value.clone(), 9);
+        let q = nat_div_rem_by_succ(value, 9);
         let digit = decimal_digit_glyph(nat_decimal_split(q.remainder.clone()).units.clone());
         {
             let __kernel_grounded_subject = q.quotient.clone();

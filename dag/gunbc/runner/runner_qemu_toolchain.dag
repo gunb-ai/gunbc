@@ -18,6 +18,7 @@ import gunbc.host.verified_archive_install {
   stage_archives_wet, archives_all_staged, publish_staged_tree_wet,
 }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
+import gunbc.host.host_effect { LocalShell }
 
 // A PINNED QEMU TOOLCHAIN ON AN EXECUTOR HOST, PLACED AS THE JOB USER WITH NO ADMINISTRATOR AND NO
 // APT. This is an EXECUTOR-HOST operation: its subject is the machine the job runs on and the job
@@ -159,10 +160,10 @@ fn place_qemu_toolchain_wet(location: QemuToolchainLocation, archives: List<Ubun
       QemuToolchainPlacementRefused { archives: [], cause: concat("no per-invocation staging directory could be created under ", location.base as String) }
     } else {
       let staging = trim(s: made.path as String)
-      let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: staged_archives)
+      let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: staged_archives, transport: LocalShell)
       let result = if archives_all_staged(ps: staged, archives: staged_archives) == false {
         QemuToolchainPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
-      } else if publish_staged_tree_wet(staging: staging, root: location.root as String) {
+      } else if publish_staged_tree_wet(staging: staging, root: location.root as String, transport: LocalShell) {
         QemuToolchainPublished { archives: staged }
       } else {
         QemuToolchainPlacementRefused { archives: staged, cause: join(["the staged tree could not be published over ", location.root as String, " (a concurrent converge may have published first; the readback decides)"], "") }

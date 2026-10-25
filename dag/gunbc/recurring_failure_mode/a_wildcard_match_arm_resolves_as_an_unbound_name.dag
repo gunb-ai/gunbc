@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_wildcard_match_arm_resolves_as_an_unbound_name: RecurringFailureMode = RecurringFailureMode {
   identity: "a_wildcard_match_arm_resolves_as_an_unbound_name" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "a match arm whose pattern is the wildcard `_` is refused at resolve as an unbound name at `_`: the native front end treats the wildcard pattern as a reference to a symbol spelled `_`, so a match that is exhaustive only through its wildcard arm cannot be accepted on the native route at all",

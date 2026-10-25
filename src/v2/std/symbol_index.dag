@@ -1,69 +1,16 @@
 module v2.std.symbol_index
 
 
-import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_head }
-import v2.std.collection {
-  Map,
-  empty_map,
-  map_get_checked,
-  map_insert,
-  map_contains_key,
-  map_lookup
-}
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+import std.types { List, Map }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_head, empty_map, map_insert, map_contains_key, map_lookup }
+import v2.std.witness { map_get_checked }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Conj,
-  Disj,
-  Instantiation,
-  Node,
-  Occupancy,
-  Symbol,
-  TypeNode
-}
-import v2.std.type_binder {
-  AliasRenaming,
-  GenericTypeDecl,
-  NotARenaming,
-  NotATypeDecl,
-  OpaqueTypeDecl,
-  PlainTypeDecl,
-  PureRenamingOf,
-  TypeAlias,
-  binder_conj_names,
-  refinement_declaration_of_node,
-  type_alias_renaming,
-  type_decl_view
-}
-import std.occurrence_identity {
-  CallableOccurrence,
-  ConstructorOccurrence,
-  LexicalValueOccurrence,
-  NamespaceSegmentOccurrence,
-  OccurrenceCategory,
-  TypeOccurrence
-}
-import std.occurrence_binding_resolve {
-  OccurrenceCategoryBindingAdmissible,
-  OccurrenceCategoryBindingInadmissible,
-  occurrence_category_binding_verdict
-}
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_init,
-  qualified_name_last_segment,
-  qualified_name_snoc
-}
+import v2.std.node { node_same_occurrence, Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Symbol, TypeNode }
+import v2.std.type_binder { AliasRenaming, GenericTypeDecl, NotARenaming, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, PureRenamingOf, TypeAlias, binder_conj_names, refinement_declaration_of_node, type_alias_renaming, type_decl_view }
+import std.occurrence_identity { CallableOccurrence, ConstructorOccurrence, LexicalValueOccurrence, NamespaceSegmentOccurrence, OccurrenceCategory, TypeOccurrence }
+import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, OccurrenceCategoryBindingInadmissible, occurrence_category_binding_verdict }
+import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_last_segment, qualified_name_snoc }
 
 // AN AMBIGUOUS LEAF CARRIES ITS CLAIMANTS' DECLARING PATHS. Ambiguity is a fact about a set of
 // declarations, and a reader that must decide something about them -- is any of them a declared
@@ -206,7 +153,7 @@ fn empty_symbol_index() -> SymbolIndex {
 // a two-binder refusal back to one binder the first time this split was written. `entries` is where
 // a declaration is stored; `symbol_index_lookup` is what a reference is entitled to be told.
 fn symbol_index_entry_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
-  match v2.std.collection.map_get_checked(index.entries, qualified_path) {
+  match map_get_checked(index.entries, qualified_path) {
     Accepted { value: opt, diagnostics: _ } => opt
     Rejected { diagnostics: _ } => optional_absent()
   }
@@ -246,7 +193,7 @@ fn symbol_index_track_global_bare(
   match qualified_name_last_segment(qn: qualified_path) {
     Absent => index
     Present { value: leaf } =>
-      match v2.std.collection.map_get_checked(index.global_bare, leaf) {
+      match map_get_checked(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: GlobalBareAmbiguous { paths: paths } } =>
             SymbolIndex {
@@ -266,7 +213,7 @@ fn symbol_index_track_global_bare(
               primitive_contracts: index.primitive_contracts
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
-            if existing_path == qualified_path && existing == resolved {
+            if existing_path == qualified_path && node_same_occurrence(a: existing, b: resolved) {
               index
             } else {
               SymbolIndex {
@@ -458,6 +405,32 @@ fn symbol_index_owning_module_of(index: SymbolIndex, path: QualifiedName) -> Opt
   }
 }
 
+// THE DECLARATIONS A PATH SITS IN, innermost first: the path itself and each proper prefix of it still
+// below its fill-time owning module. A variant's declaring path is its coproduct's path plus the variant
+// (v2.compiler.symbol_index_fill symbol_index_fill_containment_node), while the closure records
+// availability per module-root declaration (v2.compiler.name_resolve closure_declarations_demand), so the
+// row that publishes or refuses a variant is a proper prefix of its path. The walk stops BELOW the owning
+// module, so a nested unit (v2.p.child) is never read as a declaration of its parent (v2.p). No owning
+// module: the path alone. ONE ANSWER for every reader asking which closure row a path belongs to -- the
+// closure's own blocking walk and resolve's refused-provider lookup.
+fn symbol_index_enclosing_declaration_paths(index: SymbolIndex, path: QualifiedName) -> List<QualifiedName> {
+  match symbol_index_owning_module_of(index: index, path: path) {
+    Absent => Cons { head: path, tail: Empty }
+    Present { value: owner } => symbol_index_paths_below(owner: owner, path: path)
+  }
+}
+
+fn symbol_index_paths_below(owner: QualifiedName, path: QualifiedName) -> List<QualifiedName> {
+  if path == owner {
+    Empty
+  } else {
+    match path {
+      Empty => Empty
+      Cons { head: _, tail: _ } => Cons { head: path, tail: symbol_index_paths_below(owner: owner, path: qualified_name_init(qn: path)) }
+    }
+  }
+}
+
 fn symbol_index_binds_namespace_body_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
   map_contains_key(m: index.namespace_bodies, key: qualified_path)
 }
@@ -495,7 +468,7 @@ fn symbol_index_declared_binders_at(index: SymbolIndex, qualified_path: Qualifie
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
-  match v2.std.collection.map_get_checked(index.global_bare, name) {
+  match map_get_checked(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: GlobalBareUnique { node: n, path: p } } => GlobalBareHit { node: n, path: p }
       Present { value: GlobalBareAmbiguous { paths: paths } } => GlobalBareLookupAmbiguous { paths: paths }
@@ -544,25 +517,31 @@ fn symbol_index_claimants_at(
   }
 }
 
-// A RE-EXPORT'S DECLARING PATH IS THE HOME'S, NOT THE RELAY'S. A row's target names a POSITION
-// the index can answer at, and for a re-export chain that position is another row's BINDING --
-// `v2.compiler.normalize` imports `Absent` from `v2.std.collection`, which imports it from
-// `v2.std.optional` and declares it nowhere. Handing that target back as a declaring path would
-// give one declaration two identities, one per relay it was reached through, which is the fork this
-// index exists to close (review 70003 on gunbc#12048). The chase is one step and needs no new
-// authority: symbol_index_claimants_at ALREADY answers "who declares what lives at this position",
-// returning the position itself when pass A wrote a declaration there and the recorded declaring
-// path when a row bound there -- and a relay's own row was chased the same way when it bound, so
-// one step reaches the terminal home rather than the next link. A caller reaching here through
-// symbol_index_lookup has already been refused a contested position, so the claimant is unique;
-// an unoccupied target is its own name, which is the pass-A reading.
+// THE DECLARING IDENTITY AT A MENTION PATH IS THREE-VALUED. symbol_index_claimants_at already
+// answers who claims the position; taking list_head of that list was a fill-order pick whenever
+// two distinct declarations bound one mention, and the comment that callers were contest-aware
+// was false (alias unfold and identity join both unfolded the first claimant). No claimant:
+// identity unavailable — never the mention spelling as a fabricated home. Exactly one: that
+// declaring path (a re-export still chases one step, because claimants_at already did). Two or
+// more: contested, naming every claimant. A QualifiedName return made the silent pick unwritable
+// only by diligence; this type makes it unwritable.
+type MentionDeclaringIdentity
+  = MentionDeclaringUnique { declaring: QualifiedName }
+  | MentionDeclaringUnavailable
+  | MentionDeclaringContested { claimants: FreeMonoid<QualifiedName> }
+
 fn symbol_index_declaring_path_of(
   index: SymbolIndex,
   target: QualifiedName
-) -> QualifiedName {
-  match list_head(xs: symbol_index_claimants_at(index: index, binding_path: target)) {
-    Present { value: declaring } => declaring
-    Absent => target
+) -> MentionDeclaringIdentity {
+  match symbol_index_claimants_at(index: index, binding_path: target) {
+    Empty => MentionDeclaringUnavailable
+    Cons { head: declaring, tail: rest } =>
+      match rest {
+        Empty => MentionDeclaringUnique { declaring: declaring }
+        Cons { head: _, tail: _ } =>
+          MentionDeclaringContested { claimants: Cons { head: declaring, tail: rest } }
+      }
   }
 }
 
@@ -630,7 +609,7 @@ fn symbol_index_bound_declarings(
   index: SymbolIndex,
   binding_path: QualifiedName
 ) -> FreeMonoid<QualifiedName> {
-  match v2.std.collection.map_get_checked(index.bound_declarings, binding_path) {
+  match map_get_checked(index.bound_declarings, binding_path) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: declarings } => declarings
       Absent => Empty
@@ -803,7 +782,6 @@ fn type_decl_member_shape(index: SymbolIndex, path: QualifiedName, node: Node) -
           }
         TypeNode { connective: Disj } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Instantiation } => TypeDeclShapeRecordOrCoproduct
-        TypeNode { connective: Occupancy } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Atom { identity: _ } } => TypeDeclShapeAliasAtom
         TypeNode { connective: Arrow } => TypeDeclShapeCallable
         ComputationNode { behavior: _ } => TypeDeclShapeValue
@@ -852,25 +830,41 @@ fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBinding
   }
 }
 
-// Inadmissible kind is excluded, then none/one/many. An excluded-only set is Unbound, not a
-// distinct wrong-kind refusal (std.occurrence_binding_resolve Inadmissible arm, refusal: none;
-// occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds). WrongOccurrenceRole
+// Inadmissible kind is excluded, then none/one/many. LexicalLookup still answers an excluded-only
+// set as Unbound (std.occurrence_binding_resolve Inadmissible arm carries no refusal, and
+// occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds pins the exclusion);
+// the distinct "exists but wrong kind" fact is symbol_index_lexical_eligibility's ExcludedByCategory,
+// which a caller that must name it reads from this same eligibility step. WrongOccurrenceRole
 // is the wrong *role* (declaration vs reference), not the wrong occurrence category.
 fn symbol_index_lexical_eligible(
   index: SymbolIndex,
   required: OccurrenceCategory,
   candidates: FreeMonoid<LexicalBindingCandidate>
 ) -> FreeMonoid<LexicalBindingCandidate> {
+  symbol_index_eligibility_partition(index: index, required: required, candidates: candidates).eligible
+}
+
+// THE ONE ELIGIBILITY FOLD: every candidate is either admissible at the required category or excluded with
+// the category it is declared as. symbol_index_lexical_eligible and symbol_index_lexical_eligibility both
+// read this partition, so what is eligible and what is excluded cannot drift apart.
+fn symbol_index_eligibility_partition(
+  index: SymbolIndex,
+  required: OccurrenceCategory,
+  candidates: FreeMonoid<LexicalBindingCandidate>
+) -> EligibilityPartition {
   fold_list(
     xs: candidates,
-    empty: Empty,
+    empty: EligibilityPartition { eligible: Empty, excluded: Empty },
     cons: fn(acc, candidate) {
-      match occurrence_category_binding_verdict(
-        reference: required,
-        declaration: symbol_index_candidate_category(index: index, candidate: candidate)
-      ) {
-        OccurrenceCategoryBindingAdmissible => list_snoc_item(xs: acc, item: candidate)
-        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => acc
+      let declared = symbol_index_candidate_category(index: index, candidate: candidate)
+      match occurrence_category_binding_verdict(reference: required, declaration: declared) {
+        OccurrenceCategoryBindingAdmissible =>
+          EligibilityPartition { eligible: list_snoc_item(xs: acc.eligible, item: candidate), excluded: acc.excluded }
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
+          EligibilityPartition {
+            eligible: acc.eligible,
+            excluded: list_snoc_item(xs: acc.excluded, item: ExcludedCandidate { candidate: candidate, category: declared })
+          }
       }
     }
   )
@@ -898,24 +892,58 @@ fn symbol_index_lexical_eligible_declared_payload(
   )
 }
 
+// ONE ELIGIBILITY VERDICT, SAYING WHAT IT EXCLUDED. A candidate set the required kind excludes
+// ENTIRELY is not the same fact as a name with no candidates: the first is a name that exists and
+// is the wrong kind of declaration (a variant where a type is required), the second binds nothing.
+// Both were LexicalUnbound, so a caller that wanted to tell the author which it was had to
+// re-lookup the name under another category -- a second derivation of what this step already knew
+// (DESIGN section 2). The excluded candidates and the category each was excluded for are carried
+// here, once; symbol_index_lexical_lookup_for is this verdict's projection onto LexicalLookup, so a
+// caller that does not ask the question sees the answer it always had. A genuinely empty set stays
+// EligibleLookup { LexicalUnbound }. Nothing here admits an excluded candidate: exclusion is
+// eligibility before none/one/many (#13832), and this arm only reports it.
+type ExcludedCandidate {
+  candidate: LexicalBindingCandidate
+  category: OccurrenceCategory
+}
+
+type EligibilityPartition {
+  eligible: FreeMonoid<LexicalBindingCandidate>
+  excluded: FreeMonoid<ExcludedCandidate>
+}
+
+type LexicalEligibility
+  = EligibleLookup { lookup: LexicalLookup }
+  | ExcludedByCategory { required: OccurrenceCategory, excluded: FreeMonoid<ExcludedCandidate> }
+
+fn symbol_index_lexical_eligibility(
+  index: SymbolIndex,
+  position: QualifiedName,
+  name: Symbol,
+  required: OccurrenceCategory
+) -> LexicalEligibility {
+  let part = symbol_index_eligibility_partition(index: index, required: required, candidates: symbol_index_lexical_collect(index: index, position: position, name: name, acc: Empty))
+  match length(xs: part.eligible) {
+    0 =>
+      if is_empty(xs: part.excluded) {
+        EligibleLookup { lookup: LexicalUnbound }
+      } else {
+        ExcludedByCategory { required: required, excluded: part.excluded }
+      }
+    _ => EligibleLookup { lookup: symbol_index_lexical_selection(candidates: part.eligible) }
+  }
+}
+
 fn symbol_index_lexical_lookup_for(
   index: SymbolIndex,
   position: QualifiedName,
   name: Symbol,
   required: OccurrenceCategory
 ) -> LexicalLookup {
-  symbol_index_lexical_selection(
-    candidates: symbol_index_lexical_eligible(
-      index: index,
-      required: required,
-      candidates: symbol_index_lexical_collect(
-        index: index,
-        position: position,
-        name: name,
-        acc: Empty
-      )
-    )
-  )
+  match symbol_index_lexical_eligibility(index: index, position: position, name: name, required: required) {
+    EligibleLookup { lookup: lookup } => lookup
+    ExcludedByCategory { required: _, excluded: _ } => LexicalUnbound
+  }
 }
 
 fn symbol_index_lexical_lookup_for_declared_payload(

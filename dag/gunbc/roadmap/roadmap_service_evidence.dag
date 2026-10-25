@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, Second, second, second_count, TokenCount, token_count, token_count_value }
 import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
   SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionPlacementRecord,
   session_placement_observe_for_attempt,
 }
@@ -295,6 +295,7 @@ fn session_grant_of_attempt(i: SessionPlacementInput, binding: AttemptBinding) -
         SessionPlacementAbsent { unit: _ } => GrantNotYetWritten
         SessionPlacementUnreadable { unit: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session placement is unreadable: ", detail], "")) }
         SessionPlacementForeign { unit: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session placement is not this attempt's: ", detail], "")) }
+        SessionPlacementUnnameable { detail } => GrantRefused { reason: refusal_reason(reason: join(["the session placement unit cannot be named: ", detail], "")) }
         SessionPlacementObserved { slot: _, grant, returned: _ } =>
           match grant {
             SessionGrantNotRecorded { path: _ } => GrantNotYetWritten

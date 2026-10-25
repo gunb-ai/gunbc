@@ -2,8 +2,8 @@ module v2.std.compilers.cli_surface
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty, list_snoc_item, fold_list }
-import std.types { NonEmptyStr, String, List }
-import v2.std.collection { Map }
+import std.types { NonEmptyStr, String, List, Map }
+
 import v2.std.compilers.target_model {
   BoundToken,
   ConcreteSyntaxToken,
@@ -11,7 +11,7 @@ import v2.std.compilers.target_model {
   LexRules,
   lex_rules_literal_for_class
 }
-import v2.std.collection { map_get_checked }
+import v2.std.witness { map_get_checked }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -160,6 +160,10 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
       module_path: "gunbc.host.host_effect_realize",
       decl_name: "run_argv_parameters_of",
     ),
+    decl_ref(
+      module_path: "gunbc.instruments.fabric_ci_calibration_actuator",
+      decl_name: "fabric_ci_calibration_argv",
+    ),
   ]
   = CliSurface {
     arguments: fold_list(
@@ -201,7 +205,7 @@ fn cli_argument_text(argument: CliArgument) -> String {
 // around a raw list would state the role while leaving the payload dynamically ambiguous -- the
 // same guess one level up.
 //
-// V2 CORRESPONDENCE (this is why the seed may realize it): v2.std.operation_argv already models
+// V2 CORRESPONDENCE (this is why the seed may realize it): std.operation_argv already models
 // the same distinction for DECLARATION-owned materialization -- OperationInputValue is
 // InputText | InputTextList, and binding a token list into a string position is the typed
 // refusal TokenListInStringPosition. That module's own note records that expression-valued argv

@@ -1,9 +1,9 @@
 module std.occurrence_identity
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, collection_concat_shape }
 import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, Int, String, SourceSpan, List, Map }
 
@@ -134,6 +134,42 @@ fn occurrence_category_clause_e_dependency_inducing_verdict(
 type OccurrenceRole
   = DeclarationRole
   | ReferenceRole
+
+// WHERE AN AUTHORED NAME SITS, relative to the positions that can hold a value. ORTHOGONAL TO
+// OccurrenceCategory above, which says WHAT a name denotes (a type, a callable, a field): the same
+// name occurrently denoting one kind can sit at a value position in one mention and at a binder-type
+// position in another, and a consumer that has to ask "could a value frame bind this mention?" must
+// ask the position, never the denotation. That is why this is its own coproduct and not a member of
+// OccurrenceCategory: adding a position there would force the two substrate laws above --
+// occurrence_category_module_scope_exposure_verdict and
+// occurrence_category_clause_e_dependency_inducing_verdict -- to rule on whether a BINDER TYPE is a
+// module-scope member, which is a category error legislated to make room for a feature.
+//
+// ValuePosition is the only variant a value frame can bind. Every other variant is a position where
+// no value frame is consulted, so a consumer must not report a failure to bind there as an unbound
+// name. ONE RULE FOR EVERY NON-VALUE POSITION (DESIGN 6b): they are all "not a value position", and
+// the split among them is informational, never a second classification.
+//
+// MINTED FROM WHAT THE PRODUCERS ACTUALLY ISSUE: four variants are issued by named core markers of
+// v2.std.node's CoreEdgeLabel table and the fifth, ReturnPosition, by the Arrow codomain -- the one
+// position no edge marker carries, which v2.compiler.lexical_scope arrow_slot already decides
+// (ArrowCodomainSlot for the last positional child of an Arrow) and which v2.compiler.occurrence_role
+// reference_position_step folds into one answer, one step per descent. reference_position_step is the
+// SOLE issuer. A variant no
+// producer could issue would be a second name for an unreachable distinction, so it is not minted, and
+// there is no "undecided" arm either: the fold is total, every step either decides or is transparent,
+// so a position nothing decides is a defect in the issuer rather than a value a site can carry.
+//
+// A DECLARING occurrence (a declaration name, a binder name) is NOT a position and is not represented
+// here: whether a name occurrence DECLARES or REFERENCES is the OccurrenceRole axis (DeclarationRole /
+// ReferenceRole), decided by v2.compiler.occurrence_role's table, and a site answers both axes with
+// its own fields. Minting a DeclarationPosition here would be a second authority over the role fact.
+type ReferencePosition
+  = ValuePosition
+  | TypeAnnotationPosition
+  | ReturnPosition
+  | LabelPosition
+  | PatternTagPosition
 
 type OccurrenceProjection {
   occurrence: OccurrenceId
@@ -349,6 +385,27 @@ type NodeOccurrenceIdentity
   | OccurrenceMinted { id: OccurrenceId }
   | OccurrenceProjected { id: OccurrenceId, caused_by: ScopedOccurrenceRef }
   | OccurrencePending { caused_by: OccurrenceId }
+
+// THE ONE KEYING RULE: THE AUTHORED OCCURRENCE AN IDENTITY ANSWERS FOR. A lowering keeps its
+// source's minted id on the image root and projects the other members with that source as their
+// cause, so a projected member answers for the SAME authored occurrence its cause names -- which is
+// exactly what it answered for before the cut, so a consumer's population is unchanged by it. A
+// pending member (normalization has not yet allocated it) answers for its cause too. ONE STEP: the
+// cause is taken as it is, never followed through a further projection, because a chain walk would
+// silently move the population of every consumer of this rule. A synthetic identity answers for
+// nothing, so it keys nothing.
+//
+// This is the single keying authority for every consumer that keys anything by occurrence; it moved
+// here from v2.compiler.reference_conservation, where it was written for the conservation audit, so
+// that the audit and the position/role readers share ONE rule rather than agree by test.
+fn authored_occurrence_of(identity: NodeOccurrenceIdentity) -> Optional<OccurrenceId> {
+  match identity {
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: _, caused_by: caused_by } => Present { value: caused_by.occurrence }
+    OccurrencePending { caused_by: caused_by } => Present { value: caused_by }
+    OccurrenceSynthetic => Absent
+  }
+}
 
 type OccurrenceIdAllocator {
   next_id: Int

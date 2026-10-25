@@ -3,12 +3,7 @@ module v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer, inferred_facts_resolved_type }
 import v2.compiler.inferred_tree { InferredTree }
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionSubject,
-  resolution_context,
-  resolve_in_context
-}
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -16,20 +11,19 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus }
 import v2.std.integer { integer_int_type_node }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.node { Arrow, Edge, Authored, Instantiation, StructuralLabel, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node { positional_child_target_nodes, Arrow, Edge, Authored, Found, Instantiation, StructuralLabel, Node, Positional, Symbol, TypeNode, arrow_body_target_lookup, node_subtree_nodes }
 import v2.std.witness { Holds, Violates }
-import v2.std.node_query { construct_field_edges, construct_tag_optional, find_named_child, node_positional_child_targets }
-import v2.std.collection { list_at_optional }
-import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.node_query { construct_field_edges, construct_tag_optional, find_named_child }
+import std.algebra { list_at_optional, Cons, Empty, FreeMonoid }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -83,7 +77,7 @@ data rcf_far_value_source: String = "module v2.test.rcf_far_value\n\nimport v2.t
 
 data rcf_far_missing_source: String = "module v2.test.rcf_far_missing\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_missing: RcfFar = RcfFar { n: 1 }\n"
 
-data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\nimport std.types { Bool }\n\ntype ArB {\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { m: 3 }\n"
+data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\ntype ArB {\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { m: 3 }\n"
 
 data rcf_pattern_source: String = "module v2.test.rcf_pattern\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\nfn rcf_take(a: ArB) -> Int {\n  match a {\n    ArB { n: x } => x\n  }\n}\n"
 
@@ -95,13 +89,25 @@ data rcf_fs_conflict_source: String = "module v2.test.rcf_fs_conflict\n\ntype Fs
 
 data rcf_fs_position_source: String = "module v2.test.rcf_fs_position\n\ntype FsList<T>\n  = FsEmpty\n  | FsNonEmpty { head: T, tail: FsList<T> }\n\ndata rcf_fs_bools: FsList<Bool> = FsNonEmpty { head: true, tail: FsEmpty }\n\ndata rcf_fs_at_int: FsList<Int> = FsNonEmpty { head: 1, tail: rcf_fs_bools }\n"
 
-fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+data rcf_fs_return_source: String = "module v2.test.rcf_fs_return\n\ntype FsList<T>\n  = FsEmpty\n  | FsNonEmpty { head: T, tail: FsList<T> }\n\nfn rcf_fs_make() -> FsList<Int> { FsEmpty }\n"
+
+data rcf_fs_let_source: String = "module v2.test.rcf_fs_let\n\ntype FsList<T>\n  = FsEmpty\n  | FsNonEmpty { head: T, tail: FsList<T> }\n\nfn rcf_fs_let_int() -> Int {\n  let x: FsList<Int> = FsEmpty\n  1\n}\n"
+
+data rcf_fs_return_mismatch_source: String = "module v2.test.rcf_fs_return_mismatch\n\ntype FsList<T>\n  = FsEmpty\n  | FsNonEmpty { head: T, tail: FsList<T> }\n\nfn f() -> FsList<Int> { FsNonEmpty { head: \"a\", tail: FsEmpty } }\n"
+
+data rcf_alias_wrong_source: String = "module v2.test.rcf_alias_wrong\n\ntype AliasInt = Int\n\nfn f() -> AliasInt { true }\n"
+
+fn rcf_read_in(tree: SourceRootRef, source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: id, file_path: path },
     compilation_unit: unit,
-    source_root: DagTree
+    source_root: tree
   }
+}
+
+fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  rcf_read_in(tree: DagTree, source: source, id: id, unit: unit, path: path)
 }
 
 data rcf_ingest: SourceRootIngest = [
@@ -121,7 +127,11 @@ data rcf_ingest: SourceRootIngest = [
   rcf_read(source: rcf_fs_list_source, id: ^rcf_fs_list_read, unit: ^rcf_fs_list_cu, path: "src/v2/test/fixture/record_construct_field/fs_list.dag"),
   rcf_read(source: rcf_fs_color_source, id: ^rcf_fs_color_read, unit: ^rcf_fs_color_cu, path: "src/v2/test/fixture/record_construct_field/fs_color.dag"),
   rcf_read(source: rcf_fs_conflict_source, id: ^rcf_fs_conflict_read, unit: ^rcf_fs_conflict_cu, path: "src/v2/test/fixture/record_construct_field/fs_conflict.dag"),
-  rcf_read(source: rcf_fs_position_source, id: ^rcf_fs_position_read, unit: ^rcf_fs_position_cu, path: "src/v2/test/fixture/record_construct_field/fs_position.dag")
+  rcf_read(source: rcf_fs_position_source, id: ^rcf_fs_position_read, unit: ^rcf_fs_position_cu, path: "src/v2/test/fixture/record_construct_field/fs_position.dag"),
+  rcf_read(source: rcf_fs_return_source, id: ^rcf_fs_return_read, unit: ^rcf_fs_return_cu, path: "src/v2/test/fixture/record_construct_field/fs_return.dag"),
+  rcf_read(source: rcf_fs_let_source, id: ^rcf_fs_let_read, unit: ^rcf_fs_let_cu, path: "src/v2/test/fixture/record_construct_field/fs_let.dag"),
+  rcf_read(source: rcf_fs_return_mismatch_source, id: ^rcf_fs_return_mismatch_read, unit: ^rcf_fs_return_mismatch_cu, path: "src/v2/test/fixture/record_construct_field/fs_return_mismatch.dag"),
+  rcf_read(source: rcf_alias_wrong_source, id: ^rcf_alias_wrong_read, unit: ^rcf_alias_wrong_cu, path: "src/v2/test/fixture/record_construct_field/alias_wrong.dag")
 ]
 
 fn rcf_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -158,6 +168,10 @@ fn rcf_resolved_fs() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2
 fn rcf_resolved_fs_color() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_color") }
 fn rcf_resolved_fs_conflict() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_conflict") }
 fn rcf_resolved_fs_position() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_position") }
+fn rcf_resolved_fs_return() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_return") }
+fn rcf_resolved_fs_let() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_let") }
+fn rcf_resolved_fs_return_mismatch() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_return_mismatch") }
+fn rcf_resolved_alias_wrong() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_alias_wrong") }
 
 // INFER'S VERDICT, READ WHOLE. A refusal carries the advisories pending when it fired ahead of the
 // refusing diagnostic (v2.std.diagnostic rejected_with_pending), so the refusal is looked for by
@@ -318,7 +332,7 @@ fn rcf_member_accepted_and_decided(resolved: Outcome<ResolvedTree>, member: Symb
       match rcf_member_arrow(root: tree.root, name: member) {
         Absent => false
         Present { value: arrow } =>
-          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers, member_kinds: tree.member_kinds, type_declaration_modifiers: tree.type_declaration_modifiers, constructing_module: tree.constructing_module }) {
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, occurrence_bindings: tree.occurrence_bindings, duplicate_binding_records: tree.duplicate_binding_records, module_outcomes: tree.module_outcomes, outcome_index: tree.outcome_index, member_kinds: tree.member_kinds, type_declaration_modifiers: tree.type_declaration_modifiers, constructing_module: tree.constructing_module }) {
             Rejected { diagnostics: _ } => false
             Accepted { value: _, diagnostics: ds } =>
               !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
@@ -435,8 +449,8 @@ fn rcf_member_infer(resolved: Outcome<ResolvedTree>, member: Symbol) -> Outcome<
             root: arrow,
             symbol_index: tree.symbol_index,
             resolved_declarations: tree.resolved_declarations,
-            lexical_bindings: tree.lexical_bindings,
-            unavailable_providers: tree.unavailable_providers,
+            occurrence_bindings: tree.occurrence_bindings, duplicate_binding_records: tree.duplicate_binding_records,
+            module_outcomes: tree.module_outcomes, outcome_index: tree.outcome_index,
             member_kinds: tree.member_kinds,
             type_declaration_modifiers: tree.type_declaration_modifiers,
             constructing_module: tree.constructing_module
@@ -448,7 +462,7 @@ fn rcf_member_infer(resolved: Outcome<ResolvedTree>, member: Symbol) -> Outcome<
 fn rcf_instantiation_head_dotted(produced: Node) -> Optional<String> {
   match produced.kind {
     TypeNode { connective: Instantiation } =>
-      match list_at_optional(xs: node_positional_child_targets(node: produced), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: produced), index: 0) {
         Absent => optional_absent()
         Present { value: head } =>
           match declaration_reference_path_optional(node: head) {
@@ -463,7 +477,7 @@ fn rcf_instantiation_head_dotted(produced: Node) -> Optional<String> {
 fn rcf_instantiation_first_arg(produced: Node) -> Optional<Node> {
   match produced.kind {
     TypeNode { connective: Instantiation } =>
-      list_at_optional(xs: node_positional_child_targets(node: produced), index: 1)
+      list_at_optional(xs: positional_child_target_nodes(node: produced), index: 1)
     _ => optional_absent()
   }
 }
@@ -485,18 +499,30 @@ fn rcf_construct_field_on(root: Node, field: Symbol) -> Optional<Node> {
 }
 
 fn rcf_fs_type_is_fslist_int(produced: Node) -> Bool {
-  match rcf_instantiation_head_dotted(produced: produced) {
-    Absent => false
-    Present { value: dotted } =>
-      if dotted == "v2.test.rcf_fs.FsList" {
-        match rcf_instantiation_first_arg(produced: produced) {
-          Absent => false
-          Present { value: arg } =>
-            exact_structural_equality_zip_fold(source_facts: arg, candidate: integer_int_type_node())
-        }
-      } else {
-        false
+  match produced.kind {
+    TypeNode { connective: Instantiation } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: produced), index: 0) {
+        Absent => false
+        Present { value: head } =>
+          match declaration_reference_path_optional(node: head) {
+            Absent => false
+            Present { value: qn } =>
+              match qualified_name_last_segment(qn: qn) {
+                Absent => false
+                Present { value: last } =>
+                  if last == ^FsList {
+                    match rcf_instantiation_first_arg(produced: produced) {
+                      Absent => false
+                      Present { value: arg } =>
+                        exact_structural_equality_zip_fold(source_facts: arg, candidate: integer_int_type_node())
+                    }
+                  } else {
+                    false
+                  }
+              }
+          }
       }
+    _ => false
   }
 }
 
@@ -551,4 +577,49 @@ test fn rcf_generic_nullary_arm_conflicting_element_type_refuses_holds() -> Bool
 // conflicting on its own.
 test fn rcf_generic_nullary_arm_position_vs_value_refuses_holds() -> Bool {
   rcf_refuses_with(resolved: rcf_resolved_fs_position(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// A DECLARED RETURN IS THE SAME INSTANTIATION. `fn make() -> FsList<Int> { FsEmpty }` was
+// infer-refused arrow_body_does_not_inhabit_declared_return: #13964 closed open binders only
+// for construct field args. infer_judge_declared_position now closes the produced type from
+// the declared position (no second solver).
+test fn rcf_generic_nullary_arm_return_is_accepted_and_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: rcf_resolved_fs_return(), member: ^rcf_fs_make)
+}
+
+test fn rcf_generic_nullary_arm_return_is_fslist_int_holds() -> Bool {
+  match rcf_member_infer(resolved: rcf_resolved_fs_return(), member: ^rcf_fs_make) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match arrow_body_target_lookup(children: tree.root.children) {
+        Found { target: body } =>
+          match tree.facts.lookup(body) {
+            Absent => false
+            Present { value: facts } =>
+              match inferred_facts_resolved_type(facts: facts) {
+                Violates { diagnostic: _ } => false
+                Holds { value: produced } => rcf_fs_type_is_fslist_int(produced: produced)
+              }
+          }
+        _ => false
+      }
+  }
+}
+
+test fn rcf_generic_nullary_arm_let_annotation_is_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: rcf_resolved_fs_let()) {
+    RcfInferAccepted { diagnostics: _ } => true
+    _ => false
+  }
+}
+
+// FsEmpty fits any FsList<X>. The red is a String head at FsList<Int>.
+test fn rcf_generic_nullary_arm_closed_int_at_string_return_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_fs_return_mismatch(), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// UNFOLDING AN ALIAS DOES NOT ADMIT A DIFFERENT TYPE. `type AliasInt = Int` then `true` at that
+// return still refuses: the declared position is Int after identity unfold, not a free pass.
+test fn rcf_alias_to_a_different_type_still_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_alias_wrong(), reason: ^arrow_body_does_not_inhabit_declared_return)
 }

@@ -3,7 +3,9 @@ module gunbc.ci.ci_runner_placement
 import gunbc.ci.ci_fleet { ComputeOffer }
 import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
 import product.host_identity { HostIdentity }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.realization_width { hardware_thread_count_saturating_sub }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow, integer_overflow_text }
 import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
@@ -11,7 +13,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
-import gunbc.runner.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
@@ -34,20 +36,15 @@ import gunbc.fleet.fleet_host_budget {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
   CompilePoolInRunnerSlots,
-  compile_pool_bytes_for,
   gunbc_compile_pool_placement,
+  compile_pool_bytes_for,
+  host_cpu_reserve_threads,
 }
 import gunbc.fabric.fabric_control_plane_charge {
   host_fabric_control_plane_claim_under,
   fabric_control_plane_placement,
   FabricControlPlanePlacement,
   HostFabricControlPlaneClaim,
-}
-import extdeps.jobserver {
-  jobserver_config,
-  derive_jobserver_tokens,
-  JobserverCited,
-  JobserverAbsent,
 }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci.ci_floor_measurement {
@@ -70,7 +67,7 @@ import gunbc.host.host_memory_observation {
   HostFixedOverheadAllowance,
   HostFixedOverheadUnmeasured,
 }
-import gunbc.ci.ci_fleet { fleet_intent_offers }
+import gunbc.ci.ci_fleet { fleet_intent_offers, fleet_converge_applied_offers, fleet_image_baked_offers, fleet_host_is_image_baked }
 
 type WorkloadClass
   = BatchLatencyTolerant
@@ -152,36 +149,73 @@ type RunnerCpuBoundaryResolution
   = RunnerCpuBoundaryDerived { boundary: RunnerCpuBoundary }
   | RunnerCpuBoundaryUnchargeable { reason: String }
 
-// THE PER-SLOT CPU CEILING IS A FUNCTION OF WHERE COMPILER WORK IS CHARGED, AND cores_per_slot
-// ALONE DOES NOT DETERMINE IT. Under CompilePoolInRunnerSlots the compiler children of a job run
-// inside that job's own runner boundary, so the slot's ceiling is exactly its share and the host
-// sum is runner_width * cores_per_slot + reserve. Under CompilePoolSliceDeclared those children are
-// charged to a separate host pool instead, and the host sum gains a third term -- so the SAME
-// per-slot number that conserves under the first topology over-commits under the second.
+// THE HOST'S CPU IS ALLOCATED IN THE MODEL, UP FRONT, BY ONE FOLD (operator ruling 2026-10-14:
+// "give everything allocation in the model up front, not at runtime/via an actual server - i.e. via
+// convergence"; "slots need a CPU cap"). That ruling SUPERSEDES the 2026-09-19 NoCpuCeiling policy
+// for GitHub runner slots: the host-wide ctrl-jobserver that NoCpuCeiling leaned on leaked tokens
+// whenever a build was killed mid-compile (srv3 25/120, srv4 56/120, srv1 91/128 free when measured)
+// and throttled builds while ~88% of the CPU sat idle. A server handing out permits at runtime
+// is replaced by a ceiling each slot carries from birth, which no kill can leak.
 //
-// On this fleet that is not a margin: 21 slots at 6 threads is 126 of 128, which leaves two threads
-// for a pool that would then carry every cache-miss rustc on the host.
+// THE THREE NUMBERS ARE ONE DERIVATION, from the inputs this function's caller already resolved for
+// the memory wall -- host threads, host RAM, the session slice and the committed width:
 //
-// So the arm REFUSES rather than emitting the quota it cannot justify. compile_pool_bytes_for
-// charges the pool in BYTES and there is no CPU charge for it anywhere in the tree, so under the
-// declared-slice topology this producer has no conserving allocation to state. The refusal is the
-// point: it makes the topology flip impossible to land WITHOUT rederiving the width, rather than
-// letting a quota authored under one topology survive silently into the other.
+//   sessions_cpu_cap  = floor(threads * session_pool / host_ram)   -- the sessions' CPU share is
+//                       their memory share; a host with no session reservation charges zero
+//   per_slot          = floor((threads - host_cpu_reserve_threads - sessions_cpu_cap) / slots)
 //
-// NEXT-RUNG TRIGGER: a compile-pool CPU charge in the host allocation, at which point this arm
-// derives a rebalanced width and ceiling instead of refusing.
-fn runner_cpu_boundary_for(placement: CompilePoolPlacement, quota: RunnerSlotCpuQuota) -> RunnerCpuBoundaryResolution {
-  match placement {
-    CompilePoolInRunnerSlots =>
-      RunnerCpuBoundaryDerived {
-        boundary: match quota {
-          CpuQuotaResolved { threads: t } => CapacityQuota { threads: t }
-          SlotCpuQuotaUnbounded => NoCpuCeiling
+// per_slot is the slot's CPUQuota AND its CARGO_BUILD_JOBS (gunbc.runner.runner_unit_file binds
+// jobs_per_slot to this field), so compile parallelism cannot disagree with the ceiling it runs
+// under. The width is NOT re-derived from this: the cores axis of the width fold
+// (gunbc.runner.runner_slot_allocation) still admits at one core per slot, so "fit as many runners
+// as you can" is the memory axis's answer, and the CPU is then divided among exactly the slots that
+// fit. A width so large that the division floors to zero is refused rather than rendered as a
+// zero-percent quota, which systemd would read as no CPU at all.
+type HostCpuAllocation {
+  sessions_cpu_cap: HardwareThreadCount
+  per_slot: HardwareThreadCount
+}
+
+type HostCpuAllocationResolution
+  = HostCpuAllocationDerived { allocation: HostCpuAllocation }
+  | HostCpuAllocationRefused { reason: String }
+
+fn host_cpu_allocation(threads: HardwareThreadCount, reserve: HardwareThreadCount, host_ram: ByteSize, session_pool: ByteSize, slots: Int) -> HostCpuAllocationResolution {
+  if byte_size_count(b: host_ram) == 0 {
+    HostCpuAllocationRefused { reason: "host RAM is zero bytes, so the sessions' share of the CPU has no denominator" }
+  } else if slots <= 0 {
+    HostCpuAllocationRefused { reason: "the committed width is zero, so there is no slot to divide the runner CPU among" }
+  } else {
+    let sessions_cpu_cap = measure_scale_fraction_floor(m: threads, num: byte_size_count(b: session_pool), den: byte_size_count(b: host_ram))
+    let runner_threads = hardware_thread_count_saturating_sub(a: hardware_thread_count_saturating_sub(a: threads, b: reserve), b: sessions_cpu_cap)
+    match checked_int_magnitude(a: slots) {
+      CheckedNatOverflow { cause: c } => HostCpuAllocationRefused { reason: concat("the committed width has no natural-number magnitude: ", integer_overflow_text(cause: c)) }
+      CheckedNatReady { value: slot_count } => {
+        let per_slot = hardware_thread_count(count: measure_fit_count_floor(capacity: runner_threads, each: hardware_thread_count(count: slot_count)))
+        if hardware_thread_count_value(t: per_slot) == 0 {
+          HostCpuAllocationRefused {
+            reason: join(["the ", to_string(hardware_thread_count_value(t: runner_threads)), " runner threads left after the host reserve and the sessions' share do not give each of ", to_string(slots), " slots one whole thread"], ""),
+          }
+        } else {
+          HostCpuAllocationDerived { allocation: HostCpuAllocation { sessions_cpu_cap: sessions_cpu_cap, per_slot: per_slot } }
         }
       }
+    }
+  }
+}
+
+// THE PER-SLOT CPU CEILING IS ALSO A FUNCTION OF WHERE COMPILER WORK IS CHARGED. Under
+// CompilePoolInRunnerSlots the compiler children of a job run inside that job's own runner boundary,
+// so the slot's ceiling is exactly its share. Under CompilePoolSliceDeclared those children are
+// charged to a separate host pool that carries no modeled CPU charge, so the same per-slot number
+// over-commits the host; that arm refuses (no sizing authority since the jobserver was retired).
+fn runner_cpu_boundary_for(placement: CompilePoolPlacement, per_slot: HardwareThreadCount) -> RunnerCpuBoundaryResolution {
+  match placement {
+    CompilePoolInRunnerSlots =>
+      RunnerCpuBoundaryDerived { boundary: CapacityQuota { threads: per_slot } }
     CompilePoolSliceDeclared { slice_unit: u } =>
       RunnerCpuBoundaryUnchargeable {
-        reason: concat("compile pool is a declared host slice and carries no modeled CPU charge, so a per-slot CPU ceiling derived from cores_per_slot alone would commit the host past its threads once that pool runs: rederive runner width and the per-slot ceiling together with the pool's CPU charge. Slice: ", u)
+        reason: concat("compile pool is a declared host slice and carries no modeled CPU charge, so the per-slot CPU ceiling would commit the host past its threads once that pool runs. Slice: ", u)
       }
   }
 }
@@ -195,7 +229,7 @@ type RunnerHostDeployment {
   per_runner_memory_high_cap: ByteSize
   per_runner_tasks_max: Int
   per_runner_cpu_boundary: RunnerCpuBoundary
-  build_tokens: HardwareThreadCount
+  sessions_cpu_cap: HardwareThreadCount
   runner: RunnerSpec
   workload_class: WorkloadClass
 }
@@ -223,9 +257,9 @@ type HostRunnerDeploymentRefusal
   | HostAllocationUnchargeableOnHost { cause: String }
   | ZeroRunnerWidth
   | CommittedWidthUnresolved { cause: String }
-  | JobserverCitationAbsent { cause: String }
   | HostCpuAllocationUnchargeable { cause: String }
   | HostNotEnrolledInFleet
+  | HostRealizedByImage
 
 type RefusedHostDeployment {
   host: HostIdentity
@@ -299,7 +333,7 @@ fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
     HostFixedOverheadMeasured { bytes: b, provenance: _ } => b
     HostFixedOverheadAllowance { bytes: b, reason: _ } => b
-    HostFixedOverheadUnmeasured => byte_size(0)
+    HostFixedOverheadUnmeasured { reason: _ } => byte_size(0)
   }
 }
 
@@ -312,30 +346,19 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
   match o {
     HostFixedOverheadMeasured { bytes: b, provenance: _ } => HostOverheadResolved { bytes: b }
     HostFixedOverheadAllowance { bytes: b, reason: _ } => HostOverheadResolved { bytes: b }
-    HostFixedOverheadUnmeasured =>
+    HostFixedOverheadUnmeasured { reason: why } =>
       HostOverheadUnresolved {
-        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", host)
+        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", concat(host, concat("; ", why as String)))
       }
   }
 }
 
-// build_tokens IS A DERIVED COMPILE-POOL BUDGET AND NOT THE HOST'S THREAD COUNT. This parameter was
-// `nproc` and was stored raw, so the compile concurrency written into the jobserver's configuration
-// was every hardware thread on the machine -- 128 on this fleet -- while extdeps.jobserver already
-// carried the installed daemon's own formula, cited term for term from its defaults:
-// min(cores - margin, floor((MemTotal - reserve) / mib_per_job)).
-//
-// TWO PRODUCERS FOR ONE NUMBER IS THE DEFECT, not the size of either. The compile pool could be
-// sized from the derivation while the host was converged to nproc, and nothing joined them. The
-// derivation is the one that survives, because it is the one that charges memory: a purely
-// core-shaped count admits more concurrent rustc than RAM can hold, which is the class the daemon's
-// own header records as the reason the memory bound exists.
 // THE WIDTH IS SUPPLIED, NOT RE-READ. Both fields below are functions of one width, and this
 // function used to read it twice by two names -- gunbc_runner_slots_per_host for the count and
 // gunbc_runner_pool_budget_for for the cap it implies -- so a host whose width does not resolve
 // could not be refused from here at all: each read would have had to answer something. The width
 // is resolved once by the caller, which is also the only place a refusal can be constructed.
-fn conservation_host_deployment(offer: ComputeOffer, slots: Int, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
+fn conservation_host_deployment(offer: ComputeOffer, slots: Int, sessions_cpu_cap: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
     runner_count: slots,
@@ -345,7 +368,7 @@ fn conservation_host_deployment(offer: ComputeOffer, slots: Int, build_tokens: H
     per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
     per_runner_tasks_max: gunbc_runner_slot_desired().tasks_max,
     per_runner_cpu_boundary: cpu_boundary,
-    build_tokens: build_tokens,
+    sessions_cpu_cap: sessions_cpu_cap,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
   }
@@ -498,9 +521,9 @@ fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsabl
   match r {
     HostUsableRamMeasured { bytes: b, provenance: _ } => HostUsableRamResolved { bytes: b }
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
-    HostUsableRamUnmeasured =>
+    HostUsableRamUnmeasured { reason: why } =>
       HostUsableRamUnresolved {
-        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", host)
+        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", concat(host, concat("; ", why as String)))
       }
   }
 }
@@ -525,9 +548,9 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     HostAllocationUnchargeableOnHost { cause: t } => concat("host_allocation_unchargeable ", t)
     ZeroRunnerWidth => "zero_runner_width"
     CommittedWidthUnresolved { cause: t } => concat("committed_width_unresolved ", t)
-    JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
+    HostRealizedByImage => "host_realized_by_image_not_converge_applied"
   }
 }
 
@@ -596,7 +619,7 @@ fn session_slice_of(f: HostWidthFacts) -> HostSessionSliceResolution {
 
 // ONE HOST'S STANDING FROM ITS OFFER AND A SUPPLIED FACTS RECORD. host_deployment_standing supplies
 // gunbc.runner.runner_slot_allocation host_width_facts, the production producer; a witness may supply a
-// record directly, and then the whole standing -- width, conservation, jobserver -- is a function
+// record directly, and then the whole standing -- width, conservation, CPU allocation -- is a function
 // of values it chose. The control-plane claim is the one input still read here, because it is
 // evaluated under the placement argument rather than the default placement the record holds.
 fn host_deployment_standing_given(offer: ComputeOffer, facts: HostWidthFacts, control_plane_placement: FabricControlPlanePlacement) -> HostRunnerDeploymentStanding {
@@ -676,12 +699,7 @@ fn host_standing_at_width(
     HostOverheadUnresolved { reason: orr } =>
       refuse_host(host: host_id, cause: FixedOverheadUnavailable { cause: orr })
     HostOverheadResolved { bytes: overhead } =>
-      match compile_pool_bytes_for(
-        placement: gunbc_compile_pool_placement,
-        nproc: cpu_facts_threads(cpu: cpu),
-        host: host_ram,
-        citation: jobserver_config
-      ) {
+      match compile_pool_bytes_for(placement: gunbc_compile_pool_placement) {
         CompilePoolUnresolved { reason: r } =>
           refuse_host(host: host_id, cause: CompilePoolUnavailable { cause: concat("compile pool unresolved: ", r) })
         CompilePoolDerived { bytes: compile_pool } =>
@@ -704,16 +722,11 @@ fn host_standing_at_width(
                 cause: concat(concat("host allocation unchargeable on ", host_id), concat(": ", c))
               })
             HostAllocationConserves =>
-              match jobserver_config {
-                JobserverAbsent =>
-                  refuse_host(host: host_id, cause: JobserverCitationAbsent {
-                    cause: concat("no cited jobserver configuration, so the compile-token budget has no derivation and the host cannot be told a bound it did not compute: ", host_id)
-                  })
-                JobserverCited { config: jcfg, provenance: _ } =>
-                  match runner_cpu_boundary_for(
-                    placement: gunbc_compile_pool_placement,
-                    quota: gunbc_runner_slot_desired().cpu_quota
-                  ) {
+              match host_cpu_allocation(threads: cpu_facts_threads(cpu: cpu), reserve: host_cpu_reserve_threads, host_ram: host_ram, session_pool: session_pool, slots: slots) {
+                HostCpuAllocationRefused { reason: ar } =>
+                  refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: ar })
+                HostCpuAllocationDerived { allocation: alloc } =>
+                  match runner_cpu_boundary_for(placement: gunbc_compile_pool_placement, per_slot: alloc.per_slot) {
                     RunnerCpuBoundaryUnchargeable { reason: cr } =>
                       refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: cr })
                     RunnerCpuBoundaryDerived { boundary: cpub } =>
@@ -721,11 +734,7 @@ fn host_standing_at_width(
                         dep: conservation_host_deployment(
                           offer: offer,
                           slots: slots,
-                          build_tokens: derive_jobserver_tokens(
-                            nproc: cpu_facts_threads(cpu: cpu),
-                            mem_total: host_ram,
-                            cfg: jcfg
-                          ),
+                          sessions_cpu_cap: alloc.sessions_cpu_cap,
                           cpu_boundary: cpub
                         ),
                         host_id: host_id
@@ -741,9 +750,30 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan_under_placement(control_plane_placement: fabric_control_plane_placement)
 }
 
+// THE PLAN IS THE CONVERGE-APPLIED ARM: the hosts a converge installs onto in place. Every reader of it
+// (the converge policy, the unit-file, file-converge and deploy emitters) therefore never sees a RAM-image
+// host, and a new reader cannot SSH-install one. The image-baked arm is runner_image_baked_deployment_plan.
 fn runner_deployment_plan_under_placement(control_plane_placement: FabricControlPlanePlacement) -> RunnerDeploymentPlan {
   RunnerDeploymentPlan {
-    hosts: map(fleet_intent_offers, o => host_deployment_standing(offer: o, control_plane_placement: control_plane_placement)),
+    hosts: map(fleet_converge_applied_offers, o => host_deployment_standing(offer: o, control_plane_placement: control_plane_placement)),
+  }
+}
+
+// THE IMAGE-BAKED ARM over the same per-host derivation: a RAM-image host's slots and knobs, owed to the
+// image build input rather than applied by a converge.
+fn runner_image_baked_deployment_plan() -> RunnerDeploymentPlan {
+  RunnerDeploymentPlan {
+    hosts: map(fleet_image_baked_offers, o => host_deployment_standing(offer: o, control_plane_placement: fabric_control_plane_placement)),
+  }
+}
+
+// THE FLEET CAPACITY PLAN: every enrolled CI host whichever way its runner program is realized. Readers that
+// place or count CI capacity (the fleet-wide runner width, workspace-commissioning host-budget admission)
+// read this union, because mtcollins1 serves CI and must not drop out of a capacity answer; readers that
+// SSH-apply a host read runner_deployment_plan (converge-applied arm only).
+fn runner_fleet_capacity_plan() -> RunnerDeploymentPlan {
+  RunnerDeploymentPlan {
+    hosts: concat(runner_deployment_plan().hosts, runner_image_baked_deployment_plan().hosts),
   }
 }
 
@@ -769,7 +799,7 @@ fn plan_derived_run_total(p: RunnerDeploymentPlan) -> Int {
 // a host-targeted transaction, so srv3 being deployable is a fact about srv3 and stays true while
 // srv2 is refused.
 fn runner_host_deployment_for(p: RunnerDeploymentPlan, host: HostIdentity) -> HostRunnerDeploymentStanding {
-  fold(p.hosts, init: refuse_host(host: host, cause: HostNotEnrolledInFleet), f: (acc, st) => match st {
+  fold(p.hosts, init: refuse_host(host: host, cause: if fleet_host_is_image_baked(host: host) { HostRealizedByImage } else { HostNotEnrolledInFleet }), f: (acc, st) => match st {
     HostRunnerDeploymentDerived { deployment: d } =>
       if (d.identity as String) == (host as String) { HostRunnerDeploymentDerived { deployment: d } } else { acc }
     HostRunnerDeploymentRefused { refusal: r } =>
@@ -807,7 +837,7 @@ type RunnersPerHostResolution
 // over three hosts is not the maximum over four. It therefore asks for completeness rather than
 // reading whatever derived, and names the refused hosts when it cannot have it.
 fn effective_runners_per_host() -> RunnersPerHostResolution {
-  match require_complete_fleet_plan(p: runner_deployment_plan()) {
+  match require_complete_fleet_plan(p: runner_fleet_capacity_plan()) {
     FleetDeploymentComplete { deployments: hosts, fleet_concurrent_runs: _ } =>
       RunnersPerHostDerived { count: fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc }) }
     FleetDeploymentIncomplete { derived_hosts: _, refused_hosts: refused, known_derived_runs: _ } =>

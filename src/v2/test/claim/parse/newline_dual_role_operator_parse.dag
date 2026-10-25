@@ -5,8 +5,8 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag { dag_lex_rules, dag_target_model }
 import v2.std.grammar { parse_production_emitted_identity_optional }
-import std.algebra { fold_list }
-import v2.std.collection { map_lookup }
+import std.algebra { fold_list, map_lookup }
+
 import v2.std.compilers.lexing { lex_rule_set_matching_rules, lex_rule_token_class_optional }
 import v2.std.compilers.target_model {
   EmitLineBreaks,

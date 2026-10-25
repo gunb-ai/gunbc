@@ -8,6 +8,7 @@ import gunbc.fleet.fleet_ssh_access { operator_ssh_principal, fleet_automation_s
 import gunbc.runner.runner_slot_allocation
 import gunbc.workspace_gateway
 import gunbc.fleet.fleet_known_hosts_anchor
+import gunbc.fleet.fleet_host_key_enrollment
 
 test fn direct_host_access_is_fresh_and_bound_to_the_selected_host() -> Bool {
   let slot = RunnerSlotIdentity { host: "srv1", slot_index: 13 }
@@ -42,7 +43,7 @@ test fn workspace_gateway_tailnet_names_have_one_enrolled_host_key() -> Bool {
   all(gunbc.runner.runner_slot_allocation.workspace_execution_slot_identities(), slot =>
     match gunbc.workspace_gateway.workspace_fleet_gateway(slot: slot) {
       Absent => false
-      Present { value: gateway } => count(filter(gunbc.fleet.fleet_known_hosts_anchor.fleet_known_hosts_rows(), row => row.endpoint == (gateway.tailnet_name as String))) == 1
+      Present { value: gateway } => count(filter(gunbc.fleet.fleet_known_hosts_anchor.fleet_known_hosts_rows(), row => gunbc.fleet.fleet_host_key_enrollment.known_host_row_field(k: row) == (gateway.tailnet_name as String))) == 1
     })
 }
 

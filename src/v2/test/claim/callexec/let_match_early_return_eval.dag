@@ -17,7 +17,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, NodeFold, Symbol, fold_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.std.text { String }

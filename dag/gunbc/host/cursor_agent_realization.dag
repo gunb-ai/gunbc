@@ -1,0 +1,397 @@
+module gunbc.host.cursor_agent_realization
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.uri { Uri }
+import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal }
+import std.types { path_segment_is_safe }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEntryPresence, filesystem_entry_presence, filesystem_listing_observation }
+import gunbc.cursor_harness_credential {
+  CursorSandboxPreflightReading,
+  CursorSandboxReady,
+  CursorSandboxRefused,
+  CursorSandboxUnavailable,
+  CursorSandboxNotEntered,
+  CursorSandboxPreflightUnreadable,
+  cursor_sandbox_discriminating_preflight_command,
+}
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.llm.cursor_agent_distribution {
+  cursor_agent_linux_arm64_tarball_uri,
+  cursor_agent_executable_name,
+  cursor_agent_sandbox_helper_name,
+}
+import extdeps.llm.cursor_sandbox_apparmor {
+  CursorSandboxProfileRule,
+  CursorSandboxPlainRule,
+  CursorSandboxUsernsRuleAppArmor4,
+  cursor_sandbox_agent_cli_rules,
+  cursor_sandbox_agent_cli_profile_flags,
+  cursor_sandbox_apparmor_package_version,
+}
+
+// THE DEPLOYMENT'S FACTS ABOUT THE CURSOR AGENT CLI ON A HOST WHOSE KERNEL RESTRICTS UNPRIVILEGED USER
+// NAMESPACES (kernel.apparmor_restrict_unprivileged_userns = 1, modeled by extdeps.linux.apparmor_userns).
+// Cursor's sandbox helper needs a user namespace, so a sandbox-enabled worker turn
+// (gunbc.cursor_harness_credential cursor_worker_turn_run declares CursorSandboxEnabled so that --force is
+// never unconfined) fails locally on such a host unless an AppArmor profile admits that helper. This
+// module owns which tree, at which exact path, under which exact profile. extdeps.llm.cursor_cli owns the
+// command surface and says nothing of Ubuntu; the two vendor modules own the artifact and rule set.
+//
+// WHAT THIS MODULE DOES NOT DO, and what each is waiting on. (1) It does not install anything: the
+// download+verify+unpack effect is the generic verified download+install effect (the capability, not a PR number) and
+// the fleet-converge mode that targets srv2 from a srv1 executor over the administrator SSH edge
+// (gunbc.fleet.host_credential_custody_converge is the pattern) is declared against it; this module is
+// the SUBJECT such a converge folds over, and the readback it must pass. (2) It does not run the free
+// sandbox preflight: the command and typed reading are gunbc.cursor_harness_credential's, and this module
+// only supplies the pinned identity and folds the reading in as the readback's preflight leg. (3) Nothing
+// but the witness reads the readback yet: its consumer is that converge, which runs the commands and
+// supplies the observations. The sandbox preflight, the key probe and the worker turn all run cursor_agent_pinned_program
+// (gunbc.worker_turn_standing, gunbc.roadmap.roadmap_dispatch_actuator).
+//
+// RULE SET: the vendor's 0.6.2 cursor_sandbox_agent_cli rules VERBATIM, with exactly two changes: the
+// attachment is the exact root-owned helper path, never versions/* or /home/*, and `userns,` is explicit
+// (AppArmor 4). This DIVERGES from "only the rules the free preflight shows are needed": deriving the
+// minimal set needs experiments on a production host that were not admitted, and the vendor set is
+// upstream's declared requirement. Minimization is a bounded follow-up whose trigger is an admitted
+// experiment route (e.g. a complain-mode audit read by this readback); the preflight readback is what
+// establishes sufficiency when the converge is applied.
+
+// ── THE PINNED REALIZATION ────────────────────────────────────────────────────────────────────
+
+data cursor_agent_realization_root: String = "/opt/gunbc/cursor-agent"
+
+// The build observed on srv2, on which `status` returned authenticated and the sandbox failure was
+// characterized. Moving to another build is this row and the digest below, nothing else.
+data cursor_agent_pinned_version: NonEmptyStr = "2026.09.15-d2fe57e" as NonEmptyStr
+
+data cursor_agent_pinned_tarball_sha256: Sha256Digest = Sha256Digest {
+  hex: "2d741c12c3ee7a505584579efb28a0ee31ff13fefc1f347e2d3b43688c04620d" as Sha256DigestHex
+}
+
+fn cursor_agent_pinned_tarball_uri() -> Uri {
+  cursor_agent_linux_arm64_tarball_uri(version: cursor_agent_pinned_version)
+}
+
+fn cursor_agent_version_directory(version: NonEmptyStr) -> String {
+  join([cursor_agent_realization_root, "/", version as String], "")
+}
+
+// THE EXACT EXECUTABLE PATH the worker-turn realization consumes. extdeps.llm.cursor_cli keeps its PATH
+// name; the caller that holds the host realization substitutes this program, so no /opt policy enters extdeps.
+fn cursor_agent_executable_path(version: NonEmptyStr) -> String {
+  join([cursor_agent_version_directory(version: version), "/", cursor_agent_executable_name as String], "")
+}
+
+fn cursor_agent_sandbox_helper_path(version: NonEmptyStr) -> String {
+  join([cursor_agent_version_directory(version: version), "/", cursor_agent_sandbox_helper_name as String], "")
+}
+
+// ── PATH EXACTNESS ────────────────────────────────────────────────────────────────────────────
+
+type CursorAgentPathRefusal
+  = PathHasWildcard
+  | PathHasUnsafeSegment
+  | PathOutsidePinnedRoot
+
+type CursorAgentPathAdmission
+  = CursorAgentPathAdmitted { path: String }
+  | CursorAgentPathRefused { path: String, refusal: CursorAgentPathRefusal }
+
+// AppArmor path globbing metacharacters. This is the one predicate here with no corpus authority: the
+// vendor profile's defect is exactly that its attachment is a glob, and std.types path_segment_is_safe
+// is about directory-name hostility (/ \ . .. control bytes), not about what AppArmor reads as a pattern.
+fn path_has_apparmor_glob(path: String) -> Bool {
+  string_contains(s: path, pattern: "*") || string_contains(s: path, pattern: "?")
+    || string_contains(s: path, pattern: "[") || string_contains(s: path, pattern: "{")
+}
+
+fn segments_all_safe(path_below_root: String) -> Bool {
+  fold(split(s: path_below_root, delimiter: "/"), init: true, f: (acc, seg) => acc && path_segment_is_safe(raw: seg))
+}
+
+// A PROFILE ATTACHMENT OR EXEC PATH IS EXACT AND UNDER THE PINNED ROOT, WHICH IS ROOT-OWNED. Being
+// under that root is what excludes every principal-writable location (/home, /tmp, ...), so there is no
+// second list of such places to keep. Segment safety is the corpus's path_segment_is_safe, so `..`, `.`
+// and empty segments (`//`) refuse through the same law every branded directory id uses.
+fn admit_cursor_agent_path(path: String) -> CursorAgentPathAdmission {
+  let root_prefix = join([cursor_agent_realization_root, "/"], "")
+  if path_has_apparmor_glob(path: path) {
+    CursorAgentPathRefused { path: path, refusal: PathHasWildcard }
+  } else if starts_with(s: path, prefix: root_prefix) == false {
+    CursorAgentPathRefused { path: path, refusal: PathOutsidePinnedRoot }
+  } else if segments_all_safe(path_below_root: substring(s: path, start: string_length(s: root_prefix), end: string_length(s: path))) == false {
+    CursorAgentPathRefused { path: path, refusal: PathHasUnsafeSegment }
+  } else {
+    CursorAgentPathAdmitted { path: path }
+  }
+}
+
+// ── THE PROFILE ───────────────────────────────────────────────────────────────────────────────
+
+data cursor_agent_profile_name: NonEmptyStr = "gunbc_cursor_sandbox_agent_cli" as NonEmptyStr
+
+data cursor_agent_profile_file_path: String = "/etc/apparmor.d/gunbc-cursor-sandbox-agent-cli"
+
+data cursor_agent_root_uid: Int = 0
+
+data cursor_agent_root_gid: Int = 0
+
+// The mode is compared as the corpus's own FileMode, rendered by extdeps.access.posix file_mode_octal.
+data cursor_agent_profile_mode_octal: String = "0644"
+
+fn render_profile_rule(rule: CursorSandboxProfileRule) -> String {
+  match rule {
+    CursorSandboxPlainRule { text: t } => if t == "" { "" } else { concat("  ", t) }
+    CursorSandboxUsernsRuleAppArmor4 => "  userns,"
+  }
+}
+
+type CursorAgentProfileRendering
+  = CursorAgentProfileRendered { text: String }
+  | CursorAgentProfileUnrenderable { refusal: CursorAgentPathRefusal }
+
+fn render_cursor_agent_profile(helper_path: String) -> CursorAgentProfileRendering {
+  match admit_cursor_agent_path(path: helper_path) {
+    CursorAgentPathRefused { path: _, refusal: r } => CursorAgentProfileUnrenderable { refusal: r }
+    CursorAgentPathAdmitted { path: p } =>
+      CursorAgentProfileRendered {
+        text: join(
+          concat(
+            concat(
+              [join([
+                "profile ", cursor_agent_profile_name as String, " ", p,
+                " flags=(", cursor_sandbox_agent_cli_profile_flags as String, ") {",
+              ], "")],
+              map(cursor_sandbox_agent_cli_rules, r => render_profile_rule(rule: r)),
+            ),
+            [join(["  ", p, " mr,"], ""), "}", ""],
+          ),
+          "\n",
+        )
+      }
+  }
+}
+
+// The sha256 of render_cursor_agent_profile(cursor_agent_sandbox_helper_path(cursor_agent_pinned_version)),
+// as the file lands on disk (trailing newline). The substrate has no in-language hash of text, so this
+// digest is read back from the host by sha256sum and compared; the gunbc.test.claim witness pins the
+// rendered text itself.
+data cursor_agent_pinned_profile_sha256: Sha256Digest = Sha256Digest {
+  hex: "1daecb56016b61b8651631ab196a114613ac5ff71deae46fafd0c5ee4da9c98d" as Sha256DigestHex
+}
+
+// ── THE READBACK ──────────────────────────────────────────────────────────────────────────────
+// OBSERVATIONS ARE SUPPLIED; the converge's observe step produces them (stat, sha256sum, find, the
+// kernel's profiles file). A missing observation is Unobserved, never a pass.
+
+type ProfileFileObservation
+  = ProfileFileObserved { ownership: FileOwnership, mode: FileMode, sha256sum_line: String }
+  | ProfileFileUnobserved { reason: String }
+
+// `profiles` is the text of /sys/kernel/security/apparmor/profiles, one `name (mode)` per line.
+type LoadedProfilesObservation
+  = LoadedProfilesObserved { profiles: String }
+  | LoadedProfilesUnobserved { reason: String }
+
+// Counts come from enumerating the whole version tree, so a single writable or foreign-owned or
+// escaping entry is visible.
+type InstallTreeObservation
+  = InstallTreeObserved {
+      executable_present: Bool,
+      helper_present: Bool,
+      entries_not_root_owned: Int,
+      entries_group_or_other_writable: Int,
+      symlinks_leaving_tree: Int,
+    }
+  | InstallTreeUnobserved { reason: String }
+
+type CursorAgentReadbackFailure
+  = ProfileDigestMismatch
+  | ProfileDigestUnreadable
+  | ProfileNotRootOwned
+  | ProfileModeNotPinned
+  | ProfileNotLoaded
+  | ProfileLoadedNotEnforcing
+  | InstallExecutableMissing
+  | InstallHelperMissing
+  | InstallEntriesNotRootOwned
+  | InstallEntriesWritable
+  | InstallSymlinkEscapes
+  | PreflightSandboxUnavailable
+  | PreflightSandboxNotEntered
+  | PreflightUnreadable
+
+type CursorAgentReadback
+  = CursorAgentReadbackHolds
+  | CursorAgentReadbackFails { cause: CursorAgentReadbackFailure }
+  | CursorAgentReadbackUnobserved { reason: String }
+
+fn loaded_profile_line_enforcing() -> String {
+  join([cursor_agent_profile_name as String, " (enforce)"], "")
+}
+
+// WHOLE-LINE MATCH: a longer name that merely ends in ours must not read as ours.
+fn profiles_have_line(profiles: String, line: String) -> Bool {
+  fold(split(s: profiles, delimiter: "\n"), init: false, f: (acc, l) => acc || l == line)
+}
+
+fn profiles_have_line_starting(profiles: String, prefix: String) -> Bool {
+  fold(split(s: profiles, delimiter: "\n"), init: false, f: (acc, l) => acc || starts_with(s: l, prefix: prefix))
+}
+
+fn readback_profile_file(observed: ProfileFileObservation) -> CursorAgentReadback {
+  match observed {
+    ProfileFileUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
+    ProfileFileObserved { ownership: o, mode: m, sha256sum_line: line } =>
+      if o.uid != cursor_agent_root_uid || o.gid != cursor_agent_root_gid {
+        CursorAgentReadbackFails { cause: ProfileNotRootOwned }
+      } else if file_mode_octal(mode: m) != cursor_agent_profile_mode_octal {
+        CursorAgentReadbackFails { cause: ProfileModeNotPinned }
+      } else {
+        match sha256sum_line_digest(line: line) {
+          Absent => CursorAgentReadbackFails { cause: ProfileDigestUnreadable }
+          Present { value: d } =>
+            if (d.hex as String) == (cursor_agent_pinned_profile_sha256.hex as String) {
+              CursorAgentReadbackHolds
+            } else {
+              CursorAgentReadbackFails { cause: ProfileDigestMismatch }
+            }
+        }
+      }
+  }
+}
+
+// ENFORCE, NOT MERELY LOADED: a profile in complain mode logs and permits, so it would let the
+// preflight pass while confining nothing.
+fn readback_loaded_profile(observed: LoadedProfilesObservation) -> CursorAgentReadback {
+  match observed {
+    LoadedProfilesUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
+    LoadedProfilesObserved { profiles: p } =>
+      if profiles_have_line(profiles: p, line: loaded_profile_line_enforcing()) {
+        CursorAgentReadbackHolds
+      } else if profiles_have_line_starting(profiles: p, prefix: join([cursor_agent_profile_name as String, " ("], "")) {
+        CursorAgentReadbackFails { cause: ProfileLoadedNotEnforcing }
+      } else {
+        CursorAgentReadbackFails { cause: ProfileNotLoaded }
+      }
+  }
+}
+
+fn readback_install_tree(observed: InstallTreeObservation) -> CursorAgentReadback {
+  match observed {
+    InstallTreeUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
+    InstallTreeObserved {
+      executable_present: e,
+      helper_present: h,
+      entries_not_root_owned: foreign,
+      entries_group_or_other_writable: writable,
+      symlinks_leaving_tree: escaping,
+    } =>
+      if e == false {
+        CursorAgentReadbackFails { cause: InstallExecutableMissing }
+      } else if h == false {
+        CursorAgentReadbackFails { cause: InstallHelperMissing }
+      } else if foreign != 0 {
+        CursorAgentReadbackFails { cause: InstallEntriesNotRootOwned }
+      } else if writable != 0 {
+        CursorAgentReadbackFails { cause: InstallEntriesWritable }
+      } else if escaping != 0 {
+        CursorAgentReadbackFails { cause: InstallSymlinkEscapes }
+      } else {
+        CursorAgentReadbackHolds
+      }
+  }
+}
+
+// FAILS DOMINATES UNOBSERVED DOMINATES HOLDS: a wrong answer anywhere is a failure even when another
+// leg could not look, and nothing holds unless every leg looked and held.
+fn combine_cursor_agent_readbacks(a: CursorAgentReadback, b: CursorAgentReadback) -> CursorAgentReadback {
+  match a {
+    CursorAgentReadbackFails { cause: c } => CursorAgentReadbackFails { cause: c }
+    CursorAgentReadbackUnobserved { reason: r } =>
+      match b {
+        CursorAgentReadbackFails { cause: c } => CursorAgentReadbackFails { cause: c }
+        CursorAgentReadbackHolds => CursorAgentReadbackUnobserved { reason: r }
+        CursorAgentReadbackUnobserved { reason: _ } => CursorAgentReadbackUnobserved { reason: r }
+      }
+    CursorAgentReadbackHolds => b
+  }
+}
+
+fn cursor_agent_realization_readback(
+  profile_file: ProfileFileObservation,
+  loaded: LoadedProfilesObservation,
+  tree: InstallTreeObservation,
+) -> CursorAgentReadback {
+  combine_cursor_agent_readbacks(
+    a: readback_profile_file(observed: profile_file),
+    b: combine_cursor_agent_readbacks(
+      a: readback_loaded_profile(observed: loaded),
+      b: readback_install_tree(observed: tree),
+    ),
+  )
+}
+
+// THE EXACT EXECUTABLE AS A PROGRAM IDENTITY. The invocation is the admitted absolute path, never the
+// PATH name, so the preflight below runs the root-owned pinned binary and no other. Minting is a
+// sealed review event (extdeps.exec.program uncataloged_program lists this row): the program is not
+// yet carried by a CliTool row.
+fn cursor_agent_pinned_program() -> ProgramIdentity {
+  uncataloged_program(invocation: cursor_agent_executable_path(version: cursor_agent_pinned_version) as NonEmptyStr)
+}
+
+// THE FREE PREFLIGHT, RUN WITH THE PINNED IDENTITY. This is warm-crane-219's discriminating command
+// (gunbc.cursor_harness_credential), not a second preflight: it sets the outer CURSOR_SANDBOX sentinel
+// so an inherited `native` cannot read Ready over an unsandboxed run.
+fn cursor_agent_preflight_command(root: CursorAttemptRuntimeRoot) -> ArgvCommand {
+  cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program(), root: root)
+}
+
+type PreflightObservation
+  = PreflightObserved { reading: CursorSandboxPreflightReading }
+  | PreflightUnobserved { reason: String }
+
+fn readback_preflight(observed: PreflightObservation) -> CursorAgentReadback {
+  match observed {
+    PreflightUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
+    PreflightObserved { reading: CursorSandboxReady } => CursorAgentReadbackHolds
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxUnavailable { detail: _ } } } =>
+      CursorAgentReadbackFails { cause: PreflightSandboxUnavailable }
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxNotEntered { detail: _ } } } =>
+      CursorAgentReadbackFails { cause: PreflightSandboxNotEntered }
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } } =>
+      CursorAgentReadbackFails { cause: PreflightUnreadable }
+  }
+}
+
+// THE FULL READBACK: host legs plus the preflight, whose Ready arm this readback is what makes inhabited.
+fn cursor_agent_full_readback(
+  profile_file: ProfileFileObservation,
+  loaded: LoadedProfilesObservation,
+  tree: InstallTreeObservation,
+  preflight: PreflightObservation,
+) -> CursorAgentReadback {
+  combine_cursor_agent_readbacks(
+    a: cursor_agent_realization_readback(profile_file: profile_file, loaded: loaded, tree: tree),
+    b: readback_preflight(observed: preflight),
+  )
+}
+
+// THE PINNED PATH IS OBSERVED, NOT INFERRED FROM AN EXIT CODE. A shell reports a missing executable as 127,
+// which is a bare number another failure can also produce (gunbc.recurring_failure_mode
+// bare_exit_124_read_as_an_observed_timeout_event). The version directory is listed and the executable's
+// name looked up in that listing, so absence is an established fact, an unlistable directory is
+// indeterminate, and the standing (gunbc.worker_turn_standing) invokes nothing until the entry is listed.
+fn cursor_agent_pinned_executable_presence() -> FilesystemEntryPresence {
+  let directory = cursor_agent_version_directory(version: cursor_agent_pinned_version)
+  let listed = Filesystem.List(path: directory)
+  filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error),
+    name: cursor_agent_executable_name as String,
+  )
+}

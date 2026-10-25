@@ -1,0 +1,692 @@
+// Enrolled RED/control for native emit of imported nullary coproduct arms.
+// One shared producer. Does not import v2.compiler.compile.
+
+module v2.test.claim.long.imported_decl_emit_probe
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Empty, FreeMonoid, fold_list, length, list_find_first, list_map, string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  closure_declarations_demand,
+  resolution_context,
+  resolve_in_context
+}
+import v2.compiler.program_assembly {
+  ProgramAssemblyLocatedFoldFailed,
+  ProgramAssemblyLocatedFoldOk,
+  program_assembly_fold_ingest_located
+}
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.self_host.closure_emission {
+  ClosureMemberEmission,
+  ClosureMemberEmitted,
+  ClosureMemberRefused,
+  closure_emission_first_refusal,
+  closure_resolve_member,
+  emit_closure_from_ingest_located
+}
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest,
+  source_root_set_from_ingest
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { map_lookup }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_fatal_reason,
+  diagnostics_singleton,
+  node_locus
+}
+import std.occurrence_identity {
+  OccurrenceMinted,
+  OccurrencePending,
+  OccurrenceProjected,
+  OccurrenceSynthetic
+}
+import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text_in_spans }
+import v2.compiler.inferred_tree {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredTree
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Authored,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Node,
+  NodeFold,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  declaration_reference_body_marked,
+  fold_node,
+  node_synthetic,
+  symbol_lexeme
+}
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.symbol_index {
+  DeclaredPayloadKind,
+  RecordTypePayload,
+  SymbolIndex,
+  VariantArmPayload,
+  symbol_index_declared_payload_at,
+  symbol_index_declaring_path_of,
+  symbol_index_is_module_root_at,
+  symbol_index_lookup
+}
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_to_dotted_string
+}
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data probe_a_source: String = "module v2.test.probe_a\n\ntype Color = Red | Blue\n"
+
+data probe_b_source: String = "module v2.test.probe_b\n\nimport v2.test.probe_a { Color, Red, Blue }\n\ndata painted: Color = Red\n\nfn pick() -> Color { if true { Red } else { Blue } }\n"
+
+data probe_c_source: String = "module v2.test.probe_c\n\ntype Rec = { }\n\ntype Alias = Int\n\ndata rec_rhs: Rec = Rec\n\ndata alias_rhs: Alias = Alias\n"
+
+data probe_live_tree_source: String = "module std.live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n"
+
+data probe_d_source: String = "module v2.test.probe_d\n\nimport std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n"
+
+fn probe_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn probe_ingest() -> SourceRootIngest {
+  [
+    probe_read(source: probe_a_source, id: ^probe_a_read, path: "src/v2/test/probe_a.dag"),
+    probe_read(source: probe_b_source, id: ^probe_b_read, path: "src/v2/test/probe_b.dag"),
+    probe_read(source: probe_c_source, id: ^probe_c_read, path: "src/v2/test/probe_c.dag")
+  ]
+}
+
+fn probe_qn(dotted: String) -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: dotted)
+}
+
+fn probe_kind_tag(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: id } => concat("atom:", symbol_lexeme(sym: id))
+        Disj => "disj"
+        Conj => "conj"
+        Arrow => "arrow"
+        Instantiation => "instantiation"
+      }
+    ComputationNode { behavior: _ } => "computation"
+  }
+}
+
+fn probe_occ_tag(n: Node) -> String {
+  match n.occurrence_id {
+    OccurrenceMinted { id: _ } => "minted"
+    OccurrenceProjected { id: _, caused_by: _ } => "projected"
+    OccurrenceSynthetic => "synthetic"
+    OccurrencePending { caused_by: _ } => "pending"
+  }
+}
+
+fn probe_edge_label(e: Edge) -> String {
+  match e.label {
+    Authored { name: n } => concat("named:", symbol_lexeme(sym: n))
+    StructuralLabel { label: l } => concat("struct:", symbol_lexeme(sym: l))
+    Positional => "pos"
+  }
+}
+
+fn probe_child_dump(e: Edge) -> String {
+  concat(probe_edge_label(e: e), concat("->", concat(probe_kind_tag(n: e.target), concat("@", probe_occ_tag(n: e.target)))))
+}
+
+fn probe_node_dump(n: Node) -> String {
+  concat(
+    fold_list(
+      xs: n.children,
+      empty: concat(concat(probe_kind_tag(n: n), "@"), concat(probe_occ_tag(n: n), "{")),
+      cons: fn(acc, e) { concat(acc, concat(" ", probe_child_dump(e: e))) }
+    ),
+    "}"
+  )
+}
+
+fn probe_lookup_tag(index: SymbolIndex, dotted: String) -> String {
+  match symbol_index_lookup(index: index, qualified_path: probe_qn(dotted: dotted)) {
+    Absent => "absent"
+    Present { value: n } => probe_kind_tag(n: n)
+  }
+}
+
+fn probe_lookup_dump(index: SymbolIndex, dotted: String) -> String {
+  match symbol_index_lookup(index: index, qualified_path: probe_qn(dotted: dotted)) {
+    Absent => "ABSENT"
+    Present { value: n } => probe_node_dump(n: n)
+  }
+}
+
+fn probe_qn_text(qn: QualifiedName) -> String {
+  if length(xs: qn) == 0 {
+    "empty"
+  } else {
+    qualified_name_to_dotted_string(qn: qn)
+  }
+}
+
+fn probe_red_payload(index: SymbolIndex) -> String {
+  match symbol_index_declared_payload_at(index: index, qualified_path: probe_qn(dotted: "v2.test.probe_a.Red")) {
+    Absent => "payload-absent"
+    Present { value: k } =>
+      match k {
+        VariantArmPayload => "variant-arm"
+        RecordTypePayload => "record"
+      }
+  }
+}
+
+fn probe_find_named_target(root: Node, want: Symbol) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        fold(node.children, init: Absent, f: fn(acc, e) {
+          match acc {
+            Present { value: v } => Present { value: v }
+            Absent =>
+              match e.label {
+                Authored { name: n } =>
+                  match n == want {
+                    true => Present { value: e.target }
+                    false => Absent
+                  }
+                StructuralLabel { label: _ } => Absent
+                Positional => Absent
+              }
+          }
+        })
+      },
+      step: fn(acc, _e, child_r) {
+        match acc {
+          Present { value: v } => Present { value: v }
+          Absent => child_r
+        }
+      }
+    }
+  )
+}
+
+fn probe_facts_tag(tree: InferredTree, node: Node) -> String {
+  match tree.facts.lookup(node) {
+    Absent => "lookup-absent"
+    Present { value: facts } =>
+      match facts.grounding {
+        DerivedGrounding { grounding: _ } => "derived"
+        GroundingNotDerived { node: _, site: _ } => "not-derived"
+      }
+  }
+}
+
+fn probe_painted_facts(tree: InferredTree) -> String {
+  match probe_find_named_target(root: tree.root, want: ^painted) {
+    Absent => "painted-missing"
+    Present { value: decl } =>
+      match find_arrow_body_child(root: decl) {
+        Rejected { diagnostics: _ } =>
+          concat("body-unreadable:", concat(probe_kind_tag(n: decl), concat(":", probe_facts_tag(tree: tree, node: decl))))
+        Accepted { value: body, diagnostics: _ } =>
+          concat(
+            concat(probe_kind_tag(n: body), concat("@", concat(probe_occ_tag(n: body), ":"))),
+            concat(
+              if declaration_reference_body_marked(target: body) { "marked:" } else { "unmarked:" },
+              probe_facts_tag(tree: tree, node: body)
+            )
+          )
+      }
+  }
+}
+
+fn probe_red_declaring(index: SymbolIndex) -> String {
+  let declaring = symbol_index_declaring_path_of(index: index, target: probe_qn(dotted: "v2.test.probe_a.Red"))
+  if length(xs: declaring) == 0 {
+    "empty-declaring"
+  } else if symbol_index_is_module_root_at(index: index, qualified_path: declaring) {
+    "declaring-is-module-root"
+  } else {
+    concat("declaring:", qualified_name_to_dotted_string(qn: declaring))
+  }
+}
+
+fn probe_reason_text(o: Optional<Symbol>) -> String {
+  match o {
+    Absent => "accepted"
+    Present { value: r } => symbol_lexeme(sym: r)
+  }
+}
+
+fn probe_member_is_b(q: QualifiedName) -> Bool {
+  qualified_name_to_dotted_string(qn: q) == "v2.test.probe_b"
+}
+
+fn probe_member_is_c(q: QualifiedName) -> Bool {
+  qualified_name_to_dotted_string(qn: q) == "v2.test.probe_c"
+}
+
+fn probe_member_is_d(q: QualifiedName) -> Bool {
+  qualified_name_to_dotted_string(qn: q) == "v2.test.probe_d"
+}
+
+fn probe_live_tree_ingest() -> SourceRootIngest {
+  [
+    probe_read(source: probe_live_tree_source, id: ^probe_lt_read, path: "dag/std/live_tree.dag"),
+    probe_read(source: probe_d_source, id: ^probe_d_read, path: "src/v2/test/probe_d.dag")
+  ]
+}
+
+fn probe_d_arm_reason(modules: FreeMonoid<ClosureMemberEmission>) -> Optional<Symbol> {
+  match list_find_first(xs: modules, predicate: fn(m) {
+    match m {
+      ClosureMemberEmitted { module: q, text: _ } => probe_member_is_d(q: q)
+      ClosureMemberRefused { module: q, diagnostics: _ } => probe_member_is_d(q: q)
+    }
+  }) {
+    Absent => Absent
+    Present { value: m } =>
+      match m {
+        ClosureMemberEmitted { module: _, text: _ } => Absent
+        ClosureMemberRefused { module: _, diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+      }
+  }
+}
+
+fn probe_d_emit_reason() -> String {
+  let located = emit_closure_from_ingest_located(
+    ingest: probe_live_tree_ingest(),
+    entry: probe_qn(dotted: "v2.test.probe_d"),
+    entry_locus: node_synthetic(kind: TypeNode { connective: Atom { identity: ^probe_emit_d_locus } }, children: []),
+    target: rust_target_model()
+  )
+  match located.outcome {
+    Rejected { diagnostics: d } => probe_reason_text(o: Present { value: diagnostics_fatal_reason(d: d) })
+    Accepted { value: e, diagnostics: _ } => probe_reason_text(o: probe_d_arm_reason(modules: e.modules))
+  }
+}
+
+fn probe_b_emitted_text(modules: FreeMonoid<ClosureMemberEmission>) -> String {
+  match list_find_first(xs: modules, predicate: fn(m) {
+    match m {
+      ClosureMemberEmitted { module: q, text: _ } => probe_member_is_b(q: q)
+      ClosureMemberRefused { module: q, diagnostics: _ } => probe_member_is_b(q: q)
+    }
+  }) {
+    Absent => ""
+    Present { value: m } =>
+      match m {
+        ClosureMemberEmitted { module: _, text: t } => t
+        ClosureMemberRefused { module: _, diagnostics: _ } => ""
+      }
+  }
+}
+
+fn probe_b_arm_reason(modules: FreeMonoid<ClosureMemberEmission>) -> Optional<Symbol> {
+  match list_find_first(xs: modules, predicate: fn(m) {
+    match m {
+      ClosureMemberEmitted { module: q, text: _ } => probe_member_is_b(q: q)
+      ClosureMemberRefused { module: q, diagnostics: _ } => probe_member_is_b(q: q)
+    }
+  }) {
+    Absent => Absent
+    Present { value: m } =>
+      match m {
+        ClosureMemberEmitted { module: _, text: _ } => Absent
+        ClosureMemberRefused { module: _, diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+      }
+  }
+}
+
+fn probe_c_arm_reason(modules: FreeMonoid<ClosureMemberEmission>) -> Optional<Symbol> {
+  match list_find_first(xs: modules, predicate: fn(m) {
+    match m {
+      ClosureMemberEmitted { module: q, text: _ } => probe_member_is_c(q: q)
+      ClosureMemberRefused { module: q, diagnostics: _ } => probe_member_is_c(q: q)
+    }
+  }) {
+    Absent => Absent
+    Present { value: m } =>
+      match m {
+        ClosureMemberEmitted { module: _, text: _ } => Absent
+        ClosureMemberRefused { module: _, diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+      }
+  }
+}
+
+fn probe_resolved_color(o: Outcome<ResolvedTree>) -> String {
+  match o {
+    Rejected { diagnostics: _ } => "resolve-refused"
+    Accepted { value: tree, diagnostics: _ } =>
+      probe_lookup_tag(index: tree.resolved_declarations, dotted: "v2.test.probe_a.Color")
+  }
+}
+
+fn probe_outcome_ok(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+type ProbeBundle {
+  emit_color: String
+  native_color: String
+  emit_red: String
+  native_red: String
+  emit_red_declaring: String
+  native_red_declaring: String
+  emit_red_declaring_raw: String
+  native_red_declaring_raw: String
+  emit_b_reason: String
+  emit_b_text: String
+  native_b_reason: String
+  emit_refusal_located: String
+  emit_infer_reason: String
+  emit_color_body: String
+  native_color_body: String
+  emit_red_body: String
+  native_red_body: String
+  emit_resolve_ok: Bool
+  emit_resolved_color: String
+  native_resolved_color: String
+  emit_red_payload: String
+  emit_painted_facts: String
+  emit_c_reason: String
+}
+
+fn probe_bundle() -> Optional<ProbeBundle> {
+  let ingest = probe_ingest()
+  let lm = dag_language_model()
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldFailed { diagnostics: _, spans: _ } => Absent
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _, advisories: _ } =>
+      let trees = list_map(xs: located, f: fn(item) { item.tree })
+      match resolution_context(
+        lm: lm,
+        roots: trees,
+        index: idx,
+        active_roots: source_root_set_from_ingest(ingest: ingest),
+        policy: default_name_resolution_policy()
+      ) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: shared, diagnostics: _ } =>
+          let closure = closure_declarations_demand(shared: shared)
+          let native_idx = closure.declarations
+          let emit_idx = shared.symbol_index
+          let native_resolved = resolve_in_context(
+            context: Accepted { value: closure.context, diagnostics: None },
+            admission: Admission { subject: ResolutionSubject { name: probe_qn(dotted: "v2.test.probe_b") }, imports: Empty }
+          ).resolved
+          let native_reason = match native_resolved {
+            Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+            Accepted { value: tree, diagnostics: _ } =>
+              match infer_and_discharge(tree: tree) {
+                Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+                Accepted { value: _, diagnostics: _ } => Absent
+              }
+          }
+          let native_resolved_color = match native_resolved {
+            Rejected { diagnostics: _ } => "resolve-refused"
+            Accepted { value: tree, diagnostics: _ } => probe_lookup_tag(index: tree.resolved_declarations, dotted: "v2.test.probe_a.Color")
+          }
+          let emit_resolved = match map_lookup(m: shared.roots.by_name, key: probe_qn(dotted: "v2.test.probe_b")) {
+            Absent => Rejected {
+              diagnostics: diagnostics_singleton(d: Diagnostic {
+                reason: ^probe_missing_b,
+                at: node_locus(node: node_synthetic(kind: TypeNode { connective: Atom { identity: ^probe_missing_b } }, children: [])),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+            }
+            Present { value: tree } =>
+              closure_resolve_member(
+                lm: lm,
+                tree: tree,
+                member_module: probe_qn(dotted: "v2.test.probe_b"),
+                symbol_index: emit_idx,
+                index: idx,
+                active_roots: source_root_set_from_ingest(ingest: ingest),
+                type_declaration_modifiers: shared.type_declaration_modifiers
+              )
+          }
+          let emit_located = emit_closure_from_ingest_located(
+            ingest: ingest,
+            entry: probe_qn(dotted: "v2.test.probe_b"),
+            entry_locus: node_synthetic(kind: TypeNode { connective: Atom { identity: ^probe_emit_locus } }, children: []),
+            target: rust_target_model()
+          )
+          let emit_door_reason = match emit_located.outcome {
+            Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+            Accepted { value: e, diagnostics: _ } => probe_b_arm_reason(modules: e.modules)
+          }
+          let emit_b_text = match emit_located.outcome {
+            Rejected { diagnostics: _ } => ""
+            Accepted { value: e, diagnostics: _ } => probe_b_emitted_text(modules: e.modules)
+          }
+          let emit_refusal_located = match emit_located.outcome {
+            Rejected { diagnostics: d } =>
+              concat("whole:", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: emit_located.spans))
+            Accepted { value: e, diagnostics: _ } =>
+              match closure_emission_first_refusal(emission: e) {
+                Absent => "no-member-refusal"
+                Present { value: d } =>
+                  lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: emit_located.spans)
+              }
+          }
+          let emit_infer_reason = match emit_resolved {
+            Rejected { diagnostics: d } => concat("resolve:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+            Accepted { value: tree, diagnostics: _ } =>
+              match infer_and_discharge(tree: tree) {
+                Accepted { value: _, diagnostics: _ } => "infer-accepted"
+                Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+              }
+          }
+          let emit_painted_facts = match emit_resolved {
+            Rejected { diagnostics: _ } => "resolve-refused"
+            Accepted { value: resolved, diagnostics: _ } =>
+              match infer_and_discharge(tree: resolved) {
+                Rejected { diagnostics: _ } => "infer-refused"
+                Accepted { value: inferred, diagnostics: _ } => probe_painted_facts(tree: inferred)
+              }
+          }
+          let emit_located_c = emit_closure_from_ingest_located(
+            ingest: ingest,
+            entry: probe_qn(dotted: "v2.test.probe_c"),
+            entry_locus: node_synthetic(kind: TypeNode { connective: Atom { identity: ^probe_emit_c_locus } }, children: []),
+            target: rust_target_model()
+          )
+          let emit_c_reason = match emit_located_c.outcome {
+            Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+            Accepted { value: e, diagnostics: _ } => probe_c_arm_reason(modules: e.modules)
+          }
+          Present {
+            value: ProbeBundle {
+              emit_color: probe_lookup_tag(index: emit_idx, dotted: "v2.test.probe_a.Color"),
+              native_color: probe_lookup_tag(index: native_idx, dotted: "v2.test.probe_a.Color"),
+              emit_red: probe_lookup_tag(index: emit_idx, dotted: "v2.test.probe_a.Red"),
+              native_red: probe_lookup_tag(index: native_idx, dotted: "v2.test.probe_a.Red"),
+              emit_red_declaring: probe_red_declaring(index: emit_idx),
+              native_red_declaring: probe_red_declaring(index: native_idx),
+              emit_red_declaring_raw: probe_qn_text(qn: symbol_index_declaring_path_of(index: emit_idx, target: probe_qn(dotted: "v2.test.probe_a.Red"))),
+              native_red_declaring_raw: probe_qn_text(qn: symbol_index_declaring_path_of(index: native_idx, target: probe_qn(dotted: "v2.test.probe_a.Red"))),
+              emit_b_reason: probe_reason_text(o: emit_door_reason),
+              emit_b_text: emit_b_text,
+              native_b_reason: probe_reason_text(o: native_reason),
+              emit_refusal_located: emit_refusal_located,
+              emit_infer_reason: emit_infer_reason,
+              emit_color_body: probe_lookup_dump(index: emit_idx, dotted: "v2.test.probe_a.Color"),
+              native_color_body: probe_lookup_dump(index: native_idx, dotted: "v2.test.probe_a.Color"),
+              emit_red_body: probe_lookup_dump(index: emit_idx, dotted: "v2.test.probe_a.Red"),
+              native_red_body: probe_lookup_dump(index: native_idx, dotted: "v2.test.probe_a.Red"),
+              emit_resolve_ok: probe_outcome_ok(o: emit_resolved),
+              emit_resolved_color: probe_resolved_color(o: emit_resolved),
+              native_resolved_color: native_resolved_color,
+              emit_red_payload: probe_red_payload(index: emit_idx),
+              emit_painted_facts: emit_painted_facts,
+              emit_c_reason: probe_reason_text(o: emit_c_reason)
+            }
+          }
+      }
+  }
+}
+
+test fn native_color_in_closure_declarations_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.native_color != "absent"
+  }
+}
+
+test fn emit_color_in_raw_symbol_index_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_color != "absent"
+  }
+}
+
+test fn native_color_is_disj_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.native_color == "disj"
+  }
+}
+
+test fn emit_color_is_disj_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_color == "disj"
+  }
+}
+
+test fn native_red_present_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.native_red != "absent"
+  }
+}
+
+test fn emit_red_present_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_red != "absent"
+  }
+}
+
+test fn imported_nullary_coproduct_data_rhs_native_infer_accepts_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.native_b_reason == "accepted"
+  }
+}
+
+test fn imported_nullary_coproduct_data_rhs_emits_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_b_reason == "accepted"
+  }
+}
+
+test fn imported_two_nullary_arms_in_one_body_both_emitted_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } =>
+      (b.emit_b_reason == "accepted")
+        && string_contains(s: b.emit_b_text, pattern: "Red")
+        && string_contains(s: b.emit_b_text, pattern: "Blue")
+  }
+}
+
+test fn imported_record_or_alias_reference_rhs_still_refuses_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_c_reason != "accepted"
+  }
+}
+
+test fn native_red_declaring_is_color_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.native_red_declaring == "declaring:v2.test.probe_a.Color"
+  }
+}
+
+test fn emit_red_declaring_is_color_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_red_declaring == "declaring:v2.test.probe_a.Color"
+  }
+}
+
+test fn emit_resolve_b_accepts_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_resolve_ok
+  }
+}
+
+test fn emit_resolved_color_present_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_resolved_color != "absent" && b.emit_resolved_color != "resolve-refused"
+  }
+}
+
+test fn native_resolved_color_present_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.native_resolved_color != "absent" && b.native_resolved_color != "resolve-refused"
+  }
+}
+
+test fn red_payload_is_variant_arm_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_red_payload == "variant-arm"
+  }
+}
+
+test fn painted_facts_has_stamp_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "marked")
+  }
+}
+
+test fn imported_live_tree_disposition_data_row_emits_holds() -> Bool {
+  probe_d_emit_reason() == "accepted"
+}

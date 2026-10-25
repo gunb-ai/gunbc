@@ -1,0 +1,23 @@
+module gunbc.host.ctrl_jobserver_residue
+
+import std.types { String, NonEmptyStr, List }
+
+// WHAT THE RETIRED ctrl-jobserver LEFT ON HOSTS, AS NAMES, IN ONE PLACE. The daemon and its FIFO are
+// retired (operator ruling 2026-10-14; A1 #14008 retired them from runner units, A2 deletes the
+// realization from the model), so nothing renders these names any more. They remain because two
+// readers still have to recognize them on a host: the converge's residue retirement
+// (gunbc.runner.runner_host_file_converge ctrl_jobserver_retired_residue) and the compile-cancellation
+// observer (gunbc.compile_permit_scope_observe), which must read a unit still advertising the FIFO as
+// not safe. Cited from gunb-ai/ctrl scripts/session-dashboard/host/install-ctrl-jobserver.sh.
+// Dissolves when every fleet host reads the residue absent and the observer standing is safe.
+data ctrl_jobserver_unit: NonEmptyStr = "ctrl-jobserver.service" as NonEmptyStr
+
+data ctrl_jobserver_fifo_env_name: String = "CTRL_JOBSERVER_FIFO"
+
+data ctrl_jobserver_residue_files: List<String> = [
+  "/etc/systemd/system/ctrl-jobserver.service",
+  "/etc/default/ctrl-jobserver",
+  "/usr/local/sbin/ctrl-jobserver",
+]
+
+data ctrl_jobserver_residue_directories: List<String> = ["/var/lib/ctrl/jobserver"]

@@ -51,14 +51,14 @@ fn same_tree(a: Optional<Hash>, b: Optional<Hash>) -> Bool {
 }
 
 data indexed_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i]\n}\n"
-data called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  v2.std.collection.list_at_optional(xs: xs, index: i)\n}\n"
+data called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  std.algebra.list_at_optional(xs: xs, index: i)\n}\n"
 data bare_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs\n}\n"
 data match_indexed_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Int {\n  match xs[i] {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
-data match_called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Int {\n  match v2.std.collection.list_at_optional(xs: xs, index: i) {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+data match_called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Int {\n  match std.algebra.list_at_optional(xs: xs, index: i) {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
 data computed_index_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i + 1]\n}\n"
-data computed_called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  v2.std.collection.list_at_optional(xs: xs, index: i + 1)\n}\n"
+data computed_called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  std.algebra.list_at_optional(xs: xs, index: i + 1)\n}\n"
 data chained_source: String = "module probe.index\n\ntype R {\n  items: List<Int>\n}\n\nfn pick(r: R, i: Int) -> Optional<Int> {\n  r.items[i]\n}\n"
-data chained_called_source: String = "module probe.index\n\ntype R {\n  items: List<Int>\n}\n\nfn pick(r: R, i: Int) -> Optional<Int> {\n  v2.std.collection.list_at_optional(xs: r.items, index: i)\n}\n"
+data chained_called_source: String = "module probe.index\n\ntype R {\n  items: List<Int>\n}\n\nfn pick(r: R, i: Int) -> Optional<Int> {\n  std.algebra.list_at_optional(xs: r.items, index: i)\n}\n"
 data trailing_comma_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i,]\n}\n"
 data empty_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[]\n}\n"
 data two_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i, i]\n}\n"

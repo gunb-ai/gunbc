@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.an_attempt_crashed_between_state_init_and_co
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable: RecurringFailureMode = RecurringFailureMode {
   identity: "an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: an attempt writes durable initiation state (placement record, attempt pointer, or equivalent) and can stop before the session container that is supposed to inhabit that state starts, and there is no modeled reconciliation that finishes or rolls back both sides of that pair. HARM: the next belt pass cannot tell orphaned state from a live session, so recovery is operator surgery rather than a typed repair (DESIGN section 4b found at mitigatable).",
@@ -15,9 +17,12 @@ data an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable:
     "OCCURRENCE, 2026-10-11, srv1 workspace bring-up findings ledger F20/F21, operator review of source pinned to main at acc218340ed6e24a9ad06c550a5494307d0320bb (a source review that did not rerun srv1). belt_session_container_create writes the placement record (session_placement_record_write) then starts the unit (harness-unit-start). A crash between those steps leaves a grant and record with no container. Moving the record write after container creation only swaps the crash gap: then a started unit can exist with no record. Recovery is further incomplete because belt_created_session_cleanup_detail knows only tmux_kill_session_argv_for_instance, while a systemd unit container is a different population. The shared operation needs an activation identity and reconciliation over both sides, not a chosen order of two unlinked effects. Roadmap leaf cc-lifecycle-ownership.",
 
     "DISTINGUISHING FACTS: this is not a launch refusal before any durable write (BeltPlacementRefused / LaunchNoPlacementGrant), which is already a typed stop. It is not a later crash after the container is independently observed running. It is the unreconciled pair of initiation-state vs container-start. RUNG FOUND AT: mitigatable. CEILING: structurally guaranteed -- both sides are modeled facts and an incomplete pair can be a named arm. NEXT TRIGGER: create-or-recover is one identity whose observe/decide/apply/readback either yields a started container matching the initiation state or a rolled-back absence, with a discriminating crash between the two writes going red until that identity exists.",
+
+    "SLICE 2 (rollback-only ensure), RUNG NOW: mitigatable, unchanged -- the invalid state (record without unit) is still writable; what changed is that it is now recovered. gunbc.roadmap.roadmap_session_activation_ensure session_activation_ensure_pass_at observes the placement record and the unit under the attempt's one identity, decides over std.upsert_decision (live unit = Noop; record, no unit, inside the launch deadline = Noop; past it = release through the settlement door; ended unit still loaded = release then reset-failed exactly the unit the record names; no record with a live unit = Refuse and keep for the one-time sweep) and re-observes both sides as readback. There is no roll-forward, because a recovered start would be a second start site. EXECUTED EVIDENCE: dag/test/claim/roadmap/session_activation_ensure_wet_witness.dag on the local-repo wet lane (claim_batch --wet), killing between record write and unit start, after unit start and after unit exit before collection, rerunning each, with another attempt's failed unit untouched; the container-start gap itself is not closed structurally. NEXT TRIGGER (unchanged): the pair becomes one constructed activation whose invalid half has no constructor.",
   ],
 
   evidence: [
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_session_activation_ensure", decl_name: "session_activation_ensure_pass_at", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_session_container_create", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_created_session_cleanup_detail", field: WholeDeclaration },
   ],

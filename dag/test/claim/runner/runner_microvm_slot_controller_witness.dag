@@ -19,7 +19,7 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart, ServiceType, ExecMode,
   ServiceExitType, ServiceKillMode, ExitTypeMain, KillModeControlGroup, Installable, WantedBy, Description,
 }
-import product.fabric.identity { FabricIdentity, WorkKey }
+import product.fabric.identity { FabricIdentity, WorkKey, GrantKey, ExecutionAttemptKey }
 import product.fabric.work { Work, ExecutionRequirements, TrustDomainRef , WarmResidencyRequired }
 import product.fabric.sanitation { CellId }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -39,10 +39,11 @@ import extdeps.systemd.systemd_run {
 }
 import gunbc.runner.runner_microvm_shakedown { microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer }
 import gunbc.runner.runner_attempt_launch {
-  ReservationAuthorization, ReservationAuthorizes, ReservationArmRequiresInternalFleetTrust,
-  ReservationNamesDifferentWork, ReservationForDifferentCell, ReservationGenerationDisagrees,
-  reservation_agreement,
+  CellGrantAuthorization, CellGrantAuthorizes, CellGrantArmRequiresInternalFleetTrust,
+  CellGrantNamesDifferentWork, CellGrantForDifferentCell, CellGrantGenerationDisagrees, CellNotGrantHeld,
+  cell_grant_agreement,
 }
+import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellHolder, HeldByGrant, HeldByReservation }
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_unit_file, microvm_slot_unit_text, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop,
   microvm_slot_controller_entry_function, microvm_controller_slice_unit_name, microvm_controller_slice_unit_file,
@@ -66,7 +67,7 @@ import extdeps.systemd.unit_file { Environment }
 // reads the environment, the CAS, the readiness store and the locus -- and its inhabitance is the
 // srv1 receipt in the PR that landed it; what these claims discriminate are the decisions the
 // composition consumes: the unit's shape, the per-slot envelope and its width cost, the shakedown
-// slot's guest shape against the fleet row's, the reservation-authorized planner arm's refusals,
+// slot's guest shape against the fleet row's, the cell-grant planner arm's refusals,
 // and the slot selection.
 
 // --- the unit execs the controller as MainPID ---
@@ -184,10 +185,10 @@ test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fl
   let fleet_row = gunbc_runner_slot_memory_max_bytes
   let charge = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
   charge == byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) + byte_size_count(b: microvm_controller_slice_memory_max())
-    && memory_admitted_width_of_envelope(envelope: byte_size(15 * fleet_row), carries_shakedown_slot: false) == 15
-    && memory_admitted_width_of_envelope(envelope: byte_size(charge + 14 * fleet_row), carries_shakedown_slot: true) == 15
-    && memory_admitted_width_of_envelope(envelope: byte_size(charge + 14 * fleet_row - 1), carries_shakedown_slot: true) == 14
-    && memory_admitted_width_of_envelope(envelope: byte_size(charge - 1), carries_shakedown_slot: true) == 0
+    && memory_admitted_width_of_envelope(envelope: byte_size(15 * fleet_row), authored_slots: []) == 15
+    && memory_admitted_width_of_envelope(envelope: byte_size(charge + 14 * fleet_row), authored_slots: [srv1_microvm_shakedown_slot()]) == 15
+    && memory_admitted_width_of_envelope(envelope: byte_size(charge + 14 * fleet_row - 1), authored_slots: [srv1_microvm_shakedown_slot()]) == 14
+    && memory_admitted_width_of_envelope(envelope: byte_size(charge - 1), authored_slots: [srv1_microvm_shakedown_slot()]) == 0
 }
 
 // THE SHAKEDOWN SLOT'S GUEST SHAPE RESOLVES. This claim first said it resolved WHILE the fleet row's
@@ -201,7 +202,7 @@ test fn the_shakedown_slots_shape_resolves() -> Bool {
   }
 }
 
-// --- the reservation-authorized planner arm ---
+// --- the cell-grant planner arm ---
 
 fn attempt_on(slot: RunnerSlotIdentity) -> List<MicroVmAttempt> {
   match microvm_attempt(slot: slot, attempt_id: "w-1") {
@@ -226,31 +227,44 @@ fn work_in_domain(domain: TrustDomainRef) -> Work<NonEmptyStr> {
   }
 }
 
-fn agreement_label(a: ReservationAuthorization) -> String {
+fn agreement_label(a: CellGrantAuthorization) -> String {
   match a {
-    ReservationAuthorizes => "authorizes"
-    ReservationArmRequiresInternalFleetTrust { trust_domain: _ } => "trust"
-    ReservationNamesDifferentWork { reserved: _, presented: _ } => "work"
-    ReservationForDifferentCell { reserved: _, attempt_cell: _ } => "cell"
-    ReservationGenerationDisagrees { reserved: _, presented: _ } => "generation"
+    CellGrantAuthorizes { grant: _ } => "authorizes"
+    CellGrantArmRequiresInternalFleetTrust { trust_domain: _ } => "trust"
+    CellGrantNamesDifferentWork { granted: _, presented: _ } => "work"
+    CellGrantForDifferentCell { granted: _, attempt_cell: _ } => "cell"
+    CellGrantGenerationDisagrees { granted: _, presented: _ } => "generation"
+    CellNotGrantHeld => "not-granted"
   }
 }
 
-fn agree(reserved_work: FabricIdentity<NonEmptyStr, WorkKey>, reserved_cell: CellId, generation: Int, work: Work<NonEmptyStr>, presented: Int) -> String {
+fn granted_holder() -> RequiredBuildCellHolder {
+  HeldByGrant {
+    attempt: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "microvm-shakedown-attempt-srv1-13" as ExecutionAttemptKey },
+    grant: "fixture-grant-key" as GrantKey,
+  }
+}
+
+fn agree_held(reserved_work: FabricIdentity<NonEmptyStr, WorkKey>, reserved_cell: CellId, generation: Int, holder: RequiredBuildCellHolder, work: Work<NonEmptyStr>, presented: Int) -> String {
   match attempt_on(slot: srv1_microvm_shakedown_slot()).first() {
     Absent => "no-attempt"
     Present { value: a } =>
-      agreement_label(a: reservation_agreement(
-        reserved_work: reserved_work, reserved_cell: reserved_cell, reserved_generation: generation,
+      agreement_label(a: cell_grant_agreement(
+        granted_work: reserved_work, granted_cell: reserved_cell, granted_generation: generation, holder: holder,
         work: work, attempt: a, allocation_generation: presented,
       ))
   }
 }
 
-// EVERY REFUSAL THE GRANT JOIN PERFORMS HAS ITS ARM HERE, AND THE TRUST DOMAIN IS CHECKED FIRST:
+fn agree(reserved_work: FabricIdentity<NonEmptyStr, WorkKey>, reserved_cell: CellId, generation: Int, work: Work<NonEmptyStr>, presented: Int) -> String {
+  agree_held(reserved_work: reserved_work, reserved_cell: reserved_cell, generation: generation, holder: granted_holder(), work: work, presented: presented)
+}
+
+// EVERY REFUSAL THE CELL-GRANT ARM PERFORMS HAS ITS ARM HERE, AND THE TRUST DOMAIN IS CHECKED FIRST:
 // a Work outside the fleet's trust domain -- the untrusted-CI route -- cannot reach the arm even
-// when every identity agrees, which is the control the parent's decision required.
-test fn the_reservation_arm_admits_only_the_fleets_trust_domain_and_refuses_each_disagreement_by_name() -> Bool {
+// when every identity agrees. The refusals are the ones the deleted reservation arm carried, plus
+// CellNotGrantHeld: a snapshot whose holder is a reservation (FCI-1, workspace) does not authorize.
+test fn the_cell_grant_arm_admits_only_the_fleets_trust_domain_and_refuses_each_disagreement_by_name() -> Bool {
   let work = microvm_shakedown_work()
   let cell = fabric_cell_id_for_slot(slot: srv1_microvm_shakedown_slot())
   let other_cell = fabric_cell_id_for_slot(slot: fleet_slot())
@@ -260,6 +274,7 @@ test fn the_reservation_arm_admits_only_the_fleets_trust_domain_and_refuses_each
     && agree(reserved_work: other_work, reserved_cell: cell, generation: 3, work: work, presented: 3) == "work"
     && agree(reserved_work: work.id, reserved_cell: other_cell, generation: 3, work: work, presented: 3) == "cell"
     && agree(reserved_work: work.id, reserved_cell: cell, generation: 3, work: work, presented: 4) == "generation"
+    && agree_held(reserved_work: work.id, reserved_cell: cell, generation: 3, holder: HeldByReservation, work: work, presented: 3) == "not-granted"
     && (work.requirements.trust_domain as String) == (gunbc_internal_fleet_trust_domain as String)
 }
 

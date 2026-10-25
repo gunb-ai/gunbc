@@ -2,7 +2,6 @@
 // Source module: v1.tests.claim.production_fed_exposure_discrimination_control_test
 
 use self::ExposureOutcome::*;
-pub use crate::std_occurrence_binding_candidates::resolve_type_reference_containment_binding;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::{
     CrossFileProviderExportedExposure, ModuleLocalMemberExposure,
 };
@@ -10,20 +9,19 @@ use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::{
     ReferenceBindingProjectionBound, ReferenceBindingProjectionUnbound,
 };
 pub use crate::std_occurrence_binding_candidates::{
-    DeclarationExposureGrounding, OccurrenceBindingCandidateInputs, OccurrenceModulePathRow,
-    ReferenceBindingProjection,
+    resolve_type_reference_containment_binding, DeclarationExposureGrounding,
+    OccurrenceBindingCandidateInputs, OccurrenceModulePathRow, ReferenceBindingProjection,
 };
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceId, OccurrenceTransport, ReferenceOccurrence,
 };
 pub use crate::std_types::{Bool, List, NonEmptyStr};
-pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
 use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource::{
     ParsedOccurrenceBindingSourceReady, ParsedOccurrenceBindingSourceRefused,
 };
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::{
     declarations_named, occurrence_binding_inputs_from_transport,
-    parse_authored_occurrence_binding_source, reference_named,
+    parse_authored_occurrence_binding_source, reference_named, ParsedOccurrenceBindingSource,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -46,27 +44,43 @@ pub fn inputs_in_consumer_module(
     declaration: OccurrenceId,
     consumer: String,
 ) -> Rc<OccurrenceBindingCandidateInputs> {
-    Rc::new(OccurrenceBindingCandidateInputs {
-        module_paths: inputs.module_paths.clone().iter().cloned().fold(
+    {
+        let __rb_0_0 = inputs.module_paths.clone().iter().cloned().fold(
             Rc::new(vec![]),
             |acc: Rc<Vec<Rc<OccurrenceModulePathRow>>>, row: Rc<OccurrenceModulePathRow>| {
                 v1_rt::concat(
                     acc,
-                    Rc::new(vec![match (row.occurrence.clone().value.clone()
-                        == declaration.value.clone())
-                    {
-                        true => row.clone(),
-                        false => Rc::new(OccurrenceModulePathRow {
-                            occurrence: row.occurrence.clone(),
-                            module_path: consumer.clone(),
-                        }),
-                    }]),
+                    Rc::new(vec![
+                        match (row.occurrence.value.clone() == declaration.value.clone()) {
+                            true => row.clone(),
+                            false => Rc::new(OccurrenceModulePathRow {
+                                occurrence: row.occurrence.clone(),
+                                module_path: consumer.clone(),
+                            }),
+                        },
+                    ]),
                 )
             },
-        ),
-        exposure_rows: inputs.exposure_rows.clone(),
-        authored_order_rows: inputs.authored_order_rows.clone(),
-    })
+        );
+        let __rb_1_0 = inputs.exposure_rows.clone();
+        let __rb_2_0 = inputs.authored_order_rows.clone();
+        let mut __rb_h = inputs;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.module_paths = __rb_0_0;
+                __rb_r.exposure_rows = __rb_1_0;
+                __rb_r.authored_order_rows = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(OccurrenceBindingCandidateInputs {
+                    module_paths: __rb_0_0,
+                    exposure_rows: __rb_1_0,
+                    authored_order_rows: __rb_2_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 #[derive(
@@ -87,7 +101,7 @@ pub fn outcome_under(grounding: DeclarationExposureGrounding) -> ExposureOutcome
     std::option::Option::None => ExposureOutcome::OutcomeSubjectRefused,
     Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(t.clone(), "ZqxProvided".to_string()).first().cloned() {
     std::option::Option::None => ExposureOutcome::OutcomeSubjectRefused,
-    Some(declaration) => match (*crate::std_occurrence_binding_candidates::resolve_type_reference_containment_binding(t.clone(), inputs_in_consumer_module(crate::v1_gunbc_occurrence_binding_parser_walk::occurrence_binding_inputs_from_transport(module_path.clone(), t.clone(), grounding.clone()), declaration.occurrence.clone(), "zqxexp.consumer".to_string()), reference.clone())).clone() {
+    Some(declaration) => match (*crate::std_occurrence_binding_candidates::resolve_type_reference_containment_binding(t.clone(), inputs_in_consumer_module(crate::v1_gunbc_occurrence_binding_parser_walk::occurrence_binding_inputs_from_transport(module_path.clone(), t.clone(), grounding), declaration.occurrence.clone(), "zqxexp.consumer".to_string()), reference.clone())).clone() {
     ReferenceBindingProjection::ReferenceBindingProjectionBound { provider: _, .. } => ExposureOutcome::OutcomeBound,
     ReferenceBindingProjection::ReferenceBindingProjectionUnbound { occurrence: _, .. } => ExposureOutcome::OutcomeUnbound,
     _ => ExposureOutcome::OutcomeOther,

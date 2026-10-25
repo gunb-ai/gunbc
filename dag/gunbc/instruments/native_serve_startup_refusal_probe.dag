@@ -1,0 +1,63 @@
+module gunbc.instruments.native_serve_startup_refusal_probe
+
+import std.types { Int, List, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.native_serve { native_serve_startup_refused_exit_code, native_serve_startup_refusal_line }
+import gunbc.native_serve_probe_plan {
+  NativeServePhase, NativeServeRefusedLaunch, native_serve_phase_refusals, no_observation, native_serve_probe_not_held_code,
+}
+import gunbc.auth.approval_device_crypto_realization { device_crypto_obligations, device_crypto_obligation_evidence }
+
+// THE READER FOR `gunbc test //gunbc/instruments:native-serve-startup-refusal`. The host builds
+// gunbc.instruments.native_serve_startup_refusal_fixture, whose startup fold refuses exactly when dropping each single
+// obligation made the receipt refuse, and launches it ONCE with a VALID release revision -- the one launch the host calls
+// "refused" here is refused by the startup fold, not by the door's argument check. What the run must show: the process
+// exited by itself with the startup exit code, never announced a bound address, and its stderr is the typed startup
+// refusal naming the evidence of every obligation (so each drop was refused, and no single obligation's absence was
+// admitted). It sends no request: a service that refused to start has no socket to send to, and the host writing none is
+// the second half of the observation.
+
+fn native_serve_probe_phases() -> List<NativeServePhase> {
+  [NativeServeRefusedLaunch]
+}
+
+fn native_serve_probe_phases_refused(declared: List<String>) -> List<String> {
+  native_serve_phase_refusals(declared: declared, judged: native_serve_probe_phases())
+}
+
+fn native_serve_probe_release_revision() -> String {
+  "0123456789abcdef0123456789abcdef01234567"
+}
+
+// The same valid revision: the launch is refused by the startup fold, which runs after argv is judged.
+fn native_serve_probe_refused_revision() -> String {
+  native_serve_probe_release_revision()
+}
+
+fn native_serve_probe_request_deadline_ms() -> String {
+  "30000"
+}
+
+fn native_serve_probe_requests(peer_port: Int) -> List<String> {
+  []
+}
+
+fn missing_evidence(stderr: String) -> List<String> {
+  filter(map(device_crypto_obligations, o => device_crypto_obligation_evidence(o: o) as String), e => (split(s: stderr, delimiter: e) |> count) < 2)
+}
+
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
+  if refused_status == -1 {
+    no_observation(reason: "the launch did not exit by itself (killed at the deadline), so the startup fold neither refused nor passed")
+  } else if refused_status != native_serve_startup_refused_exit_code() {
+    ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: the launch exited ", concat(to_string(value: refused_status), concat(" instead of the startup exit code ", concat(to_string(value: native_serve_startup_refused_exit_code()), concat(" -- stderr [", concat(refused_stderr, "]")))))) }
+  } else if !starts_with(s: refused_stderr, prefix: native_serve_startup_refusal_line(reason: "")) {
+    ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: stderr is not the typed startup refusal [", concat(refused_stderr, "]")) }
+  } else if (missing_evidence(stderr: refused_stderr) |> count) > 0 {
+    ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: the refusal does not name the dropped evidence ", join(missing_evidence(stderr: refused_stderr), "; ")) }
+  } else if (responses |> count) > 0 || starts_with(s: announcement, prefix: "native-serve listening on ") {
+    ExitFailure { code: native_serve_probe_not_held_code, reason: "not held: the service bound and announced despite its refusing startup" }
+  } else {
+    ExitSuccess
+  }
+}

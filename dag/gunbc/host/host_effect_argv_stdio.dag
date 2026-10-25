@@ -1,0 +1,30 @@
+module gunbc.host.host_effect_argv_stdio
+
+import std.types { List, NonEmptyStr }
+import std.algebra { list_map }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.posix.process { PosixProcessStdio }
+import gunbc.remote_shell_command {
+  RemoteExecCommandOutcome,
+  openssh_login_shell_interpretation,
+  remote_exec_command_string_with_stdio,
+}
+
+// Carries an ArgvCommand and the posix.process stdio value into the OpenSSH login-shell render.
+// Does not mint a second stdio type (DESIGN §3). LocalExec sets fds; this does not wrap LocalShell
+// in `sh -c`.
+
+fn argv_as_remote_words(command: ArgvCommand) -> List<NonEmptyStr> {
+  list_map(xs: argv_words(command: command), f: fn(w) { w as NonEmptyStr })
+}
+
+fn host_effect_argv_stdio_remote_command(
+  command: ArgvCommand,
+  stdio: PosixProcessStdio,
+) -> RemoteExecCommandOutcome {
+  remote_exec_command_string_with_stdio(
+    argv: argv_as_remote_words(command: command),
+    stdio: stdio,
+    interpretation: openssh_login_shell_interpretation,
+  )
+}

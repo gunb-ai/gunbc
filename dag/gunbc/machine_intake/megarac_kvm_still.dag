@@ -1,7 +1,7 @@
 module gunbc.machine_intake.megarac_kvm_still
 
 import std.types { Bool, Int, List, NonEmptyStr, Unit }
-import std.algebra { trim }
+import std.algebra { list_append, string_concat_join, trim }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
@@ -317,7 +317,7 @@ fn kvm_journal_fields(head: String, keys: List<String>, values: List<String>) ->
       Absent => list_append(acc, concat(k, "="))
     }
   })
-  if count(pairs) == 0 { head } else { concat(head, concat(" ", join(pairs, " "))) }
+  if count(pairs) == 0 { head } else { concat(head, concat(" ", string_concat_join(fields: pairs, separator: " "))) }
 }
 
 fn kvm_layout_line(at: KvmInstant, layout: KvmJournalLayout, values: List<String>) -> String {

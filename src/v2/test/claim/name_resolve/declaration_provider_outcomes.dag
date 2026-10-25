@@ -1,0 +1,401 @@
+module v2.test.claim.name_resolve.declaration_provider_outcomes
+
+import v2.compiler.source_root_eval {
+  native_test_context_from_ingest,
+  native_lane_file_refusal_index,
+  native_module_resolve_verdict,
+  native_demand_census_closure_outcomes,
+  native_demand_census_function_available,
+  NativeTestContext,
+  NativeModuleResolveVerdict,
+  NativeModuleResolveAccepted,
+  NativeModuleResolveRefused
+}
+import v2.compiler.name_resolve { closure_declarations_demand }
+import v2.compiler.resolve {
+  DeclarationAvailable,
+  DeclarationRefused,
+  declaration_available,
+  ModuleObserved,
+  ModuleOutcome,
+  ModuleUnavailable
+}
+import v2.compiler.dependency_demand_census { AuthoredUsesFunction, UsesAliasBindUnique }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_fatal_reason,
+  diagnostics_list_has_reason,
+  diagnostics_singleton,
+  invariant_port_locus
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.types { Bool, List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dpo_mixed_source: String = "module v2.test.dpo.mixed\n\ntype Ok = Int\ntype Bad = Nowhere\ntype Dep = Bad\ntype Indep = Int\ntype MutA { next: MutB }\ntype MutB { next: MutA, bad: Nowhere }\n"
+
+data dpo_ok_user_source: String = "module v2.test.dpo.ok_user\n\nimport v2.test.dpo.mixed { Ok }\nfn f(x: Ok) -> Ok { x }\n"
+
+data dpo_indep_user_source: String = "module v2.test.dpo.indep_user\n\nimport v2.test.dpo.mixed { Indep }\nfn i(x: Indep) -> Indep { x }\n"
+
+data dpo_bad_user_source: String = "module v2.test.dpo.bad_user\n\nimport v2.test.dpo.mixed { Bad }\nfn g(x: Bad) -> Bad { x }\n"
+
+data dpo_dep_user_source: String = "module v2.test.dpo.dep_user\n\nimport v2.test.dpo.mixed { Dep }\nfn d(x: Dep) -> Dep { x }\n"
+
+data dpo_mut_user_source: String = "module v2.test.dpo.mut_user\n\nimport v2.test.dpo.mixed { MutA }\nfn m(x: MutA) -> MutA { x }\n"
+
+data dpo_never_user_source: String = "module v2.test.dpo.never_user\n\nimport v2.test.dpo.mixed { NeverDeclared }\nfn n(x: NeverDeclared) -> NeverDeclared { x }\n"
+
+data dpo_gone_source: String = "module v2.test.dpo.gone\n\nimport v2.test.dpo.missing { Ghost }\ntype Named = Int\ntype Other = Int\n"
+
+data dpo_gone_named_user_source: String = "module v2.test.dpo.gone_named_user\n\nimport v2.test.dpo.gone { Named }\nfn gn(x: Named) -> Named { x }\n"
+
+data dpo_gone_other_user_source: String = "module v2.test.dpo.gone_other_user\n\nimport v2.test.dpo.gone { Other }\nfn go(x: Other) -> Other { x }\n"
+
+data dpo_uses_gone_source: String = "module v2.test.dpo.uses_gone\n\nimport v2.test.dpo.gone { Named }\ntype UsesGone = Named\n"
+
+data dpo_ghost_user_source: String = "module v2.test.dpo.ghost_user\n\nimport v2.test.dpo.missing { Ghost }\ntype UsesGhost = Ghost\ntype Solo = Int\n"
+
+data dpo_v2lib_source: String = "module v2.test.dpo.v2lib\n\ntype Lib = L\n"
+
+data dpo_xtree_source: String = "module v2.test.dpo.xtree\n\nimport v2.test.dpo.v2lib { Lib }\ntype Rec { value: Lib }\ntype Plain = Int\n"
+
+data dpo_xtree_user_source: String = "module v2.test.dpo.xtree_user\n\nimport v2.test.dpo.xtree { Plain }\nfn xp(x: Plain) -> Plain { x }\n"
+
+fn dpo_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: root
+  }
+}
+
+fn dpo_ingest() -> List<DagSourceReadWitness> {
+  [
+    dpo_read(text: dpo_mixed_source, id: ^dpo_mixed, path: "src/v2/test/fixture/dpo/mixed.dag", root: DagTree),
+    dpo_read(text: dpo_ok_user_source, id: ^dpo_ok_user, path: "src/v2/test/fixture/dpo/ok_user.dag", root: DagTree),
+    dpo_read(text: dpo_indep_user_source, id: ^dpo_indep_user, path: "src/v2/test/fixture/dpo/indep_user.dag", root: DagTree),
+    dpo_read(text: dpo_bad_user_source, id: ^dpo_bad_user, path: "src/v2/test/fixture/dpo/bad_user.dag", root: DagTree),
+    dpo_read(text: dpo_dep_user_source, id: ^dpo_dep_user, path: "src/v2/test/fixture/dpo/dep_user.dag", root: DagTree),
+    dpo_read(text: dpo_mut_user_source, id: ^dpo_mut_user, path: "src/v2/test/fixture/dpo/mut_user.dag", root: DagTree),
+    dpo_read(text: dpo_never_user_source, id: ^dpo_never_user, path: "src/v2/test/fixture/dpo/never_user.dag", root: DagTree),
+    dpo_read(text: dpo_gone_source, id: ^dpo_gone, path: "src/v2/test/fixture/dpo/gone.dag", root: DagTree),
+    dpo_read(text: dpo_gone_named_user_source, id: ^dpo_gone_named_user, path: "src/v2/test/fixture/dpo/gone_named_user.dag", root: DagTree),
+    dpo_read(text: dpo_gone_other_user_source, id: ^dpo_gone_other_user, path: "src/v2/test/fixture/dpo/gone_other_user.dag", root: DagTree),
+    dpo_read(text: dpo_uses_gone_source, id: ^dpo_uses_gone, path: "src/v2/test/fixture/dpo/uses_gone.dag", root: DagTree),
+    dpo_read(text: dpo_ghost_user_source, id: ^dpo_ghost_user, path: "src/v2/test/fixture/dpo/ghost_user.dag", root: DagTree),
+    dpo_read(text: dpo_v2lib_source, id: ^dpo_v2lib, path: "src/v2/test/fixture/dpo/v2lib.dag", root: V2Tree),
+    dpo_read(text: dpo_xtree_source, id: ^dpo_xtree, path: "src/v2/test/fixture/dpo/xtree.dag", root: DagTree),
+    dpo_read(text: dpo_xtree_user_source, id: ^dpo_xtree_user, path: "src/v2/test/fixture/dpo/xtree_user.dag", root: DagTree)
+  ]
+}
+
+fn dpo_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: dpo_ingest())
+}
+
+fn dpo_path(dotted: String) -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: dotted)
+}
+
+fn dpo_outcomes() -> Optional<List<ModuleOutcome>> {
+  match dpo_context() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      match context.resolution {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: shared, diagnostics: _ } =>
+          optional_present(value: closure_declarations_demand(shared: shared).module_outcomes)
+      }
+  }
+}
+
+fn dpo_verdict(module: String, path: Symbol) -> Optional<NativeModuleResolveVerdict> {
+  match dpo_context() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      optional_present(value: native_module_resolve_verdict(
+        context: context,
+        refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+        module: module,
+        path: path
+      ).verdict)
+  }
+}
+
+fn dpo_accepted(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveAccepted { resolved: _ } => true
+    _ => false
+  }
+}
+
+fn dpo_refused_first(v: NativeModuleResolveVerdict) -> Optional<NonEmptyDiagnostics> {
+  match v {
+    NativeModuleResolveRefused { first: d, rest: _, observation: _ } => optional_present(value: d)
+    _ => optional_absent()
+  }
+}
+
+fn dpo_refuses_with(v: NativeModuleResolveVerdict, reason: Symbol) -> Bool {
+  match dpo_refused_first(v: v) {
+    Present { value: d } => diagnostics_fatal_reason(d: d) == reason
+    Absent => false
+  }
+}
+
+fn dpo_chain_names(v: NativeModuleResolveVerdict, reason: Symbol) -> Bool {
+  match dpo_refused_first(v: v) {
+    Present { value: d } =>
+      (d.head.reason == reason) || diagnostics_list_has_reason(xs: d.tail, reason: reason)
+    Absent => false
+  }
+}
+
+fn dpo_declaration_refusal(outcomes: List<ModuleOutcome>, path: QualifiedName) -> Optional<NonEmptyDiagnostics> {
+  fold(outcomes, init: optional_absent(), f: fn(acc, o) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match o {
+          ModuleUnavailable { module: _, refusal: _ } => acc
+          ModuleObserved { module: _, declarations: ds } =>
+            fold(ds, init: acc, f: fn(hit, d) {
+              match hit {
+                Present { value: _ } => hit
+                Absent =>
+                  match d {
+                    DeclarationAvailable { path: _ } => hit
+                    DeclarationRefused { path: p, refusal: r } =>
+                      if p == path { optional_present(value: r) } else { hit }
+                  }
+              }
+            })
+        }
+    }
+  })
+}
+
+fn dpo_module_unavailable_mutant() -> List<ModuleOutcome> {
+  [
+    ModuleUnavailable {
+      module: dpo_path(dotted: "v2.test.dpo.mixed"),
+      refusal: diagnostics_singleton(d: Diagnostic {
+        reason: ^resolve_reason_unbound_symbol,
+        at: invariant_port_locus(port: ^dpo_mutant, invariant: ^resolve_reason_unbound_symbol),
+        correction: Unavailable { reason: UserInputBoundary }
+      })
+    }
+  ]
+}
+
+test fn dpo_ok_and_indep_are_available_beside_refused_bad() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Ok"))
+        && declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Indep"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Bad"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Dep"))
+  }
+}
+
+test fn dpo_importer_of_ok_binds() -> Bool {
+  match dpo_verdict(module: "v2.test.dpo.ok_user", path: ^dpo_ok_user) {
+    Absent => false
+    Present { value: v } => dpo_accepted(v: v)
+  }
+}
+
+test fn dpo_importer_of_indep_binds() -> Bool {
+  match dpo_verdict(module: "v2.test.dpo.indep_user", path: ^dpo_indep_user) {
+    Absent => false
+    Present { value: v } => dpo_accepted(v: v)
+  }
+}
+
+test fn dpo_importer_of_bad_is_declarer_refused_with_bads_chain() -> Bool {
+  match dpo_verdict(module: "v2.test.dpo.bad_user", path: ^dpo_bad_user) {
+    Absent => false
+    Present { value: v } =>
+      dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
+        && dpo_chain_names(v: v, reason: ^resolve_reason_unbound_symbol)
+        && !dpo_refuses_with(v: v, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+test fn dpo_importer_of_dep_is_declarer_refused_through_bad() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      match dpo_declaration_refusal(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Dep")) {
+        Absent => false
+        Present { value: dep_r } =>
+          match dpo_declaration_refusal(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Bad")) {
+            Absent => false
+            Present { value: bad_r } =>
+              match dpo_verdict(module: "v2.test.dpo.dep_user", path: ^dpo_dep_user) {
+                Absent => false
+                Present { value: v } =>
+                  dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
+                    && dpo_chain_names(v: v, reason: ^resolve_reason_unbound_symbol)
+                    && diagnostics_fatal_reason(d: dep_r) == diagnostics_fatal_reason(d: bad_r)
+                    && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Dep"))
+              }
+          }
+      }
+  }
+}
+
+// RULING: Option B, operator 2026-10-14 (gunbc.roadmap.roadmap_authority node declaration-provider-outcomes):
+// an incomplete or unadmitted namespace is MODULE-WIDE. gone lists an import of v2.test.dpo.missing, a module
+// outside the closure, so its namespace is refused (ModuleUnavailable) and neither Named nor Other is published,
+// though neither demands Ghost. This control stood expecting the opposite from f62825af57 with no ruling and was
+// red on main; the module-wide arm is what the ruling states, and per-declaration locality applies only inside
+// an admitted namespace (see Ok/Indep beside Bad in mixed).
+test fn dpo_gone_unadmitted_namespace_is_module_wide() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.gone"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Named"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Other"))
+        && match dpo_verdict(module: "v2.test.dpo.gone_named_user", path: ^dpo_gone_named_user) {
+          Absent => false
+          Present { value: named } => dpo_refuses_with(v: named, reason: ^resolve_reason_declarer_refused)
+        }
+  }
+}
+
+test fn dpo_never_declared_name_stays_unbound_symbol() -> Bool {
+  match dpo_verdict(module: "v2.test.dpo.never_user", path: ^dpo_never_user) {
+    Absent => false
+    Present { value: v } =>
+      dpo_refuses_with(v: v, reason: ^resolve_reason_unbound_symbol)
+        && !dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
+  }
+}
+
+test fn dpo_mutual_pair_with_one_bad_member_refuses_both() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.MutA"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.MutB"))
+        && match dpo_verdict(module: "v2.test.dpo.mut_user", path: ^dpo_mut_user) {
+          Absent => false
+          Present { value: v } => dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
+        }
+  }
+}
+
+fn dpo_census_authored(owner: String, name: Symbol) -> AuthoredUsesFunction {
+  AuthoredUsesFunction { owner: dpo_path(dotted: owner), name: optional_present(value: name), types: [], alias_bind: UsesAliasBindUnique }
+}
+
+// The census asks through native_demand_census_function_available, the shared authority's caller, over the
+// outcomes the census itself reads (native_demand_census_closure_outcomes). Bad is refused beside Ok, so a
+// census that answered "available" for everything, or consulted another source, goes red on Bad.
+test fn dpo_census_shares_declaration_available() -> Bool {
+  match dpo_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let outcomes = native_demand_census_closure_outcomes(context: context)
+        native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Ok))
+          && native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.ok_user", name: ^f))
+          && !native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Bad))
+          && !native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Dep))
+      }
+  }
+}
+
+test fn dpo_one_namespace_per_module() -> Bool {
+  match dpo_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      match context.resolution {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: shared, diagnostics: _ } =>
+          closure_declarations_demand(shared: shared).context.namespaces_built == 15
+      }
+  }
+}
+
+test fn dpo_declaration_depending_on_gone_named_is_unavailable() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.uses_gone.UsesGone"))
+  }
+}
+
+test fn dpo_module_unavailable_mutant_is_not_available() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Ok"))
+        && !declaration_available(
+          outcomes: dpo_module_unavailable_mutant(),
+          path: dpo_path(dotted: "v2.test.dpo.mixed.Ok")
+        )
+  }
+}
+
+// UsesGhost: a listed import of a name from a module outside the closure (Option B, see
+// dpo_gone_unadmitted_namespace_is_module_wide). The declaration that demands Ghost is unavailable, and so is
+// Solo, which does not: the namespace was never admitted.
+test fn dpo_listed_import_of_ghost_module_refuses_the_module() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.ghost_user"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.ghost_user.UsesGhost"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.ghost_user.Solo"))
+  }
+}
+
+// The module-wide arm, produced by the real resolver: a DagTree module importing a V2Tree one is refused at
+// namespace admission (cross-tree policy), so every declaration of it is unavailable, including the one that
+// demands nothing cross-tree. The outcome row is ModuleUnavailable as the closure produced it.
+fn dpo_is_module_unavailable(outcomes: List<ModuleOutcome>, module: QualifiedName) -> Bool {
+  fold(outcomes, init: false, f: fn(found, o) {
+    found || match o {
+      ModuleUnavailable { module: m, refusal: _ } => m == module
+      ModuleObserved { module: _, declarations: _ } => false
+    }
+  })
+}
+
+test fn dpo_real_module_unavailable_is_module_wide() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.xtree"))
+        && !dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.mixed"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.xtree.Plain"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.xtree.Rec"))
+        && match dpo_verdict(module: "v2.test.dpo.xtree_user", path: ^dpo_xtree_user) {
+          Absent => false
+          Present { value: v } =>
+            dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
+              && dpo_chain_names(v: v, reason: ^resolve_cross_tree_import_denied)
+        }
+  }
+}

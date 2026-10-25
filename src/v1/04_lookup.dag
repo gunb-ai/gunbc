@@ -1,7 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
-import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
+import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, ResourceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -46,7 +46,8 @@ import v1.compiler.infer_types {
   enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity,
   kernel_profile_lookup,
   instantiate_algebra_type,
-  instantiate_algebra_field
+  instantiate_algebra_field,
+  applied_field_type, type_node_is_callable
 }
 
 import v1.compiler.infer_env {
@@ -56,7 +57,7 @@ import v1.compiler.infer_env {
   listed_import_required_bare_call_blocked
 }
 
-import v1.compiler.infer_resolve { fn_type_param_names, peel_nominal_alias_identity }
+import v1.compiler.infer_resolve { fn_type_param_names, expand_nominal_alias_rhs }
 
 import v1.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -67,7 +68,7 @@ import v1.compiler.infer_sigs {
   DeclarationBoundFormals, KernelGroundedFormals,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
-  parent_closure_callable_candidates, decide_callable_candidates
+  parent_closure_callable_candidates, owner_module_leaf_callable_candidates, decide_callable_candidates
 }
 
 import v1.compiler.infer_service {
@@ -75,7 +76,11 @@ import v1.compiler.infer_service {
   check_service_method_call_node
 }
 
-import v1.compiler.infer_method { infer_builtin_call_type }
+import v1.compiler.infer_method {
+  infer_builtin_call_type,
+  bare_call_non_declaration_binding, EmptyCollectionConstructor, BuiltinFunction,
+  KernelMethodOnly, DeclarationOnly
+}
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -297,8 +302,8 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // THE CENSUS DECLARATION BEHIND AN UNRESOLVED SIGNATURE, AS AN IDENTITY AND NOTHING MORE.
 //
 // This answers the producer, not a downstream consumer: `call_target_for_direct_call` calls it at
-// the point that would otherwise construct CallableUnresolved, so the direct-call decision is still
-// made ONCE and every later reader takes the answer off the constructor. Resolving it below the
+// the point that would otherwise construct CallableUnresolved, AFTER body-local, declared-sig,
+// builtin-registry, and empty-collection constructor classification. Resolving it below the
 // seam instead would leave other consumers of the same outcome reading "unresolved" while this one
 // reads "declared" -- the authority-substitution geometry the outcome type exists to remove.
 //
@@ -307,19 +312,32 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // borrowed declaration surface that carries a signature without one -- so a nullary fn reached
 // this way reads as OtherItem, and an admit-list of the callable kind refuses every member
 // of the population this arm exists to serve. The call position is what establishes that the name
-// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
-// a DATA row, none of which a call may target.
+// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE, a
+// RESOURCE or a DATA row, none of which a call may target. The match names every arm, so a kind
+// added later must be answered here rather than fall into the callable side.
+// THE CENSUS NEVER SERVES AN ALGEBRA METHOD-TEMPLATE NAME. `func_sig_from_global_bare` already
+// answers Unresolved for those names so the ExprCall known-method bridge types them. Returning a
+// census identity here made CallTargetOutcome look like a declaration, so constructor admission
+// ran on an owner the product did not acquire and the method bridge never ran (public main
+// regression after pool_qualified_fill deletion: bare `map`/`join` as InternalError not-found,
+// plus borrowed generic T field misses).
 fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> BorrowedCensusDecl? {
+  if algebra_method_template_name(name: func_name) {
+    Absent
+  } else {
   match borrowed_census_decl(type_env: type_env, name: func_name) {
     BorrowedCensusDeclFound { declaration: bd } =>
       match item_kind(item: bd.node) {
         TypeItem => Absent
         ServiceItem => Absent
+        ResourceItem => Absent
         DataItem => Absent
-        _ => Present { value: bd }
+        FnItem => Present { value: bd }
+        OtherItem => Present { value: bd }
       }
     BorrowedCensusDeclAmbiguous { candidates: _ } => Absent
     BorrowedCensusDeclNotFound => Absent
+  }
   }
 }
 
@@ -413,6 +431,15 @@ fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTar
 // path or several change which order the candidates are collected in and cannot change the
 // verdict, because the verdict is taken on the population and a position is read only after the
 // count has proven the population is a singleton.
+fn census_fallback_skips_non_declaration_binding(name: String) -> Bool {
+  match bare_call_non_declaration_binding(name: name) {
+    EmptyCollectionConstructor => true
+    BuiltinFunction => false
+    KernelMethodOnly => false
+    DeclarationOnly => false
+  }
+}
+
 fn callable_lookup_over_candidates(
   func_env: ResolvedFuncEnv,
   type_env: TypeEnv,
@@ -438,10 +465,14 @@ fn callable_lookup_over_candidates(
         FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
         FuncSigUnresolved =>
-          if (admissible |> count) == 0 {
-            func_sig_from_global_bare(type_env: type_env, name: name)
-          } else {
+          if census_fallback_skips_non_declaration_binding(name: name) {
             FuncSigUnresolved
+          } else {
+            if (admissible |> count) == 0 {
+              func_sig_from_global_bare(type_env: type_env, name: name)
+            } else {
+              FuncSigUnresolved
+            }
           }
       }
   }
@@ -463,7 +494,54 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
       match lookup_resolved_sig(env: func_env, name: name) {
         FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
-        FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+        FuncSigUnresolved =>
+          if census_fallback_skips_non_declaration_binding(name: name) {
+            FuncSigUnresolved
+          } else {
+            func_sig_from_global_bare(type_env: type_env, name: name)
+          }
+      }
+    }
+  }
+}
+
+// Direct-call target selection must not consult the whole-tree census before builtin /
+// empty-collection classification. Census fallback is skipped only for empty_map / empty_set
+// so an unimported same-spelled census declaration cannot bind them; an imported declaration
+// in the func-env closure still binds, and kernel empty_map is Builtin only after that miss.
+// This lookup is func-env / import-closure declarations only.
+fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
+  if listed_import_required_bare_call_blocked(env: type_env, name: name) {
+    FuncSigUnresolved
+  } else if declared_module_owner(index: type_env.symbol_index, name: name) != none {
+    decide_callable_candidates(candidates: owner_module_leaf_callable_candidates(
+      env: func_env,
+      owner: qualified_all_but_last(name: name),
+      leaf: qualified_last_segment(name: name)
+    ))
+  } else {
+    if name_resolution_policy_is_namespace_only() {
+      match map_get(func_env.local, name) {
+        Present { value: sig } =>
+          FuncSigResolved {
+            sig: sig,
+            declared: DeclaredCallableIdentity {
+              owner_module_path: func_env.name,
+              decl_name: qualified_last_segment(name: name)
+            }
+          }
+        Absent =>
+          match decide_callable_candidates(candidates: parent_closure_callable_candidates(env: func_env, name: name)) {
+            FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
+            FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+            FuncSigUnresolved => FuncSigUnresolved
+          }
+      }
+    } else {
+      match lookup_resolved_sig(env: func_env, name: name) {
+        FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
+        FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+        FuncSigUnresolved => FuncSigUnresolved
       }
     }
   }
@@ -480,7 +558,7 @@ type BorrowedCensusDeclLookup
   | BorrowedCensusDeclNotFound
 
 fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLookup {
-  if contains(name, ".") {
+  if declared_module_owner(index: type_env.symbol_index, name: name) != none {
     match symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
       Present { value: node } =>
         BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
@@ -505,25 +583,6 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
   }
 }
 
-fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
-  match map_get(func_env.local, name) {
-    Present { value: _ } => Present { value: func_env.name }
-    Absent =>
-      match fold(func_env.parents, init: none, f: (found, p) =>
-        if found != none { found }
-        else {
-          match map_get(p.local, name) {
-            Present { value: _ } => Present { value: p.name }
-            Absent => none
-          }
-        }
-      ) {
-        Present { value: owner } => Present { value: owner }
-        Absent => none
-      }
-  }
-}
-
 // Admission reads declaration metadata (admit_callers) off the node this lookup returns, so
 // the node must be the DECLARATION. Four of the five node sources feeding this lookup were
 // binding-resolved VALUE nodes -- b.resolved, cand.binding.resolved, binding.resolved --
@@ -534,18 +593,12 @@ fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
 // one-arity name happened to resolve through the symbol index and refused correctly. Arity
 // was a correlate of which path ran, never the distinguishing fact, so the repair is
 // uniform rather than arity-specific.
-// THE OWNER MUST BE LOCATED, NOT GUESSED. Only func_decl_owner_module and
-// borrowed_census_decl positively assert that a declaration of this name lives in the module
-// they name; the str_bindings arm and the trailing default both answer with the REFERENCING
-// module, which is a guess about location. Resolving against a guessed owner and then treating
-// the index miss as unrecoverable turns a wrong guess into a hard refusal: measured on the
-// whole tree that fabricated 11 refusals over three ordinary data declarations
-// (srv3_nbd_proxy_local_port, gnu_bash_subject_ref, extdeps_external_authority_anchor), none of
-// them constructors, and the last of them a per-module anchor convention declared under that one
-// name in 459 modules across dag/extdeps -- so a guessed owner picks one of 459 homes and the
-// index miss that follows says nothing about admission. So a name no locating authority claims is
-// NotAdmissionBearingReference, and the unavailable arm is reserved for the genuinely anomalous
-// case -- a located declaration the index cannot produce.
+// THE OWNER MUST BE THE IDENTITY CALL RESOLUTION SELECTED, NOT A SPELLING RECONSTRUCTION.
+// constructor_declaration_for_admission is handed an exact owner+name from CallTargetOutcome;
+// it must not guess the referencing module. A located declaration the product index cannot
+// produce stays AdmissionBearingDeclarationUnavailable and must never be projected to
+// NotAdmissionBearingReference. A name no locating authority claims is
+// NotAdmissionBearingReference.
 // THE VALUE NODE IS NOT AN ADMISSION FALLBACK. An earlier revision kept it as one and argued
 // the change could only add refusals; that is not sufficient, because a fabricated refusal is
 // a wrong answer exactly as a fabricated success is (DESIGN section 5), and keeping it would
@@ -572,7 +625,7 @@ fn constructor_declaration_for_admission(
   name: String
 ) -> ConstructorDeclarationLookup {
   let decl_name = qualified_last_segment(name: name)
-  let qualified = if contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
+  let qualified = concat(owner_module_path, ".", decl_name)
   let identity = ExactDeclarationIdentity { owner_module_path: owner_module_path, decl_name: decl_name }
   match symbol_index_lookup(index: type_env.symbol_index, qualified_name: qualified) {
     Present { value: node } =>
@@ -581,36 +634,6 @@ fn constructor_declaration_for_admission(
       AdmissionBearingDeclarationUnavailable {
         identity: identity,
         cause: DeclarationNotIndexedAtQualifiedName { qualified_name: qualified }
-      }
-  }
-}
-
-// Admission metadata is readable only from one exact declaration. Ambiguity and absence differ
-// for name resolution, but neither supplies an identity whose admit_callers policy can be read,
-// so both are explicitly non-admission-bearing here; the call-signature seam retains and refuses
-// the ambiguity with its candidate menu.
-fn func_decl_binding_for_call(
-  func_env: ResolvedFuncEnv,
-  type_env: TypeEnv,
-  name: String
-) -> ConstructorDeclarationLookup {
-  match func_decl_owner_module(func_env: func_env, name: name) {
-    Present { value: owner } =>
-      constructor_declaration_for_admission(
-        type_env: type_env,
-        owner_module_path: owner,
-        name: name
-      )
-    Absent =>
-      match borrowed_census_decl(type_env: type_env, name: name) {
-        BorrowedCensusDeclFound { declaration: bd } =>
-          constructor_declaration_for_admission(
-            type_env: type_env,
-            owner_module_path: bd.owner_module_path,
-            name: name
-          )
-        BorrowedCensusDeclAmbiguous { candidates: _ } => NotAdmissionBearingReference {}
-        BorrowedCensusDeclNotFound => NotAdmissionBearingReference {}
       }
   }
 }
@@ -680,7 +703,7 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
         declared_type: declared_type,
         declaration_bound_conformance: preserve_outer_optional_cardinality(
           outer: declared_type,
-          inner: peel_nominal_alias_identity(n: declared_type, env: declaration_env, module_name: owner_module_path)),
+          inner: expand_nominal_alias_rhs(n: declared_type, env: declaration_env, module_name: owner_module_path)),
         substitution_basis: declaration_substitution_basis(
           n: declared_type, env: declaration_env,
           generic_names: concat(tp_names, map_keys(declaration_generic_names)))
@@ -989,16 +1012,17 @@ type StructuralMethodLookup {
   kernel_diagnostics: List<ErrorNode>
 }
 
+// A FIELD READ AS AN OPERATION PRODUCES ITS FIELD TYPE'S APPLICATION, decided by callability
+// (`type_node_is_callable`), never by arity. This read used `params |> count > 0`, so a nullary
+// `f: fn() -> T` field answered its own Arrow and `x.f()` was typed `Callable(-> T)` wherever the
+// position checked the type (gunbc.recurring_failure_mode a_nullary_callable_field_call_is_typed_as_the_callable,
+// a sibling leaf of arity_proxy_for_callability_misroutes_a_found_local).
 fn product_field_result_type(field: Node) -> Node? {
   match field.inferred {
     Present { value: Resolved { node: rt } } =>
-      if rt.params |> count > 0 {
-        match rt.inferred {
-          Present { value: Resolved { node: return_type } } => Present { value: return_type }
-          _ => Present { value: rt }
-        }
-      } else {
-        Present { value: rt }
+      match applied_field_type(field_type: rt) {
+        Present { value: applied } => Present { value: applied }
+        Absent => Present { value: rt }
       }
     _ => none
   }
@@ -1098,8 +1122,8 @@ fn declared_arg_types_for_method(receiver_type: Node, method_name: String, sourc
         Absent =>
           match mfr.field_node.inferred {
             Present { value: Resolved { node: callable } } =>
-              let expanded = if callable.params |> count > 0 { callable } else { expand_field_type(callable) }
-              if expanded.params |> count > 0 {
+              let expanded = if type_node_is_callable(n: callable) { callable } else { expand_field_type(callable) }
+              if type_node_is_callable(n: expanded) {
                 ContractKnown { types: expanded.params |> map(p => param_node_type_expr(n: p)) }
               } else {
                 ContractUnavailable

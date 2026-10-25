@@ -18,12 +18,11 @@ import extdeps.apple.app_attest {
   AssertionRefusal, AssertionAppIdMismatch, AssertionValidationCategoryAbsent, AssertionSignatureInvalid,
   assertion_parts, AssertionPartsOk, AssertionPartsRefused, assertion_signature_verifies_for, verify_assertion,
 }
-import extdeps.apple.app_attest_sample_ios_14_4 {
-  sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
-  sample_team_identifier, sample_bundle_identifier, sample_assertion_counter,
+import gunbc.instruments.app_attest_sample_rows {
+  AppAttestSample, operator_device_ios_26_6_2_sample, OwedAttestationVerdict, OwesAttestationVerified, OwesAttestationRefusedWith, OwedAssertionVerdict, OwesAssertionAuthentic, OwesAssertionRefusedWith,
+  ios_14_4_sample, sample_app_id, sample_expectation, assertion_expectation, assertion_expectation_of, no_assertion_expectation,
+  attestation_refusal_of, refused_with, owed_attestation_holds, assertion_refused_with, owed_assertion_holds,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion --
 // the folds #11989 authored, not a second fold -- executed over Apple's published iOS 14.4 sample
@@ -35,16 +34,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // and they run here on the sample's real bytes. The report contract and its identity join are
 // gunbc.native_claim_program's.
 //
-// THE SAMPLE'S EXPECTED VERDICT IS A REFUSAL, AND THAT IS NOT RELAXED. The 2021 sample predates
-// apple_validation_category_01 / apple_bundle_version_01, so the whole fold refuses it with
-// AttestationValidationCategoryAbsent (attestation) and AssertionValidationCategoryAbsent
-// (assertion) -- reaching that arm is the evidence every earlier step passed on real bytes. The
-// chain links, which the fold sequences after the structural steps, are therefore run at their
-// own producer (chain_link_verifies) over the same decode. WHAT A WHOLE-FOLD POSITIVE CONTROL NEEDS,
-// named as its trigger: an Apple attestation and assertion carrying both extensions -- a newer
-// published sample, or the first object off the operator's enrolled phone -- pinned as an
-// extdeps.apple row, at which point sample_verdict's expected arm becomes AttestationVerified /
-// AssertionAuthentic for that object.
+// BOTH ROWS OWE THE SUCCESS ARM. Neither Apple's 2021 sample nor the operator's iPhone attestation
+// (gunbc.instruments.app_attest_operator_device_ios_26_6_2) carries an authData extensions map, which Apple
+// describes as optional, so the whole fold verifies each: chain, nonce, key id, RP ID hash, counter, AAGUID
+// and credentialId on real bytes. The chain links are also run at their own producer (chain_link_verifies)
+// so a wrong root is a RED of the signature itself and not only of the issuer name.
 //
 // THE ASSERTION COUNTER. Apple's step 5 (counter strictly greater than the stored one) is
 // DELIBERATELY not claimed by AssertionAuthentic: gunbc.auth.approval_device_redemption
@@ -54,54 +48,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // against the corpus's published value.
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
-// ONE ROW PER APPLE OBJECT PAIR, so a second capture is another row and not another program. The
-// row carries the object's bytes (from its own extdeps module, never transcribed here), the
-// caller's expectation for it, and THE VERDICT THE FOLD OWES that object -- a refusal arm for the
-// 2021 sample, a success for a capture carrying the extension steps. Every case identity is
-// prefixed with the row's name, so the roster join names which object a failure is about.
-//
-// PLANNED ROW, NOT YET AUTHORABLE: "operator_device_ios_26_6_2" -- an attestation and assertions
-// produced by apps/approve-ios on the operator's iPhone (iOS 26.6.2) once gunbc#12000 lands,
-// recorded as an OBSERVED ARTIFACT in its own extdeps.apple module with its provenance (device,
-// OS version, app bundle, capture date), never transcribed from a message. Its expected verdicts are
-// AttestationVerified and AssertionAuthentic; it is the whole-fold positive control the 14.4 row
-// cannot be.
-type AppAttestSample {
-  name: String
-  attestation: List<Int>
-  assertion: List<Int>
-  expectation: AttestationExpectation
-  owed_attestation: OwedAttestationVerdict
-  owed_assertion: OwedAssertionVerdict
-  published_assertion_counter: Int
-}
-
-// WHAT A SAMPLE ROW OWES, AS A CLOSED SUM OVER THE FOLD'S OWN RESULT TYPES (review 71337): a row owes
-// either the success arm or one named refusal arm of extdeps.apple.app_attest AttestationRefusal /
-// AssertionRefusal. The owed refusal is carried AS that refusal type and compared by constructor
-// in the matches below -- never as text -- so a reworded detail string cannot move a verdict.
-type OwedAttestationVerdict
-  = OwesAttestationVerified
-  | OwesAttestationRefusedWith { refusal: AttestationRefusal }
-
-type OwedAssertionVerdict
-  = OwesAssertionAuthentic
-  | OwesAssertionRefusedWith { refusal: AssertionRefusal }
-
-fn ios_14_4_sample() -> AppAttestSample {
-  AppAttestSample {
-    name: "ios_14_4",
-    attestation: sample_attestation_octets,
-    assertion: sample_assertion_octets,
-    expectation: sample_expectation(),
-    owed_attestation: OwesAttestationRefusedWith { refusal: AttestationValidationCategoryAbsent },
-    owed_assertion: OwesAssertionRefusedWith { refusal: AssertionValidationCategoryAbsent },
-    published_assertion_counter: sample_assertion_counter,
-  }
-}
-
 fn app_attest_samples() -> List<AppAttestSample> {
-  [ios_14_4_sample()]
+  [ios_14_4_sample(), operator_device_ios_26_6_2_sample()]
 }
 
 type AppAttestCase {
@@ -150,56 +98,6 @@ fn refusal_verdict(r: AttestationRefusal?) -> String {
   }
 }
 
-fn attestation_refusal_of(v: AttestationVerification) -> AttestationRefusal? {
-  match v {
-    AttestationVerified { verified: _ } => no_attestation_refusal()
-    AttestationRefused { cause: c } => attestation_refusal_present(c: c)
-  }
-}
-
-fn attestation_refusal_present(c: AttestationRefusal) -> AttestationRefusal? {
-  Present { value: c }
-}
-
-fn no_attestation_refusal() -> AttestationRefusal? {
-  Absent
-}
-
-// SAME CONSTRUCTOR, compared by arm and never by payload text: the owed refusal names which arm of
-// AttestationRefusal the fold must answer. Exhaustive over the owed arm, so a new refusal
-// constructor must be placed here before any row can owe it.
-fn same_attestation_arm(owed: AttestationRefusal, got: AttestationRefusal) -> Bool {
-  match owed {
-    AttestationFormatUnexpected { declared: _ } => match got { AttestationFormatUnexpected { declared: _ } => true  _ => false }
-    AttestationChainUntrusted { detail: _ } => match got { AttestationChainUntrusted { detail: _ } => true  _ => false }
-    AttestationNonceMismatch => match got { AttestationNonceMismatch => true  _ => false }
-    AttestationKeyIdMismatch { declared: _ } => match got { AttestationKeyIdMismatch { declared: _ } => true  _ => false }
-    AttestationAppIdMismatch { expected_app_id: _ } => match got { AttestationAppIdMismatch { expected_app_id: _ } => true  _ => false }
-    AttestationCounterNonZero { counter: _ } => match got { AttestationCounterNonZero { counter: _ } => true  _ => false }
-    AttestationEnvironmentUnexpected { expected: _ } => match got { AttestationEnvironmentUnexpected { expected: _ } => true  _ => false }
-    AttestationCredentialIdMismatch { declared: _ } => match got { AttestationCredentialIdMismatch { declared: _ } => true  _ => false }
-    AttestationValidationCategoryRefused { category: _ } => match got { AttestationValidationCategoryRefused { category: _ } => true  _ => false }
-    AttestationValidationCategoryAbsent => match got { AttestationValidationCategoryAbsent => true  _ => false }
-    AttestationBundleVersionAbsent => match got { AttestationBundleVersionAbsent => true  _ => false }
-    AttestationBundleVersionUnexpected { declared: _ } => match got { AttestationBundleVersionUnexpected { declared: _ } => true  _ => false }
-    AttestationUndecodable { cause: _ } => match got { AttestationUndecodable { cause: _ } => true  _ => false }
-  }
-}
-
-fn refused_with(owed: AttestationRefusal, got: AttestationRefusal?) -> Bool {
-  match got {
-    Absent => false
-    Present { value: g } => same_attestation_arm(owed: owed, got: g)
-  }
-}
-
-fn owed_attestation_holds(owed: OwedAttestationVerdict, v: AttestationVerification) -> Bool {
-  match owed {
-    OwesAttestationVerified => match v { AttestationVerified { verified: _ } => true  AttestationRefused { cause: _ } => false }
-    OwesAttestationRefusedWith { refusal: r } => refused_with(owed: r, got: attestation_refusal_of(v: v))
-  }
-}
-
 fn verifies(v: Bool?) -> Bool {
   match v {
     Present { value: b } => b
@@ -225,22 +123,6 @@ fn counter_refusal_is(n: Int, got: AttestationRefusal?) -> Bool {
   match got {
     Absent => false
     Present { value: r } => match r { AttestationCounterNonZero { counter: c } => c == n  AttestationFormatUnexpected { declared: _ } => false  AttestationChainUntrusted { detail: _ } => false  AttestationNonceMismatch => false  AttestationKeyIdMismatch { declared: _ } => false  AttestationAppIdMismatch { expected_app_id: _ } => false  AttestationEnvironmentUnexpected { expected: _ } => false  AttestationCredentialIdMismatch { declared: _ } => false  AttestationValidationCategoryRefused { category: _ } => false  AttestationValidationCategoryAbsent => false  AttestationBundleVersionAbsent => false  AttestationBundleVersionUnexpected { declared: _ } => false  AttestationUndecodable { cause: _ } => false }
-  }
-}
-
-fn sample_app_id() -> NonEmptyStr {
-  app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier)
-}
-
-fn sample_expectation() -> AttestationExpectation {
-  AttestationExpectation {
-    key_id: sample_key_id_b64 as AttestKeyId,
-    client_data: sample_client_data,
-    app_id: sample_app_id(),
-    environment: AppAttestDevelopment,
-    observed_at: "2021-01-23T12:13:35Z",
-    admitted_validation_categories: [2, 3, 4],
-    expected_bundle_version: "1" as NonEmptyStr,
   }
 }
 
@@ -270,6 +152,16 @@ fn with_root(d: AttestationDecoded, root: X509Certificate) -> AttestationDecoded
   AttestationDecoded { parts: d.parts, leaf: d.leaf, ca: d.ca, root: root, auth: d.auth }
 }
 
+// The mutated expectations are derived from the row, so a second capture needs no literal here: the
+// client data with one more character, the App ID with a different bundle.
+fn other_client_data(s: AppAttestSample) -> NonEmptyStr {
+  concat(s.expectation.client_data as String, "x") as NonEmptyStr
+}
+
+fn other_app_id(s: AppAttestSample) -> NonEmptyStr {
+  concat(s.expectation.app_id as String, ".other") as NonEmptyStr
+}
+
 fn attestation_cases(s: AppAttestSample, d: AttestationDecoded) -> List<AppAttestCase> {
   let e = s.expectation
   let whole = verify_attestation(object: s.attestation, e: e)
@@ -277,8 +169,8 @@ fn attestation_cases(s: AppAttestSample, d: AttestationDecoded) -> List<AppAttes
   let root_link = chain_link_verifies(subject: d.ca, issuer: d.root)
   let wrong_root_link = chain_link_verifies(subject: d.ca, issuer: d.ca)
   let wrong_root_fold = attestation_refusal(d: with_root(d: d, root: d.ca), e: e)
-  let nonce = verify_attestation(object: s.attestation, e: with_client_data(e: e, c: "wurzelpfropg" as NonEmptyStr))
-  let app_id = verify_attestation(object: s.attestation, e: with_app_id(e: e, a: "6MURL8TA57.de.other" as NonEmptyStr))
+  let nonce = verify_attestation(object: s.attestation, e: with_client_data(e: e, c: other_client_data(s: s)))
+  let app_id = verify_attestation(object: s.attestation, e: with_app_id(e: e, a: other_app_id(s: s)))
   let aaguid = verify_attestation(object: s.attestation, e: in_production(e: e))
   let counter = attestation_refusal(d: with_counter(d: d, n: 1), e: e)
   [
@@ -288,7 +180,7 @@ fn attestation_cases(s: AppAttestSample, d: AttestationDecoded) -> List<AppAttes
     judged(sample: s, identity: "attestation_red_wrong_root_signature", held: verifies_false(v: wrong_root_link), observed: bool_verdict(v: wrong_root_link)),
     judged(sample: s, identity: "attestation_red_wrong_root_in_the_fold", held: chain_untrusted(got: wrong_root_fold), observed: refusal_verdict(r: wrong_root_fold)),
     judged(sample: s, identity: "attestation_red_tampered_nonce", held: refused_with(owed: AttestationNonceMismatch, got: attestation_refusal_of(v: nonce)), observed: attestation_verdict(v: nonce)),
-    judged(sample: s, identity: "attestation_red_wrong_app_id", held: refused_with(owed: AttestationAppIdMismatch { expected_app_id: "6MURL8TA57.de.other" as NonEmptyStr }, got: attestation_refusal_of(v: app_id)), observed: attestation_verdict(v: app_id)),
+    judged(sample: s, identity: "attestation_red_wrong_app_id", held: refused_with(owed: AttestationAppIdMismatch { expected_app_id: other_app_id(s: s) }, got: attestation_refusal_of(v: app_id)), observed: attestation_verdict(v: app_id)),
     judged(sample: s, identity: "attestation_red_wrong_aaguid_environment", held: refused_with(owed: AttestationEnvironmentUnexpected { expected: AppAttestProduction }, got: attestation_refusal_of(v: aaguid)), observed: attestation_verdict(v: aaguid)),
     judged(sample: s, identity: "attestation_red_counter_nonzero", held: counter_refusal_is(n: 1, got: counter), observed: refusal_verdict(r: counter)),
   ]
@@ -313,32 +205,6 @@ fn assertion_verdict(v: AssertionVerification) -> String {
   }
 }
 
-fn same_assertion_arm(owed: AssertionRefusal, got: AssertionRefusal) -> Bool {
-  match owed {
-    AssertionSignatureInvalid => match got { AssertionSignatureInvalid => true  _ => false }
-    AssertionAppIdMismatch { expected_app_id: _ } => match got { AssertionAppIdMismatch { expected_app_id: _ } => true  _ => false }
-    AssertionValidationCategoryRefused { category: _ } => match got { AssertionValidationCategoryRefused { category: _ } => true  _ => false }
-    AssertionValidationCategoryAbsent => match got { AssertionValidationCategoryAbsent => true  _ => false }
-    AssertionBundleVersionAbsent => match got { AssertionBundleVersionAbsent => true  _ => false }
-    AssertionBundleVersionUnexpected { declared: _ } => match got { AssertionBundleVersionUnexpected { declared: _ } => true  _ => false }
-    AssertionUndecodable { cause: _ } => match got { AssertionUndecodable { cause: _ } => true  _ => false }
-  }
-}
-
-fn assertion_refused_with(owed: AssertionRefusal, v: AssertionVerification) -> Bool {
-  match v {
-    AssertionAuthentic { authentic: _ } => false
-    AssertionRefused { cause: c } => same_assertion_arm(owed: owed, got: c)
-  }
-}
-
-fn owed_assertion_holds(owed: OwedAssertionVerdict, v: AssertionVerification) -> Bool {
-  match owed {
-    OwesAssertionAuthentic => match v { AssertionAuthentic { authentic: _ } => true  AssertionRefused { cause: _ } => false }
-    OwesAssertionRefusedWith { refusal: r } => assertion_refused_with(owed: r, v: v)
-  }
-}
-
 fn bool_verdict(v: Bool?) -> String {
   match v {
     Present { value: b } => if b { "true" } else { "false" }
@@ -348,36 +214,12 @@ fn bool_verdict(v: Bool?) -> String {
 
 // The assertion's key is the attestation's leaf key rendered by base64_of, so the
 // attestation -> assertion join is one chain here as in the interpreted witness.
-fn assertion_expectation(s: AppAttestSample, d: AttestationDecoded) -> AssertionExpectation? {
-  match base64_of(octets: d.leaf.tbs.spki_public_key, url_safe: true) {
-    Absent => no_assertion_expectation()
-    Present { value: point } => assertion_expectation_of(e: AssertionExpectation {
-      key_id: s.expectation.key_id,
-      public_key_point_b64url: point as NonEmptyStr,
-      client_data: s.expectation.client_data,
-      app_id: s.expectation.app_id,
-      admitted_validation_categories: s.expectation.admitted_validation_categories,
-      expected_bundle_version: s.expectation.expected_bundle_version,
-    })
-  }
-}
-
-// Optional built through typed helpers, not Present/Absent literals in arms (the emit path does
-// not unify those; the same shape gunbc.instruments.native_crypto_vectors verified_as uses).
-fn assertion_expectation_of(e: AssertionExpectation) -> AssertionExpectation? {
-  Present { value: e }
-}
-
-fn no_assertion_expectation() -> AssertionExpectation? {
-  Absent
-}
-
 fn assertion_with(e: AssertionExpectation, client_data: NonEmptyStr, app_id: NonEmptyStr) -> AssertionExpectation {
   AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: client_data, app_id: app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }
 }
 
-fn assertion_counter_of(s: AppAttestSample) -> Int? {
-  match assertion_parts(object: s.assertion) {
+fn assertion_counter_of(object: List<Int>) -> Int? {
+  match assertion_parts(object: object) {
     AssertionPartsOk { parts: p } => counter_present(n: p.auth.prefix.sign_count)
     AssertionPartsRefused { cause: _ } => no_counter()
   }
@@ -406,19 +248,26 @@ fn counter_is(n: Int?, published: Int) -> Bool {
 }
 
 fn assertion_cases(s: AppAttestSample, d: AttestationDecoded) -> List<AppAttestCase> {
+  match s.assertion {
+    Absent => []
+    Present { value: object } => assertion_cases_over(s: s, d: d, object: object)
+  }
+}
+
+fn assertion_cases_over(s: AppAttestSample, d: AttestationDecoded, object: List<Int>) -> List<AppAttestCase> {
   match assertion_expectation(s: s, d: d) {
     Absent => [judged(sample: s, identity: "assertion_expectation_from_the_attested_leaf", held: false, observed: "leaf key not bytes")]
     Present { value: e } => {
-      let whole = verify_assertion(object: s.assertion, e: e)
-      let signature = assertion_signature_verifies_for(object: s.assertion, e: e)
-      let nonce = assertion_signature_verifies_for(object: s.assertion, e: assertion_with(e: e, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id))
-      let app_id = verify_assertion(object: s.assertion, e: assertion_with(e: e, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr))
-      let counter = assertion_counter_of(s: s)
+      let whole = verify_assertion(object: object, e: e)
+      let signature = assertion_signature_verifies_for(object: object, e: e)
+      let nonce = assertion_signature_verifies_for(object: object, e: assertion_with(e: e, client_data: other_client_data(s: s), app_id: e.app_id))
+      let app_id = verify_assertion(object: object, e: assertion_with(e: e, client_data: e.client_data, app_id: other_app_id(s: s)))
+      let counter = assertion_counter_of(object: object)
       [
         judged(sample: s, identity: "assertion_verdict_is_the_owed_one", held: owed_assertion_holds(owed: s.owed_assertion, v: whole), observed: assertion_verdict(v: whole)),
         judged(sample: s, identity: "assertion_signature_verifies_p256_under_the_attested_key", held: verifies(v: signature), observed: bool_verdict(v: signature)),
         judged(sample: s, identity: "assertion_red_tampered_nonce", held: verifies_false(v: nonce), observed: bool_verdict(v: nonce)),
-        judged(sample: s, identity: "assertion_red_wrong_app_id", held: assertion_refused_with(owed: AssertionAppIdMismatch { expected_app_id: "6MURL8TA57.de.other" as NonEmptyStr }, v: app_id), observed: assertion_verdict(v: app_id)),
+        judged(sample: s, identity: "assertion_red_wrong_app_id", held: assertion_refused_with(owed: AssertionAppIdMismatch { expected_app_id: other_app_id(s: s) }, v: app_id), observed: assertion_verdict(v: app_id)),
         judged(sample: s, identity: "assertion_counter_is_carried_out_as_published", held: counter_is(n: counter, published: s.published_assertion_counter), observed: counter_text(n: counter)),
       ]
     }
@@ -441,13 +290,13 @@ fn case_row(c: AppAttestCase) -> String {
 }
 
 // THE EXPECTED IDENTITIES, DECLARED RATHER THAN DERIVED FROM THE CASES (the rule review 5311497200
-// of gunbc#12250 set for this family). Each sample row owes every one of these, prefixed with its
+// of gunbc#12250 set for this family). Each sample row owes the attestation identities and, when it carries an assertion capture, the assertion ones, prefixed with its
 // name; the roster is this declaration crossed with app_attest_samples(), never a projection of the
 // computed cases, so a case that is dropped leaves its identity rostered with no row and the run is
 // NO OBSERVATION. The two fallback identities a sample emits when its own decode fails
 // (attestation_decodes, assertion_expectation_from_the_attested_leaf) are deliberately NOT here: if
 // either appears it is an extra row, and the run refuses the same way.
-data native_app_attest_expected_case_identities: List<String> = [
+data native_app_attest_expected_attestation_identities: List<String> = [
   "attestation_verdict_is_the_owed_one",
   "attestation_chain_leaf_to_intermediate_verifies_p384",
   "attestation_chain_intermediate_to_pinned_root_verifies_p384",
@@ -456,7 +305,10 @@ data native_app_attest_expected_case_identities: List<String> = [
   "attestation_red_tampered_nonce",
   "attestation_red_wrong_app_id",
   "attestation_red_wrong_aaguid_environment",
-  "attestation_red_counter_nonzero",
+  "attestation_red_counter_nonzero"
+]
+
+data native_app_attest_expected_assertion_identities: List<String> = [
   "assertion_verdict_is_the_owed_one",
   "assertion_signature_verifies_p256_under_the_attested_key",
   "assertion_red_tampered_nonce",
@@ -465,7 +317,10 @@ data native_app_attest_expected_case_identities: List<String> = [
 ]
 
 fn native_app_attest_expected_identities() -> List<String> {
-  app_attest_samples() |> flat_map(s => native_app_attest_expected_case_identities |> map(i => concat(s.name, concat("_", i))))
+  app_attest_samples() |> flat_map(s => concat(
+    native_app_attest_expected_attestation_identities,
+    match s.assertion { Absent => [] Present { value: _ } => native_app_attest_expected_assertion_identities }
+  ) |> map(i => concat(s.name, concat("_", i))))
 }
 
 fn held_terminal() -> NativeClaimTerminal {
@@ -483,12 +338,3 @@ fn native_claim_report() -> NativeClaimReport {
   let terminal = if (failed |> count) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", failed |> join(separator: ","))) }
   NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }
 }
-
-data nfr_reason_native_app_attest_arm_equal: String = "same-constructor equality over AttestationRefusal / AssertionRefusal: the outer match on the owed refusal is exhaustive (a new refusal constructor must be placed there), and each inner off-constructor wildcard answers false; enumerating it is the n-squared cross product (169 arms for AttestationRefusal) cloning one false arm, and comparing the name projections instead is wrong because those names carry payload text"
-
-data nfr_dissolve_native_app_attest_arm_equal: DissolutionCondition = unbound_dissolution(description: "a typed constructor-equality capability (derived from inhabitance, dag/std/algebra) can compare AttestationRefusal and AssertionRefusal by arm without cross-product arms, then these rows delete")
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-  FrontierRow { subject: PathSubject { path: "same_attestation_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-]

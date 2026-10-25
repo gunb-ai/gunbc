@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.fci1_control_output_captured_to_journal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data fci1_control_output_captured_to_journal: RecurringFailureMode = RecurringFailureMode {
+  identity: "fci1_control_output_captured_to_journal" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a control that redirects a transient unit's output to a file and then greps that file, where the unit was launched `systemd-run --wait` without `--pipe`. systemd then connects the unit's stdout and stderr to the journal, so the redirect captures nothing and the grep over an empty file fails regardless of what the unit said.",
+
+    "HARM: a RED row (the wrong-WorkingDirectory rows of tools/fabric_ci_fci1_bounded_execution_controls.sh, fci1_run_bounded_driver and fci1_run_bounded_submitter) refused with `ControlRefused: parent wrong-cwd row did not name the workspace-root refusal` although the unit emitted exactly that refusal; the refusal text was in the journal. The rows were byte-identical before gunbc#14142 and had never run green on srv3 (see fci1_controls_unrunnable_under_wrap_policy), so the defect was latent and surfaced the first time the controls ran.",
+
+    "DISTINGUISHING FACT: the evaluator was cleared first (BuildBuddy, cwd /tmp in a capped cgroup: gunbc run exits 2 and prints `error: no workspace root`, which the grep matches), which located the fault at the capture, not the refusal. Receipt: the srv3 diagnostic run posted on gunbc#14130 by the lane owner (stern-bat-401): without --pipe the captured file is 0 bytes and the refusal is in the journal; with --pipe it is delivered; the positive control exits 0.",
+
+    "RECOGNITION RULE: a systemd-run --wait (or --collect) launcher whose caller redirects or captures the unit's stdout/stderr; the launcher must carry --pipe. The emitted runners are the one producer (gunbc.fabric.fci1_bounded_execution_context_emit expected_fci1_bounded_execution_context_env), and the witness every_emitted_fci1_runner_pipes_the_unit_output_to_the_caller discriminates it.",
+
+    "RUNG FOUND AT: silent-to-the-control, loud-at-the-gate (the row refused, with a misleading cause). CEILING: mechanically preventable (a generated witness over the one emitter); structurally guaranteed once the controls run as the typed actuator, whose launcher option list carries Pipe in one place (gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator fci1_unit_command). NEXT-RUNG TRIGGER: the actuator landing and replacing the shell controls.",
+  ],
+
+  evidence: [],
+}

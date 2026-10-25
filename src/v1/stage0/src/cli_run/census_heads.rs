@@ -92,16 +92,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn census_heads_fn_stand_in_for_test() -> Rc<Node> {
-    crate::v1_compiler_parse::census_heads_body_stand_in()
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn census_heads_module_node_for_test(module: Rc<Node>) -> Rc<Node> {
-    census_heads_module_node(module)
-}
-
 pub(crate) fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
     crate::v1_compiler_compile::census_heads_module_node(module)
 }

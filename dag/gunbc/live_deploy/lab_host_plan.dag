@@ -1,0 +1,163 @@
+module gunbc.live_deploy.lab_host_plan
+
+import std.types { Int, NonEmptyStr, String, FilePath }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.decl_ref { decl_ref }
+import std.optional { Optional, Absent, Present }
+import std.os.types { OsPackageManager }
+import gunbc.host.host_software_surface {
+  HostSoftwareSurface,
+  HostPackageManagerKnown,
+  HostPackageManagerUnobserved,
+  UserManagerDoesNotEnforceSandbox,
+  UserManagerSandboxUnobserved,
+  UserManagerSandboxEnforcementUnobserved,
+  UserManagerSandboxSysctlUnreadable,
+  UserManagerSandboxEnforcement,
+  host_software_surface_for_identity,
+  host_os_package_manager,
+  user_manager_sandbox_enforcement,
+  host_tailscale_client,
+  host_toolchain_read_obligation,
+  srv1_software_surface,
+}
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_intent { ComputeHost }
+import extdeps.tailscale.serve { TailscaleServeCapability }
+
+// FIRST CONSUMER of the per-host software surface (DESIGN 3c). DeploymentHostTarget.lab_plan
+// carries the LabDeployPlan. emit matches LabPlanRefused before TailscaleServeCapability, so a
+// sandbox or toolchain refusal is not nicknamed ScopedRemovalUnobserved. os_package_manager and
+// tailscale_client stay host readings, not a collapsed plan cause. Witnesses are not this consumer.
+//
+// WORKER-SANDBOX SELECTION. A host whose user manager does not enforce ProtectHome must not yield a
+// plan that claims user-manager confinement (sysctl 1 → system-manager launcher). Sysctl 0 is a
+// bet that the user manager would enforce, not an observation of confinement, so the plan refuses
+// rather than minting ProtectHome (DESIGN 4d). The selected identity is SystemManagerLauncherSelected.
+// gunbc.live_deploy.apply_legs deploy_apply_worker_sandbox_plan is that realization on the applying path.
+
+type WorkerSandboxChoice
+  = | SystemManagerLauncherSelected
+
+type WorkerSandboxSelection
+  = WorkerSandboxChosen { choice: WorkerSandboxChoice }
+  | WorkerSandboxRefused { cause: UserManagerSandboxEnforcement }
+
+type LabDeployPlanRefusal
+  = LabOsUnobserved { obligation: NonEmptyStr }
+  | LabSandbox { cause: UserManagerSandboxEnforcement }
+  | LabToolchainUnobserved { obligation: NonEmptyStr }
+
+type LabDeployPlan
+  = LabPlanReady {
+      host: HostIdentity
+      os_package_manager: OsPackageManager
+      tailscale_client: TailscaleServeCapability
+      git_path: FilePath
+      jq_path: FilePath
+      timeout_path: FilePath
+      worker_sandbox: WorkerSandboxChoice
+    }
+  | LabPlanRefused { cause: LabDeployPlanRefusal }
+
+// THE ONE READ OF THE PLAN'S WORKER-SANDBOX CHOICE. It returns the choice itself, Absent for a refused
+// plan, so each reader (live_deploy.spec roster, live_deploy.emit applying path) matches on
+// WorkerSandboxChoice and a second sandbox choice is a non-exhaustive match at every call site, not
+// a value silently read as true.
+fn lab_plan_worker_sandbox_choice(plan: LabDeployPlan) -> Optional<WorkerSandboxChoice> {
+  match plan {
+    LabPlanRefused { cause: _ } => Absent
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      Present { value: choice }
+  }
+}
+
+fn select_worker_sandbox(surface: HostSoftwareSurface) -> WorkerSandboxSelection {
+  match user_manager_sandbox_enforcement(surface: surface) {
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } =>
+      WorkerSandboxChosen { choice: SystemManagerLauncherSelected }
+    UserManagerSandboxUnobserved { obligation: o } =>
+      WorkerSandboxRefused { cause: UserManagerSandboxUnobserved { obligation: o } }
+    UserManagerSandboxEnforcementUnobserved { obligation: o } =>
+      WorkerSandboxRefused { cause: UserManagerSandboxEnforcementUnobserved { obligation: o } }
+    UserManagerSandboxSysctlUnreadable { value: n } =>
+      WorkerSandboxRefused { cause: UserManagerSandboxSysctlUnreadable { value: n } }
+  }
+}
+
+fn lab_deploy_plan_from_software(surface: HostSoftwareSurface) -> LabDeployPlan {
+  match host_os_package_manager(surface: surface) {
+    HostPackageManagerUnobserved { obligation: o } => LabPlanRefused { cause: LabOsUnobserved { obligation: o } }
+    HostPackageManagerKnown { manager: manager } =>
+      match select_worker_sandbox(surface: surface) {
+        WorkerSandboxRefused { cause: c } => LabPlanRefused { cause: LabSandbox { cause: c } }
+        WorkerSandboxChosen { choice: choice } =>
+          match surface.toolchain_paths.value.git {
+            Absent => LabPlanRefused {
+              cause: LabToolchainUnobserved { obligation: host_toolchain_read_obligation(surface: surface) }
+            }
+            Present { value: git } =>
+              match surface.toolchain_paths.value.jq {
+                Absent => LabPlanRefused {
+                  cause: LabToolchainUnobserved { obligation: host_toolchain_read_obligation(surface: surface) }
+                }
+                Present { value: jq } =>
+                  match surface.toolchain_paths.value.timeout {
+                    Absent => LabPlanRefused {
+                      cause: LabToolchainUnobserved { obligation: host_toolchain_read_obligation(surface: surface) }
+                    }
+                    Present { value: timeout } => LabPlanReady {
+                      host: surface.host,
+                      os_package_manager: manager,
+                      tailscale_client: host_tailscale_client(surface: surface),
+                      git_path: git,
+                      jq_path: jq,
+                      timeout_path: timeout,
+                      worker_sandbox: choice,
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn lab_deploy_plan_for_host_identity(identity: HostIdentity) -> LabDeployPlan {
+  lab_deploy_plan_from_software(surface: host_software_surface_for_identity(identity: identity))
+}
+
+fn lab_deploy_plan_for_compute_host(host: ComputeHost) -> LabDeployPlan {
+  lab_deploy_plan_for_host_identity(identity: host.identity)
+}
+
+fn srv1_lab_deploy_plan() -> LabDeployPlan {
+  lab_deploy_plan_from_software(surface: srv1_software_surface())
+}
+
+data system_manager_launcher_wiring_frontier: DissolutionCondition = bound_dissolution(
+  ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_worker_sandbox_plan"),
+)
+
+fn lab_plan_refusal_reason(cause: LabDeployPlanRefusal) -> NonEmptyStr {
+  match cause {
+    LabOsUnobserved { obligation: o } => o
+    LabToolchainUnobserved { obligation: o } => o
+    LabSandbox { cause: e } =>
+      match e {
+        UserManagerSandboxUnobserved { obligation: o } => o
+        UserManagerSandboxEnforcementUnobserved { obligation: o } => o
+        UserManagerDoesNotEnforceSandbox { wrote_into_home: r } => r
+        UserManagerSandboxSysctlUnreadable { value: n } =>
+          join(["apparmor userns sysctl unreadable: ", to_string(n)], "") as NonEmptyStr
+      }
+  }
+}
+
+// WHY DispatchHostEnvironment SUBSTRING PROBES ARE NOT REPLACED HERE. Those probes are a live
+// preflight of the process about to exec (this binary, now). The host software surface is a
+// standing figure used to PLAN. Substituting the catalogued version label into identity_contains
+// would make dispatch refuse when the live binary drifted from the last transcribed row, which is
+// the opposite of what preflight is for. The typed versions are what THIS plan reads; dispatch
+// preflight stays a reading of the bytes on PATH. Dissolve-on: dispatch preflight takes a
+// HostSoftwareSurface and checks the live --version output against the typed label as an
+// inhabitance claim, at which point the substring needles can go.

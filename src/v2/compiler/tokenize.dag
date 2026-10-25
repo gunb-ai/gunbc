@@ -1,12 +1,12 @@
 module v2.compiler.tokenize
 
 import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
-import std.types { List }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup, list_at_optional }
+import std.types { List, Map }
+
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Rejected, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v2.std.node { Symbol }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_empty, length, list_reverse }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_empty, length, list_reverse, empty_map, map_insert, map_lookup, list_at_optional }
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
 import std.unicode.char_class { unicode_char_code_point }

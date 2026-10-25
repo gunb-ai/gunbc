@@ -5,13 +5,13 @@ import v2.compiler.infer { infer }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Outcome, Rejected, Unavailable, Some, diagnostics_has_reason, diagnostics_fatal_reason, diagnostics_singleton, node_locus }
 import v2.std.node_query { BinderTypeEdge, declared_field_from_edge, field_projection_optional }
 import v2.std.qualified_name { lexical_reference_label_optional }
 import std.algebra { list_snoc_item }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Authored, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, edge_is_core, node_subtree_nodes, node_with_occurrence_id }
+import v2.std.node { Atom, Authored, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, edge_is_core, node_subtree_nodes, node_with_occurrence_id, NotADeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn fmi_list_peers() -> List<DagSourceReadWitness> {
   [
     bla_source(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
-    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n\nfn collection_concat_shape() -> Int { 0 }\n\nfn collection_count_shape() -> Int { 0 }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
   ]
 }
 
@@ -50,9 +50,9 @@ fn fmi_infer_tree(tree: ResolvedTree) -> Outcome<Bool> {
   }
 }
 
-data fmi_record_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.target == 0 })\n}\n"
+data fmi_record_fold: String = "module p\n\nimport std.types { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.target == 0 })\n}\n"
 
-data fmi_undeclared_field_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.nope == 0 })\n}\n"
+data fmi_undeclared_field_fold: String = "module p\n\nimport std.types { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.nope == 0 })\n}\n"
 
 fn fmi_reason(o: Outcome<Bool>) -> Symbol {
   match o {
@@ -182,7 +182,7 @@ fn fmi_replace_atom(n: Node, from: Symbol, to: Node) -> Node {
   Node {
     kind: n.kind,
     children: fold(n.children, init: [], f: fn(acc, e) {
-      list_snoc_item(xs: acc, item: Edge { label: e.label, target: fmi_replace_binder_type(e: e, from: from, to: to) })
+      list_snoc_item(xs: acc, item: Edge { label: e.label, target: fmi_replace_binder_type(e: e, from: from, to: to), declaration: e.declaration })
     }),
     occurrence_id: n.occurrence_id
   }
@@ -215,8 +215,8 @@ fn fmi_infer_with_member_formal_authored(tree: ResolvedTree) -> Outcome<Bool> {
                     root: fmi_replace_atom(n: tree.root, from: variable, to: int_type),
                     symbol_index: tree.symbol_index,
                     resolved_declarations: tree.resolved_declarations,
-                    lexical_bindings: tree.lexical_bindings,
-                    unavailable_providers: tree.unavailable_providers,
+                    occurrence_bindings: tree.occurrence_bindings, duplicate_binding_records: tree.duplicate_binding_records,
+                    module_outcomes: tree.module_outcomes, outcome_index: tree.outcome_index,
     member_kinds: tree.member_kinds,
                     type_declaration_modifiers: tree.type_declaration_modifiers,
                     constructing_module: tree.constructing_module
@@ -240,13 +240,13 @@ fn fmi_fixture_shape_diagnostic(at: Node) -> Diagnostic {
 // frame together. RED ON THE BASE: the Loop row read the step callable's own type as the carrier and refused
 // infer_grounding_not_derived at the step Arrow for every fold. (fmi_record_fold's `found || ..` body is not
 // used here: infer derives no Bool join, a separate frontier.)
-data fmi_sum_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Int {\n  fold(xs, init: 0, f: fn(found, e) { found + e.target })\n}\n"
+data fmi_sum_fold: String = "module p\n\nimport std.types { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Int {\n  fold(xs, init: 0, f: fn(found, e) { found + e.target })\n}\n"
 
 test fn fmi_fold_over_records_is_accepted() -> Bool {
   fmi_sum_fold_reason() == ^accepted
 }
 
-data fmi_body_not_carrier_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { e.target })\n}\n"
+data fmi_body_not_carrier_fold: String = "module p\n\nimport std.types { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { e.target })\n}\n"
 
 // (a) A STEP WHOSE BODY DOES NOT INHABIT THE CARRIER REFUSES AT THE BODY: init is Bool, the body is Int.
 test fn fmi_fold_step_body_not_the_carrier_refuses() -> Bool {

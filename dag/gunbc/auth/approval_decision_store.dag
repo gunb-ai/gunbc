@@ -52,6 +52,7 @@ import gunbc.auth.approval_capability {
   approval_capability_signing_input,
   proposed_decision_name,
   utc_instant_is_canonical,
+  capability_live_at,
 }
 import gunbc.auth.approval_broker {
   BrokerDecision, IdentityAttribution, HeaderAttributedToProxy, HeaderUnattributed,
@@ -66,6 +67,7 @@ import gunbc.auth.approval_broker {
   redemption_refusal_reason,
 }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_join_shape, list_push }
 
 // THE DURABLE HALF OF THE APPROVAL LOOP: WHERE A REQUEST WAITS, WHERE A DECISION LANDS, AND THE
 // KEY THAT MAKES A TAPPED LINK MEAN SOMETHING. gunbc.auth.approval_broker owns the lifecycle and
@@ -146,6 +148,12 @@ data approval_capability_expectation: CapabilityExpectation = CapabilityExpectat
 // live tailnet (`tailscale status` on srv1, 2026-09-16) reports the same login. A second literal
 // here would be a second authority on who a tap may be (review 66990).
 data approval_operator_login: NonEmptyStr = fleet_operator_email
+
+// THE APPROVER'S GOOGLE IDENTITY, a different fact from the tailnet login above: the Workspace
+// address the operator signs in with on the phone (operator, 2026-10-23). Google sign-in enrolment
+// (gunbc.auth.approval_google_enrolment) admits exactly these addresses, under hd == gunb.ai. The
+// tailnet login stays the identity-header attribution, which a Google address cannot satisfy.
+data approval_google_approver_emails: List<NonEmptyStr> = ["brian@gunb.ai" as NonEmptyStr]
 
 // AND THE IDENTITY HEADER IS ONLY EVIDENCE WHEN THE BACKEND IS REACHABLE THROUGH TAILSCALE SERVE
 // ALONE (extdeps.tailscale.identity identity_header_trust_is_a_deployment_property_note). Until
@@ -759,12 +767,22 @@ data approval_keyring_materialization_frontier: DissolutionCondition = unbound_d
 
 
 // ── The pending escalations ──────────────────────────────────────────────────────────────────
-// WHAT THE PHONE LISTS ON OPEN: every filed escalation whose slot stands EscalationPending. The
+// WHAT THE PHONE LISTS ON OPEN: every filed escalation that STILL NEEDS THE OPERATOR -- its slot
+// stands EscalationPending AND its request is still redeemable at the read's instant. The
 // keys come from the store's own listing (gunbc.durable_cas_file_store cas_slot_keys, the inverse
 // of the layout it writes), and each standing is read through observe_escalation exactly as a
 // single read would be -- the listing decides which slots exist, never what they hold. A slot
 // that cannot be read is carried as a refusal beside the rows, not dropped: a pending approval
 // the phone cannot see is a decision that never happens.
+//
+// "NEEDS ATTENTION" IS A FACT OF THE REQUEST'S STANDING, so it is decided here, once, and the app
+// renders exactly the set this returns (operator ruling 2026-10-24: the list shows only what needs
+// the operator). A decided slot needs nothing. A pending slot whose request has expired needs
+// nothing either: no decision on it can land, because redemption refuses CapabilityExpired at the
+// same instant (gunbc.auth.approval_capability capability_live_at, the strict boundary the
+// verifier applies), and so before this rule an abandoned request stayed listed forever. The
+// store holds no withdrawn or superseded standing -- a filing is generation 1 and its only exits
+// are a decision or its own expiry -- so those two exits are the whole membership rule.
 type PendingEscalations
   = PendingEscalationsListed { pending: List<StoredApprovalRequest>, unreadable: List<NonEmptyStr> }
   | PendingEscalationsRefused { detail: String }
@@ -774,17 +792,32 @@ type PendingFold {
   unreadable: List<NonEmptyStr>
 }
 
-fn pending_escalations(root: NonEmptyStr) -> PendingEscalations {
+// THE REQUEST'S LIFETIME IS THE CAPABILITY'S. Both verbs' claims carry the request's issued_at and
+// expires_at unchanged (claims_for), so the verb named here does not change the answer.
+fn request_needs_attention_at(request: StoredApprovalRequest, observed_at: Timestamp) -> Bool {
+  capability_live_at(claims: claims_for(request: request, decision: ProposeApprove), observed_at: observed_at)
+}
+
+// ONE STEP OF THE LISTING, pure over an observed slot: the one place membership is decided. The
+// store fold below supplies each slot from observe_escalation; the hermetic witness supplies slots
+// to this same step (test.claim.approval_decision_store_witness).
+fn pending_fold_step(acc: PendingFold, escalation_id: NonEmptyStr, slot: EscalationSlot, observed_at: Timestamp) -> PendingFold {
+  match slot {
+    EscalationPending { request: r } =>
+      if request_needs_attention_at(request: r, observed_at: observed_at) { PendingFold { pending: acc.pending |> list_push(r), unreadable: acc.unreadable } }
+      else { acc }
+    EscalationUnreadable { detail: _ } => PendingFold { pending: acc.pending, unreadable: acc.unreadable |> list_push(escalation_id) }
+    EscalationDecided { decision: _ } => acc
+    EscalationNotFiled => acc
+  }
+}
+
+fn pending_escalations(root: NonEmptyStr, observed_at: Timestamp) -> PendingEscalations {
   match cas_slot_keys(root: root) {
     CasSlotKeysListingRefused { root: _, detail: d } => PendingEscalationsRefused { detail: d }
     CasSlotKeysSubjectRefused { root: r, cause: c } => PendingEscalationsRefused { detail: "store root " + (r as String) + " is not an admissible directory: " + c }
     CasSlotKeysListed { keys: keys } => {
-      let f = fold(keys, init: PendingFold { pending: [], unreadable: [] }, f: (acc, k) => match observe_escalation(root: root, escalation_id: k) {
-        EscalationPending { request: r } => PendingFold { pending: acc.pending |> list_push(r), unreadable: acc.unreadable }
-        EscalationUnreadable { detail: _ } => PendingFold { pending: acc.pending, unreadable: acc.unreadable |> list_push(k) }
-        EscalationDecided { decision: _ } => acc
-        EscalationNotFiled => acc
-      })
+      let f = fold(keys, init: PendingFold { pending: [], unreadable: [] }, f: (acc, k) => pending_fold_step(acc: acc, escalation_id: k, slot: observe_escalation(root: root, escalation_id: k), observed_at: observed_at))
       PendingEscalationsListed { pending: f.pending, unreadable: f.unreadable }
     }
   }

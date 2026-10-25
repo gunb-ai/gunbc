@@ -7,7 +7,7 @@ import gunbc.ci.ci_runner_placement {
   PrimaryCpuUnavailable, UsableRamUnavailable, SessionReservationUnestablished,
   FixedOverheadUnavailable, CompilePoolUnavailable,
   HostAllocationOversubscribedOnHost, HostAllocationUnchargeableOnHost,
-  ZeroRunnerWidth, JobserverCitationAbsent, HostCpuAllocationUnchargeable, HostNotEnrolledInFleet,
+  ZeroRunnerWidth, HostCpuAllocationUnchargeable, HostNotEnrolledInFleet,
   FleetDeploymentComplete, FleetDeploymentIncomplete, fleet_deployment_completion,
   host_deployment_refusal_text,
   RunnerHostDeployment,
@@ -32,7 +32,7 @@ import gunbc.session_reservation_policy {
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
   session_reservation_bytes,
 }
-import gunbc.ci.ci_fleet { fleet_intent_offers }
+import gunbc.ci.ci_fleet { fleet_converge_applied_offers }
 import gunbc.oomd_install { gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_policy, pressure_is_kill }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime, DirectiveReset }
@@ -84,7 +84,7 @@ fn manifest_host_fields(h: RunnerHostDeployment) -> List<SerialField> {
     serial_field(key: "runner_count", value: serial_scalar(text: to_string(h.runner_count))),
     serial_field(key: "runner_slice_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.runner_slice_cap)))),
     serial_field(key: "per_slot_memory_max_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.per_runner_memory_cap)))),
-    serial_field(key: "build_tokens", value: serial_scalar(text: to_string(hardware_thread_count_value(t: h.build_tokens)))),
+    serial_field(key: "sessions_cpu_cap", value: serial_scalar(text: to_string(hardware_thread_count_value(t: h.sessions_cpu_cap)))),
     serial_field(key: "labels", value: serial_scalar(text: runner_labels_text(spec: h.runner))),
     serial_field(key: "cpu_weight", value: serial_scalar(text: to_string(workload_class_cpu_weight(wc: h.workload_class)))),
     serial_field(key: "per_slot_cpu_quota", value: serial_scalar(text: runner_cpu_boundary_text(b: h.per_runner_cpu_boundary)))
@@ -231,7 +231,7 @@ fn session_slice_doc() -> Doc {
     Absent =>
       doc_line_of(text: "session-slice UNSOUND: no per-session oomd eviction ceiling is established in gunbc.session_admission_policy")
     Present { value: ceiling } =>
-      doc_concat(parts: map(fleet_intent_offers, o => session_slice_line(host: o.supply.physical.identity, ceiling: ceiling)))
+      doc_concat(parts: map(fleet_converge_applied_offers, o => session_slice_line(host: o.supply.physical.identity, ceiling: ceiling)))
   }
 }
 

@@ -1,0 +1,22 @@
+module gunbc.persistent_instance_roots
+
+import std.types { String }
+
+// THE INSTANCES WHOSE MATERIALIZATION STORE OUTLIVES A RUN, as a closed set. They are facts about two
+// deployment instances (macbook_local, srv2_deploy), so they live in the gunbc layer;
+// std.materialization_store_grant's PersistentInstanceWorkspace arm carries one of these and grants
+// exactly its root, and gunbc.roadmap.roadmap_dashboard_instance reads the same root as that
+// instance's instance_root. A third persistent host is a new arm here before either can name it.
+type PersistentInstanceScope
+  = MacbookLocal
+  | Srv2Deploy
+
+data materialization_store_persistent_macbook_scope: String = "/Users/briansrls/.local/share/gunbc-macbook-local"
+data materialization_store_persistent_srv2_scope: String = "/home/briansrls/.local/share/gunbc-srv2-deploy"
+
+fn persistent_instance_scope_root(scope: PersistentInstanceScope) -> String {
+  match scope {
+    MacbookLocal => materialization_store_persistent_macbook_scope
+    Srv2Deploy => materialization_store_persistent_srv2_scope
+  }
+}

@@ -2,9 +2,9 @@ module v2.test.claim.native_lane_universe_selection
 
 import std.types { List }
 import extdeps.bazel.target_pattern { TargetPatternParsed, TargetPatternRefused, parse_target_pattern }
-import gunbc.witness.v2_native_route { native_route_identity_qualified }
+import v2.compiler.native_test_vocabulary { native_route_identity_qualified }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.compile { native_lane_acquire_verified, native_lane_universe_selected }
+import v2.compiler.source_root_eval { native_lane_acquire_verified, native_lane_universe_selected }
 import v2.compiler.module_acquisition {
   AcquiredModule,
   AcquisitionEnv,
@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // WHERE THIS RUNS. `v2.test.claim.*` is stored under `src/v2`, a floor discovery root
 // (`gunbc.ci.ci_layer_roots` `witness_layer_roots`), and lies inside the native route's boundary
-// (`gunbc.witness.v2_native_route` `native_route_default_pattern`), so both routes address it. Neither is
+// (`gunbc.native_route_universe` `native_route_default_pattern`), so both routes address it. Neither is
 // on the required merge path for it: the floor is withdrawn from that path (`gunbc.rung_drop`
 // `v1_required_lanes_withdrawn`) and the native route does not execute this universe on a merge
 // candidate (`gunbc.rung_drop` `v2_native_route_off_the_merge_path`). The controls need nothing from a

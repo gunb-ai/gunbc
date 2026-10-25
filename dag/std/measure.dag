@@ -1,5 +1,5 @@
 module std.measure
-import std.optional { Present }
+import std.optional { Present, Absent }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -69,6 +69,7 @@ type Quantity =
   | VolumeFlow
   | Density
   | SpecificHeatCapacity
+  | Velocity
   | Acceleration
   | ResistancePerLength
 
@@ -333,6 +334,13 @@ fn gibibyte_count(g: Gibibyte) -> Nat {
 fn gibibyte_ceiling(b: ByteSize) -> Gibibyte {
   let scale = gibibyte_scale_factor_bytes()
   gibibyte(count: (byte_size_count(b: b) + (scale - 1)) / scale)
+}
+
+// THE MiB A BYTE COUNT OCCUPIES, ROUNDED UP, for the same reason as gibibyte_ceiling: a size handed
+// to something that allocates in whole MiB must cover every byte, never drop a remainder.
+fn mebibyte_ceiling(b: ByteSize) -> Mebibyte {
+  let scale = mebibyte_scale_factor_bytes()
+  mebibyte(count: (byte_size_count(b: b) + (scale - 1)) / scale)
 }
 
 fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
@@ -2081,6 +2089,11 @@ fn kilogram_per_cubic_metre_count(d: KilogramPerCubicMetre) -> Nat { measure_cou
 type JoulePerKilogramKelvin = Measure<SpecificHeatCapacity, One, Nat>
 fn joule_per_kilogram_kelvin(count: Nat) -> JoulePerKilogramKelvin { Measure { count: count } }
 fn joule_per_kilogram_kelvin_count(c: JoulePerKilogramKelvin) -> Nat { measure_count(c) }
+
+// VELOCITY at micrometres per second, so a slicer's mm/s speeds are exact counts.
+type MicrometrePerSecond = Measure<Velocity, Micro, Nat>
+fn micrometre_per_second(count: Nat) -> MicrometrePerSecond { Measure { count: count } }
+fn micrometre_per_second_count(v: MicrometrePerSecond) -> Nat { measure_count(v) }
 
 // ACCELERATION at micrometres per second squared, so standard gravity 9.80665 m/s^2 is exact.
 type MicrometrePerSecondSquared = Measure<Acceleration, Micro, Nat>

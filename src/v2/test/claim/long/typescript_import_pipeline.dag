@@ -6,8 +6,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ts_import_pipeline_source: String = "module v2.test.import_pipeline\nimport std.algebra { Cons, Empty }\n"
 data ts_import_pipeline_canonical_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"
 
-data ts_import_pipeline_other_source: String = "module v2.test.import_pipeline_b\nimport v2.std.collection { Cons, Empty }\n"
-data ts_import_pipeline_other_text: String = "import { Cons, Empty } from \"v2/std/collection\";"
+data ts_import_pipeline_other_source: String = "module v2.test.import_pipeline_b\nimport v2.std.witness { Cons, Empty }\n"
+data ts_import_pipeline_other_text: String = "import { Cons, Empty } from \"v2/std/witness\";"
 
 fn ts_import_pipeline_spellings(third_seg: Symbol, third_spell: String) -> Map<Symbol, String> {
   map_insert(
@@ -30,6 +30,7 @@ fn ts_import_pipeline_spellings(third_seg: Symbol, third_spell: String) -> Map<S
 
 fn ts_import_pipeline_target(third_seg: Symbol, third_spell: String) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
@@ -142,8 +143,8 @@ test fn ts_import_pipeline_discriminating_red_holds() -> Bool {
     Accepted { value: canonical, diagnostics: _ } =>
       match ts_import_pipeline_emit(
         source: ts_import_pipeline_other_source,
-        third_seg: ^collection,
-        third_spell: "collection"
+        third_seg: ^witness,
+        third_spell: "witness"
       ) {
         Rejected { diagnostics: _ } => false
         Accepted { value: other, diagnostics: _ } =>

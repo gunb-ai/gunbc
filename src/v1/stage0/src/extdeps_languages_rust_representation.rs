@@ -62,7 +62,7 @@ pub fn rust_representation_slug(representation: RustRepresentation) -> String {
 }
 
 pub fn rust_representation_eq(a: RustRepresentation, b: RustRepresentation) -> bool {
-    (rust_representation_slug(a.clone()) == rust_representation_slug(b.clone()))
+    (rust_representation_slug(a) == rust_representation_slug(b))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -109,10 +109,7 @@ pub fn rust_representation_realization_for(
     Rc::new({
         let mut __result = Vec::new();
         for r in rust_representation_realizations().iter().cloned() {
-            if rust_representation_eq(
-                r.spelling.clone().representation.clone(),
-                representation.clone(),
-            ) {
+            if rust_representation_eq(r.spelling.representation.clone(), representation.clone()) {
                 __result.push(r);
             }
         }
@@ -127,9 +124,9 @@ pub fn rust_exact_type_checkpoint(
 ) -> Option<Rc<TypeCheckpoint>> {
     match rust_representation_realization_for(binding.representation.clone()) {
         Some(r) => Some(Rc::new(TypeCheckpoint {
-            dag_name: binding.source.clone().decl_name.clone(),
-            target_type: r.spelling.clone().reference_position.clone(),
-            grounding_type: r.spelling.clone().grounding_position.clone(),
+            dag_name: binding.source.decl_name.clone(),
+            target_type: r.spelling.reference_position.clone(),
+            grounding_type: r.spelling.grounding_position.clone(),
             default_expr: r.default_expr.clone(),
             is_copy: Some(r.is_copy.clone()),
             literal_suffix: r.literal_suffix.clone(),

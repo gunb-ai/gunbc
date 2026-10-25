@@ -10,7 +10,7 @@ import v2.std.integer { Int }
 //
 // The table and its lookup were declared inside v2.workflow.compile_door_ledger, whose
 // own imports reach v2.compiler.compile and v2.workflow.floor_diff_observe — a closure of ~846
-// modules. Its second consumer, gunbc.witness.v2_native_route, is evaluated INSIDE the emitted
+// modules. Its second consumer, v2.workflow.v2_native_route, is evaluated INSIDE the emitted
 // native compiler (the required-v2-native lane's admission), whose entry is v2.compiler.compile
 // itself: importing the ledger there would have been a cycle, and carrying the ledger's closure
 // would have made the emitted crate the whole corpus. Ownership is one fact with two readers, so
@@ -39,7 +39,7 @@ type CauseOwnership {
 
 // ONE ROW PER CAUSE (cause_ownership_lookup returns the first match, so a duplicate would be
 // silent; v2.test.claim.compile_door_ledger_ownership asserts there is none). The rows were
-// measured 2026-09-09 onward by the gunbc.witness.v2_native_route census and the door ledger as
+// measured 2026-09-09 onward by the v2.workflow.v2_native_route census and the door ledger as
 // the LAST diagnostic -- the cause that actually refused -- at the per-row scope each flip_trigger
 // states.
 
@@ -62,32 +62,32 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^parse_g0_tokens_remain,
     lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — grammar-surgery class (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness.v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
+    flip_trigger: "no per-cause trigger — grammar-surgery class (nimble-boar-198). Measured 2026-09-09 by the v2.workflow.v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
   },
   CauseOwnership {
     cause: ^tokenize_lex_e1_unrecognized_char,
     lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at fatal grain by the gunbc.witness.v2_native_route census (6 modules)"
+    flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at fatal grain by the v2.workflow.v2_native_route census (6 modules)"
   },
   CauseOwnership {
     cause: ^namespace_graft_body_dissolved_refused,
     lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — the graft is namespace machinery and dissolves with it (nimble-boar-198). Measured 2026-09-09 at fatal grain by the gunbc.witness.v2_native_route census (41 modules)"
+    flip_trigger: "no per-cause trigger — the graft is namespace machinery and dissolves with it (nimble-boar-198). Measured 2026-09-09 at fatal grain by the v2.workflow.v2_native_route census (41 modules)"
   },
   CauseOwnership {
     cause: ^normalize_reason_post_normalize_not_well_formed,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "normalize stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness.v2_native_route census (6 modules)"
+    flip_trigger: "normalize stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the v2.workflow.v2_native_route census (6 modules)"
   },
   CauseOwnership {
     cause: ^normalized_tree_reason_wrapper_retention_not_normalized,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "normalize stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness.v2_native_route census (2 modules)"
+    flip_trigger: "normalize stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the v2.workflow.v2_native_route census (2 modules)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_match_arm_navigation_refused,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness.v2_native_route census (2 modules)"
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the v2.workflow.v2_native_route census (2 modules)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_parameter_unlowered,
@@ -156,6 +156,11 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a variant or record field declaration the field lowering cannot read (a where clause beside a payload, a field whose type expression the type reader does not lower). Replaces the positional_pattern_binder_unlowered row, whose refusal is retired now that gunbc.rung_drop variant_fields_unlowered_on_the_native_route's lowering half is executed (the row is retired by both halves of its trigger, lowering and the resolver frame). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_reserved_value_name_pun,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a record-init pun `R { none }` names the absence literal, which no reference can name as a value, so it refuses here, located at the name, rather than reading as the field `none: none` (gunbc.design_ruling dag_absence_is_one_meaning). A wall with no measured population on the corpus; it flips only if the pun gains a reading, which the ruling forbids"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_pattern_unlowered,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a match pattern the pattern lowering cannot read (two positional binders, a suffix that is neither braced nor parenthesised). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
@@ -178,47 +183,47 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^body_lowering_reason_call_argument_unread,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "value-position lowering: a call argument whose value v2.compiler.body_lowering_fold body_lower_call_arg_value cannot read refuses its module here. Dominated by function values in argument position (inline lambdas and fn literals, gunbc.recurring_failure_mode lambda_has_no_lowered_function_value_form), which gunbc#12210 lowers to the generic fn Arrow; the positional fold-step residue is gunbc#12272. Flips to Blocking when the count zeroes after both land. Measured at fatal grain by the gunbc.witness.v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+    flip_trigger: "value-position lowering: a call argument whose value v2.compiler.body_lowering_fold body_lower_call_arg_value cannot read refuses its module here. Dominated by function values in argument position (inline lambdas and fn literals, gunbc.recurring_failure_mode lambda_has_no_lowered_function_value_form), which gunbc#12210 lowers to the generic fn Arrow; the positional fold-step residue is gunbc#12272. Flips to Blocking when the count zeroes after both land. Measured at fatal grain by the v2.workflow.v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_operator_operand_unread,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering modeling pass (gentle-koi-724's lane): an operator operand body_lower_read_operator_expression cannot lower -- a caret symbol (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form) or a parenthesised `as` cast (as_cast_has_no_lowered_form, whose typed cast node is gunbc#12315). Flips to Blocking when every operand shape lowers and the count zeroes. Measured at fatal grain by the gunbc.witness.v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+    flip_trigger: "body-lowering modeling pass (gentle-koi-724's lane): an operator operand body_lower_read_operator_expression cannot lower -- a caret symbol (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form) or a parenthesised `as` cast (as_cast_has_no_lowered_form, whose typed cast node is gunbc#12315). Flips to Blocking when every operand shape lowers and the count zeroes. Measured at fatal grain by the v2.workflow.v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_type_annotation_not_carried,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "an authored type annotation with no carrier: a statement-form let annotation (gunbc.rung_drop typed_statement_let_refuses_until_the_bind_annotation_carrier, retired by the let-annotation Bind carrier gunbc#12322) or a fn literal's return annotation; an `as` cast's target type rides the typed cast node gunbc#12315. Flips to Blocking when both carriers land and the count zeroes. Measured at fatal grain by the gunbc.witness.v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+    flip_trigger: "an authored type annotation with no carrier: a statement-form let annotation (gunbc.rung_drop typed_statement_let_refuses_until_the_bind_annotation_carrier, retired by the let-annotation Bind carrier gunbc#12322) or a fn literal's return annotation; an `as` cast's target type rides the typed cast node gunbc#12315. Flips to Blocking when both carriers land and the count zeroes. Measured at fatal grain by the v2.workflow.v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_paren_group_unread,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "value-position lowering: raised by v2.compiler.body_lowering_fold body_lower_paren_group_lowered when a parenthesised group's inner expression neither lowered bottom-up nor reads as an operand (gunbc#12173 introduced the refusal in place of the left-element narrowing). The group adds no semantics, so it owns nothing of its own: it flips when the inner value shapes lower -- function values (gunbc#12210) and `as` casts (gunbc#12315) -- and the count zeroes. Measured at fatal grain by the gunbc.witness.v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+    flip_trigger: "value-position lowering: raised by v2.compiler.body_lowering_fold body_lower_paren_group_lowered when a parenthesised group's inner expression neither lowered bottom-up nor reads as an operand (gunbc#12173 introduced the refusal in place of the left-element narrowing). The group adds no semantics, so it owns nothing of its own: it flips when the inner value shapes lower -- function values (gunbc#12210) and `as` casts (gunbc#12315) -- and the count zeroes. Measured at fatal grain by the v2.workflow.v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_statement_precedes_without_binding,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness.v2_native_route census over the lane's source roots dag + src/v2 (71 files: 40 under v2.test.* homes, 31 in dag/extdeps and dag/gunbc)"
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (71 files: 40 under v2.test.* homes, 31 in dag/extdeps and dag/gunbc)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_if_navigation_refused,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness.v2_native_route census over the lane's source roots dag + src/v2 (5 files, all under v2.test.* homes)"
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (5 files, all under v2.test.* homes)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_let_body_not_reachable_from_node,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness.v2_native_route census over the lane's source roots dag + src/v2 (3 files, all under v2.test.* homes)"
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (3 files, all under v2.test.* homes)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_statement_spine_headless,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness.v2_native_route census over the lane's source roots dag + src/v2 (1 file: dag/gunbc/discovery_census.dag)"
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (1 file: dag/gunbc/discovery_census.dag)"
   },
   CauseOwnership {
     cause: ^resolve_reason_unbound_symbol,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness.v2_native_route census over the lane's source roots dag + src/v2 (2059 v2.test.* members across 417 modules, dominantly the parse frontier's import cascade: the member's own file parses while a file in its import closure refuses, so the imported names resolve to nothing — zeroing rides the parse-frontier rows beside resolve's own binding gaps)"
+    flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (2059 v2.test.* members across 417 modules, dominantly the parse frontier's import cascade: the member's own file parses while a file in its import closure refuses, so the imported names resolve to nothing — zeroing rides the parse-frontier rows beside resolve's own binding gaps)"
   },
   CauseOwnership {
     cause: ^resolve_reason_declarer_refused,
@@ -228,12 +233,17 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^resolve_reason_ambiguous_symbol,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness.v2_native_route census over the lane's source roots dag + src/v2 (29 v2.test.* members across 6 modules)"
+    flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (29 v2.test.* members across 6 modules)"
+  },
+  CauseOwnership {
+    cause: ^infer_reason_float_literal_home_unruled,
+    lane: MigrationOwned,
+    flip_trigger: "KEEP until the operator rules Float's home (kernel binary64, std.decimal or other; wise-moth-707 home-table row float_literal_home_unruled). The ruling lets infer type DagCanonicalFloatLiteral through that home, and this refusal and row are then deleted. Infer has no closed refusal vocabulary type, so the join (gunbc.refusal_reason_ownership_join) cannot derive it as producible; ownership is declared here and the vocabulary gap stays the rung drop fatal_reasons_outside_a_closed_stage_vocabulary"
   },
   CauseOwnership {
     cause: ^infer_grounding_not_derived,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "the node grounding frontier (v2.compiler.inferred_tree NodeGrounding) observed at prepare, where the carried diagnostic is fatal rather than eval-gated; retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the gunbc.witness.v2_native_route census over the lane's source roots dag + src/v2 (2 v2.test.* members, both in v2.test.claim.manual.recompute_trace_probe)"
+    flip_trigger: "the node grounding frontier (v2.compiler.inferred_tree NodeGrounding) observed at prepare, where the carried diagnostic is fatal rather than eval-gated; retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (2 v2.test.* members, both in v2.test.claim.manual.recompute_trace_probe)"
   },
   CauseOwnership {
     cause: ^infer_grounding_demanded_not_derived,
@@ -248,7 +258,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^eval_rejected_grounding_not_derived,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "eval's grounding gate refuses a body whose inferred facts carry no DerivedGrounding — the node grounding frontier (v2.compiler.inferred_tree NodeGrounding); retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the gunbc.witness.v2_native_route census over the lane's source roots dag + src/v2 (261 v2.test.* members across 110 modules)"
+    flip_trigger: "eval's grounding gate refuses a body whose inferred facts carry no DerivedGrounding — the node grounding frontier (v2.compiler.inferred_tree NodeGrounding); retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (261 v2.test.* members across 110 modules)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_unsupported_form,
@@ -353,7 +363,7 @@ data known_frontier_causes: List<CauseOwnership> = [
 // that meets it) retires when EVERY one of its causes counts zero over the route's
 // population. Each cause must also be owned by a row of known_frontier_causes, because a
 // retirement over a cause nobody counts would read as retired at zero forever.
-// gunbc.witness.v2_native_route native_route_frontier_retirement_standing joins this condition to
+// v2.workflow.v2_native_route native_route_frontier_retirement_standing joins this condition to
 // the route's derived tally, and admission refuses a retirement whose causes are unowned.
 type FrontierRetirement {
   frontier: Symbol
@@ -386,7 +396,7 @@ fn cause_ownership_lookup(cause: Symbol) -> Optional<CauseOwnership> {
 // A CAUSE WHOSE GROWTH IS A CORRECTNESS FLIP, DECLARED BY ITS OWNER. Some causes grow the refused
 // population because the change that introduced them made a silent wrong acceptance refuse at a
 // located site (DESIGN section 5): the identities were never correct, they were only accepted. The
-// native frontier ratchet (gunbc.native_frontier_ratchet) reads a new refusal under such a cause as
+// native frontier ratchet (v2.workflow.native_frontier_ratchet) reads a new refusal under such a cause as
 // owned baseline debt rather than as a frontier loss, and it reads nothing else that way.
 //
 // WHY A DECLARATION BESIDE THE ROW AND NOT A FIELD ON IT. Ownership (who counts the cause, what

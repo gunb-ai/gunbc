@@ -1,17 +1,19 @@
 module gunbc.recurring_failure_mode.convergence_readback_observes_a_different_representation_than_the_effect_writes
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data convergence_readback_observes_a_different_representation_than_the_effect_writes: RecurringFailureMode = RecurringFailureMode {
   identity: "convergence_readback_observes_a_different_representation_than_the_effect_writes" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a convergence plan or verdict reads the drop-in files it authors (or a hardcoded blank) while the effective value lives elsewhere (systemctl show, cgroup memory.swap.max, a system.control shadow), so it reports Converged beside an effective value that differs. DESIGN section 3d: readback is not independent.",
 
     "SPECIMEN, found 2026-10-13 (runner slots, work item adhoc-4cfb09d3-ed2). gunbc.runner.runner_slot_desired declares memory_swap_max 0, but gunbc.host.host_axis_caps derived_runner_memory_cap_members authored only MemoryMax and MemoryHigh, so 30-fleet-swap.conf was enrolled as managed and never desired; gunbc.host.host_converge_slice1 host_converge_slice1_live_read read MemoryMax only and hardcoded memory_swap_max_raw and memory_high_raw to blank. Every slot in 15 sampled witnesses runs reported swap_max=34359738368 (32 GiB) in its MEMORY RECEIPT, while the plan and runner_host_file_observe read only drop-in files. HARM: the memory envelope (gunbc.host.memory_envelope) correctly refused runs that charged 6.6 to 6.9 GB of swap; the config was wrong, the refusal right.",
 
-    "RESIDUAL FOUND 2026-10-14, NEXT-RUNG TRIGGER (can climb now but unbuilt): gunbc.host.host_runner_memory_cap_verify runner_memory_cap_probe_unit samples slot 01 only, so a converged verdict over one slot says nothing about the other slots on the host and drift confined to them is invisible. Trigger: a readback that enumerates every active runner unit on the host and judges each against runner_slot_desired, with a discriminating RED where only a non-sampled slot differs. No host apply before it lands (operator ruling relayed by Manager 2).",
+    "CLIMBED 2026-10-14 (royal-deer-698): gunbc.host.host_runner_memory_cap_verify runner_memory_cap_verify_run enumerates every active actions-runner@* unit (systemctl_list_units_active_services) and judges each with per_slot_memory_cap_verdict_from_unit_read; the host is VerdictConverged only if every slot is. Discriminating RED: witness_verify_nonsampled_slot_drift_is_not_host_converged (slot 01 matches, slot 02 swap-drifts). No host apply. NEXT-RUNG TRIGGER remains the class ceiling: the plan and verdict consume the live read of every authored property on every path (drop-in vs systemctl show vs cgroup), not only the verify fold's unit set.",
 
     "RECOGNITION RULE: for each converged property, name the file or call the effect writes and the file or call the verdict reads. If they differ, or the read is a literal, the verdict can be satisfied by editing the declaration while the host lies.",
 

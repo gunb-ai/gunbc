@@ -1,6 +1,6 @@
 module v2.extdeps.languages.llvm_ir
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.fidelity { FidelityDisposition }
 import v2.std.grammar {
@@ -38,9 +38,9 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import std.algebra { Empty, list_append, list_snoc_item, fold_list }
+import std.algebra { Empty, list_append, list_snoc_item, fold_list, empty_map, map_insert }
 import v2.std.cardinality { NonZeroNat }
-import v2.std.collection { Absent, Map, Present, empty_map, map_insert }
+import std.optional { Absent, Present }
 import v2.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -51,7 +51,7 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth
 }
 import std.nat { Nat }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, NotADeclaration }
 
 type FloatKind
   = HalfFloat
@@ -628,19 +628,23 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
     children: [
       Edge {
         label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: llvm_inhabitant_atom(id: facts.surface_spelling)
+        target: llvm_inhabitant_atom(id: facts.surface_spelling),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: discriminant(v: ModelCoreFactAxisWidth {}) },
-        target: llvm_integer_bits_node(bits: facts.bits)
+        target: llvm_integer_bits_node(bits: facts.bits),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
+        target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^llvm_facts_field_std_projection },
-        target: llvm_inhabitant_atom(id: facts.std_projection)
+        target: llvm_inhabitant_atom(id: facts.std_projection),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -653,15 +657,18 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
     children: [
       Edge {
         label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: llvm_inhabitant_atom(id: facts.surface_spelling)
+        target: llvm_inhabitant_atom(id: facts.surface_spelling),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: llvm_float_kind_node(kind: facts.kind)
+        target: llvm_float_kind_node(kind: facts.kind),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^llvm_facts_field_std_projection },
-        target: llvm_inhabitant_atom(id: facts.std_projection)
+        target: llvm_inhabitant_atom(id: facts.std_projection),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

@@ -2117,6 +2117,31 @@ fn call_target_agreeing_scope_maps_are_locally_bound() {
     }
 }
 
+fn assert_builtin_call_target(name: &str) {
+    let outcome = v1_compiler::v1_compiler_infer::call_target_for_direct_call(
+        empty_infer_scope(),
+        name.to_string(),
+    );
+    match &*outcome {
+        v1_compiler::v1_compiler_infer_sigs::CallTargetOutcome::BuiltinCallableResolved {
+            primitive_name,
+        } => assert_eq!(primitive_name, name),
+        other => {
+            panic!("{name} must be BuiltinCallableResolved before census fallback, not {other:?}")
+        }
+    }
+}
+
+fn bare_algebra_map_ops_are_builtin_call_targets() {
+    assert_builtin_call_target("map_insert");
+    assert_builtin_call_target("map_contains_key");
+    assert_builtin_call_target("get");
+}
+
+fn bare_empty_map_is_classified_before_census() {
+    assert_builtin_call_target("empty_map");
+}
+
 fn main() -> ExitCode {
     let tests: &[(&str, fn())] = &[
         (
@@ -2126,6 +2151,14 @@ fn main() -> ExitCode {
         (
             "call_target_agreeing_scope_maps_are_locally_bound",
             call_target_agreeing_scope_maps_are_locally_bound,
+        ),
+        (
+            "bare_algebra_map_ops_are_builtin_call_targets",
+            bare_algebra_map_ops_are_builtin_call_targets,
+        ),
+        (
+            "bare_empty_map_is_classified_before_census",
+            bare_empty_map_is_classified_before_census,
         ),
         (
             "m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation",
@@ -2393,11 +2426,24 @@ fn main() -> ExitCode {
         ),
     ];
 
+    let filter = std::env::args().nth(1);
+    let mut ran = 0usize;
     for (name, test) in tests {
+        if let Some(f) = &filter {
+            if !name.contains(f) {
+                continue;
+            }
+        }
+        ran += 1;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test));
         if result.is_err() {
             return fail(format!("{name} panicked"));
         }
+    }
+    if let (Some(filter), 0) = (filter, ran) {
+        return fail(format!(
+            "no infer_semantics_witness test name contains '{filter}'"
+        ));
     }
 
     ExitCode::SUCCESS

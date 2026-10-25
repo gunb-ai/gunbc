@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.readback_expectation_rederived_under_a_different_binding
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data readback_expectation_rederived_under_a_different_binding: RecurringFailureMode = RecurringFailureMode {
+  identity: "readback_expectation_rederived_under_a_different_binding" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: a readback that is supposed to confirm a served route re-derives its expected body under a second binding of the same name, then compares the live bytes to that other derivation. HARM: readiness can agree (same live projection) while the readback fails, or both can agree on a body the admitted candidate never observed, because the expectation describes the tree as it is when compared rather than the surface that was admitted.",
+
+    "DISTINGUISHING FACT: one semantic question (what dispatch JSON should this process serve) has two producers. The live route (gunbc.roadmap.roadmap_serve DispatchJsonHandler) serves roadmap_site_dispatch_json_body_over(plan: roadmap_plan_projection()) — declared rows plus the runtime task roster, refused when the roster is unreadable. The live candidate (gunbc.live_deploy.candidate) takes expected_surface_identity from materialize_live_roadmap_site_surface_bundle(), the same runtime projection. The digest readback used to re-derive roadmap_site_dispatch_json_artifact(), whose body is the static projection with no runtime tasks. Agreement holds only while the roster is readable and empty.",
+
+    "RECEIPT, lab deploy of 3479e4483ff on srv1, completed_at 2026-10-15T21:41:58Z: readiness observed revision 3479e4483ff and surface 7f295981760d6465, equal to candidate_surface_identity; apply then failed roadmap-site-readback digest mismatch on http://127.0.0.1:18081/target/roadmap-dispatch.json. The served body was the refused roster JSON (schema roadmap-dispatch-file/v1, refused true; fnv1a64 e1abdf490f7a40a7, the same digest healthz published). The roster was unreadable because prod fabric storage was down; that outage is a separate class. This class is the second binding.",
+
+    "REPAIR: build the surface bundle once at candidate observation; CandidateRelease.expected_dispatch_digest is that bundle's dispatch digest; LiveDeployDigestReadback carries it as data; gunbc.host.host_effect_realize realize_live_deploy_digest_readback_on_host judges the read-back body against that carried digest (live_deploy_digest_readback_verdict) and does not re-derive a projection. The static artifact remains the static-site binding, named distinctly (DESIGN section 3 meaning fork).",
+
+    "RECOGNITION RULE: a compare-to-expected over a served URL that evaluates a producer other than the one the route and the candidate already used. The tell is a comment or function that re-renders 'the' dispatch body at readback time.",
+
+    "RUNG FOUND AT: mitigatable — the mismatch was loud (typed digest mismatch), not silent wrongness. CEILING: structurally guaranteed once the expected digest has no constructor except the candidate's observed bundle and the readback has no producer of its own. NEXT-RUNG TRIGGER: a type that makes a digest-readback effect unwritable without a candidate-carried digest, so a nullary re-derive cannot be spelled.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Enrolled controls: test.claim.live_deploy.apply witness_nonempty_runtime_roster_readback_expected_digest_equals_route, witness_refused_projection_readback_expected_digest_equals_route, witness_empty_runtime_roster_readback_expected_digest_equals_static_and_route, witness_readback_expected_digest_comes_from_the_candidate.",
+  ],
+
+  evidence: [],
+}

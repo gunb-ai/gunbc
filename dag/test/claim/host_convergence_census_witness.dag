@@ -3,7 +3,7 @@ module test.claim.host_convergence_census_witness
 import std.types { Bool, String }
 import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import std.decl_ref { declaration_ref_eq }
 import std.dissolution { BoundDissolution, DeclarationRetires }
 import gunbc.host_convergence_census {

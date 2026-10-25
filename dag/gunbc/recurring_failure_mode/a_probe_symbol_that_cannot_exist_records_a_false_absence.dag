@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.a_probe_symbol_that_cannot_exist_records_a_false_absence
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data a_probe_symbol_that_cannot_exist_records_a_false_absence: RecurringFailureMode = RecurringFailureMode {
   identity: "a_probe_symbol_that_cannot_exist_records_a_false_absence" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "the upstream symbol roster for the probed surface, modelled at the pinned revision, with probe symbols typed as membership in it rather than as strings." } },
 
   receipts: [
     "**a probe symbol that cannot exist records a false absence** (an executed probe asks whether a named symbol is present, using a name that NO version of the subject ever defined. The probe runs, the subject answers honestly, and the recorded reading is `absent` -- for that subject and for every other subject on earth. The run is green, the row is well typed, the provenance is real, and the measurement is of the instrument rather than of the subject.",

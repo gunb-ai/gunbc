@@ -1,0 +1,88 @@
+module test.claim.runner.runner_claim_set_receipt_witness
+
+import std.checked_arithmetic { checked_int_to_nat }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup, Cons, Empty }
+import std.measure { measure_count, second, ByteSize, byte_size }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.bazel.label { Label, render_label }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey }
+import product.fabric.execution { LeaseIdentity, ExecutionReceipt, MaterializationReceipt, SettlementReceipt }
+import gunbc.instrument_targets { self_host_label }
+import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
+import gunbc.target_invocation { ClaimHeld }
+import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results_frame, decode_claim_set_results, claim_set_outputs_digest }
+import gunbc.runner.runner_claim_set_receipt {
+  UnitRuntimeReading, UnitRuntimeMeasured, UnitRuntimeUnread, unit_runtime_from_stamps,
+  ClaimSetReceiptOutcome, ClaimSetReceipted, ClaimSetUnreceipted, ResultsNotAdmitted, RuntimeNotMeasured,
+  claim_set_receipt,
+}
+import test.claim.runner.runner_claim_set_results_witness { revision, commit_hex, tree_hex, padding }
+
+// THE RECEIPT IS A JOIN OF HOST READINGS, AND ANY READING MISSING IS NO RECEIPT. Supplied at the
+// receipt builder's interface: the drive text, the unit's two monotonic stamps, the clock.
+
+fn one_claim() -> FreeSemigroup<Label> {
+  FreeSemigroup { head: self_host_label(), tail: [] }
+}
+
+fn drive_text() -> String {
+  concat(claim_set_results_frame(results: [ClaimSetResult { label: render_label(l: self_host_label()), verdict: ClaimHeld, commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr }]), padding)
+}
+
+fn attempt() -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: "gunbc", key: "attempt-1" }
+}
+
+fn lease() -> LeaseIdentity {
+  LeaseIdentity { lease_key: "srv3", resource_fingerprint: content_hash_of_value(value: "srv3"), generation: 1 }
+}
+
+fn build(text: String, runtime: UnitRuntimeReading) -> String {
+  match revision() {
+    Empty {} => "no-revision"
+    Cons { head: rev, tail: _ } => match claim_set_receipt(
+      attempt: attempt(), lease: lease(),
+      decode: decode_claim_set_results(text: text, staged_bytes: text_bytes(text: text), observed_bytes: text_bytes(text: text)),
+      claims: one_claim(), revision: rev, runtime: runtime, completed_at: "2026-10-15T00:00:00Z",
+    ) {
+      ClaimSetReceipted { receipt: r, outputs: o, results: rs } => match r.payload {
+        ExecutionReceipt { step_id: _, outputs: po, billable: b, completed_at: _ } =>
+          join(["receipted:", to_string(measure_count(b)), ":", to_string(count(rs))], "")
+        _ => "wrong-payload"
+      }
+      ClaimSetUnreceipted { cause: ResultsNotAdmitted { admission: _ } } => "not-admitted"
+      ClaimSetUnreceipted { cause: RuntimeNotMeasured { detail: _ } } => "no-runtime"
+      ClaimSetUnreceipted { cause: _ } => "other"
+    }
+  }
+}
+
+fn runtime_label(r: UnitRuntimeReading) -> String {
+  match r {
+    UnitRuntimeMeasured { billable: b } => to_string(measure_count(b))
+    UnitRuntimeUnread { detail: _ } => "unread"
+  }
+}
+
+test fn the_billable_time_is_the_hosts_measured_runtime_rounded_up() -> Bool {
+  runtime_label(r: unit_runtime_from_stamps(start_us: "1000000", exit_us: "3500000")) == "3"
+    && runtime_label(r: unit_runtime_from_stamps(start_us: "1000000", exit_us: "2000000")) == "1"
+    && runtime_label(r: unit_runtime_from_stamps(start_us: "1000000", exit_us: "0")) == "unread"
+    && runtime_label(r: unit_runtime_from_stamps(start_us: "5000000", exit_us: "1000000")) == "unread"
+    && runtime_label(r: unit_runtime_from_stamps(start_us: "", exit_us: "1000000")) == "unread"
+}
+
+test fn a_receipt_needs_admitted_results_and_a_measured_runtime() -> Bool {
+  build(text: drive_text(), runtime: UnitRuntimeMeasured { billable: second(count: 7) }) == "receipted:7:1"
+    && build(text: padding, runtime: UnitRuntimeMeasured { billable: second(count: 7) }) == "not-admitted"
+    && build(text: drive_text(), runtime: UnitRuntimeUnread { detail: "fixture" }) == "no-runtime"
+}
+
+fn text_bytes(text: String) -> ByteSize {
+  match checked_int_to_nat(n: length(text)) {
+    Present { value: n } => byte_size(count: n)
+    Absent => byte_size(count: 0)
+  }
+}

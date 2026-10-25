@@ -1,11 +1,11 @@
 module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
-import std.algebra { trim, skip }
+import std.algebra { trim, skip, collection_concat_shape, collection_count_shape, collection_join_shape, list_push }
 import std.decimal { decimal_digits_only }
 import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.checked_arithmetic { int_inclusive_max }
 import extdeps.access.posix { FileMode, file_mode_bits }
 import extdeps.filesystem.filesystem_io {
@@ -17,6 +17,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
   filesystem_entry_presence,
 }
+import std.host_text { chars }
 
 data authorization_claim_store_root: NonEmptyStr = "/var/lib/gunbc/authorization-claims" as NonEmptyStr
 
@@ -466,7 +467,7 @@ fn cas_generation_of_digits(s: String) -> CasGeneration? {
     })
     match parsed {
       Absent => none
-      Present { value: n } => if n >= 1 { Present { value: n } } else { none }
+      Present { value: n } => cas_generation(n: n)
     }
   }
 }

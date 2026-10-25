@@ -1,69 +1,18 @@
 module v2.std.grammar
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
-import std.types { List }
+import std.types { List, Map }
 import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, is_empty, fold_list, zip_eq, list_head, list_tail, skip }
-import v2.std.collection {
-  Map,
-  PointwisePower,
-  empty_map,
-  list_nth,
-  map_insert,
-  map_lookup
-}
+import std.algebra { Cons, Empty, list_append, list_snoc_item, is_empty, fold_list, zip_eq, list_head, list_tail, skip, PointwisePower, empty_map, map_insert, map_lookup }
+import v2.std.witness { list_nth, Holds, Violates, Witness }
 import std.optional { Absent, Present, optional_absent, optional_present }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  CorrectionNotModeled,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected,
-  invariant_port_locus
-}
-import v2.std.node_query {
-  NamedChildAmbiguous,
-  NamedChildFound,
-  NamedChildMissing,
-  find_named_child,
-  named_child_lookup
-}
+import v2.std.diagnostic { Accepted, Diagnostic, CorrectionNotModeled, ExternalContractUnknown, Outcome, Rejected, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.lexing { LexRules }
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Conj,
-  Disj,
-  Edge,
-  Instantiation,
-  Authored,
-  Node,
-  Occupancy,
-  Positional,
-  Symbol,
-  TypeNode,
-  StructuralLabel,
-  symbol_intern_lexeme,
-  fold_list_node
-}
+import v2.std.node { node_equal_ignoring_provenance, Arrow, Atom, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Positional, Symbol, TypeNode, StructuralLabel, symbol_intern_lexeme, fold_list_node, NotADeclaration }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
-import v2.std.compilers.target_model {
-  BoundToken,
-  FixedToken,
-  ConcreteSyntaxToken,
-  concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node,
-  concrete_syntax_token_to_node,
-}
+import v2.std.compilers.target_model { BoundToken, FixedToken, ConcreteSyntaxToken, concrete_syntax_token_class, concrete_syntax_token_list_from_node, concrete_syntax_token_to_node }
 import v2.std.text { String }
 import std.integer { int_to_decimal_string }
 import std.roster_frontier { FrontierRow, PathSubject }
@@ -566,7 +515,8 @@ fn grammar_atom(identity: Symbol) -> Node {
 fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
     label: Authored { name: name },
-    target: target
+    target: target,
+    declaration: NotADeclaration
   }
 }
 
@@ -740,7 +690,7 @@ fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<Edge> {
     cons: fn(acc, symbol) {
       list_snoc_item(
         xs: acc,
-        item: Edge { label: Positional, target: formal_grammar_symbol_to_node(symbol: symbol) }
+        item: Edge { label: Positional, target: formal_grammar_symbol_to_node(symbol: symbol), declaration: NotADeclaration }
       )
     }
   )
@@ -804,7 +754,6 @@ fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
     TypeNode { connective: Atom { identity: _ } } => formal_nonterminal_from_node_otherwise(node: node)
     TypeNode { connective: Disj } => formal_nonterminal_from_node_otherwise(node: node)
     TypeNode { connective: Arrow } => formal_nonterminal_from_node_otherwise(node: node)
-    TypeNode { connective: Occupancy } => formal_nonterminal_from_node_otherwise(node: node)
     TypeNode { connective: Instantiation } => formal_nonterminal_from_node_otherwise(node: node)
     ComputationNode { behavior: _ } => formal_nonterminal_from_node_otherwise(node: node)
   }
@@ -842,7 +791,6 @@ fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
     TypeNode { connective: Atom { identity: _ } } => formal_terminal_from_node_otherwise(node: node)
     TypeNode { connective: Disj } => formal_terminal_from_node_otherwise(node: node)
     TypeNode { connective: Arrow } => formal_terminal_from_node_otherwise(node: node)
-    TypeNode { connective: Occupancy } => formal_terminal_from_node_otherwise(node: node)
     TypeNode { connective: Instantiation } => formal_terminal_from_node_otherwise(node: node)
     ComputationNode { behavior: _ } => formal_terminal_from_node_otherwise(node: node)
   }
@@ -941,7 +889,6 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
     TypeNode { connective: Atom { identity: _ } } => formal_grammar_symbol_from_node_otherwise(node: node)
     TypeNode { connective: Disj } => formal_grammar_symbol_from_node_otherwise(node: node)
     TypeNode { connective: Arrow } => formal_grammar_symbol_from_node_otherwise(node: node)
-    TypeNode { connective: Occupancy } => formal_grammar_symbol_from_node_otherwise(node: node)
     TypeNode { connective: Instantiation } => formal_grammar_symbol_from_node_otherwise(node: node)
     ComputationNode { behavior: _ } => formal_grammar_symbol_from_node_otherwise(node: node)
   }
@@ -988,7 +935,6 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
     TypeNode { connective: Atom { identity: _ } } => formal_rhs_from_node_otherwise(node: node)
     TypeNode { connective: Disj } => formal_rhs_from_node_otherwise(node: node)
     TypeNode { connective: Arrow } => formal_rhs_from_node_otherwise(node: node)
-    TypeNode { connective: Occupancy } => formal_rhs_from_node_otherwise(node: node)
     TypeNode { connective: Instantiation } => formal_rhs_from_node_otherwise(node: node)
     ComputationNode { behavior: _ } => formal_rhs_from_node_otherwise(node: node)
   }
@@ -1043,7 +989,6 @@ fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
     TypeNode { connective: Atom { identity: _ } } => formal_production_from_node_otherwise(node: node)
     TypeNode { connective: Disj } => formal_production_from_node_otherwise(node: node)
     TypeNode { connective: Arrow } => formal_production_from_node_otherwise(node: node)
-    TypeNode { connective: Occupancy } => formal_production_from_node_otherwise(node: node)
     TypeNode { connective: Instantiation } => formal_production_from_node_otherwise(node: node)
     ComputationNode { behavior: _ } => formal_production_from_node_otherwise(node: node)
   }
@@ -1116,7 +1061,6 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
     TypeNode { connective: Atom { identity: _ } } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
     TypeNode { connective: Disj } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
     TypeNode { connective: Arrow } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
-    TypeNode { connective: Occupancy } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
     TypeNode { connective: Instantiation } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
     ComputationNode { behavior: _ } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
   }
@@ -1145,7 +1089,8 @@ fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> No
           xs: acc,
           item: Edge {
             label: Positional,
-            target: formal_production_to_node(production: production)
+            target: formal_production_to_node(production: production),
+            declaration: NotADeclaration
           }
         )
       }
@@ -1183,7 +1128,6 @@ fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduc
     TypeNode { connective: Atom { identity: _ } } => formal_productions_from_catalog_node_otherwise(node: node)
     TypeNode { connective: Disj } => formal_productions_from_catalog_node_otherwise(node: node)
     TypeNode { connective: Arrow } => formal_productions_from_catalog_node_otherwise(node: node)
-    TypeNode { connective: Occupancy } => formal_productions_from_catalog_node_otherwise(node: node)
     TypeNode { connective: Instantiation } => formal_productions_from_catalog_node_otherwise(node: node)
     ComputationNode { behavior: _ } => formal_productions_from_catalog_node_otherwise(node: node)
   }
@@ -1264,7 +1208,8 @@ fn grammar_nested_block_edge(unit: Symbol, edges: List<Edge>) -> Edge {
         )
       ],
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 
@@ -1273,12 +1218,14 @@ fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: 
     Present { value: bound } =>
       Edge {
         label: Positional,
-        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: bound)
+        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: bound),
+        declaration: NotADeclaration
       }
     Absent =>
       Edge {
         label: Positional,
-        target: grammar_concrete_fixed_token_node(token_class: terminal.identity)
+        target: grammar_concrete_fixed_token_node(token_class: terminal.identity),
+        declaration: NotADeclaration
       }
   }
 }
@@ -1335,7 +1282,6 @@ fn conj_positional_children(parent: Node) -> List<Node> {
     TypeNode { connective: Atom { identity: _ } } => Empty
     TypeNode { connective: Disj } => Empty
     TypeNode { connective: Arrow } => Empty
-    TypeNode { connective: Occupancy } => Empty
     TypeNode { connective: Instantiation } => Empty
     ComputationNode { behavior: _ } => Empty
   }
@@ -1479,7 +1425,6 @@ fn node_atom_identity_optional(node: Node) -> Symbol? {
     TypeNode { connective: Conj } => Absent
     TypeNode { connective: Disj } => Absent
     TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Occupancy } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }
@@ -1648,7 +1593,6 @@ fn formal_production_rhs_matches_emitted_conj(
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1709,7 +1653,6 @@ fn formal_production_matches_resolution(
       )
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1721,7 +1664,6 @@ fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => true
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1892,7 +1834,6 @@ fn formal_emitted_index_key(emitted: Node, children: List<Node>) -> Symbol? {
       }
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -2220,7 +2161,6 @@ fn emitted_node_slot_count(emitted: Node) -> Int {
     TypeNode { connective: Atom { identity: _ } } => 0
     TypeNode { connective: Disj } => 0 - 1
     TypeNode { connective: Arrow } => 0 - 1
-    TypeNode { connective: Occupancy } => 0 - 1
     TypeNode { connective: Instantiation } => 0 - 1
     ComputationNode { behavior: _ } => 0 - 1
   }
@@ -2457,7 +2397,6 @@ fn derive_grammar_relation_row_node_resolved(
     TypeNode { connective: Atom { identity: _ } } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
     TypeNode { connective: Disj } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
     TypeNode { connective: Arrow } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
-    TypeNode { connective: Occupancy } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
     TypeNode { connective: Instantiation } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
     ComputationNode { behavior: _ } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
   }
@@ -2699,7 +2638,6 @@ fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Sym
       TypeNode { connective: Conj } => m
       TypeNode { connective: Disj } => m
       TypeNode { connective: Arrow } => m
-      TypeNode { connective: Occupancy } => m
       TypeNode { connective: Instantiation } => m
       ComputationNode { behavior: _ } => m
     },
@@ -2784,7 +2722,7 @@ fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
       cons: fn(acc, child) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: Positional, target: child }
+          item: Edge { label: Positional, target: child, declaration: NotADeclaration }
         )
       }
     ),
@@ -3110,7 +3048,7 @@ fn grammar_relation_row_emitted_reverse_parse_matches(
     }
   } else {
     match grammar_relation_row_emitted_fixture(row: row) {
-      Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
+      Accepted { value: row_emitted, diagnostics: _ } => node_equal_ignoring_provenance(a: row_emitted, b: emitted)
       Rejected { diagnostics: _ } => false
     }
   }
@@ -3195,7 +3133,6 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
         TypeNode { connective: Atom { identity: _ } } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
         TypeNode { connective: Disj } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
         TypeNode { connective: Arrow } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
-        TypeNode { connective: Occupancy } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
         TypeNode { connective: Instantiation } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
         ComputationNode { behavior: _ } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
       }
@@ -3263,7 +3200,6 @@ fn grammar_relation_row_forward_select(
     TypeNode { connective: Atom { identity: _ } } => GrammarRelationForwardRowNone
     TypeNode { connective: Disj } => GrammarRelationForwardRowNone
     TypeNode { connective: Arrow } => GrammarRelationForwardRowNone
-    TypeNode { connective: Occupancy } => GrammarRelationForwardRowNone
     TypeNode { connective: Instantiation } => GrammarRelationForwardRowNone
     ComputationNode { behavior: _ } => GrammarRelationForwardRowNone
   }
@@ -3365,7 +3301,6 @@ fn grammar_relation_row_forward_token_spine_selection(
     TypeNode { connective: Atom { identity: _ } } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
     TypeNode { connective: Disj } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
     TypeNode { connective: Arrow } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
-    TypeNode { connective: Occupancy } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
     TypeNode { connective: Instantiation } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
     ComputationNode { behavior: _ } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
   }
@@ -3411,7 +3346,6 @@ fn grammar_node_carries_surface_identity(node: Node, surface_identity: Symbol) -
       })
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -3464,7 +3398,6 @@ fn grammar_relation_row_forward_production_selection(
     TypeNode { connective: Atom { identity: _ } } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
     TypeNode { connective: Disj } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
     TypeNode { connective: Arrow } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
-    TypeNode { connective: Occupancy } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
     TypeNode { connective: Instantiation } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
     ComputationNode { behavior: _ } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
   }

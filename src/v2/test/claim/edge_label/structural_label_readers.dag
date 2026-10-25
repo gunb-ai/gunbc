@@ -19,15 +19,16 @@ import v2.std.node {
   edge_is_core,
   label_occurrences,
   all_names_distinct,
+  NotADeclaration
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.dag {
+  dag_surface_where_refinement_clause_edge,
   dag_surface_edge,
   dag_surface_edge_label,
   dag_surface_module_header_metadata_edge,
   dag_node_is_module_root_conj,
 }
-import v2.compiler.body_lowering_fold { body_lower_edge_names_where_clause }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.lens.module_graph { site_is_import_syntax_mention }
 
@@ -47,7 +48,7 @@ fn slr_atom(id: Symbol) -> Node {
 }
 
 fn slr_authored(name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: slr_atom(id: name) }
+  Edge { label: Authored { name: name }, target: slr_atom(id: name), declaration: NotADeclaration }
 }
 
 fn slr_conj(children: List<Edge>) -> Node {
@@ -74,10 +75,10 @@ test fn a_member_spelled_like_the_header_does_not_make_a_module_root() -> Bool {
     && !dag_node_is_module_root_conj(n: slr_conj(children: [slr_authored(name: ^dag_surface_module_header)]))
 }
 
-// Reader 3: v2.compiler.body_lowering_fold body_lower_edge_names_where_clause.
+// Reader 3: v2.extdeps.languages.dag dag_surface_where_refinement_clause_edge.
 test fn a_field_spelled_like_the_where_clause_is_not_one() -> Bool {
-  body_lower_edge_names_where_clause(e: dag_surface_edge(edge: ^dag_surface_where_refinement_clause, target: slr_atom(id: ^w)))
-    && !body_lower_edge_names_where_clause(e: slr_authored(name: ^dag_surface_where_refinement_clause))
+  dag_surface_where_refinement_clause_edge(e: dag_surface_edge(edge: ^dag_surface_where_refinement_clause, target: slr_atom(id: ^w)))
+    && !dag_surface_where_refinement_clause_edge(e: slr_authored(name: ^dag_surface_where_refinement_clause))
 }
 
 // Reader 4: v2.lens.module_graph site_is_import_syntax_mention over a ReferenceSite position.

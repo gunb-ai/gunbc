@@ -1,5 +1,6 @@
 module v2.workflow.orchestration_bash
 
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
@@ -31,9 +32,7 @@ import v2.extdeps.languages.bash_orch_if {
 import v2.extdeps.languages.bash_orch_tier2 {
   orch_cmdsubst_assign_target_model
 }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

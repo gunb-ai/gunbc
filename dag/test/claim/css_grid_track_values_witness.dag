@@ -1,0 +1,197 @@
+module test.claim.css_grid_track_values_witness
+
+import std.types { Bool, String, Int }
+import std.algebra { string_contains, non_empty_singleton, non_empty_append }
+import gunbc.design.material { BuildRule, StaticRule, decl, serialize_rules }
+import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.properties { GridTemplateColumns }
+import extdeps.languages.css.values { CssLength, Px, Ch, css_px, css_length_wire, CssVarRef }
+import extdeps.languages.css.grid_values {
+  CssTrackBreadth, CssTrackSize, CssTrackList,
+  FlexTracks, LengthTrack, InflexLength, InflexVar,
+  TrackBreadth, TrackMinMax, TrackList, RepeatCount, RepeatAutoFill,
+  css_inflexible_breadth_wire, css_track_breadth_wire, css_track_size_wire,
+  css_track_list_wire, one_track,
+}
+
+// §5 — "done means executed". These claims render through the route every declaration takes
+// (gunbc.design.material.serialize_rules, the same serializer design.scale and the gunb.ai
+// layout layer use), so a grammar that is right in isolation but wrong inside a real
+// declaration is caught. A grammar witness that only calls its own wire functions would pass
+// even if nothing in the repo could ever consume them.
+//
+// CONSTRUCTION CONTROLS, run once against the compiler and recorded here. A claim cannot assert
+// that something is unwritable — the refused program does not compile, so it cannot sit in this
+// file. Each was measured with gunbc run --claim-run, and each was REFUSED; the claim beside it
+// is the durable half, this is the evidence that the wall is real and not decorative:
+//   count: 0                        -> parse: type mismatch, expected Product(PositiveInt),
+//                                      got Primitive(Int)          [repeat_count_carries_its_domain]
+//   min: FlexTracks { factor: 1 }   -> resolve: expected Coproduct(CssInflexibleBreadth),
+//                                      got Coproduct(CssTrackBreadth) [minmax_min_position_is_inflexible]
+//   tracks: Empty (FreeMonoid)      -> evaluate: no head field on FreeMonoid, so the plus carrier
+//                                      has no empty inhabitant   [track_list_carries_its_plus_cardinality]
+// A reviewer who wants to re-run one: put the refused value back into a scratch module and watch
+// it fail. If it ever COMPILES, the type-level guarantee this module claims has been widened away.
+
+fn grid_rule(tracks: CssTrackList) -> BuildRule {
+  StaticRule {
+    selector: ClassSelector { name: "grid-witness" },
+    decls: [decl(prop: GridTemplateColumns, value: css_track_list_wire(l: tracks))],
+  }
+}
+
+fn rendered(tracks: CssTrackList) -> String {
+  serialize_rules(rules: [grid_rule(tracks: tracks)])
+}
+
+// The spec productions serialize to the CSS the spec writes.
+test fn witness_track_list_notations_serialize() -> Bool {
+  let two_track = TrackList { tracks: non_empty_append(
+    left: non_empty_singleton(item: TrackBreadth { breadth: LengthTrack { length: css_px(n: 200) } }),
+    right: non_empty_singleton(item: TrackBreadth { breadth: FlexTracks { factor: 1 } }),
+  ) }
+  let three_repeat = RepeatCount {
+    count: 3,
+    tracks: one_track(t: TrackMinMax {
+      min: InflexLength { length: CssLength { n: 0, unit: Px } },
+      max: FlexTracks { factor: 1 },
+    }),
+  }
+  let autofill = RepeatAutoFill {
+    tracks: one_track(t: TrackMinMax {
+      min: InflexVar { reference: CssVarRef { name: "card-min" } },
+      max: FlexTracks { factor: 1 },
+    }),
+  }
+  css_track_list_wire(l: two_track) == "200px 1fr"
+    && css_track_list_wire(l: three_repeat) == "repeat(3, minmax(0, 1fr))"
+    && css_track_list_wire(l: autofill) == "repeat(auto-fill, minmax(var(--card-min), 1fr))"
+}
+
+// A flex factor is not a length (§6.1 css-values-4 gives <flex> its own type): "1fr" must come
+// from FlexTracks, and a length must never render as a fraction. If someone "simplifies" by
+// adding an Fr unit to CssLength, this goes red because css_length_wire cannot produce "fr".
+test fn witness_flex_factor_is_not_a_length() -> Bool {
+  css_track_breadth_wire(b: FlexTracks { factor: 2 }) == "2fr"
+    && css_length_wire(l: CssLength { n: 2, unit: Px }) == "2px"
+    && css_length_wire(l: CssLength { n: 2, unit: Ch }) == "2ch"
+    && !string_contains(s: css_length_wire(l: CssLength { n: 2, unit: Px }), pattern: "fr")
+    && !string_contains(s: css_track_breadth_wire(b: LengthTrack { length: css_px(n: 200) }), pattern: "fr")
+}
+
+// The min position is <inflexible-breadth> (§7.2.3), which EXCLUDES <flex>: minmax(1fr, 200px)
+// is invalid CSS. This is asserted as an ABSENCE, not as an expected string. The first version
+// of this witness did the opposite — it built a flex-min TrackMinMax and asserted it serialized
+// to "minmax(1fr, 200px)" — which recorded a spec-invalid value as the correct answer, the worst
+// shape a test can take: it launders the defect into evidence and turns a future red build into a
+// "regression". Now the max position accepts a flex factor and the min position does not, so the
+// two fields cannot be swapped: the only TrackMinMax constructions this module can express have
+// an inflexible min. RED CONTROL: change TrackMinMax's min field back to CssTrackBreadth and this
+// claim goes red at build time (the test itself still compiles, because it no longer mentions a
+// flex min — which is exactly why the negative arm is written over the rendered text, so the
+// invalid form cannot quietly become the expected output again).
+test fn witness_minmax_min_position_is_inflexible() -> Bool {
+  let legal = TrackMinMax {
+    min: InflexLength { length: css_px(n: 200) },
+    max: FlexTracks { factor: 1 },
+  }
+  let zero_fr = TrackList { tracks: one_track(t: TrackMinMax {
+    min: InflexLength { length: CssLength { n: 0, unit: Px } },
+    max: FlexTracks { factor: 1 },
+  }) }
+  css_track_size_wire(t: legal) == "minmax(200px, 1fr)"
+    && !string_contains(s: css_track_size_wire(t: legal), pattern: "minmax(1fr")
+    && css_inflexible_breadth_wire(b: InflexVar { reference: CssVarRef { name: "card-min" } }) == "var(--card-min)"
+    // The max position DOES take a flex factor (§7.2.3 <track-size> includes <flex>).
+    && css_track_breadth_wire(b: FlexTracks { factor: 1 }) == "1fr"
+    && rendered(tracks: zero_fr) == ".grid-witness { grid-template-columns: minmax(0, 1fr) }"
+}
+
+// The grammar reaches a real stylesheet through the one serializer every declaration takes.
+// This is the "executed" half: a grammar nobody can consume would still pass the wire tests.
+test fn witness_tracks_reach_a_declaration_through_material() -> Bool {
+  let autofill = RepeatAutoFill {
+    tracks: one_track(t: TrackMinMax {
+      min: InflexVar { reference: CssVarRef { name: "card-min" } },
+      max: FlexTracks { factor: 1 },
+    }),
+  }
+  let three_repeat = RepeatCount {
+    count: 3,
+    tracks: one_track(t: TrackMinMax {
+      min: InflexLength { length: CssLength { n: 0, unit: Px } },
+      max: FlexTracks { factor: 1 },
+    }),
+  }
+  let one_fr = TrackList { tracks: one_track(t: TrackBreadth { breadth: FlexTracks { factor: 1 } }) }
+  rendered(tracks: autofill) == ".grid-witness { grid-template-columns: repeat(auto-fill, minmax(var(--card-min), 1fr)) }"
+    && rendered(tracks: three_repeat) == ".grid-witness { grid-template-columns: repeat(3, minmax(0, 1fr)) }"
+    && rendered(tracks: one_fr) == ".grid-witness { grid-template-columns: 1fr }"
+}
+
+// A zero-length min renders as bare "0" (§6.2 css-values-4: the unit identifier is optional for
+// a zero length). minmax(0px, 1fr) is valid CSS but is NOT what this repo emits, and the
+// gunb.ai pages carry the zero form — pinning the zero behaviour here keeps the spec rule, not
+// a copied string.
+test fn witness_zero_min_is_unitless() -> Bool {
+  let zero_fr = TrackMinMax {
+    min: InflexLength { length: CssLength { n: 0, unit: Px } },
+    max: FlexTracks { factor: 1 },
+  }
+  let zero_list = TrackList { tracks: one_track(t: TrackBreadth { breadth: LengthTrack { length: CssLength { n: 0, unit: Px } } }) }
+  css_track_size_wire(t: zero_fr) == "minmax(0, 1fr)"
+    && css_track_list_wire(l: zero_list) == "0"
+}
+
+// <track-list> is a PLUS production (§7.1: one or more). Carried by std.algebra.FreeSemigroup,
+// whose shape (head: T, tail: FreeMonoid) has no empty inhabitant — so repeat(3, ) and the empty
+// "" are not values, rather than values that a guard has to reject. This claim pins that the
+// one-track and head-plus-tail forms both serialize, i.e. the plus carrier is usable without
+// degenerating, and that a two-track list joins once each in order (built by construction, not a
+// count copied from a file — §5).
+test fn witness_track_list_carries_its_plus_cardinality() -> Bool {
+  let one = one_track(t: TrackBreadth { breadth: FlexTracks { factor: 1 } })
+  let two = non_empty_append(
+    left: non_empty_singleton(item: TrackBreadth { breadth: LengthTrack { length: css_px(n: 100) } }),
+    right: non_empty_singleton(item: TrackBreadth { breadth: LengthTrack { length: css_px(n: 110) } }),
+  )
+  let one_list = TrackList { tracks: one }
+  let two_list = TrackList { tracks: two }
+  css_track_list_wire(l: one_list) == "1fr"
+    && css_track_list_wire(l: two_list) == "100px 110px"
+    && rendered(tracks: two_list) == ".grid-witness { grid-template-columns: 100px 110px }"
+    && css_track_list_wire(l: RepeatAutoFill { tracks: two })
+         == "repeat(auto-fill, 100px 110px)"
+}
+
+// repeat()'s count is <integer [1,∞]> (§7.1), carried by std.integer.PositiveInt. What that
+// actually forbids is MEASURED and recorded, not assumed — std/page_fold.dag establishes on this
+// tree that a literal violation is refused at parse while an Int-typed reference is admitted
+// without the check. So the honest claim is: a valid literal count renders (the wall is
+// reachable), and zero never appears in any rendered count (no live value is wrong). The zero
+// case CANNOT be written here, which is the point — if someone widens PositiveInt to Int, the
+// "repeat(0" absence check below is the tripwire that says so out loud.
+test fn witness_repeat_count_carries_its_domain() -> Bool {
+  let three = RepeatCount { count: 3, tracks: one_track(t: TrackBreadth { breadth: FlexTracks { factor: 1 } }) }
+  css_track_list_wire(l: three) == "repeat(3, 1fr)"
+    && rendered(tracks: three) == ".grid-witness { grid-template-columns: repeat(3, 1fr) }"
+    && !string_contains(s: css_track_list_wire(l: three), pattern: "repeat(0")
+    && !string_contains(s: css_track_list_wire(l: three), pattern: "repeat(-")
+}
+
+// Three tracks, joined once each, in order, with exactly one separator between neighbours.
+// Three rather than two because a join that drops the last separator or double-emits one only
+// shows up at the boundary between the second and third item. Built by construction, so no
+// count is copied from a file (§5).
+test fn witness_track_list_joins_in_order_exactly_once() -> Bool {
+  let joined = non_empty_append(
+    left: non_empty_append(
+      left: non_empty_singleton(item: TrackBreadth { breadth: LengthTrack { length: css_px(n: 100) } }),
+      right: non_empty_singleton(item: TrackBreadth { breadth: LengthTrack { length: css_px(n: 110) } }),
+    ),
+    right: non_empty_singleton(item: TrackBreadth { breadth: LengthTrack { length: css_px(n: 120) } }),
+  )
+  let three = TrackList { tracks: joined }
+  css_track_list_wire(l: three) == "100px 110px 120px"
+    && rendered(tracks: three) == ".grid-witness { grid-template-columns: 100px 110px 120px }"
+}

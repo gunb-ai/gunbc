@@ -1,6 +1,6 @@
 module v2.extdeps.formats.sql_create_table_fold
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
@@ -23,14 +23,8 @@ import v2.extdeps.formats.sql_target {
   sql_target_model_bundle,
   sql_token_class_emit_transforms
 }
-import std.algebra { list_append, fold_list }
-import v2.std.collection {
-  Map,
-  empty_map,
-  list_at_optional,
-  list_nth,
-  map_insert
-}
+import std.algebra { list_append, fold_list, empty_map, list_at_optional, map_insert }
+
 import std.optional {
   Absent,
   Optional,
@@ -77,8 +71,9 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness, list_nth }
 
 fn sql_fold_stmt_tag(binding: Symbol) -> Node {
   Node {
@@ -137,7 +132,8 @@ fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node
                 children: [
                   Edge {
                     label: Positional,
-                    target: sql_fold_stmt_tag(binding: ^sql_production_fold_column_def)
+                    target: sql_fold_stmt_tag(binding: ^sql_production_fold_column_def),
+                    declaration: NotADeclaration
                   },
                   Edge {
                     label: Positional,
@@ -145,7 +141,8 @@ fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node
                       kind: TypeNode { connective: Atom { identity: name } },
                       children: [],
                       occurrence_id: OccurrenceSynthetic
-                    }
+                    },
+                    declaration: NotADeclaration
                   }
                 ],
                 occurrence_id: OccurrenceSynthetic
@@ -191,7 +188,7 @@ fn sql_fold_conj_list_root(item: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: item }
+      Edge { label: Positional, target: item, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -201,8 +198,8 @@ fn sql_fold_conj_list_append(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -259,7 +256,8 @@ fn sql_fold_primary_key_emitted_witness(pk: Optional<List<SqlIdentifier>>) -> Wi
                   children: [
                     Edge {
                       label: Positional,
-                      target: sql_fold_stmt_tag(binding: ^sql_production_fold_primary_key)
+                      target: sql_fold_stmt_tag(binding: ^sql_production_fold_primary_key),
+                      declaration: NotADeclaration
                     },
                     Edge {
                       label: Positional,
@@ -267,7 +265,8 @@ fn sql_fold_primary_key_emitted_witness(pk: Optional<List<SqlIdentifier>>) -> Wi
                         kind: TypeNode { connective: Atom { identity: name } },
                         children: [],
                         occurrence_id: OccurrenceSynthetic
-                      }
+                      },
+                      declaration: NotADeclaration
                     }
                   ],
                   occurrence_id: OccurrenceSynthetic
@@ -292,7 +291,8 @@ fn sql_fold_create_table_body_emitted(
         children: [
           Edge {
             label: Positional,
-            target: sql_fold_stmt_tag(binding: ^sql_production_fold_create_table)
+            target: sql_fold_stmt_tag(binding: ^sql_production_fold_create_table),
+            declaration: NotADeclaration
           },
           Edge {
             label: Positional,
@@ -300,9 +300,10 @@ fn sql_fold_create_table_body_emitted(
               kind: TypeNode { connective: Atom { identity: table_name } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-            }
+            },
+            declaration: NotADeclaration
           },
-          Edge { label: Positional, target: column_list }
+          Edge { label: Positional, target: column_list, declaration: NotADeclaration }
         ],
         occurrence_id: OccurrenceSynthetic
       }
@@ -312,7 +313,8 @@ fn sql_fold_create_table_body_emitted(
         children: [
           Edge {
             label: Positional,
-            target: sql_fold_stmt_tag(binding: ^sql_production_fold_create_table_pk)
+            target: sql_fold_stmt_tag(binding: ^sql_production_fold_create_table_pk),
+            declaration: NotADeclaration
           },
           Edge {
             label: Positional,
@@ -320,10 +322,11 @@ fn sql_fold_create_table_body_emitted(
               kind: TypeNode { connective: Atom { identity: table_name } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-            }
+            },
+            declaration: NotADeclaration
           },
-          Edge { label: Positional, target: column_list },
-          Edge { label: Positional, target: pk_node }
+          Edge { label: Positional, target: column_list, declaration: NotADeclaration },
+          Edge { label: Positional, target: pk_node, declaration: NotADeclaration }
         ],
         occurrence_id: OccurrenceSynthetic
       }

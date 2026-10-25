@@ -1,0 +1,178 @@
+module test.claim.png_encoding_witness
+
+import std.types { Int, List, String }
+import std.optional { Absent, Present }
+import std.logic { Bool }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.standards.rfc_1950 { rfc_1950_adler32 }
+import extdeps.standards.rfc_1951 { rfc_1951_fixed_stream }
+import extdeps.w3c.png {
+  PngIndexedImage, PngPaletteEntry, PngEncoded, PngRefused, PngRefusal, PngRelativeColorimetric, PngAxis, PngWidth, PngHeight,
+  PngRowWidth, PngIndexOutsidePalette, PngPaletteAlphaOutOfRange, PngPaletteColorInadmissible, PngDimensionOutOfRange,
+  PngIdatUpperBoundExceedsLimit, png_crc32, png_encode,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn png_witness_ascii(s: String) -> List<Int> {
+  bytes_octets(b: utf8_encode_bytes(s: s))
+}
+
+// ═══ CHECKSUMS AGAINST PUBLISHED VALUES ═══
+//
+// 0xCBF43926 is CRC-32/ISO-HDLC's published check value over "123456789" (the CRC catalogue's
+// `check`, the same polynomial PNG Annex D names). 0xAE426082 is the CRC every PNG's IEND chunk
+// carries, since IEND's data is empty. 0x11E60398 is Adler-32 over "Wikipedia", the worked example
+// of the algorithm RFC 1950 section 8.2 defines.
+test fn crc32_matches_the_published_check_values() -> Bool {
+  png_crc32(octets: png_witness_ascii(s: "123456789")) == 3421780262 && png_crc32(octets: png_witness_ascii(s: "IEND")) == 2923585666
+}
+
+test fn adler32_matches_the_worked_example() -> Bool {
+  rfc_1950_adler32(octets: png_witness_ascii(s: "Wikipedia")) == 300286872 && rfc_1950_adler32(octets: []) == 1
+}
+
+// ═══ THE FIXED-HUFFMAN RUN STREAM AGAINST zlib ═══
+//
+// Each oracle is Python's zlib writing the same octets as one raw DEFLATE block with fixed codes
+// (compressobj(9, DEFLATED, -15, 9, Z_FIXED)), an independent encoder whose greedy matcher picks the
+// same runs on these inputs. The run input is a 0, six hundred and one 5s and the octets 0, 1, 2:
+// literals, two length-258 runs (symbol 285) and a length-83 run (symbol 278, extra value 0). The
+// high input is 7, eighty-five 200s, 255, 7: 8-bit literals below 144, 9-bit literals at 200 and 255,
+// and a length-84 run (symbol 278, four extra bits of value 1), whose nonzero extra value tells
+// least-significant-first packing from a reversed or dropped one. The end-of-block symbol is the
+// 7-bit range, so all three code ranges are exercised.
+data png_witness_run_input: List<Int> = concat(concat([0], fold([1, 2, 3, 4, 5, 6], init: [], f: (acc, _) =>
+  fold([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], init: acc, f: (a, _) => concat(a, [5, 5, 5, 5, 5, 5, 5, 5, 5, 5])))), [0, 1, 2])
+
+data png_witness_high_input: List<Int> = concat(concat([7, 200], fold([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], init: [], f: (acc, _) =>
+  concat(acc, [200, 200, 200, 200, 200, 200, 200]))), [255, 7])
+
+test fn the_fixed_stream_is_zlibs_on_runs_and_literals() -> Bool {
+  rfc_1951_fixed_stream(octets: []) == [3, 0]
+    && rfc_1951_fixed_stream(octets: [0, 0, 1]) == [99, 96, 96, 4, 0]
+    && count(png_witness_run_input) == 604
+    && rfc_1951_fixed_stream(octets: png_witness_run_input) == [99, 96, 29, 5, 163, 128, 6, 128, 129, 145, 9, 0]
+    && count(png_witness_high_input) == 88
+    && rfc_1951_fixed_stream(octets: png_witness_high_input) == [99, 63, 65, 11, 240, 159, 29, 0]
+}
+
+// ═══ A WHOLE FILE, BYTE FOR BYTE ═══
+//
+// The oracle is the same image written by Python's zlib (raw fixed-Huffman deflate as above) and struct (an independent CRC, Adler-32 and
+// chunk writer), with sRGB intent 1 (relative colorimetric) and gAMA 45455 between IHDR and PLTE;
+// `file` identifies it as "PNG image data, 2 x 1, 8-bit colormap, non-interlaced" and its IDAT
+// zlib.decompress reads back as the scanline [0, 0, 1].
+data png_witness_stone_and_clear_ink: List<PngPaletteEntry> = [
+  PngPaletteEntry { color: Srgb8 { r: 244, g: 241, b: 236 }, alpha: 255 },
+  PngPaletteEntry { color: Srgb8 { r: 15, g: 15, b: 15 }, alpha: 0 },
+]
+
+data png_witness_two_by_one_oracle: List<Int> = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 2, 0, 0, 0, 1, 8, 3, 0, 0, 0, 195, 252, 143, 184, 0, 0, 0, 1, 115, 82, 71, 66, 1, 217, 201, 44, 127, 0, 0, 0, 4, 103, 65, 77, 65, 0, 0, 177, 143, 11, 252, 97, 5, 0, 0, 0, 6, 80, 76, 84, 69, 244, 241, 236, 15, 15, 15, 222, 226, 35, 206, 0, 0, 0, 2, 116, 82, 78, 83, 255, 0, 229, 183, 48, 74, 0, 0, 0, 11, 73, 68, 65, 84, 120, 1, 99, 96, 96, 4, 0, 0, 4, 0, 2, 139, 47, 60, 19, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]
+
+test fn a_two_pixel_image_is_the_reference_file() -> Bool {
+  match png_encode(image: PngIndexedImage { intent: PngRelativeColorimetric, width: 2, height: 1, palette: png_witness_stone_and_clear_ink, rows: [[0, 1]] }) {
+    PngEncoded { octets } => octets == png_witness_two_by_one_oracle
+    PngRefused { cause: _ } => false
+  }
+}
+
+// ═══ REFUSALS ═══
+//
+// Each malformed image refuses with the cause that locates it. The two size refusals are decided
+// from the header before any row is read, so they are exercised with no rows at all.
+
+fn png_witness_refusal(image: PngIndexedImage) -> PngRefusal? {
+  match png_encode(image: image) {
+    PngRefused { cause } => Present { value: cause }
+    PngEncoded { octets: _ } => none
+  }
+}
+
+fn png_witness_refuses_row_width() -> Bool {
+  match png_witness_refusal(image: PngIndexedImage { intent: PngRelativeColorimetric, width: 2, height: 2, palette: png_witness_stone_and_clear_ink, rows: [[0, 1], [0]] }) {
+    Present { value } => match value {
+      PngRowWidth { row, declared, actual } => row == 1 && declared == 2 && actual == 1
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn png_witness_refuses_index_outside_palette() -> Bool {
+  match png_witness_refusal(image: PngIndexedImage { intent: PngRelativeColorimetric, width: 3, height: 2, palette: png_witness_stone_and_clear_ink, rows: [[0, 1, 0], [1, 0, 2]] }) {
+    Present { value } => match value {
+      PngIndexOutsidePalette { row, column, index } => row == 1 && column == 2 && index == 2
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn png_witness_refuses_out_of_range_alpha() -> Bool {
+  match png_witness_refusal(image: PngIndexedImage { intent: PngRelativeColorimetric, width: 1, height: 1, palette: [PngPaletteEntry { color: Srgb8 { r: 0, g: 0, b: 0 }, alpha: 0 }, PngPaletteEntry { color: Srgb8 { r: 0, g: 0, b: 0 }, alpha: 256 }], rows: [[0]] }) {
+    Present { value } => match value {
+      PngPaletteAlphaOutOfRange { entry, alpha } => entry == 1 && alpha == 256
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn png_witness_refuses_inadmissible_color() -> Bool {
+  match png_witness_refusal(image: PngIndexedImage { intent: PngRelativeColorimetric, width: 1, height: 1, palette: [PngPaletteEntry { color: Srgb8 { r: 0, g: 300, b: 0 }, alpha: 255 }], rows: [[0]] }) {
+    Present { value } => match value {
+      PngPaletteColorInadmissible { entry, color } => entry == 0 && color.g == 300
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn png_witness_is_height(axis: PngAxis) -> Bool {
+  match axis {
+    PngHeight => true
+    PngWidth => false
+  }
+}
+
+// 2^31 is one past PNG's four-byte limit.
+fn png_witness_refuses_oversized_dimension() -> Bool {
+  match png_witness_refusal(image: PngIndexedImage { intent: PngRelativeColorimetric, width: 1, height: 2147483648, palette: png_witness_stone_and_clear_ink, rows: [] }) {
+    Present { value } => match value {
+      PngDimensionOutOfRange { axis, observed } => observed == 2147483648 && png_witness_is_height(axis: axis)
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// Both dimensions admissible, but the IDAT's upper bound exceeds the chunk-length limit. 2^30 x 2 is
+// just past it; 2^30 x 2^30 is 2^60 scanline octets, where 9 times that would overflow a 64-bit Int,
+// so the bound must still come back positive and past the limit rather than wrapped.
+fn png_witness_refuses_idat_bound(width: Int, height: Int) -> Bool {
+  match png_witness_refusal(image: PngIndexedImage { intent: PngRelativeColorimetric, width: width, height: height, palette: png_witness_stone_and_clear_ink, rows: [] }) {
+    Present { value } => match value {
+      PngIdatUpperBoundExceedsLimit { upper_bound } => upper_bound > 2147483647
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn png_witness_refuses_oversized_idat() -> Bool {
+  png_witness_refuses_idat_bound(width: 1073741824, height: 2) && png_witness_refuses_idat_bound(width: 1073741824, height: 1073741824)
+}
+
+test fn malformed_images_refuse_with_a_located_cause() -> Bool {
+  png_witness_refuses_row_width()
+    && png_witness_refuses_index_outside_palette()
+    && png_witness_refuses_out_of_range_alpha()
+    && png_witness_refuses_inadmissible_color()
+}
+
+test fn sizes_beyond_pngs_four_byte_integers_refuse_before_any_row() -> Bool {
+  png_witness_refuses_oversized_dimension() && png_witness_refuses_oversized_idat()
+}

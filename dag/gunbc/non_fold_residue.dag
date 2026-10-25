@@ -15,19 +15,16 @@ import std.types { List }
 // union (`non_fold_residue_identity_join_triples`).
 // Discovery: the host reader walks production `.dag` files whose source mentions the
 // data name, parses them, and keeps the exact `data non_fold_residue_frontier` item.
-// The required floor judges sites per diff (non_fold_residue_diff_verdict); the
-// whole-corpus census (nfr_whole_corpus_typed_census) derives the union.
+// The floor's per-diff typed verdict (`non_fold_residue_diff_verdict`) was deleted
+// with `run_required_floor`. Membership is still the host union
+// (`non_fold_residue_identity_join_triples`).
 // Detection-only: never auto-delete rows — greening a site deletes its row by hand with the
 // receipt on the PR. v1 seed-reader change is admissible because it unblocks residue
 // burn-down for the v2 program.
 
-data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
-
 data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
 
 data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
-
-data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
 
 data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
 
@@ -37,15 +34,10 @@ data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait c
 
 data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row")
+data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT: a declaration ref cannot name an arm that does not exist yet, and binding to a fabricated constructor is the DESIGN §3 fabricated-citation class. THE CAPABILITY: gunbc.namespace_cut.namespace_reference_derived_closure_admission ReferenceDerivedClosureAdmission gains an arm whose payload is the StructuralBindingResolution refusal cause — the six closed off-Resolved variants std.reference_binding_observation already distinguishes (StructuralBindingIndexTransportRefused, StructuralBindingIndexModulePathRefused, StructuralBindingIndexExposureRefused, StructuralBindingIndexAuthoredOrderRefused, StructuralBindingIndexDeclarationBucketRefused, StructuralBindingProductionRefused) — so a program matches the cause rather than option-absence. SUFFICIENT FOR: assess_reference_binding_observation routes each of those variants to a distinct assessment without Absent collapse, binding_outcome_from_resolution becomes a total match, and this row deletes with the wildcard. CONSUMERS ARE NOT LISTED HERE (DESIGN §6: name the instrument, never transcribe its output; DESIGN §3c: a declaration's consumers are already a fact of the namespace tree). The producer that re-derives the dependent set is v2.lens.module_impact_query DependentsOf over ModuleIdentity { name: gunbc.namespace_cut.namespace_reference_derived_closure_admission }. The v1 seed mirror of that same module is the emitted file whose path follows the module name (src/v1/stage0/src/gunbc_namespace_cut_namespace_reference_derived_closure_admission.rs); its dependents are that file's, not a second hand census.")
 
 // Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: unbound_dissolution(description: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row"),
-    },
   FrontierRow {
       subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
       reason: nfr_reason_trait_derive_shape_table,

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_name_production_no_role_reader_covers
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_name_production_no_role_reader_covers: RecurringFailureMode = RecurringFailureMode {
   identity: "a_name_production_no_role_reader_covers" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a grammar production whose own expression holds a name terminal (a lexeme-stamped identifier) has no row in the occurrence-role dispatch table (`v2.compiler.occurrence_role` `dag_name_production_rows`), so the names it introduces or labels are never given an OccurrenceRole, and every consumer that asks which authored names are binders reads them as references.",

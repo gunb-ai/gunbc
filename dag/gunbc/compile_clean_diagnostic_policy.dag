@@ -16,8 +16,8 @@ type UnlistedImportUseEnforcement
 // blocking (terminal promotion when namespace-only resolution deletes the import grammar —
 // DISSOLVES WHEN UnlistedImportUse promoted to an error per
 // namespace_import_closure_behavioral_transport.dag:15). CONSUMER TRUTH, corrected where this
-// annotation previously overstated it: the floor receipt path
-// (install_or_consume_floor_compile_clean_gate_receipt via floor_compile_clean_emit_ok_via_index)
+// annotation previously overstated it: the live compile-clean resolve check
+// (`witness_layer_roots_compile_clean_check`)
 // reads this row through compile_clean_unlisted_import_use_blocks; the standalone CLI (gunbc
 // compile) does NOT — gunbc#8286 cut its policy read because the read mechanism was a full
 // interpreter run over this module's closure to answer one Bool, and its classify_diagnostic
@@ -391,6 +391,17 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
     class_name: "AlgebraApplicationEvidenceUnavailable" as NonEmptyStr,
     ceiling: WallAfterGrounding {
       missing_capability: "the grounding gunbc.guarantee_stall.algebra_expansion_positional_argument_stall names: a coproduct-variant record literal produces a nominal application carrying its inferred type arguments. Its construction is derived-node identity step 2 (gunbc.recurring_failure_mode generic_identity_decided_by_spelling), because instantiating the literal mints an applied type node and minting one by parameter name is the spelling-keyed construction that step retires. Every firing is a checker deficit rather than an author defect -- at each measured site an annotated twin of the same code is clean, and the dropped argument is read back as the container (gunbc.recurring_failure_mode unapplied_generic_accumulator_types_element_as_container) -- so promoting the class before that capability would refuse correct programs, the fabricated refusal DESIGN 4b forbids. The fold-accumulator shape is repaired at its own link and is not part of this residue."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "TextRepresentationUnidentifiedAtBoundary" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "the declaration identity of every v1 type reference at a text boundary, read through v1.compiler.infer_env type_reference_declaration_reading, whose TypeReferenceUnidentified arm is this population. An identified text crossing is already judged (ruling gunbc.design_ruling text_crossings_go_through_the_unfold); a boundary whose other side reads unidentified is unjudged, not wrong, so promoting the class before that identity is read would refuse correct sites, the fabricated refusal DESIGN 4b forbids. The class's standing, its measured population and its restoration trigger are gunbc.rung_drop text_boundary_identity_wall's, cited by symbol here and stated only there."
     },
     census: DeclarationRef {
       module_path: "gunbc.instrument_targets",

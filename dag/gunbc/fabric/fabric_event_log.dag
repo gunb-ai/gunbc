@@ -26,7 +26,8 @@ import product.capacity.pool_events {
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
   PoolReleased, pool_apply_payload,
 }
-import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
+import std.resource_release_law { release_law_wire }
+import product.capacity.lease { LeasePolicy, LeaseGrant }
 import product.capacity.redemption {
   RedemptionEvent, RedemptionState, RedemptionRefusal, RedemptionProposal, RedemptionProposed, RedemptionRefused,
   redemption_partition_of, redemption_event_wire_text, redemption_event_decode, redemption_state_of,
@@ -316,17 +317,16 @@ fn seat_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root:
   }
 }
 
-// THE RELEASE LAW IS SPELLED TWICE HERE AND THE TWO SPELLINGS MUST AGREE. The comparison itself lives
-// with the type (product.capacity.lease release_law_eq), not here: an equality authored at a consumer
-// is the second spelling of the concept it compares. The pool root carries the
-// law it enforces on its own history; the caller's LeasePolicy carries the law it believes it is
-// acquiring under. Nothing joined them, so a pool could hold a seat past expiry while the caller and
-// its witnesses described a fence that frees it -- a safety law with two independent spellings drifts,
-// and the drift is invisible because each side is internally consistent. A mismatch is refused before
-// anything is appended rather than resolved in favour of either side: neither is authoritative over
-// the other, and picking one silently would be the same fail-open in a different costume.
+// THE RELEASE LAW IS SPELLED TWICE HERE AND THE TWO SPELLINGS MUST AGREE. Equality is the type's own
+// `==`, not a hand-rolled walker. The pool root carries the law it enforces on its own history; the
+// caller's LeasePolicy carries the law it believes it is acquiring under. Nothing joined them, so a
+// pool could hold a seat past expiry while the caller and its witnesses described a fence that frees
+// it -- a safety law with two independent spellings drifts, and the drift is invisible because each
+// side is internally consistent. A mismatch is refused before anything is appended rather than
+// resolved in favour of either side: neither is authoritative over the other, and picking one
+// silently would be the same fail-open in a different costume.
 fn fabric_seat_acquire<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
-  if !release_law_eq(left: root.release_law, right: policy.release_law) {
+  if root.release_law != policy.release_law {
     SeatAcquireRefused {
       step: "release-law",
       reason: join([

@@ -9,6 +9,7 @@ import v1.std.core {
   SourceSpan, ErrorNode, make_error_node, InternalError
 }
 
+import std.types { bool_text }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 
 import v1.compiler.emit_core_support { escape_json_string }
@@ -119,7 +120,7 @@ fn literal_value_fingerprint(value: LiteralValue) -> String {
     LitStr { value: v } => concat("LitStr:", v)
     LitInt { value: v } => concat("LitInt:", to_string(value: v))
     LitFloat { value: v } => concat("LitFloat:", v)
-    LitBool { value: v } => concat("LitBool:", to_string(value: v))
+    LitBool { value: v } => concat("LitBool:", bool_text(b: v))
     LitNull => "LitNull"
     LitSymbol { value: v } => concat("LitSymbol:", v)
   }
@@ -167,18 +168,3 @@ fn dag_node_surface_fingerprint_memo(node: Node) -> String {
   dag_node_surface_fingerprint(node: node)
 }
 
-fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
-  let synthetic = span.start == 0 && span.end == 0
-  let detail = if synthetic {
-    " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
-  } else {
-    ""
-  }
-  make_error_node(
-    diagnostic: InternalError {
-      message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key), detail),
-      span: span
-    },
-    module_name: ""
-  )
-}

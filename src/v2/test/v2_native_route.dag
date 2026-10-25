@@ -1,20 +1,22 @@
 module v2.test.v2_native_route
 
-import std.types { List }
+import std.types { List, Map }
 
 import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
 import extdeps.bazel.target_pattern {
   TargetPattern, TargetPatternParsed, TargetPatternRefused, parse_target_pattern, target_pattern_matches
 }
-import gunbc.witness.v2_native_route {
+import gunbc.native_route_universe {
+  native_route_default_pattern,
+  native_route_module_probe_declaration,
+  native_route_universe_member,
+}
+import v2.workflow.v2_native_route {
   native_route_admission_with, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
-  NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
-  native_route_identity_member,
-  native_route_module_in_boundary, native_route_identity_in_boundary,
-  native_route_identity_label, native_route_default_pattern, native_route_module_probe_declaration,
+  native_route_identity_label,
+  native_route_identity_in_boundary,
   NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
   native_route_reference_for,
-  NativeRouteMemberRow,
   NativeRouteModuleSource,
   native_route_required_pass_identities,
   NativeRouteExclusionCause, CompilerFrontierAttributed, NativeEntryResolutionLimit,
@@ -45,7 +47,7 @@ import v2.workflow.compile_door_cause_ownership {
   FrontierRetirement, node_grounding_frontier_retirement
 }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeLaneAcquired,
   NativeLaneAcquisition,
   native_lane_acquired,
@@ -53,7 +55,7 @@ import v2.compiler.compile {
   native_lane_declared_module_name,
   native_lane_module_reachable
 }
-import v2.std.collection { Map, empty_map, map_insert }
+
 import v2.compiler.module_acquisition { AcquiredModule }
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -64,15 +66,18 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEval,
   NativeTestFileRefusal,
   FileRefusalLink,
-  FileRefusalAtWholeFile
+  FileRefusalAtWholeFile,
+  NativeRouteTestIdentity, NativeRouteMemberRow,
+  native_route_identity_qualified, native_route_identities_unique, native_route_identity_member
 }
 import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import std.algebra { Cons, FreeSemigroup, fold_list, length }
+import std.algebra { Cons, FreeSemigroup, fold_list, length, empty_map, map_insert }
 import v2.std.node { Symbol }
-import v2.std.integer { Int }
+import std.integer { Int }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // ── synthetic receipt constructors ─────────────────────────────────────────────────────────
 //
@@ -239,19 +244,19 @@ fn green_receipt() -> NativeRouteReceipt {
 // It is not what makes a declaration a test: a marked declaration in any module of the boundary is
 // in, and the boundary says nothing about a module that holds no marker.
 test fn the_route_boundary_is_the_v2_tree_and_nothing_else() -> Bool {
-  native_route_module_in_boundary(module_qn: "v2.test.v2_native_route")
-  && native_route_module_in_boundary(module_qn: "v2.compiler.compile")
-  && native_route_module_in_boundary(module_qn: "v2.testing.y")
-  && native_route_module_in_boundary(module_qn: "v2")
-  && !native_route_module_in_boundary(module_qn: "v22.x")
-  && !native_route_module_in_boundary(module_qn: "test.claim.native_route_seed_boundary_witness")
-  && !native_route_module_in_boundary(module_qn: "gunbc.witness.v2_native_route")
+  native_route_universe_member(module_qn: "v2.test.v2_native_route")
+  && native_route_universe_member(module_qn: "v2.compiler.compile")
+  && native_route_universe_member(module_qn: "v2.testing.y")
+  && native_route_universe_member(module_qn: "v2")
+  && !native_route_universe_member(module_qn: "v22.x")
+  && !native_route_universe_member(module_qn: "test.claim.native_route_seed_boundary_witness")
+  && !native_route_universe_member(module_qn: "gunbc.witness.v2_native_route")
 }
 
 // A module name whose label cannot be formed is outside the boundary: the boundary is claimed of a
 // label or not at all, so an unformable name never reads as inside.
 test fn a_module_name_that_forms_no_label_is_outside_the_boundary() -> Bool {
-  !native_route_module_in_boundary(module_qn: "v2..x")
+  !native_route_universe_member(module_qn: "v2..x")
   && !native_route_identity_in_boundary(identity: test_identity(module: "v2.compiler", declaration: ""))
 }
 
@@ -1469,7 +1474,7 @@ fn green_receipt_with_old_route_control(control: NativeRouteOldRouteControl) -> 
 // withdrawn arm gets.
 test fn an_old_route_absent_for_the_window_closes_the_fallback() -> Bool {
   let receipt = green_receipt_with_old_route_control(
-    control: OldRouteNotPresentAtWindow { expected_executable: "target/release/gunbc" }
+    control: OldRouteNotPresentAtWindow { expected_executable: concat(cargo_default_release_dir_rel, "/gunbc") }
   )
   native_route_admitted(admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt))
 }

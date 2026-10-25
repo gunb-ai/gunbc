@@ -1,0 +1,58 @@
+module v2.test.claim.where_clause_predicate_is_not_a_declaration
+
+import v2.compiler.symbol_index_fill { disj_variant_counts_in_module, symbol_index_fill_containment_node }
+import v2.extdeps.languages.dag { dag_surface_edge_label }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
+import std.types { List }
+import std.algebra { Cons, Empty }
+import v2.std.node { label_sort_key, Atom, Authored, Conj, Edge, Node, TypeNode, node_synthetic, NotADeclaration }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A WHERE-CLAUSE PREDICATE SPELLING IS A REFERENCE, NOT A DECLARATION (v2.compiler.symbol_index_fill
+// symbol_index_fill_containment_edge). The lowered clause carries the predicate under an Authored edge
+// named by its spelling (v2.compiler.body_lowering_fold body_lower_where_predicates); indexing it made
+// `Char where unicode_scalar` a second binder of `unicode_scalar` beside the fn. The control places the
+// same predicate edge under an ordinary label, where it IS a declared child, so the absence is the
+// clause arm and not a walk that never descends.
+fn wc_conj(children: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
+}
+
+fn wc_module(carrier: Edge) -> Node {
+  wc_conj(children: [
+    Edge { label: Authored { name: ^Char }, target: wc_conj(children: [carrier]), declaration: NotADeclaration }
+  ])
+}
+
+fn wc_predicates() -> Node {
+  wc_conj(children: [
+    Edge { label: Authored { name: ^unicode_scalar }, target: wc_conj(children: []), declaration: NotADeclaration }
+  ])
+}
+
+fn wc_index(module: Node) -> SymbolIndex {
+  symbol_index_fill_containment_node(
+    index: empty_symbol_index(),
+    path: Cons { head: ^m, tail: Empty },
+    node: module,
+    counts: disj_variant_counts_in_module(root: module),
+    module_qn: Cons { head: ^m, tail: Empty }
+  )
+}
+
+fn wc_indexed_below_char(carrier: Edge) -> Bool {
+  match symbol_index_lookup(index: wc_index(module: wc_module(carrier: carrier)), qualified_path: [^m, ^Char, label_sort_key(label: carrier.label), ^unicode_scalar]) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn a_where_clause_predicate_is_never_indexed_holds() -> Bool {
+  let clause = Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: wc_predicates(), declaration: NotADeclaration }
+  let control = Edge { label: Authored { name: ^refinement }, target: wc_predicates(), declaration: NotADeclaration }
+  !wc_indexed_below_char(carrier: clause)
+    && wc_indexed_below_char(carrier: control)
+}

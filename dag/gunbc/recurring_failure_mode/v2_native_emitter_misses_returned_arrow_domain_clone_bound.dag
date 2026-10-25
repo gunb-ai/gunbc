@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.v2_native_emitter_misses_returned_arrow_domain_clone_bound
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data v2_native_emitter_misses_returned_arrow_domain_clone_bound: RecurringFailureMode = RecurringFailureMode {
+  identity: "v2_native_emitter_misses_returned_arrow_domain_clone_bound" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: a generic that occupies only the domain of a returned arrow is cloned by the target realization (`left.clone()` / `x.clone()`) without a Clone bound on the fn header, so rustc E0599 at the generated call site.",
+    "V1 REPAIR LOCATION: v1.compiler.trait_derive_emit v1_generic_param_cloned_by_returned_closure (consumed by v1.compiler.emit_rust v1_fn_body_derived_clone_param_names). The helper already gated on returning an arrow and already read arrow `.params`, but applied that read only to value-parameter types, so keyed_resource_subject_value_eq<M,..> -> fn(M, M) -> Bool stayed bare on M.",
+    "V2 GAP, NOT FIXED HERE: v2.extdeps.languages.rust carries derive supplemental generic bounds (target_derive_supplemental_generic_bound_contract rows, consumed by v2.compiler.translate) and no fn-header Clone derivation from a returned-arrow domain or from a body clone. v2.compiler.translate has no equivalent of v1_generic_param_cloned_by_returned_closure. The native path therefore still has this class once it emits arrow-returning generic fns.",
+    "HARM: emitted Rust that rustc refuses (E0599), blocking the v2 self-host gate closure that includes std.key_relation.",
+    "RUNG FOUND AT: mitigatable (typed rustc refusal, not silent wrongness). CEILING: 3 -- whether a returned arrow's domain names a fn generic is decidable from the declaration. NEXT TRIGGER: the native emitter derives Clone on that generic from the fn's own returned-arrow domain (or an equivalent declared bound) and callers propagate the callee's declared bound without re-deriving at the call site. Evidence: test.claim.fn_body_clone_bound_witness returned_arrow_domain_generic_earns_clone reds on an unbounded header and generic_never_cloned_stays_unbounded stays green.",
+    "UPDATE (vivid-tern-342, executed evidence): the header half now exists in v2 -- a generic arrow's type-parameter list renders from the target's own rows (v2.std.compilers.target_model ProducedSignatureTypeParams; v2.test.claim.type_param_binder_frame tpb_emitter_renders_a_generic_arrow_header_where_rows_declare_one, with tpb_emitter_refuses_a_generic_arrow_where_rows_declare_no_type_params as the regression control). The BOUND half is blocked on a demand producer: v2's Rust emitter emits no `.clone()` at all (no rule or row in v2.extdeps.languages.rust, v2.compiler.translate or v2.compiler.target_serialize), so no position currently demands Clone and a returned-arrow Clone RED is not authorable in v2. NEXT TRIGGER, naming the capability: v2 emits a Clone-requiring realization (a use-site clone of a shared value); the position-to-trait table and param-to-trait-set fixpoint land with that producer, feeding the header slot, not before.",
+  ],
+
+  evidence: [],
+}

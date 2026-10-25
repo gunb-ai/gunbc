@@ -3,9 +3,8 @@
 
 use self::WidthResolution::*;
 pub use crate::std_constructors::Phantom;
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -39,6 +38,6 @@ pub type Compose<Algebra, MachineConstraint> =
     std::marker::PhantomData<(Algebra, MachineConstraint)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct StaticWidthIndex;
+pub struct StaticWidthIndex<const N: u128>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PointerWidth;

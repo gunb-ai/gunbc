@@ -1,0 +1,62 @@
+module test.claim.native_test_realization_seal_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SEALS ON std.native_test_realization, MEASURED RATHER THAN ASSERTED. Composition independence
+// narrows a verdict's lookup key to its semantic identity, so evidence a caller could write by hand
+// would let any caller drop the crate from the key; a product identity a caller could write would skip
+// the canonical declaration order. Both records are sole_constructor, and the evidence mint admits only
+// its named callers. These fixtures compile against the live checkout: a foreign literal of either
+// record and a foreign call to the mint must refuse, and a lawful foreign use -- naming the types and
+// matching the standing -- must refuse nothing, so the reds are the forgery and not an import failure.
+
+data forged_evidence_literal_source: String = "module probe_ntr_forged_evidence_literal\nimport std.native_test_realization { CompositionIndependenceEvidence, CompositionStanding, CompositionIndependenceAdmitted, RustNativeRealization }\nimport std.content_hash { ContentHash }\nfn forged(h: ContentHash) -> CompositionStanding {\n  CompositionIndependenceAdmitted { evidence: CompositionIndependenceEvidence { realization: RustNativeRealization { generator: h, target_model: h, toolchain: h }, partition: h, build_configuration: h, population: [h], adversarial_controls: [] } }\n}\n"
+
+data forged_mint_call_source: String = "module probe_ntr_forged_mint_call\nimport std.native_test_realization { CompositionEvidenceAdmission, RustNativeRealization, admit_composition_independence_evidence }\nimport std.content_hash { ContentHash }\nimport std.types { NonEmptyStr }\nfn forged(h: ContentHash) -> CompositionEvidenceAdmission {\n  admit_composition_independence_evidence(realization: RustNativeRealization { generator: h, target_model: h, toolchain: h }, partition: h, build_configuration: h, population: [h], adversarial_controls: [\"glob_import\" as NonEmptyStr])\n}\n"
+
+data forged_product_literal_source: String = "module probe_ntr_forged_product_literal\nimport std.native_test_realization { RealizationProductIdentity, RustNativeRealization }\nimport std.content_hash { ContentHash }\nfn forged(h: ContentHash) -> RealizationProductIdentity {\n  RealizationProductIdentity { realization: RustNativeRealization { generator: h, target_model: h, toolchain: h }, partition: h, build_configuration: h, packaged_declarations: [h] }\n}\n"
+
+data lawful_source: String = "module probe_ntr_lawful\nimport std.native_test_realization { CompositionStanding, CompositionIndependenceUnadmitted, CompositionIndependenceAdmitted, RealizationProductIdentity }\nfn admitted(s: CompositionStanding) -> Bool {\n  match s {\n    CompositionIndependenceUnadmitted => false\n    CompositionIndependenceAdmitted { evidence: _ } => true\n  }\n}\nfn passes(p: RealizationProductIdentity) -> RealizationProductIdentity { p }\n"
+
+// -1 on the NotRunnable arm, so a harness that never ran satisfies no witness below: every assertion
+// compares against a non-negative quantity.
+fn blocking_of_class(source: String, class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn ntr_RED_a_hand_written_independence_evidence_literal_refuses() -> Bool {
+  blocking_of_class(source: forged_evidence_literal_source, class: "SoleConstructorViolation") >= 1
+}
+
+test fn ntr_RED_a_foreign_call_to_the_evidence_mint_refuses() -> Bool {
+  blocking_of_class(source: forged_mint_call_source, class: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn ntr_RED_a_hand_written_product_identity_literal_refuses() -> Bool {
+  blocking_of_class(source: forged_product_literal_source, class: "SoleConstructorViolation") >= 1
+}
+
+// The positive control: a foreign module names both sealed types and matches the standing.
+test fn ntr_naming_and_matching_the_sealed_records_from_a_foreign_module_is_admitted() -> Bool {
+  blocking_total(source: lawful_source) == 0
+}

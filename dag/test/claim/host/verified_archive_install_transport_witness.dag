@@ -1,0 +1,262 @@
+module test.claim.host.verified_archive_install_transport_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present, Absent }
+import gunbc.host.host_effect {
+  HostEffectTransport, FleetSsh, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation,
+}
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import extdeps.network.endpoint { socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+import gunbc.host.host_effect_realize {
+  RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
+  run_argv_over_host_effect_transport,
+}
+import gunbc.host.verified_archive_install {
+  ArchiveSha256, ArchiveNpmIntegrity,
+  verify_archive_digest, verified_archive_install,
+  ArchiveDigestMatches, ArchiveDigestMismatch, ArchiveDigestUnverifiable,
+  ArchiveInstalled, ArchiveFetchRefused, ArchiveDigestMismatched, ArchiveDigestUnverified, ArchiveInstallRefused,
+  staged_archive_fetch_commands, staged_archive_install_commands, publish_staged_tree_command,
+  npm_integrity_non_local_shell_reason,
+  archive_sha256_verify_command, archive_digest_from_sha256_transport,
+}
+import test.claim.host.verified_archive_install_local_shell_recorder {
+  local_shell_legs_record_text, argv_list_record, argv_record_line,
+  s3a_local_shell_legs_recorded_at_6f242e4c520,
+}
+import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_staged_archive }
+import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
+import gunbc.runner.runner_browser_toolchain { node_release_archive, runner_browser_toolchain_node }
+import gunbc.runner.runner_microvm_host_ready {
+  firecracker_fetch_commands, firecracker_install_commands, firecracker_install_root,
+}
+import extdeps.virtualization.firecracker { firecracker_release_aarch64 }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.mkdir { mkdir_parents_command }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_ssh_target: SshTarget = SshTarget {
+  address: socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["verified-archive-install-fixture" as DnsLabel] }, qualification: PartiallyQualified }), port: 22),
+  principal: "gunbc-automation" as NonEmptyStr,
+}
+
+data unexecutable_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
+fn fleet_ssh_transport() -> HostEffectTransport? {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => none
+    Present { value: ctx } => Present { value: FleetSsh { target: fixture_ssh_target, context: ctx } }
+  }
+}
+
+test fn fetch_and_publish_legs_name_the_supplied_archive_paths() -> Bool {
+  let a = qemu_toolchain_staged_archive(a: qemu_8_2_2_ubuntu_noble_arm64.archive)
+  let fetch = argv_list_record(commands: staged_archive_fetch_commands(archives_dir: "/remote/archives", a: a))
+  let install = argv_list_record(commands: staged_archive_install_commands(archives_dir: "/remote/archives", tree: "/remote/staging", a: a))
+  let publish = argv_record_line(command: publish_staged_tree_command(staging: "/remote/staging", root: "/remote/root"))
+  let verify = join(argv_words(command: archive_sha256_verify_command(archive: "/remote/archives/x" as NonEmptyStr)), " ")
+  string_contains(s: fetch, pattern: "/remote/archives")
+    && string_contains(s: install, pattern: "/remote/staging")
+    && string_contains(s: publish, pattern: "/remote/root")
+    && string_contains(s: verify, pattern: "sha256sum")
+    && string_contains(s: verify, pattern: "/remote/archives/x")
+}
+
+test fn a_transport_that_cannot_be_realized_refuses_fetch_typed() -> Bool {
+  match verified_archive_install(
+    fetch: [mkdir_parents_command(path: "/tmp/verified-archive-install-unexecutable")],
+    archive: "/tmp/verified-archive-install-unexecutable/a" as NonEmptyStr,
+    pin: ArchiveSha256 { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
+    install: [mkdir_parents_command(path: "/tmp/verified-archive-install-unexecutable-installed")],
+    transport: unexecutable_transport,
+  ) {
+    ArchiveFetchRefused { archive: _, reason: r } => r != ""
+    ArchiveInstalled => false
+    ArchiveDigestMismatched { archive: _ } => false
+    ArchiveDigestUnverified { archive: _, reason: _ } => false
+    ArchiveInstallRefused { archive: _, reason: _ } => false
+  }
+}
+
+test fn over_fleet_ssh_an_npm_pin_is_unverifiable_and_installs_nothing() -> Bool {
+  match fleet_ssh_transport() {
+    Absent => false
+    Present { value: t } =>
+      match verified_archive_install(
+        fetch: [mkdir_parents_command(path: "/tmp/verified-archive-install-fleet-npm")],
+        archive: "/tmp/verified-archive-install-fleet-npm/a" as NonEmptyStr,
+        pin: ArchiveNpmIntegrity { wire: "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==" },
+        install: [mkdir_parents_command(path: "/tmp/verified-archive-install-fleet-npm-installed")],
+        transport: t,
+      ) {
+        ArchiveDigestUnverified { archive: _, reason: r } => r == npm_integrity_non_local_shell_reason
+        ArchiveInstalled => false
+        ArchiveFetchRefused { archive: _, reason: _ } => false
+        ArchiveDigestMismatched { archive: _ } => false
+        ArchiveInstallRefused { archive: _, reason: _ } => false
+      }
+  }
+}
+
+test fn over_fleet_ssh_a_sha256_transport_mock_is_unverifiable_not_a_mismatch() -> Bool {
+  match fleet_ssh_transport() {
+    Absent => false
+    Present { value: t } =>
+      match verify_archive_digest(
+        archive: "/tmp/verified-archive-install-fleet-sha256" as NonEmptyStr,
+        pin: ArchiveSha256 { hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" },
+        transport: t,
+      ) {
+        ArchiveDigestUnverifiable { reason: r } => r != ""
+        ArchiveDigestMatches => false
+        ArchiveDigestMismatch => false
+      }
+  }
+}
+
+data empty_file_sha256: NonEmptyStr = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+fn observed_sha256_stdout(stdout: String, success: Bool) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved {
+    observed: ShellExecObserved { exit_code: if success { 0 } else { 1 }, success: success, stdout: stdout, stderr: if success { "" } else { "sha256sum failed" } },
+  }
+}
+
+test fn a_remote_sha256_line_that_matches_the_pin_is_matches() -> Bool {
+  match archive_digest_from_sha256_transport(outcome: observed_sha256_stdout(stdout: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /remote/a", success: true), expected: empty_file_sha256) {
+    ArchiveDigestMatches => true
+    ArchiveDigestMismatch => false
+    ArchiveDigestUnverifiable { reason: _ } => false
+  }
+}
+
+test fn a_remote_sha256_line_that_does_not_match_the_pin_is_mismatch() -> Bool {
+  match archive_digest_from_sha256_transport(outcome: observed_sha256_stdout(stdout: "0000000000000000000000000000000000000000000000000000000000000000  /remote/a", success: true), expected: empty_file_sha256) {
+    ArchiveDigestMismatch => true
+    ArchiveDigestMatches => false
+    ArchiveDigestUnverifiable { reason: _ } => false
+  }
+}
+
+test fn a_remote_sha256_line_without_a_digest_field_is_unverifiable_not_mismatch() -> Bool {
+  match archive_digest_from_sha256_transport(outcome: observed_sha256_stdout(stdout: "mock-ssh-portable-words", success: true), expected: empty_file_sha256) {
+    ArchiveDigestUnverifiable { reason: _ } => true
+    ArchiveDigestMatches => false
+    ArchiveDigestMismatch => false
+  }
+}
+
+test fn a_transport_refusal_is_unverifiable_not_mismatch() -> Bool {
+  match archive_digest_from_sha256_transport(outcome: RunArgvTransportRefused { reason: "no fleet session" }, expected: empty_file_sha256) {
+    ArchiveDigestUnverifiable { reason: r } => r == "no fleet session"
+    ArchiveDigestMatches => false
+    ArchiveDigestMismatch => false
+  }
+}
+
+test fn a_nonzero_sha256sum_exit_is_unverifiable_not_mismatch() -> Bool {
+  match archive_digest_from_sha256_transport(outcome: observed_sha256_stdout(stdout: "", success: false), expected: empty_file_sha256) {
+    ArchiveDigestUnverifiable { reason: r } => r == "sha256sum failed"
+    ArchiveDigestMatches => false
+    ArchiveDigestMismatch => false
+  }
+}
+
+test fn a_matching_observed_sha256sum_line_is_matches_through_the_transport_fold() -> Bool {
+  match archive_digest_from_sha256_transport(
+    outcome: observed_sha256_stdout(stdout: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /remote/a", success: true),
+    expected: empty_file_sha256,
+  ) {
+    ArchiveDigestMatches => true
+    ArchiveDigestMismatch => false
+    ArchiveDigestUnverifiable { reason: _ } => false
+  }
+}
+
+test fn local_shell_legs_are_byte_identical_to_the_recorded_base() -> Bool {
+  local_shell_legs_record_text() == s3a_local_shell_legs_recorded_at_6f242e4c520
+}
+
+test fn qemu_fetch_and_install_argv_match_the_main_standing_oracle() -> Bool {
+  let a = qemu_toolchain_staged_archive(a: qemu_8_2_2_ubuntu_noble_arm64.archive)
+  let fetch = map(staged_archive_fetch_commands(archives_dir: "/b/archives", a: a), c => join(argv_words(command: c), " "))
+  let install = map(staged_archive_install_commands(archives_dir: "/b/archives", tree: "/b/staging.X", a: a), c => join(argv_words(command: c), " "))
+  fetch == [
+    "/usr/bin/mkdir -p /b/archives/pool/main/q/qemu",
+    "curl -fsL -o /b/archives/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb https://ports.ubuntu.com/ubuntu-ports/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb",
+  ]
+    && install == [
+      "/usr/bin/mkdir -p /b/staging.X/.",
+      "dpkg-deb -x /b/archives/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb /b/staging.X/.",
+    ]
+    && argv_words(command: publish_staged_tree_command(staging: "/b/staging.X", root: "/b/root")) == ["mv", "-T", "/b/staging.X", "/b/root"]
+}
+
+test fn firecracker_fetch_and_install_programs_match_the_main_host_ready_oracle() -> Bool {
+  let root = firecracker_install_root(executor_home: "/home/x")
+  let fetch = map(firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s"), c => join(argv_words(command: c), " "))
+  let install = map(firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s"), c => join(argv_words(command: c), " "))
+  fetch == [
+    "/usr/bin/mkdir -p /home/x/s",
+    "/usr/bin/mkdir -p /home/x/.local/share/gunbc-firecracker/v1.16.1-aarch64",
+    "curl -fsL -o /home/x/s/firecracker-v1.16.1-aarch64.tgz https://github.com/firecracker-microvm/firecracker/releases/download/v1.16.1/firecracker-v1.16.1-aarch64.tgz",
+  ]
+    && install == [
+      "tar xf /home/x/s/firecracker-v1.16.1-aarch64.tgz -C /home/x/s --strip-components=0",
+      "cp /home/x/s/release-v1.16.1-aarch64/firecracker-v1.16.1-aarch64 /home/x/.local/share/gunbc-firecracker/v1.16.1-aarch64/firecracker",
+    ]
+}
+
+test fn browser_node_fetch_and_install_argv_match_the_published_node_archive() -> Bool {
+  let a = node_release_archive(n: runner_browser_toolchain_node)
+  let fetch = map(staged_archive_fetch_commands(archives_dir: "/b/archives", a: a), c => join(argv_words(command: c), " "))
+  let install = map(staged_archive_install_commands(archives_dir: "/b/archives", tree: "/b/staging.X", a: a), c => join(argv_words(command: c), " "))
+  fetch == [
+    "/usr/bin/mkdir -p /b/archives",
+    "curl -fsL -o /b/archives/node-v24.21.0-linux-arm64.tar.xz https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-arm64.tar.xz",
+  ]
+    && install == [
+      "/usr/bin/mkdir -p /b/staging.X/node",
+      "tar xf /b/archives/node-v24.21.0-linux-arm64.tar.xz -C /b/staging.X/node --strip-components=1",
+    ]
+}
+
+test fn fleet_ssh_argv_goes_through_the_host_effect_dispatcher() -> Bool {
+  match fleet_ssh_transport() {
+    Absent => false
+    Present { value: t } =>
+      match run_argv_over_host_effect_transport(command: mkdir_parents_command(path: "/tmp/verified-archive-install-dispatcher"), transport: t) {
+        RunArgvTransportRefused { reason: r } =>
+          !string_contains(s: r, pattern: "run_argv_over_host_effect_transport refuses the FleetSsh")
+        RunArgvTransportObserved { observed: _ } => true
+      }
+  }
+}
+
+test fn a_non_portable_fetch_word_refuses_over_fleet_ssh_before_any_local_leg() -> Bool {
+  match fleet_ssh_transport() {
+    Absent => false
+    Present { value: t } =>
+      match verified_archive_install(
+        fetch: [mkdir_parents_command(path: "/tmp/verified archive space")],
+        archive: "/tmp/verified-archive-space/a" as NonEmptyStr,
+        pin: ArchiveSha256 { hex: empty_file_sha256 },
+        install: [mkdir_parents_command(path: "/tmp/verified-archive-space-installed")],
+        transport: t,
+      ) {
+        ArchiveFetchRefused { archive: _, reason: r } => string_contains(s: r, pattern: "portable")
+        ArchiveInstalled => false
+        ArchiveDigestMismatched { archive: _ } => false
+        ArchiveDigestUnverified { archive: _, reason: _ } => false
+        ArchiveInstallRefused { archive: _, reason: _ } => false
+      }
+  }
+}
+

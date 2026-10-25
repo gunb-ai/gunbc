@@ -10,7 +10,7 @@ import std.algebra {
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named,
   OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable,
-  free_monoid_scalar_templates, kernel_algebra_profile
+  free_monoid_scalar_templates, kernel_algebra_profile, collection_join_shape
 }
 
 import v1.std.core { Unmarked,
@@ -356,6 +356,9 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "observed_peak_resident_bytes": BuiltinSignature { params: [], returns: int_type },
   "observed_monotonic_nanos": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: int_type },
   "observed_thread_cpu_nanos": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: int_type },
+  "observed_allocation_available": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: bool_type },
+  "observed_allocation_operations": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: int_type },
+  "observed_allocation_bytes": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: int_type },
   "string_contains": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pattern", ty: NamedTemplate { name: "String" } }], returns: bool_type },
   "length": derived_signature_and_return(names: ["xs"], method: "length"),
   "starts_with": derived_signature(names: ["s", "prefix"], method: "starts_with", returns: bool_type),
@@ -397,14 +400,10 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "compile_dag_call_form_leaf_guard": BuiltinSignature { params: [BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "target_leaves", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exact_resolved_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "evaluation_store_address_production_coverage_result") },
   "parsed_import_statements": BuiltinSignature { params: [BuiltinParam { name: "file", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "source", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "parsed_import_statements_result") },
   "observe_declared_import_closure_symbol_binding": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "entry_path", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "consumer_module", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "symbol", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "declared_import_closure_binding_result") },
-  "class_b_import_closure_gate_not_affected_skip": BuiltinSignature { params: [], returns: bool_type },
   "witness_layer_roots_compile_clean_check": BuiltinSignature { params: [], returns: bool_type },
-  "witness_layer_roots_compile_clean_emit_check": BuiltinSignature { params: [], returns: bool_type },
-  "install_or_consume_floor_compile_clean_gate_receipt": BuiltinSignature { params: [], returns: type_variable_node(id: "gate_receipt_result") },
   "record_generated_artifact_drift_gate_failure_detail": BuiltinSignature { params: [BuiltinParam { name: "detail", ty: NamedTemplate { name: "String" } }], returns: unit_type },
   "record_generated_artifact_drift_gate_clean": BuiltinSignature { params: [], returns: unit_type },
   "consume_generated_artifact_drift_gate_receipt": BuiltinSignature { params: [], returns: type_variable_node(id: "gate_receipt_result") },
-  "witness_compile_clean_cli_floor_verdicts_agree": BuiltinSignature { params: [], returns: bool_type },
   "test_migration_debt_module_names": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_debt_module_name_elem") },
   "test_migration_legacy_behavior_ids": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_legacy_behavior_id_elem") },
   "test_migration_witness_behavior_ids": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_witness_behavior_id_elem") },
@@ -414,6 +413,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "parse_stage0_cargo_manifest_bins": BuiltinSignature { params: [BuiltinParam { name: "manifest", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "cargo_manifest_bin_parse") },
   "parse_roadmap_acceptance_event_history_jsonl": BuiltinSignature { params: [BuiltinParam { name: "text", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "roadmap_acceptance_event_history_parse") },
   "project_roadmap_acceptance_event_history_from_authority_text_host": BuiltinSignature { params: [BuiltinParam { name: "authority_text", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "roadmap_acceptance_history_projection") },
+  "witness_deferral_freeze_population_census": BuiltinSignature { params: [], returns: string_type },
   "commit_witness_claim_roster_unresolvable_count": BuiltinSignature { params: [], returns: int_type },
   "commit_witness_claim_pair_resolvable": BuiltinSignature { params: [BuiltinParam { name: "entry", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "function", ty: NamedTemplate { name: "String" } }], returns: bool_type },
   "complexity_linearity_syntactic_finding_count": BuiltinSignature { params: [], returns: int_type },
@@ -527,6 +527,45 @@ fn builtin_host_text_param_names(name: String) -> List<String> {
           _ => false
         }
       ) |> map(p => p.name)
+  }
+}
+
+// THE COLLECTION JOIN RENDERS EACH ELEMENT OF ITS RECEIVER AS HOST TEXT. std.algebra
+// collection_join_shape types the receiver as ReceiverSelf, the whole collection, so the element
+// position is not a formal of its own; its host realization still writes every element into the
+// String it returns. Keyed on the template declaration, never on the spelling `join`, which
+// std.algebra also uses for the boolean-algebra and scalar free-monoid joins.
+fn template_renders_receiver_elements_as_host_text(template: AlgebraFieldTemplate) -> Bool {
+  template == collection_join_shape()
+}
+
+// THE HOST-TEXT FORMALS BOUND THROUGH ReceiverSelf. Self is unknown while any ReceiverSelf argument
+// is unestablished (not resolved, or a type variable, as a List concat through a fold accumulator
+// whose type is unsolved at the check), and those formals are then unjudged; otherwise every one is
+// judged, so two records at concat refuse.
+fn builtin_receiver_self_host_text_param_names(name: String) -> List<String> {
+  match builtin_signature(name: name) {
+    Absent => []
+    Present { value: sig } =>
+      if free_monoid_scalar_templates() |> any(t => t.name == name) {
+        sig.params |> filter(p => match p.ty { ReceiverSelf => true  _ => false }) |> map(p => p.name)
+      } else { [] }
+  }
+}
+
+// HOST-DISPLAY RENDERING POSITIONS WHOSE NOMINAL AND OPTIONAL JUDGMENT IS DEFERRED, a declared
+// residual of gunbc.recurring_failure_mode
+// a_nominal_value_reaches_a_string_position_and_renders_host_debug_text: to_string's `value` renders
+// any value through the host Display, and the records, coproducts and Bools that reach it today
+// include persisted receipt bytes and identity preimages, which the to_string program dispositions.
+// The code-point-sequence refusal at these positions is not deferred. The row is deleted when that
+// census leaves no non-text to_string site.
+data host_display_deferred_formals: Map<String, List<String>> = { "to_string": ["value"] }
+
+fn builtin_host_display_deferred_param_names(name: String) -> List<String> {
+  match map_get(host_display_deferred_formals, name) {
+    Present { value: names } => names
+    Absent => []
   }
 }
 

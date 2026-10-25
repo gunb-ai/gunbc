@@ -1,0 +1,49 @@
+module extdeps.connector.amphenol_g97v22332hr
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.amphenol { amphenol }
+import std.measure { micrometer }
+import extdeps.electronic_component.types { ElectronicComponentRow, ConnectorSpec, ConnectorSpecification, VerticalMount, SurfaceMountTermination, MatesCardOfThickness }
+
+// THE CITATION IS A DISTRIBUTOR'S, AND THAT IS A STATED DEPARTURE. Amphenol's own drawing for the
+// G97V series (amphenol-cs.com, g97vxxxxxxhr.pdf) answered 403 to the fetch made while authoring this
+// module, so the row is read from DigiKey's listing for the part, read 2026-10-15: "CONN EDGE DUAL
+// FMALE 74POS 0.024", series Mini Cool Edge IO, 0.60 mm pitch, for a 1.57 mm card. The vendor's
+// drawing is what this row owes; until it is read, the mating standard is not carried.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "azcus.digikey.com/en/products/detail/amphenol-icc-commercial-products/G97V22332HR/16016367"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.connector.amphenol_g97v22332hr",
+      decl_name: "g97v22332hr",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data g97v22332hr: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: amphenol,
+  ordering_code: "G97V22332HR",
+  package: "CONN EDGE DUAL FMALE 74POS 0.024",
+  top_marking: "G97V22332HR",
+  specification: ConnectorSpec { connector: ConnectorSpecification {
+    series: "Mini Cool Edge IO",
+    positions: 74,
+    rows: 2,
+    pitch: micrometer(count: 600),
+    orientation: VerticalMount,
+    termination: SurfaceMountTermination,
+    mating: MatesCardOfThickness { card_thickness: micrometer(count: 1570) },
+  } },
+  vendor_application_statements: [],
+}

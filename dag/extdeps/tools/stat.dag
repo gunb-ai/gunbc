@@ -87,6 +87,16 @@ fn stat_file_type_command(path: String) -> ArgvCommand {
   argv_command(program: stat_program(), arguments: ["-c", "%F", "--", path])
 }
 
+// THE DEFAULT REPORT, FOR A CALLER WHOSE ARGV MUST CROSS A WALL THAT REFUSES `%`. With no --format,
+// GNU stat prints its multi-line default report for the operand and exits 0, or names the failure on
+// stderr and exits nonzero -- the same two outcomes `-c %F` has, with no format word. The fleet SSH
+// edge (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed) admits no `%`, so a
+// `-c` probe never executes there; this one does. Its stdout is a human report, so a consumer may
+// read only that the metadata read succeeded and what its first line says, never parse fields.
+fn stat_default_report_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_program(), arguments: ["--", path])
+}
+
 fn stat_inode_command(path: String) -> ArgvCommand {
   argv_command(program: stat_program(), arguments: ["-c", "%i", "--", path])
 }

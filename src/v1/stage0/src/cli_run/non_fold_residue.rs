@@ -83,15 +83,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// Whether a row's `PathSubject.path` file prefix must equal the file that hosts the decl.
-/// Production HEAD discovery Requires it. Skip is only for a floor base tree written before
-/// this policy existed (the pre-cut central list on origin/main). Parser tests Require.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NfrHomeCheck {
-    Require,
-    Skip,
-}
-
 /// One co-located row as the identity-join prints it: path::fn, reason ident, dissolution ident.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct NfrFrontierTriple {
@@ -114,13 +105,15 @@ fn nfr_observing_layer_home_exception(host: &str) -> bool {
     host == NFR_OBSERVING_LAYER_HOST
 }
 
+type NfrParsedModule = (
+    std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
+    std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+);
+
 fn nfr_parse_module_from_source(
     module_rel_path: &str,
     content: &str,
-) -> (
-    std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
-    std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
-) {
+) -> Result<NfrParsedModule, String> {
     let filename = module_rel_path.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(
         content.to_string(),
@@ -134,12 +127,12 @@ fn nfr_parse_module_from_source(
     let source_indices = std::rc::Rc::new(source_indices);
     let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
-        panic!(
+        return Err(format!(
             "nfr frontier reader: parse error in {module_rel_path}: {}",
             crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-        );
+        ));
     }
-    (result, source_indices)
+    Ok((result, source_indices))
 }
 
 fn nfr_join_site_key(module_rel_path: &str, authored_path: &str) -> String {
@@ -155,23 +148,23 @@ fn nfr_expr_ident(
     source_indices: std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
     field: &str,
     module_rel_path: &str,
-) -> String {
+) -> Result<String, String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
     match value.expr_data.as_ref() {
         ExprData::ExprVar { .. } | ExprData::ExprCall { .. } => {
-            crate::v1_std_core::authored_name_at(source_indices, value)
+            Ok(crate::v1_std_core::authored_name_at(source_indices, value))
         }
         ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-            LiteralValue::LitStr { value: s } => s.clone(),
-            _ => panic!(
+            LiteralValue::LitStr { value: s } => Ok(s.clone()),
+            _ => Err(format!(
                 "nfr frontier reader: `{field}` in a `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` row of \
                  {module_rel_path} is not an ident"
-            ),
+            )),
         },
-        _ => panic!(
+        _ => Err(format!(
             "nfr frontier reader: `{field}` in a `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` row of \
              {module_rel_path} is not an ident"
-        ),
+        )),
     }
 }
 
@@ -181,9 +174,11 @@ pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
 
 /// Project the path site keys out of a `non_fold_residue_frontier` list of DIRECT record
 /// literals via the real front-end. Per-row reasons and dissolution triggers are `.dag`-side
-/// facts the host does not consume for the walk. Fail-closed: a parse error, a missing data
-/// def, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
-/// an empty list, or (when Required) a row whose path prefix is not this file is a loud panic.
+/// facts the host does not consume for the walk. Fail-closed: a parse error, a missing value
+/// body, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
+/// an empty list, or (when Required) a row whose path prefix is not this file is a typed
+/// `Err` naming the file. A module with no decl is zero rows (`Ok([])`). An empty list decl
+/// is dead data (DESIGN §4c): refuse it and say to delete the decl.
 // 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
 // `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure
@@ -192,37 +187,37 @@ pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
 pub(crate) fn non_fold_residue_triples_from_module_source_with(
     module_rel_path: &str,
     content: &str,
-    home: NfrHomeCheck,
-) -> Vec<NfrFrontierTriple> {
+) -> Result<Vec<NfrFrontierTriple>, String> {
     if !nfr_content_declares_frontier(content) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    non_fold_residue_units_from_parse_source(module_rel_path, content, home)
+    non_fold_residue_units_from_parse_source(module_rel_path, content)
 }
 
+#[cfg(test)]
 pub(crate) fn non_fold_residue_units_from_module_source_with(
     module_rel_path: &str,
     content: &str,
-    home: NfrHomeCheck,
-) -> Vec<String> {
-    non_fold_residue_triples_from_module_source_with(module_rel_path, content, home)
-        .into_iter()
-        .map(|t| t.path)
-        .collect()
+) -> Result<Vec<String>, String> {
+    Ok(
+        non_fold_residue_triples_from_module_source_with(module_rel_path, content)?
+            .into_iter()
+            .map(|t| t.path)
+            .collect(),
+    )
 }
 
 fn non_fold_residue_units_from_parse_source(
     module_rel_path: &str,
     content: &str,
-    home: NfrHomeCheck,
-) -> Vec<NfrFrontierTriple> {
+) -> Result<Vec<NfrFrontierTriple>, String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
-    let (result, source_indices) = nfr_parse_module_from_source(module_rel_path, content);
+    let (result, source_indices) = nfr_parse_module_from_source(module_rel_path, content)?;
     let module = result
         .module
         .as_ref()
-        .unwrap_or_else(|| panic!("nfr frontier reader: {module_rel_path} parsed to no module"));
+        .ok_or_else(|| format!("nfr frontier reader: {module_rel_path} parsed to no module"))?;
     let data_name = NON_FOLD_RESIDUE_FRONTIER_DATA_NAME;
     let mut found = None;
     for item in module.children.iter() {
@@ -230,37 +225,37 @@ fn non_fold_residue_units_from_parse_source(
             continue;
         }
         if item.name.contains(data_name) && item.name != data_name {
-            panic!(
+            return Err(format!(
                 "nfr frontier reader: near-miss data decl `{}` in {module_rel_path} \
                  (only `{data_name}` hosts rows; a similarly spelled data name is refused, \
                  not skipped)",
                 item.name
-            );
+            ));
         }
         if item.name == data_name {
             found = Some(item);
         }
     }
     let Some(item) = found else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    let body = item.body.as_ref().unwrap_or_else(|| {
-        panic!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
-    });
+    let body = item.body.as_ref().ok_or_else(|| {
+        format!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
+    })?;
     if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
-        panic!(
+        return Err(format!(
             "nfr frontier reader: `data {data_name}` in {module_rel_path} is not a list \
                  literal"
-        );
+        ));
     }
     let mut units = Vec::new();
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for el in body.children.iter() {
         if !matches!(el.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
-            panic!(
+            return Err(format!(
                 "nfr frontier reader: an element of `{data_name}` in {module_rel_path} is \
                      not a record literal (refusing — rows must stay directly host-readable)"
-            );
+            ));
         }
         let mut path: Option<String> = None;
         let mut reason: Option<String> = None;
@@ -275,7 +270,7 @@ fn non_fold_residue_units_from_parse_source(
                     source_indices.clone(),
                     "reason",
                     module_rel_path,
-                ));
+                )?);
                 continue;
             }
             if fname == "dissolution" {
@@ -284,7 +279,7 @@ fn non_fold_residue_units_from_parse_source(
                     source_indices.clone(),
                     "dissolution",
                     module_rel_path,
-                ));
+                )?);
                 continue;
             }
             if fname != "subject" {
@@ -295,10 +290,10 @@ fn non_fold_residue_units_from_parse_source(
                     let variant_name =
                         crate::v1_std_core::authored_name_at(source_indices.clone(), value.clone());
                     if variant_name != "PathSubject" {
-                        panic!(
+                        return Err(format!(
                             "nfr frontier reader: `subject` in a `{data_name}` row of \
                                  {module_rel_path} is not PathSubject {{ ... }}"
-                        );
+                        ));
                     }
                     let mut row_path: Option<String> = None;
                     for subfield in value.children.iter() {
@@ -314,73 +309,79 @@ fn non_fold_residue_units_from_parse_source(
                         match path_value.expr_data.as_ref() {
                             ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
                                 LiteralValue::LitStr { value: s } => row_path = Some(s.clone()),
-                                _ => panic!(
-                                    "nfr frontier reader: `path` in a `{data_name}` row \
+                                _ => {
+                                    return Err(format!(
+                                        "nfr frontier reader: `path` in a `{data_name}` row \
                                          of {module_rel_path} is not a string literal"
-                                ),
+                                    ))
+                                }
                             },
-                            _ => panic!(
-                                "nfr frontier reader: `path` in a `{data_name}` row of \
+                            _ => {
+                                return Err(format!(
+                                    "nfr frontier reader: `path` in a `{data_name}` row of \
                                      {module_rel_path} is not a literal"
-                            ),
+                                ))
+                            }
                         }
                     }
-                    path = Some(row_path.unwrap_or_else(|| {
-                        panic!(
+                    path = Some(row_path.ok_or_else(|| {
+                        format!(
                             "nfr frontier reader: `subject` in a `{data_name}` row of \
                                  {module_rel_path} is `PathSubject` but carries no `path` field"
                         )
-                    }));
+                    })?);
                 }
-                _ => panic!(
-                    "nfr frontier reader: `subject` in a `{data_name}` row of \
+                _ => {
+                    return Err(format!(
+                        "nfr frontier reader: `subject` in a `{data_name}` row of \
                          {module_rel_path} is not a record literal"
-                ),
+                    ))
+                }
             }
         }
-        let authored_path = path.unwrap_or_else(|| {
-            panic!(
+        let authored_path = path.ok_or_else(|| {
+            format!(
                 "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
                      `subject` field"
             )
-        });
-        if home == NfrHomeCheck::Require && nfr_host_is_forbidden_upstream(module_rel_path) {
-            panic!(
+        })?;
+        if nfr_host_is_forbidden_upstream(module_rel_path) {
+            return Err(format!(
                 "nfr frontier reader: `{data_name}` in {module_rel_path} stores repository \
                  coverage state in an upstream module; the observing layer is \
                  {NFR_OBSERVING_LAYER_HOST}"
-            );
+            ));
         }
-        if home == NfrHomeCheck::Require && authored_path.contains("::") {
+        if authored_path.contains("::") {
             let prefix = authored_path.split("::").next().unwrap_or("");
             if prefix != module_rel_path && !nfr_observing_layer_home_exception(module_rel_path) {
-                panic!(
+                return Err(format!(
                         "nfr frontier reader: row path {authored_path:?} in {module_rel_path} is not at \
                          home (subject file prefix {prefix:?} must equal the hosting module \
                          path {module_rel_path:?})"
-                    );
+                    ));
             }
         }
         let path = nfr_join_site_key(module_rel_path, &authored_path);
         if !seen.insert(path.clone()) {
-            panic!(
+            return Err(format!(
                 "nfr frontier reader: duplicate path {path:?} in `{data_name}` of \
                      {module_rel_path} (the const this replaced tolerated duplicates; the \
                      typed roster refuses them)"
-            );
+            ));
         }
-        let reason = reason.unwrap_or_else(|| {
-            panic!(
+        let reason = reason.ok_or_else(|| {
+            format!(
                 "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
                      `reason` ident"
             )
-        });
-        let dissolution = dissolution.unwrap_or_else(|| {
-            panic!(
+        })?;
+        let dissolution = dissolution.ok_or_else(|| {
+            format!(
                 "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
                      `dissolution` ident"
             )
-        });
+        })?;
         units.push(NfrFrontierTriple {
             path,
             reason,
@@ -388,12 +389,15 @@ fn non_fold_residue_units_from_parse_source(
         });
     }
     if units.is_empty() {
-        panic!("nfr frontier reader: `{data_name}` in {module_rel_path} is empty (fail-closed)");
+        return Err(format!(
+            "nfr frontier reader: `data {data_name}` in {module_rel_path} is empty; delete the decl \
+             (a module with no decl already contributes zero rows)"
+        ));
     }
-    return units;
+    Ok(units)
 }
 
-fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
+fn nfr_workspace_carrier_files(root: &Path) -> Result<Vec<(String, String)>, String> {
     let mut acquired: Vec<crate::cli_run::derived_row_roster::AcquiredDag> = Vec::new();
     collect_dag_files(&root.join("dag"), &mut acquired);
     collect_dag_files(&root.join("src/v2"), &mut acquired);
@@ -402,12 +406,12 @@ fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
         if item.is_derived() {
             continue;
         }
-        let content = item.read().unwrap_or_else(|e| {
-            panic!(
+        let content = item.read().map_err(|e| {
+            format!(
                 "nfr frontier reader: failed to read {}: {e}",
                 item.path().display()
             )
-        });
+        })?;
         let rel = item
             .path()
             .strip_prefix(root)
@@ -419,90 +423,72 @@ fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
         }
         files.push((rel, content));
     }
-    files
+    Ok(files)
 }
 
-fn nfr_collect_units_from_files(files: &[(String, String)], home: NfrHomeCheck) -> Vec<String> {
+pub(crate) fn nfr_identity_join_from_files(
+    files: &[(String, String)],
+) -> Result<Vec<NfrFrontierTriple>, String> {
     let mut all = Vec::new();
     let mut seen: BTreeSet<String> = BTreeSet::new();
     for (rel, content) in files {
         if !nfr_content_declares_frontier(content) {
             continue;
         }
-        let triples = non_fold_residue_triples_from_module_source_with(rel, content, home);
-        for triple in triples {
+        for triple in non_fold_residue_triples_from_module_source_with(rel, content)? {
             if !seen.insert(triple.path.clone()) {
-                panic!(
+                return Err(format!(
                     "nfr frontier reader: duplicate path {:?} across co-located \
                      `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` lists (first collision involving \
                      {rel}; {})",
                     triple.path,
                     nfr_identity_join_line(&triple)
-                );
+                ));
             }
-            all.push(triple.path);
+            all.push(triple);
         }
     }
-    all
+    if all.is_empty() {
+        return Err(format!(
+            "nfr frontier reader: no `data {NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` rows in the \
+             corpus (fail-closed)"
+        ));
+    }
+    Ok(all)
 }
 
-pub(crate) fn non_fold_residue_identity_join_triples() -> &'static [NfrFrontierTriple] {
-    static TRIPLES: std::sync::OnceLock<Vec<NfrFrontierTriple>> = std::sync::OnceLock::new();
-    TRIPLES.get_or_init(|| {
-        let root = process_workspace_root();
-        let files = nfr_workspace_carrier_files(&root);
-        let mut all = Vec::new();
-        let mut seen: BTreeSet<String> = BTreeSet::new();
-        for (rel, content) in &files {
-            if !nfr_content_declares_frontier(content) {
-                continue;
-            }
-            for triple in non_fold_residue_triples_from_module_source_with(
-                rel,
-                content,
-                NfrHomeCheck::Require,
-            ) {
-                if !seen.insert(triple.path.clone()) {
-                    panic!(
-                        "nfr frontier reader: duplicate path {:?} across co-located \
-                         `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` lists (first collision involving \
-                         {rel}; {})",
-                        triple.path,
-                        nfr_identity_join_line(&triple)
-                    );
-                }
-                all.push(triple);
-            }
-        }
-        if all.is_empty() {
-            panic!(
-                "nfr frontier reader: no `data {NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` rows in the \
-                 corpus (fail-closed)"
-            );
-        }
-        all
-    })
+pub(crate) fn non_fold_residue_identity_join_triples(
+) -> Result<&'static [NfrFrontierTriple], String> {
+    static TRIPLES: std::sync::OnceLock<Result<Vec<NfrFrontierTriple>, String>> =
+        std::sync::OnceLock::new();
+    match TRIPLES.get_or_init(|| {
+        nfr_workspace_carrier_files(&process_workspace_root())
+            .and_then(|files| nfr_identity_join_from_files(&files))
+    }) {
+        Ok(v) => Ok(v.as_slice()),
+        Err(e) => Err(e.clone()),
+    }
 }
 
-pub(crate) fn non_fold_residue_roster_entries() -> &'static [String] {
-    static ENTRIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    ENTRIES.get_or_init(|| {
-        non_fold_residue_identity_join_triples()
+pub(crate) fn non_fold_residue_roster_entries() -> Result<&'static [String], String> {
+    static ENTRIES: std::sync::OnceLock<Result<Vec<String>, String>> = std::sync::OnceLock::new();
+    match ENTRIES.get_or_init(|| {
+        Ok(non_fold_residue_identity_join_triples()?
             .iter()
             .map(|t| t.path.clone())
-            .collect()
-    })
+            .collect())
+    }) {
+        Ok(v) => Ok(v.as_slice()),
+        Err(e) => Err(e.clone()),
+    }
 }
 
-pub(crate) fn non_fold_residue_roster_set() -> &'static std::collections::BTreeSet<&'static str> {
-    static SET: std::sync::OnceLock<std::collections::BTreeSet<&'static str>> =
-        std::sync::OnceLock::new();
-    SET.get_or_init(|| {
-        non_fold_residue_roster_entries()
-            .iter()
-            .map(|s| s.as_str())
-            .collect()
-    })
+pub(crate) fn non_fold_residue_roster_set() -> Result<&'static BTreeSet<String>, String> {
+    static SET: std::sync::OnceLock<Result<BTreeSet<String>, String>> = std::sync::OnceLock::new();
+    match SET.get_or_init(|| Ok(non_fold_residue_roster_entries()?.iter().cloned().collect())) {
+        Ok(s) => Ok(s),
+        Err(e) => Err(e.clone()),
+    }
 }
 
 pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collections::BTreeSet<String>
@@ -510,859 +496,6 @@ pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collectio
     nfr_closed_coproduct_name_set()
 }
 
-pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
-    non_fold_residue_roster_set().contains(site)
-}
-
-// ---------------------------------------------------------------------------
-// TYPED fallback-arm walk: the non-fold-residue population keyed on the scrutinee's INFERRED type.
-//
-// Closedness is read from the checker's EXISTING result, never re-derived from syntax: every typed
-// `match` keeps its scrutinee's inferred type (`InferredNode::Resolved`), and
-// `v1.compiler.infer_patterns` `constructor_roster_for` is the classification
-// `check_match_exhaustiveness` itself consults, over the module's own `type_env`. So a local
-// binding, a field projection or a call is classified exactly like a parameter -- the population
-// the deleted parameter-keyed text scan could not see by construction. This walk is the one site
-// authority: the floor runs it per diff, and the whole-corpus census below derives the roster.
-//
-// The required floor runs it DIFF-SCOPED over the graph its strict preparation already typed
-// (`non_fold_residue_diff_verdict`): no second compile. What that scope cannot see is declared,
-// not implied -- gunbc.recurring_failure_mode non_fold_residue_diff_scope_misses_an_untouched_flip.
-// v1 standing (`gunbc.v1.v1_maintenance_standing` v1_seed_standing): admitted under the purpose test,
-// it adds no analysis to the frozen 04_* stages and only reads their output. It dissolves into
-// v2.lens.fallback_arm_census when v2.compiler.infer types coproduct match scrutinees.
-// ---------------------------------------------------------------------------
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// Closed-total verdict of a typed scrutinee. `Undetermined` is its own arm (a scrutinee whose
-/// inferred type is not a resolved node), counted by the caller, never folded into `Open`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TypedScrutineeClosedness {
-    Closed,
-    Open,
-    Undetermined,
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-pub(crate) fn typed_scrutinee_closedness(
-    scrutinee: &Rc<Node>,
-    env: &Rc<TypeEnv>,
-) -> TypedScrutineeClosedness {
-    match scrutinee.inferred.as_deref() {
-        Some(InferredNode::Resolved { node }) => {
-            match crate::v1_compiler_infer_patterns::constructor_roster_for(
-                node.clone(),
-                env.clone(),
-            )
-            .as_ref()
-            {
-                crate::v1_compiler_infer_patterns::ConstructorRoster::ConstructorsClosed {
-                    ..
-                } => TypedScrutineeClosedness::Closed,
-                crate::v1_compiler_infer_patterns::ConstructorRoster::ConstructorsOpen => {
-                    TypedScrutineeClosedness::Open
-                }
-            }
-        }
-        _ => TypedScrutineeClosedness::Undetermined,
-    }
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// Every wildcard arm in a typed graph, one fact per arm, keyed `rel::decl#armN`.
-#[derive(Debug, Default)]
-pub(crate) struct TypedFallbackArmWalk {
-    pub facts: Vec<FallbackArmCensusFactRaw>,
-    /// `rel::decl` sites whose wildcard arm's scrutinee type was not a resolved node.
-    pub undetermined_sites: Vec<String>,
-    /// Repo-relative paths of every non-test module the walk covered.
-    pub covered_paths: BTreeSet<String>,
-    /// Module paths of every non-test module the walk covered.
-    pub covered_modules: BTreeSet<String>,
-    /// Repo-relative path -> module path, for every covered module.
-    pub module_of_path: BTreeMap<String, String>,
-}
-
-impl TypedFallbackArmWalk {
-    #[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-    /// The non-fold-residue population: `rel::decl` of every wildcard over a closed coproduct.
-    pub(crate) fn non_fold_residue_sites(&self) -> BTreeSet<String> {
-        self.facts
-            .iter()
-            .filter(|f| f.closed_coproduct_scrutinee)
-            .map(|f| format!("{}::{}", f.rel_path, f.fn_name))
-            .collect()
-    }
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// Walk every typed module of `graph`, or only those whose module path is in `module_filter`.
-pub(crate) fn typed_fallback_arm_walk(
-    graph: &ResolvedGraph,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_filter: Option<&BTreeSet<String>>,
-) -> TypedFallbackArmWalk {
-    let mut walk = TypedFallbackArmWalk::default();
-    for tm in graph.modules.iter() {
-        let module_path = authored_name_at(si.clone(), tm.module.clone());
-        if module_filter.is_some_and(|keep| !keep.contains(&module_path)) {
-            continue;
-        }
-        let rel = rel_path_for_layer_import(Path::new(&tm.module.span.file));
-        walk.covered_paths.insert(rel.clone());
-        walk.module_of_path.insert(rel.clone(), module_path.clone());
-        walk.covered_modules.insert(module_path);
-        for item in tm.items.iter() {
-            let Some(body) = item.body.as_ref() else {
-                continue;
-            };
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            typed_collect_wildcard_arms(body, si, &tm.type_env, &name, &rel, &mut walk);
-        }
-    }
-    walk.facts.sort();
-    walk.undetermined_sites.sort();
-    walk.undetermined_sites.dedup();
-    walk
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-fn typed_collect_wildcard_arms(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: &Rc<TypeEnv>,
-    decl: &str,
-    rel: &str,
-    walk: &mut TypedFallbackArmWalk,
-) {
-    // An explicit worklist, not native recursion: a typed body's depth is corpus-shaped, and the
-    // floor runs this walk on the main thread (gunbc.recurring_failure_mode class of #10610).
-    // Visit order is immaterial: the caller sorts `facts` and `undetermined_sites`.
-    let mut pending: Vec<&Rc<Node>> = vec![node];
-    while let Some(node) = pending.pop() {
-        if let ExprData::ExprMatch = node.expr_data.as_ref() {
-            let arms = match_arm_nodes(node.clone());
-            if arms.iter().any(cla_is_wildcard_arm) {
-                let closedness = typed_scrutinee_closedness(&match_scrutinee(node.clone()), env);
-                if closedness == TypedScrutineeClosedness::Undetermined {
-                    walk.undetermined_sites.push(format!("{rel}::{decl}"));
-                }
-                let closed = closedness == TypedScrutineeClosedness::Closed;
-                for (arm_idx, arm) in arms.iter().enumerate() {
-                    if !cla_is_wildcard_arm(arm) {
-                        continue;
-                    }
-                    // DeclaredInterim needs a typed arm-to-FrontierRow join the host does not have;
-                    // it stays false here exactly as the parse-level fac walk leaves it.
-                    let class = fac_classify_arm(&arm_body(arm.clone()), si, closed, false);
-                    walk.facts.push(FallbackArmCensusFactRaw {
-                        site: format!("{rel}::{decl}#arm{arm_idx}"),
-                        fn_name: decl.to_string(),
-                        rel_path: rel.to_string(),
-                        class: class.to_string(),
-                        owning_lane: fac_owning_lane(rel).to_string(),
-                        closed_coproduct_scrutinee: closed,
-                    });
-                }
-            }
-        }
-        pending.extend(node.children.iter());
-    }
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// (unrostered live sites, stale roster rows) over one typed walk, against the live roster.
-pub(crate) fn non_fold_residue_roster_diff(
-    walk: &TypedFallbackArmWalk,
-) -> (Vec<String>, Vec<String>) {
-    let root = process_workspace_root();
-    non_fold_residue_roster_diff_with(walk, non_fold_residue_roster_entries(), &|path: &str| {
-        root.join(path).is_file()
-    })
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// The pure core. A roster row is STALE when its site's module was typed by this walk and no
-/// longer carries the site, OR when its subject file does not exist at all -- a deleted module
-/// never enters `covered_paths`, so without the existence arm its row would outlive it silently.
-pub(crate) fn non_fold_residue_roster_diff_with(
-    walk: &TypedFallbackArmWalk,
-    roster_rows: &[String],
-    path_exists: &dyn Fn(&str) -> bool,
-) -> (Vec<String>, Vec<String>) {
-    let live = walk.non_fold_residue_sites();
-    // A ROSTERED UNDETERMINED SITE IS NOT STALE. The diff verdict refuses an undetermined
-    // scrutinee unless a row names it (`undetermined_unrostered`), so such a row is one the walk
-    // itself demands; judging it stale because it is not a closed-coproduct site made both
-    // dispositions refuse, and any change touching the module could never pass.
-    let undetermined: BTreeSet<&str> = walk.undetermined_sites.iter().map(|s| s.as_str()).collect();
-    let rostered: BTreeSet<&str> = roster_rows.iter().map(|r| r.as_str()).collect();
-    let unrostered = live
-        .iter()
-        .filter(|s| !rostered.contains(s.as_str()))
-        .cloned()
-        .collect();
-    let stale = roster_rows
-        .iter()
-        .filter(|e| {
-            let path = e.split("::").next().unwrap_or("");
-            !path_exists(path)
-                || (walk.covered_paths.contains(path)
-                    && !live.contains(e.as_str())
-                    && !undetermined.contains(e.as_str()))
-        })
-        .cloned()
-        .collect();
-    (unrostered, stale)
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// Subject paths of every roster row the diff ADDED or DELETED (base vs head). A row-only edit
-/// touches the roster module and not the subject, so without these the typed scope never reaches
-/// the site the row claims about.
-pub(crate) fn non_fold_residue_changed_row_paths(
-    base_rows: &[String],
-    head_rows: &[String],
-) -> BTreeSet<String> {
-    let base: BTreeSet<&String> = base_rows.iter().collect();
-    let head: BTreeSet<&String> = head_rows.iter().collect();
-    base.symmetric_difference(&head)
-        .map(|row| row.split("::").next().unwrap_or("").to_string())
-        .collect()
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// A changed roster row's subject, by its EXACT path, with a typed disposition. Nothing is
-/// dropped: a path that exists but cannot be read or declares no module refuses, and a readable
-/// module is seeded AND must then appear by that same path among the walk's covered paths.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum NonFoldResidueRowSubject {
-    /// Absent at head: the row is judged by the existence arm of the roster diff (stale).
-    Missing {
-        path: String,
-    },
-    Unreadable {
-        path: String,
-        detail: String,
-    },
-    NoModuleDeclaration {
-        path: String,
-    },
-    Module {
-        path: String,
-        module: String,
-    },
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-pub(crate) fn non_fold_residue_classify_row_subject(
-    path: &str,
-    exists: bool,
-    read: Result<String, String>,
-) -> NonFoldResidueRowSubject {
-    if !exists {
-        return NonFoldResidueRowSubject::Missing {
-            path: path.to_string(),
-        };
-    }
-    match read {
-        Err(detail) => NonFoldResidueRowSubject::Unreadable {
-            path: path.to_string(),
-            detail,
-        },
-        Ok(content) => match extract_module_path(&content) {
-            Some(module) => NonFoldResidueRowSubject::Module {
-                path: path.to_string(),
-                module,
-            },
-            None => NonFoldResidueRowSubject::NoModuleDeclaration {
-                path: path.to_string(),
-            },
-        },
-    }
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-fn nfr_units_from_optional_source(
-    rel: &str,
-    content: Option<&str>,
-    home: NfrHomeCheck,
-) -> Vec<String> {
-    match content {
-        Some(c) if nfr_content_declares_frontier(c) => {
-            non_fold_residue_units_from_module_source_with(rel, c, home)
-        }
-        _ => Vec::new(),
-    }
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// The subjects of every roster row the diff added or deleted, read at the floor's resolved diff
-/// base and classified by exact path. Compares the union of `non_fold_residue_frontier` lists in
-/// changed `.dag` files (plus the pre-cut central vocabulary file, so this PR's own move is an
-/// identity). Refuses when a base file that must be read cannot be.
-pub(crate) fn non_fold_residue_changed_row_subjects(
-    base_tree: &crate::cli_run::required_floor_runner::FloorBaseTree,
-    diff_paths: &[String],
-) -> Result<Vec<NonFoldResidueRowSubject>, String> {
-    let root = process_workspace_root();
-    let mut candidates: BTreeSet<String> = diff_paths
-        .iter()
-        .filter(|p| p.ends_with(".dag"))
-        .cloned()
-        .collect();
-    candidates.insert(NON_FOLD_RESIDUE_AUTHORITY_REL.to_string());
-
-    let mut base_files = Vec::new();
-    let mut head_files = Vec::new();
-    for rel in &candidates {
-        let base_content =
-            crate::cli_run::required_floor_runner::floor_base_file_read(base_tree, rel)?;
-        let head_path = root.join(rel);
-        let head_content = if head_path.is_file() {
-            Some(std::fs::read_to_string(&head_path).map_err(|e| e.to_string())?)
-        } else {
-            None
-        };
-        if let Some(c) = base_content {
-            base_files.push((rel.clone(), c));
-        }
-        if let Some(c) = head_content {
-            head_files.push((rel.clone(), c));
-        }
-    }
-
-    let base_home = NfrHomeCheck::Skip;
-    let head_home = NfrHomeCheck::Require;
-    let mut base_rows = Vec::new();
-    let mut seen_base: BTreeSet<String> = BTreeSet::new();
-    for (rel, content) in &base_files {
-        let home = if rel.as_str() == NON_FOLD_RESIDUE_AUTHORITY_REL {
-            base_home
-        } else {
-            NfrHomeCheck::Skip
-        };
-        for unit in nfr_units_from_optional_source(rel, Some(content), home) {
-            if seen_base.insert(unit.clone()) {
-                base_rows.push(unit);
-            }
-        }
-    }
-    let head_rows = nfr_collect_units_from_files(&head_files, head_home);
-
-    Ok(non_fold_residue_changed_row_paths(&base_rows, &head_rows)
-        .into_iter()
-        .map(|path| {
-            let full = root.join(&path);
-            let read = std::fs::read_to_string(&full).map_err(|e| e.to_string());
-            non_fold_residue_classify_row_subject(&path, full.exists(), read)
-        })
-        .collect())
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// The seeds a subject set contributes: the module of every readable, module-declaring subject.
-pub(crate) fn non_fold_residue_row_subject_seeds(
-    subjects: &[NonFoldResidueRowSubject],
-) -> BTreeSet<String> {
-    subjects
-        .iter()
-        .filter_map(|s| match s {
-            NonFoldResidueRowSubject::Module { module, .. } => Some(module.clone()),
-            NonFoldResidueRowSubject::Missing { .. }
-            | NonFoldResidueRowSubject::Unreadable { .. }
-            | NonFoldResidueRowSubject::NoModuleDeclaration { .. } => None,
-        })
-        .collect()
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// Every changed-row subject this run could not judge by its exact path: unreadable, module-less,
-/// or a module path the walk did not cover (not typed, excluded as a test file, or a same-named
-/// module at another path). Missing subjects are absent here -- the roster diff judges them stale.
-pub(crate) fn non_fold_residue_row_subjects_unjudged(
-    subjects: &[NonFoldResidueRowSubject],
-    walk: &TypedFallbackArmWalk,
-) -> Vec<String> {
-    subjects
-        .iter()
-        .filter_map(|s| match s {
-            NonFoldResidueRowSubject::Missing { .. } => None,
-            NonFoldResidueRowSubject::Unreadable { path, detail } => {
-                Some(format!("{path} (unreadable: {detail})"))
-            }
-            NonFoldResidueRowSubject::NoModuleDeclaration { path } => {
-                Some(format!("{path} (declares no module)"))
-            }
-            NonFoldResidueRowSubject::Module { path, module } => {
-                if walk.covered_paths.contains(path)
-                    && walk.module_of_path.get(path) == Some(module)
-                {
-                    None
-                } else {
-                    Some(format!(
-                        "{path} (module {module} not covered by the typed walk at this path)"
-                    ))
-                }
-            }
-        })
-        .collect()
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// The required floor's DIFF-SCOPED non-fold-residue verdict over the graph its strict preparation
-/// already typed: every module the diff touched plus every interface consumer it planned. A
-/// wildcard is added or removed only by editing its module, and a scrutinee's closedness moves
-/// with a changed interface only in a planned consumer, so within this scope a new unrostered site
-/// and a newly stale row are both caught. A scoped module the graph does not carry is reported by
-/// name, never counted as clean.
-pub(crate) struct NonFoldResidueDiffVerdict {
-    pub scoped_modules: usize,
-    pub walk: TypedFallbackArmWalk,
-    pub scoped_but_untyped: Vec<String>,
-    pub unrostered: Vec<String>,
-    pub stale: Vec<String>,
-    /// Scoped sites whose wildcard scrutinee carries no resolved inferred type and no roster row
-    /// of their own: closedness is undecided, so they refuse rather than pass as open.
-    pub undetermined_unrostered: Vec<String>,
-    /// Changed roster rows whose subject this run could not judge at its exact path: a row edit
-    /// that cannot be judged REFUSES rather than passing unexamined.
-    pub row_subjects_untyped: Vec<String>,
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-pub(crate) fn non_fold_residue_diff_verdict(
-    graph: &ResolvedGraph,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    scoped_modules: &BTreeSet<String>,
-    row_subjects: &[NonFoldResidueRowSubject],
-) -> NonFoldResidueDiffVerdict {
-    let walk = typed_fallback_arm_walk(graph, si, Some(scoped_modules));
-    let typed: BTreeSet<String> = graph
-        .modules
-        .iter()
-        .map(|tm| authored_name_at(si.clone(), tm.module.clone()))
-        .collect();
-    let scoped_but_untyped = scoped_modules
-        .iter()
-        .filter(|m| !typed.contains(*m))
-        .cloned()
-        .collect();
-
-    let (unrostered, stale) = non_fold_residue_roster_diff(&walk);
-    let undetermined_unrostered = walk
-        .undetermined_sites
-        .iter()
-        .filter(|s| !non_fold_residue_site_is_rostered(s))
-        .cloned()
-        .collect();
-    let row_subjects_untyped = non_fold_residue_row_subjects_unjudged(row_subjects, &walk);
-    NonFoldResidueDiffVerdict {
-        scoped_modules: scoped_modules.len(),
-        walk,
-        scoped_but_untyped,
-        unrostered,
-        stale,
-        undetermined_unrostered,
-        row_subjects_untyped,
-    }
-}
-
-/// Type a fixture through the REAL checker and walk it: the controls exercise the same route the
-/// floor reads (compile, then `typed_fallback_arm_walk`), never a copy of it.
-#[cfg(test)]
-pub(crate) fn typed_fallback_arm_walk_for_fixture(
-    files: &[(&str, &str)],
-) -> Result<TypedFallbackArmWalk, String> {
-    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = files
-        .iter()
-        .map(|(path, content)| {
-            Rc::new(v1_compiler_compile::SourceFile {
-                path: path.to_string(),
-                content: content.to_string(),
-            })
-        })
-        .collect();
-    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-    let blocking =
-        v1_compiler_compile::interpreter_blocking_diagnostic_messages(resolved.diagnostics.clone());
-    if !blocking.is_empty() {
-        return Err(format!(
-            "typed fixture did not type: {}",
-            blocking.iter().cloned().collect::<Vec<_>>().join("; ")
-        ));
-    }
-    let graph = resolved
-        .graph
-        .clone()
-        .ok_or_else(|| "typed fixture produced no graph".to_string())?;
-    Ok(typed_fallback_arm_walk(
-        &graph,
-        &resolved.source_indices,
-        None,
-    ))
-}
-
-#[cfg(test)]
-mod nfr_typed_tests {
-    use super::*;
-
-    fn sites(src: &str) -> BTreeSet<String> {
-        typed_fallback_arm_walk_for_fixture(&[("m.dag", src)])
-            .unwrap_or_else(|cause| panic!("{cause}"))
-            .non_fold_residue_sites()
-    }
-
-    #[test]
-    fn red_control_wildcard_over_closed_coproduct_param_is_residue() {
-        let got = sites("module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n");
-        assert!(
-            got.contains("m.dag::f"),
-            "param scrutinee must be flagged; got {got:?}"
-        );
-    }
-
-    // THE WIDENING'S DISCRIMINATING REDS: the deleted parameter-keyed text scan could see neither
-    // (receipts: gunbc.live_deploy.fleet_request replacement_is_foreign's local `from`,
-    // release_member_changed).
-    #[test]
-    fn red_control_wildcard_over_closed_coproduct_local_binding_is_residue() {
-        let got = sites("module m\ntype Mode = A | B | C\nfn pick() -> Mode { B }\nfn f() -> Bool {\n  let from = pick()\n  match from {\n    A => true\n    _ => false\n  }\n}\n");
-        assert!(
-            got.contains("m.dag::f"),
-            "local-binding scrutinee must be flagged; got {got:?}"
-        );
-    }
-
-    #[test]
-    fn red_control_wildcard_over_closed_coproduct_field_is_residue() {
-        let got = sites("module m\ntype Mode = A | B | C\ntype Holder { mode: Mode }\nfn f(h: Holder) -> Bool {\n  match h.mode {\n    A => true\n    _ => false\n  }\n}\n");
-        assert!(
-            got.contains("m.dag::f"),
-            "field scrutinee must be flagged; got {got:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_total_fold_is_not_residue() {
-        let got = sites("module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n");
-        assert!(
-            !got.contains("m.dag::f"),
-            "an exhaustive match must NOT be flagged; got {got:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_wildcard_over_open_domain_is_not_residue() {
-        let got = sites("module m\nfn g(s: String) -> Bool {\n  match s {\n    \"y\" => true\n    _ => false\n  }\n}\n");
-        assert!(
-            !got.contains("m.dag::g"),
-            "an open/primitive domain must NOT be flagged; got {got:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_wildcard_over_open_local_is_not_residue() {
-        let got = sites("module m\nfn g(n: Int) -> Bool {\n  let k = n\n  match k {\n    0 => true\n    _ => false\n  }\n}\n");
-        assert!(
-            !got.contains("m.dag::g"),
-            "an open local must NOT be flagged; got {got:?}"
-        );
-    }
-
-    // A7 (acceptance_obligation_partition) DISCRIMINATING RED: the pre-dissolution shape of
-    // `execute_obligation` -- a top-level wildcard over the closed obligation coproduct (the
-    // four back-end arms named, the four front-end arms collapsed into `_`) -- is residue.
-    // Same closed coproduct, same fn, wildcard present.
-    #[test]
-    fn red_control_wildcard_over_closed_coproduct_is_residue() {
-        let got = sites(
-            "module m\ntype Stage = S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8\n\
-             fn execute(stage: Stage) -> Bool {\n  match stage {\n\
-             S1 => true\n S2 => true\n S3 => true\n S4 => true\n\
-             _ => false\n  }\n}\n",
-        );
-        assert!(
-            got.contains("m.dag::execute"),
-            "a top-level wildcard over the closed obligation coproduct must be flagged; got {got:?}"
-        );
-    }
-
-    // A7 POSITIVE CONTROL: the dissolved shape of `execute_obligation` -- a hand-authored
-    // total partition (obligation_partition: 8 named arms, no wildcard) is the single
-    // authority, and the match folds over the 2-variant partition (FrontEnd/BackEnd named)
-    // with the back-end arm dispatching over the 4-variant back-end coproduct (BE1..BE4
-    // named). No wildcard anywhere, so the site is not residue -- this is exactly the move
-    // that deletes the roster row.
-    #[test]
-    fn green_control_partition_fold_over_partition_coproduct_is_not_residue() {
-        let got = sites(
-            "module m\ntype Stage = S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8\n\
-             type FrontStage = FS1 | FS2 | FS3 | FS4\n\
-             type BackEndStage = BE1 | BE2 | BE3 | BE4\n\
-             type Side = FrontEnd { s: FrontStage } | BackEnd { s: BackEndStage }\n\
-             fn side_of(stage: Stage) -> Side {\n  match stage {\n\
-             S1 => FrontEnd { s: FS1 }\n S2 => FrontEnd { s: FS2 }\n\
-             S3 => FrontEnd { s: FS3 }\n S4 => FrontEnd { s: FS4 }\n\
-             S5 => BackEnd { s: BE1 }\n S6 => BackEnd { s: BE2 }\n\
-             S7 => BackEnd { s: BE3 }\n S8 => BackEnd { s: BE4 }\n  }\n}\n\
-             fn execute(stage: Stage) -> Bool {\n  match side_of(stage) {\n\
-             FrontEnd { s: _ } => false\n\
-             BackEnd { s: be } => match be {\n\
-             BE1 => true\n BE2 => true\n BE3 => true\n BE4 => true\n  }\n  }\n}\n",
-        );
-        assert!(
-            !got.contains("m.dag::execute"),
-            "folding over the hand-authored partition (no wildcard) must NOT be flagged; got {got:?}"
-        );
-        assert!(
-            !got.contains("m.dag::side_of"),
-            "the total partition projection (8 named arms) must NOT be flagged; got {got:?}"
-        );
-    }
-
-    // THE A6 (build_projection_partition) SHAPE, RED: an accumulator fold whose outer match
-    // wildcard-shadows the non-refused arms of a closed coproduct, with a second wildcard over
-    // the same accumulator nested in the open arm (running vs. first derivation). Both arms sit
-    // in `step`'s body, so the single function is the site.
-    const A6_SHAPE_RED: &str = "module m\ntype P = Derived { v: Int } | Empty | Refused { c: Int }\nfn step(acc: P, x: Int) -> P {\n  match acc {\n    Refused { c: c } => Refused { c: c }\n    _ =>\n      match acc {\n        Derived { v: v } => Derived { v: v }\n        _ => Derived { v: x }\n      }\n  }\n}\n";
-
-    // THE A6 SHAPE, POSITIVE CONTROL: the same fold totalized by a derived refused-vs-open
-    // partition the accumulator is projected to (open side carries the running fact), so the
-    // fold matches on the partition and the carried value -- no wildcard over the closed
-    // coproduct anywhere, and no fabricated arm for the excluded refused state.
-    const A6_SHAPE_GREEN: &str = "module m\ntype Opt = OptAbsent | OptPresent { value: Int }\ntype P = Derived { v: Int } | Empty | Refused { c: Int }\ntype PPart = PPartOpen { running: Opt } | PPartRefused { c: Int }\nfn p_part(p: P) -> PPart {\n  match p {\n    Derived { v: v } => PPartOpen { running: OptPresent { value: v } }\n    Empty => PPartOpen { running: OptAbsent }\n    Refused { c: c } => PPartRefused { c: c }\n  }\n}\nfn step(acc: P, x: Int) -> P {\n  match p_part(p: acc) {\n    PPartRefused { c: c } => Refused { c: c }\n    PPartOpen { running: r } =>\n      match r {\n        OptPresent { value: v } => Derived { v: v }\n        OptAbsent => Derived { v: x }\n      }\n  }\n}\n";
-
-    #[test]
-    fn red_control_a6_projection_fold_shape_is_residue() {
-        let got = sites(A6_SHAPE_RED);
-        assert!(
-            got.contains("m.dag::step"),
-            "the accumulator fold with wildcard over the closed projection coproduct must be flagged; got {got:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_a6_partition_carried_total_fold_is_not_residue() {
-        let got = sites(A6_SHAPE_GREEN);
-        assert!(
-            !got.contains("m.dag::step") && !got.contains("m.dag::p_part"),
-            "the partition-carried total fold must NOT be flagged; got {got:?}"
-        );
-    }
-
-    // DISCRIMINATING RED (D2 local_tidy): the OLD shape of
-    // dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger was a one-special-variant
-    // dispatch -- `LocalTidyCargoFmtCheck => <special>`, `_ => <glob fallback>` -- a wildcard over
-    // the closed coproduct `LocalTidyCheck` whose other variant is a STRUCT variant. The fixture
-    // mirrors that shape (a named struct variant `W { entry: _, check_fns: _ }` + a bare `_`).
-    // The walk must flag the site: the `_` arm is exactly the glob fallback that silently swallowed
-    // the struct variant, so a variant misrouted there is caught by the ratchet.
-    #[test]
-    fn red_control_wildcard_over_struct_variant_coproduct_is_residue() {
-        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    _ => false\n  }\n}\n");
-        assert!(
-            got.contains("m.dag::f"),
-            "a wildcard fallback over a closed coproduct with a struct variant must be flagged; got {got:?}"
-        );
-    }
-
-    // POSITIVE CONTROL (D2 local_tidy): the NEW totalized shape -- one explicit arm per variant, the
-    // struct variant matched by its pattern `W { entry: _, check_fns: _ }`, no wildcard/else
-    // fallback -- must NOT be flagged, i.e. the dissolved site is no longer a residue site.
-    #[test]
-    fn green_control_total_struct_variant_dispatch_is_not_residue() {
-        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    W { entry: _, check_fns: _ } => false\n  }\n}\n");
-        assert!(
-            !got.contains("m.dag::f"),
-            "one explicit arm per variant (no wildcard) must NOT be flagged; got {got:?}"
-        );
-    }
-
-    // DISCRIMINATING RED 2 (D2 local_tidy): the failure the totalization removes. Under the OLD
-    // one-special-variant dispatch a THIRD variant added to `Tidy` would be silently swallowed by
-    // the `_` glob fallback; the walk must flag that wildcard as a residue site. This is the
-    // "adding/misrouting a variant is caught" case: the wildcard, not the type, is the residue.
-    #[test]
-    fn red_control_third_variant_silently_swallowed_by_wildcard_is_residue() {
-        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C | D\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    _ => false\n  }\n}\n");
-        assert!(
-            got.contains("m.dag::f"),
-            "a wildcard that swallows a newly-added variant must be flagged; got {got:?}"
-        );
-    }
-
-    const WILDCARD_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n";
-    const TOTAL_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n  }\n}\n";
-
-    fn rows(xs: &[&str]) -> Vec<String> {
-        xs.iter().map(|x| x.to_string()).collect()
-    }
-
-    // RED CONTROL 1 -- row-only ADDITION of a stale site: the diff adds a row for a site the
-    // module does not carry. The changed-row set names the module, and once it is typed the row
-    // is stale.
-    #[test]
-    fn red_control_row_only_addition_of_a_stale_site_is_judged() {
-        let changed = non_fold_residue_changed_row_paths(&rows(&[]), &rows(&["a.dag::f"]));
-        assert_eq!(changed, ["a.dag".to_string()].into_iter().collect());
-        let walk = typed_fallback_arm_walk_for_fixture(&[("a.dag", TOTAL_MODULE)])
-            .unwrap_or_else(|c| panic!("{c}"));
-        let (unrostered, stale) =
-            non_fold_residue_roster_diff_with(&walk, &rows(&["a.dag::f"]), &|_| true);
-        assert!(unrostered.is_empty());
-        assert_eq!(
-            stale,
-            rows(&["a.dag::f"]),
-            "an added row for a non-site must be stale"
-        );
-    }
-
-    // RED CONTROL 2 -- row-only DELETION of a live site: the changed-row set names the module, and
-    // the live wildcard is then unrostered.
-    #[test]
-    fn red_control_row_only_deletion_of_a_live_site_is_judged() {
-        let changed = non_fold_residue_changed_row_paths(&rows(&["a.dag::f"]), &rows(&[]));
-        assert_eq!(changed, ["a.dag".to_string()].into_iter().collect());
-        let walk = typed_fallback_arm_walk_for_fixture(&[("a.dag", WILDCARD_MODULE)])
-            .unwrap_or_else(|c| panic!("{c}"));
-        let (unrostered, stale) = non_fold_residue_roster_diff_with(&walk, &rows(&[]), &|_| true);
-        assert_eq!(
-            unrostered,
-            rows(&["a.dag::f"]),
-            "deleting a live site's row must refuse"
-        );
-        assert!(stale.is_empty());
-    }
-
-    // RED CONTROL 3 -- subject MODULE deleted, row retained: the deleted path never enters
-    // covered_paths, so only the existence arm can judge it.
-    #[test]
-    fn red_control_deleted_subject_module_with_retained_row_is_stale() {
-        let walk = TypedFallbackArmWalk::default();
-        let (_, stale) =
-            non_fold_residue_roster_diff_with(&walk, &rows(&["gone.dag::f"]), &|p| p != "gone.dag");
-        assert_eq!(stale, rows(&["gone.dag::f"]));
-        let (_, kept) =
-            non_fold_residue_roster_diff_with(&walk, &rows(&["here.dag::f"]), &|_| true);
-        assert!(
-            kept.is_empty(),
-            "an existing, unscoped row is not judged stale (positive control)"
-        );
-    }
-
-    // CONTROL 3b -- a row naming an UNDETERMINED site is the disposition the verdict demands, so it
-    // is not stale; the same row over a covered path with no wildcard at all still is.
-    #[test]
-    fn rostered_undetermined_site_is_not_stale() {
-        let mut walk = TypedFallbackArmWalk::default();
-        walk.covered_paths.insert("u.dag".to_string());
-        walk.undetermined_sites.push("u.dag::f".to_string());
-        let (unrostered, stale) =
-            non_fold_residue_roster_diff_with(&walk, &rows(&["u.dag::f"]), &|_| true);
-        assert!(unrostered.is_empty());
-        assert!(
-            stale.is_empty(),
-            "a rostered undetermined site must not be stale; got {stale:?}"
-        );
-        let (_, stale) = non_fold_residue_roster_diff_with(&walk, &rows(&["u.dag::g"]), &|_| true);
-        assert_eq!(
-            stale,
-            rows(&["u.dag::g"]),
-            "a row for a non-site in the same covered module stays stale (red control)"
-        );
-    }
-
-    // RED CONTROLS 4-6 -- a changed row's subject that cannot be judged at its EXACT path refuses.
-    // They drive the real route: classify the path by reading it, then judge against the walk.
-    #[test]
-    fn red_control_row_subject_existing_non_module_path_refuses() {
-        let subject = non_fold_residue_classify_row_subject(
-            "Cargo.toml",
-            true,
-            Ok("[workspace]\nmembers = []\n".to_string()),
-        );
-        assert_eq!(
-            subject,
-            NonFoldResidueRowSubject::NoModuleDeclaration {
-                path: "Cargo.toml".to_string()
-            }
-        );
-        let unjudged =
-            non_fold_residue_row_subjects_unjudged(&[subject], &TypedFallbackArmWalk::default());
-        assert_eq!(
-            unjudged.len(),
-            1,
-            "a module-less existing path must refuse, not drop"
-        );
-    }
-
-    #[test]
-    fn red_control_row_subject_unreadable_path_refuses() {
-        let subject = non_fold_residue_classify_row_subject(
-            "x.dag",
-            true,
-            Err("permission denied".to_string()),
-        );
-        let unjudged =
-            non_fold_residue_row_subjects_unjudged(&[subject], &TypedFallbackArmWalk::default());
-        assert_eq!(unjudged.len(), 1);
-    }
-
-    #[test]
-    fn green_control_row_subject_covered_at_its_path_is_judged() {
-        let subject =
-            non_fold_residue_classify_row_subject("a.dag", true, Ok(WILDCARD_MODULE.to_string()));
-        let walk = typed_fallback_arm_walk_for_fixture(&[("a.dag", WILDCARD_MODULE)])
-            .unwrap_or_else(|c| panic!("{c}"));
-        assert!(non_fold_residue_row_subjects_unjudged(&[subject], &walk).is_empty());
-        let missing = non_fold_residue_classify_row_subject("gone.dag", false, Err(String::new()));
-        assert!(
-            non_fold_residue_row_subjects_unjudged(&[missing], &walk).is_empty(),
-            "a missing subject is judged stale by the roster diff, not refused here"
-        );
-    }
-
-    #[test]
-    fn diff_scope_judges_only_scoped_modules() {
-        let walk = typed_fallback_arm_walk_for_fixture(&[
-            ("a.dag", "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"),
-            ("b.dag", "module b\nfn g(n: Int) -> Int { n }\n"),
-        ])
-        .unwrap_or_else(|cause| panic!("{cause}"));
-        assert!(walk.non_fold_residue_sites().contains("a.dag::f"));
-        let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = [
-            ("a.dag", "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"),
-            ("b.dag", "module b\nfn g(n: Int) -> Int { n }\n"),
-        ]
-        .iter()
-        .map(|(p, c)| Rc::new(v1_compiler_compile::SourceFile { path: p.to_string(), content: c.to_string() }))
-        .collect();
-        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-        let graph = resolved.graph.clone().expect("graph");
-        let scope: BTreeSet<String> = ["b".to_string(), "absent.module".to_string()]
-            .into_iter()
-            .collect();
-        let verdict = non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope, &[]);
-        assert!(
-            verdict.unrostered.is_empty(),
-            "module a is out of scope; got {:?}",
-            verdict.unrostered
-        );
-        assert_eq!(
-            verdict.scoped_but_untyped,
-            vec!["absent.module".to_string()]
-        );
-        let scope_a: BTreeSet<String> = ["a".to_string()].into_iter().collect();
-        let verdict_a =
-            non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope_a, &[]);
-        assert_eq!(
-            verdict_a.unrostered,
-            vec!["a.dag::f".to_string()],
-            "in scope and unrostered must refuse"
-        );
-    }
+pub fn non_fold_residue_site_is_rostered(site: &str) -> Result<bool, String> {
+    Ok(non_fold_residue_roster_set()?.contains(site))
 }

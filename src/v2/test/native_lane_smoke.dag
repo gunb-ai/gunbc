@@ -3,7 +3,7 @@ module v2.test.native_lane_smoke
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // THE required-v2-native LANE'S POSITIVE-POPULATION FLOOR MEMBER (authority:
-// gunbc.witness.v2_native_route, clause native_route_positive_population_present). A universe
+// v2.workflow.v2_native_route, clause native_route_positive_population_present). A universe
 // in which nothing passes proves the route dead, and exclusion attribution alone cannot see
 // that — a route that refuses every member can still be fully owned. So the census requires
 // one member to reach NativeTestPassed where the floor expects pass. The body is deliberately

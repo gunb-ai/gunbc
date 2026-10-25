@@ -6,6 +6,7 @@ import gunbc.design.theme {
   themes_coherent, theme_gaps, theme_area_coherent, theme_contrast_ok,
   CanvasRole, night_canvas, warm_starlight, role_area, role_var,
 }
+import extdeps.languages.css.media_queries { SchemeDark }
 import gunbc.design.material {
   Material, PointArea,
   chroma_admissible, quiet_envelope, area_key,
@@ -24,10 +25,6 @@ import gunbc.design.interaction {
   coverage_gaps, coverage_complete, verb_key,
 }
 import gunbc.roadmap.roadmap_style { roadmap_rules }
-import gunbc.site.mark {
-  mark_nodes, mark_edges, mark_grid_unit, MarkEdge,
-  mark_nodes_on_grid, all_forks_rejoin, render_mark,
-}
 import gunbc.site.constellation { layer_stars, brightest_is_authority }
 import gunbc.site.moodboard {
   moodboard_html, moodboard_preconditions_hold, unrealized_behaviors,
@@ -91,7 +88,7 @@ fn witness_focus_boundary_differ_by_area() -> Bool {
 }
 
 fn witness_theme_gap_is_located() -> Bool {
-  let partial = Theme { name: "partial", scheme: "dark", assignments: [
+  let partial = Theme { name: "partial", scheme: SchemeDark, assignments: [
     assign(role: CanvasRole, material: night_canvas),
   ] }
   theme_gaps(t: partial, roles: theme_roles).length() == theme_roles.length() - 1
@@ -100,7 +97,7 @@ fn witness_theme_gap_is_located() -> Bool {
 }
 
 fn witness_role_area_mismatch_refused() -> Bool {
-  let field_on_figure = Theme { name: "mismatched", scheme: "dark", assignments: [
+  let field_on_figure = Theme { name: "mismatched", scheme: SchemeDark, assignments: [
     assign(role: FigureRole, material: night_canvas),
   ] }
   !theme_area_coherent(t: field_on_figure)
@@ -129,37 +126,6 @@ fn witness_unrealized_behavior_is_counted() -> Bool {
     && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
 }
 
-fn witness_mark_on_grid_and_confluent() -> Bool {
-  mark_nodes_on_grid(nodes: mark_nodes, unit: mark_grid_unit)
-    && all_forks_rejoin(nodes: mark_nodes, edges: mark_edges, source: "a")
-}
-
-fn witness_broken_fork_refutes_confluence() -> Bool {
-  let severed = [
-    MarkEdge { from_key: "a", to_key: "b" },
-    MarkEdge { from_key: "a", to_key: "c" },
-    MarkEdge { from_key: "c", to_key: "d" },
-  ]
-  !all_forks_rejoin(nodes: mark_nodes, edges: severed, source: "a")
-}
-
-fn mark_svg_at(depth: Int) -> String {
-  match try_serialize_html_source(node: render_mark(depth: depth)) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
-  }
-}
-
-fn witness_mark_lod_monotone() -> Bool {
-  let d0 = mark_svg_at(depth: 0)
-  let d1 = mark_svg_at(depth: 1)
-  let d3 = mark_svg_at(depth: 3)
-  !string_contains(s: d0, pattern: "<line")
-    && string_contains(s: d1, pattern: "<line")
-    && !string_contains(s: d1, pattern: "r=\"9\"")
-    && string_contains(s: d3, pattern: "r=\"9\"")
-}
-
 fn witness_brightest_star_is_std() -> Bool {
   brightest_is_authority(stars: layer_stars, authority_key: "std")
     && !brightest_is_authority(stars: layer_stars, authority_key: "workflow")
@@ -184,7 +150,7 @@ fn witness_two_themes_one_model() -> Bool {
     && string_contains(s: h, pattern: "color-scheme: dark")
     && string_contains(s: h, pattern: "color-scheme: light")
     && string_contains(s: h, pattern: ".star { fill: var(--figure)")
-    && string_contains(s: h, pattern: ".mark-sink { fill: var(--focus) }")
+    && string_contains(s: h, pattern: ".star-halo { fill: var(--figure)")
 }
 
 fn witness_gamer_cyan_absent_from_page() -> Bool {
@@ -202,7 +168,7 @@ fn witness_reframe_derived_for_free() -> Bool {
   let h = moodboard_html()
   string_contains(s: h, pattern: "html.reframing body { transition: background-color 320ms ease, color 320ms ease }")
     && string_contains(s: h, pattern: "html.reframing .star { transition: fill 320ms ease }")
-    && string_contains(s: h, pattern: "html.reframing .mark-sink")
+    && string_contains(s: h, pattern: "html.reframing .star-halo")
 }
 
 fn witness_reframe_reduced_motion_guarded() -> Bool {
@@ -250,9 +216,6 @@ test fn site_register_keystone_holds() -> Bool {
     && witness_moodboard_coverage_complete()
     && witness_dead_hover_is_located_gap()
     && witness_unrealized_behavior_is_counted()
-    && witness_mark_on_grid_and_confluent()
-    && witness_broken_fork_refutes_confluence()
-    && witness_mark_lod_monotone()
     && witness_brightest_star_is_std()
     && witness_moodboard_emits_with_structure()
     && witness_two_themes_one_model()

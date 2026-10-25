@@ -1,0 +1,261 @@
+module gunbc.auth.approval_device_crypto_self_check
+
+import std.types { Int, List, String, Bool, NonEmptyStr }
+import std.algebra { Cons, Empty }
+import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub }
+import extdeps.crypto.nist_p256 { p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine }
+import extdeps.crypto.nist_prime_curve { jacobian_is_infinity }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.crypto.signature {
+  VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
+  verify_signature, SignatureVerification, SignatureVerified, SignatureInvalid, SignatureMalformed,
+  VerifyingKeyMalformed, SignatureSuiteMismatch, VerifyingKeyUndecodable, SignatureUndecodable,
+}
+import extdeps.standards.rfc_6979 {
+  rfc6979_a25_p256_public_key, rfc6979_a25_message_sample, rfc6979_a25_message_test, rfc6979_a25_p256_sha256_sample_signature,
+}
+import extdeps.apple.app_attest {
+  AttestKeyId, AttestationExpectation, AssertionExpectation, AttestationDecoded, AttestationDecode, AttestationDecodeOk,
+  AttestationDecodeRefused, AppAttestDevelopment, app_attest_app_id, AppIdPrefix, decode_attestation, base64_of,
+  verify_attestation, verify_assertion, AttestationVerification, AttestationVerified, AttestationRefused,
+  AttestationNonceMismatch,
+  AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch,
+  assertion_signature_verifies_for,
+}
+import extdeps.apple.app_attest_sample_ios_14_4 {
+  sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
+  sample_team_identifier, sample_bundle_identifier,
+}
+import gunbc.native_serve { NativeServeStartup, NativeServeStartupRefused }
+import gunbc.auth.approval_device_crypto_realization {
+  DeviceCryptoObligation, P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification,
+  P256BasePointOrder, DeviceCryptoHandlerReceipt, device_crypto_obligation_evidence,
+}
+import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_startup }
+import gunbc.auth.approval_device_crypto_wire { SignatureCheck, P256Multiple, OrderItself, OrderMinusOne }
+
+// THE DEVICE-CRYPTO SERVICE'S STARTUP SELF-CHECK (gunbc.native_serve native_serve_startup_entry_function).
+// Before the verifier binds a port it executes every obligation of
+// gunbc.auth.approval_device_crypto_realization device_crypto_obligations on the real folds, mints a
+// DeviceCryptoHandlerReceipt over the ones that held, and asks device_crypto_receipt_admission whether that receipt
+// covers the whole population. The receipt's exact_revision is the SHA-256 of the running executable's own
+// octets (the host only reads those bytes; extdeps.crypto.sha2 computes the digest here), so a receipt names the
+// binary that produced it and is re-minted at every start. A refusal is a refused start: the process never
+// listens, never serves. The realization row itself stays NativeDeviceCryptoUnavailable; binding it is a later
+// change that consumes this receipt.
+//
+// EACH OBLIGATION IS DISCHARGED BY A POSITIVE AND A RED, over the same carriers the probe
+// gunbc.instruments.native_serve_device_crypto_probe sends over the wire (which imports them from here, so the
+// supplied values have one home): a fold that answered the owed verdict for every input passes the first and
+// fails the second.
+
+// ── The carriers ─────────────────────────────────────────────────────────────────────────────
+fn octets_text(octets: List<Int>, url_safe: Bool) -> String {
+  match base64_of(octets: octets, url_safe: url_safe) {
+    Present { value: t } => t
+    Absent => ""
+  }
+}
+
+fn rfc6979_key() -> VerifyingKey {
+  VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: octets_text(octets: rfc6979_a25_p256_public_key, url_safe: true) as NonEmptyStr }
+}
+
+fn rfc6979_signature(octets: List<Int>) -> SignatureBytes {
+  SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: octets_text(octets: octets, url_safe: true) as NonEmptyStr }
+}
+
+fn first_octet_changed(octets: List<Int>) -> List<Int> {
+  match octets {
+    Cons { head: h, tail: rest } => concat([(h + 1) % 256], rest)
+    Empty => []
+  }
+}
+
+fn rfc6979_check(octets: List<Int>, message: String) -> SignatureCheck {
+  SignatureCheck { key: rfc6979_key(), signature: rfc6979_signature(octets: octets), message: message as NonEmptyStr }
+}
+
+fn sample_app_id() -> NonEmptyStr {
+  app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier)
+}
+
+fn sample_attestation_expectation(client_data: NonEmptyStr) -> AttestationExpectation {
+  AttestationExpectation {
+    key_id: sample_key_id_b64 as AttestKeyId,
+    client_data: client_data,
+    app_id: sample_app_id(),
+    environment: AppAttestDevelopment,
+    observed_at: "2021-01-23T12:13:35Z",
+    admitted_validation_categories: [2, 3, 4],
+    expected_bundle_version: "1" as NonEmptyStr,
+  }
+}
+
+// The assertion's key is the attestation's credential key, as gunbc.instruments.native_app_attest joins them.
+fn sample_assertion_expectation() -> AssertionExpectation {
+  AssertionExpectation {
+    key_id: sample_key_id_b64 as AttestKeyId,
+    public_key_point_b64url: sample_credential_point(),
+    client_data: sample_client_data,
+    app_id: sample_app_id(),
+    admitted_validation_categories: [2, 3, 4],
+    expected_bundle_version: "1" as NonEmptyStr,
+  }
+}
+
+fn sample_credential_point() -> NonEmptyStr {
+  match decode_attestation(object: sample_attestation_octets) {
+    AttestationDecodeOk { decoded: d } => octets_text(octets: d.leaf.tbs.spki_public_key, url_safe: true) as NonEmptyStr
+    AttestationDecodeRefused { cause: _ } => "x" as NonEmptyStr
+  }
+}
+
+// ── The obligations ──────────────────────────────────────────────────────────────────────────
+// n times the base point is infinity; (n - 1) times it is not. The scalar is the curve's own order (p256_n).
+fn p256_multiple_scalar(m: P256Multiple) -> BigNat? {
+  match m {
+    OrderItself => Present { value: p256_n }
+    OrderMinusOne => bignat_sub(a: p256_n, b: bignat_one())
+  }
+}
+
+fn p256_scalar_is_infinity(scalar: BigNat) -> Bool {
+  let g = p256_affine(x: p256_gx, y: p256_gy)
+  jacobian_is_infinity(p: p256_double_scalar(u1: scalar, g: g, u2: bignat_zero_limbs(), q: g))
+}
+
+// An unformable scalar proves nothing: the obligation does not hold.
+fn p256_multiple_holds(m: P256Multiple, infinity: Bool) -> Bool {
+  match p256_multiple_scalar(m: m) {
+    Absent => false
+    Present { value: scalar } => p256_scalar_is_infinity(scalar: scalar) == infinity
+  }
+}
+
+fn signature_verified(v: SignatureVerification) -> Bool {
+  match v {
+    SignatureVerified { verified: _ } => true
+    SignatureInvalid { suite: _ } => false
+    SignatureMalformed { declared: _, expected: _ } => false
+    VerifyingKeyMalformed { declared: _, expected: _ } => false
+    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => false
+    VerifyingKeyUndecodable { point_b64url: _ } => false
+    SignatureUndecodable { b64url: _ } => false
+  }
+}
+
+fn signature_invalid(v: SignatureVerification) -> Bool {
+  match v {
+    SignatureInvalid { suite: _ } => true
+    SignatureVerified { verified: _ } => false
+    SignatureMalformed { declared: _, expected: _ } => false
+    VerifyingKeyMalformed { declared: _, expected: _ } => false
+    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => false
+    VerifyingKeyUndecodable { point_b64url: _ } => false
+    SignatureUndecodable { b64url: _ } => false
+  }
+}
+
+fn signature_obligation_holds() -> Bool {
+  let sample = rfc6979_a25_p256_sha256_sample_signature
+  let verifies = verify_signature(key: rfc6979_key(), signature: rfc6979_signature(octets: sample), message: rfc6979_a25_message_sample as NonEmptyStr)
+  let mutated = verify_signature(key: rfc6979_key(), signature: rfc6979_signature(octets: first_octet_changed(octets: sample)), message: rfc6979_a25_message_sample as NonEmptyStr)
+  let other = verify_signature(key: rfc6979_key(), signature: rfc6979_signature(octets: sample), message: rfc6979_a25_message_test as NonEmptyStr)
+  signature_verified(v: verifies) && signature_invalid(v: mutated) && signature_invalid(v: other)
+}
+
+// Apple's published iOS 14.4 sample carries no authData extensions map (Apple describes it as optional), so the owed
+// verdicts are the success arms (gunbc.instruments.native_app_attest states the same standing).
+fn attestation_is_verified(v: AttestationVerification) -> Bool {
+  match v {
+    AttestationVerified { verified: _ } => true
+    AttestationRefused { cause: _ } => false
+  }
+}
+
+fn attestation_is_nonce_mismatch(v: AttestationVerification) -> Bool {
+  match v {
+    AttestationVerified { verified: _ } => false
+    AttestationRefused { cause: c } =>
+      match c {
+        AttestationNonceMismatch => true
+        _ => false
+      }
+  }
+}
+
+fn attestation_obligation_holds() -> Bool {
+  attestation_is_verified(v: verify_attestation(object: sample_attestation_octets, e: sample_attestation_expectation(client_data: sample_client_data)))
+    && attestation_is_nonce_mismatch(v: verify_attestation(object: sample_attestation_octets, e: sample_attestation_expectation(client_data: "not-the-sample-client-data" as NonEmptyStr)))
+}
+
+fn assertion_is_authentic(v: AssertionVerification) -> Bool {
+  match v {
+    AssertionAuthentic { authentic: _ } => true
+    AssertionRefused { cause: _ } => false
+  }
+}
+
+fn assertion_refused_with_app_id_mismatch(v: AssertionVerification) -> Bool {
+  match v {
+    AssertionAuthentic { authentic: _ } => false
+    AssertionRefused { cause: c } =>
+      match c {
+        AssertionAppIdMismatch { expected_app_id: _ } => true
+        _ => false
+      }
+  }
+}
+
+// gunbc.instruments.native_app_attest's control shape: altered client data must fail the signature (checked through
+// assertion_signature_verifies_for, which isolates the signature from the structural steps) and
+// a wrong app id must be refused as such, so a constant-answer verify_assertion does not earn the obligation.
+fn assertion_expectation_with(e: AssertionExpectation, client_data: NonEmptyStr, app_id: NonEmptyStr) -> AssertionExpectation {
+  AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: client_data, app_id: app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }
+}
+
+fn signature_check_is(v: Bool?, owed: Bool) -> Bool {
+  match v {
+    Present { value: b } => b == owed
+    Absent => false
+  }
+}
+
+fn assertion_obligation_holds() -> Bool {
+  let e = sample_assertion_expectation()
+  assertion_is_authentic(v: verify_assertion(object: sample_assertion_octets, e: e))
+    && signature_check_is(v: assertion_signature_verifies_for(object: sample_assertion_octets, e: e), owed: true)
+    && signature_check_is(owed: false, v: assertion_signature_verifies_for(object: sample_assertion_octets, e: assertion_expectation_with(e: e, client_data: "not-the-sample-client-data" as NonEmptyStr, app_id: e.app_id)))
+    && assertion_refused_with_app_id_mismatch(v: verify_assertion(object: sample_assertion_octets, e: assertion_expectation_with(e: e, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr)))
+}
+
+fn order_obligation_holds() -> Bool {
+  p256_multiple_holds(m: OrderItself, infinity: true) && p256_multiple_holds(m: OrderMinusOne, infinity: false)
+}
+
+fn device_crypto_obligation_holds(o: DeviceCryptoObligation) -> Bool {
+  match o {
+    P256SignatureVerification => signature_obligation_holds()
+    AppAttestAttestationVerification => attestation_obligation_holds()
+    AppAttestAssertionVerification => assertion_obligation_holds()
+    P256BasePointOrder => order_obligation_holds()
+  }
+}
+
+// ── The receipt ──────────────────────────────────────────────────────────────────────────────
+// Runs `obligations` (the whole population in production), refuses naming the evidence of any that did not hold, and
+// otherwise hands the receipt to gunbc.auth.approval_device_crypto_receipt device_crypto_receipt_startup, whose exact
+// revision is the executable's SHA-256. An empty executable has no revision and refuses.
+fn device_crypto_startup(obligations: List<DeviceCryptoObligation>, executable_octets: List<Int>) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
+  if count(executable_octets) == 0 {
+    NativeServeStartupRefused { reason: "the running executable's octets are empty, so the receipt has no exact revision" }
+  } else {
+    let failed = filter(obligations, o => !device_crypto_obligation_holds(o: o))
+    if count(failed) > 0 {
+      NativeServeStartupRefused { reason: "an obligation did not hold on the native fold: " + join(map(failed, o => device_crypto_obligation_evidence(o: o) as String), "; ") }
+    } else {
+      device_crypto_receipt_startup(covered: obligations, exact_revision: sha256_hex(message: executable_octets) as NonEmptyStr)
+    }
+  }
+}

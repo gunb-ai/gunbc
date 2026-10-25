@@ -26,10 +26,10 @@ import extdeps.languages.json.emit {
 import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
-import std.algebra { fold_list }
+import std.algebra { fold_list, map_lookup }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
-import v2.std.collection { map_lookup }
+
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

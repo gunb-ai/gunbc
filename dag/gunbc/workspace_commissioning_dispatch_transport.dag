@@ -4,7 +4,7 @@ import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_op
 
 import std.types { String, NonEmptyStr, CommitSha }
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObservation, WorkspaceCommissioningFleetRefused, workspace_commissioning_basis_from_privileged }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
@@ -70,7 +70,7 @@ fn workspace_dispatch_transport(stage_command: String, complete_command: String,
 }
 
 fn workspace_dispatch_observe(host: NonEmptyStr, revision: CommitSha) -> WorkspaceCommissioningFleetObservation {
-  let installed = approval_broker_release_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision }) as NonEmptyStr
+  let installed = release_locus_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision }) as NonEmptyStr
   let command = join(["printf '%s' ", posix_single_quote(spelling: join([revision as String, host as String], "\n")), " | ",
     executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: installed, function: "workspace_dispatch_plan_cli"))], "")
   match run_shell_command_capture(command: bash_program_command(script: command), transport: LocalExec) {

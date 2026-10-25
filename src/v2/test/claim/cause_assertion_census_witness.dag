@@ -16,7 +16,7 @@ import v2.workflow.floor_discovery_row { FloorMarkedSource }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.std.compilers.lexing { Token }
 import v2.std.decl_index { DataDeclTypeFact }
-import v2.std.collection { empty_map, map_insert }
+import std.algebra { empty_map, map_insert }
 
 fn cause_census_token(class: Symbol, lexeme: String, at: Int) -> Token {
   Token { class: class, lexeme: lexeme, file: ^cause_census_fixture, start: at, end: at + 1 }

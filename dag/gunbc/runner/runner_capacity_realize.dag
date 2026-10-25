@@ -42,7 +42,7 @@ import product.host_identity { HostIdentity }
 // authority is unit/process state, not directory count (runner_capacity_width_authority_note).
 
 // DECISION 4 inventory (historical ctrl citations OUTSIDE this closure, later lane):
-// runner_host_deploy runner_host_prereq_note, extdeps.jobserver, extdeps.cache.sccache,
+// runner_host_deploy runner_host_prereq_note, extdeps.cache.sccache,
 // gunbc.build_cache.build_cache_instance, gunbc.host.host_converge, gunbc.ci.ci_runner_placement,
 // gunbc.fleet.fleet_host_budget, gunbc.host_build_cache_provision_script,
 // gunbc.plans.fleet_subsumption_manual_gaps. None imported by runner_capacity_plan/realize.

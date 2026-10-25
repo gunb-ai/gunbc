@@ -1,11 +1,30 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
+import std.algebra { list_at_optional }
 import std.types { List }
-import std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.integer { Int }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.node { Node, Symbol }
-import v2.extdeps.languages.dag { ParseSubtreeAbsent }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  parse_subtree_find_production_captured,
+  parse_production_captured_child_optional,
+  dag_lex_token_symbol,
+  dag_named_arg_value_optional
+}
+import v2.compiler.body_lowering_fold {
+  OperandRefAbsent,
+  OperandRefLowered,
+  OperandRefRefused,
+  body_lower_operand_ref_read,
+  body_lower_postfix_projection_call_suffix_capture,
+  body_lower_postfix_projection_has_call_suffix,
+  body_lower_postfix_projection_step_name,
+  body_lower_postfix_repeat_head_optional,
+  body_lower_unwrap_surface_shell
+}
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match v2.std.node_query.find_named_child(root: cap, name: name) {
@@ -30,8 +49,8 @@ fn sequence_left_symbol(cap: Node) -> Optional<Symbol> {
 }
 
 fn find_capture(root: Node, emitted: Symbol) -> Optional<Node> {
-  match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: root, emitted: emitted) {
-    v2.extdeps.languages.dag.ParseSubtreeFound { captured: c } => Present { value: c }
+  match parse_subtree_find_production_captured(root: root, emitted: emitted) {
+    ParseSubtreeFound { captured: c } => Present { value: c }
     ParseSubtreeAbsent => Absent
   }
 }
@@ -44,7 +63,7 @@ fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<No
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == emitted {
-        match v2.extdeps.languages.dag.parse_production_captured_child_optional(node: n) {
+        match parse_production_captured_child_optional(node: n) {
           Present { value: c } => capture_list_prepend(item: c, xs: acc)
           Absent => acc
         }
@@ -64,7 +83,7 @@ fn primary_expr_capture(node: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_primary_expr {
-        v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
+        parse_production_captured_child_optional(node: node)
       } else {
         Absent
       }
@@ -76,7 +95,7 @@ fn postfix_expr_capture(node: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_postfix_expr {
-        v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
+        parse_production_captured_child_optional(node: node)
       } else {
         Absent
       }
@@ -103,7 +122,7 @@ fn symbol_list_length(xs: List<Symbol>) -> Int {
 fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
   let here = match v2.std.grammar.node_atom_identity_optional(node: n) {
     Present { value: id } =>
-      if v2.extdeps.languages.dag.dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
+      if dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
     Absent => acc
   }
   fold(n.children, init: here, f: fn(a, e) {
@@ -172,7 +191,7 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
 // argument yields its value node, and anything that is not a named spine (a positional argument)
 // yields the capture itself, which is what every caller of this reader already depends on.
 fn arg_value_node(arg_capture: Node) -> Node {
-  match v2.extdeps.languages.dag.dag_named_arg_value_optional(arg_capture: arg_capture) {
+  match dag_named_arg_value_optional(arg_capture: arg_capture) {
     Present { value: value_node } => value_node
     Absent => arg_capture
   }
@@ -221,9 +240,9 @@ fn let_expr_capture(node: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_let_expr {
-        v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
+        parse_production_captured_child_optional(node: node)
       } else {
-        match v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node) {
+        match parse_production_captured_child_optional(node: node) {
           Present { value: inner } => let_expr_capture(node: inner)
           Absent => Absent
         }
@@ -401,7 +420,7 @@ fn resolved_port_readings(call_capture: Node, bindings: List<v2.lens.complexity_
 }
 
 fn projection_sequence_cap_optional(cap: Node) -> Optional<Node> {
-  let stripped = v2.compiler.body_lowering_fold.body_lower_unwrap_surface_shell(node: cap)
+  let stripped = body_lower_unwrap_surface_shell(node: cap)
   match v2.std.compilers.sugar.sugar_sequence_pair_optional(node: stripped) {
     Present { value: _ } => Present { value: stripped }
     Absent => Absent
@@ -415,11 +434,11 @@ fn projection_method_call_optional(cap: Node) -> Optional<Symbol> {
       match sequence_right_node(cap: seq_cap) {
         Absent => Absent
         Present { value: repeat_capture } =>
-          match v2.compiler.body_lowering_fold.body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
+          match body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
             Absent => Absent
             Present { value: repeat_elem } =>
-              if v2.compiler.body_lowering_fold.body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
-                v2.compiler.body_lowering_fold.body_lower_postfix_projection_step_name(repeat_elem: repeat_elem)
+              if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
+                body_lower_postfix_projection_step_name(repeat_elem: repeat_elem)
               } else {
                 Absent
               }
@@ -432,7 +451,7 @@ fn projection_arg_port_readings(repeat_elem: Node) -> List<v2.lens.complexity_ac
   std.algebra.list_map(
     xs: std.algebra.list_reverse(
       xs: collect_direct_captures(
-        n: v2.compiler.body_lowering_fold.body_lower_postfix_projection_call_suffix_capture(repeat_elem: repeat_elem),
+        n: body_lower_postfix_projection_call_suffix_capture(repeat_elem: repeat_elem),
         emitted: ^dag_surface_arg,
         acc: std.algebra.Empty
       )
@@ -445,10 +464,10 @@ fn projection_arg_port_readings(repeat_elem: Node) -> List<v2.lens.complexity_ac
 // at an operator tail) is read as its raw capture, as before; the refusal is named here rather than
 // collapsed invisibly by a projection.
 fn projection_receiver_port_reading(left: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
-  match v2.compiler.body_lowering_fold.body_lower_operand_ref_read(node: left) {
-    v2.compiler.body_lowering_fold.OperandRefLowered { lowered: receiver } => lowered_arg_port_reading(arg: receiver)
-    v2.compiler.body_lowering_fold.OperandRefAbsent => lowered_arg_port_reading(arg: left)
-    v2.compiler.body_lowering_fold.OperandRefRefused { diagnostics: _ } => lowered_arg_port_reading(arg: left)
+  match body_lower_operand_ref_read(node: left) {
+    OperandRefLowered { lowered: receiver } => lowered_arg_port_reading(arg: receiver)
+    OperandRefAbsent => lowered_arg_port_reading(arg: left)
+    OperandRefRefused { diagnostics: _ } => lowered_arg_port_reading(arg: left)
   }
 }
 
@@ -462,7 +481,7 @@ fn projection_call_port_readings(cap: Node) -> List<v2.lens.complexity_accumulat
           match sequence_right_node(cap: seq_cap) {
             Absent => std.algebra.Empty
             Present { value: repeat_capture } =>
-              match v2.compiler.body_lowering_fold.body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
+              match body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
                 Absent => std.algebra.Empty
                 Present { value: repeat_elem } =>
                   std.algebra.list_append(
@@ -540,7 +559,7 @@ fn analyze_postfix_projection_call(
 fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 0) {
+      match list_at_optional(xs: v2.std.node.positional_child_target_nodes(node: node), index: 0) {
         Absent => Absent
         Present { value: head } =>
           match v2.std.grammar.node_atom_identity_optional(node: head) {
@@ -588,7 +607,7 @@ fn lowered_arg_port_reading(arg: Node) -> v2.lens.complexity_accumulator_copy.Po
     if idents == 1 {
       match v2.std.grammar.node_atom_identity_optional(node: arg) {
         Present { value: sym } =>
-          if v2.extdeps.languages.dag.dag_lex_token_symbol(sym: sym) {
+          if dag_lex_token_symbol(sym: sym) {
             v2.lens.complexity_accumulator_copy.PortPureLiteral
           } else {
             v2.lens.complexity_accumulator_copy.PortBareName { name: sym }
@@ -651,7 +670,7 @@ fn lowered_transform_port_readings(node: Node, combiner: Symbol) -> List<v2.lens
             v2.std.arrow_signature.ApplicationBindingRefused { reason: _, at: _ } => std.algebra.Empty
             v2.std.arrow_signature.ApplicationBound { slots: slots } =>
               std.algebra.list_map(xs: slots, f: fn(slot) {
-                match v2.std.collection.list_at_optional(xs: actuals, index: slot.actual_index) {
+                match list_at_optional(xs: actuals, index: slot.actual_index) {
                   Present { value: e } => lowered_arg_port_reading(arg: e.target)
                   Absent => v2.lens.complexity_accumulator_copy.PortMissing
                 }

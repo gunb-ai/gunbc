@@ -1,101 +1,23 @@
 module v2.compiler.normalize
 
 import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list }
-import v2.std.namespace_alias { AliasBindingRow }
-import v2.std.collection { Absent, Present, optional_absent, optional_present }
+import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget, CapturedImports }
+import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree, parse_production_emitted_identity_optional }
-
-import v2.std.diagnostic {
-  Correction,
-  Diagnostic,
-  Diagnostics,
-  node_locus,
-  Outcome,
-  UserInputBoundary,
-  Accepted,
-  None,
-  diagnostics_merge,
-  diagnostics_singleton,
-  rejected_with_pending,
-  bind_outcome,
-  outcome_accepted,
-  Rejected,
-  Unavailable
-}
-import v2.std.node {
-  Edge,
-  Node,
-  Symbol,
-  TypeNode,
-  allocate_pending_occurrences,
-  content_hash,
-  node_occurrence_allocator_after,
-  node_rebuild,
-  node_subtree_nodes,
-  well_formed,
-  ComputationNode
-}
-import std.occurrence_identity { ScopedOccurrenceAllocator, scoped_occurrence_allocator }
-import v2.std.compilers.sugar {
-  ProductionIdentityKey,
-  SugarKey,
-  apply_sugar,
-  sugar_rule_for_key
-}
-import v2.compiler.body_lowering_fold {
-  BodyLowering,
-  body_term_of,
-  BodyLoweredTree,
-  WrapperRetention,
-  body_lowering_after_pending,
-  body_lower_finish_for_normalize,
-  body_lowered_tree_map_node,
-  body_lowered_tree_of,
-  body_lowered_tree_over,
-  body_lowered_tree_retained,
-  body_lowered_tree_then,
-  no_wrapper_retentions,
-  wrapper_retentions_concat,
-  body_lower_fn_decl_to_census_arrow,
-  body_lower_service_decl,
-  body_lower_resource_decl,
-  body_lower_resource_decl_declared_kind_optional,
-  body_lower_is_deferred_lower_at_normalize,
-  DeclaredTypeKind,
-  DeclaredTypeModifiers,
-  DeclaredTypeModifiersAbsent,
-  DeclaredTypeModifiersPresent,
-  body_lower_type_decl_declared_kind_optional,
-  body_lower_type_decl_declared_modifiers,
-  declared_record_names,
-  declared_resource_names
-}
+import v2.std.diagnostic { Correction, Diagnostic, Diagnostics, Locus, node_locus, Outcome, UserInputBoundary, Accepted, None, diagnostics_merge, diagnostics_singleton, rejected_with_pending, bind_outcome, outcome_accepted, Rejected, Unavailable }
+import v2.std.node { Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_rebuild, node_subtree_nodes, well_formed, ComputationNode, NotADeclaration }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, ScopedOccurrenceAllocator, scoped_occurrence_allocator }
+import v2.std.compilers.sugar { ProductionIdentityKey, SugarKey, apply_sugar, sugar_rule_for_key }
+import v2.compiler.body_lowering_fold { BodyLowering, body_term_of, BodyLoweredTree, WrapperRetention, body_lowering_after_pending, body_lower_finish_for_normalize, body_lowered_tree_map_node, body_lowered_tree_of, body_lowered_tree_over, body_lowered_tree_retained, body_lowered_tree_then, no_wrapper_retentions, wrapper_retentions_concat, body_lower_fn_decl_to_census_arrow, body_lower_service_decl, body_lower_resource_decl, body_lower_resource_decl_declared_kind_optional, body_lower_is_deferred_lower_at_normalize, DeclaredTypeKind, DeclaredTypeModifiers, DeclaredTypeModifiersAbsent, DeclaredTypeModifiersPresent, body_lower_type_decl_declared_kind_optional, body_lower_type_decl_declared_modifiers, declared_record_names, declared_resource_names }
 import v2.std.compilers.body_lowering { Lowered, RawLeaf, RawParse }
-import v2.compiler.normalized_tree {
-  CensusTree,
-  NormalizedTree,
-  admit_census_tree,
-  admit_normalized_tree,
-  admit_retention_free,
-  normalized_tree_with_member_declarations
-}
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree, admit_census_tree, admit_normalized_tree, admit_retention_free, normalized_tree_with_member_declarations }
 import v2.std.member_declaration_kind { DeclaredDataMember, DeclaredFnMember, DeclaredMember }
 import v2.compiler.test_marker_capture { test_marker_capture }
-import v2.compiler.namespace_graft {
-  module_header_containment_graft,
-  namespace_graft_collect_unit_nodes_against,
-  namespace_graft_is_graft_candidate,
-  namespace_graft_top_level_item_alternative_emitted_ids
-}
-import v2.extdeps.languages.dag {
-  dag_grammar_root,
-  dag_surface_kw_then_ident_from_captured,
-  alias_binding_row_from_decl_node,
-  import_binding_rows_from_decl_node,
-  namespace_graft_unwrap_module_working_root,
-  parse_production_captured_child_optional
-}
+import v2.compiler.namespace_graft { module_header_containment_graft, namespace_graft_collect_unit_nodes_against, namespace_graft_is_graft_candidate, namespace_graft_top_level_item_alternative_emitted_ids }
+import v2.extdeps.languages.dag { dag_grammar_root, dag_surface_kw_then_ident_from_captured, alias_binding_row_from_decl_node, import_binding_rows_from_decl_node, import_decl_target_module, namespace_graft_unwrap_module_working_root, parse_production_captured_child_optional }
 import std.types { List }
+import v2.std.provenance { SpanIndex, SourceExtentKnown, SourceExtentUnrepresentable, span_index_empty, span_index_extent }
+
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -178,7 +100,7 @@ fn normalize_children_step(
             value: NormalizeEdges {
               edges: list_snoc_item(
                 xs: gathered.edges,
-                item: Edge { label: edge.label, target: child_tree.node }
+                item: Edge { label: edge.label, target: child_tree.node, declaration: edge.declaration }
               ),
               retained: wrapper_retentions_concat(
                 earlier: gathered.retained,
@@ -212,8 +134,11 @@ fn normalize_lower_over_children(
   )
 }
 
-fn normalize_sugar_tree_finish(n: Node, t: BodyLoweredTree, cd: Diagnostics) -> Outcome<BodyLoweredTree> {
-  body_lowered_tree_map_node(t: t, f: fn(folded) { normalize_sugar_finish(n: n, folded: folded, cd: cd) })
+fn normalize_sugar_tree_finish(n: Node, t: BodyLoweredTree, cd: Diagnostics, enclosing_type_name: Symbol?) -> Outcome<BodyLoweredTree> {
+  body_lowered_tree_map_node(
+    t: t,
+    f: fn(folded) { normalize_sugar_finish(n: n, folded: folded, cd: cd, enclosing_type_name: enclosing_type_name) }
+  )
 }
 
 fn normalize_sugar_key_optional(folded: Node) -> SugarKey? {
@@ -228,12 +153,12 @@ fn normalize_sugar_key_optional(folded: Node) -> SugarKey? {
   }
 }
 
-fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
+fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics, enclosing_type_name: Symbol?) -> Outcome<Node> {
   match normalize_sugar_key_optional(folded: folded) {
     Present { value: key } =>
       match sugar_rule_for_key(key: key) {
         Present { value: rule } =>
-          match apply_sugar(rule: rule, n: n, folded: folded) {
+          match apply_sugar(rule: rule, n: n, folded: folded, enclosing_type_name: enclosing_type_name) {
             Rejected { diagnostics: r } =>
               Rejected {
                 diagnostics: rejected_with_pending(pending: cd, rejected: r)
@@ -253,7 +178,49 @@ fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Nod
 }
 
 fn normalize_node(n: Node) -> Outcome<BodyLoweredTree> {
-  normalize_node_ctx(n: n, under_fn_decl: false)
+  normalize_node_ctx(n: n, under_fn_decl: false, enclosing_type_name: no_enclosing_type_name())
+}
+
+// THE DECLARATION'S OWN NAME, READ FROM ITS PARSE SHELL. A type_decl is the only declaration whose
+// interior the Disj-building sugar fold lowers (v2.std.compilers.sugar sugar_rule_type_alias_rhs),
+// and that fold sits on the type_decl's type_alias_rhs child -- a Node carries no parent pointer,
+// so the enclosing type name is not reachable from the fold by any walk. It is therefore threaded
+// DOWN, from the type_decl level, alongside the under_fn_decl scope flag: this reader asks the
+// SAME question body_lower_type_decl asks (v2.compiler.body_lowering_fold body_lower_type_decl,
+// parse_production_captured_child_optional then dag_surface_kw_then_ident_from_captured) but of
+// the PARSE shell, before any lowering, because the fold fires here in the normalize pass. A
+// declaration that is not a named type_decl carries no enclosing name, and an unreadable one
+// carries none too (its own lowering will refuse it; the coproduct wall then falls back to a node
+// locus rather than a declaration locus).
+fn normalize_type_decl_enclosing_name_optional(shell: Node) -> Symbol? {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => Absent
+    Present { value: captured } => dag_surface_kw_then_ident_from_captured(captured: captured)
+  }
+}
+
+fn no_enclosing_type_name() -> Symbol? {
+  Absent
+}
+
+// THE ENCLOSING TYPE NAME FOR A NODE'S CHILDREN. A type_decl COMPUTES its own name (so its
+// interior -- the coproduct fold on its rhs -- can name the declaration in a diagnostic); every
+// other node INHERITS the enclosing name it was itself handed, because a coproduct rhs always sits
+// directly inside a type_decl and never inside a second type_decl. This is the same
+// one-value-per-declaration discipline as under_fn_decl: the value is read ONCE at the type_decl
+// level and carried to its descendants, rather than re-walked for at every descendant. A fold that
+// fires at a node reports THAT node's own handed-in name (the parent's computation), so the
+// recursion passes the COMPUTED name to children and the INHERITED name to the fold at the node.
+fn normalize_env_for_children(n: Node, enclosing_type_name: Symbol?) -> Symbol? {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == ^dag_surface_type_decl {
+        normalize_type_decl_enclosing_name_optional(shell: n)
+      } else {
+        enclosing_type_name
+      }
+    Absent => enclosing_type_name
+  }
 }
 
 // A `data` DECLARATION OPENS THE SAME BODY SCOPE A `fn` DECLARATION DOES. Both lower to a named
@@ -270,7 +237,7 @@ fn normalize_fn_body_pass_through_at_seam(emitted: Symbol, under_fn_decl: Bool) 
   (emitted == ^dag_surface_fn_body) && under_fn_decl
 }
 
-fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
+fn normalize_node_ctx(n: Node, under_fn_decl: Bool, enclosing_type_name: Symbol?) -> Outcome<BodyLoweredTree> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: emitted } =>
       if body_lower_is_deferred_lower_at_normalize(
@@ -291,7 +258,12 @@ fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> 
         ) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: after_body, diagnostics: cd0 } =>
-            normalize_sugar_tree_finish(n: n, t: body_lowered_tree_of(lowering: after_body), cd: cd0)
+            normalize_sugar_tree_finish(
+              n: n,
+              t: body_lowered_tree_of(lowering: after_body),
+              cd: cd0,
+              enclosing_type_name: enclosing_type_name
+            )
         }
       } else {
         normalize_node_fold_children_ctx(
@@ -299,10 +271,11 @@ fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> 
           under_fn_decl: normalize_scope_under_fn_decl(
             under_fn_decl: under_fn_decl,
             emitted: emitted
-          )
+          ),
+          enclosing_type_name: enclosing_type_name
         )
       }
-    Absent => normalize_node_fold_children_ctx(n: n, under_fn_decl: under_fn_decl)
+    Absent => normalize_node_fold_children_ctx(n: n, under_fn_decl: under_fn_decl, enclosing_type_name: enclosing_type_name)
   }
 }
 
@@ -337,10 +310,11 @@ fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node>
 // parent n, so body_term_of is asked once here and the answer is carried into the fold, rather
 // than re-read once per child edge (DESIGN section 6, bare minimum cost: a quadratic fold is always
 // fixed). A RawLeaf parent keeps its payload whole; every other arm, Rejected included, descends.
-fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
+fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool, enclosing_type_name: Symbol?) -> Outcome<BodyLoweredTree> {
   normalize_node_fold_children_classified(
     n: n,
     under_fn_decl: under_fn_decl,
+    enclosing_type_name: enclosing_type_name,
     keep_children_whole: match body_term_of(node: n) {
       Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => true
       Accepted { value: RawParse { node: _ }, diagnostics: _ } => false
@@ -350,7 +324,8 @@ fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Bod
   )
 }
 
-fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, keep_children_whole: Bool) -> Outcome<BodyLoweredTree> {
+fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, enclosing_type_name: Symbol?, keep_children_whole: Bool) -> Outcome<BodyLoweredTree> {
+  let children_env = normalize_env_for_children(n: n, enclosing_type_name: enclosing_type_name)
   match fold(n.children, init: normalize_children_init(), f: fn(acc, e) {
     normalize_children_step(
       acc: acc,
@@ -358,7 +333,7 @@ fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, keep_ch
       child: if keep_children_whole {
         Accepted { value: body_lowered_tree_over(node: e.target, retained: no_wrapper_retentions()), diagnostics: None }
       } else {
-        normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
+        normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl, enclosing_type_name: children_env)
       }
     )
   }) {
@@ -367,7 +342,7 @@ fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, keep_ch
       match normalize_lower_over_children(n: n, gathered: gathered, cd: cd, fn_body_pass_through: false) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: after_body, diagnostics: cd0 } =>
-          normalize_sugar_tree_finish(n: n, t: after_body, cd: cd0)
+          normalize_sugar_tree_finish(n: n, t: after_body, cd: cd0, enclosing_type_name: enclosing_type_name)
       }
   }
 }
@@ -388,14 +363,41 @@ fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, keep_ch
 // (v2.compiler.namespace_graft namespace_graft_unit_disposition), so this is the only moment it can
 // be read. An import is the transmutation of N such rows (docs/plans/namespace-resolution-design.md
 // section 13), so both forms land on one carrier and one binding fold.
-fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMonoid<AliasBindingRow>> {
+fn import_decl_locus(decl: Node, spans: SpanIndex) -> Locus {
+  match decl.occurrence_id {
+    OccurrenceMinted { id: id } =>
+      import_decl_locus_from_id(id: id, spans: spans, fallback: decl)
+    OccurrenceProjected { id: id, caused_by: _ } =>
+      import_decl_locus_from_id(id: id, spans: spans, fallback: decl)
+    OccurrenceSynthetic =>
+      node_locus(node: decl)
+    OccurrencePending { caused_by: _ } =>
+      node_locus(node: decl)
+  }
+}
+
+fn import_decl_locus_from_id(id: OccurrenceId, spans: SpanIndex, fallback: Node) -> Locus {
+  match span_index_extent(index: spans, id: id) {
+    Present { value: recorded } =>
+      match recorded {
+        SourceExtentKnown { locus: locus } => locus
+        SourceExtentUnrepresentable => node_locus(node: fallback)
+      }
+    Absent => node_locus(node: fallback)
+  }
+}
+
+fn import_binding_capture(tree: ParseTree, nodes: List<Node>, spans: SpanIndex) -> Outcome<CapturedImports> {
   fold_list(
     xs: nodes,
-    empty: Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
+    empty: Accepted {
+      value: CapturedImports { bindings: Empty, modules: Empty },
+      diagnostics: v2.std.diagnostic.None
+    },
     cons: fn(acc, n) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: rows, diagnostics: _ } =>
+        Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
           match parse_production_emitted_identity_optional(node: n) {
             Absent => acc
             Present { value: id } =>
@@ -403,21 +405,40 @@ fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMon
                 match alias_binding_row_from_decl_node(decl: n, module_root: tree) {
                   Rejected { diagnostics: r } => Rejected { diagnostics: r }
                   Accepted { value: row, diagnostics: _ } =>
-                    Accepted { value: list_snoc_item(xs: rows, item: row), diagnostics: v2.std.diagnostic.None }
+                    Accepted {
+                      value: CapturedImports {
+                        bindings: list_snoc_item(xs: bindings, item: row),
+                        modules: modules
+                      },
+                      diagnostics: v2.std.diagnostic.None
+                    }
                 }
               } else if id != ^dag_surface_import_decl {
                 acc
               } else {
-                match import_binding_rows_from_decl_node(decl: n, module_root: tree) {
+                match import_decl_target_module(decl: n, module_root: tree) {
                   Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  Accepted { value: fresh, diagnostics: _ } =>
-                    Accepted {
-                      value: fold_list(
-                        xs: fresh,
-                        empty: rows,
-                        cons: fn(a, row) { list_snoc_item(xs: a, item: row) }
-                      ),
-                      diagnostics: v2.std.diagnostic.None
+                  Accepted { value: target_module, diagnostics: _ } =>
+                    match import_binding_rows_from_decl_node(decl: n, module_root: tree) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: fresh, diagnostics: _ } =>
+                        Accepted {
+                          value: CapturedImports {
+                            bindings: fold_list(
+                              xs: fresh,
+                              empty: bindings,
+                              cons: fn(a, row) { list_snoc_item(xs: a, item: row) }
+                            ),
+                            modules: list_snoc_item(
+                              xs: modules,
+                              item: CapturedImportTarget {
+                                target: target_module,
+                                at: import_decl_locus(decl: n, spans: spans)
+                              }
+                            )
+                          },
+                          diagnostics: v2.std.diagnostic.None
+                        }
                     }
                 }
               }
@@ -561,11 +582,11 @@ fn normalize_allocator_resolve(source: NormalizeAllocatorSource, parse_tree: Par
   }
 }
 
-fn normalize_scoped(parse_tree: ParseTree, allocator: ScopedOccurrenceAllocator) -> Outcome<ScopedNormalizedTree> {
-  normalize_with(parse_tree: parse_tree, source: NormalizeWithIngestAllocator { allocator: allocator })
+fn normalize_scoped(parse_tree: ParseTree, allocator: ScopedOccurrenceAllocator, spans: SpanIndex) -> Outcome<ScopedNormalizedTree> {
+  normalize_with(parse_tree: parse_tree, source: NormalizeWithIngestAllocator { allocator: allocator }, spans: spans)
 }
 
-fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Outcome<ScopedNormalizedTree> {
+fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource, spans: SpanIndex) -> Outcome<ScopedNormalizedTree> {
   match bind_retention_free(o: normalize_node(n: parse_tree)) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
@@ -580,10 +601,10 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
               Accepted { value: markers, diagnostics: _ } =>
-                match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
+                match import_binding_capture(tree: parse_tree, nodes: parse_nodes, spans: spans) {
                   Rejected { diagnostics: r } =>
                     Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
-                  Accepted { value: bindings, diagnostics: _ } =>
+                  Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
                     match type_declaration_modifier_capture(nodes: parse_nodes) {
                       Rejected { diagnostics: r } =>
                         Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
@@ -592,6 +613,7 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
                           root: grafted,
                           test_markers: markers,
                           import_bindings: bindings,
+                          imported_modules: modules,
                           type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
                           type_declaration_modifiers: modifiers,
                           diagnostics: d1
@@ -644,7 +666,7 @@ fn normalize_isolated_allocator(parse_tree: ParseTree) -> ScopedOccurrenceAlloca
 
 // A tree normalized on its own, for every caller that is not threading an ingest's allocator.
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
-  match normalize_with(parse_tree: parse_tree, source: NormalizeWithIsolatedAllocator) {
+  match normalize_with(parse_tree: parse_tree, source: NormalizeWithIsolatedAllocator, spans: span_index_empty()) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
   }
@@ -669,7 +691,7 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
 //     the same Disjs whole-root ingest produces.
 // The result is a CensusTree, not a NormalizedTree, so no emission or body-resolution consumer can be
 // handed one: a census-grade module is never emitted BY TYPE rather than by a check at the emitter.
-fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
+fn normalize_census_node(n: Node, under_fn_decl: Bool, enclosing_type_name: Symbol?) -> Outcome<BodyLoweredTree> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: emitted } =>
       if (emitted == ^dag_surface_data_decl) || (emitted == ^dag_surface_test_fn_decl) {
@@ -685,7 +707,7 @@ fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTre
           f: fn(shell) { body_lower_resource_decl(shell: shell) }
         )
       } else if emitted == ^dag_surface_fn_decl {
-        match normalize_census_fold_children(n: n, under_fn_decl: true) {
+        match normalize_census_fold_children(n: n, under_fn_decl: true, enclosing_type_name: enclosing_type_name) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: gathered, diagnostics: cd } =>
             body_lowered_tree_then(
@@ -697,11 +719,11 @@ fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTre
         emitted: emitted,
         under_fn_decl: normalize_scope_under_fn_decl(under_fn_decl: under_fn_decl, emitted: emitted)
       ) {
-        normalize_node_ctx(n: n, under_fn_decl: under_fn_decl)
+        normalize_node_ctx(n: n, under_fn_decl: under_fn_decl, enclosing_type_name: enclosing_type_name)
       } else {
-        normalize_census_finish(n: n, under_fn_decl: under_fn_decl)
+        normalize_census_finish(n: n, under_fn_decl: under_fn_decl, enclosing_type_name: enclosing_type_name)
       }
-    Absent => normalize_census_finish(n: n, under_fn_decl: under_fn_decl)
+    Absent => normalize_census_finish(n: n, under_fn_decl: under_fn_decl, enclosing_type_name: enclosing_type_name)
   }
 }
 
@@ -709,31 +731,32 @@ fn census_arrow_after(cd: Diagnostics, shell: Node) -> Outcome<BodyLowering> {
   body_lowering_after_pending(pending: cd, o: body_lower_fn_decl_to_census_arrow(shell: shell))
 }
 
-fn normalize_census_fold_children(n: Node, under_fn_decl: Bool) -> Outcome<NormalizeEdges> {
+fn normalize_census_fold_children(n: Node, under_fn_decl: Bool, enclosing_type_name: Symbol?) -> Outcome<NormalizeEdges> {
+  let children_env = normalize_env_for_children(n: n, enclosing_type_name: enclosing_type_name)
   fold(n.children, init: normalize_children_init(), f: fn(acc, e) {
     normalize_children_step(
       acc: acc,
       edge: e,
-      child: normalize_census_node(n: e.target, under_fn_decl: under_fn_decl)
+      child: normalize_census_node(n: e.target, under_fn_decl: under_fn_decl, enclosing_type_name: children_env)
     )
   })
 }
 
-fn normalize_census_finish(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTree> {
-  match normalize_census_fold_children(n: n, under_fn_decl: under_fn_decl) {
+fn normalize_census_finish(n: Node, under_fn_decl: Bool, enclosing_type_name: Symbol?) -> Outcome<BodyLoweredTree> {
+  match normalize_census_fold_children(n: n, under_fn_decl: under_fn_decl, enclosing_type_name: enclosing_type_name) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: gathered, diagnostics: cd } =>
       match normalize_lower_over_children(n: n, gathered: gathered, cd: cd, fn_body_pass_through: false) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: after_body, diagnostics: cd0 } =>
-          normalize_sugar_tree_finish(n: n, t: after_body, cd: cd0)
+          normalize_sugar_tree_finish(n: n, t: after_body, cd: cd0, enclosing_type_name: enclosing_type_name)
       }
   }
 }
 
 // The census door refuses retention on the same evidence and at the same point the full door does.
 fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
-  match bind_retention_free(o: normalize_census_node(n: parse_tree, under_fn_decl: false)) {
+  match bind_retention_free(o: normalize_census_node(n: parse_tree, under_fn_decl: false, enclosing_type_name: no_enclosing_type_name())) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
       match normalize_module_graft_finish(folded: normalized, cd: d) {
@@ -742,14 +765,15 @@ fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
           let grafted = allocate_pending_occurrences(root: lowered, allocator: normalize_isolated_allocator(parse_tree: parse_tree)).root
           if well_formed(n: grafted) {
             let parse_nodes = node_subtree_nodes(root: parse_tree)
-            match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
+            match import_binding_capture(tree: parse_tree, nodes: parse_nodes, spans: span_index_empty()) {
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
-              Accepted { value: bindings, diagnostics: _ } =>
+              Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
                 let kinds = type_declaration_kind_capture(nodes: parse_nodes)
                 admit_census_tree(
                   root: grafted,
                   import_bindings: bindings,
+                  imported_modules: modules,
                   record_declarations: declared_record_names(kinds: kinds),
                   resource_declarations: declared_resource_names(kinds: kinds),
                   diagnostics: d1

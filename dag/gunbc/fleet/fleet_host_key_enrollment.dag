@@ -21,6 +21,9 @@ import gunbc.command_runner { run_shell_commands, run_shell_command_capture, run
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, render_network_host }
+import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privkey_version_segment, fleet_automation_ssh_privkey_secret }
 
 // CONVERGE acceptance item 4 (operator directive C, 2026-08-09): the host-key
@@ -74,7 +77,7 @@ type HostKeyEnrollmentProvenance
 
 type KnownHostKeyRow {
   host: HostIdentity
-  endpoint: String
+  address: SocketAddress
   key_type: String
   public_key_base64: String
   sha256_fingerprint: String
@@ -93,6 +96,18 @@ data host_key_enrollment_transcription_scaffold: Disposition = Scaffold {
   }
 }
 
+// A REGISTRY ROW'S NAME, BUILT FROM ITS LABELS. The name a row is pinned under is a typed HostName
+// assembled from the labels the row states, never a HostIdentity string read back as a DNS name, at
+// sshd's standard port. This is the registry's own constructor and not a fleet address authority:
+// where a fleet host is REACHED is gunbc.fleet.fleet_reach_endpoint fleet_probe_endpoint_for, which
+// gunbc.endpoint_authority_replacement_cut retires in favour of the fleet attachment authority.
+fn fleet_name_at_ssh_port(labels: List<DnsLabel>) -> SocketAddress {
+  socket_address(
+    host: host_by_name(name: HostName { name: DomainName { labels: labels }, qualification: PartiallyQualified }),
+    port: openssh_standard_port,
+  )
+}
+
 // PROVENANCE: transcription of the executed fleet_host_key_scan_wet on GitHub Actions
 // run 31323244273 (scan_fleet_host_keys on srv1, 2026-08-09, all six hosts
 // outcome=observed, ED25519). The srv5/srv6 fingerprints CROSS-CHECK against
@@ -103,7 +118,7 @@ data host_key_enrollment_transcription_scaffold: Disposition = Scaffold {
 data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
   KnownHostKeyRow {
     host: "srv1" as HostIdentity,
-    endpoint: "srv1",
+    address: fleet_name_at_ssh_port(labels: ["srv1" as DnsLabel]),
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL",
     sha256_fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w",
@@ -111,7 +126,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
   },
   KnownHostKeyRow {
     host: "srv1" as HostIdentity,
-    endpoint: "srv1.tailecbe08.ts.net",
+    address: fleet_name_at_ssh_port(labels: ["srv1" as DnsLabel, "tailecbe08" as DnsLabel, "ts" as DnsLabel, "net" as DnsLabel]),
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL",
     sha256_fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w",
@@ -119,7 +134,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
   },
   KnownHostKeyRow {
     host: "srv2" as HostIdentity,
-    endpoint: "srv2",
+    address: fleet_name_at_ssh_port(labels: ["srv2" as DnsLabel]),
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIOcg37ZIA2yVtNBV6dbVIvHjrNxzOI7gEOAF6uGAAJ48",
     sha256_fingerprint: "SHA256:XbC63cRNKr8kCy4UoXD20QKCNLNY4iMV1B61HMDHFno",
@@ -127,7 +142,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
   },
   KnownHostKeyRow {
     host: "srv3" as HostIdentity,
-    endpoint: "srv3",
+    address: fleet_name_at_ssh_port(labels: ["srv3" as DnsLabel]),
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFLymLSidHDQS5dyzq/KZTXsFsTxjZSmDUbSBqHUuWTN",
     sha256_fingerprint: "SHA256:y3Uq5S1Ibtd6RoN+bzyk79jKqhWVVoM37oL6lQg4tgk",
@@ -135,7 +150,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
   },
   KnownHostKeyRow {
     host: "srv4" as HostIdentity,
-    endpoint: "srv4",
+    address: fleet_name_at_ssh_port(labels: ["srv4" as DnsLabel]),
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAID5/OXS9/f1VdH5sOKS+RL5MDKrfGtwFtFDJDvSz+IPB",
     sha256_fingerprint: "SHA256:nU6X9fCjhRYdvvvuKCbS7egf9CJMbJI6vYJ/Wgf5zxI",
@@ -152,8 +167,16 @@ fn enrolled_fingerprint_for(host: String) -> String? {
   })
 }
 
+// THE HOST FIELD A ROW IS PINNED UNDER, which is what ssh looks the key up by: the bare host at port 22
+// and [host]:port otherwise (extdeps.ssh.known_hosts known_hosts_host_field). Every reader that names a
+// row's endpoint reads this, so a row on a non-standard port cannot be written, matched or reported
+// under its bare host.
+fn known_host_row_field(k: KnownHostKeyRow) -> String {
+  known_hosts_host_field(address: k.address) as String
+}
+
 fn known_hosts_line(k: KnownHostKeyRow) -> String {
-  join([k.endpoint, " ", k.key_type, " ", k.public_key_base64], "")
+  join([known_host_row_field(k: k), " ", k.key_type, " ", k.public_key_base64], "")
 }
 
 // The honest provenance label carried into the enroll receipt so a reader sees WHAT
@@ -330,7 +353,7 @@ fn fleet_host_key_enroll_apply(home: String) -> String
   } else {
     let fragment = join(map(fleet_host_key_enrollments, k => concat(known_hosts_line(k: k), "\n")), "")
     let staged = "target/fleet-known-hosts-fragment"
-    let endpoints = join(map(fleet_host_key_enrollments, k => k.endpoint), " ")
+    let endpoints = join(map(fleet_host_key_enrollments, k => render_network_host(host: k.address.host) as String), " ")
     let w = Filesystem.Write(path: staged, content: fragment)
     if w.success {
       if home == "" {
@@ -464,11 +487,11 @@ fn cwd_capture_stdout(outcome: ProcessOutcome) -> String {
 fn pin_readback_block(staged: String) -> String {
   join(map(fleet_host_key_enrollments, k => {
     let f = run_shell_command_capture(
-      command: ssh_keygen_known_hosts_find_command(host: k.endpoint, known_hosts_file: staged),
+      command: ssh_keygen_known_hosts_find_command(host: known_host_row_field(k: k), known_hosts_file: staged),
       transport: LocalExec,
     )
     join([
-      "enroll host=", k.host as String, " endpoint=", k.endpoint,
+      "enroll host=", k.host as String, " endpoint=", known_host_row_field(k: k),
       " provenance=", host_key_provenance_label(p: k.provenance),
       if process_outcome_admitted(outcome: f) { " readback=found-in-pinned-fragment" } else { " readback=ABSENT" }, "\n",
     ], "")

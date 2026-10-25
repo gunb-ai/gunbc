@@ -1,6 +1,8 @@
 module v2.std.source_position
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse, list_at_optional }
+import std.optional { Absent, Present }
+import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -28,12 +30,6 @@ type SourceLineCol {
   byte_column: SourceByteColumn
 }
 
-// The fold's state: the line reached and the byte offset at which it starts.
-type LineStart {
-  line: Int
-  offset: Int
-}
-
 type OctetScan {
   index: Int
   found: FreeMonoid<Int>
@@ -47,12 +43,50 @@ fn source_newline_byte_offsets(text: String) -> FreeMonoid<Int> {
   }).found)
 }
 
-// Line and byte column of `offset`: every newline strictly before it starts a new line, and the
-// column counts bytes from that line's start. A fold over the newline offsets, so its depth is
-// constant in the file's length.
+// A TEXT'S LINE STARTS, DERIVED ONCE AND QUERIED MANY TIMES. `line_starts` is ascending and begins
+// at byte 0; every other entry is the byte after a newline (octet 10), so the newline byte itself
+// stays on the line it ends. `strides` is the descending powers of two not exceeding `line_count`:
+// a lookup is one pass over them, each step moving forward only when the line start it lands on is
+// still at or before the offset. That is a binary search over the line starts with no division,
+// so a lookup is O(log lines) indexed reads (list_at_optional) rather than a sweep of the text.
+//
+// WHY THIS IS A VALUE AND NOT A RE-DERIVATION. A consumer that locates many offsets in one text --
+// the native census locates every refusal of a file, ten thousand in the largest -- would otherwise
+// re-encode and re-sweep the whole text per offset: offsets x bytes, the quadratic that made one
+// 16k-line module cost two hours. The consumer derives this once per text and keeps it instead of
+// the text.
+type SourcePositionIndex {
+  line_starts: FreeMonoid<Int>
+  line_count: Int
+  strides: SortedFloorStrides
+}
+
+fn source_position_index(text: String) -> SourcePositionIndex {
+  let starts = Cons { head: 0, tail: list_reverse(xs: fold_list(xs: source_newline_byte_offsets(text: text), empty: Empty, cons: fn(acc, nl) {
+    Cons { head: nl + 1, tail: acc }
+  })) }
+  let strides = fold_list(xs: starts, empty: sorted_floor_strides_empty(), cons: fn(acc, _) { sorted_floor_strides_grown(s: acc) })
+  SourcePositionIndex { line_starts: starts, line_count: strides.count, strides: strides }
+}
+
+// Line and byte column of `offset` against an index: the last line start at or before it is its
+// line, and the column counts bytes from that start. An index read past the end answers Absent,
+// which is "not at or before the offset" -- the search does not move there.
+fn source_line_col_in(index: SourcePositionIndex, offset: Int) -> SourceLineCol {
+  let line = match sorted_floor_position(strides: index.strides, key: offset, key_at: fn(i) { list_at_optional(xs: index.line_starts, index: i) }) {
+    Present { value: at } => at
+    Absent => 0
+  }
+  let start = match list_at_optional(xs: index.line_starts, index: line) {
+    Present { value: at } => at
+    Absent => 0
+  }
+  SourceLineCol { line: line + 1, byte_column: SourceByteColumn { value: offset - start + 1 } }
+}
+
+// Line and byte column of `offset` in `text`, for a consumer locating ONE offset. Every newline
+// strictly before the offset starts a new line. A consumer locating many offsets in one text holds
+// source_position_index instead and asks source_line_col_in, so the text is swept once.
 fn source_line_col_at_byte(text: String, offset: Int) -> SourceLineCol {
-  let start = fold_list(xs: source_newline_byte_offsets(text: text), empty: LineStart { line: 1, offset: 0 }, cons: fn(acc, nl) {
-    if nl < offset { LineStart { line: acc.line + 1, offset: nl + 1 } } else { acc }
-  })
-  SourceLineCol { line: start.line, byte_column: SourceByteColumn { value: offset - start.offset + 1 } }
+  source_line_col_in(index: source_position_index(text: text), offset: offset)
 }

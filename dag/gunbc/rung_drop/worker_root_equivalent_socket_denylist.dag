@@ -1,0 +1,27 @@
+module gunbc.rung_drop.worker_root_equivalent_socket_denylist
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// Grain: the credential a unit running worker- or candidate-controlled code holds. Ceiling is that the
+// worker never holds a root-equivalent group; this row is the interim deny-list under it.
+
+data worker_root_equivalent_socket_denylist: RungDrop = RungDrop {
+  identity: "worker_root_equivalent_socket_denylist" as NonEmptyStr,
+
+  subject: "Whether worker-controlled code holds a credential that reaches root: the instance account (briansrls on srv1) is in groups docker and lxd, so a unit running as it can ask a root daemon for a privileged container with / mounted",
+
+  declared: "2026-10-17",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "run attempt workers as a dedicated unprivileged account holding no sudo and no root-equivalent group, as a system-manager transient started through gunbc.roadmap.attempt_system_unit_launch (User= derived from a gunbc.fleet.fleet_posix_accounts row, converged by the deploy that installs the launcher grant). The interim is InaccessiblePaths= over the known docker, containerd, podman and lxd sockets (gunbc.compute.unit_bounds worker_root_equivalent_socket_paths).",
+    },
+    population: Enumerated { members: FreeSemigroup { head: "every unit rendered through compute_grant_unit_properties (dispatch workers, verification compute units) and dispatch_review_unit_properties (reviewer, auditor, supervisor) on a host whose instance account is in a root-equivalent group", tail: ["FAILS OPEN for the next root-equivalent socket or group not in the list", "NOT ENFORCED in the srv1 user manager: InaccessiblePaths= is a mount-namespace property and is dropped there like ProtectSystem (gunbc.rung_drop.user_manager_worker_write_boundary_unenforced); it binds only on the system-manager launcher path", "NOT YET NARROWED: the srv1 lab declares worker as the dedicated account, but the account's groups are a declaration the model neither converges nor reads back (no converger exists), so the lab holds the credential-free shape only if the hand-created host account matches the row. The population shrinks when a host readback of the account's groups is a consumer of fleet_posix_worker_supplementary_groups, fleet_root_equivalent_group_names and fleet_posix_worker_shared_group_gid (the gid the readback compares), or when bright-moth-475 records that live reading for the lab", "NOT in the population: belt obligation units, which run controller code and not worker output"] } },
+    restoration_trigger: "THE CAPABILITY: the worker unit's User= is a dedicated account with no root-equivalent group and no sudo, so the credential is never held. Evidence is bright-moth-475 reading, from inside a live worker unit on srv1 lab, that id shows no docker or lxd group, sudo -n true fails, and a docker.sock connect is refused. WHAT DOES NOT RETIRE THIS ROW: lengthening the socket list, or rendering the property in more units.",
+  } }
+}

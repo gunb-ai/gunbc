@@ -21,13 +21,15 @@ import v2.std.diagnostic {
   UserInputBoundary,
   Unavailable
 }
-import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
+import std.optional { Absent, Optional, Present }
+import std.types { Map }
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, empty_map, map_insert, map_lookup }
 import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.member_declaration_kind { DeclaredMember }
-import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
+import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget, ModuleBindingSource }
+import v2.std.qualified_name { QualifiedName }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
 // behind. It was an alias for Node until BL-1, which is why retention evidence reached resolve as a
@@ -58,6 +60,7 @@ type NormalizedTree sole_constructor {
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
+  imported_modules: FreeMonoid<CapturedImportTarget>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
   type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
   member_declarations: NormalizedMemberDeclarations,
@@ -114,6 +117,10 @@ fn admit_retention_free(tree: BodyLoweredTree, diagnostics: Diagnostics) -> Outc
 // leaving a reader to guess whether the caller dropped something. This says what is true: this
 // input carries no import bindings.
 fn no_import_bindings() -> FreeMonoid<AliasBindingRow> {
+  Empty
+}
+
+fn no_imported_modules() -> FreeMonoid<CapturedImportTarget> {
   Empty
 }
 
@@ -203,6 +210,7 @@ fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
+  imported_modules: FreeMonoid<CapturedImportTarget>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
   type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
   diagnostics: Diagnostics
@@ -216,6 +224,7 @@ fn admit_normalized_tree(
           root: root,
           test_markers: test_markers,
           import_bindings: import_bindings,
+          imported_modules: imported_modules,
           type_declaration_kinds: type_declaration_kinds,
           type_declaration_modifiers: type_declaration_modifiers,
           member_declarations: MemberDeclarationsNotRead
@@ -232,6 +241,7 @@ fn normalized_tree_with_member_declarations(tree: NormalizedTree, members: FreeM
     root: tree.root,
     test_markers: tree.test_markers,
     import_bindings: tree.import_bindings,
+    imported_modules: tree.imported_modules,
     type_declaration_kinds: tree.type_declaration_kinds,
     type_declaration_modifiers: tree.type_declaration_modifiers,
     member_declarations: MemberDeclarationsRead { members: members }
@@ -270,6 +280,7 @@ fn no_resource_declarations() -> FreeMonoid<Symbol> {
 type CensusTree sole_constructor {
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
+  imported_modules: FreeMonoid<CapturedImportTarget>,
   record_declarations: FreeMonoid<Symbol>,
   resource_declarations: FreeMonoid<Symbol>,
 }
@@ -283,6 +294,7 @@ type CensusTree sole_constructor {
 fn admit_census_tree(
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
+  imported_modules: FreeMonoid<CapturedImportTarget>,
   record_declarations: FreeMonoid<Symbol>,
   resource_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
@@ -295,6 +307,7 @@ fn admit_census_tree(
         value: CensusTree {
           root: root,
           import_bindings: import_bindings,
+          imported_modules: imported_modules,
           record_declarations: record_declarations,
           resource_declarations: resource_declarations
         },
@@ -315,10 +328,14 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
 }
 
 // Projection of ONE sealed tree's captured import rows, for a reader that must ask what a module
-// imports without unsealing the carrier: v2.compiler.compile native_import_target_attribution,
+// imports without unsealing the carrier: v2.compiler.source_root_eval native_import_target_attribution,
 // which attributes a resolve refusal to an import target the context refused at ingest.
 fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBindingRow> {
   tree.import_bindings
+}
+
+fn normalized_tree_imported_modules(tree: NormalizedTree) -> FreeMonoid<CapturedImportTarget> {
+  tree.imported_modules
 }
 
 // Projection out of the sealed carrier for the symbol-index fill, which needs both halves of what a
@@ -379,6 +396,7 @@ fn admit_unmarked_normalized_roots(
             root: root,
             test_markers: test_marker_channel_empty(),
             import_bindings: no_import_bindings(),
+            imported_modules: no_imported_modules(),
             type_declaration_kinds: no_type_declaration_kinds(),
             type_declaration_modifiers: no_type_declaration_modifiers(),
             member_declarations: MemberDeclarationsNotRead

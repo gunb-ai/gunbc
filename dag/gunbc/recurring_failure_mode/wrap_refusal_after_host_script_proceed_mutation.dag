@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.wrap_refusal_after_host_script_proceed_mutation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data wrap_refusal_after_host_script_proceed_mutation: RecurringFailureMode = RecurringFailureMode {
+  identity: "wrap_refusal_after_host_script_proceed_mutation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a live_deploy compose_host_script Decide fragment is HostScriptProceed, Mutate including slice-control runs, then a child ExecStart (`gunbc run` / `gunbc converge`) refuses wrap standing (UserSessionAbsent, UncappedSystemSlice, CgroupUnreadable, UserManagerProbeFailed). The host is left part-mutated: sessions and broker set-property already applied, tree-sync not converged.",
+
+    "HARM: a typed refusal at the child is fail-closed for THAT process, but it is not decide-before-mutate for the apply. Operators read a loud tree-sync failure after MemoryMax/High have already moved. The next apply must be safe to retry over that residue; a class that only exists as a comment cannot be ranked to climb.",
+
+    "DISTINGUISHING FACT: compose_host_script drops Mutate only when a Decide is HostScriptRefused. slice-control is Mutate/Proceed. Wrap standing is evaluated in the seed trampoline of the STARTED unit from /proc/self/cgroup, not as a Decide over the unit the script is about to start. UserSessionAbsent on srv1 tree-sync at 4242613b (gunbc#13966 apply, 2026-10-14) is the specimen: gunbc-tree-sync.service User=briansrls Slice=gunbc-repository-convergence.slice, wrap classified it as user work, apply exited 3 after slice-control.",
+
+    "UncappedSystemSlice (gunbc#14024) fires on the same route. It is a new refusal arm, not a new place: still after HostScriptProceed mutation. Filing it here rather than a second class: the invalid state is wrap refusal after Proceed, whatever the standing wire.",
+
+    "RECOGNITION RULE: apply transcript shows Mutate slice-control then a later spec-step systemctl start/restart of a gunbc oneshot whose journal is `cannot wrap into gunbc-user-work.slice (...)`; /opt or serving tree may still be the previous revision.",
+
+    "RUNG FOUND AT: mitigatable -- the child refuses with a typed standing and the apply does not fabricate convergence, but the preceding Mutate is already on the host. CEILING: structurally guaranteed, once wrap standing for each unit the apply will start is a Decide fragment that can drop slice-control Mutate. The apply process's own cgroup is the wrong subject (it is often a user session). The Decide must classify the TARGET unit from the model (emitted Slice= and declared_system_slice_memory_maxes), not from /proc/self of the composer.",
+
+    "NEXT-RUNG TRIGGER: compose_host_script grows a Decide member whose standing is user_work_scope_standing over the unit about to be started (system oneshot on a modeled capped slice -> Proceed without wrap; uncapped/unmodeled system slice -> HostScriptRefused naming the slice; user session work still wraps at runtime). SUFFICIENT FOR: UncappedSystemSlice and UserSessionAbsent cannot be reached after slice-control Mutate on the production apply path. Child trampoline stays until Test/Run wrap is emitted (v2.compiler.self_host.seed_retention_frontier retained_support_dir_member user_work_scope.rs).",
+
+    "CONSUMPTION: gunbc.compute.unit_bounds user_work_scope_standing / user_work_scope_standing_effect; specimen apply of 4242613b; claims in test.claim.live_deploy.user_work_slice_witness. review 80196 named the missing row.",
+  ],
+
+  evidence: [],
+}

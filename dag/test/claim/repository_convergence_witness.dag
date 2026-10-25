@@ -11,7 +11,7 @@ import gunbc.live_deploy.repository_convergence {
   superseded_workspace_file_paths,
   ConvergenceSupersededFileNotRetired,
   RepositoryState,
-  GitTextObserved,
+  GitTextObservation, GitTextObserved, GitTextUnreadable, git_text_value, git_text_or_empty,
   RepositoryCoherenceObservation, RepositoryCoherenceObserved,
   RepositoryCoherenceUnreadable,
   GitUntrackedObservation, GitUntrackedObserved, GitUntrackedUnreadable,
@@ -705,4 +705,28 @@ test fn an_unretired_superseded_file_is_not_converged() -> Bool {
     path: "/opt/gunbc/gunbc/dag/gunbc/rung_drop/roster.dag",
     detail: "delete refused: permission denied",
   })
+}
+
+data unreadable_head: GitTextObservation = GitTextUnreadable { operation: "git rev-parse HEAD", exit_code: 128, stderr: "fatal" }
+
+test fn git_text_value_present_on_observed_text() -> Bool {
+  match git_text_value(observation: GitTextObserved { text: "abc" }) {
+    Present { value: t } => t == "abc"
+    none => false
+  }
+}
+
+test fn git_text_value_none_on_unreadable() -> Bool {
+  match git_text_value(observation: unreadable_head) {
+    Present { value: _ } => false
+    none => true
+  }
+}
+
+test fn git_text_or_empty_yields_observed_text() -> Bool {
+  git_text_or_empty(observation: GitTextObserved { text: "abc" }) == "abc"
+}
+
+test fn git_text_or_empty_is_empty_on_unreadable() -> Bool {
+  git_text_or_empty(observation: unreadable_head) == ""
 }

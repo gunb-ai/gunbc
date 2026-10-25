@@ -3,7 +3,7 @@ module extdeps.gpu.types
 import std.types { Int, NonEmptyStr, String, List, Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count }
+import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count, Micrometer }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
@@ -139,4 +139,15 @@ fn gpu_catalog_bandwidth_count(row: GpuModelCatalogRow) -> Nat? {
     Present { value: b } => Present { value: bandwidth_count(b: b) }
     Absent => none
   }
+}
+
+// THE SIDE OUTLINE OF A PCIe ADD-IN CARD, as a vendor's side-view drawing dimensions it. Length is
+// carried twice because vendors dimension it twice: with the I/O bracket and without it, and a
+// consumer placing the card in a chassis needs the first while one fitting a duct to the far end
+// needs the second. Thickness is NOT a field: a side view does not dimension it, and a slot-count
+// statement ("dual-slot") names an envelope class rather than a measured thickness.
+type PcieCardSideOutline {
+  length_without_bracket: Micrometer
+  length_with_bracket: Micrometer
+  height: Micrometer
 }

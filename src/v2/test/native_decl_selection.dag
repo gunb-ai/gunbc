@@ -1,12 +1,13 @@
 module v2.test.native_decl_selection
 
-import v2.compiler.compile {
-  native_lane_module_resolution,
-  native_lane_file_refusal_index,
+import v2.compiler.source_root_eval {
   NativeLaneModuleResolved,
   NativeLaneModuleContextRowsDecided,
   NativeLaneModuleResolveRowsDecided,
+  native_lane_module_resolution,
+  native_lane_file_refusal_index,
   NativeLaneUniverseModule,
+  native_infer_advisory_count_for,
   native_test_context_from_ingest,
   native_test_eval_one,
   native_test_infer_resolved,
@@ -57,6 +58,8 @@ data collision_module_source: String = "module v2.test.collision\n\nimport std.t
 
 data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport std.types { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
 
+data gnd_module_source: String = "module v2.test.naif_gnd\n\nimport std.types { Bool }\n\ntype NaifT\n  = NaifA\n  | NaifB\n\nfn naif_gnd_k(t: NaifT) -> Bool {\n  t == NaifA\n}\n"
+
 fn collision_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: collision_module_source, fidelity: Lossless },
@@ -85,6 +88,57 @@ fn collision_sibling_read() -> DagSourceReadWitness {
 
 fn collision_module() -> QualifiedName {
   [^v2, ^test, ^collision]
+}
+
+fn gnd_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: gnd_module_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^native_decl_selection_gnd_read,
+      file_path: "src/v2/test/fixture/native_decl_selection/naif_gnd.dag"
+    },
+    compilation_unit: ^native_decl_selection_gnd_cu,
+    source_root: DagTree
+  }
+}
+
+fn gnd_module() -> QualifiedName {
+  [^v2, ^test, ^naif_gnd]
+}
+
+fn derived_module() -> QualifiedName {
+  [^v2, ^test, ^collision_sibling]
+}
+
+fn derived_prepared() -> Optional<NativeTestPreparedModule> {
+  match native_test_context_from_ingest(ingest: [collision_sibling_read()]) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: derived_module()).resolved {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: resolved, diagnostics: _ } =>
+          match native_test_infer_resolved(module: derived_module(), resolved: resolved) {
+            Rejected { diagnostics: _ } => optional_absent()
+            Accepted { value: prepared, diagnostics: _ } => optional_present(value: prepared)
+          }
+      }
+  }
+}
+
+fn gnd_prepared() -> Optional<NativeTestPreparedModule> {
+  match native_test_context_from_ingest(ingest: [gnd_read()]) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: gnd_module()).resolved {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: resolved, diagnostics: _ } =>
+          match native_test_infer_resolved(module: gnd_module(), resolved: resolved) {
+            Rejected { diagnostics: _ } => optional_absent()
+            Accepted { value: prepared, diagnostics: _ } => optional_present(value: prepared)
+          }
+      }
+  }
 }
 
 // THE SHARE POINT. Every witness below needs the same prepared module, and the required floor
@@ -157,6 +211,32 @@ test fn an_absent_declaration_is_not_found() -> Bool {
       observation_is_entry_not_found(
         observation: native_test_eval_one(prepared: prepared, declaration: ^missing)
       )
+  }
+}
+
+// Native `gunbc test` of this module is blocked at acquisition: gunbc.witness.v2_native_route
+// sits in dag/ and imports v2 (fail-fast first edge is now v2.std.node Symbol). These three
+// claims execute on the interpreted route (claim_batch --hermetic); the seed does not enforce
+// cross-tree.
+test fn a_fully_derived_prepared_module_reports_zero_grounding_not_derived() -> Bool {
+  match derived_prepared() {
+    Absent => false
+    Present { value: prepared } => prepared.frontier.grounding_not_derived == 0
+  }
+}
+
+test fn a_known_grounding_not_derived_module_reports_count_at_least_one() -> Bool {
+  match gnd_prepared() {
+    Absent => false
+    Present { value: prepared } => prepared.frontier.grounding_not_derived >= 1
+  }
+}
+
+test fn a_known_grounding_not_derived_module_counts_the_advisory_by_reason() -> Bool {
+  match gnd_prepared() {
+    Absent => false
+    Present { value: prepared } =>
+      native_infer_advisory_count_for(frontier: prepared.frontier, reason: ^infer_grounding_not_derived) >= 1
   }
 }
 

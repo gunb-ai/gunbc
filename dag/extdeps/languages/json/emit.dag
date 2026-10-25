@@ -1,5 +1,6 @@
 module extdeps.languages.json.emit
 
+import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
 import extdeps.numeric.base16 { int_to_upper_hex }
@@ -7,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

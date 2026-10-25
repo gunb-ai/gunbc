@@ -7,6 +7,24 @@ import extdeps.bazel.label {
   LabelCanonicality, LabelCanonical, LabelNonCanonical, label_canonicality,
   LabelCanonicalityCause, RenderedLabelRefused, RenderedLabelStructureMismatch,
 }
+import gunbc.instruments.compute_wrong_capture {
+  // IMPORTING THE INSTRUMENT MODULE IS THE POINT OF THESE ROWS. No witness imported this module
+  // before C5, so an unparseable instrument file routed fine here, resolve-failed only at dispatch
+  // time on the fleet, and the run still printed a plausible verdict line. These rows make a parse
+  // refusal in that file refuse THIS corpus instead.
+  WrongCaptureArm,
+  wrong_capture_top_crate_arm,
+  wrong_capture_dependency_arm,
+  wrong_capture_direction,
+  // The entry points, not just the arm data: what failed on the fleet was an ENTRY function's
+  // reference closure (cause=parse-failed), so resolving only the arms would leave the guard partial.
+  // One import for both purposes -- this line replaces the separate `compute_wrong_capture_exit`
+  // import #14165 added, so the module is imported exactly once.
+  compute_wrong_capture_exit,
+  compute_dependency_wrong_capture_exit,
+}
+
+import gunbc.native_census_verb { CensusVerbDemand }
 import gunbc.target_binding {
   TargetBinding,
   TargetBindingIndex,
@@ -34,12 +52,14 @@ import gunbc.target_binding {
   DifferentialSourceRootAbsent, DifferentialReadingExecutionRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  DependencyDemandCensusProducer,
+  NativeCensusVerbProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
   CardinalityRealizationProducer,
   RegenRoundCostProducer,
+  NativeClaimProgramProducer,
+  CliWireProgramProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -95,6 +115,15 @@ import gunbc.instrument_targets {
   shared_type_leaf_collision_census_label,
   cardinality_realization_label,
   regen_round_cost_label,
+  compute_run_unit_cold_label,
+  compute_run_unit_cold_entry,
+  compute_run_unit_cold_function,
+  compute_wrong_capture_label,
+  compute_wrong_capture_entry,
+  compute_wrong_capture_function,
+  compute_dependency_wrong_capture_label,
+  compute_dependency_wrong_capture_entry,
+  compute_dependency_wrong_capture_function,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -719,7 +748,7 @@ test fn the_canonicality_cause_reaches_the_rendered_refusal() -> Bool {
 // THE NATIVE ROUTE'S UNIVERSE, SUPPLIED AT THIS BOUNDARY RATHER THAN DERIVED. `admit_test_operand`
 // takes it as a parameter precisely so a claim can author one, and the production caller supplies
 // the pattern the seed parses from the constant `gunbc.native_route_seed_boundary_emit` renders from
-// `gunbc.witness.v2_native_route` `native_route_default_pattern`. Spelling it here means the arms
+// `gunbc.native_route_universe` `native_route_default_pattern`. Spelling it here means the arms
 // below discriminate the CONTAINMENT decision rather than one compiled-in constant.
 fn native_universe() -> extdeps.bazel.target_pattern.TargetPattern {
   SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
@@ -1025,7 +1054,7 @@ test fn the_dependency_demand_census_operand_routes_to_its_own_producer() -> Boo
   match invoke_target(operand: "//gunbc/instruments:dependency-demand-census") {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: dependency_demand_census_label())
-        && (b.producer == DependencyDemandCensusProducer {})
+        && (b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
         && !(b.producer == SelfHostBehavioralEquivalenceProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
@@ -1037,7 +1066,7 @@ test fn the_generic_identity_census_operand_routes_to_its_own_producer() -> Bool
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: generic_identity_census_label())
         && (b.producer == GenericIdentityCensusProducer {})
-        && !(b.producer == DependencyDemandCensusProducer {})
+        && !(b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -1068,6 +1097,104 @@ test fn the_cardinality_realization_operand_routes_to_its_own_producer() -> Bool
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: cardinality_realization_label())
         && (b.producer == CardinalityRealizationProducer {})
+        && !(b.producer == RegenRoundCostProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_compute_wrong_capture_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compute-wrong-capture") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compute_wrong_capture_label())
+        && (b.producer == CliWireProgramProducer { entry: compute_wrong_capture_entry() function: compute_wrong_capture_function() })
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// C5: the dependency arm routes to the SAME entry file as C1 with its own entry function; a
+// binding that silently reused C1's function would let the dependency arm pass on top-crate marks.
+// The two arms must differ in EXACTLY the thing C5 is about: which file carries the marker. If the
+// dependency arm ever marked a top-crate source, the top crate would rebuild and a wrong capture
+// could look correct -- the masking C5 exists to remove. C1's arm must also stay as C1 left it (no
+// preamble, no extra per-output row), which is what keeps the bytes C1 prints unchanged.
+test fn the_dependency_arm_marks_only_the_in_repo_dependency_of_the_built_binaries() -> Bool {
+  let dep = wrong_capture_dependency_arm
+  let top = wrong_capture_top_crate_arm
+  let dep_marks_the_dependency = any(dep.marked_sources, p => p == "src/v1/stage0_v1_infer/src/lib.rs")
+    && (length(xs: dep.marked_sources) == 1)
+    && !any(dep.marked_sources, p => contains(p, "src/v1/stage0/src/"))
+  let top_marks_its_two_bins = any(top.marked_sources, p => p == "src/v1/stage0/src/main.rs")
+    && any(top.marked_sources, p => p == "src/v1/stage0/src/bin/claim_batch.rs")
+    && (length(xs: top.marked_sources) == 2)
+  dep_marks_the_dependency && top_marks_its_two_bins
+    && (top.name != dep.name)
+    && (top.marker_a != dep.marker_a) && (top.marker_b != dep.marker_b)
+    && (length(xs: top.preamble) == 0)
+    && (!top.per_output_verbose) && dep.per_output_verbose
+}
+
+// A marker must be able to reach a binary at all: a blank marker makes every contains_* false, and
+// both arms would then read a wrong capture as a clean exit 0.
+// C1's arm prints its label and its two marker strings; pin them literally so a rename in the
+// shared refactor cannot quietly change the bytes C1 reports (its verdict table is merged semantics,
+// stern-bat-401, and exit 1 means ONLY "some A output has B's marker and not A's").
+// stern-bat-401's ruling: the wrong capture is SYMMETRIC -- some request's capture holds the
+// OTHER request's marker and not its own, whichever side it hits -- and the verdict must name the
+// DIRECTION. This is the pure half of that contract, so the naming is witnessed without a fleet run
+// (the wet pair shows the same strings come out of the real captures).
+//   A<-B : A's capture holds B's marker and not A's  -- what C1 observed on main (exit 1, unchanged)
+//   B<-A : B's capture holds A's marker and not B's  -- run 38880268300 on the dependency arm,
+//          which the old A-only condition let fall through to exit 2 as "no observation"
+test fn the_wrong_capture_direction_names_which_side_was_captured() -> Bool {
+  (wrong_capture_direction(a_wrong: false, b_wrong: false) == "")
+    && (wrong_capture_direction(a_wrong: true, b_wrong: false) == "A<-B")
+    && (wrong_capture_direction(a_wrong: false, b_wrong: true) == "B<-A")
+    && (wrong_capture_direction(a_wrong: true, b_wrong: true) == "A<-B,B<-A")
+}
+
+// Symmetry is the point: the two directions must be distinct, non-empty names, so an exit 1 can
+// always be read as which identity lost its bytes. Both arms share this, so C1's exit codes are
+// unchanged (its observed case is still A<-B, still exit 1) while the dependency arm's red -- which
+// can only ever be B<-A, since A builds first and nothing forces a rebuild for B -- stops reading
+// as exit 2.
+test fn both_directions_are_named_and_distinguishable() -> Bool {
+  let a = wrong_capture_direction(a_wrong: true, b_wrong: false)
+  let b = wrong_capture_direction(a_wrong: false, b_wrong: true)
+  (a != "") && (b != "") && (a != b)
+    && contains(a, "A") && contains(a, "B") && contains(b, "A") && contains(b, "B")
+}
+
+test fn the_top_crate_arm_keeps_c1_printed_identity() -> Bool {
+  let top = wrong_capture_top_crate_arm
+  (top.name == "compute-wrong-capture")
+    && (top.marker_a == "C1-WRONG-CAPTURE-MARKER-A")
+    && (top.marker_b == "C1-WRONG-CAPTURE-MARKER-B")
+}
+
+test fn both_arms_carry_distinct_non_blank_markers() -> Bool {
+  let arms = [wrong_capture_top_crate_arm, wrong_capture_dependency_arm]
+  (length(xs: arms) == 2)
+    && !any(arms, a => a.marker_a == a.marker_b
+    || !contains(a.marker_a, "MARKER") || !contains(a.marker_b, "MARKER")
+    || contains(a.marker_a, " ") || contains(a.marker_b, " ")
+    || contains(a.marker_a, "\n") || contains(a.marker_b, "\n"))
+}
+
+test fn the_compute_dependency_wrong_capture_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compute-dependency-wrong-capture") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compute_dependency_wrong_capture_label())
+        && (b.producer == CliWireProgramProducer { entry: compute_dependency_wrong_capture_entry() function: compute_dependency_wrong_capture_function() })
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_compute_run_unit_cold_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compute-run-unit-cold") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compute_run_unit_cold_label())
+        && (b.producer == CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_function() })
+        && !(b.producer == NativeClaimProgramProducer { entry: compute_run_unit_cold_entry() deadline: millisecond(count: 7200000) })
         && !(b.producer == RegenRoundCostProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }

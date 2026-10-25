@@ -1,0 +1,710 @@
+module test.claim.live_deploy.observed_unhealthy_deploy_witness
+
+// CLAIMS FOR DEPLOY-UNHEALTHY-1 -- the third occurrence of
+// gunbc.recurring_failure_mode a_deploy_that_observes_its_own_service_cannot_repair_it. On
+// 2026-10-15 22:4xZ the operator-approved main-tip prod apply at 87cf694fb90 refused at PLAN, with
+// no mutation: "live_deploy: the deployment plan could not be derived from the host:
+// service-process: refused -- could not observe the host: the process is active but /healthz
+// refused: http client GET failed within the 240 s probe deadline derived from the serve wall
+// limit; tailnet door cutover refused with no route effect: the cutover journal could not be read,
+// so an interrupted cutover cannot be ruled out: read refused: reply undecodable: HTTP 502".
+// Prod had been crash-looping since 2026-10-14 21:00Z -- a half-applied deploy, new binary over the
+// OLD tree -- so systemd called the unit Active (a service in a restart flurry is Active) while
+// /healthz refused, and the observation folded that pair into 'could not observe the host', the
+// same arm as an unreachable host. The only modeled route to repair prod therefore required prod to
+// be healthy. Recovery left the model again: the operator ran tree-sync's own ExecStart by hand.
+//
+// VALUES ARE SUPPLIED AT THE INTERFACE, which is what makes the decision testable without a host:
+// the probe reply (curl's success bit and the stdout it wrote, with the status line curl appended),
+// the member observations, the cutover journal read. The wet inhabitance claim
+// (test.claim.live_deploy.observed_unhealthy_probe_wet_witness) puts a REAL listener answering 503
+// behind the same fold and shows the shape supplied here is the shape the real probe yields.
+//
+// RED/GREEN, stated per claim (DESIGN 5: a discriminating red fails on main for its stated reason):
+//   CLAIM 1  plans_a_replacement_over_an_answered_503_at_a_different_revision   RED ON MAIN: main
+//            has no ProcessObservedUnhealthy constructor at all, so the observation these claims
+//            supply does not exist there and this file does not evaluate. The same probe reply on
+//            main arrived as MemberUnobservable and the WHOLE plan refused -- the ledger's third
+//            occurrence, quoted above -- which is what the paired refusal-naming claims pin.
+//   CLAIM 2  a transport failure still refuses                                  CONTROL: green on
+//            main and green here (the row's guard that silence keeps refusing).
+//   CLAIM 3  a body naming a release is that release even at 503                CONTROL for the
+//            body reading (main read bodies the same way); the 503 CARRYING it is new here.
+//   CLAIM 4  a 502 journal read still refuses with no route effect              CONTROL: green on
+//            both -- facet (b) weakened nothing; the interrupted-cutover refusal stands verbatim.
+//            Its companions witness the ordering that removes the cyclic precondition.
+
+import std.types { Bool, String, Int, NonEmptyStr, List, CommitSha, HttpStatus, http_status_of }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+}
+import extdeps.crypto.hash { Digest, sha256_digest }
+import std.optional { Present, Absent }
+import std.realization_reconcile { Reconciliation, Converged, NotConverged }
+import v2.std.orchestration { PipelineStep, Do }
+import gunbc.readiness { Ready, Pending, Refused }
+import std.materialization_ladder { string_list_contains }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.live_deploy.member_identity {
+  ConvergedMember, MemberIdentity, ObservedMember, MemberDecision, EffectDerivation, ReleaseTarget,
+  ServiceProcessIdentity, TreePublicationIdentity, UnitFileIdentity, UnitManagerStanding, ManagerLoadedCurrent,
+  TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
+  ProcessAt, ProcessRunningRelease, ProcessObservedUnhealthy,
+  TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt,
+  MemberObserved, MemberUnobservable,
+  MemberRefusalCause, UnhealthyAtInstalledRelease, UnhealthyReleasePositionUnobserved,
+  decide_member, InstalledReleasePosition, InstalledReleaseAt, InstalledReleaseUnobserved,
+  installed_release_position, derive_member_plan, release_member_roster, converged_member_eq,
+  effect_labels, member_refusal_text, process_identity_eq, member_identity_eq,
+}
+import gunbc.live_deploy.readiness {
+  ServiceReadiness, ServiceReadyEvidence, ServiceReadinessPending,
+  ServiceObservedUnhealthy, ServiceProbeUnanswered,
+  healthz_effective_read_from_status_get, healthz_effective_read_from_status_body,
+  observe_service_readiness_from_healthz,
+}
+import gunbc.roadmap.roadmap_site_surface_types {
+  RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact,
+  HealthzEffectiveRead, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused,
+}
+import gunbc.roadmap.roadmap_site_surface_render { healthz_body_with_release_identity }
+import test.claim.live_deploy.readiness { witness_expected_surface_identity }
+import test.claim.live_deploy.apply { fixture_converged_mutation }
+import gunbc.live_deploy.apply {
+  tailnet_door_cutover_reconciliation, live_deploy_tailnet_door_cutover_gate, LiveDeployAppliedSubject,
+}
+import gunbc.fabric.fabric_storage_client { FabricStorageBindingUnplaced }
+import std.durable_compare_and_set { CasUnreadableSlot, CasUnreadableReadRefused, cas_unreadable_slot_detail }
+import gunbc.live_deploy.tailnet_door_cutover {
+  ServeCutoverEffects, ServeCutoverRun, ServeCutoverOutcome,
+  CutoverJournalRead, CutoverJournalAbsent, CutoverJournalUnreadable, CutoverJournalWrite, CutoverJournalWritten,
+  ServeRouteObservation, ServeRouteUnreadable, CutoverBinding,
+  CutoverRefused, CutoverJournalNotReadable, CutoverDoorNotReady,
+  tailnet_door_cutover_run,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { deployment_fabric_storage_unit_name }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import extdeps.systemd { Active }
+
+// ---------------------------------------------------------------- fixtures
+//
+// THE FIXTURE REVISIONS ARE member_identity_witness's in meaning: rev_a is what the host HOLDS,
+// rev_b is what this deploy WOULD install. An unhealthy process must be replaced when those differ
+// and refused when they do not, so the pair stays two distinct revisions -- and rev_a/rev_b also
+// spell the incident: the binary already at rev_b, the tree still at rev_a (the half-applied
+// deploy the ledger recorded).
+
+fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }
+fn rev_b() -> CommitSha { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as CommitSha }
+fn bin_a() -> Digest { sha256_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr) }
+fn bin_b() -> Digest { sha256_digest(hex: "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr) }
+fn unit_document_b() -> NonEmptyStr { "[Unit]\nDescription=gunbc roadmap b\n" as NonEmptyStr }
+fn unit_name() -> NonEmptyStr { "gunbc-roadmap.service" as NonEmptyStr }
+
+// THE STATUS UNDER TEST, checked into the model's own range rather than trusted as a literal.
+data unhealthy_status: HttpStatus = 503
+data principal_failure_status: HttpStatus = 403
+
+// THE CLASS, NOT THE CODE: the row's NEXT TRIGGER names a 500 and the incident answered 503, so the
+// fold must key on http_status_class_of's ServerError rather than on one literal.
+data server_error_status: HttpStatus = 500
+
+test fn the_supplied_statuses_are_the_ones_the_incident_showed() -> Bool {
+  match http_status_of(n: 503) { Present { value: s } => s == unhealthy_status  Absent => false }
+    && match http_status_of(n: 403) { Present { value: s } => s == principal_failure_status  Absent => false }
+}
+
+// THE DEPLOY'S TARGET IS rev_b: what the 2026-10-15 apply was carrying, and withheld.
+fn release_target() -> ReleaseTarget {
+  ReleaseTarget { revision: rev_b(), executable: bin_b(), unit: unit_name() }
+}
+
+fn candidate() -> CandidateRelease {
+  CandidateRelease {
+    revision: rev_b(),
+    expected_surface_identity: witness_expected_surface_identity(),
+    expected_dispatch_digest: content_hash_atom(value: "dispatch" as NonEmptyStr),
+  }
+}
+
+fn desired_tree() -> MemberIdentity { TreeIdentity { tree: TreePublicationIdentity { revision: rev_b(), tracked_projection_clean: true } } }
+fn desired_executable() -> MemberIdentity { ExecutableIdentity { digest: bin_b() } }
+fn desired_unit_file() -> MemberIdentity { UnitFileAt { file: UnitFileIdentity { unit: unit_name(), document: content_hash_atom(value: unit_document_b()) } } }
+fn desired_manager() -> MemberIdentity { UnitManagerAt { standing: ManagerLoadedCurrent } }
+fn desired_process() -> MemberIdentity { ProcessAt { process: ProcessRunningRelease { revision: rev_b() } } }
+
+fn desired_for(m: ConvergedMember) -> MemberIdentity {
+  match m {
+    Executable => desired_executable()
+    TreePublication => desired_tree()
+    UnitFile => desired_unit_file()
+    UnitManager => desired_manager()
+    ServiceProcess => desired_process()
+    DirectoryRoot { path: _ } => desired_executable()
+    OidcConfigFile => desired_executable()
+    // WORKER-ROOT-EQUIVALENT-3: dedicated-worker members, never in this witness's release roster --
+    // total-and-unreached, beside the DirectoryRoot/OidcConfigFile rows.
+    GitWorkerSubtree { path: _, child: _ } => desired_executable()
+    RepositorySharedPosture { path: _ } => desired_executable()
+  }
+}
+
+// THE HOST AS THE INCIDENT FOUND IT. Everything still readable reports cleanly and converged; the
+// TREE is still the old release (half-applied deploy) and the PROCESS answers 503. That pairing --
+// installed release rev_a, candidate rev_b -- is what makes the replacement a repair rather than a
+// retry.
+fn incident_observed(m: ConvergedMember) -> ObservedMember {
+  match m {
+    Executable => MemberObserved { identity: desired_executable() }
+    TreePublication => MemberObserved { identity: TreeIdentity { tree: TreePublicationIdentity { revision: rev_a(), tracked_projection_clean: true } } }
+    UnitFile => MemberObserved { identity: desired_unit_file() }
+    UnitManager => MemberObserved { identity: desired_manager() }
+    ServiceProcess => unhealthy_process_observed()
+    DirectoryRoot { path: _ } => MemberObserved { identity: desired_for(m: m) }
+    OidcConfigFile => MemberObserved { identity: desired_for(m: m) }
+    GitWorkerSubtree { path: _, child: _ } => MemberObserved { identity: desired_for(m: m) }
+    RepositorySharedPosture { path: _ } => MemberObserved { identity: desired_for(m: m) }
+  }
+}
+
+fn unhealthy_process_observed() -> ObservedMember {
+  MemberObserved {
+    identity: ProcessAt {
+      process: ProcessObservedUnhealthy {
+        active: Active,
+        status: unhealthy_status,
+        detail: join([status_said_server_error(), "; body: ", identity_free_body()], ""),
+      },
+    },
+  }
+}
+
+fn plan_with(observed: fn(ConvergedMember) -> ObservedMember) -> EffectDerivation {
+  derive_member_plan(
+    roster: release_member_roster(),
+    desired: m => Present { value: desired_for(m: m) },
+    observed: observed,
+    target: release_target(),
+  )
+}
+
+fn incident_plan() -> EffectDerivation { plan_with(observed: m => incident_observed(m: m)) }
+
+// THE PLAN CONVERGED EVERYWHERE ELSE AND THE PROCESS REPLACED: the labels are read off the rows.
+fn labels(d: EffectDerivation) -> List<String> {
+  match d { EffectsDerived { plan } => effect_labels(plan: plan)  EffectsRefused { refusals: _ } => [] }
+}
+
+fn refused_decisions(d: EffectDerivation) -> List<MemberDecision> {
+  match d { EffectsDerived { plan: _ } => []  EffectsRefused { refusals } => refusals }
+}
+
+fn refusal_texts(d: EffectDerivation) -> List<String> {
+  map(refused_decisions(d: d), d => match d { MemberRefused { member: _, cause } => member_refusal_text(c: cause)  _ => "" })
+}
+
+// WHAT THE PROCESS ANSWERED WHEN IT WAS NOT SERVING. The probe deadline text is the incident's own:
+// the 240 s bound derived from the serve wall limit.
+fn status_said_server_error() -> String { "the process is up but not serving" }
+fn transport_failure_text() -> String { "http client GET failed within the 240 s probe deadline derived from the serve wall limit" }
+
+// A reply that names NO release: well-formed JSON, no identity field -- what a serve that has not
+// finished starting, or is crash-looping over a tree its binary no longer matches, answers.
+fn identity_free_body() -> String { "{\"status\":\"starting\"}" }
+
+// A reply that DOES name a release, spelled by the one rendering authority so the identity claim
+// tests the real body shape rather than a guess at it.
+fn identity_body_at(revision: CommitSha) -> String {
+  let artifact = RoadmapSiteSurfaceArtifact { url_path: "/x" as NonEmptyStr, body: "", digest: witness_expected_surface_identity() }
+  healthz_body_with_release_identity(
+    dispatch: artifact,
+    daily: artifact,
+    dispatch_js: artifact,
+    release_revision: revision,
+    surface_bundle_identity: witness_expected_surface_identity(),
+  )
+}
+
+fn witness_bundle() -> RoadmapSiteSurfaceBundle {
+  let i = witness_expected_surface_identity()
+  let artifact = RoadmapSiteSurfaceArtifact { url_path: "/x" as NonEmptyStr, body: "", digest: i }
+  RoadmapSiteSurfaceBundle {
+    subject_identity: i,
+    producer_identity: i,
+    bundle_identity: i,
+    dispatch_json: artifact,
+    daily_html: artifact,
+    dispatch_js: artifact,
+    healthz_body: "",
+  }
+}
+
+// ---------------------------------------------------------------- CLAIM 1 -- RED ON MAIN
+
+// RED ON MAIN. THE PLAN CARRIES THE REPLACEMENT. The incident's own observation -- Active, /healthz
+// answering 503 naming no release, executable already at the candidate, tree still at rev_a --
+// yields a plan carrying the serve restart. Not a refusal: the row the operator needed on
+// 2026-10-15 exists. On main this file does not even evaluate (no ProcessObservedUnhealthy
+// constructor), and the reply it stands for produced MemberUnobservable and refused the whole plan.
+test fn plans_a_replacement_over_an_answered_503_at_a_different_revision() -> Bool {
+  string_list_contains(xs: labels(d: incident_plan()), wanted: join(["restart ", unit_name() as String], ""))
+}
+
+// AND THE REPLACEMENT IS DERIVED, NOT APPENDED: over the incident's drift (tree behind, process
+// unhealthy) the plan carries exactly the tree publication and the restart. The executable is
+// already the candidate's, so no install; the unit file and manager converged, so no write and no
+// daemon-reload. The restart of a process is earned by that member's own decision, over its own
+// identity -- not granted because some upstream Boolean said the host looked bad.
+test fn the_replacement_plan_carries_exactly_the_drift_and_nothing_invented() -> Bool {
+  let ls = labels(d: incident_plan())
+  count(ls) == 2
+    && string_list_contains(xs: ls, wanted: join(["restart ", unit_name() as String], ""))
+    && string_list_contains(xs: ls, wanted: join(["publish-tree ", rev_b() as String], ""))
+    && !string_list_contains(xs: ls, wanted: "daemon-reload")
+    && !string_list_contains(xs: ls, wanted: join(["install-executable sha256:", bin_b().hex as String], ""))
+    && !string_list_contains(xs: ls, wanted: join(["write-unit ", unit_name() as String], ""))
+}
+
+// THE SAME OBSERVATION AT THE DECISION INTERFACE: Replace, decided by the domain assessment (D14)
+// over this member's own revision -- not a generic satisfied/unsatisfied Boolean, and not upstream
+// in the observer, which only ever says what it measured.
+test fn the_unhealthy_process_decision_is_replace() -> Bool {
+  match decide_member(
+    member: ServiceProcess,
+    desired: desired_process(),
+    observed: unhealthy_process_observed(),
+    installed: InstalledReleaseAt { revision: rev_a() },
+  ) {
+    Replace { member: m, from: f, to: t } =>
+      converged_member_eq(a: m, b: ServiceProcess)
+        && match f {
+          ProcessAt { process: ProcessObservedUnhealthy { active, status, detail: _ } } =>
+            active == Active && status == unhealthy_status
+          _ => false
+        }
+        && member_identity_eq(a: t, b: desired_process())
+    AlreadyConverged { member: _ } => false
+    Create { member: _, to: _ } => false
+    MemberRefused { member: _, cause: _ } => false
+  }
+}
+
+// THE OTHER HALF OF THE RED: the refusal a regression would re-introduce is NAMED, not merely
+// avoided. On main the incident's observation decided MemberRefused whose cause was HostUnobservable
+// -- 'could not observe the host', the same arm as an unreachable host. No plan derived from an
+// ANSWERED probe may say that sentence.
+test fn an_answered_503_is_never_refused_as_unobservable() -> Bool {
+  let d = incident_plan()
+  match d {
+    EffectsDerived { plan: _ } => true
+    EffectsRefused { refusals: _ } => !string_list_contains(xs: refusal_texts(d: d), wanted: "could not observe the host")
+  }
+}
+
+// THE NEXT TRIGGER'S OWN WORDS ASK FOR "a fixture with a 500-answering /healthz that plans", beside
+// the existing refusal for an unreachable host -- and the incident answered 503. Both are claimed,
+// because the fold asks http_status_class_of about the status rather than matching a literal: the
+// replacement is planned over the SERVER-ERROR CLASS. Same fixture, one digit changed, still plans.
+test fn a_500_answering_healthz_plans_the_replacement_too() -> Bool {
+  let at_500 = MemberObserved {
+    identity: ProcessAt {
+      process: ProcessObservedUnhealthy {
+        active: Active,
+        status: server_error_status(),
+        detail: status_said_server_error(),
+      },
+    },
+  }
+  string_list_contains(
+    xs: labels(d: plan_with(observed: m => match m {
+      ServiceProcess => at_500
+      _ => incident_observed(m: m)
+    })),
+    wanted: join(["restart ", unit_name() as String], ""),
+  )
+    && match healthz_effective_read_from_status_body(status: server_error_status(), body: identity_free_body()) {
+      HealthzAnsweredUnhealthy { status, detail: _ } => status == server_error_status()
+      HealthzBodyRead { body: _ } => false
+      HealthzProbeRefused { probe_error: _ } => false
+    }
+}
+
+// ---------------------------------------------------------------- the guards
+
+// THE REPLACEMENT IS WITHHELD WHEN IT WOULD RE-RUN THE REFUSING RELEASE. Same Active, same 503 --
+// and the tree now reports the very revision this deploy would install. A restart would re-run the
+// release that just answered 503, so nothing is mutated, and the refusal is the specific one.
+test fn the_same_release_under_a_503_refuses_and_mutates_nothing() -> Bool {
+  let d = plan_with(observed: m => match m {
+    ServiceProcess => unhealthy_process_observed()
+    _ => MemberObserved { identity: desired_for(m: m) }
+  })
+  match d {
+    EffectsDerived { plan: _ } => false
+    EffectsRefused { refusals } =>
+      count(refusals) == 1
+        && match refusals.first() {
+          Present { value: MemberRefused { member: _, cause: UnhealthyAtInstalledRelease { status, detail: _, revision } } } =>
+            status == unhealthy_status && (revision as String) == (rev_b() as String)
+          Present { value: _ } => false
+          Absent => false
+        }
+  }
+}
+
+// AND ITS TEXT TELLS THE OPERATOR WHAT WOULD CHANGE THE ANSWER -- the installed revision, and that
+// a restart would only re-run the refusing release -- rather than echoing 'unobservable' at someone
+// who needs to hear 'this deploy has nothing new to install'.
+test fn the_withheld_replacement_names_the_installed_revision_and_the_reason() -> Bool {
+  let d = plan_with(observed: m => match m {
+    ServiceProcess => unhealthy_process_observed()
+    _ => MemberObserved { identity: desired_for(m: m) }
+  })
+  match refusal_texts(d: d).first() {
+    Present { value: text } =>
+      string_contains(s: text, pattern: "not a repair")
+        && string_contains(s: text, pattern: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        && string_contains(s: text, pattern: "Nothing was mutated")
+    Absent => false
+  }
+}
+
+// NOT KNOWING WHAT IS RUNNING IS NOT A LICENCE TO REPLACE IT. With the tree unreadable the position
+// is unknown and the decision refuses rather than guessing a difference exists.
+test fn an_unreadable_installed_release_withholds_the_replacement() -> Bool {
+  let cause: MemberRefusalCause = UnhealthyReleasePositionUnobserved { status: unhealthy_status, detail: "the tree member could not be observed" }
+  match decide_member(
+    member: ServiceProcess,
+    desired: desired_process(),
+    observed: unhealthy_process_observed(),
+    installed: InstalledReleaseUnobserved { reason: "the tree member could not be observed" },
+  ) {
+    MemberRefused { member: _, cause: UnhealthyReleasePositionUnobserved { status, detail: _ } } =>
+      status == unhealthy_status
+        && string_contains(s: member_refusal_text(c: cause), pattern: "not a licence to replace it")
+    _ => false
+  }
+}
+
+// THE POSITION IS READ FROM THE TREE MEMBER'S OWN OBSERVATION: one authority for 'what is
+// installed', so the process arm and the tree arm cannot tell two stories about one host.
+test fn the_installed_position_is_read_from_the_tree_member() -> Bool {
+  match installed_release_position(
+    observed: fn(m) {
+      if converged_member_eq(a: m, b: TreePublication) {
+        MemberObserved { identity: TreeIdentity { tree: TreePublicationIdentity { revision: rev_a(), tracked_projection_clean: true } } }
+      } else {
+        incident_observed(m: m)
+      }
+    },
+  ) {
+    InstalledReleaseAt { revision } => (revision as String) == (rev_a() as String)
+    InstalledReleaseUnobserved { reason: _ } => false
+  }
+}
+
+// AND THE SAME READING REFUSES WHEN THE TREE CANNOT BE OBSERVED, carrying the host's own cause
+// forward instead of flattening it into 'unknown'.
+test fn an_unobservable_tree_gives_an_unobserved_position_not_a_guess() -> Bool {
+  match installed_release_position(
+    observed: fn(m) {
+      if converged_member_eq(a: m, b: TreePublication) {
+        MemberUnobservable { member: m, cause: "the host refused the tree read" }
+      } else {
+        incident_observed(m: m)
+      }
+    },
+  ) {
+    InstalledReleaseUnobserved { reason } => string_contains(s: reason, pattern: "the host refused the tree read")
+    InstalledReleaseAt { revision: _ } => false
+  }
+}
+
+// AN UNHEALTHY ANSWER IS NEVER CONVERGED -- INCLUDING WITH ANOTHER IDENTICAL UNHEALTHY ANSWER. Two
+// 503s are not 'the state the release should be in': no release is supposed to answer 503. Treating
+// them as equal would have undid the fold, because a crash-loop would read as already-converged.
+test fn an_unhealthy_answer_never_equals_anything() -> Bool {
+  let p = ProcessObservedUnhealthy { active: Active, status: unhealthy_status, detail: "one" }
+  let q = ProcessObservedUnhealthy { active: Active, status: unhealthy_status, detail: "two" }
+  !process_identity_eq(a: p, b: q)
+    && !member_identity_eq(a: ProcessAt { process: p }, b: desired_process())
+}
+
+// THE TWO TRANSPORTS OF ONE SHAPE AGREE. The probe is ONE operation with two bound handlers, the
+// module's standing pattern (GetWithin / http_client_get_argv): the local route runs the declared op
+// argv and the fleet route runs the builder's argv over ssh. Bound transports may SPELL differently;
+// they may not mean differently. This compares what each route actually hands curl, read off the
+// DECLARATION through the materializer (not from a restated literal), so the fact stays in the one
+// place the declaration keeps it.
+//
+// RED BEFORE THE FIX: the op argv carried no `--connect-timeout` while the builder's did, so a probe's
+// connect-deadline behaviour depended on which route ran -- DESIGN 3's "each fact lives in exactly one
+// place", caught in review on #14194. It is green now because the op declares the deadline as a
+// BOUND INPUT and both routes take it from http_client_localhost_connect_timeout_flag.
+test fn the_two_bound_transports_of_the_probe_agree_on_every_flag() -> Bool {
+  let url = "http://127.0.0.1:9/healthz" as NonEmptyStr
+  let deadline = second(count: 240)
+  let local = shell_materialize_operation_argv(
+    "dag/extdeps/http/client.dag",
+    "http.Client",
+    "GetWithinWithStatus",
+    [
+      operation_argv_bind_text(name: "url", text: url as String),
+      operation_argv_bind_text(
+        name: "connect_seconds",
+        text: http_client_localhost_connect_timeout_flag()
+      ),
+      operation_argv_bind_text(
+        name: "max_seconds",
+        text: http_client_max_time_flag(max_time: deadline) as String
+      ),
+    ]
+  )
+  match local {
+    // A refusal arm is false, never true: an unbound declared input or an unsupported element would
+    // otherwise make the agreement true by vacuity.
+    ArgvMaterialized { argv: op_argv } =>
+      op_argv == http_client_get_with_status_argv(url: url, max_time: deadline)
+        && string_list_contains(xs: op_argv, wanted: "--connect-timeout")
+        && !string_list_contains(xs: op_argv, wanted: "-fsS")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------- CLAIM 2 -- CONTROL
+
+// A TRANSPORT FAILURE STILL REFUSES -- on main and here. curl's exit says it obtained NO response:
+// the read is a refusal. Distinguishing unhealthy must not absorb silence (the row's guard).
+test fn a_transport_failure_still_refuses() -> Bool {
+  match healthz_effective_read_from_status_get(success: false, stdout: "", error: transport_failure_text()) {
+    HealthzProbeRefused { probe_error } => string_contains(s: probe_error, pattern: "240 s probe deadline")
+    HealthzAnsweredUnhealthy { status: _, detail: _ } => false
+    HealthzBodyRead { body: _ } => false
+  }
+}
+
+// AND THE TRANSPORT ARM SURVIVES A BODY THAT LOOKS UNHEALTHY: success=false means no response, so
+// even a body-shaped stdout cannot become an answered-unhealthy read. The exit decides, not text.
+test fn an_unanswered_probe_is_unhealthy_to_nobody() -> Bool {
+  match healthz_effective_read_from_status_get(success: false, stdout: identity_free_body(), error: "curl: (7) Failed to connect") {
+    HealthzProbeRefused { probe_error } => string_contains(s: probe_error, pattern: "Failed to connect")
+    HealthzAnsweredUnhealthy { status: _, detail: _ } => false
+    HealthzBodyRead { body: _ } => false
+  }
+}
+
+// A REPLY WITH NO STATUS LINE IS ALSO A REFUSAL: curl wrote no code, so no server answered to be
+// unhealthy (the fold's own arm, kept distinct from the unhealthy one).
+test fn a_reply_with_no_status_line_refuses() -> Bool {
+  match healthz_effective_read_from_status_get(success: true, stdout: "not a reply at all", error: "") {
+    HealthzProbeRefused { probe_error } => string_contains(s: probe_error, pattern: "no HTTP status")
+    HealthzAnsweredUnhealthy { status: _, detail: _ } => false
+    HealthzBodyRead { body: _ } => false
+  }
+}
+
+// THE TWO PENDINGS ARE KEPT APART AT THE READINESS GRAIN: 'could not look' stays
+// ServiceProbeUnanswered, 'looked, it is not serving' is ServiceObservedUnhealthy, and neither is
+// ever Ready. Merging them would let an unreachable host plan a replacement -- the opposite error.
+test fn unanswered_and_answered_pending_arms_are_distinct_and_never_ready() -> Bool {
+  let unanswered = observe_service_readiness_from_healthz(
+    read: HealthzProbeRefused { probe_error: "curl: (7) Couldn't connect to server" },
+    bundle: witness_bundle(),
+    expected_revision: rev_b(),
+    expected_surface_identity: witness_expected_surface_identity(),
+  )
+  let answered = observe_service_readiness_from_healthz(
+    read: HealthzAnsweredUnhealthy { status: unhealthy_status, detail: status_said_server_error() },
+    bundle: witness_bundle(),
+    expected_revision: rev_b(),
+    expected_surface_identity: witness_expected_surface_identity(),
+  )
+  match unanswered {
+    Pending { cause: ServiceProbeUnanswered { detail } } =>
+      string_contains(s: detail, pattern: "Couldn't connect")
+        && match answered {
+          Pending { cause: ServiceObservedUnhealthy { status, detail: _ } } => status == unhealthy_status
+          Pending { cause: _ } => false
+          Ready { evidence: _ } => false
+          Refused { cause: _ } => false
+        }
+    Pending { cause: _ } => false
+    Ready { evidence: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+// A 403 WITH NO IDENTITY KEEPS ITS BODY VERDICT -- never absent, never unhealthy. Only the
+// server-error class says 'not serving'; a principal failure stays where it was (the row's guard
+// that an arbitrary 403 must not become absent, and here, must not become a replacement trigger).
+test fn a_403_with_no_identity_is_neither_absent_nor_unhealthy() -> Bool {
+  match healthz_effective_read_from_status_body(status: principal_failure_status, body: "<html>Forbidden</html>") {
+    HealthzAnsweredUnhealthy { status: _, detail: _ } => false
+    HealthzProbeRefused { probe_error: _ } => false
+    HealthzBodyRead { body } => body == "<html>Forbidden</html>"
+  }
+}
+
+// ---------------------------------------------------------------- CLAIM 3 -- CONTROL
+
+// A BODY THAT IDENTIFIES THE RUNNING RELEASE IS READ AS THAT RELEASE, EVEN CARRIED BY A 503. The
+// serve may answer 503 while still reporting which revision it is; that reply is a release to
+// compare, not an unhealthy shape -- and the identity authority owns the verdict, at the body grain.
+test fn a_body_naming_a_release_is_that_release_even_at_503() -> Bool {
+  match healthz_effective_read_from_status_body(status: unhealthy_status, body: identity_body_at(revision: rev_a())) {
+    HealthzAnsweredUnhealthy { status: _, detail: _ } => false
+    HealthzProbeRefused { probe_error: _ } => false
+    HealthzBodyRead { body } => body == identity_body_at(revision: rev_a())
+  }
+}
+
+// AND IT DECIDES NOTHING ON ITS OWN: the 503-carrying identity reply is the release it names, and
+// the comparison against the expected revision -- not the status code -- is what settles the plan.
+// The identity body at the candidate revision is a CONVERGED process read.
+test fn a_503_carrying_the_expected_release_reads_as_the_expected_release() -> Bool {
+  match healthz_effective_read_from_status_body(status: unhealthy_status, body: identity_body_at(revision: rev_b())) {
+    HealthzBodyRead { body } =>
+      body == identity_body_at(revision: rev_b())
+        && member_identity_eq(a: ProcessAt { process: ProcessRunningRelease { revision: rev_b() } }, b: desired_process())
+    _ => false
+  }
+}
+
+// THE UNHEALTHY SHAPE IS NOT A READINESS CLAIM EITHER: Pending, never Ready, whatever the detail
+// says -- readiness is a claim about the release being SERVED, and this is the opposite claim.
+test fn answered_unhealthy_is_pending_never_ready() -> Bool {
+  match observe_service_readiness_from_healthz(
+    read: HealthzAnsweredUnhealthy { status: unhealthy_status, detail: status_said_server_error() },
+    bundle: witness_bundle(),
+    expected_revision: rev_b(),
+    expected_surface_identity: witness_expected_surface_identity(),
+  ) {
+    Ready { evidence: _ } => false
+    Refused { cause: _ } => false
+    Pending { cause: ServiceObservedUnhealthy { status, detail } } =>
+      status == unhealthy_status && string_contains(s: detail, pattern: "not serving")
+    Pending { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------- CLAIM 4 -- CONTROL, facet (b)
+
+// THE INTERRUPTED-CUTOVER REFUSAL STANDS, verbatim, with a SUPPLIED 502 on the journal read -- the
+// journal served by the very fabric-storage service this same deploy repairs. Green on main and
+// green here: facet (b) weakened nothing. What the incident showed is the ORDER in which the
+// refusal was reached (the two ordering claims below), which facet (a) alone answers.
+
+fn journal_502_effects() -> ServeCutoverEffects {
+  ServeCutoverEffects {
+    journal_read: fn() {
+      CutoverJournalUnreadable {
+        detail: cas_unreadable_slot_detail(cause: CasUnreadableReadRefused { detail: "reply undecodable: HTTP 502" }),
+      }
+    },
+    journal_write: fn(expected_generation, record) { CutoverJournalWritten { generation: expected_generation + 1 } },
+    observe: fn(n) { ServeRouteUnreadable { detail: "the scenario supplies no observation -- the journal refused first" } },
+    repoint: fn(permit) { "repoint refused: this scenario holds no permit" },
+    proxied: fn() { Pending { cause: ServiceProbeUnanswered { detail: "never probed -- the journal refused first" } } },
+    restore: fn(captured_backend) { "restore refused: this scenario holds no capture" },
+  }
+}
+
+fn cutover_binding() -> CutoverBinding {
+  CutoverBinding { route: "fixture 443:/", door_target: "unix:/srv/fixture/tailnet-door.sock", release_revision: rev_b() as String }
+}
+
+fn door_ready() -> ServiceReadiness {
+  Ready { evidence: ServiceReadyEvidence { body: "door healthz body" } }
+}
+
+// THE RUN REFUSES AT THE JOURNAL AND TOUCHES NO ROUTE: the step record is the control that says so.
+test fn a_502_journal_read_still_refuses_the_cutover_with_no_route_effect() -> Bool {
+  let run = tailnet_door_cutover_run(door: door_ready(), binding: cutover_binding(), effects: journal_502_effects())
+  match run.outcome {
+    CutoverRefused { cause: CutoverJournalNotReadable { detail } } =>
+      string_contains(s: detail, pattern: "read refused: reply undecodable: HTTP 502")
+        && count(run.steps) == 0
+    _ => false
+  }
+}
+
+// AND THE APPLY GATE REFUSES IN THE LEDGER'S OWN WORDS -- the sentence that appeared in the
+// 2026-10-15 refusal, which this change leaves untouched (the gate's journal over an unplaced
+// store cannot be read, so nothing may be ruled out and nothing is touched).
+test fn the_apply_gate_still_refuses_an_unreadable_journal_in_the_ledgers_words() -> Bool {
+  let gate = live_deploy_tailnet_door_cutover_gate(
+    spec: deployment_spec_srv1(),
+    candidate: candidate(),
+    transport: LocalShell,
+    access: ci_deploy_srv1_access,
+    readiness: door_ready(),
+    mutation: fixture_converged_mutation(),
+    journal: FabricStorageBindingUnplaced,
+  )
+  match gate {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "refused with no route effect")
+        && string_contains(s: why, pattern: "the cutover journal could not be read, so an interrupted cutover cannot be ruled out")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// THE APPEND IS THE SHAPE THAT MADE THE JOURNAL A PRECONDITION OF REPAIRING ITS OWN STORE. A plan
+// that had ALREADY refused came out as "<plan refusal>; tailnet door cutover refused..." -- exactly
+// the 2026-10-15 message. The append itself is sound (both sentences are true of a run that never
+// got to mutate); what the incident needed was for the PLAN to stop refusing, which is facet (a).
+// Witnessed at the seam: the reconciliation reports BOTH when the mutation refused, and ONLY the
+// cutover when the mutation converged -- so repairing the plan removes the starvation without
+// touching the cutover refusal.
+test fn the_journal_refusal_appends_to_a_refused_plan_and_stands_alone_otherwise() -> Bool {
+  let outcome = tailnet_door_cutover_run(door: door_ready(), binding: cutover_binding(), effects: journal_502_effects()).outcome
+  let refused = tailnet_door_cutover_reconciliation(
+    mutation: NotConverged {
+      reason: "the deployment plan could not be derived from the host",
+      applied: LiveDeployAppliedSubject { spec: deployment_spec_srv1(), candidate: candidate() },
+    },
+    outcome: outcome,
+  )
+  let converged = tailnet_door_cutover_reconciliation(mutation: fixture_converged_mutation(), outcome: outcome)
+  match refused {
+    NotConverged { reason: both, applied: _ } =>
+      string_contains(s: both, pattern: "the deployment plan could not be derived from the host")
+        && string_contains(s: both, pattern: "interrupted cutover cannot be ruled out")
+    Converged { evidence: _, applied: _ } => false
+  }
+    && match converged {
+      NotConverged { reason: only, applied: _ } =>
+        !string_contains(s: only, pattern: "could not be derived from the host")
+          && string_contains(s: only, pattern: "interrupted cutover cannot be ruled out")
+      Converged { evidence: _, applied: _ } => false
+    }
+}
+
+// AND THE GATE JUDGES A RUN, NEVER A PLAN THAT WAS NEVER DERIVED: an unanswered door refuses too,
+// with no step performed, so the gate cannot conjure a route change for a deploy that has no plan
+// -- the starvation shape of the incident, read from the other end.
+test fn an_unanswered_door_refuses_the_gate_with_no_route_effect() -> Bool {
+  let run = tailnet_door_cutover_run(
+    door: Pending { cause: ServiceProbeUnanswered { detail: "the door is not answering" } },
+    binding: cutover_binding(),
+    effects: ServeCutoverEffects {
+      journal_read: fn() { CutoverJournalAbsent },
+      journal_write: fn(expected_generation, record) { CutoverJournalWritten { generation: expected_generation + 1 } },
+      observe: fn(n) { ServeRouteUnreadable { detail: "unreadable" } },
+      repoint: fn(permit) { "repoint refused without a permit" },
+      proxied: fn() { Pending { cause: ServiceProbeUnanswered { detail: "unanswered" } } },
+      restore: fn(captured_backend) { "restore refused without a capture" },
+    },
+  )
+  match run.outcome {
+    CutoverRefused { cause: CutoverDoorNotReady { detail } } =>
+      string_contains(s: detail, pattern: "not answering") && count(run.steps) == 0
+    _ => false
+  }
+}

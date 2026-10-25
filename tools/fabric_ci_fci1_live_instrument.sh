@@ -22,8 +22,11 @@ if [[ ${FCI1_BOUNDED_INNER-0} != 1 ]]; then
   [[ $(hostname -s) == srv3 ]] || { echo 'InstrumentRefused: host is not srv3' >&2; exit 2; }
   [[ -x $repo_root/target/release/gunbc ]] || { echo 'InstrumentRefused: exact-tree gunbc absent' >&2; exit 2; }
   outer_status=0
+  fci1_install_controls_slice || exit 2
+  trap 'fci1_remove_controls_slice || exit 1' EXIT
   fci1_run_bounded_driver "$repo_root" env FCI1_BOUNDED_INNER=1 \
     FCI1_CHECKPOINT="${FCI1_CHECKPOINT-__empty__}" "$repo_root/tools/fabric_ci_fci1_live_instrument.sh" || outer_status=$?
+  fci1_remove_controls_slice || { echo 'InstrumentRefused: controls slice teardown failed' >&2; outer_status=1; }
   driver_terminal=$(systemctl show "$FCI1_DRIVER_UNIT" --property=LoadState --property=ActiveState 2>&1 || true)
   [[ $driver_terminal == *'LoadState=not-found'* && $driver_terminal == *'ActiveState=inactive'* ]] || {
     echo "InstrumentRefused: bounded driver was not positively collected: $driver_terminal" >&2
@@ -132,6 +135,10 @@ cleanup() {
   local cleanup_status=0
   trap - EXIT
   set +e
+  # The calibration rewrites the checked-in projection fixture; a killed actuator must not leave it mutated.
+  if [[ -n ${calibration_fixture_snapshot-} && -f $calibration_fixture_snapshot ]]; then
+    cp -f -- "$calibration_fixture_snapshot" "$calibration_fixture" || cleanup_status=1
+  fi
   systemctl stop fci1-positive-submitter.service fci1-generation-submitter.service fci1-dependent-submitter.service >/dev/null 2>&1 || true
   local cleanup_disposition_path
   if [[ -n $allocation_before ]]; then
@@ -277,7 +284,19 @@ trap cleanup EXIT
 
 # The merged evidence calibration runs against this exact binary before any srv3 observation or
 # reservation effect. It grades only the evidence boundary; FCI-1 cannot self-grade that contract.
-FABRIC_CI_GUNBC_BIN="$FABRIC_CI_GUNBC_BIN" bash "$repo_root/tools/fabric_ci_evidence_calibration.sh"
+calibration_value_root=$(mktemp -d)
+calibration_fixture="$repo_root/dag/gunbc/instruments/fabric_ci_evidence_projection_fixture.dag"
+calibration_fixture_snapshot="$calibration_value_root/projection_fixture.snapshot"
+cp -- "$calibration_fixture" "$calibration_fixture_snapshot"
+FABRIC_CI_GUNBC_BIN="$FABRIC_CI_GUNBC_BIN" FABRIC_CI_SOURCE_ROOT="$repo_root" FABRIC_CI_VALUE_ROOT="$calibration_value_root" \
+  "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
+  --entry "$repo_root/dag/gunbc/instruments/fabric_ci_calibration_actuator.dag" --function fabric_ci_calibration_run \
+  || calibration_status=$?
+cp -f -- "$calibration_fixture_snapshot" "$calibration_fixture"
+calibration_fixture_snapshot=
+rm -rf "$calibration_value_root"
+[[ ${calibration_status-0} -eq 0 ]] || exit "$calibration_status"
+echo 'FCI-EVIDENCE-0 calibration held'
 
 sha256sum "$subject"
 fabric_ci_run_assertion fci1_invalid_before_wire_refuses

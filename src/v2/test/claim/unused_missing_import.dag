@@ -1,0 +1,145 @@
+module v2.test.claim.unused_missing_import
+
+import std.algebra { Cons, Empty }
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolve_with_admission
+}
+import v2.compiler.normalized_tree { normalized_tree_imported_modules }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude, qualified_name_from_module_node }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Rejected,
+  Textual
+}
+import v2.std.node { symbol_lexeme }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class,
+  fixture_blocking_rows
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SEED PATH: compile_fixture is the v1 pipeline over an authored manifest (no corpus roots).
+// An import names a dependency; a missing module must refuse even when no listed name is used.
+// A real unused import still accepts (unused-import lint is out of scope). A used missing import
+// keeps UnresolvedImport.
+
+data umi_peer_source: String = "module umi.peer\nfn umi_unused() -> Int { 1 }\n"
+
+data umi_entry_unused_missing: String = "module umi.entry\nimport umi.ghost { GhostUnused }\nfn umi_ok() -> Int { 1 }\n"
+
+data umi_entry_unused_missing_empty_block: String = "module umi.entry\nimport umi.ghost {}\nfn umi_ok() -> Int { 1 }\n"
+
+data umi_entry_unused_real: String = "module umi.entry\nimport umi.peer { umi_unused }\nfn umi_ok() -> Int { 1 }\n"
+
+data umi_entry_used_missing: String = "module umi.entry\nimport umi.ghost { GhostUnused }\nfn umi_ok() -> Int { GhostUnused }\n"
+
+fn umi_run(entry: String, with_peer: Bool) -> MultiModuleCompileFixtureOutcome {
+  if with_peer {
+    compile_fixture(MultiModuleCompileFixture {
+      sources: [
+        fixture_source("umi/peer.dag", umi_peer_source),
+        fixture_source("umi/entry.dag", entry)
+      ],
+      entry: "umi/entry.dag"
+    })
+  } else {
+    compile_fixture(MultiModuleCompileFixture {
+      sources: [fixture_source("umi/entry.dag", entry)],
+      entry: "umi/entry.dag"
+    })
+  }
+}
+
+fn umi_refuses_unresolved(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows, "UnresolvedImport")
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+fn umi_compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows)) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn unused_import_of_a_missing_module_refuses() -> Bool {
+  umi_refuses_unresolved(umi_run(umi_entry_unused_missing, false))
+}
+
+test fn unused_import_of_a_real_module_accepts() -> Bool {
+  umi_compiles_clean(umi_run(umi_entry_unused_real, true))
+}
+
+test fn used_import_of_a_missing_module_still_refuses() -> Bool {
+  umi_refuses_unresolved(umi_run(umi_entry_used_missing, false))
+}
+
+// Capture inhabitance: parse records the import decl's authored extent, and NamespaceOnlyY
+// projects resolve_module_not_found onto that locus (file + byte range), not a whole-file
+// name of the missing module.
+test fn unused_missing_import_refusal_is_located_at_the_import_line() -> Bool {
+  match conserved_normalize_of_text(path: "umi/entry.dag", text: umi_entry_unused_missing_empty_block) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match qualified_name_from_module_node(root: tree.root) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: subject, diagnostics: _ } =>
+          match normalized_tree_imported_modules(tree: tree) {
+            Empty => false
+            Cons { head: located, tail: _ } =>
+              match resolve_with_admission(
+                lm: dag_language_model_surface_empty_prelude(),
+                roots: Cons { head: tree, tail: Empty },
+                admission: Admission {
+                  subject: ResolutionSubject { name: subject },
+                  imports: Empty
+                }
+              ) {
+                Accepted { value: _, diagnostics: _ } => false
+                Rejected { diagnostics: d } =>
+                  (d.head.reason == ^resolve_module_not_found)
+                    && (match located.at {
+                      Textual { file: captured_file, extent: captured_extent } =>
+                        match d.head.at {
+                          Textual { file: file, extent: extent } =>
+                            (symbol_lexeme(sym: file) == "umi/entry.dag")
+                              && (symbol_lexeme(sym: captured_file) == "umi/entry.dag")
+                              && (match captured_extent {
+                                ByteRange { start: captured_start, end: captured_end } =>
+                                  match extent {
+                                    ByteRange { start: start, end: end } =>
+                                      (start == captured_start) && (end == captured_end) && (start < end)
+                                    _ => false
+                                  }
+                                _ => false
+                              })
+                          _ => false
+                        }
+                      _ => false
+                    })
+              }
+          }
+      }
+  }
+}

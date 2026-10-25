@@ -30,9 +30,10 @@ import gunbc.primitive_egress.census {
   census_standing, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
 }
 import gunbc.primitive_egress.category { TextOps, SeedQuery }
-import gunbc.primitive_egress.census_live { live_surface_facts }
+import gunbc.primitive_egress.census_live { live_declaration_resolver, live_surface_facts }
+import gunbc.primitive_egress.dispositions_text { dispositions_text_rows }
 import gunbc.primitive_egress.receipt { census_receipt_lines }
-import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefResolved, DeclarationRefDeclarationAbsent, DeclarationIdentity }
+import v2.std.decl_ref_resolution_host { DeclarationRefResolution, DeclarationRefResolved, DeclarationRefDeclarationAbsent, DeclarationIdentity }
 import v2.std.decl_index { FnItem, ServiceItem }
 import gunbc.v1.v1_interpreter_primitive_surface { InterpreterPrimitiveDispatchArm, InterpreterPrimitiveArmId, ServiceDispatch, EvalServiceCallCarveOutSite, AuthoredInRoster }
 
@@ -331,10 +332,10 @@ test fn w_authored_premises_that_do_not_join_cannot_reach_a_terminal_class() -> 
 test fn w_spoofed_equivalence_witness_is_not_terminal() -> Bool {
   let comp = computes(authority: declared_authority(module_path: "std.algebra", decl_name: "finitely_supported_function_templates"), inputs: "m, k", result: "Optional<V>", body: DagBodyRequired)
   let claimed = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject, computation: comp, refusals: RefusalsTyped,
-    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "v2.std.collection", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "test.claim.x", decl_name: "w")),
+    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "std.algebra", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "test.claim.x", decl_name: "w")),
     compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
   let outside_prefix = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject, computation: comp, refusals: RefusalsTyped,
-    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "v2.std.collection", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "gunbc.not_a_witness", decl_name: "w")),
+    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "std.algebra", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "gunbc.not_a_witness", decl_name: "w")),
     compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
   cause_kind(c: census_with(facts: pure_facts(name: "zeta"), edges: [], rows: [claimed], projections: [], decls: [], resolve: resolver_refusing_all), name: "zeta") == "TargetKernelUnqualified"
     && cause_kind(c: census_of(facts: pure_facts(name: "zeta"), edges: [], rows: [outside_prefix]), name: "zeta") == "TargetKernelUnqualified"
@@ -366,7 +367,7 @@ test fn w_unqualified_target_kernel_is_not_terminal() -> Bool {
     realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: ReferenceBodyAbsent, equivalence: unqualified(obligation: "witness owed")),
     compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
   let qualified_row = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject, computation: comp, refusals: RefusalsTyped,
-    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "v2.std.collection", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "test.claim.x", decl_name: "w")),
+    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "std.algebra", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "test.claim.x", decl_name: "w")),
     compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
   cause_kind(c: census_of(facts: facts, edges: [], rows: [unqualified_row]), name: "zeta") == "TargetKernelUnqualified"
     && class_of(c: census_of(facts: facts, edges: [], rows: [qualified_row]), name: "zeta") == "TargetKernelRealization"
@@ -499,4 +500,25 @@ test fn w_decoy_declaration_is_not_a_primitive_edge_on_the_real_producer() -> Bo
         && primitive_identity_eq(left: canonical_join(surface: none, spelling: "map_has").identity, right: primitive_identity_slug(name: "map_contains_key"))
     }
   }
+}
+
+// THE LIVE chars ROW, THROUGH THE REAL QUALIFICATION AND DISPOSITION DERIVATION: the authored evidence row
+// (gunbc.primitive_egress.dispositions_text), the real surface facts and the real corpus resolver. It
+// claims native realizations with no reference body, and the qualification fold refuses to qualify a
+// realization without one (qualify_realization: ReferenceBodyAbsent), so chars derives as
+// Unresolved(TargetKernelUnqualified). It reds if the row stops claiming a native realization. It does
+// NOT check the authority: with the authority repointed to a module that does not exist the row still
+// derives TargetKernelUnqualified, because the derivation reports the unqualified realization first.
+test fn w_live_chars_row_derives_target_kernel_unqualified() -> Bool {
+  cause_kind(
+    c: census_with(
+      facts: live_surface_facts(),
+      edges: [],
+      rows: dispositions_text_rows() |> filter(fn(r) { primitive_identity_runtime_name(identity: r.identity) == "chars" }),
+      projections: [],
+      decls: [],
+      resolve: live_declaration_resolver
+    ),
+    name: "chars"
+  ) == "TargetKernelUnqualified"
 }

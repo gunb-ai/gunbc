@@ -183,86 +183,7 @@ pub(crate) fn languages_census_record_tokens(
     }
 }
 
-pub(crate) fn languages_decl_records_from_inventory(
-    inventory: &[PreparedSourceView],
-) -> Vec<LanguagesDeclConsumerRecord> {
-    let authority_content = inventory
-        .iter()
-        .find(|e| e.source.path.replace('\\', "/") == LANGUAGES_AUTHORITY_REL)
-        .map(|e| e.source.content.as_str())
-        .unwrap_or_else(|| {
-            panic!(
-                "languages_consumer_census: prepared inventory missing {LANGUAGES_AUTHORITY_REL}"
-            )
-        });
-    let decl_names = languages_census_extract_data_decl_names(authority_content);
-    let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
-
-    let mut by_decl: HashMap<String, HashSet<String>> = decl_names
-        .iter()
-        .map(|name| (name.clone(), HashSet::new()))
-        .collect();
-
-    let mut seen: HashSet<String> = HashSet::new();
-    for entry in inventory {
-        let rel = entry.source.path.replace('\\', "/");
-        if !rel.starts_with("dag/") && !rel.starts_with("src/") {
-            continue;
-        }
-        seen.insert(rel.clone());
-        languages_census_record_tokens(&rel, &entry.source.content, &decl_name_set, &mut by_decl);
-    }
-
-    // Prepared inventory is dag + src/v2 `.dag` only. The disk census also tokenizes
-    // `src/v1` and every `.rs` file; those are the external consumers of `rust_spec`.
-    let ws = workspace_root();
-    let mut extra = Vec::new();
-    let src_root = ws.join("src");
-    if src_root.is_dir() {
-        languages_census_collect_source_files(&src_root, &mut extra);
-    }
-    for path in extra {
-        let rel = path
-            .strip_prefix(&ws)
-            .map(|p| p.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_default();
-        if seen.contains(&rel) {
-            continue;
-        }
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
-    }
-
-    let mut records = Vec::new();
-    for decl_name in decl_names {
-        let mut paths: Vec<String> = by_decl
-            .remove(&decl_name)
-            .expect("decl map key")
-            .into_iter()
-            .collect();
-        paths.sort();
-        records.push(LanguagesDeclConsumerRecord {
-            decl_name,
-            external_consumer_paths: paths,
-        });
-    }
-    records
-}
-
 pub(crate) fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
-    if floor_prepared_authority_active() {
-        return FLOOR_LANGUAGES_RECORDS.with(|cell| {
-            if cell.borrow().is_none() {
-                let inventory = floor_prepared_inventory_snapshot()
-                    .expect("floor languages census: authority active but inventory missing");
-                *cell.borrow_mut() = Some(languages_decl_records_from_inventory(&inventory));
-            }
-            cell.borrow().clone().expect("floor languages records")
-        });
-    }
     let ws = workspace_root();
     let authority = ws.join(LANGUAGES_AUTHORITY_REL);
     let authority_content = std::fs::read_to_string(&authority).unwrap_or_else(|e| {
@@ -322,27 +243,6 @@ static LANGUAGES_DECL_RECORDS: OnceLock<Vec<LanguagesDeclConsumerRecord>> = Once
 
 pub(crate) fn languages_decl_records_cached() -> &'static [LanguagesDeclConsumerRecord] {
     LANGUAGES_DECL_RECORDS.get_or_init(languages_decl_records_inner)
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// Whether the process-wide census has already been built — PROVENANCE for the floor's
-/// preparation warm (`FloorPreparationPhase` `LanguagesConsumerCensusBuild`), so a warm that
-/// finds the artifact already in hand reports `already-warm-on-entry` instead of a zero build.
-pub(crate) fn languages_decl_records_already_built() -> bool {
-    LANGUAGES_DECL_RECORDS.get().is_some()
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// Whether the floor's prepared subject carries the authority the census reads. The inventory
-/// form panics on its absence by design (a census with no authority has no rows to answer for),
-/// so the preparation warm asks first and skips, printed, rather than stopping a subject that
-/// carries no consumer of the census at all.
-pub(crate) fn languages_census_subject_carries_authority() -> bool {
-    floor_prepared_inventory_snapshot().is_some_and(|inventory| {
-        inventory
-            .iter()
-            .any(|e| e.source.path.replace('\\', "/") == LANGUAGES_AUTHORITY_REL)
-    })
 }
 
 pub(crate) fn languages_decl_record_for(

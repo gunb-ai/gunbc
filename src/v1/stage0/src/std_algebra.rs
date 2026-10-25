@@ -8,13 +8,12 @@ use self::CarrierRowMembership::*;
 use self::CollectionSizeEffect::*;
 use self::ContainerSource::*;
 use self::CostShape::*;
+use self::ListAtLookup::*;
 use self::Ordering::*;
-pub use crate::std_error_primitives::pure_dag_seam_unreachable_string;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
-pub use crate::std_error_primitives::{DivError, Result};
-pub use crate::std_optional::Optional;
-pub use crate::std_optional::{optional_absent, optional_present};
+pub use crate::std_error_primitives::{pure_dag_seam_unreachable_string, DivError, Result};
+pub use crate::std_optional::{optional_absent, optional_present, Optional};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -258,6 +257,10 @@ pub fn list_append<T: Clone>(
     v1_rt::concat(left.clone(), right.clone())
 }
 
+pub fn list_push<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
+    v1_rt::rc_list_push(xs, item)
+}
+
 pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
     v1_rt::rc_list_push(xs.clone(), item.clone())
 }
@@ -295,13 +298,12 @@ pub struct PartialFunction<K, V> {
 }
 
 #[derive(Clone)]
-pub struct FinitelySupportedFunction<K, V> {
+pub struct FinitelySupportedFunction<K: std::cmp::Eq + std::hash::Hash, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,
-    pub empty: Rc<FinitelySupportedFunction<K, V>>,
+    pub empty: Rc<HashMap<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
-    pub insert: Rc<dyn Fn(K, V) -> Rc<FinitelySupportedFunction<K, V>>>,
-    pub merge:
-        Rc<dyn Fn(Rc<FinitelySupportedFunction<K, V>>) -> Rc<FinitelySupportedFunction<K, V>>>,
+    pub insert: Rc<dyn Fn(K, V) -> Rc<HashMap<K, V>>>,
+    pub merge: Rc<dyn Fn(Rc<HashMap<K, V>>) -> Rc<HashMap<K, V>>>,
     pub map_keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
     pub map_values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
     pub map_has: Rc<dyn Fn(K) -> bool>,
@@ -320,12 +322,20 @@ pub struct MapIntroductionEntry<K: Clone, V: Clone> {
 pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     entries: Rc<FreeMonoid<Rc<MapIntroductionEntry<K, V>>>>,
 ) -> Rc<HashMap<K, V>> {
-    entries.iter().cloned().fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, entry: Rc<MapIntroductionEntry<K, V>>| {
-            v1_rt::rc_map_insert(acc, entry.key.clone(), entry.value.clone())
-        },
-    )
+    {
+        let entries_seed = v1_rt::rc_empty_map::<_, _>();
+        entries
+            .iter()
+            .cloned()
+            .fold(entries_seed.clone(), map_entry_insert)
+    }
+}
+
+pub fn map_entry_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    acc: Rc<HashMap<K, V>>,
+    entry: Rc<MapIntroductionEntry<K, V>>,
+) -> Rc<HashMap<K, V>> {
+    v1_rt::rc_map_insert(acc, entry.key.clone(), entry.value.clone())
 }
 
 #[derive(Clone)]
@@ -368,7 +378,7 @@ pub fn ordering_fold<R: Clone>(o: Ordering, fold: Rc<OrderingFold<R>>) -> R {
 
 pub fn ordering_is_less(o: Ordering) -> bool {
     ordering_fold(
-        o.clone(),
+        o,
         Rc::new(OrderingFold {
             less: true,
             equal: false,
@@ -642,6 +652,37 @@ pub fn collection_count_shape() -> Rc<AlgebraFieldTemplate> {
     })
 }
 
+pub fn collection_first_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "first".to_string(),
+        param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+        return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+            inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
+        }),
+        size_effect: Some(CollectionSizeEffect::ProjectionEffect),
+        cost_shape: Some(CostShape::ShapeLinearScan),
+        callback_element_position: std::option::Option::None,
+    })
+}
+
+pub fn collection_join_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "join".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "String".to_string(),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+            name: "String".to_string(),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeLinearScan),
+        callback_element_position: std::option::Option::None,
+    })
+}
+
 pub fn collection_sort_by_shape() -> Rc<AlgebraFieldTemplate> {
     Rc::new(AlgebraFieldTemplate {
         name: "sort_by".to_string(),
@@ -699,7 +740,7 @@ pub fn template_param_position(
 }
 
 pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
-    template_param_position(t.clone(), |p| match (*p.clone()).clone() {
+    template_param_position(t, |p| match (*p.clone()).clone() {
         AlgebraTypeTemplate::CallableOf { .. } => true,
         AlgebraTypeTemplate::ReceiverSelf => false,
         AlgebraTypeTemplate::ReceiverElement => false,
@@ -715,7 +756,7 @@ pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
 }
 
 pub fn template_receiver_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
-    template_param_position(t.clone(), |p| {
+    template_param_position(t, |p| {
         (p.clone() == Rc::new(AlgebraTypeTemplate::ReceiverSelf))
     })
 }
@@ -1043,111 +1084,118 @@ pub fn carrier_spelling_row_present(m: Rc<CarrierRowMembership>) -> bool {
 }
 
 pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, AlgebraProfile>(),
-        |acc: Rc<HashMap<String, AlgebraProfile>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.method_surface.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            carrier.profile.clone(),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, AlgebraProfile>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.method_surface.clone()) {
+                            v1_rt::rc_map_insert(
+                                inner,
+                                spelling.text.clone(),
+                                carrier.profile.clone(),
+                            )
+                        } else {
+                            inner
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            carrier.name.clone(),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
+                        } else {
+                            inner
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            carrier.name.clone(),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
+                        } else {
+                            inner
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
-                        v1_rt::rc_map_insert(inner.clone(), spelling.text.clone(), true)
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), true)
+                        } else {
+                            inner
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            algebra_type_param_names(carrier.profile.clone())
-                                .iter()
-                                .fold(0, |n: i64, _| v1_rt::int_add(n, 1)),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, i64>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
+                            v1_rt::rc_map_insert(
+                                inner,
+                                spelling.text.clone(),
+                                algebra_type_param_names(carrier.profile.clone())
+                                    .iter()
+                                    .fold(0, |n: i64, _| v1_rt::int_add(n, 1)),
+                            )
+                        } else {
+                            inner
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 #[derive(
@@ -1214,32 +1262,35 @@ pub fn kernel_carrier_admits_numeral(name: String) -> bool {
 }
 
 pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
-    match algebra_profile_support(profile.clone()) {
+    match algebra_profile_support(profile) {
         AlgebraSupportAxis::FiniteSupport => true,
         AlgebraSupportAxis::OpenSupport => false,
     }
 }
 
 pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
-    algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
-            carrier.spellings.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
-                    if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
-                        v1_rt::rc_map_insert(
-                            inner.clone(),
-                            spelling.text.clone(),
-                            algebra_profile_equality_extensional(carrier.profile.clone()),
-                        )
-                    } else {
-                        inner.clone()
-                    }
-                },
-            )
-        },
-    )
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<_, _>();
+        algebra_carriers().iter().cloned().fold(
+            carrier_seed.clone(),
+            |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+                carrier.spellings.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                        if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
+                            v1_rt::rc_map_insert(
+                                inner,
+                                spelling.text.clone(),
+                                algebra_profile_equality_extensional(carrier.profile.clone()),
+                            )
+                        } else {
+                            inner
+                        }
+                    },
+                )
+            },
+        )
+    }
 }
 
 pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
@@ -1855,16 +1906,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
         collection_any_shape(),
         collection_all_shape(),
         collection_count_shape(),
-        Rc::new(AlgebraFieldTemplate {
-            name: "first".to_string(),
-            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
-                inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
-            }),
-            size_effect: Some(CollectionSizeEffect::ProjectionEffect),
-            cost_shape: Some(CostShape::ShapeLinearScan),
-            callback_element_position: std::option::Option::None,
-        }),
+        collection_first_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "last".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -1965,21 +2007,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeLinearScan),
             callback_element_position: std::option::Option::None,
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "join".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                    name: "String".to_string(),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "String".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeLinearScan),
-            callback_element_position: std::option::Option::None,
-        }),
+        collection_join_shape(),
         collection_concat_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "list_push".to_string(),
@@ -2280,7 +2308,7 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
     }
 }
 
-pub fn all_algebra_profiles() -> Rc<Vec<AlgebraProfile>> {
+pub fn all_algebra_profiles() -> Rc<FreeMonoid<AlgebraProfile>> {
     Rc::new(vec![
         AlgebraProfile::OrderedRingProfile,
         AlgebraProfile::OrderedSemiringProfile,
@@ -2359,32 +2387,39 @@ pub fn fold_list<T: Clone, A: Clone>(
     mut __tco_loop_cons: impl Fn(A, T) -> A + Clone,
 ) -> A {
     {
-        let mut __tco_cursor: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut empty = __tco_loop_empty;
-            #[allow(unused_mut)]
-            let mut cons = __tco_loop_cons;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
-                    break empty.clone();
-                } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
-                    {
-                        let __tco_0 = cons(empty, h.clone());
-                        let __tco_1 = cons;
-                        let __tco_2 = __tco_cursor + 1;
-                        __tco_loop_empty = __tco_0;
-                        __tco_loop_cons = __tco_1;
-                        __tco_cursor = __tco_2;
-                        continue;
+        let mut __tco_cursor_xs: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut empty = __tco_loop_empty;
+                #[allow(unused_mut)]
+                let mut cons = __tco_loop_cons;
+                #[allow(unused_mut)]
+                let mut xs = __tco_loop_xs.clone();
+                {
+                    let __fm = xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break empty.clone();
+                    } else {
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        {
+                            let __tco_0 = __tco_cursor_xs + 1;
+                            let __tco_1 = cons(empty, h.clone());
+                            let __tco_2 = cons;
+                            __tco_cursor_xs = __tco_0;
+                            __tco_loop_empty = __tco_1;
+                            __tco_loop_cons = __tco_2;
+                            continue;
+                        }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
@@ -2393,7 +2428,7 @@ pub fn fold_non_empty<T: Clone>(
     tail: Rc<FreeMonoid<T>>,
     cons: impl Fn(T, T) -> T + Clone,
 ) -> T {
-    fold_list(tail.clone(), head.clone(), cons.clone())
+    fold_list(tail, head, cons)
 }
 
 pub fn join_separated<T: Clone>(
@@ -2410,7 +2445,7 @@ pub fn join_separated<T: Clone>(
             let first = (*__fm)[0].clone();
             let rest: Rc<Vec<_>> = Rc::new(__fm.skip(1));
             fold_list(rest.clone(), first.clone(), |acc, field| {
-                combine(combine(acc.clone(), separator.clone()), field.clone())
+                combine(combine(acc, separator.clone()), field)
             })
         }
     }
@@ -2418,8 +2453,8 @@ pub fn join_separated<T: Clone>(
 
 pub fn string_concat_join(fields: Rc<Vec<String>>, separator: String) -> String {
     join_separated(
-        fields.clone(),
-        separator.clone(),
+        fields,
+        separator,
         |acc, field| v1_rt::concat(acc.clone(), field.clone()),
         "".to_string(),
     )
@@ -2446,7 +2481,7 @@ pub fn fold_list_right<T: Clone, A: Clone>(
 }
 
 pub fn list_reverse<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
-    fold_list(xs.clone(), Rc::new(vec![]), |acc, item| {
+    fold_list(xs, Rc::new(vec![]), |acc, item| {
         Rc::new({
             let mut __cons_v = (*acc.clone()).clone();
             __cons_v.insert(0, item.clone());
@@ -2459,12 +2494,8 @@ pub fn list_map<T: Clone, U: Clone>(
     xs: Rc<FreeMonoid<T>>,
     f: impl Fn(T) -> U + Clone,
 ) -> Rc<FreeMonoid<U>> {
-    fold_list_right(xs.clone(), Rc::new(vec![]), |acc, item| {
-        Rc::new({
-            let mut __cons_v = (*acc.clone()).clone();
-            __cons_v.insert(0, f(item.clone()));
-            __cons_v
-        })
+    fold_list(xs, Rc::new(vec![]), |acc, item| {
+        v1_rt::rc_list_push(acc, f(item))
     })
 }
 
@@ -2472,13 +2503,9 @@ pub fn list_flat_map<T: Clone, U: Clone>(
     xs: Rc<FreeMonoid<T>>,
     f: impl Fn(T) -> Rc<FreeMonoid<U>> + Clone,
 ) -> Rc<FreeMonoid<U>> {
-    fold_list_right(xs.clone(), Rc::new(vec![]), |acc, item| {
-        fold_list_right(f(item.clone()), acc.clone(), |inner, produced| {
-            Rc::new({
-                let mut __cons_v = (*inner.clone()).clone();
-                __cons_v.insert(0, produced.clone());
-                __cons_v
-            })
+    fold_list(xs, Rc::new(vec![]), |acc, item| {
+        fold_list(f(item), acc, |inner, produced| {
+            v1_rt::rc_list_push(inner, produced)
         })
     })
 }
@@ -2538,6 +2565,281 @@ pub fn skip<T: Clone>(
     }
 }
 
+pub fn take_prefix<T: Clone>(xs: Rc<FreeMonoid<T>>, n: i64) -> Rc<FreeMonoid<T>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (n.clone() <= 0) {
+            Rc::new(vec![])
+        } else {
+            {
+                let __fm = xs.clone();
+                if __fm.is_empty() {
+                    Rc::new(vec![])
+                } else {
+                    let h = (*__fm)[0].clone();
+                    let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                    Rc::new({
+                        let mut __cons_v =
+                            (*take_prefix(t.clone(), v1_rt::int_sub(n.clone(), 1))).clone();
+                        __cons_v.insert(0, h.clone());
+                        __cons_v
+                    })
+                }
+            }
+        }
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SortKeyed<T: Clone, K: Clone> {
+    pub key: K,
+    pub item: T,
+    pub _phantom: std::marker::PhantomData<(T, K)>,
+}
+
+pub fn sort_merge_runs<T: Clone, K: Clone>(
+    left: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    right: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    order: Rc<TotalOrder<K>>,
+) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
+    sort_merge_into(left, right, order, Rc::new(vec![]))
+}
+
+pub fn sort_merge_into<T: Clone, K: Clone>(
+    mut __tco_loop_left: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    mut __tco_loop_right: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    mut __tco_loop_order: Rc<TotalOrder<K>>,
+    mut __tco_loop_acc: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut left = __tco_loop_left;
+        #[allow(unused_mut)]
+        let mut right = __tco_loop_right;
+        #[allow(unused_mut)]
+        let mut order = __tco_loop_order;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        {
+            let __fm = left.clone();
+            if __fm.is_empty() {
+                break list_append(acc.clone(), right.clone());
+            } else {
+                let l = (*__fm)[0].clone();
+                let lt: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                {
+                    let __fm = right.clone();
+                    if __fm.is_empty() {
+                        break list_append(acc.clone(), left.clone());
+                    } else {
+                        let r = (*__fm)[0].clone();
+                        let rt: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                        match (order.compare)(l.key.clone(), r.key.clone()) {
+                            Ordering::Greater => {
+                                let __tco_0 = left;
+                                let __tco_1 = rt.clone();
+                                let __tco_2 = order;
+                                let __tco_3 = v1_rt::rc_list_push(acc, r.clone());
+                                __tco_loop_left = __tco_0;
+                                __tco_loop_right = __tco_1;
+                                __tco_loop_order = __tco_2;
+                                __tco_loop_acc = __tco_3;
+                                continue;
+                            }
+                            Ordering::Less => {
+                                let __tco_0 = lt.clone();
+                                let __tco_1 = right;
+                                let __tco_2 = order;
+                                let __tco_3 = v1_rt::rc_list_push(acc, l.clone());
+                                __tco_loop_left = __tco_0;
+                                __tco_loop_right = __tco_1;
+                                __tco_loop_order = __tco_2;
+                                __tco_loop_acc = __tco_3;
+                                continue;
+                            }
+                            Ordering::Equal => {
+                                let __tco_0 = lt.clone();
+                                let __tco_1 = right;
+                                let __tco_2 = order;
+                                let __tco_3 = v1_rt::rc_list_push(acc, l.clone());
+                                __tco_loop_left = __tco_0;
+                                __tco_loop_right = __tco_1;
+                                __tco_loop_order = __tco_2;
+                                __tco_loop_acc = __tco_3;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn sort_keyed_runs<T: Clone, K: Clone>(
+    xs: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    n: i64,
+    order: Rc<TotalOrder<K>>,
+) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (n.clone() <= 1) {
+            xs.clone()
+        } else {
+            sort_merge_runs(
+                sort_keyed_runs(
+                    take_prefix(xs.clone(), v1_rt::int_div(n.clone(), 2)),
+                    v1_rt::int_div(n.clone(), 2),
+                    order.clone(),
+                ),
+                sort_keyed_runs(
+                    skip(xs.clone(), v1_rt::int_div(n.clone(), 2)),
+                    v1_rt::int_sub(n.clone(), v1_rt::int_div(n.clone(), 2)),
+                    order.clone(),
+                ),
+                order.clone(),
+            )
+        }
+    })
+}
+
+pub fn int_compare_canonical(a: i64, b: i64) -> Ordering {
+    if (a.clone() < b.clone()) {
+        Ordering::Less
+    } else {
+        if (a.clone() > b.clone()) {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+pub fn int_total_order() -> Rc<TotalOrder<i64>> {
+    Rc::new(TotalOrder {
+        compare: Rc::new(int_compare_canonical),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn list_sort_by_key<T: Clone, K: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    key: impl Fn(T) -> K + Clone,
+    order: Rc<TotalOrder<K>>,
+) -> Rc<FreeMonoid<T>> {
+    list_map(
+        sort_keyed_runs(
+            list_map(xs.clone(), |item| {
+                Rc::new(SortKeyed {
+                    key: key(item.clone()),
+                    item: item.clone(),
+                    _phantom: std::marker::PhantomData,
+                })
+            }),
+            length(xs.clone()),
+            order,
+        ),
+        |k| k.item.clone(),
+    )
+}
+
+pub fn empty_map_primitive_delegate<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+    v1_rt::rc_empty_map()
+}
+
+pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+    v1_rt::rc_empty_map()
+}
+
+pub fn map_insert_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+    value: V,
+) -> Rc<HashMap<K, V>> {
+    v1_rt::rc_map_insert(m, key, value)
+}
+
+pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+    value: V,
+) -> Rc<HashMap<K, V>> {
+    v1_rt::rc_map_insert(m, key, value)
+}
+
+pub fn map_lookup_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+) -> Option<V> {
+    v1_rt::lookup(&m, key)
+}
+
+pub fn map_lookup<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+) -> Option<V> {
+    v1_rt::lookup(&m, key)
+}
+
+pub fn map_contains_key<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+    key: K,
+) -> bool {
+    match v1_rt::lookup(&m, key) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
+pub fn list_at_primitive_delegate<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
+    v1_rt::list_get_optional(&xs, index)
+}
+
+pub fn list_at_optional<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
+    v1_rt::list_get_optional(&xs, index)
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ListAtLookup<T> {
+    ListAtMissing { remaining: i64 },
+    ListAtFound { value: T },
+}
+
+pub fn list_at_reference<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
+    match (*fold_list(
+        xs,
+        Rc::new(ListAtLookup::ListAtMissing {
+            remaining: index.clone(),
+        }),
+        |acc, item| match (*acc.clone()).clone() {
+            ListAtLookup::ListAtFound { value: _, .. } => acc.clone(),
+            ListAtLookup::ListAtMissing { remaining: r, .. } => {
+                if (r.clone() == 0) {
+                    Rc::new(ListAtLookup::ListAtFound {
+                        value: item.clone(),
+                    })
+                } else {
+                    Rc::new(ListAtLookup::ListAtMissing {
+                        remaining: v1_rt::int_sub(r.clone(), 1),
+                    })
+                }
+            }
+        },
+    ))
+    .clone()
+    {
+        ListAtLookup::ListAtFound { value: v, .. } => {
+            crate::std_optional::optional_present(v.clone())
+        }
+        ListAtLookup::ListAtMissing { remaining: _, .. } => crate::std_optional::optional_absent(),
+    }
+}
+
+pub fn map_support_keys<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+) -> Rc<FreeMonoid<K>> {
+    Rc::new(v1_rt::map_keys(&m))
+}
+
 pub fn is_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
     {
         let __fm = xs.clone();
@@ -2550,7 +2852,7 @@ pub fn is_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
 }
 
 pub fn non_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
-    match is_empty(xs.clone()) {
+    match is_empty(xs) {
         true => false,
         false => true,
     }
@@ -2561,8 +2863,8 @@ pub fn length<T: Clone>(xs: Rc<FreeMonoid<T>>) -> i64 {
 }
 
 pub fn for_all<T: Clone>(xs: Rc<FreeMonoid<T>>, predicate: impl Fn(T) -> bool + Clone) -> bool {
-    fold_list(xs.clone(), true, |acc, item| match acc.clone() {
-        true => predicate(item.clone()),
+    fold_list(xs, true, |acc, item| match acc.clone() {
+        true => predicate(item),
         false => false,
     })
 }
@@ -2585,7 +2887,7 @@ pub fn contains<T: Clone>(
 }
 
 pub fn count_where<T: Clone>(xs: Rc<FreeMonoid<T>>, predicate: impl Fn(T) -> bool + Clone) -> i64 {
-    fold_list(xs.clone(), 0, |count, item| match predicate(item.clone()) {
+    fold_list(xs, 0, |count, item| match predicate(item) {
         true => v1_rt::int_add(count.clone(), 1),
         false => count.clone(),
     })
@@ -2596,13 +2898,13 @@ pub fn count_equal<T: Clone>(
     item: T,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> i64 {
-    count_where(xs.clone(), |candidate| eq(candidate.clone(), item.clone()))
+    count_where(xs, |candidate| eq(candidate, item.clone()))
 }
 
 pub fn unique<T: Clone>(xs: Rc<FreeMonoid<T>>, eq: impl Fn(T, T) -> bool + Clone) -> bool {
     {
         let state = fold_list(
-            xs.clone(),
+            xs,
             Rc::new(FreeMonoidUniqueState {
                 seen: Rc::new(vec![]),
                 unique: true,
@@ -2637,32 +2939,39 @@ pub fn list_find_first<T: Clone>(
     mut __tco_loop_predicate: impl Fn(T) -> bool + Clone,
 ) -> Option<T> {
     {
-        let mut __tco_cursor: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut predicate = __tco_loop_predicate;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
-                    break crate::std_optional::optional_absent();
-                } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
-                    if predicate(h.clone()) {
-                        break crate::std_optional::optional_present(h.clone());
+        let mut __tco_cursor_xs: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut predicate = __tco_loop_predicate;
+                #[allow(unused_mut)]
+                let mut xs = __tco_loop_xs.clone();
+                {
+                    let __fm = xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break crate::std_optional::optional_absent();
                     } else {
-                        {
-                            let __tco_0 = predicate;
-                            let __tco_1 = __tco_cursor + 1;
-                            __tco_loop_predicate = __tco_0;
-                            __tco_cursor = __tco_1;
-                            continue;
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        if predicate(h.clone()) {
+                            break crate::std_optional::optional_present(h.clone());
+                        } else {
+                            {
+                                let __tco_0 = __tco_cursor_xs + 1;
+                                let __tco_1 = predicate;
+                                __tco_cursor_xs = __tco_0;
+                                __tco_loop_predicate = __tco_1;
+                                continue;
+                            }
                         }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
@@ -2699,7 +3008,7 @@ pub fn list_starts_with<T: Clone>(
 ) -> bool {
     {
         let state = fold_list(
-            prefix.clone(),
+            prefix,
             Rc::new(ListPrefixState {
                 rest: xs.clone(),
                 matched: true,
@@ -2720,7 +3029,7 @@ pub fn list_starts_with<T: Clone>(
                         let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
                         Rc::new(ListPrefixState {
                             rest: t.clone(),
-                            matched: eq(h.clone(), item.clone()),
+                            matched: eq(h.clone(), item),
                             _phantom: std::marker::PhantomData,
                         })
                     }
@@ -2870,7 +3179,7 @@ pub fn reduce_or<T: Clone>(
         } else {
             let h = (*__fm)[0].clone();
             let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            fold_non_empty(h.clone(), t.clone(), combine.clone())
+            fold_non_empty(h.clone(), t.clone(), combine)
         }
     }
 }

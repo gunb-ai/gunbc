@@ -1,0 +1,65 @@
+module test.fixture.markup_render
+
+// HOW A CLAIM READS SERIALIZED TEXT NOW THAT THE SERIALIZER CAN REFUSE.
+//
+// std.markup's serializer used to return String, so a claim could compare it to an expected page directly.
+// It returns a typed result now, because the comment and raw-text checks moved into the arm that WRITES the
+// bytes, so that a route cannot skip them (review 82279 on #14351). A check that can refuse has to say so,
+// which leaves the claims asking for the text of a render and needing an answer for the refusal arm.
+//
+// THE ANSWER IS A MARKER NO EXPECTED VALUE CAN EQUAL — not "" and not a guess. Either would be the failure
+// this repo refuses most often: a claim that receives a refusal and stays green. "" == "" is true, and a
+// fabricated page would be §5's invented output arriving inside a test, where it is worse than in
+// production because it certifies the defect. A refused render therefore compares unequal to every
+// expectation any claim could hold, and the claim goes red with the serializer's own reason in the diff.
+//
+// A claim that WANTS the refusal (there are several in markup_document_comment_witness and the XSS
+// witnesses) matches on the result directly instead of using these helpers. Those claims are what keeps
+// these three functions from being a way to make claims green: if a route refused everything, the claims
+// that expect acceptance would fail here while the refusal claims passed, and the pair below catches a
+// marker that collapsed to something innocuous.
+
+import std.markup { MarkupSerializeResult, Serialized, Rejected }
+import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected }
+import extdeps.languages.react_jsx { JsxEmitResult, JsxOk, JsxRejected }
+
+fn refused_marker(reason: String) -> String {
+  join(["<<REFUSED ", reason, ">>"], "")
+}
+
+fn render_html(result: HtmlEmitResult) -> String {
+  match result {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => refused_marker(reason: r)
+  }
+}
+
+fn render_markup(result: MarkupSerializeResult) -> String {
+  match result {
+    Serialized { html: h } => h
+    Rejected { reason: r } => refused_marker(reason: r)
+  }
+}
+
+fn render_jsx(result: JsxEmitResult) -> String {
+  match result {
+    JsxOk { tsx: t } => t
+    JsxRejected { reason: r } => refused_marker(reason: r)
+  }
+}
+
+// THE CLAIM THAT KEEPS THIS FILE FROM BECOMING A WAY TO MAKE CLAIMS GREEN. A refusal must carry its reason
+// (so a red claim says WHY) and must never equal what an accepted render of the same shape produces. Both
+// are checked against real values from the result types, so if the marker ever degraded to "" the claims
+// that converted to these helpers would not silently pass: this one goes red first.
+test fn a_refusal_never_equals_the_accepted_render() -> Bool {
+  let m = refused_marker(reason: "self-terminating comment")
+  string_contains(s: m, pattern: "self-terminating comment")
+    && m != ""
+    && m != render_html(result: EmitOk { html: "" })
+    && m != render_markup(result: Serialized { html: "" })
+    && m != render_jsx(result: JsxOk { tsx: "" })
+    // An accepted EMPTY render is still distinguishable from a refusal, which is the case that a ""
+    // marker would have collapsed.
+    && render_html(result: EmitOk { html: "" }) != render_html(result: EmitRejected { reason: "x" })
+}

@@ -46,6 +46,7 @@ import gunbc.runner.runner_microvm_attempt {
   runner_microvm_attempt_part_of_property,
 }
 import gunbc.runner.runner_attempt_launch {
+  InputDriveStaging,
   AttemptGround, GroundClear, GroundOccupied,
   AttemptLaunchPlan, LaunchAuthorized,
   AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedVmConfiguration, AttemptStagingReceipt, jail_config_path,
@@ -78,7 +79,7 @@ import extdeps.tools.e2fsprogs {
 import extdeps.systemd.journalctl
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
   systemd_run_option_words_refused_cause_detail,
 }
@@ -626,7 +627,7 @@ data workflow_effect_sequencing_frontier: DissolutionCondition = unbound_dissolu
 data attempt_invocation_env_key: String = "GUNBC_ATTEMPT_INVOCATION_ID"
 
 fn attempt_invocation_env_setting(invocation_id: NonEmptyStr) -> SystemdRunProperty {
-  SystemdRunProperty {
+  NamedUnitSetting {
     property: EnvironmentProperty,
     value: join([attempt_invocation_env_key, "=", invocation_id as String], "") as NonEmptyStr,
   }
@@ -1081,6 +1082,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       stage_jail_root: stage_root,
       stage_kernel: stage_kernel,
       stage_rootfs: stage_rootfs,
+      input_drives: inputs,
       workspace_path: workspace_path,
       workspace_create: create,
       workspace_format: format,
@@ -1091,6 +1093,11 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       let root_outcome = run_shell_command_capture(command: stage_root, transport: LocalExec)
       let kernel_outcome = run_staged_after(after: root_outcome, command: stage_kernel)
       let rootfs_outcome = run_staged_after(after: kernel_outcome, command: stage_rootfs)
+      let input_outcomes = map(inputs, d => InputDriveStaging {
+        jail_path: d.jail_path,
+        exit: command_exit_code(outcome: run_staged_after(after: rootfs_outcome, command: d.stage)),
+        present: observe_path_exists(path: join([jail_root, d.jail_path], "")),
+      })
       let create_outcome = run_staged_after(after: rootfs_outcome, command: create)
       let format_outcome = run_staged_after(after: create_outcome, command: format)
       let kernel_present = observe_path_exists(path: jail_kernel_destination(jail_root: jail_root))
@@ -1106,6 +1113,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
             rootfs_exit: command_exit_code(outcome: rootfs_outcome),
             kernel: kernel_present,
             rootfs: rootfs_present,
+            inputs: input_outcomes,
           },
           jit: stage_bootstrap_device(device: launch_payload_device(payload: payload)),
           workspace: WorkspaceStagingObservation {
@@ -1268,14 +1276,17 @@ fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
 // declared lifecycle intent, the VmmUnderLifecycleController prerequisite), gunbc.live_deploy.emit
 // installs that unit beside the root-owned release locus through the microvm_controller_install
 // fleet-converge mode, and that entry composes the readiness store, the reservation re-read, the
-// cell binding, the credential mint, the shape, the reservation-authorized plan and the network
+// cell binding, the credential mint, the shape, the cell-grant-authorized plan and the network
 // subject into ONE call of run_controller below. A launcher that exits does not satisfy the
 // topology; the unit execs the controller directly, so it is MainPID for the attempt's whole life.
 //
-// WHAT STILL STANDS BETWEEN THAT ENTRY AND A LAUNCHED VMM IS DECLARED WHERE IT IS OWNED: the
-// planner's grant arm has no production producer (gunbc.runner.runner_attempt_launch
-// reservation_authorization_grant_producer_frontier). It is not this module's, and it does not make
-// the consumer of this entry anything other than the unit.
+// THE PLAN IT COMPOSES IS GRANT-AUTHORIZED: the cell's hold owner is the grant key the broker
+// committed with the reservation (gunbc.fabric.fabric_cell_grant), the entry re-derives it before
+// planning (gunbc.fabric.fabric_required_build_cell observe_granted_cell_wet), and the planner's arm
+// is gunbc.runner.runner_attempt_launch plan_attempt_launch_cell_granted. What still stands before
+// a launched VMM is outside this module: a slot row for the job (an operator capacity decision on
+// srv1) and that host's controller release. Neither makes the consumer of this entry anything
+// other than the unit.
 
 // THE ORDER IS THE SAFETY PROPERTY AND IT IS NOT NEGOTIABLE.
 //

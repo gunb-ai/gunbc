@@ -22,6 +22,7 @@ import v2.cli.compile_cli {
   CliPopulationReported,
   CliIfArmReaderDifferential,
   CliCheckLayout,
+  CliSelectSpelledModules,
   CliParsePopulation,
   cli_emit_target_spelling,
   cli_verb_if_arm_reader_differential,
@@ -30,7 +31,7 @@ import v2.cli.compile_cli {
   v2_cli_plan_source_roots,
   v2_cli_run
 }
-import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population }
+import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population, cli_verb_select_spelled_modules }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
@@ -75,7 +76,8 @@ fn plan_first_root(plan: CliPlan) -> String {
           }
         CliIfArmReaderDifferential { source_roots: _ } => ""
         CliCheckLayout { source_roots: _ } => ""
-        CliParsePopulation { source_roots: _ } => ""
+        CliSelectSpelledModules { source_roots: _ } => ""
+        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => ""
       }
   }
 }
@@ -270,7 +272,8 @@ fn plan_is_target(plan: CliPlan, expected: CliEmitTarget) -> Bool {
           cli_emit_target_spelling(t: target) == cli_emit_target_spelling(t: expected)
         CliIfArmReaderDifferential { source_roots: _ } => false
         CliCheckLayout { source_roots: _ } => false
-        CliParsePopulation { source_roots: _ } => false
+        CliSelectSpelledModules { source_roots: _ } => false
+        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => false
       }
   }
 }
@@ -483,6 +486,39 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
   }
 }
 
+// AN UNBOUND EMIT LINE NAMES WHAT FAILED BEFORE FATAL AT (review 80097). Same door as the trailing-
+// token claims: v2_cli_run over a supplied ingest. The fatal stays last; the census projection rides
+// in front of it. Dropping the CLI wiring while keeping the census renderer greens every census
+// claim and reds this one.
+data cli_probe_unbound_source: String = "module v2.cli_probe.unbound\n\nfn go() {\n  never_declared\n}\n"
+
+data cli_probe_unbound_ingest: SourceRootIngest = [
+  cli_probe_read(source: cli_probe_unbound_source, id: ^cli_probe_unbound_artifact, unit: ^cli_probe_unbound_cu, path: "dag/cli_probe_unbound.dag")
+]
+
+fn cli_probe_unbound_outcome() -> CliRunOutcome {
+  v2_cli_run(
+    plan: CliPlanParsed {
+      verb: CliEmitClosure {
+        entry: "v2.cli_probe.unbound",
+        source_roots: Empty,
+        target: CliTargetRust
+      }
+    },
+    ingest: cli_probe_unbound_ingest
+  )
+}
+
+test fn an_unbound_emit_line_names_what_is_unbound_before_fatal_at_RED() -> Bool {
+  match cli_probe_unbound_outcome() {
+    CliRunRefused { reason: _, detail: detail } =>
+      string_contains(s: detail, pattern: "unbound_name=never_declared | FATAL AT")
+    CliUsageRefused { reason: _, detail: _ } => false
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
+    CliPopulationReported { text: _, held: _, detail: _ } => false
+  }
+}
+
 // THE WHOLE-POPULATION VERBS TAKE SOURCE ROOTS AND NO ENTRY. Their parse is one walk shared by three
 // verbs (`if-arm-reader-differential`, `check-layout`, `parse-population`), so the claim that matters
 // is that each SPELLING selects its OWN verb: a parser that mapped every roots verb to the first arm
@@ -503,7 +539,8 @@ fn plan_roots_verb_label(plan: CliPlan) -> String {
         CliEmitClosure { entry: _, source_roots: _, target: _ } => "emit"
         CliIfArmReaderDifferential { source_roots: _ } => cli_verb_if_arm_reader_differential
         CliCheckLayout { source_roots: _ } => cli_verb_check_layout
-        CliParsePopulation { source_roots: _ } => cli_verb_parse_population
+        CliSelectSpelledModules { source_roots: _ } => cli_verb_select_spelled_modules
+        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => cli_verb_parse_population
       }
   }
 }
@@ -513,9 +550,93 @@ test fn the_check_layout_spelling_selects_its_own_verb_holds() -> Bool {
     == cli_verb_check_layout
 }
 
+test fn the_select_spelled_modules_spelling_selects_its_own_verb_holds() -> Bool {
+  plan_roots_verb_label(plan: v2_cli_parse(argv: argv_roots_verb(verb: "select-spelled-modules", root: "dag")))
+    == cli_verb_select_spelled_modules
+}
+
 test fn the_parse_population_spelling_selects_its_own_verb_holds() -> Bool {
   plan_roots_verb_label(plan: v2_cli_parse(argv: argv_roots_verb(verb: "parse-population", root: "dag")))
     == cli_verb_parse_population
+}
+
+data argv_parse_population_writes: FreeMonoid<String> = Cons {
+  head: "parse-population",
+  tail: Cons {
+    head: "--source-root",
+    tail: Cons {
+      head: "dag",
+      tail: Cons {
+        head: "--compiler",
+        tail: Cons {
+          head: "cid",
+          tail: Cons {
+            head: "--write-identity",
+            tail: Cons {
+              head: "/tmp/id",
+              tail: Cons { head: "--receipts", tail: Cons { head: "/tmp/r", tail: Empty } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn parse_population_parses_write_identity_and_receipts_holds() -> Bool {
+  match v2_cli_parse(argv: argv_of(items: argv_parse_population_writes)) {
+    CliPlanRefused { reason: _, detail: _ } => false
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliParsePopulation { source_roots: _, compiler: c, write_identity: w, receipts: r, reuse_from: _ } =>
+          match c {
+            Absent => false
+            Present { value: cid } => cid == "cid"
+          }
+            && match w {
+              Absent => false
+              Present { value: p } => p == "/tmp/id"
+            }
+            && match r {
+              Absent => false
+              Present { value: p } => p == "/tmp/r"
+            }
+        CliEmitClosure { entry: _, source_roots: _, target: _ } => false
+        CliIfArmReaderDifferential { source_roots: _ } => false
+        CliCheckLayout { source_roots: _ } => false
+        CliSelectSpelledModules { source_roots: _ } => false
+      }
+  }
+}
+
+data argv_parse_population_reuse: FreeMonoid<String> = [
+  "parse-population", "--source-root", "dag", "--compiler", "cid", "--reuse-from", "/tmp/base"
+]
+
+data argv_parse_population_reuse_dangling: FreeMonoid<String> = [
+  "parse-population", "--source-root", "dag", "--reuse-from"
+]
+
+test fn parse_population_parses_reuse_from_and_refuses_it_dangling_holds() -> Bool {
+  (match v2_cli_parse(argv: argv_of(items: argv_parse_population_reuse)) {
+    CliPlanRefused { reason: _, detail: _ } => false
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: r } =>
+          match r {
+            Absent => false
+            Present { value: p } => p == "/tmp/base"
+          }
+        CliEmitClosure { entry: _, source_roots: _, target: _ } => false
+        CliIfArmReaderDifferential { source_roots: _ } => false
+        CliCheckLayout { source_roots: _ } => false
+        CliSelectSpelledModules { source_roots: _ } => false
+      }
+  })
+    && match v2_cli_parse(argv: argv_of(items: argv_parse_population_reuse_dangling)) {
+      CliPlanRefused { reason: reason, detail: _ } => reason == ^cli_reuse_from_missing_value
+      CliPlanParsed { verb: _ } => false
+    }
 }
 
 test fn the_differential_spelling_selects_its_own_verb_holds() -> Bool {

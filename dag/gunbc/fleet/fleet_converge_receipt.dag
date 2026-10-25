@@ -381,8 +381,8 @@ fn admit_apply_plan_binding(
     PlanBindingRunIdMismatch { planned: plan.run.run_id, requested: plan_run_id_input }
   } else if plan.plan_artifact_hash != plan_hash_on_disk {
     PlanBindingHashMismatch { receipt: plan.plan_artifact_hash, on_disk: plan_hash_on_disk }
-  } else if plan.run.run_revision != apply_run.run_revision {
-    PlanBindingRevisionMismatch { plan: plan.run.run_revision, apply: apply_run.run_revision }
+  } else if plan.run.execution_revision != apply_run.execution_revision {
+    PlanBindingRevisionMismatch { plan: plan.run.execution_revision, apply: apply_run.execution_revision }
   } else if plan.run.repository != apply_run.repository {
     PlanBindingRepositoryMismatch { plan: plan.run.repository, apply: apply_run.repository }
   } else {

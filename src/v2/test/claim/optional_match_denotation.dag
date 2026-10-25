@@ -1,0 +1,170 @@
+module v2.test.claim.optional_match_denotation
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, List, String }
+import v2.compiler.infer { infer }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+
+// SUBJECT: A MATCH ON AN OPTIONAL SCRUTINEE IS A MATCH ON A COPRODUCT (ruling
+// gunbc.design_ruling optional_sugar_is_declaration_bound). `T?` and an identity-resolved `Optional<T>`
+// reach v2 infer as a v2.std.node Occupancy node (v2.std.optional_layers' wrap_type_node_occupancy_at), and
+// the declaration-keyed reading of a type node — v2.std.qualified_name's declaration_denotation_of_type,
+// the ONE reading every declaration-keyed consumer uses — DENOTES the std.optional.Optional declaration
+// for it, so the checker sees the declared Disj. Before that link the checker read only declaration
+// references, so `match left` at dag/std/optional.dag:16 (left: Optional<T>, in
+// optional_prefer_first_present) refused infer_match_scrutinee_not_coproduct: the largest native-seven
+// infer root, a fan-out of ~144 modules.
+// BOUNDARY: source text in, through assemble_program_from_ingest, resolve and infer — the production
+// route, over a supplied std.optional peer module. No supplied node shapes: what is observed is what the
+// pipeline derives, so a hand-built scrutinee node cannot be what makes a row pass.
+// WHY THE CHECKER MUST STAY SHAPE-BLIND (the ruling's own words): v2.compiler.infer's
+// infer_match_coproduct_of_type gains NO arm for the wrapper. The controls below are what keep that
+// honest — a special case in the checker would also accept nothing else, and would let the sugar be the
+// only shape ever admitted, while these rows refuse for their own reason with the same arm shapes.
+// RED BEFORE (main @103c0bddc0): the three Optional rows refuse infer_match_scrutinee_not_coproduct; the
+// control rows refuse for their own reason before and after alike.
+
+data omd_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_match_denotation_artifact, file_path: "src/v2/pilot/omd_pilot.dag" }
+data omd_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_match_denotation_std_artifact, file_path: "src/v2/pilot/omd_std_pilot.dag" }
+
+fn omd_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^optional_match_denotation_cu,
+    source_root: V2Tree
+  }
+}
+
+fn omd_assemble(sources: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: sources,
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// p over the canonical std.optional, assembled the way the sugar's declaration-boundary claim assembles it.
+fn omd_with_std(body: String) -> Outcome<ResolvedTree> {
+  omd_assemble(sources: [
+    omd_witness(src: osd_std_optional(), artifact: omd_std_artifact),
+    omd_witness(src: concat("module p\n\nimport std.optional { Absent, Optional, Present }\n\n", body), artifact: omd_artifact)
+  ])
+}
+
+// resolve, then infer, in the pipeline's order: a refusal at either stage is a refusal of the subject.
+fn omd_infer(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
+  match o {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn omd_accepted(o: Outcome<ResolvedTree>) -> Bool {
+  match omd_infer(o: o) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn omd_refused_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match omd_infer(o: o) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// The reason the refusal is NOT — used where a row must refuse because an ARM was read against the
+fn omd_optional_parameter_application() -> Outcome<ResolvedTree> {
+  omd_with_std(body: "fn choose<T>(left: Optional<T>, fallback: T) -> T {\n  match left {\n    Present { value: v } => v\n    Absent => fallback\n  }\n}\n")
+}
+
+fn omd_optional_parameter_sugar() -> Outcome<ResolvedTree> {
+  omd_with_std(body: "fn choose<T>(left: T?, fallback: T) -> T {\n  match left {\n    Present { value: v } => v\n    Absent => fallback\n  }\n}\n")
+}
+
+// The ground case: one fewer moving part than the generic rows — no formal to instantiate — so a row that
+// passes here and not above points at instantiation, not at the denotation link.
+fn omd_optional_parameter_ground() -> Outcome<ResolvedTree> {
+  omd_with_std(body: "fn choose_int(left: Int?, fallback: Int) -> Int {\n  match left {\n    Present { value: v } => v\n    Absent => fallback\n  }\n}\n")
+}
+
+// POSITIVE CONTROL: the same matches are ACCEPTED after the link.
+test fn omd_a_match_on_an_optional_parameter_is_accepted() -> Bool {
+  omd_accepted(o: omd_optional_parameter_application())
+    && omd_accepted(o: omd_optional_parameter_sugar())
+    && omd_accepted(o: omd_optional_parameter_ground())
+}
+
+// THE ARMS ARE CHECKED AGAINST Absent AND Present — the declaration is READ, not waved past. Three
+// observations, each with its own discriminating input:
+//  (1) the complete match is ACCEPTED;
+//  (2) dropping the Absent arm CHANGES the verdict to a refusal — coverage is consulted over the
+//      declaration's two variants, so an accepted match is not an unchecked one;
+//  (3) an arm naming a variant the declaration does not declare refuses resolve_reason_unbound_symbol
+//      (measured on the native route at main @c6c88136ce, where the arm's tag resolves against the Optional
+//      scope and `Unknown` is not one of its two variants). Refusing for a DIFFERENT reason is what shows
+//      the variant set was consulted; accepting it would be the coverage hole a shape-blind reader must not
+//      open.
+fn omd_missing_arm() -> Outcome<ResolvedTree> {
+  omd_with_std(body: "fn choose<T>(left: Optional<T>, fallback: T) -> T {\n  match left {\n    Present { value: v } => v\n  }\n}\n")
+}
+
+fn omd_undeclared_variant() -> Outcome<ResolvedTree> {
+  omd_with_std(body: "fn choose<T>(left: Optional<T>, fallback: T) -> T {\n  match left {\n    Present { value: v } => v\n    Unknown => fallback\n  }\n}\n")
+}
+
+test fn omd_the_arms_are_checked_against_absent_and_present() -> Bool {
+  omd_accepted(o: omd_optional_parameter_application())
+    && match omd_infer(o: omd_missing_arm()) {
+         Accepted { value: _, diagnostics: _ } => false
+         Rejected { diagnostics: _ } => true
+       }
+    && omd_refused_with(o: omd_undeclared_variant(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// CONTROL: A NON-COPRODUCT SCRUTINEE STILL REFUSES. Measured at main @c6c88136ce over the SAME arm shapes:
+// a kernel Int scrutinee and a declared record scrutinee both refuse infer_reason_pattern_payload_formal_uninstantiated
+// (the unpaid-arm refusal) while a genuinely declared coproduct of the subject's own is ACCEPTED. So the
+// sugar is not the only shape the reader can answer for — a hand-written coproduct still goes through the
+// declaration-reference route, and a declaration that exists but is not a Disj still refuses. These are the
+// rows that would catch an Optional-only special case in the checker: the checker gained no arm, and a
+// reader that returned the Optional identity for anything at all would accept the record scrutinee.
+fn omd_int_scrutinee() -> Outcome<ResolvedTree> {
+  omd_with_std(body: "fn pick(left: Int, fallback: Int) -> Int {\n  match left {\n    Present { value: v } => v\n    Absent => fallback\n  }\n}\n")
+}
+
+fn omd_record_scrutinee() -> Outcome<ResolvedTree> {
+  omd_with_std(body: "type Box { value: Int }\n\nfn pick(left: Box, fallback: Int) -> Int {\n  match left {\n    Present { value: v } => v\n    Absent => fallback\n  }\n}\n")
+}
+
+fn omd_own_coproduct() -> Outcome<ResolvedTree> {
+  omd_with_std(body: "type Switch = On | Off { flag: Int }\n\nfn pick(s: Switch, fallback: Int) -> Int {\n  match s {\n    On => fallback\n    Off { flag: v } => v\n  }\n}\n")
+}
+
+test fn omd_a_non_coproduct_scrutinee_still_refuses() -> Bool {
+  omd_refused_with(o: omd_int_scrutinee(), reason: ^infer_reason_pattern_payload_formal_uninstantiated)
+    && omd_refused_with(o: omd_record_scrutinee(), reason: ^infer_reason_pattern_payload_formal_uninstantiated)
+}
+
+// THE DECLARATION-REFERENCE ROUTE IS UNCHANGED: a declared coproduct written in the subject itself, with no
+// sugar anywhere, is accepted before this PR and after it. This is the row that says the reader did not
+// replace the reference reading — it extended it.
+test fn omd_an_authored_coproduct_still_types() -> Bool {
+  omd_accepted(o: omd_own_coproduct())
+}

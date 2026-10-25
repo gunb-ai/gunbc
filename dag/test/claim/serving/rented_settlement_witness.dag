@@ -1,0 +1,359 @@
+module test.claim.serving.rented_settlement_witness
+
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.decimal { ExactDecimal }
+import std.measure { MoneyRate, money_amount_micro, money_amount_micro_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.currency.currency { Usd }
+import extdeps.cloud.vast_ai {
+  VastAiCharge, VastAiCharges, VastAiChargesDayRange, VastAiChargesMissingDateRange, VastAiChargesRefusedStatus,
+  vast_ai_charges_refusal, VastAiChargeFromVolume, VastAiChargeFromInstance, VastAiChargeFromServerless, VastAiChargeFromEndpoint, VastAiChargeFromWorkergroup, VastAiChargeSourceUnrecognized,
+}
+import product.fabric.flex_vast_shadow { FlexChargesStanding, FlexChargesPageTurn, flex_fold_charge_pages }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired }
+import gunbc.serving.rented_release { RentedGone, RentedPendingStillListed }
+import gunbc.serving.rented_settlement {
+  RentedSettlementReadings, RentedChargesWalked, RentedChargesRefused, RentedChargesNotRead,
+  RentedSettled, RentedSettlementPending, RentedSettlementChargesUnread, RentedSettlementDiverged, RentedSettlementRefused,
+  RentedPendingNotGone, RentedPendingNoAttributableCharge, RentedPendingChargesNotPostedPastGone,
+  RentedChargesNeverRead, RentedChargesWalkUnobserved, RentedChargesWalkIncomplete, RentedChargesWalkUnreadable, RentedChargesRefusedByVast, RentedChargesWindowDoesNotCover,
+  RentedExcludedAnotherInstance, RentedExcludedNotInstanceContract, RentedExcludedSourceUnrecognized,
+  RentedExpectedWithin, RentedExpectationUnavailable, RentedObservedAboveExpected, RentedObservedBelowExpected,
+  rented_settle,
+}
+import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Charge rows in the shape docs.vast.ai show-charges documents (start, end, type, source, description,
+// amount rounded to 3 decimals, items); the ids are invented, no account data and no key.
+fn w_row(source: String, start: Int, end: Int, thousandths: Int) -> VastAiCharge {
+  VastAiCharge {
+    start: start,
+    end: end,
+    type: "instance",
+    source: source,
+    description: "GPU instance rental",
+    amount: ExactDecimal { units: thousandths, fraction_digits: 3 },
+    metadata: none,
+    items: [],
+  }
+}
+
+fn w_walk(rows: List<VastAiCharge>) -> FlexChargesStanding {
+  flex_fold_charge_pages(pages: [
+    FlexChargesPageTurn {
+      after_token: none,
+      page: VastAiCharges { success: true, count: rows |> length, total: rows |> length, next_token: none, results: rows },
+    },
+  ])
+}
+
+// 450000 micro-dollars per hour, asked at 1792008000000 ms; the instance was last listed two hours later and
+// the gone readback came sixty seconds after that, so the expected interval is [900000, 907500] micro.
+fn w_acquired() -> RentedServingAllocation {
+  let i = a_allocation(route: a_tunnel(target_port: 8000))
+  RentedServingAllocation {
+    identity: i.identity,
+    origin: RentedAllocationAcquired {
+      owner: "gunbc-flex" as NonEmptyStr,
+      asked_at: 1792008000000,
+      asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
+    },
+    contract: i.contract, card: i.card, end: i.end, engine: i.engine,
+    artifact: i.artifact, host: i.host, route: i.route,
+  }
+}
+
+data w_window: VastAiChargesDayRange = VastAiChargesDayRange { gte: 1792000000, lte: 1792020000 }
+
+fn w_readings(charges: RentedChargesWalked) -> RentedSettlementReadings {
+  RentedSettlementReadings {
+    gone: RentedGone,
+    rented_since: 1792008000000,
+    listed_through: 1792015200000,
+    gone_read_at: 1792015260000,
+    charges: charges,
+  }
+}
+
+fn w_ours() -> List<VastAiCharge> {
+  [
+    w_row(source: "instance-1001", start: 1792008010, end: 1792011000, thousandths: 600),
+    w_row(source: "instance-1001", start: 1792011000, end: 1792015230, thousandths: 301),
+  ]
+}
+
+fn w_settle_rows(rows: List<VastAiCharge>) -> RentedSettlementReadings {
+  w_readings(charges: RentedChargesWalked { standing: w_walk(rows: rows), window: w_window })
+}
+
+// An attributable set settles to its exact sum, inside the expected interval, with the interval beside it.
+test fn an_attributable_set_settles_to_its_exact_sum() -> Bool {
+  match rented_settle(allocation: w_acquired(), readings: w_settle_rows(rows: w_ours())) {
+    RentedSettled { allocation: _, amount: a, currency: _, period: p, rows: r, excluded: x, expectation: e } =>
+      (money_amount_micro_count(m: a) == 901000)
+        && ((r |> length) == 2) && ((x |> length) == 0)
+        && (p.first_start == 1792008010) && (p.last_end == 1792015230)
+        && (match e {
+          RentedExpectedWithin { low: l, high: h } => (money_amount_micro_count(m: l) == 900000) && (money_amount_micro_count(m: h) == 907500)
+          RentedExpectationUnavailable { obligation: _ } => false
+        })
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+// THE RED GUARD for attribution: ctrl's instance, a volume and an unrecognized source share the account. A
+// settlement that summed them would read 5901000+, so the exact 901000 beside three typed exclusions is what
+// goes red when the join stops excluding.
+test fn ctrl_and_unattributable_charges_are_excluded_with_typed_reasons() -> Bool {
+  let mixed = [
+    w_row(source: "instance-2002", start: 1792008010, end: 1792015230, thousandths: 5000),
+    w_row(source: "instance-1001", start: 1792008010, end: 1792011000, thousandths: 600),
+    w_row(source: "volume-1001", start: 1792008010, end: 1792015230, thousandths: 40),
+    w_row(source: "instance-1001", start: 1792011000, end: 1792015230, thousandths: 301),
+    w_row(source: "bogus-9", start: 1792008010, end: 1792015230, thousandths: 7),
+  ]
+  match rented_settle(allocation: w_acquired(), readings: w_settle_rows(rows: mixed)) {
+    RentedSettled { allocation: _, amount: a, currency: _, period: _, rows: r, excluded: x, expectation: _ } =>
+      (money_amount_micro_count(m: a) == 901000) && ((r |> length) == 2) && ((x |> length) == 3)
+        && any(x, e => match e.reason { RentedExcludedAnotherInstance { source: s } => s == "instance-2002", RentedExcludedNotInstanceContract { source: _, kind: _ } => false, RentedExcludedSourceUnrecognized { source: _ } => false })
+        && any(x, e => match e.reason { RentedExcludedNotInstanceContract { source: s, kind: k } => (s == "volume-1001") && (match k { VastAiChargeFromVolume => true, VastAiChargeFromInstance => false, VastAiChargeFromServerless => false, VastAiChargeFromEndpoint => false, VastAiChargeFromWorkergroup => false, VastAiChargeSourceUnrecognized => false }), RentedExcludedAnotherInstance { source: _ } => false, RentedExcludedSourceUnrecognized { source: _ } => false })
+        && any(x, e => match e.reason { RentedExcludedSourceUnrecognized { source: s } => s == "bogus-9", RentedExcludedAnotherInstance { source: _ } => false, RentedExcludedNotInstanceContract { source: _, kind: _ } => false })
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+// instance-100 is not instance-1001: the source is compared whole.
+test fn a_prefix_of_our_id_is_another_instance() -> Bool {
+  let rows = [
+    w_row(source: "instance-100", start: 1792008010, end: 1792015230, thousandths: 900),
+    w_row(source: "instance-10010", start: 1792008010, end: 1792015230, thousandths: 900),
+  ]
+  match rented_settle(allocation: w_acquired(), readings: w_settle_rows(rows: rows)) {
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => true
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+test fn an_allocation_not_yet_gone_is_pending() -> Bool {
+  let r = RentedSettlementReadings {
+    gone: RentedPendingStillListed { status: Present { value: "running" } },
+    rented_since: 1792008000000, listed_through: 1792015200000, gone_read_at: 1792015260000,
+    charges: RentedChargesWalked { standing: w_walk(rows: w_ours()), window: w_window },
+  }
+  match rented_settle(allocation: w_acquired(), readings: r) {
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => true
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+test fn charges_that_end_before_the_last_listing_are_not_posted_yet() -> Bool {
+  let rows = [w_row(source: "instance-1001", start: 1792008010, end: 1792011000, thousandths: 600)]
+  match rented_settle(allocation: w_acquired(), readings: w_settle_rows(rows: rows)) {
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: e, listed_through: l } } => (e == 1792011000) && (l == 1792015200)
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+test fn spend_far_above_the_expectation_is_reported_not_corrected() -> Bool {
+  let rows = [w_row(source: "instance-1001", start: 1792008010, end: 1792015230, thousandths: 9000)]
+  match rented_settle(allocation: w_acquired(), readings: w_settle_rows(rows: rows)) {
+    RentedSettlementDiverged { allocation: _, observed: o, currency: _, expected_low: _, expected_high: _, allowance: _, direction: d, rows: r, excluded: _ } =>
+      (money_amount_micro_count(m: o) == 9000000) && ((r |> length) == 1) && (match d { RentedObservedAboveExpected => true, RentedObservedBelowExpected => false })
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+test fn spend_far_below_the_expectation_is_reported() -> Bool {
+  let rows = [w_row(source: "instance-1001", start: 1792008010, end: 1792015230, thousandths: 100)]
+  match rented_settle(allocation: w_acquired(), readings: w_settle_rows(rows: rows)) {
+    RentedSettlementDiverged { allocation: _, observed: o, currency: _, expected_low: _, expected_high: _, allowance: _, direction: d, rows: _, excluded: _ } =>
+      (money_amount_micro_count(m: o) == 100000) && (match d { RentedObservedBelowExpected => true, RentedObservedAboveExpected => false })
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+// Within the declared allowance of the interval's edge is still settled: 0.9005 is not representable at three
+// decimals, so 900 thousandths is at the low edge exactly and 907 below the high edge.
+test fn spend_at_the_edges_of_the_interval_settles() -> Bool {
+  let lo = rented_settle(allocation: w_acquired(), readings: w_settle_rows(rows: [w_row(source: "instance-1001", start: 1792008010, end: 1792015230, thousandths: 900)]))
+  let hi = rented_settle(allocation: w_acquired(), readings: w_settle_rows(rows: [w_row(source: "instance-1001", start: 1792008010, end: 1792015230, thousandths: 907)]))
+  (match lo { RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => true, RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false, RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false, RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false, RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false, RentedSettlementRefused { allocation: _, refusal: _ } => false })
+    && (match hi { RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => true, RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false, RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false, RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false, RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false, RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false, RentedSettlementRefused { allocation: _, refusal: _ } => false })
+}
+
+// A missing read is unread, never zero spend.
+test fn a_missing_charges_read_is_unread_not_zero() -> Bool {
+  let r = RentedSettlementReadings { gone: RentedGone, rented_since: 1792008000000, listed_through: 1792015200000, gone_read_at: 1792015260000, charges: RentedChargesNotRead }
+  match rented_settle(allocation: w_acquired(), readings: r) {
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => true
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+test fn a_missing_date_range_refusal_is_typed_unread() -> Bool {
+  let r = RentedSettlementReadings {
+    gone: RentedGone, rented_since: 1792008000000, listed_through: 1792015200000, gone_read_at: 1792015260000,
+    charges: RentedChargesRefused { refusal: vast_ai_charges_refusal(status: 400, error: "missing_date_range") },
+  }
+  match rented_settle(allocation: w_acquired(), readings: r) {
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: VastAiChargesMissingDateRange } } => true
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: VastAiChargesRefusedStatus { status: _ } } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+// A first page with a next_token is a partial walk: never settled on page one.
+test fn a_partial_walk_is_unread() -> Bool {
+  let page_one = flex_fold_charge_pages(pages: [
+    FlexChargesPageTurn {
+      after_token: none,
+      page: VastAiCharges { success: true, count: 2, total: 3, next_token: Present { value: "tok" }, results: w_ours() },
+    },
+  ])
+  let r = w_readings(charges: RentedChargesWalked { standing: page_one, window: w_window })
+  match rented_settle(allocation: w_acquired(), readings: r) {
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => true
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+test fn a_day_range_that_misses_the_lifetime_is_unread() -> Bool {
+  let narrow = VastAiChargesDayRange { gte: 1792009000, lte: 1792020000 }
+  match rented_settle(allocation: w_acquired(), readings: w_readings(charges: RentedChargesWalked { standing: w_walk(rows: w_ours()), window: narrow })) {
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: g, needed_lte: l } } => (g == 1792008000) && (l == 1792015260)
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettled { allocation: _, amount: _, currency: _, period: _, rows: _, excluded: _, expectation: _ } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}
+
+// An imported card has no asked rate: its observed spend settles and says the expectation is unavailable.
+test fn an_imported_allocation_settles_without_an_expectation() -> Bool {
+  match rented_settle(allocation: a_allocation(route: a_tunnel(target_port: 8000)), readings: w_settle_rows(rows: w_ours())) {
+    RentedSettled { allocation: _, amount: a, currency: _, period: _, rows: _, excluded: _, expectation: e } =>
+      (money_amount_micro_count(m: a) == 901000)
+        && (match e { RentedExpectationUnavailable { obligation: _ } => true, RentedExpectedWithin { low: _, high: _ } => false })
+    RentedSettlementPending { allocation: _, cause: RentedPendingNotGone { verdict: _ } } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingNoAttributableCharge } => false
+    RentedSettlementPending { allocation: _, cause: RentedPendingChargesNotPostedPastGone { latest_end: _, listed_through: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesNeverRead } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnobserved } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkIncomplete } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWalkUnreadable } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesRefusedByVast { refusal: _ } } => false
+    RentedSettlementChargesUnread { allocation: _, cause: RentedChargesWindowDoesNotCover { window: _, needed_gte: _, needed_lte: _ } } => false
+    RentedSettlementDiverged { allocation: _, observed: _, currency: _, expected_low: _, expected_high: _, allowance: _, direction: _, rows: _, excluded: _ } => false
+    RentedSettlementRefused { allocation: _, refusal: _ } => false
+  }
+}

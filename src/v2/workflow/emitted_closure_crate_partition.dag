@@ -27,14 +27,15 @@ import v2.lens.module_graph {
   dependency_resolution_facts_live,
   module_declaration_facts_live
 }
-import v2.std.collection { empty_map, map_get_checked, map_insert }
+import std.algebra { empty_map, map_insert }
+import v2.std.witness { map_get_checked }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, Optional, Present }
 import v2.std.compilers.compilation_unit { ModuleDag }
 import v2.workflow.rust_crate_partition { resolve_partition_outcome }
 
 // THE MODULE DAG OF THE RETAINED EMITTED COMPILER CLOSURE, DERIVED -- NOT AUTHORED. The subject is
-// the closure the self-host route emits: v2.compiler.compile's, whose entry file is the one the layout
+// the closure the self-host route emits: v2.compiler.source_root_eval's, whose entry file is the one the layout
 // rule gives that module's name (v2.compiler.source_authority module_file). The pool is BOTH roots:
 // src/v2 imports std.* and extdeps.* from dag/, so a src/v2-only pool leaves those imports
 // undeclared and drops them from the DAG rather than refusing. Nodes are the declared modules the closure reaches and edges are the resolved
@@ -181,7 +182,7 @@ fn module_dag_from_dependency_facts(
   }
 }
 
-data emitted_compiler_closure_entry_module: String = "v2.compiler.compile"
+data emitted_compiler_closure_entry_module: String = "v2.compiler.source_root_eval"
 
 fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
   match module_file(layout: repository_storage_layout(), name: emitted_compiler_closure_entry_module) {

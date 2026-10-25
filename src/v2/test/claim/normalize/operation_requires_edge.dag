@@ -2,23 +2,23 @@ module v2.test.claim.normalize.operation_requires_edge
 
 import v2.compiler.normalize { normalize, normalize_census }
 import v2.compiler.normalized_tree { CensusTree, NormalizedTree, census_tree_binding_source }
-import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, resolve_requirement_member_refusal_optional, scope_from_namespace }
+import v2.compiler.resolve { empty_module_outcome_index, Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, resolve_requirement_member_refusal_optional, scope_from_namespace }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.declaration_marker { test_code_index_empty }
-import v2.std.collection { empty_map }
+
 import v2.std.resolution_policy { NamespaceOnlyY }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.qualified_name { declaration_reference_node }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, empty_map }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge }
 import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import std.optional { Absent, Present }
 import std.occurrence_identity { LexicalValueOccurrence, OccurrenceSynthetic }
-import v2.std.node { Arrow, Atom, Conj, Edge, Found, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_intern_lexeme, ArrowResourceRequirementsEdge, Authored, core_edge_target_lookup, core_edge_label, fold_list_node }
+import v2.std.node { Arrow, Atom, Conj, Edge, Found, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_intern_lexeme, ArrowResourceRequirementsEdge, Authored, core_edge_target_lookup, core_edge_label, fold_list_node, NotADeclaration }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -200,8 +200,8 @@ test fn one_resource_named_twice_is_refused_by_the_requirement_decision_RED() ->
       let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
       let path = Cons { head: ^m, tail: Cons { head: ^N, tail: Empty } }
       let members = [
-        Edge { label: Authored { name: ^N }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic) },
-        Edge { label: Authored { name: symbol_intern_lexeme(lexeme: "m.N") }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic) }
+        Edge { label: Authored { name: ^N }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+        Edge { label: Authored { name: symbol_intern_lexeme(lexeme: "m.N") }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }
       ]
       match resolve_requirement_member_refusal_optional(index: index, members: members) {
         Present { value: d } => d.reason == ^resolve_reason_requirement_repeated
@@ -217,7 +217,7 @@ test fn one_resource_named_once_is_admitted_by_the_requirement_decision_holds() 
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
-      let members = [Edge { label: Authored { name: ^N }, target: declaration_reference_node(qn: Cons { head: ^m, tail: Cons { head: ^N, tail: Empty } }, occurrence_id: OccurrenceSynthetic) }]
+      let members = [Edge { label: Authored { name: ^N }, target: declaration_reference_node(qn: Cons { head: ^m, tail: Cons { head: ^N, tail: Empty } }, occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }]
       match resolve_requirement_member_refusal_optional(index: index, members: members) {
         Present { value: _ } => false
         Absent => true
@@ -344,7 +344,7 @@ fn req_module_root() -> Node {
     children: [
       dag_surface_edge(edge: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
       dag_surface_edge(edge: ^dag_surface_module_header_qualified_name, target: fold_list_node(xs: Cons { head: ^m, tail: Empty }, item_node: fn(sym) { req_atom(sym: sym) })),
-      Edge { label: Authored { name: ^T }, target: req_atom(sym: ^T) }
+      Edge { label: Authored { name: ^T }, target: req_atom(sym: ^T), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -360,11 +360,12 @@ fn req_operation_arrow() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
+      Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration },
       signature.order,
       Edge {
         label: core_edge_label(marker: ArrowResourceRequirementsEdge),
-        target: Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: ^T }, target: req_atom(sym: ^T) }], occurrence_id: OccurrenceSynthetic }
+        target: Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: ^T }, target: req_atom(sym: ^T), declaration: NotADeclaration }], occurrence_id: OccurrenceSynthetic },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -383,7 +384,7 @@ fn req_refusal_reason(resources: FreeMonoid<Symbol>) -> Symbol {
     test_code: test_code_index_empty(),
     declared_in: module_qn,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: empty_module_outcome_index()
   }
   match resolve_node(
     ctx: ResolveContext {

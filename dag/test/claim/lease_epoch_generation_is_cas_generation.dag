@@ -1,0 +1,40 @@
+module test.claim.lease_epoch_generation_is_cas_generation
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn blocking_of_class(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data bare_int_generation_source: String = "module lease_epoch_int_generation_red\nimport std.temporal_effect { LeaseEpoch }\nimport std.content_hash { content_hash_of_value }\nimport std.types { NonEmptyStr }\nfn f() -> LeaseEpoch {\n  LeaseEpoch {\n    lease_key: \"k\" as NonEmptyStr,\n    resource_fingerprint: content_hash_of_value(value: \"r\" as NonEmptyStr),\n    owner_fingerprint: content_hash_of_value(value: \"o\" as NonEmptyStr),\n    generation: 0\n  }\n}\n"
+
+data cas_generation_source: String = "module lease_epoch_cas_generation_green\nimport std.temporal_effect { LeaseEpoch }\nimport std.content_hash { content_hash_of_value }\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { cas_generation_first }\nfn f() -> LeaseEpoch {\n  LeaseEpoch {\n    lease_key: \"k\" as NonEmptyStr,\n    resource_fingerprint: content_hash_of_value(value: \"r\" as NonEmptyStr),\n    owner_fingerprint: content_hash_of_value(value: \"o\" as NonEmptyStr),\n    generation: cas_generation_first()\n  }\n}\n"
+
+test fn a_bare_int_generation_on_lease_epoch_is_refused() -> Bool {
+  blocking_of_class(source: bare_int_generation_source, wanted: "TypeMismatch") >= 1
+    || blocking_of_class(source: bare_int_generation_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn a_cas_generation_on_lease_epoch_is_admitted() -> Bool {
+  blocking_total(source: cas_generation_source) == 0
+}

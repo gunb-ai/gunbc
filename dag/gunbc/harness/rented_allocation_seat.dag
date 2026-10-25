@@ -1,0 +1,30 @@
+module gunbc.harness.rented_allocation_seat
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import product.capacity.event_chain { PartitionId }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationIdentity, RentedAllocationEnrollable, RentedAllocationNotEnrollable, rented_allocation_enrollment }
+import gunbc.serving.serving_enrollment { serving_route_turn_ceiling_count }
+import gunbc.serving.turn_admission { ServingCoTenancyClass }
+import gunbc.harness.harness_seat { harness_seat_partition }
+
+// THE SERVING SEAT OF A RENTED ALLOCATION, consumed from the allocation's derived endpoint (rented_allocation
+// RentedAllocationEndpoint through rented_allocation_enrollment) and never from a hand-written route. The
+// pool is keyed by harness_seat_partition, the one keying every fleet seat uses, over the replica the
+// derived endpoint names and the ceiling the allocation's own engine launch states; the record carries the
+// allocation id so the seat is attributable to the rental that holds the card. STATED DIVERGENCE: the
+// partition remains replica-keyed (the existing seat law); the allocation id is carried beside it, not
+// folded into the pool key.
+type RentedAllocationSeat
+  = RentedSeatDerived { allocation: RentedAllocationIdentity, partition: PartitionId, ceiling: Nat }
+  | RentedSeatRefused { allocation: RentedAllocationIdentity, obligation: NonEmptyStr }
+
+fn rented_allocation_seat(a: RentedServingAllocation, class: ServingCoTenancyClass) -> RentedAllocationSeat {
+  match rented_allocation_enrollment(a: a) {
+    RentedAllocationNotEnrollable { allocation: id, obligation: o } => RentedSeatRefused { allocation: id, obligation: o }
+    RentedAllocationEnrollable { allocation: id, enrollment: row } => {
+      let ceiling = serving_route_turn_ceiling_count(c: row.ceiling)
+      RentedSeatDerived { allocation: id, partition: harness_seat_partition(replica: row.endpoint.replica, class: class, ceiling: ceiling), ceiling: ceiling }
+    }
+  }
+}

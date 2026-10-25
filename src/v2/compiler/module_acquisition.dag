@@ -1,31 +1,10 @@
 module v2.compiler.module_acquisition
 
-import std.types { Bool, Int, List }
-import std.algebra { Cons, Empty, list_snoc_item, fold_list, list_find_first, list_head, list_map, list_reverse, skip }
+import std.types { Bool, Int, List, Map }
+import std.algebra { Cons, Empty, list_snoc_item, fold_list, list_find_first, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup, collection_concat_shape }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import extdeps.filesystem.filesystem_io {
-  FilesystemExactPathAbsent,
-  FilesystemExactPathKindUnrecognized,
-  FilesystemExactPathRead,
-  FilesystemExactPathUnreadable,
-  FilesystemFailureKindAdmitted,
-  FilesystemFailureKindUnrecognized,
-  FilesystemNotFound,
-  admit_filesystem_failure_kind,
-  filesystem_failure_kind_name
-}
-import gunbc.source_root_read {
-  SourceRootDirectoryListed,
-  SourceRootDirectoryRefused,
-  SourceRootPathsRead,
-  SourceRootPathsRefused,
-  SourceRootWalkTask,
-  SourceRootWalkedPath,
-  source_root_child_path,
-  source_root_directory,
-  source_root_read_file,
-  source_root_walk
-}
+import extdeps.filesystem.filesystem_io { FilesystemExactPathAbsent, FilesystemExactPathKindUnrecognized, FilesystemExactPathRead, FilesystemExactPathUnreadable, FilesystemFailureKindAdmitted, FilesystemFailureKindUnrecognized, FilesystemNotFound, admit_filesystem_failure_kind, filesystem_failure_kind_name }
+import gunbc.source_root_read { SourceRootDirectoryListed, SourceRootDirectoryRefused, SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, SourceRootWalkedPath, source_root_child_path, source_root_directory, source_root_read_file, source_root_walk }
 import v2.compiler.name_resolve { Import }
 import v2.compiler.normalize { normalize }
 import v2.compiler.grammar_reach { Reach }
@@ -33,61 +12,19 @@ import v2.compiler.module_header { ModuleHeaderReader, module_header_tail }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
-import v2.compiler.reference_site_collector {
-  HeadBindingUndecided,
-  HeadBoundAtRootValue,
-  HeadBoundInFrame,
-  HeadLexicallyUnbound,
-  ScopedReferenceSite,
-  ScopedReferenceSiteCollection,
-  SiteHeadBinding,
-  collect_scoped_module_reference_sites,
-  scoped_reference_site_collection_is_total
-}
-import v2.compiler.source_authority {
-  ModuleFileAbsent,
-  ModuleFileDerived,
-  ModuleFilePresent,
-  ModuleFileProbe,
-  ModuleFileRef,
-  ModuleFileRefused,
-  ModuleNameUnderivable,
-  DagSourceReadWitness,
-  ReferenceContinue,
-  ReferenceCrossTreeDenied,
-  ReferenceDecided,
-  ReferenceLookup,
-  ReferenceModuleHeaderRefused,
-  ReferenceModuleLineDisagrees,
-  ReferenceModuleLineMissing,
-  ReferenceNextReadDenied,
-  ReferenceNextReadFile,
-  ReferenceNextReadNone,
-  ReferenceRefused,
-  ReferenceResolved,
-  ReferenceUnknownModule,
-  SourceRootIngest,
-  SourceStorageLayout,
-  module_file,
-  module_file_key,
-  reference_after_probe,
-  reference_next_read,
-  reference_prefixes,
-  source_root_ref_label,
-  text_set_has,
-  text_set_of
-}
+import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, ScopedReferenceSiteCollection, SiteHeadBinding, collect_scoped_module_reference_sites, scoped_reference_site_collection_is_total }
+import v2.compiler.source_authority { ModuleFileAbsent, ModuleFileDerived, ModuleFilePresent, ModuleFileProbe, ModuleFileRef, ModuleFileRefused, ModuleNameUnderivable, DagSourceReadWitness, ReferenceContinue, ReferenceCrossTreeDenied, ReferenceDecided, ReferenceLookup, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, SourceRootIngest, SourceStorageLayout, module_file, module_file_key, reference_after_probe, reference_next_read, reference_prefixes, source_root_ref_label, text_set_has, text_set_of }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.lens.reference_deps { admission_from_module_root }
-import v2.std.collection { Map, empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
+
 
 // MODULES ARE ACQUIRED BY DEMAND, ONE EXACT READ PER REQUESTED MODULE (source layout authority R9).
 // The compiler starts from an entry module, parses it, takes every module its imports and qualified
@@ -448,9 +385,22 @@ fn acquisition_reference_texts(collection: ScopedReferenceSiteCollection) -> Lis
   ).order
 }
 
-// Only a head nothing binds is a candidate module reference. A head a binder binds is a projection; a head the
-// walk could not classify (HeadBindingUndecided) might be one, and probing storage for it could deny a valid
-// program or read a file the program does not mention. Neither requests anything or reads anything.
+// Only a head nothing binds, or a head no VALUE binder could bind, is a candidate module reference. A head a
+// value binder binds is a projection; a head the walk could not classify (HeadBindingUndecided) might be one,
+// and probing storage for it could deny a valid program or read a file the program does not mention, so
+// neither of those requests anything or reads anything.
+// THE BINDING FACT, ALONE -- the position is deliberately NOT consulted here (tidy-ant-251's D3
+// ruling). Acquisition asks "could this head be a module's member?", which a value frame answers: an
+// unbound head is the only reading with no local explanation, so it is the only candidate. Reading the
+// POSITION here is what would widen acquisition: an imported qualified tag (`Choice.Yes` with Choice
+// imported) sits at a label position, and "non-value position => candidate" would make a head the tree
+// already says is undecided into a module request. The roster reads BOTH fields instead, because it
+// asks the different question "would importing this name be wrong?".
+//
+// The two consumers therefore never re-decide anything: each reads one fact that ONE authority issued,
+// and the claim that a non-value head still requests its module is carried by the head reading (a type
+// mention in a signature is not a value binder's name, so it reads unbound), not by a position arm --
+// which is why v2.test.claim.module_acquisition's binder-type and annotation positives stay green here.
 fn acquisition_head_is_candidate_module(head: SiteHeadBinding) -> Bool {
   match head {
     HeadLexicallyUnbound => true
@@ -486,12 +436,24 @@ fn acquisition_read_requests(
   }
 }
 
+// `T?` is sugar for the declaration std.optional.Optional, so a member that writes it OWES that declaration: the
+// site is promoted from a qualified reference (whose unknown module requests nothing) to an imported member (whose
+// unknown module refuses). An authored reference spelled the same is owed the same declaration.
+fn acquisition_sugar_member_texts(references: List<String>) -> List<String> {
+  let sugar = qualified_name_to_dotted_string(qn: optional_declaration_identity())
+  match list_find_first(xs: references, predicate: fn(t) { t == sugar }) {
+    Present { value: _ } => [sugar]
+    Absent => []
+  }
+}
+
 fn acquisition_requests_ok(front: AcquisitionFrontEnd, sites: ScopedReferenceSiteCollection, imported: List<String>) -> AcquisitionMemberRead {
+  let references = acquisition_reference_texts(collection: sites)
   AcquisitionMemberReadOk {
     requests: MemberRequests {
       imports: imported,
-      members: acquisition_uncovered_binding_texts(tree: front.tree, imported: imported),
-      references: acquisition_reference_texts(collection: sites)
+      members: concat(acquisition_uncovered_binding_texts(tree: front.tree, imported: imported), acquisition_sugar_member_texts(references: references)),
+      references: references
     },
     test_markers: list_map(xs: front.tree.test_markers.marked, f: fn(marked) { symbol_lexeme(sym: marked.name) })
   }
@@ -590,7 +552,10 @@ fn acquisition_identity_checked(front: AcquisitionFrontEnd, module: String, file
       if qualified_name_to_dotted_string(qn: parsed) == module {
         acquisition_sites_requests(
           front: front,
-          sites: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })),
+          sites: collect_scoped_module_reference_sites(
+            root: front.tree.root,
+            imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })
+          ),
           module: module,
           file: file
         )
@@ -833,10 +798,9 @@ fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding
 // and the SAME verdict step and, where the step refuses at one member or one edge, records the
 // refusal and continues with the rest of the frontier. What a blocked member would have requested is
 // unobserved, and the result says so: CensusAcquisitionBlocked is "acquired this far; behind these,
-// unobserved", never a smaller population presented as closed (gunbc.plans.census_scoped_run).
-// CONSUMERS: executed over planted closures by v2.test.claim.census_scoped_acquisition in this change;
-// the emitted driver's census-scoped verb, run by //gunbc/instruments:v2-native-census-scoped, is a
-// declared frontier (DESIGN 3c), trigger: that verb lands (gunbc.plans.census_scoped_run section 5).
+// unobserved", never a smaller population presented as closed.
+// CONSUMERS: v2.test.claim.census_scoped_acquisition over planted closures, and the emitted driver's
+// census-scoped verb (v2.compiler.source_root_eval), run by //gunbc/instruments:v2-native-census-scoped.
 // The refusal is carried WHOLE -- its arm is its meaning (R3); this door adds no classification of
 // its own beyond whether a refusal is local to one member, local to one edge, or ends the run.
 // The refusals local to one member, and only those: a member block cannot hold an edge's or a

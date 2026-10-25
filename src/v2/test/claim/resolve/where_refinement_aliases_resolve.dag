@@ -1,0 +1,151 @@
+module v2.test.claim.resolve.where_refinement_aliases_resolve
+
+import v2.compiler.source_root_eval {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeCensusModuleOutcome,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import std.types { Map }
+import std.algebra { Cons, Empty, fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RECOGNITION RULE OF gunbc.recurring_failure_mode two_where_refinement_aliases_in_one_module_
+// refuse_as_ambiguous, EXECUTED THROUGH THE REAL ROUTE (sources supplied, the production fold above
+// them, as v2.test.claim.resolve.namespace_candidate_rule). A where clause holds REFERENCES: the
+// predicate spelling resolves by name lookup to the declaration it names, and introduces no
+// declaration of its own (v2.compiler.symbol_index_fill symbol_index_edge_introduces_no_declarations).
+//
+// wra_two_aliases: two refined aliases and a fn in one module -- the row's fixture, which refused.
+// wra_char_like: `Int where wra_scalar` beside a module declaring the fn `wra_scalar`, the shape of
+// std.types Char = Int where unicode_scalar, which refused as ambiguous between the fn and the clause.
+// wra_duplicate: the same name imported from two homes -- a genuinely shared binding (the ncr double shape), which must still refuse. A declared-and-imported pair is NOT this: a declaration shadows its import.
+
+data wra_home_source: String = "module v2.wra_home\n\nfn wra_scalar(code_point: Int) -> Bool { code_point >= 0 }\n\nfn wra_other(code_point: Int) -> Bool { code_point >= 1 }\n"
+
+data wra_two_aliases_source: String = "module v2.wra_two_aliases\n\nimport v2.wra_home { wra_scalar, wra_other }\n\ntype WraA = Int where wra_scalar\n\ntype WraB = Int where wra_other\n\nfn wra_f(x: WraA) -> WraA { x }\n"
+
+data wra_char_like_source: String = "module v2.wra_char_like\n\nimport v2.wra_home { wra_scalar }\n\ntype WraChar = Int where wra_scalar\n\nfn wra_use(c: WraChar) -> WraChar { c }\n"
+
+data wra_home_b_source: String = "module v2.wra_home_b\n\nfn wra_scalar(code_point: Int) -> Bool { code_point >= 2 }\n"
+
+data wra_duplicate_source: String = "module v2.wra_duplicate\n\nimport v2.wra_home { wra_scalar }\nimport v2.wra_home_b { wra_scalar }\n\nfn wra_dup_use(x: Int) -> Bool { wra_scalar(code_point: x) }\n"
+
+fn wra_read(source: String, name: String, id: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: name },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+data wra_ingest: SourceRootIngest = Cons {
+  head: wra_read(source: wra_home_source, name: "src/v2/wra_home.dag", id: ^wra_home),
+  tail: Cons {
+    head: wra_read(source: wra_home_b_source, name: "src/v2/wra_home_b.dag", id: ^wra_home_b),
+    tail: Cons {
+    head: wra_read(source: wra_two_aliases_source, name: "src/v2/wra_two_aliases.dag", id: ^wra_two_aliases),
+    tail: Cons {
+      head: wra_read(source: wra_char_like_source, name: "src/v2/wra_char_like.dag", id: ^wra_char_like),
+      tail: Cons { head: wra_read(source: wra_duplicate_source, name: "src/v2/wra_duplicate.dag", id: ^wra_duplicate), tail: Empty }
+    }
+  }
+  }
+}
+
+fn wra_outcome_in(
+  context: NativeTestContext,
+  index: Map<Symbol, NativeTestFileRefusal>,
+  module_name: String
+) -> Optional<NativeCensusModuleOutcome> {
+  fold_list(
+    xs: native_census_modules(ingest: wra_ingest),
+    empty: optional_absent(),
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        optional_present(value: native_census_module_resolution(context: context, refusal_index: index, entry: entry).outcome)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn wra_resolved(o: Optional<NativeCensusModuleOutcome>) -> Bool {
+  match o {
+    Absent => false
+    Present { value: NativeCensusModuleResolved } => true
+    Present { value: NativeCensusModuleFileRefused } => false
+    Present { value: NativeCensusModuleResolveRefused { first: _, rest: _, observation: _ } } => false
+  }
+}
+
+fn wra_refused_ambiguous(o: Optional<NativeCensusModuleOutcome>) -> Bool {
+  match o {
+    Absent => false
+    Present { value: NativeCensusModuleResolved } => false
+    Present { value: NativeCensusModuleFileRefused } => false
+    Present { value: NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } } =>
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_ambiguous_symbol
+  }
+}
+
+// ONE NULLARY PRODUCER, FORCED ONCE (the floor builds a fresh frame per claim): the verdicts of the
+// three modules, as a record of Bools.
+type WraVerdicts
+  = WraContextRefused
+  | WraDecided { two_aliases_resolve: Bool, char_like_resolves: Bool, duplicate_refuses_ambiguous: Bool }
+
+fn wra_verdicts() -> WraVerdicts {
+  match native_test_context_from_ingest(ingest: wra_ingest) {
+    Rejected { diagnostics: _ } => WraContextRefused
+    Accepted { value: context, diagnostics: _ } => {
+      let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+      WraDecided {
+        two_aliases_resolve: wra_resolved(o: wra_outcome_in(context: context, index: index, module_name: "v2.wra_two_aliases")),
+        char_like_resolves: wra_resolved(o: wra_outcome_in(context: context, index: index, module_name: "v2.wra_char_like")),
+        duplicate_refuses_ambiguous: wra_refused_ambiguous(o: wra_outcome_in(context: context, index: index, module_name: "v2.wra_duplicate"))
+      }
+    }
+  }
+}
+
+data wra_verdicts_forced: WraVerdicts = wra_verdicts()
+
+test fn two_where_refined_aliases_in_one_module_resolve_holds() -> Bool {
+  match wra_verdicts_forced {
+    WraContextRefused => false
+    WraDecided { two_aliases_resolve: ok, char_like_resolves: _, duplicate_refuses_ambiguous: _ } => ok
+  }
+}
+
+test fn a_where_predicate_binds_the_imported_fn_holds() -> Bool {
+  match wra_verdicts_forced {
+    WraContextRefused => false
+    WraDecided { two_aliases_resolve: _, char_like_resolves: ok, duplicate_refuses_ambiguous: _ } => ok
+  }
+}
+
+test fn a_genuinely_duplicated_declaration_still_refuses_ambiguous_holds() -> Bool {
+  match wra_verdicts_forced {
+    WraContextRefused => false
+    WraDecided { two_aliases_resolve: _, char_like_resolves: _, duplicate_refuses_ambiguous: ok } => ok
+  }
+}

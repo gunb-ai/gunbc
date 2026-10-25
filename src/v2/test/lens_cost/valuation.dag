@@ -20,18 +20,23 @@ import v2.lens.cost.expr {
 import v2.lens.cost.valuation {
   CostEvaluation,
   CostEvaluationRefused,
+  CostEvaluationZeroStanding,
   CostValuationBinding,
   DuplicateSizeBinding,
   ExactCost,
+  ExactZero,
   ExpressionRefused,
   IntegerLogarithmUnavailable,
   MissingSizeBinding,
+  NotExactZero,
   UnmodeledEffectCost,
-  evaluate_cost_expr
+  cost_evaluation_zero_standing,
+  evaluate_cost_expr,
+  multiply_evaluations
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.nat { Nat, Succ, Zero }
-import v2.std.node {
+import std.nat { Nat, Succ, Zero, nat_mul }
+import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   Symbol,
@@ -166,7 +171,7 @@ test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        MissingSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        MissingSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
         _ => false
       }
     ExactCost { value: _ } => false
@@ -183,7 +188,7 @@ test fn duplicate_bindings_refuse() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        DuplicateSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        DuplicateSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
         _ => false
       }
     _ => false
@@ -332,7 +337,7 @@ test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        MissingSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        MissingSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
         _ => false
       }
     _ => false
@@ -455,6 +460,105 @@ test fn symbolic_product_one_times_unknown_stays_unknown() -> Bool {
   }
 }
 
+fn effect_refused() -> CostEvaluation {
+  evaluate_cost_expr(expr: CostEffect { operation: effect_operation }, bindings: [])
+}
+
+fn standing_misarm_every_exact_as_zero(e: CostEvaluation) -> CostEvaluationZeroStanding {
+  match e {
+    ExactCost { value: _ } => ExactZero
+    CostEvaluationRefused { causes: _ } => NotExactZero
+  }
+}
+
+fn multiply_misarm_refusal_before_annihilator(a: CostEvaluation, b: CostEvaluation) -> CostEvaluation {
+  match a {
+    CostEvaluationRefused { causes: ca } =>
+      match b {
+        CostEvaluationRefused { causes: cb } =>
+          CostEvaluationRefused { causes: cb }
+        ExactCost { value: _ } => CostEvaluationRefused { causes: ca }
+      }
+    ExactCost { value: va } =>
+      match b {
+        CostEvaluationRefused { causes: cb } => CostEvaluationRefused { causes: cb }
+        ExactCost { value: vb } => ExactCost { value: nat_mul(va, vb) }
+      }
+  }
+}
+
+fn standing_is_exact_zero(e: CostEvaluation) -> Bool {
+  match cost_evaluation_zero_standing(e: e) {
+    ExactZero => true
+    NotExactZero => false
+  }
+}
+
+test fn cost_evaluation_zero_standing_pins_exact_zero() -> Bool {
+  standing_is_exact_zero(e: ExactCost { value: Zero })
+}
+
+test fn cost_evaluation_zero_standing_pins_exact_nonzero() -> Bool {
+  !standing_is_exact_zero(e: ExactCost { value: nat_2 })
+}
+
+test fn cost_evaluation_zero_standing_pins_refused() -> Bool {
+  !standing_is_exact_zero(e: effect_refused())
+}
+
+test fn multiply_evaluations_pins_zero_times_refused_is_zero() -> Bool {
+  is_exact(
+    evaluation: multiply_evaluations(a: ExactCost { value: Zero }, b: effect_refused()),
+    expected: Zero
+  )
+}
+
+test fn multiply_evaluations_pins_refused_times_zero_is_zero() -> Bool {
+  is_exact(
+    evaluation: multiply_evaluations(a: effect_refused(), b: ExactCost { value: Zero }),
+    expected: Zero
+  )
+}
+
+test fn multiply_evaluations_pins_nonzero_times_refused_refuses() -> Bool {
+  match multiply_evaluations(a: ExactCost { value: nat_1 }, b: effect_refused()) {
+    CostEvaluationRefused { causes: c } =>
+      match c.head {
+        UnmodeledEffectCost { operation: _, at: _ } => true
+        _ => false
+      }
+    ExactCost { value: _ } => false
+  }
+}
+
+test fn multiply_evaluations_pins_exact_times_exact() -> Bool {
+  is_exact(
+    evaluation: multiply_evaluations(a: ExactCost { value: nat_2 }, b: ExactCost { value: nat_3 }),
+    expected: nat_6
+  )
+}
+
+test fn standing_misarm_every_exact_as_zero_disagrees_on_nonzero() -> Bool {
+  match standing_misarm_every_exact_as_zero(e: ExactCost { value: nat_2 }) {
+    ExactZero => !standing_is_exact_zero(e: ExactCost { value: nat_2 })
+    NotExactZero => false
+  }
+}
+
+test fn multiply_misarm_refusal_before_annihilator_disagrees_on_zero_times_refused() -> Bool {
+  match multiply_misarm_refusal_before_annihilator(
+    a: ExactCost { value: Zero },
+    b: effect_refused()
+  ) {
+    CostEvaluationRefused { causes: _ } =>
+      is_exact(
+        evaluation: multiply_evaluations(a: ExactCost { value: Zero }, b: effect_refused()),
+        expected: Zero
+      )
+    ExactCost { value: _ } => false
+  }
+}
+
 data claim_cost_valuation: TestClaim = EqualsClaim {
   label: "lens_cost/valuation: CostExpr evaluated at a complete SizeVariable valuation yields exact semantic work for a unit body",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -464,5 +568,59 @@ data claim_cost_valuation: TestClaim = EqualsClaim {
   } else {
     synthetic_leaf(identity: ^valuation_claim_failed)
   },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn claim_leaf_if(ok: Bool, fail: Symbol) -> Node {
+  if ok {
+    outer_leaf
+  } else {
+    synthetic_leaf(identity: fail)
+  }
+}
+
+data claim_multiply_evaluations_pins_every_standing: TestClaim = EqualsClaim {
+  label: "lens_cost/valuation: cost_evaluation_zero_standing and multiply_evaluations pin every CostEvaluation shape",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: outer_leaf,
+  rhs: claim_leaf_if(
+    ok: standing_is_exact_zero(e: ExactCost { value: Zero })
+      && !standing_is_exact_zero(e: ExactCost { value: nat_2 })
+      && !standing_is_exact_zero(e: effect_refused())
+      && is_exact(
+        evaluation: multiply_evaluations(a: ExactCost { value: Zero }, b: effect_refused()),
+        expected: Zero
+      )
+      && is_exact(
+        evaluation: multiply_evaluations(a: effect_refused(), b: ExactCost { value: Zero }),
+        expected: Zero
+      )
+      && is_exact(
+        evaluation: multiply_evaluations(a: ExactCost { value: nat_2 }, b: ExactCost { value: nat_3 }),
+        expected: nat_6
+      ),
+    fail: ^valuation_standing_pin_failed
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_multiply_evaluations_misarm_disagrees: TestClaim = EqualsClaim {
+  label: "lens_cost/valuation: a refusal-first multiply mis-arm disagrees with multiply_evaluations on zero times refused",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: outer_leaf,
+  rhs: claim_leaf_if(
+    ok: match multiply_misarm_refusal_before_annihilator(
+      a: ExactCost { value: Zero },
+      b: effect_refused()
+    ) {
+      CostEvaluationRefused { causes: _ } =>
+        is_exact(
+          evaluation: multiply_evaluations(a: ExactCost { value: Zero }, b: effect_refused()),
+          expected: Zero
+        )
+      ExactCost { value: _ } => false
+    },
+    fail: ^valuation_misarm_pin_failed
+  ),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

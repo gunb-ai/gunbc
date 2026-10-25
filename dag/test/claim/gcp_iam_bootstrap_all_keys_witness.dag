@@ -1,0 +1,174 @@
+module test.claim.gcp_iam_bootstrap_all_keys_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.list { distinct_by_key }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster, fleet_version_adder_grant_roster }
+import gunbc.fleet.host_credential_custody_converge { host_custody_credential_roster, host_credential_custody_row }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_sets, gcp_iam_converge_targets, bmc_assimilator_grant_sets_over }
+import gunbc.auth.bmc_assimilator_cells { bmc_assimilator_cells_over }
+import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
+import gunbc.spark.secret_access_ensure { spark_secret_access_grant }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
+import gunbc.assimilate.bmc_wif_delegation_chain { bmc_wif_signed_grants, bmc_wif_all_grants, bmc_wif_legacy_grants, bmc_wif_canary_grant, bmc_srv3_admin_access_grant }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import gunbc.auth.secret_access_grant { SecretAccessGrant, GrantPrincipal, Signed, Unsigned, signed_grants_only, grant_is_signed }
+import gunbc.auth.gcp_secret_access { GrantMemberResolved, GrantMemberUnresolved }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCell, fleet_member_root_cells, TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_secrets }
+import gunbc.auth.approval_mac_key_provision { approval_mac_key_ceremony_rows }
+import gunbc.fleet.org_actions_converge { org_admin_app_key_ceremony_grant }
+import gunbc.auth.gcp_iam_bootstrap_model { SecretIamOwner, BootstrapRostered, CeremonyTrustRoot, secret_iam_owner, secret_iam_root_cells, iam_bootstrap_root_ceremony_bindings, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_set_secrets }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── ALL KEYS: EVERY DECLARER OF A SECRET IAM CELL, BY NAME ───────────────────────────────────
+// The operator's ruling (2026-10-18, relayed by warm-crane-219): "and not just for flex vast key, for ALL
+// keys". This is the closed identity join it asks for. Each declarer below names secrets whose IAM cells
+// someone must bind, and every such secret must classify into exactly one of the two arms of
+// gunbc.auth.gcp_iam_bootstrap_model SecretIamOwner. A secret that classifies into neither still needs an
+// operator by hand. The declarers, enumerated by grepping every SecretAccessGrant, secret_accessor_grant,
+// secret_access_ensure_for and secret_access_ensure_for_member site under dag/ (2026-10-19):
+//   gunbc.auth.fleet_secret_accessor_roster fleet_accessor_grant_roster, fleet_version_adder_grant_roster
+//   gunbc.fleet.host_credential_custody_converge host_custody_credential_roster (each row's secret)
+//   gunbc.auth.gcp_iam_converge gcp_iam_converge_grant_sets, gcp_iam_converge_targets (each target's grants)
+//   gunbc.fleet.org_actions_converge (the gunbai-ci App key, gunbai_ci_app_pem_secret)
+//   gunbc.spark.secret_access_ensure spark_secret_access_grant
+//   gunbc.fleet.hetzner_cloud_acquisition hetzner_cloud_api_grants
+//   gunbc.assimilate.bmc_wif_delegation_chain bmc_wif_signed_grants (its declarer's own apply selection:
+//     an Unsigned grant declares no cell to bind yet; signing it in reviewed code moves it in)
+// RUNG (DESIGN section 4b): mechanically preventable FOR THE LISTED DECLARERS ONLY. The universe above is
+// hand-listed, so a declarer added tomorrow is invisible to this join, which stays green. Next-rung
+// trigger: gunbc.recurring_failure_mode a_secret_iam_cell_declarer_outside_a_hand_listed_universe (a
+// census over construction sites of both SecretAccessGrant types feeding this population).
+// Not a declarer: product.fabric.flex_vast_shadow flex_vast_api_read_grant is parameterized by its
+// caller's target, and gunbc.auth.secret_access_admission admits a caller-supplied grant; neither names a
+// secret of its own.
+
+fn declared_secrets() -> List<String> {
+  let names = map(fleet_accessor_grant_roster, r => r.target.secret as String)
+    + map(fleet_version_adder_grant_roster, r => r.target.secret as String)
+    + map(host_custody_credential_roster, c => host_credential_custody_row(c: c).secret.secret as String)
+    + flat_map(gcp_iam_converge_grant_sets, g => map(g.grants, x => x.target.secret as String))
+    + flat_map(gcp_iam_converge_targets, f => map(f.secret_grants, x => x.target.secret as String))
+    + [gunbai_ci_app_pem_secret.secret as String, spark_secret_access_grant().target.secret as String]
+    + map(hetzner_cloud_api_grants(), x => x.target.secret as String)
+    + map(bmc_wif_signed_grants(), x => x.secret_ref.secret as String)
+  distinct_by_key(xs: names, key: x => x)
+}
+
+fn uncovered_secrets() -> List<String> {
+  filter(declared_secrets(), s => match secret_iam_owner(secret: s as NonEmptyStr) { Present { value: _ } => false  Absent => true })
+}
+
+// THE JOIN: every declared secret has an owner arm.
+test fn every_declared_secret_is_rostered_or_a_ceremony_trust_root() -> Bool {
+  count(declared_secrets()) > 0 && count(uncovered_secrets()) == 0
+}
+
+// THE TRUST ROOTS ARE EXACTLY THE APPROVAL LOOP'S MAC KEYS AND THE UNDECIDED GATE APP'S KEY.
+test fn the_ceremony_trust_roots_are_the_approval_mac_keys_and_the_gate_app_key() -> Bool {
+  let roots = filter(declared_secrets(), s => match secret_iam_owner(secret: s as NonEmptyStr) { Present { value: o } => match o { CeremonyTrustRoot { reason: _ } => true  BootstrapRostered => false }  Absent => false })
+  count(roots) == 4
+    && all(["approval-capability-mac-key", "approval-submission-mac-key", "approval-store-receipt-mac-key", "ci-github-app-private-key"], k => any(roots, r => r == k))
+}
+
+// THE READING ENTRY: the RED names the uncovered secrets (names only, no values).
+fn report_uncovered_secrets() -> ProcessExit {
+  let u = uncovered_secrets()
+  if count(u) == 0 { ExitSuccess } else { exit_failure(reason: concat("uncovered declared secrets (no SecretIamOwner arm): ", join(u, ", "))) }
+}
+
+// EACH ROOT CELL IS BOUND BY THE CEREMONY ITS RELATION NAMES, at CELL grain: one secret may carry cells
+// from several ceremonies (the submission MAC key's fleet accessor cell is ApprovalMacKeyProvision's,
+// iam-observe's read of it is IamBootstrapApply's), and the join compares (secret, role, member,
+// condition) exactly, so a ceremony binding another cell on the same secret does not count.
+type CeremonyCell { secret: String, cell: GcpIamBindingCell }
+
+// The fleet member's cells for a ceremony's declared grant, through the one resolution the trust-root
+// relation also reads (gunbc.auth.gcp_iam_trust_roots fleet_member_root_cells); the rows differ.
+fn as_ceremony_cells(ts: List<TrustRootCell>) -> List<CeremonyCell> {
+  map(ts, t => CeremonyCell { secret: t.secret as String, cell: t.cell })
+}
+
+fn ceremony_cells(ceremony: TrustRootCeremony) -> List<CeremonyCell> {
+  match ceremony {
+    ApprovalMacKeyProvision => as_ceremony_cells(ts: flat_map(approval_mac_key_ceremony_rows, r => fleet_member_root_cells(grant: fleet_accessor_grant(row: r), ceremony: ApprovalMacKeyProvision)))
+    OrgAdminAppKeyAccessConverge => as_ceremony_cells(ts: fleet_member_root_cells(grant: org_admin_app_key_ceremony_grant(), ceremony: OrgAdminAppKeyAccessConverge))
+    IamBootstrapApply => flat_map(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
+      BootstrapSecret { secret } => [CeremonyCell { secret: secret as String, cell: b.cell }]
+      BootstrapBucket { bucket: _ } => []
+      BootstrapProject => []
+      BootstrapPool { pool: _ } => []
+      BootstrapAccount { account: _ } => []
+    })
+  }
+}
+
+fn ceremony_binds(ceremony: TrustRootCeremony, secret: String, cell: GcpIamBindingCell) -> Bool {
+  any(ceremony_cells(ceremony: ceremony), c => c.secret == secret && gcp_cell_in(c: cell, xs: [c.cell]))
+}
+
+test fn every_ceremony_trust_root_is_bound_by_the_ceremony_its_arm_names() -> Bool {
+  let roots = secret_iam_root_cells()
+  count(ceremony_trust_root_secrets()) == 4
+    && count(filter(roots, t => match t.ceremony { ApprovalMacKeyProvision => true  _ => false })) == 3
+    && count(filter(roots, t => match t.ceremony { OrgAdminAppKeyAccessConverge => true  _ => false })) == 1
+    && count(filter(roots, t => match t.ceremony { IamBootstrapApply => true  _ => false })) > 0
+    && all(roots, t => ceremony_binds(ceremony: t.ceremony, secret: t.secret as String, cell: t.cell))
+    && all(roots, t => any(ceremony_trust_root_secrets(), r => (r.secret as String) == (t.secret as String)))
+}
+
+// THE JOIN IS AT CELL GRAIN: the same secret under another role, or another member, is not bound by
+// the ceremony that binds the root cell; and one secret carries cells of two ceremonies.
+test fn the_binder_join_compares_the_exact_cell() -> Bool {
+  let roots = secret_iam_root_cells()
+  all(roots, t => !ceremony_binds(ceremony: t.ceremony, secret: t.secret as String, cell: GcpIamBindingCell { role: "roles/secretmanager.admin", member: t.cell.member, condition: t.cell.condition })
+    && !ceremony_binds(ceremony: t.ceremony, secret: t.secret as String, cell: GcpIamBindingCell { role: t.cell.role, member: "serviceAccount:someone-else@gunbai-secrets.iam.gserviceaccount.com", condition: t.cell.condition }))
+    && any(roots, a => any(roots, b => (a.secret as String) == (b.secret as String) && match a.ceremony { ApprovalMacKeyProvision => match b.ceremony { IamBootstrapApply => true  _ => false }  _ => false }))
+}
+
+// ── AN UNSIGNED GRANT REACHES NO GRANT SET (the BMC declarer's own signoff selection) ──────────
+// THE PRODUCTION RED: no converge grant set names a secret only an Unsigned bmc grant declares.
+fn unsigned_only_bmc_secrets() -> List<String> {
+  let signed = map(bmc_wif_signed_grants(), g => g.secret_ref.secret as String)
+  filter(map(filter(bmc_wif_all_grants + bmc_wif_legacy_grants, g => !grant_is_signed(grant: g)), g => g.secret_ref.secret as String), s => !any(signed, x => x == s))
+}
+
+test fn no_grant_set_names_a_secret_only_an_unsigned_grant_declares() -> Bool {
+  count(unsigned_only_bmc_secrets()) > 0
+    && !any(gcp_iam_converge_grant_set_secrets(), s => any(unsigned_only_bmc_secrets(), u => u == (s as String)))
+}
+
+// THE FIXTURE FLIP, BOTH WAYS: the signed canary unsigned leaves no set; the unsigned srv3 grant signed
+// yields its cell, resolved to its own principal.
+fn with_signoff_unsigned(g: SecretAccessGrant) -> SecretAccessGrant {
+  SecretAccessGrant { secret_ref: g.secret_ref, principal: g.principal, role: g.role, consumer: g.consumer, justification: g.justification, signoff: Unsigned, provenance: g.provenance }
+}
+
+fn with_signoff_signed(g: SecretAccessGrant) -> SecretAccessGrant {
+  SecretAccessGrant { secret_ref: g.secret_ref, principal: g.principal, role: g.role, consumer: g.consumer, justification: g.justification, signoff: Signed { signed_by: "fixture" as NonEmptyStr, note: "witness flip" as NonEmptyStr }, provenance: g.provenance }
+}
+
+test fn an_unsigned_canary_reaches_no_grant_set_and_a_signed_srv3_grant_does() -> Bool {
+  let unsigned_canary = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: signed_grants_only(grants: [with_signoff_unsigned(g: bmc_wif_canary_grant)])))
+  let signed_srv3 = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: signed_grants_only(grants: [with_signoff_signed(g: bmc_srv3_admin_access_grant)])))
+  count(unsigned_canary) == 0
+    && count(signed_srv3) == 1
+    && all(signed_srv3, g => count(g.grants) == 1 && all(g.grants, x => (x.target.secret as String) == (bmc_srv3_admin_access_grant.secret_ref.secret as String)))
+}
+
+// GRANTS NAMING DIFFERENT PRINCIPALS REFUSE TYPED: no single member serves the set. The control is
+// today's signed grants, which resolve.
+test fn bmc_grants_naming_two_principals_refuse_the_member() -> Bool {
+  let p = bmc_wif_canary_grant.principal
+  let elsewhere = SecretAccessGrant { secret_ref: bmc_wif_canary_grant.secret_ref, principal: GrantPrincipal { service_account: "someone-else@gunbai-secrets.iam.gserviceaccount.com" as ServiceAccountEmail, condition: p.condition }, role: bmc_wif_canary_grant.role, consumer: bmc_wif_canary_grant.consumer, justification: bmc_wif_canary_grant.justification, signoff: bmc_wif_canary_grant.signoff, provenance: bmc_wif_canary_grant.provenance }
+  let split = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: [bmc_wif_canary_grant, elsewhere]))
+  let today = bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: bmc_wif_signed_grants()))
+  count(split) == 1 && all(split, g => match g.member { GrantMemberUnresolved { cause: _ } => true  GrantMemberResolved { member: _ } => false })
+    && count(today) == 1 && all(today, g => match g.member { GrantMemberResolved { member: _ } => true  GrantMemberUnresolved { cause: _ } => false })
+}

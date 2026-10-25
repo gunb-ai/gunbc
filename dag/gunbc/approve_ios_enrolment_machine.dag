@@ -1,0 +1,109 @@
+module gunbc.approve_ios_enrolment_machine
+
+import std.types { NonEmptyStr, List }
+
+// THE APP'S ENROLMENT STATE MACHINE, as the authority apps/approve-ios/Approve/EnrolmentMachine.swift
+// is printed from (gunbc.approve_ios_swift_enrolment_machine). The Swift EnrolmentState keeps the
+// payloads (keys, ids) and the persistence; WHICH PHASE FOLLOWS WHICH ANSWER is this module's.
+//
+// ENROLMENT IS ONE GOOGLE SIGN-IN AND ONE IDEMPOTENT POST (ruling
+// gunbc.design_ruling approval_enrolment_is_google_sign_in; gunbc.auth.approval_google_enrolment).
+// The phone therefore has no state it must recover. An unanswered POST is resent byte-identical and
+// a refused or abandoned sign-in is "sign in again", so there is no phase between "not enrolled" and
+// "enrolled": the earlier Prepared and SubmissionUnknown phases, the answers keyed by code refusals
+// and the persist-before-effect ordering that existed only to resolve SubmissionUnknown are deleted.
+//
+// KEY-INVALIDATED IS NOT A PHASE. A key the enclave refuses is dead; the app discards it and the
+// phone reads as signed out. Nothing about the dead key can decide anything, so keeping it as a
+// phase would carry a state no transition leaves for a reason other than "sign in again".
+//
+// REVOKED IS THE ONE PHASE THAT REMEMBERS. The server reports an enrolment revoked; the phone may
+// leave that only by signing in with a NEW key. The same key signing in again would re-present a key
+// the server already revoked, so it stays revoked.
+type EnrolmentPhase
+  = PhaseSignedOut
+  | PhaseEnrolled
+  | PhaseRevoked
+
+// Whether the key a sign-in registered is the one the phone already held.
+type SignInKey
+  = NewKey
+  | SameKey
+
+// What the app learned. Refused and Unanswered carry no payload: every refusal, a transport
+// failure, an undecodable body and an abandoned sign-in all mean the same thing to the phase.
+type EnrolmentAnswer
+  = AnswerSignedIn { key: SignInKey }
+  | AnswerRefused
+  | AnswerUnanswered
+  | AnswerServerReportsRevoked
+
+fn phase_name(p: EnrolmentPhase) -> NonEmptyStr {
+  match p {
+    PhaseSignedOut => "signedOut" as NonEmptyStr
+    PhaseEnrolled => "enrolled" as NonEmptyStr
+    PhaseRevoked => "revoked" as NonEmptyStr
+  }
+}
+
+fn enrolment_phases() -> List<EnrolmentPhase> {
+  [PhaseSignedOut, PhaseEnrolled, PhaseRevoked]
+}
+
+fn enrolment_answers() -> List<EnrolmentAnswer> {
+  [
+    AnswerSignedIn { key: NewKey },
+    AnswerSignedIn { key: SameKey },
+    AnswerRefused,
+    AnswerUnanswered,
+    AnswerServerReportsRevoked,
+  ]
+}
+
+// THE TRANSITION FUNCTION, exhaustive over phase and answer: a new phase or answer is a compile
+// refusal here until someone says what it does. The Swift table is printed by EVALUATING this over
+// the closed phase x answer product (gunbc.approve_ios_swift_enrolment_machine).
+//
+// A refusal or no answer while Enrolled or Revoked leaves the phase: a failed re-sign-in does not
+// undo an enrolment the server still holds. From SignedOut they are the same phase, "sign in again".
+fn enrolment_next(from: EnrolmentPhase, answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match from {
+    PhaseSignedOut => signed_out_next(answer: answer)
+    PhaseEnrolled => enrolled_next(answer: answer)
+    PhaseRevoked => revoked_next(answer: answer)
+  }
+}
+
+fn signed_out_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match answer {
+    AnswerSignedIn { key: _ } => PhaseEnrolled
+    AnswerRefused => PhaseSignedOut
+    AnswerUnanswered => PhaseSignedOut
+    AnswerServerReportsRevoked => PhaseSignedOut
+  }
+}
+
+fn enrolled_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match answer {
+    AnswerSignedIn { key: _ } => PhaseEnrolled
+    AnswerRefused => PhaseEnrolled
+    AnswerUnanswered => PhaseEnrolled
+    AnswerServerReportsRevoked => PhaseRevoked
+  }
+}
+
+fn revoked_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match answer {
+    AnswerSignedIn { key: k } => revoked_after_sign_in(key: k)
+    AnswerRefused => PhaseRevoked
+    AnswerUnanswered => PhaseRevoked
+    AnswerServerReportsRevoked => PhaseRevoked
+  }
+}
+
+fn revoked_after_sign_in(key: SignInKey) -> EnrolmentPhase {
+  match key {
+    NewKey => PhaseEnrolled
+    SameKey => PhaseRevoked
+  }
+}

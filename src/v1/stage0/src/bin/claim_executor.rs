@@ -1,7 +1,5 @@
 #![allow(clippy::disallowed_macros)]
 
-use std::fs;
-use std::path::PathBuf;
 use std::process::ExitCode;
 use v1_compiler::cli_run::PhaseProfile;
 
@@ -90,70 +88,6 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
         if paths.len() == 1 { "y" } else { "ies" }
     );
     Ok(ExitCode::SUCCESS)
-}
-
-const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
-const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
-
-fn append_floor_phase_journal(phase: &str, state: &str, detail: &str) {
-    let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
-        return;
-    };
-    let path = PathBuf::from(path);
-    if let Some(parent) = path.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            eprintln!(
-                "claim_executor: create floor phase journal directory {}: {e}",
-                parent.display()
-            );
-            return;
-        }
-    }
-    let mut file = match fs::OpenOptions::new().create(true).append(true).open(&path) {
-        Ok(file) => file,
-        Err(e) => {
-            eprintln!(
-                "claim_executor: open floor phase journal {}: {e}",
-                path.display()
-            );
-            return;
-        }
-    };
-    let unix_millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
-    let row = format!(
-        "{unix_millis}\t{}\t{phase}\t{state}\t{clean_detail}\n",
-        std::process::id()
-    );
-    use std::io::Write as _;
-    if let Err(e) = file
-        .write_all(row.as_bytes())
-        .and_then(|()| file.flush())
-        .and_then(|()| file.sync_data())
-    {
-        eprintln!(
-            "claim_executor: persist floor phase journal {}: {e}",
-            path.display()
-        );
-    }
-}
-
-fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String> {
-    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
-        return Ok(());
-    };
-    let path = PathBuf::from(path);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create worker terminal directory {}: {e}", parent.display()))?;
-    }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, format!("{outcome}\t{detail}\n"))
-        .map_err(|e| format!("write worker terminal {}: {e}", tmp.display()))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
@@ -344,6 +278,19 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // it. Exiting zero here would make the producer's own entry point disagree with
                 // the phase that names it as the remedy.
                 let unresolved = outcome.divergent().len();
+                // THE TYPED REPORT, on stdout: callers read the drifted population from here and
+                // never from the diagnostic lines above.
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema": "gunbc.partition_boundary_report.v1",
+                        "divergent": outcome
+                            .divergent()
+                            .iter()
+                            .map(|f| f.path.clone())
+                            .collect::<Vec<_>>(),
+                    })
+                );
                 return if emit_partition_crates_write || unresolved == 0 {
                     Ok(ExitCode::SUCCESS)
                 } else {
@@ -430,7 +377,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             "v2-native-route: emitted-native compiler executes the derived native-lane universe (operator-invoked; not a required lane)"
         );
         // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes no pattern: the emitted binary
-        // adjudicates by `gunbc.witness.v2_native_route` `native_route_default_pattern`, read inside
+        // adjudicates by `gunbc.native_route_universe` `native_route_default_pattern`, read inside
         // the compiler where it is declared, and this caller holds no spelling of it. A narrower
         // pattern reaches the same runner through `gunbc test <operand>`.
         return match v1_compiler::cli_run::run_required_v2_native(&roots, None) {
@@ -652,49 +599,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     Err(ExitCode::from(2))
 }
 
-fn emit_floor_terminal_outcome(outcome: &str, detail: &str) {
-    append_floor_phase_journal("walk-terminal", outcome, detail);
-    if outcome == "completed" {
-        eprintln!("[floor-terminal] outcome=completed detail={detail}");
-    } else {
-        eprintln!("[floor-terminal-refusal] outcome=failed detail={detail}");
-    }
-}
-
-/// Pre-walk worker failures return through `main()` instead of `floor_terminal_fast_exit`.
-/// Mirror the walk-terminal journal/stderr emission so those refusals survive Actions log
-/// truncation the same way post-walk failures do.
-fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
-    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
-        return code;
-    };
-    if code == ExitCode::SUCCESS {
-        return code;
-    }
-    let path = PathBuf::from(path);
-    let (outcome, detail) = if path.exists() {
-        match fs::read_to_string(&path) {
-            Ok(body) => {
-                let line = body.trim_end_matches(['\r', '\n']);
-                let (label, detail) = line.split_once('\t').unwrap_or((line, ""));
-                let outcome = if label == "completed" {
-                    "completed"
-                } else {
-                    "failed"
-                };
-                (outcome, detail.to_string())
-            }
-            Err(e) => ("failed", format!("worker terminal receipt unreadable: {e}")),
-        }
-    } else {
-        let detail = "worker returned before producing a walk terminal receipt".to_string();
-        let _ = write_floor_worker_terminal("failed", &detail);
-        ("failed", detail)
-    };
-    emit_floor_terminal_outcome(outcome, &detail);
-    code
-}
-
 fn main() -> ExitCode {
     // NO SECOND ARGV READER. What stood here read std::env::args() directly and dispatched the
     // floor coordinator BEFORE run() parsed anything, so deleting --plan-function from run()'s
@@ -716,20 +620,7 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(code) => code,
     };
-    // THE TERMINAL RECEIPT IS EMITTED FIRST, AND THE ORDER IS THE WHOLE POINT OF THESE TWO LINES.
-    // `emit_worker_terminal_before_return` is the worker's fail-closed channel: when the receipt is
-    // absent the parent substitutes "worker returned before producing a walk terminal receipt" and
-    // the real, located detail is gone. The first revision of this change called the instrument
-    // BEFORE it, inserting a ~168-second window -- this PR's own measured figure -- between a
-    // failure and the emission of its receipt, so a worker killed by an outer step cap during
-    // teardown would have downgraded a located failure into the generic no-receipt arm. That window
-    // did not exist when the drops ran after `main` returned, so the instrument would have created
-    // the regression it was added to measure (review 68459; DESIGN section 5, "every path succeeds
-    // fully or fails with a typed, located diagnostic"). Nothing in the instrument reads the
-    // receipt, so emitting first costs nothing.
-    let code = emit_worker_terminal_before_return(code);
-    // THE CORPUS CACHES ARE RELEASED WITH THE PROCESS, NOT FREED ONE NODE AT A TIME. The receipt
-    // above is already out, and nothing reads those caches again; see
+    // THE CORPUS CACHES ARE RELEASED WITH THE PROCESS, NOT FREED ONE NODE AT A TIME. See
     // `release_process_caches_at_exit` for what it forgets, why that is safe, and the residue it
     // leaves measured rather than assumed.
     v1_compiler::cli_run::release_process_caches_at_exit();
@@ -739,6 +630,7 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn repo_root_from_manifest() -> PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -825,36 +717,6 @@ mod tests {
     //   A — finalization absent by construction (scoped floor worker)
     //   B — finalization absent incidentally (walk never reached the call)
     //   C — finalization HELD on an otherwise-failed floor (verdict must not vanish)
-
-    #[test]
-    fn emit_worker_terminal_before_return_journals_pre_walk_refusal() {
-        let dir = std::env::temp_dir().join(format!(
-            "claim-executor-worker-terminal-before-return-{}",
-            std::process::id()
-        ));
-        let _ = fs::create_dir_all(&dir);
-        let terminal = dir.join("worker-terminal.tsv");
-        let journal = dir.join("floor-phase-journal.tsv");
-        let _ = fs::remove_file(&terminal);
-        let _ = fs::remove_file(&journal);
-        fs::write(
-            &terminal,
-            "refused\tscoped witness scheduling refusal: fixture detail\n",
-        )
-        .expect("write worker terminal fixture");
-        std::env::set_var(FLOOR_WORKER_TERMINAL_ENV, &terminal);
-        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
-        let code = emit_worker_terminal_before_return(ExitCode::from(1));
-        std::env::remove_var(FLOOR_WORKER_TERMINAL_ENV);
-        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
-        assert_eq!(code, ExitCode::from(1));
-        let persisted = fs::read_to_string(&journal).expect("walk-terminal journal row");
-        let _ = fs::remove_dir_all(&dir);
-        assert!(
-            persisted.contains("\twalk-terminal\tfailed\tscoped witness scheduling refusal"),
-            "pre-walk worker refusal must reach the durable journal: {persisted:?}"
-        );
-    }
 
     // ENROLLMENT MAY ONLY HOLD A CLAIM THAT WAS DECIDED. Found on gunbc#8642 by the side
     // thread: the first version of `from_outcome` matched `_ if enrolled => KnownRed` above
@@ -975,26 +837,6 @@ mod tests {
     // not merely as "not equal to the good value". The positive controls exist so the
     // negatives are discriminating: a `compose_walk_attempt_id` that refused everything
     // would pass every Err assertion and fail these.
-
-    #[test]
-    fn floor_phase_journal_persists_a_completed_path() {
-        let journal = std::env::temp_dir().join(format!(
-            "claim-executor-floor-phase-positive-control-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_file(&journal);
-        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
-        append_floor_phase_journal("positive-control", "completed", "known-green-path");
-        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
-
-        let persisted = fs::read_to_string(&journal)
-            .expect("the synced out-of-band journal must be readable after a completed path");
-        let _ = fs::remove_file(&journal);
-        assert!(
-            persisted.contains("\tpositive-control\tcompleted\tknown-green-path\n"),
-            "the persisted row must retain the phase, state, and detail: {persisted:?}"
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------

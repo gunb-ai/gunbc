@@ -11,9 +11,10 @@ import gunbc.machine_intake.mtcollins1_boot_run {
 import extdeps.posix.termios { termios_onlcr_output_lines }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
 import gunbc.host.boot_medium { BootMedium }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -21,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the medium the claim needs; there is no other mint (gunbc.host.managed_host_boot AdmittedBootSubject is
 // sole_constructor). Absent fails the claim that asked for it.
 fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
-  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+  match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
     BootSubjectAdmitted { subject: s } => Present { value: s }
     BootSubjectRefused { host: _, cause: _ } => none
   }
@@ -93,7 +94,7 @@ test fn sol_nul_fill_sections_complete_with_exit_zero() -> Bool {
 // unterminated here. numa (dropped from the trimmed capture) and edac-after (never run: the workload
 // filled /dev/shm and SOL closed) are named as unobserved rather than dropped.
 test fn sol_nul_capture_refuses_on_the_workload_and_names_the_unobserved() -> Bool {
-  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  match admitted_witness_subject(medium: census_boot_medium(image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
   Absent => false
   Present { value: subject } => {
   match mtcollins1_boot_terminal_verdict(capture: sol_nul_capture(), subject: subject) {
@@ -114,7 +115,7 @@ test fn sol_nul_capture_refuses_on_the_workload_and_names_the_unobserved() -> Bo
 // regression (or any future corruption) cannot make a qualification vanish from the verdict -- and
 // named as OBSERVED BUT UNTERMINATED (its ARGV and 80 are there), never as unobserved.
 test fn open_refusal_names_a_pending_nproc() -> Bool {
-  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  match admitted_witness_subject(medium: census_boot_medium(image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
   Absent => false
   Present { value: subject } => {
   let capture = join(filter(sol_nul_capture_lines(), l => l != concat(nul(n: 16), "----EXIT nproc: 0\r\n")), "")
@@ -135,7 +136,7 @@ test fn open_refusal_names_a_pending_nproc() -> Bool {
 // ABSENT, NOT UNTERMINATED: with nproc's whole section removed, the same refusal names it as never
 // observed -- the two standings stay distinct at terminalization.
 test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool {
-  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  match admitted_witness_subject(medium: census_boot_medium(image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
   Absent => false
   Present { value: subject } => {
   let nproc_lines = ["----SECTION nproc----\r\n", "----ARGV nproc: nproc\r\n", concat(nul(n: 224), "80\r\n"), concat(nul(n: 16), "----EXIT nproc: 0\r\n")]

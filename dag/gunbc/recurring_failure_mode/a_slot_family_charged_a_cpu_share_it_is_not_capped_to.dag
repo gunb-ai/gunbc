@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.a_slot_family_charged_a_cpu_share_it_is_not_capped_to
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_slot_family_charged_a_cpu_share_it_is_not_capped_to: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_slot_family_charged_a_cpu_share_it_is_not_capped_to" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: gunbc.ci.ci_runner_placement host_cpu_allocation divides a host's runner threads by the committed width, which counts the fabric execution slots (gunbc.runner.runner_slot_allocation fabric_execution_slot_identities: srv1-13, srv3/srv4 slots 6 and 7), while those slots' slices render gunbc.runner.runner_slot_desired gunbc_runner_slot_cpu_quota = SlotCpuQuotaUnbounded. The fold reserves a share for a family that is not held to it, so the host's CPU is not conserved: a busy fabric cell can take the threads the runner slots' quotas were sized against.",
+
+    "HARM: runner slots throttled at their quota while an uncapped fabric cell exceeds its reserved share; invisible today because the fabric slots on srv3/srv4 are not yet commissioned, live as soon as they are.",
+
+    "DISTINGUISHING FACTS: two CPU authorities for slots of one host -- the per-host fold for GitHub runner slots and the fleet-wide RunnerSlotDesired row for fabric/microvm/workspace slices -- declared as a deliberate divergence in #14008 and #14053 rather than unified.",
+
+    "RUNG FOUND AT: mitigatable (CPUWeight still orders contention). CEILING: structurally guaranteed -- one allocation fold whose per-slot result every slot family's slice renders. NEXT TRIGGER: the fabric owner commissioning slots 6 and 7 on srv3/srv4; before that change lands, gunbc.fabric.fabric_cell_effect fabric_cell_slice_quota_directive must read the per-host fold's per-slot quota instead of gunbc_runner_slot_cpu_quota, or the fold must stop counting fabric members in its divisor.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "host_cpu_allocation"),
+    decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "gunbc_runner_slot_cpu_quota"),
+    decl_ref(module_path: "gunbc.fabric.fabric_cell_effect", decl_name: "fabric_cell_slice_quota_directive"),
+  ],
+}

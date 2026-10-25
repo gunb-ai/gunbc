@@ -1,5 +1,6 @@
 module std.source_annotation
 import std.optional { Absent, Present }
+import std.algebra { empty_map, map_insert, map_lookup, map_support_keys, list_snoc_item, list_sort_by_key, int_total_order, list_at_optional, length, collection_concat_shape, list_push }
 // The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
 
 import std.coercion { unicode_scalar_unfold }
@@ -176,24 +177,30 @@ type AnnotationRegionIndex {
   children: Map<AnnotationScope, List<AnnotationRegion>>
 }
 
+fn region_extent_start(r: AnnotationRegion) -> Int {
+  r.extent.start
+}
+
 fn annotation_region_index(regions: List<AnnotationRegion>) -> AnnotationRegionIndex {
-  let grouped = fold(regions, init: empty_map(), f: (acc, region) =>
+  let grouped_seed: Map<AnnotationScope, List<AnnotationRegion>> = empty_map()
+  let grouped = fold(regions, init: grouped_seed, f: (acc, region) =>
     let key = region.parent
-    match map_get(acc, key) {
-      Present { value: siblings } => map_insert(acc, key, list_push(siblings, region))
-      Absent => map_insert(acc, key, [region])
+    match map_lookup(m: acc, key: key) {
+      Present { value: siblings } => map_insert(m: acc, key: key, value: list_snoc_item(xs: siblings, item: region))
+      Absent => map_insert(m: acc, key: key, value: [region])
     })
+  let children_seed: Map<AnnotationScope, List<AnnotationRegion>> = empty_map()
   AnnotationRegionIndex {
-    children: fold(map_keys(grouped), init: empty_map(), f: (acc, key) =>
-      match map_get(grouped, key) {
-        Present { value: siblings } => map_insert(acc, key, siblings |> sort_by(r => r.extent.start))
+    children: fold(map_support_keys(m: grouped), init: children_seed, f: (acc, key) =>
+      match map_lookup(m: grouped, key: key) {
+        Present { value: siblings } => map_insert(m: acc, key: key, value: list_sort_by_key(xs: siblings, key: region_extent_start, order: int_total_order()))
         Absent => acc
       }),
   }
 }
 
 fn annotation_children(index: AnnotationRegionIndex, scope: AnnotationScope) -> List<AnnotationRegion> {
-  match map_get(index.children, scope) {
+  match map_lookup(m: index.children, key: scope) {
     Present { value: siblings } => siblings
     Absent => []
   }
@@ -204,7 +211,8 @@ fn annotation_children(index: AnnotationRegionIndex, scope: AnnotationScope) -> 
 fn siblings_starting_at_or_before(siblings: List<AnnotationRegion>, at: Int, lo: Int, hi: Int) -> Int {
   if lo >= hi { lo } else {
     let mid = (lo + hi) / 2
-    match siblings |> get(mid) {
+    let item: AnnotationRegion? = list_at_optional(xs: siblings, index: mid)
+    match item {
       Present { value: r } =>
         if r.extent.start <= at {
           siblings_starting_at_or_before(siblings: siblings, at: at, lo: mid + 1, hi: hi)
@@ -216,10 +224,17 @@ fn siblings_starting_at_or_before(siblings: List<AnnotationRegion>, at: Int, lo:
   }
 }
 
+fn region_when(keep: Bool, region: AnnotationRegion?) -> AnnotationRegion? {
+  match keep {
+    true => region
+    false => Absent
+  }
+}
+
 fn region_scope(region: AnnotationRegion?) -> AnnotationScope? {
   match region {
     Present { value: r } => Present { value: r.scope }
-    Absent => none
+    Absent => Absent
   }
 }
 
@@ -232,15 +247,16 @@ fn region_scope(region: AnnotationRegion?) -> AnnotationScope? {
 // is `after`. `depth` bounds the descent by the roster's size.
 fn annotation_gap_in(index: AnnotationRegionIndex, scope: AnnotationScope, origin: SourceSpan, depth: Int) -> AnnotationGap {
   let siblings = annotation_children(index: index, scope: scope)
-  let n = siblings_starting_at_or_before(siblings: siblings, at: origin.start, lo: 0, hi: count(siblings))
-  let candidate = if n == 0 { none } else { siblings |> get(n - 1) }
-  let containing = match candidate {
-    Present { value: c } => if region_contains(extent: c.extent, origin: origin) && depth > 0 { Present { value: c } } else { none }
-    Absent => none
+  let n = siblings_starting_at_or_before(siblings: siblings, at: origin.start, lo: 0, hi: length(xs: siblings))
+  let candidate: AnnotationRegion? = if n == 0 { Absent } else { list_at_optional(xs: siblings, index: n - 1) }
+  let inside = match candidate {
+    Present { value: c } => region_contains(extent: c.extent, origin: origin) && depth > 0
+    Absent => false
   }
+  let containing = region_when(keep: inside, region: candidate)
   match containing {
     Present { value: inner } => annotation_gap_in(index: index, scope: inner.scope, origin: origin, depth: depth - 1)
-    Absent => AnnotationGap { scope: scope, before: region_scope(region: candidate), after: region_scope(region: siblings |> get(n)) }
+    Absent => AnnotationGap { scope: scope, before: region_scope(region: candidate), after: region_scope(region: list_at_optional(xs: siblings, index: n)) }
   }
 }
 
@@ -314,10 +330,10 @@ fn attach_annotations(
   regions: List<AnnotationRegion>
 ) -> SourceAnnotationGraph {
   let index = annotation_region_index(regions: regions)
-  let depth = count(regions) + 1
+  let depth = length(xs: regions) + 1
   let acc = fold(
     captures,
-    init: AnnotationAttachAcc { rows: [], pending: none, pending_adjacent: false },
+    init: AnnotationAttachAcc { rows: [], pending: Absent, pending_adjacent: false },
     f: (acc, capture) => annotation_attach_step(acc: acc, capture: capture, index: index, depth: depth)
   )
   SourceAnnotationGraph { rows: annotation_attach_flush(acc: acc) }
@@ -364,5 +380,5 @@ fn keyed_annotation_rows_agree(
           }
       }
   )
-  walk.agreed && (walk.rest |> count) == 0
+  walk.agreed && length(xs: walk.rest) == 0
 }

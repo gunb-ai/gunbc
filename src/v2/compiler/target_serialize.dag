@@ -1,9 +1,14 @@
 module v2.compiler.target_serialize
 
-import std.types { List }
+import std.types { Bool, List }
 import std.occurrence_identity {
   OccurrenceSynthetic
 }
+import v2.compiler.inferred_tree {
+  InferredFacts,
+  InferredTree
+}
+import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
   dag_value_expression_projection,
@@ -23,6 +28,9 @@ import v2.std.compilers.target_model {
   canonical_operation_from_wire_node,
   target_bodied_arrow_compose_statement_tokens,
   target_project_arrow_body_to_value_expression,
+  target_value_expr_project_body_subexpression,
+  target_value_expression_binding_ref,
+  target_value_expression_conditional,
   target_project_transform_primitive_apply_in_arrow_scope,
   target_project_transform_callable_apply_in_arrow_scope,
   target_transform_operator_child,
@@ -55,7 +63,7 @@ import v2.std.diagnostic {
   rejected_with_pending,
   diagnostics_fatal_reason
 }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Atom,
   Conj,
   Edge,
@@ -65,23 +73,31 @@ import v2.std.node {
   StructuralLabel,
   Symbol,
   TypeNode,
+  declaration_reference_body_marked,
   node_subtree_count,
   Arrow,
-  Occupancy,
+  Branch,
   ComputationNode,
   Disj,
   Instantiation,
+  symbol_intern_lexeme,
+  symbol_lexeme
 }
+import v2.std.qualified_name {
+  declaration_reference_path_optional,
+  qualified_name_init,
+  qualified_name_last_segment
+}
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.type_binder {
   type_param_names
 }
-import v2.std.node_query {
-  find_named_child,
-  node_positional_child_targets,
-  find_labeled_child,
-}
+import v2.std.node_query { find_arrow_body_child, find_named_child, find_labeled_child }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
+  ConcreteSyntaxLayoutItem,
+  LayoutToken,
+  LayoutNest,
   TargetValueExpression,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -91,7 +107,7 @@ import v2.std.compilers.target_model {
   TargetTypeExpressionProjection,
   TargetTypeExprAtom,
   TargetTypeExprArrow,
-  TargetTypeExprOccupancy,
+  TargetTypeExprOptionalInstantiation,
   TargetTypeExprInstantiation,
   TargetTypeExprRecord,
   TargetTypeExprSum,
@@ -142,10 +158,7 @@ import v2.std.compilers.target_model {
   module_import_projection_from_target,
   target_import_to_concrete_tokens
 }
-import v2.std.collection {
-  list_at_optional,
-  map_get_checked
-}
+import v2.std.witness { map_get_checked }
 import std.optional {
   Absent,
   Optional,
@@ -153,7 +166,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import std.algebra { Empty, list_snoc_item, fold_list, is_empty, list_tail }
+import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional, collection_concat_shape, collection_count_shape }
 import v2.std.text {
   String
 }
@@ -284,8 +297,6 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
-    TypeNode { connective: Occupancy } =>
-      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     ComputationNode { behavior: _ } =>
@@ -414,8 +425,6 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
-    TypeNode { connective: Occupancy } =>
-      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
     ComputationNode { behavior: _ } =>
@@ -439,13 +448,12 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
   match parent.kind {
     TypeNode { connective: Conj } =>
       Accepted {
-        value: node_positional_child_targets(node: parent),
+        value: positional_child_target_nodes(node: parent),
         diagnostics: None
       }
     TypeNode { connective: Atom { identity: _ } } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Disj } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
-    TypeNode { connective: Occupancy } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     ComputationNode { behavior: _ } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
   }
@@ -506,8 +514,6 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
     TypeNode { connective: Disj } =>
       Accepted { value: Absent, diagnostics: None }
     TypeNode { connective: Arrow } =>
-      Accepted { value: Absent, diagnostics: None }
-    TypeNode { connective: Occupancy } =>
       Accepted { value: Absent, diagnostics: None }
     TypeNode { connective: Instantiation } =>
       Accepted { value: Absent, diagnostics: None }
@@ -620,7 +626,6 @@ fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<N
       TypeNode { connective: Atom { identity: _ } } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Disj } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Arrow } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-      TypeNode { connective: Occupancy } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Instantiation } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       ComputationNode { behavior: _ } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
     }
@@ -647,6 +652,61 @@ fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
     }
   )
 }
+// THE DECL ROUTE'S FOLD OVER A LAYOUT-KEEPING SPINE: a token is spelled as in the flat fold, a nested block is
+// the same std.layout nest the grammar-row route makes (target_text_nested) by the unit the target spells, and
+// an unspelled unit refuses (translate_layout_unit_unspelled) rather than printing the block flat.
+fn serialize_concrete_syntax_layout_to_source_string(
+  target: TargetModel,
+  items: List<ConcreteSyntaxLayoutItem>
+) -> Outcome<TargetText> {
+  fold_list(
+    xs: items,
+    empty: Accepted { value: target_text_empty, diagnostics: None },
+    cons: fn(acc, item) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match serialize_concrete_syntax_layout_item(target: target, item: item) {
+            Accepted { value: text, diagnostics: td } =>
+              Accepted {
+                value: target_text_seq(acc: partial, next: text),
+                diagnostics: diagnostics_merge(outer: ad, inner: td)
+              }
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+          }
+      }
+    }
+  )
+}
+
+fn serialize_concrete_syntax_layout_item(target: TargetModel, item: ConcreteSyntaxLayoutItem) -> Outcome<TargetText> {
+  match item {
+    LayoutToken { token: tok } => serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: [tok])
+    LayoutNest { unit: unit, items: inner } =>
+      nest_by_spelled_unit(
+        target: target,
+        unit: unit,
+        body: fn() { serialize_concrete_syntax_layout_to_source_string(target: target, items: inner) }
+      )
+  }
+}
+
+// The one rule both routes nest by: the unit must be spelled by the target (an unspelled unit refuses), and the
+// body is built only once it is, then wrapped in the std.layout nest.
+fn nest_by_spelled_unit(target: TargetModel, unit: Symbol, body: fn() -> Outcome<TargetText>) -> Outcome<TargetText> {
+  match map_get_checked(target.binding_spellings, unit) {
+    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
+      bind_outcome(
+        o: body(),
+        f: fn(text) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: text)) }
+      )
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
@@ -697,7 +757,6 @@ fn translate_project_transform_surface_or_callable_in_arrow_scope(
     TypeNode { connective: Conj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Disj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Arrow } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
-    TypeNode { connective: Occupancy } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Instantiation } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     ComputationNode { behavior: _ } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
   }
@@ -748,13 +807,355 @@ fn translate_generic_arrow_not_rendered_diagnostic(arrow: Node) -> Diagnostic {
   }
 }
 
+// DECLARED GAP: this serialize entry is given an emitted Node, not an InferredTree. Nullary-arm
+// stamp lookup therefore cannot fire here; a declaration-reference body refuses
+// emit_declaration_reference_inferred_facts_absent rather than guessing. The module-emit path
+// carries the real tree. empty_symbol_index at these call sites is the same gap: no resolve index
+// is in scope at relation-row serialize.
+fn serialize_facts_absent_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: PartialFunction {
+      lookup: fn(_key) {
+        Absent
+      }
+    }
+  }
+}
+
+fn emit_declaration_reference_facts_absent_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_declaration_reference_inferred_facts_absent,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_declaration_reference_not_nullary_arm_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_declaration_reference_not_nullary_coproduct_arm,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_nullary_coproduct_arm_path_absent_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_nullary_coproduct_arm_path_absent,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn nullary_coproduct_arm_binding_spelling(body: Node) -> Optional<Symbol> {
+  match declaration_reference_path_optional(node: body) {
+    Absent => Absent
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Absent => Absent
+        Present { value: leaf } =>
+          match qualified_name_last_segment(qn: qualified_name_init(qn: path)) {
+            Absent => Present { value: leaf }
+            Present { value: parent } =>
+              Present {
+                value: symbol_intern_lexeme(
+                  lexeme: concat(symbol_lexeme(sym: parent), concat("::", symbol_lexeme(sym: leaf)))
+                )
+              }
+          }
+      }
+  }
+}
+
+fn inferred_facts_for_projected_node(tree: InferredTree, node: Node) -> Optional<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
+  match nullary_coproduct_arm_binding_spelling(body: node) {
+    Present { value: binding } =>
+      outcome_accepted(target_value_expression_binding_ref(binding: binding))
+    Absent =>
+      outcome_rejected(d: emit_nullary_coproduct_arm_path_absent_diagnostic(body: node))
+  }
+}
+
+fn project_value_node_from_inferred_facts(
+  arrow: Node,
+  node: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match inferred_facts_for_projected_node(tree: tree, node: node) {
+    Present { value: facts } =>
+      if infer_nullary_zero_param_coproduct_arm_use(
+        node: node,
+        index: declarations,
+        facts: facts
+      ) {
+        project_nullary_arm_binding(node: node)
+      } else {
+        project_value_node_structurally(
+          arrow: arrow,
+          node: node,
+          target: target,
+          tree: tree,
+          declarations: declarations,
+          handle_transform: handle_transform
+        )
+      }
+    Absent =>
+      project_value_node_structurally(
+        arrow: arrow,
+        node: node,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+fn project_occupancy_carrier_from_inferred_facts(
+  arrow: Node,
+  occupancy: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match fold_list(
+    xs: positional_child_target_nodes(node: occupancy),
+    empty: Absent,
+    cons: fn(_acc, child) { Present { value: child } }
+  ) {
+    Absent =>
+      outcome_rejected(
+        d: target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_arrow_body_form_unsupported,
+          node: occupancy
+        )
+      )
+    Present { value: inner } =>
+      project_value_node_from_inferred_facts(
+        arrow: arrow,
+        node: inner,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+fn project_branch_from_inferred_facts(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+    Absent =>
+      outcome_rejected(
+        d: target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: body
+        )
+      )
+    Present { value: cond } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+        Absent =>
+          outcome_rejected(
+            d: target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+        Present { value: then_arm } =>
+          match list_at_optional(xs: positional_child_target_nodes(node: body), index: 2) {
+            Absent =>
+              outcome_rejected(
+                d: target_value_expr_diagnostic(
+                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  node: body
+                )
+              )
+            Present { value: else_arm } =>
+              bind_outcome(
+                o: project_value_node_from_inferred_facts(
+                  arrow: arrow,
+                  node: cond,
+                  target: target,
+                  tree: tree,
+                  declarations: declarations,
+                  handle_transform: handle_transform
+                ),
+                f: fn(projected_cond) {
+                  bind_outcome(
+                    o: project_value_node_from_inferred_facts(
+                      arrow: arrow,
+                      node: then_arm,
+                      target: target,
+                      tree: tree,
+                      declarations: declarations,
+                      handle_transform: handle_transform
+                    ),
+                    f: fn(projected_then) {
+                      bind_outcome(
+                        o: project_value_node_from_inferred_facts(
+                          arrow: arrow,
+                          node: else_arm,
+                          target: target,
+                          tree: tree,
+                          declarations: declarations,
+                          handle_transform: handle_transform
+                        ),
+                        f: fn(projected_else) {
+                          outcome_accepted(
+                            target_value_expression_conditional(
+                              condition: projected_cond,
+                              then_arm: projected_then,
+                              else_arm: projected_else
+                            )
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+          }
+      }
+  }
+}
+
+fn project_value_node_structurally(
+  arrow: Node,
+  node: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    ComputationNode { behavior: Branch } =>
+      project_branch_from_inferred_facts(
+        arrow: arrow,
+        body: node,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Conj } =>
+      if declaration_reference_body_marked(target: node) {
+        match inferred_facts_for_projected_node(tree: tree, node: node) {
+          Absent =>
+            outcome_rejected(d: emit_declaration_reference_facts_absent_diagnostic(body: node))
+          Present { value: _ } =>
+            outcome_rejected(d: emit_declaration_reference_not_nullary_arm_diagnostic(body: node))
+        }
+      } else {
+        target_value_expr_project_body_subexpression(
+          arrow: arrow,
+          node: node,
+          target: target,
+          source_bool_form: dag_value_expression_projection().bool_literal_form,
+          handle_transform: handle_transform
+        )
+      }
+    ComputationNode { behavior: _ } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Atom { identity: _ } } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Disj } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Arrow } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Instantiation } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+fn project_arrow_body_from_inferred_facts(
+  arrow: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match find_arrow_body_child(root: arrow) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: body, diagnostics: _ } =>
+      project_value_node_from_inferred_facts(
+        arrow: arrow,
+        node: body,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+  }
+}
+
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
-  emitted: Node
+  emitted: Node,
+  tree: InferredTree,
+  declarations: SymbolIndex
 ) -> Outcome<TargetText> {
   if count(type_param_names(n: emitted)) > 0 {
     outcome_rejected(d: translate_generic_arrow_not_rendered_diagnostic(arrow: emitted))
   } else {
+    target_serialize_bodied_arrow_with_scaffolded_header(target: target, emitted: emitted, tree: tree, declarations: declarations)
+  }
+}
+
+// THE SERIALIZATION AFTER THE GENERIC GUARD. The fixed-scaffold routes (the declared-gap callers that
+// reach target_serialize_bodied_arrow_from_model with the ground-row `add` scaffold) cannot render a
+// type-parameter list and keep the guard above; the produced-declaration route builds its scaffold
+// from the target's own rows, which may carry a type-parameter segment, so it enters here directly
+// (v2.compiler.emit_produced emit_produced_decl_with_target).
+fn target_serialize_bodied_arrow_with_scaffolded_header(
+  target: TargetModel,
+  emitted: Node,
+  tree: InferredTree,
+  declarations: SymbolIndex
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -765,10 +1166,11 @@ fn target_serialize_bodied_arrow_from_model(
             o: target_value_expression_projection_from_target(target: target),
             f: fn(projection) {
               bind_outcome(
-                o: target_project_arrow_body_to_value_expression(
+                o: project_arrow_body_from_inferred_facts(
                   arrow: emitted,
                   target: target,
-                  source_bool_form: dag_value_expression_projection().bool_literal_form,
+                  tree: tree,
+                  declarations: declarations,
                   handle_transform: fn(a, b, t) {
                     translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
                   }
@@ -798,7 +1200,6 @@ fn target_serialize_bodied_arrow_from_model(
       )
     }
   )
-  }
 }
 
 fn target_serialize_relation_row_from_model_bounded(
@@ -823,7 +1224,7 @@ fn target_serialize_relation_row_with_lex_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
-    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted), declarations: empty_symbol_index())
   } else {
     bind_outcome(
       o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
@@ -903,16 +1304,11 @@ fn serialize_relation_row_nested_bounded(
   unit: Symbol,
   tokens: List<Node>
 ) -> Outcome<TargetText> {
-  match map_get_checked(target.binding_spellings, unit) {
-    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
-      bind_outcome(
-        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens),
-        f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
-      )
-    Accepted { value: Absent, diagnostics: _ } =>
-      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  nest_by_spelled_unit(
+    target: target,
+    unit: unit,
+    body: fn() { serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens) }
+  )
 }
 
 // A nest's unit must be spelled by the target. The binding lookup's fallback to the symbol's own
@@ -967,7 +1363,7 @@ fn target_serialize_source_from_model_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
-    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted), declarations: empty_symbol_index())
   } else if is_dag_import_carrier(emitted: emitted) {
     bind_outcome(
       o: module_import_projection_from_target(target: target),
@@ -1100,8 +1496,6 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
-    TypeNode { connective: Occupancy } =>
-      outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     ComputationNode { behavior: _ } =>
@@ -1137,8 +1531,6 @@ fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outco
     TypeNode { connective: Disj } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Arrow } =>
-      outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
-    TypeNode { connective: Occupancy } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
@@ -1229,7 +1621,7 @@ fn type_expr_atom_binding_from_positional(
 }
 fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
   type_expr_atom_binding_from_positional(
-    targets: node_positional_child_targets(node: node),
+    targets: positional_child_target_nodes(node: node),
     node: node
   )
 }
@@ -1266,7 +1658,7 @@ fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Ou
 
 fn serialize_type_expr_emitted_positional_head_tail(node: Node) -> Outcome<TypeExprHeadTail> {
   list_head_and_tail(
-    xs: node_positional_child_targets(node: node),
+    xs: positional_child_target_nodes(node: node),
     node: node
   )
 }
@@ -1844,7 +2236,7 @@ fn serialize_type_expr_arrow_bounded(
         od: d,
         inner: bind_outcome(
           o: type_expr_arrow_split_from_types(
-            types: node_positional_child_targets(node: node),
+            types: positional_child_target_nodes(node: node),
             node: node
           ),
           f: fn(split) {
@@ -1906,12 +2298,12 @@ fn serialize_type_expr_emitted_wire_bounded(
         form: projection.instantiation_form,
         node: wire.node
       )
-    TargetTypeExprOccupancy =>
+    TargetTypeExprOptionalInstantiation =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
         projection: projection,
-        form: projection.occupancy_form,
+        form: projection.optional_instantiation_form,
         node: wire.node
       )
     TargetTypeExprRecord =>
@@ -2177,7 +2569,7 @@ fn serialize_type_expr_boundary_bounded(
               emitted: emitted
             )
           TargetTypeExprInstantiation => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
-          TargetTypeExprOccupancy => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
+          TargetTypeExprOptionalInstantiation => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprRecord => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprSum => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprArrow => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)

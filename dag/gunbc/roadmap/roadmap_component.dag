@@ -812,9 +812,15 @@ fn dispatch_terminal_apply_body() -> TsStmt {
             test: ts_binop(
               left: ts_ident(name: "band"),
               op: "===",
-              right: ts_lit_str(value: "fail")),
-            consequent: ts_lit_str(value: dispatch_caption_fail),
-            alternate: ts_lit_str(value: dispatch_caption_loud)),
+              right: ts_lit_str(value: "in-progress")),
+            consequent: ts_lit_str(value: dispatch_caption_requested),
+            alternate: ts_cond(
+              test: ts_binop(
+                left: ts_ident(name: "band"),
+                op: "===",
+                right: ts_lit_str(value: "fail")),
+              consequent: ts_lit_str(value: dispatch_caption_fail),
+              alternate: ts_lit_str(value: dispatch_caption_loud))),
         ),
       ),
     )),
@@ -825,7 +831,11 @@ fn dispatch_terminal_apply_body() -> TsStmt {
     js_classlist_call(method: "add", arg: ts_cond(
       test: ts_ident(name: "ok"),
       consequent: ts_lit_str(value: dispatch_class_ok),
-      alternate: ts_lit_str(value: dispatch_class_refused),
+      alternate: ts_cond(
+        test: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "in-progress")),
+        consequent: ts_lit_str(value: dispatch_class_requested),
+        alternate: ts_lit_str(value: dispatch_class_refused),
+      ),
     )),
     ts_if(
       cond: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "loud")),

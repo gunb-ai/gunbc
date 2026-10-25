@@ -1,7 +1,7 @@
 module v2.test.fixture.route_gap_admission_partition
 
-import std.types { List, String }
-import v2.std.collection { Map, empty_map, map_insert }
+import std.types { List, String, Map }
+import std.algebra { empty_map, map_insert }
 import v2.workflow.floor_route_gap {
   FloorRouteGapSuppressedRow,
   FloorRouteGapAdmissionRow,

@@ -3,18 +3,17 @@ module gunbc.runner.runner_unit_file
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.measure { hardware_thread_count_value }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import std.algebra { trim }
+import std.optional { Absent, Present }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.docker.endpoint { docker_host_env_var, docker_rootless_unix_endpoint }
 import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
-import extdeps.jobserver { jobserver_makeflags_fifo_auth, jobserver_makeflags_env_name }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import gunbc.compile_permit_scope {
   CompileParallelismRealization,
-  BorrowerHeldCooperativeHostFifo,
   InvocationLocalCargo
 }
 import extdeps.systemd.unit_file {
@@ -56,12 +55,22 @@ import gunbc.runner.runner_host_deploy {
   github_app_runner_org,
   runner_job_user_env_name,
 }
-import gunbc.fleet.fleet_posix_accounts { fleet_ci_runner_reported_contradiction }
 import gunbc.runner.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
-import gunbc.host.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
+import gunbc.ci.ci_runner_placement {
+  runner_deployment_plan, runner_host_deployment_for,
+  HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
+  host_deployment_refusal_text,
+  CapacityQuota, NoCpuCeiling,
+}
 import gunbc.runner.runner_registration_labels {
   runner_registration_labels, runner_browser_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_slot_registration_labels,
 }
+import gunbc.runner.runner_slot_job_role {
+  CiJobSlot, DeployJobSlot, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers,
+}
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_unit { runner_slot_unit_dropin_path }
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.build_cache.build_cache_unit {
   sccache_endpoint_env_assignment,
@@ -104,11 +113,8 @@ data gunbc_runner_unit_file_scope_disposition: ConstructionMechanism = SingleAut
 // WHAT WAS KEPT BECAUSE DROPPING IT WOULD HAVE BEEN A SILENT LOSS, and each was measured rather
 // than inherited:
 //
-//   After=/Wants=ctrl-jobserver.service -- the ordering dependency. The unit's MAKEFLAGS hands cargo
-//   a jobserver FIFO the daemon owns; without the ordering, a runner that starts first gets a job
-//   whose FIRST cargo invocation fails on a FIFO nobody is serving. This was found ABSENT from the
-//   live srv1 unit on 2026-08-26 -- the host had drifted to a 28-line file that had lost both lines
-//   -- so it is not a directive copied for safety, it is one the fleet is currently missing.
+//   (After=/Wants=ctrl-jobserver.service was kept here while the unit's MAKEFLAGS named the daemon's
+//   FIFO; both are deleted with the jobserver realization in A2.)
 //
 //   StartLimitIntervalSec=0 -- an ephemeral runner exits after every job and is restarted, which is
 //   normal operation and not failure. systemd's default rate limiter (five starts in ten seconds)
@@ -189,11 +195,6 @@ fn runner_unit_quoted_environment(name: String, value: String) -> SystemdService
   Environment { assignment: join(["'", name, "=", value, "'"], "") as NonEmptyStr }
 }
 
-// THE FIFO PATH'S ENV KEY, AUTHORED HERE BECAUSE THIS MODULE IS THE UNIT THAT WRITES IT.
-// The observer reads this same name; a second literal in the reader would be the fork
-// review 65509 named.
-data runner_unit_ctrl_jobserver_fifo_env_name: String = "CTRL_JOBSERVER_FIFO"
-
 fn runner_unit_app_environment(app: GithubAppRunnerConfig) -> List<SystemdServiceDirective> {
   [
     runner_unit_environment(name: "APP_ID", value: to_string(app.app.app_id.value)),
@@ -203,25 +204,14 @@ fn runner_unit_app_environment(app: GithubAppRunnerConfig) -> List<SystemdServic
   ]
 }
 
-// BOTH JOBSERVER LINES ARE DERIVED FROM ONE PATH, which is what makes them incapable of disagreeing.
-// ctrl's own template carries a comment warning that splitting them is what creates a
-// silent-misconfig boundary; here they cannot be split, because there is one parameter and the
-// MAKEFLAGS spelling comes from the cited jobserver authority rather than from a second literal.
-// UNDER THE CUTOVER ARM THERE IS NO MAKEFLAGS, AND THAT ABSENCE IS THE POINT. Invocation-local
-// parallelism advertises no shared pool, so handing cargo an auth clause would point it at a FIFO
-// nobody serves -- and cargo does not refuse an unrecognised clause, it builds unbounded. The bound
-// moves to CARGO_BUILD_JOBS, which cargo applies per invocation and which therefore cannot survive
-// the process that read it.
+// THE SLOT'S COMPILE PARALLELISM IS ONE ENVIRONMENT LINE: CARGO_BUILD_JOBS at the per-slot CPU quota.
+// The host-persistent jobserver arm and its two lines (CTRL_JOBSERVER_FIFO, MAKEFLAGS) and its
+// After=/Wants=ctrl-jobserver.service ordering are deleted with the realization (A2): no unit renders
+// them, and gunbc.runner.runner_host_file_converge's slot readback still refuses any slot carrying
+// MAKEFLAGS. CARGO_BUILD_JOBS is applied by cargo per invocation, so the bound cannot outlive the
+// process that read it.
 fn runner_unit_jobserver_environment(scope: CompileParallelismRealization) -> List<SystemdServiceDirective> {
   match scope {
-    BorrowerHeldCooperativeHostFifo { fifo_path: p, daemon_service: _ } =>
-      [
-        runner_unit_environment(name: runner_unit_ctrl_jobserver_fifo_env_name, value: p as String),
-        runner_unit_environment(
-          name: jobserver_makeflags_env_name,
-          value: jobserver_makeflags_fifo_auth(fifo_path: p as String),
-        ),
-      ]
     InvocationLocalCargo { jobs_per_slot: j } =>
       [
         runner_unit_environment(
@@ -229,30 +219,6 @@ fn runner_unit_jobserver_environment(scope: CompileParallelismRealization) -> Li
           value: to_string(hardware_thread_count_value(t: j)),
         ),
       ]
-  }
-}
-
-// THE ORDERING DEPENDENCY IS PART OF THE SAME FACT, not a constant beside it. Under the host-
-// persistent arm a runner that starts before the daemon gets a job whose first cargo invocation
-// fails on an unserved FIFO -- the pair was found ABSENT from the live srv1 unit on 2026-08-26.
-// Under the invocation-local arm the service does not exist, and a unit ordering itself After a
-// unit systemd cannot resolve is a fresh failure introduced by the cutover. So the dependency
-// arrives and departs WITH the environment that needs it.
-// Two accessors rather than one pair, because the emitted unit interleaves them -- After=network,
-// After=daemon, Wants=network, Wants=daemon -- and a single function returning the pair would have
-// reordered the file. The bytes are the artifact here (gunbc.generated_artifact_boundary), so a
-// refactor that changes them is a change, not a cleanup.
-fn runner_unit_jobserver_after(scope: CompileParallelismRealization) -> List<SystemdUnitDirective> {
-  match scope {
-    BorrowerHeldCooperativeHostFifo { fifo_path: _, daemon_service: svc } => [After { target: svc }]
-    InvocationLocalCargo { jobs_per_slot: _ } => []
-  }
-}
-
-fn runner_unit_jobserver_wants(scope: CompileParallelismRealization) -> List<SystemdUnitDirective> {
-  match scope {
-    BorrowerHeldCooperativeHostFifo { fifo_path: _, daemon_service: svc } => [Wants { target: svc }]
-    InvocationLocalCargo { jobs_per_slot: _ } => []
   }
 }
 
@@ -307,16 +273,10 @@ fn runner_unit_file(
               },
               After { target: "network-online.target" as NonEmptyStr },
             ],
-            concat(
-              runner_unit_jobserver_after(scope: permit_scope),
-              concat(
-                [Wants { target: "network-online.target" as NonEmptyStr }],
-                concat(
-                  runner_unit_jobserver_wants(scope: permit_scope),
-                  [StartLimitIntervalSec { duration: "0" as NonEmptyStr }],
-                ),
-              ),
-            ),
+            [
+              Wants { target: "network-online.target" as NonEmptyStr },
+              StartLimitIntervalSec { duration: "0" as NonEmptyStr },
+            ],
           ),
           service: concat(
             concat(
@@ -382,34 +342,75 @@ fn runner_unit_text(rendering: RunnerUnitFileRendering) -> RunnerUnitTextRenderi
 
 data runner_unit_system_path: String = join(["/etc/systemd/system/", runner_unit_template_name as String], "")
 
-// THE FIFO REALIZATION THE FLEET STILL RUNS. Fragment delivery is not the permit-scope cutover;
-// InvocationLocalCargo binds jobs_per_slot to gunbc_runner_cores_per_slot only when that cutover
-// lands. Until then the bytes must evidence the same fifo the observer reads.
-fn gunbc_fleet_runner_permit_scope() -> CompileParallelismRealization {
-  BorrowerHeldCooperativeHostFifo {
-    fifo_path: gunbc_runner_jobserver_default_fifo as NonEmptyStr,
-    daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
+// THE FLEET'S COMPILE PARALLELISM IS THE SLOT'S CPU QUOTA, AND IT IS PER HOST. The host-wide
+// ctrl-jobserver FIFO is retired (operator ruling 2026-10-14): the unit advertises no MAKEFLAGS and
+// orders itself after no daemon, and cargo's per-invocation CARGO_BUILD_JOBS is bound to the one
+// field gunbc.ci.ci_runner_placement host_cpu_allocation derives as that host's per-slot CPUQuota --
+// so the build cannot ask for more parallelism than the ceiling it runs under, and a killed build
+// leaks nothing, because nothing is lent. A host whose deployment refuses gets no unit at all
+// rather than a guessed width.
+type RunnerPermitScopeResolution
+  = RunnerPermitScopeDerived { scope: CompileParallelismRealization }
+  | RunnerPermitScopeRefused { reason: NonEmptyStr }
+
+fn gunbc_fleet_runner_permit_scope(host: HostIdentity) -> RunnerPermitScopeResolution {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: host) {
+    HostRunnerDeploymentRefused { refusal: r } =>
+      RunnerPermitScopeRefused {
+        reason: concat("runner_unit_file: the runner deployment refuses, so the slot CPU quota CARGO_BUILD_JOBS binds to is not derived: ", host_deployment_refusal_text(c: r.cause)) as NonEmptyStr,
+      }
+    HostRunnerDeploymentDerived { deployment: d } =>
+      match d.per_runner_cpu_boundary {
+        CapacityQuota { threads: t } => RunnerPermitScopeDerived { scope: InvocationLocalCargo { jobs_per_slot: t } }
+        NoCpuCeiling =>
+          RunnerPermitScopeRefused {
+            reason: "runner_unit_file: the deployment declares no per-slot CPU ceiling, so CARGO_BUILD_JOBS has no quota to bind to" as NonEmptyStr,
+          }
+      }
   }
 }
 
 // jit-runner.sh reads this name after unit_user mints the JIT config, then setpriv-drops to it.
-// THE XDG RUNTIME UID THE ROOTLESS DOCKER SOCKET PATH IS FORMED FROM.
-// fleet_posix_ci_runner_user.uid claims 1001 and is recorded in that module as wrong; consuming it
-// here would point DOCKER_HOST at another principal's socket. The NUMBER is
-// fleet_ci_runner_reported_contradiction.reported_uid — one fact, not a second 999. The figure is
-// TranscribedUncited until id(1) of RunnerHostDeploy.job_user grounds PosixUser.uid. It is a path
-// ingredient, not a safety verdict; the standing travels with the number.
-type RunnerJobUserRuntimeUidFigure {
-  uid: Int
-  evidence: CitedFigureStanding
-}
+// THE XDG RUNTIME UID THE ROOTLESS DOCKER SOCKET PATH IS FORMED FROM, READ FROM THE HOST AT CONVERGE
+// TIME. It used to be a committed figure (fleet_ci_runner_reported_contradiction.reported_uid,
+// TranscribedUncited), which kept depriv and the unit file withheld everywhere. It is now what
+// `getent passwd <job_user>` answers on the host being converged, over the same administrator edge
+// the converge writes through (gunbc.runner.runner_host_file_converge), so each host is grounded by
+// its own reading and a host that was not read refuses delivery. No uid is committed: the fleet
+// does not share one (reported 999 on srv1, srv3 and srv4 with differing gids), and a number typed
+// here would be a bet promoted to fact (DESIGN 4d).
+type RunnerJobUserUidReading
+  = JobUserUidObserved { uid: Int, passwd_line: NonEmptyStr }
+  | JobUserUidUnobserved { cause: NonEmptyStr }
 
-fn runner_job_user_xdg_runtime_uid() -> RunnerJobUserRuntimeUidFigure {
-  RunnerJobUserRuntimeUidFigure {
-    uid: fleet_ci_runner_reported_contradiction().reported_uid,
-    evidence: TranscribedUncited {
-      read_obligation: "id -u of RunnerHostDeploy.job_user on the host; do not substitute fleet_posix_ci_runner_user.uid" as NonEmptyStr,
-    },
+// THE PASSWD ENTRY IS name:passwd:uid:gid:gecos:home:shell (extdeps.posix.getent), and only an entry
+// that NAMES the asked-for user (or, for a numeric key, carries that uid) with a non-negative integer uid is a reading. getent exits 2 when
+// the key is absent; that, an empty answer, a second line or a different name are all unobserved.
+fn runner_job_user_uid_reading(job_user: NonEmptyStr, exit_code: Int, stdout: String, stderr: String) -> RunnerJobUserUidReading {
+  let lines = filter(split(s: stdout, delimiter: "\n"), l => trim(s: l) != "")
+  if exit_code != 0 {
+    JobUserUidUnobserved { cause: join(["getent passwd ", job_user as String, " exit=", to_string(exit_code), " ", trim(s: stderr)], "") as NonEmptyStr }
+  } else if length(lines) != 1 {
+    JobUserUidUnobserved { cause: join(["getent passwd ", job_user as String, " answered ", to_string(length(lines)), " lines, not one entry"], "") as NonEmptyStr }
+  } else {
+    let line = trim(s: fold(lines, init: "", f: (acc, l) => l))
+    let fields = split(s: line, delimiter: ":")
+    if length(fields) != 7 {
+      JobUserUidUnobserved { cause: concat("passwd entry does not have seven fields: ", line) as NonEmptyStr }
+    } else if fold(fields, init: "", f: (acc, f) => if acc == "" { f } else { acc }) != (job_user as String)
+      && match fields.skip(n: 2).first() { Absent => "" Present { value: f } => f } != (job_user as String) {
+      JobUserUidUnobserved { cause: concat("passwd entry matches the key by neither name nor uid: ", line) as NonEmptyStr }
+    } else {
+      match parse_int(s: match fields.skip(n: 2).first() { Absent => "" Present { value: f } => f }) {
+        Absent => JobUserUidUnobserved { cause: concat("passwd entry uid field is not an integer: ", line) as NonEmptyStr }
+        Present { value: uid } =>
+          if uid < 0 {
+            JobUserUidUnobserved { cause: concat("passwd entry uid is negative: ", line) as NonEmptyStr }
+          } else {
+            JobUserUidObserved { uid: uid, passwd_line: line as NonEmptyStr }
+          }
+      }
+    }
   }
 }
 
@@ -417,26 +418,26 @@ type RunnerUnitDeprivRendering
   = RunnerUnitDeprivRendered { drop_in: SystemdDropIn }
   | RunnerUnitDeprivRefused { reason: NonEmptyStr }
 
-// DOCKER_HOST is formed from the uid only when the figure is CitedToAuthority. TranscribedUncited
-// is a bet (DESIGN 4d): installing it would promote the bet. The uid is the contradiction row's
-// reported_uid, not a second literal.
-fn docker_host_from_runtime_uid_figure(figure: RunnerJobUserRuntimeUidFigure) -> String? {
-  match figure.evidence {
-    TranscribedUncited { read_obligation: _ } => none
-    CitedToAuthority { authority: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
-    ObservedByReceipt { observed: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
+// DOCKER_HOST is formed only from a uid the host itself answered; an unobserved host refuses depriv.
+fn docker_host_from_uid_reading(reading: RunnerJobUserUidReading) -> String? {
+  match reading {
+    JobUserUidUnobserved { cause: _ } => none
+    JobUserUidObserved { uid: u, passwd_line: _ } => Present { value: docker_rootless_unix_endpoint(uid: u) }
   }
 }
 
 fn runner_unit_depriv_directives(
   deploy: RunnerHostDeploy,
   host: HostIdentity,
-  figure: RunnerJobUserRuntimeUidFigure,
+  reading: RunnerJobUserUidReading,
 ) -> RunnerUnitDeprivRendering {
-  match docker_host_from_runtime_uid_figure(figure: figure) {
+  match docker_host_from_uid_reading(reading: reading) {
     Absent =>
       RunnerUnitDeprivRefused {
-        reason: "runner_unit_file: runner_job_user_xdg_runtime_uid is TranscribedUncited; refusing DOCKER_HOST rather than consuming a typed bet as a fact" as NonEmptyStr,
+        reason: concat("runner_unit_file: the job user's uid was not read from this host, so DOCKER_HOST cannot be formed: ", match reading {
+          JobUserUidUnobserved { cause: c } => c as String
+          JobUserUidObserved { uid: _, passwd_line: _ } => "observed"
+        }) as NonEmptyStr,
       }
     Present { value: docker_host } => {
       let cache = ci_cache_instance(host: host)
@@ -467,23 +468,15 @@ fn runner_unit_depriv_dropin_path() -> NonEmptyStr {
   runner_unit_dropin_path(file_name: runner_unit_depriv_dropin_file_name)
 }
 
-fn gunbc_runner_unit_depriv_dropin_text_from_figure(
+fn gunbc_runner_unit_depriv_dropin_text_from_reading(
   deploy: RunnerHostDeploy,
   host: HostIdentity,
-  figure: RunnerJobUserRuntimeUidFigure,
+  reading: RunnerJobUserUidReading,
 ) -> RunnerUnitTextRendering {
-  match runner_unit_depriv_directives(deploy: deploy, host: host, figure: figure) {
+  match runner_unit_depriv_directives(deploy: deploy, host: host, reading: reading) {
     RunnerUnitDeprivRefused { reason: r } => RunnerUnitTextRefused { reason: r }
     RunnerUnitDeprivRendered { drop_in: d } => RunnerUnitText { text: serialize_systemd_drop_in(drop_in: d) }
   }
-}
-
-fn gunbc_runner_unit_depriv_dropin_text(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
-  gunbc_runner_unit_depriv_dropin_text_from_figure(
-    deploy: deploy,
-    host: host,
-    figure: runner_job_user_xdg_runtime_uid(),
-  )
 }
 
 // THE READINESS LABEL REACHES THE RUNNER AS A TEMPLATE DROP-IN, NOT A SECOND FRAGMENT. systemd reads
@@ -512,6 +505,51 @@ fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity) -> RunnerUni
   }
 }
 
+// THE DEPLOY SLOT'S ROLE REACHES ITS UNIT AS AN INSTANCE DROP-IN, never a change to the template
+// one. systemd applies actions-runner@.service.d first and actions-runner@<instance>.service.d after
+// it, and a later Environment= of the same name wins, so this file replaces exactly three values for
+// exactly one instance: the job user, the label set, and DOCKER_HOST -- cleared, because the template
+// value is the CI job user's rootless socket and inheriting it would hand the deploy account a path
+// into the CI account's daemon (gunbc.runner.runner_slot_job_role runner_slot_job_role_runs_containers).
+// A CI slot has no such file: Absent is its answer, so the CI population renders byte-for-byte what it
+// did before.
+data runner_unit_slot_role_dropin_file_name: NonEmptyStr = "20-slot-role.conf" as NonEmptyStr
+
+fn runner_unit_slot_role_dropin_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_slot_unit_dropin_path(slot: slot, file_name: runner_unit_slot_role_dropin_file_name)
+}
+
+fn runner_unit_slot_role_dropin_text(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> RunnerUnitTextRendering? {
+  let role = runner_slot_job_role(slot: slot)
+  match role {
+    CiJobSlot => Absent
+    DeployJobSlot =>
+      Present { value: match runner_slot_registration_labels(slot: slot) {
+        RegistrationLabelsRefused { host: _, cause: c } =>
+          RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
+        RegistrationLabelsResolved { labels: labels } =>
+          match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
+            RunnerUnitLabels { json_text: labels_json } =>
+              RunnerUnitText {
+                text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
+                  sections: [DropInServiceSection { directives: concat(
+                    [
+                      runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: deploy.job_user) as String),
+                      runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
+                    ],
+                    if runner_slot_job_role_runs_containers(role: role) { [] } else { [runner_unit_environment(name: docker_host_env_var, value: "")] },
+                  ) }],
+                }),
+              }
+            RunnerUnitLabelsHostedRunner =>
+              RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
+            RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
+              RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
+          }
+      } }
+  }
+}
+
 fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
   match runner_registration_labels(host: host) {
     RegistrationLabelsRefused { host: _, cause: c } =>
@@ -519,22 +557,25 @@ fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostId
         reason: concat("runner_unit_file: ", c as String) as NonEmptyStr,
       }
     RegistrationLabelsResolved { labels: labels } =>
-      runner_unit_text(
-        rendering: gunbc_runner_unit_file(
-          deploy: deploy,
-          spec: SelfHosted { labels: labels },
-          permit_scope: gunbc_fleet_runner_permit_scope(),
-        ),
-      )
+      match gunbc_fleet_runner_permit_scope(host: host) {
+        RunnerPermitScopeRefused { reason: r } => RunnerUnitTextRefused { reason: r }
+        RunnerPermitScopeDerived { scope: scope } =>
+          runner_unit_text(
+            rendering: gunbc_runner_unit_file(
+              deploy: deploy,
+              spec: SelfHosted { labels: labels },
+              permit_scope: scope,
+            ),
+          )
+      }
   }
 }
 
 // THE TEARDOWN REACHES THE FLEET AS A DROP-IN. Depriv is a second drop-in from this same module:
 // User= from deploy.unit_user, the job-user env, the CI sccache instance env, and the job user's
-// rootless docker endpoint only when runner_job_user_xdg_runtime_uid is CitedToAuthority. The
-// production figure is TranscribedUncited; depriv then refuses so converge cannot overwrite live
-// depriv.conf from a bet, and the fragment is withheld with it. When both land, fragment User=
-// is deploy.runner_user, not root.
+// rootless docker endpoint only when the job user's uid was read from the host. On a host whose
+// read failed, depriv refuses so converge cannot overwrite live depriv.conf from a bet, and the
+// fragment is withheld with it. When both land, fragment User= is deploy.runner_user, not root.
 //
 // ONE AUTHORITY, TWO ARTIFACTS. The teardown pair comes from runner_unit_teardown_directives, the
 // same function the fragment render uses. The `70-` prefix sorts after every numbered drop-in the

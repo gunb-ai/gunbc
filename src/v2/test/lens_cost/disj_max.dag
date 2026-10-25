@@ -4,7 +4,9 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { LinearCost, SizeVariable, cost_lens }
 import v2.std.node {
   Atom,
-  Occupancy,
+  Loop,
+  LoopBoundEdge,
+  core_edge_label,
   ComputationNode,
   Disj,
   Edge,
@@ -12,6 +14,7 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -32,15 +35,23 @@ data disj_max_cheap_body: Node = Node {
         kind: TypeNode { connective: Atom { identity: ^disj_max_cheap_body_atom } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
 }
 
+data disj_max_expensive_body_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^disj_max_expensive_body_measure_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
 data disj_max_expensive_body: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: ComputationNode { behavior: Loop },
   children: [
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: disj_max_expensive_body_measure, declaration: NotADeclaration },
     Edge {
       label: Positional,
       target: Node {
@@ -52,11 +63,13 @@ data disj_max_expensive_body: Node = Node {
               kind: TypeNode { connective: Atom { identity: ^disj_max_expensive_body_atom } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-            }
+            },
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -65,8 +78,8 @@ data disj_max_expensive_body: Node = Node {
 data disj_max_input: Node = Node {
   kind: TypeNode { connective: Disj },
   children: [
-    Edge { label: Positional, target: disj_max_cheap_body },
-    Edge { label: Positional, target: disj_max_expensive_body }
+    Edge { label: Positional, target: disj_max_cheap_body, declaration: NotADeclaration },
+    Edge { label: Positional, target: disj_max_expensive_body, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -74,7 +87,7 @@ data disj_max_input: Node = Node {
 test fn disj_max_claim_holds() -> Bool {
   match cost_lens(n: disj_max_input) {
     Holds { value: actual } =>
-      actual == LinearCost { variable: SizeVariable { source: disj_max_expensive_body } }
+      actual == LinearCost { variable: SizeVariable { source: disj_max_expensive_body_measure } }
     _ => false
   }
 }

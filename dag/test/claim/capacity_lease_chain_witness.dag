@@ -9,7 +9,11 @@ import product.capacity.event_chain {
   AppendDecision, AppendAdmitted, AppendStale, decide_append, chain_from_head, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
   EventDecoded, EventUndecodable,
 }
-import product.capacity.lease { LeaseFence, lease_fence_of, fence_verdict, FenceVerdict, FenceCurrent, FenceObsolete, FenceAhead, FenceForeignGrant, LeasePolicy, LeaseGrant, lease_grant, ReleaseLaw, FencedResource, QuiescenceRequired, QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { cas_generation, cas_generation_first, cas_generation_count }
+import std.durable_exclusive_hold { DurableHoldHolderLiveness, HolderObservedDead, HolderLivenessUnobservable }
+import std.resource_release_law { ReleaseLaw, FencedResource, QuiescenceRequired, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence }
+import product.capacity.lease { LeaseFence, lease_fence_of, fence_verdict, FenceVerdict, FenceCurrent, FenceObsolete, FenceAhead, FenceForeignGrant, LeasePolicy, LeaseGrant, lease_grant, capacity_after_expiry, quiescence_as_holder_liveness }
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
@@ -130,20 +134,22 @@ test fn two_writers_from_one_head_produce_one_admission_one_stale_and_then_a_ful
 // its event is in the chain, a grant from a different admission at the same generation is foreign,
 // and expiry frees capacity under a fenced resource but holds it pending quiescence otherwise.
 test fn the_fence_rejects_obsolete_and_foreign_grants_and_expiry_frees_only_under_a_fence() -> Bool {
-  let current = lease_fence_of(admitting_event: w_id(s: "e5"), generation: 5)
-  let older = lease_fence_of(admitting_event: w_id(s: "e3"), generation: 3)
-  let foreign = lease_fence_of(admitting_event: w_id(s: "e5x"), generation: 5)
-  let newer = lease_fence_of(admitting_event: w_id(s: "e5"), generation: 7)
+  let current = lease_fence_of(admitting_event: w_id(s: "e5"), generation: match cas_generation(n: 5) { Present { value: g } => g  Absent => cas_generation_first() })
+  let older = lease_fence_of(admitting_event: w_id(s: "e3"), generation: match cas_generation(n: 3) { Present { value: g } => g  Absent => cas_generation_first() })
+  let foreign = lease_fence_of(admitting_event: w_id(s: "e5x"), generation: match cas_generation(n: 5) { Present { value: g } => g  Absent => cas_generation_first() })
+  let newer = lease_fence_of(admitting_event: w_id(s: "e5"), generation: match cas_generation(n: 7) { Present { value: g } => g  Absent => cas_generation_first() })
   let grant = lease_grant(reference: "turn-1" as NonEmptyStr, fence: current, granted_at: 1000, policy: w_policy())
+  let unobserved = quiescence_as_holder_liveness(quiescent: false, evidence: "unobserved" as NonEmptyStr)
+  let dead = quiescence_as_holder_liveness(quiescent: true, evidence: "quiescent" as NonEmptyStr)
   (match fence_verdict(current: current, presented: current) { FenceCurrent => true  FenceObsolete { presented: _, current: _ } => false  FenceAhead { presented: _, current: _ } => false  FenceForeignGrant { presented: _, current: _ } => false })
-    && (match fence_verdict(current: current, presented: older) { FenceObsolete { presented: p, current: c } => p == 3 && c == 5  FenceCurrent => false  FenceAhead { presented: _, current: _ } => false  FenceForeignGrant { presented: _, current: _ } => false })
+    && (match fence_verdict(current: current, presented: older) { FenceObsolete { presented: p, current: c } => cas_generation_count(g: p) == 3 && cas_generation_count(g: c) == 5  FenceCurrent => false  FenceAhead { presented: _, current: _ } => false  FenceForeignGrant { presented: _, current: _ } => false })
     && (match fence_verdict(current: current, presented: foreign) { FenceForeignGrant { presented: _, current: _ } => true  FenceCurrent => false  FenceObsolete { presented: _, current: _ } => false  FenceAhead { presented: _, current: _ } => false })
-    && (match fence_verdict(current: current, presented: newer) { FenceAhead { presented: p, current: c } => p == 7 && c == 5  FenceCurrent => false  FenceObsolete { presented: _, current: _ } => false  FenceForeignGrant { presented: _, current: _ } => false })
+    && (match fence_verdict(current: current, presented: newer) { FenceAhead { presented: p, current: c } => cas_generation_count(g: p) == 7 && cas_generation_count(g: c) == 5  FenceCurrent => false  FenceObsolete { presented: _, current: _ } => false  FenceForeignGrant { presented: _, current: _ } => false })
     && grant.expires_at == 1300
-    && (match capacity_after_expiry(law: FencedResource, grant: grant, at: 1299, quiescence: QuiescenceUnobserved) { LeaseNotExpired { until: u } => u == 1300  CapacityFreed => false  CapacityHeldPendingQuiescence => false })
-    && (match capacity_after_expiry(law: FencedResource, grant: grant, at: 1300, quiescence: QuiescenceUnobserved) { CapacityFreed => true  LeaseNotExpired { until: _ } => false  CapacityHeldPendingQuiescence => false })
-    && (match capacity_after_expiry(law: QuiescenceRequired, grant: grant, at: 1300, quiescence: QuiescenceUnobserved) { CapacityHeldPendingQuiescence => true  CapacityFreed => false  LeaseNotExpired { until: _ } => false })
-    && (match capacity_after_expiry(law: QuiescenceRequired, grant: grant, at: 1300, quiescence: Quiescent { observed_at: 1290 }) { CapacityFreed => true  CapacityHeldPendingQuiescence => false  LeaseNotExpired { until: _ } => false })
+    && (match capacity_after_expiry(law: FencedResource, grant: grant, at: 1299, holder: unobserved) { LeaseNotExpired { until: u } => u == 1300  CapacityFreed => false  CapacityHeldPendingQuiescence => false })
+    && (match capacity_after_expiry(law: FencedResource, grant: grant, at: 1300, holder: unobserved) { CapacityFreed => true  LeaseNotExpired { until: _ } => false  CapacityHeldPendingQuiescence => false })
+    && (match capacity_after_expiry(law: QuiescenceRequired, grant: grant, at: 1300, holder: unobserved) { CapacityHeldPendingQuiescence => true  CapacityFreed => false  LeaseNotExpired { until: _ } => false })
+    && (match capacity_after_expiry(law: QuiescenceRequired, grant: grant, at: 1300, holder: dead) { CapacityFreed => true  CapacityHeldPendingQuiescence => false  LeaseNotExpired { until: _ } => false })
 }
 
 // THE GRANT IS MINTED FROM THE ADMISSION, never from the proposal: its fence is the admitted event
@@ -153,7 +159,7 @@ test fn a_grant_carries_the_admitted_event_as_its_fence_and_the_declared_deadlin
   match grant_from_admission(request: req, admission: AppendAdmitted { new_head: w_id(s: "e2"), generation: 2 }, policy: w_policy()) {
     Absent => false
     Present { value: g } =>
-      (g.fence.grant as String) == "e2" && g.fence.generation == 2 && g.granted_at == 1100 && g.expires_at == 1400
+      (g.fence.grant as String) == "e2" && cas_generation_count(g: g.fence.generation) == 2 && g.granted_at == 1100 && g.expires_at == 1400
         && (match grant_from_admission(request: req, admission: AppendStale { expected: HeadAbsent, observed: HeadAbsent }, policy: w_policy()) { Absent => true  Present { value: _ } => false })
   }
 }

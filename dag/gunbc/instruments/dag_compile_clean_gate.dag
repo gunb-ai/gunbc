@@ -1,18 +1,20 @@
 module gunbc.instruments.dag_compile_clean_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.ci.ci_gate { gate_receipt_exit, gate_receipt_failure_detail }
-import gunbc.instruments.dag_compile_clean_transport { run_clean_tree_compile }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { NonEmptyStr }
+import gunbc.ci.ci_gate { gate_receipt_exit, gate_receipt_failure_detail, GateNotRun, GateReceipt }
 
-// The loudness half: the floor witness collapses this gate's ProcessExit to Bool via
-// std.process.exit_ok, so compile-clean reds reported only returned Bool(false). The gate
-// consumes the executor's one in-run compile receipt; the failure-receipt companion projects the
-// same receipt's located diagnostic without a second compile. BOTH HALVES NOW READ ONE RECEIPT.
-// Before this retype the body branched on a Bool and, on the false side, INVENTED its reason --
-// the fixed string 'dag compile-clean gate failed: clean-tree compile over witness layer roots' --
-// while the companion read the located detail from a SECOND builtin over the same process global:
-// the exit reason was a constant that could not distinguish a failed compile from a gate that never
-// ran. Now the receipt carries verdict and detail together and gunbc.ci.ci_gate projects both.
+// The floor compile-clean receipt produce/install chain had no executing route after
+// `run_required_floor` was deleted. The surfaces were removed rather than aliased onto
+// `witness_layer_roots_compile_clean_check` (a resolve check). This gate is still named
+// by `ci_spec` `DagCompileCleanGate`; it answers GateNotRun so a caller cannot read a
+// missing receipt as a compile-clean verdict.
+
+fn withdrawn_floor_compile_clean_receipt() -> GateReceipt {
+  GateNotRun {
+    cause: "floor compile-clean receipt produce/install deleted; no executor installs a receipt" as NonEmptyStr
+  }
+}
 
 fn dag_compile_clean_failure_reason(exit: ProcessExit) -> String {
   match exit {
@@ -22,7 +24,7 @@ fn dag_compile_clean_failure_reason(exit: ProcessExit) -> String {
 }
 
 fn run_dag_compile_clean_gate_body() -> ProcessExit {
-  gate_receipt_exit(r: run_clean_tree_compile())
+  gate_receipt_exit(r: withdrawn_floor_compile_clean_receipt())
 }
 
 fn run_dag_compile_clean_gate() -> ProcessExit {
@@ -30,7 +32,7 @@ fn run_dag_compile_clean_gate() -> ProcessExit {
 }
 
 fn dag_compile_clean_failure_receipt() -> String {
-  gate_receipt_failure_detail(r: run_clean_tree_compile())
+  gate_receipt_failure_detail(r: withdrawn_floor_compile_clean_receipt())
 }
 
 fn main() -> ProcessExit {

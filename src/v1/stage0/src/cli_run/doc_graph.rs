@@ -90,15 +90,10 @@ pub(crate) fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGrap
         OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
-    let key = extra_roots.join("\u{1f}");
     if let Some(r) = guard.get(extra_roots) {
-        shared_fill::record_hit("doc_graph_report", &key);
         return r.clone();
     }
-    shared_fill::begin_fill();
-    let start = std::time::Instant::now();
     let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
-    shared_fill::record_fill("doc_graph_report", &key, start.elapsed().as_nanos() as u64);
     guard.insert(extra_roots.to_vec(), report.clone());
     report
 }

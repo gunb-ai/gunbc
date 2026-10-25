@@ -1,6 +1,6 @@
 module v2.compiler.program_partition
 
-import std.types { List }
+import std.types { List, Map }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.compiler.emit { emit }
@@ -15,7 +15,8 @@ import v2.compiler.infer {
   InferredFactsEntry,
   InferredTree,
   admitted_inferred_facts_entry,
-  facts_map_from_entries,
+  facts_partial_function_of_index,
+  inferred_facts_index_enter,
   inferred_facts_subject_node
 }
 import extdeps.communication.medium { Medium }
@@ -23,10 +24,8 @@ import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.lens.application { subterm_at }
-import std.algebra { Empty, list_append, list_snoc_item, fold_list, FreeMonoid }
-import v2.std.collection {
-  Map
-}
+import std.algebra { Empty, empty_map, list_append, list_snoc_item, fold_list, FreeMonoid }
+
 import std.optional {
   Absent,
   Optional,
@@ -65,7 +64,8 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.type_binder { node_inferred_subtree_nodes }
-import v2.std.node {
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Conj,
@@ -80,7 +80,6 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
   Arrow,
-  Occupancy,
   Instantiation,
   Positional,
   Bind,
@@ -120,7 +119,6 @@ fn partition_user_semantic_type_shape(node: Node) -> Bool {
     TypeNode { connective: Conj } => true
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -145,7 +143,6 @@ fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
       TypeNode { connective: Atom { identity: _ } } => Absent
       TypeNode { connective: Disj } => Absent
       TypeNode { connective: Arrow } => Absent
-      TypeNode { connective: Occupancy } => Absent
       TypeNode { connective: Instantiation } => Absent
       ComputationNode { behavior: _ } => Absent
     }
@@ -206,7 +203,6 @@ fn partition_collect_user_semantic_types_from_module(
     TypeNode { connective: Atom { identity: _ } } => acc
     TypeNode { connective: Disj } => acc
     TypeNode { connective: Arrow } => acc
-    TypeNode { connective: Occupancy } => acc
     TypeNode { connective: Instantiation } => acc
     ComputationNode { behavior: _ } => acc
   }
@@ -413,7 +409,7 @@ fn partition_subtree_root_contained_in_ambient(
   ambient_root: Node,
   segment_root: Node
 ) -> Bool {
-  (segment_root == ambient_root)
+  node_same_occurrence(a: segment_root, b: ambient_root)
     || node_in_subtree_by_identity(root: ambient_root, needle: segment_root)
 }
 
@@ -463,19 +459,15 @@ fn partition_closure_entry_for_node(
   }
 }
 
-fn partition_empty_inferred_facts_entries() -> List<InferredFactsEntry> {
-  []
-}
-
 fn facts_closure_entries_fold(
   ambient: InferredTree,
   segment_root: Node,
   boundary: PartitionBoundaryPolicy,
   nodes: List<Node>
-) -> Outcome<List<InferredFactsEntry>> {
+) -> Outcome<Map<Node, List<InferredFacts>>> {
   fold_list(
     xs: nodes,
-    empty: outcome_accepted(value: partition_empty_inferred_facts_entries()),
+    empty: outcome_accepted(value: empty_map()),
     cons: fn(acc, node) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -489,7 +481,7 @@ fn facts_closure_entries_fold(
             ),
             f: fn(entry) {
               outcome_accepted(
-                value: list_snoc_item(xs: entries, item: entry)
+                value: inferred_facts_index_enter(index: entries, entry: entry)
               )
             }
           )
@@ -511,7 +503,7 @@ fn facts_closure_fold(partition: ProgramPartition) -> Outcome<PartialFunction<No
           nodes: node_inferred_subtree_nodes(root: partition.root)
         ),
         f: fn(entries) {
-          facts_map_from_entries(entries: entries)
+          outcome_accepted(value: facts_partial_function_of_index(index: entries))
         }
       )
   }
@@ -580,7 +572,6 @@ fn partition_segment_root_is_transform_computation(root: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Branch } => false
@@ -595,7 +586,7 @@ fn partition_segment_is_ambient_arrow_body_behavior(
 ) -> Bool {
   match partition.segment {
     SubtreeRoot { root: segment_root } =>
-      (segment_root != partition.ambient.root)
+      !node_same_occurrence(a: segment_root, b: partition.ambient.root)
         && target_value_expr_arrow_has_value_expression_body(arrow: partition.ambient.root)
         && node_in_subtree_by_identity(
           root: partition.ambient.root,
@@ -647,7 +638,8 @@ fn emit_partition_with_target(
   partition: ProgramPartition,
   target: TargetModel,
   realization_host: TargetModel,
-  kinds: FreeMonoid<DeclaredTypeKind>
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  declarations: SymbolIndex
 ) -> Outcome<Medium<String>> {
   if partition_segment_is_ambient_arrow_body_behavior(partition: partition) {
     bind_outcome(
@@ -664,7 +656,13 @@ fn emit_partition_with_target(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
         if produced_module_bodies_declare_members(root: tree.root) {
-          emit_module_body_members(root: tree.root, target: target, realization_host: realization_host, kinds: kinds)
+          emit_module_body_members(
+            tree: tree,
+            target: target,
+            realization_host: realization_host,
+            kinds: kinds,
+            declarations: declarations
+          )
         } else {
           emit(tree: tree, target: target)
         }
@@ -682,12 +680,13 @@ fn emit_partition_with_target(
 fn emit_partition(
   partition: ProgramPartition,
   target: TargetModel,
-  kinds: FreeMonoid<DeclaredTypeKind>
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  declarations: SymbolIndex
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: partition_derive_target_for_emit(partition: partition, target: target),
     f: fn(derived_target) {
-      emit_partition_with_target(partition: partition, target: derived_target, realization_host: target, kinds: kinds)
+      emit_partition_with_target(partition: partition, target: derived_target, realization_host: target, kinds: kinds, declarations: declarations)
     }
   )
 }
@@ -703,7 +702,8 @@ fn emit_for_target(
     segment: segment,
     target: target,
     boundary: boundary,
-    kinds: no_type_declaration_kinds()
+    kinds: no_type_declaration_kinds(),
+    declarations: empty_symbol_index()
   )
 }
 
@@ -712,12 +712,16 @@ fn emit_for_target(
 // in it: the caller that still holds the module's NormalizedTree passes its type_declaration_kinds (the
 // closure door does), and emit_for_target, whose callers hold only the inferred tree, passes none -- so a
 // plain Conj member there refuses as undecided rather than being guessed a record.
+// DECLARED GAP: emit_for_target also passes empty_symbol_index. Callers with a ResolvedTree use
+// emit_for_target_with_declarations (closure_emission). Frozen compiler_closure_emit stays on
+// emit_for_target until that route is deleted.
 fn emit_for_target_with_declarations(
   program: InferredTree,
   segment: ProgramSegment,
   target: TargetModel,
   boundary: PartitionBoundaryPolicy,
-  kinds: FreeMonoid<DeclaredTypeKind>
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  declarations: SymbolIndex
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: resolve_program_partition(
@@ -726,7 +730,7 @@ fn emit_for_target_with_declarations(
       boundary: boundary
     ),
     f: fn(partition) {
-      emit_partition(partition: partition, target: target, kinds: kinds)
+      emit_partition(partition: partition, target: target, kinds: kinds, declarations: declarations)
     }
   )
 }

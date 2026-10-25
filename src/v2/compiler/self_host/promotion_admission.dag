@@ -13,21 +13,21 @@ import v2.compiler.self_host.generation {
 import v2.compiler.compile {
   CompileLens,
   CompileLensGrain,
-  CompileLensRoot,
-  CompileLensSubtree,
   compile_lens_grain_eq,
   RequiredLensCoverage,
-  RequiredLensCoverageClosed,
-  RequiredLensCoverageRefused,
   RequiredLensCoverageRow,
   required_lens_join_cause_reason,
-  required_lens_roster_digest_of
+  required_lens_roster_digest_of,
+  CompileLensRoot,
+  CompileLensSubtree,
+  RequiredLensCoverageClosed,
+  RequiredLensCoverageRefused
 }
 import std.decl_ref { declaration_ref_display_key }
 import std.content_hash { content_hash_atom }
-import std.types { NonEmptyStr, List }
-import std.algebra { freemonoid_empty, list_snoc_item, fold_list, length }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { NonEmptyStr, List, Map }
+import std.algebra { freemonoid_empty, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
+
 import v2.std.integer { Int }
 import std.optional { Absent, Present }
 import v2.std.node { Hash, Symbol }

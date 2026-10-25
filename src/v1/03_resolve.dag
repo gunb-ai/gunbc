@@ -557,6 +557,7 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
     KahnDrainState { sorted: new_sorted, in_degree_map: new_degrees }
   })
 
+  let new_zero_seed: Map<String, Bool> = empty_map()
   let new_zero_set = queue |> flat_map(node =>
     match map_get(adjacency, node) {
       Present { value: ns } => ns
@@ -567,7 +568,7 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
       Present { value: 0 } => true
       _ => false
     }
-  ) |> fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  ) |> fold(init: new_zero_seed, f: (acc, name) => map_insert(acc, name, true))
   let new_zero = map_keys(new_zero_set) |> sort_by(name => name)
 
   kahn_drain(

@@ -239,7 +239,7 @@ type ArtifactRequest
 // DECLARED FRONTIER (DESIGN section 3c). These three families are consumed today only by the store
 // semantics (std.materialization_object, extdeps.realization.materialization_store_local) and their
 // executed controls. Their production consumer is the EMITTED NATIVE ROUTE (the successor of
-// gunbc.witness.v2_native_route's operator-invoked instrument), which lands in a later lane.
+// v2.workflow.v2_native_route's operator-invoked instrument), which lands in a later lane.
 // TRIGGER: the emitted native route constructs these requests from its own receipt identities and
 // serves or commits them through the local store instead of re-preparing every module per run.
 // ComputeWorkRequest: one host-run unit of compute work (gunbc.compute.work_provider_local) -- a cargo
@@ -326,7 +326,8 @@ fn result_content_identity(
   decl_ref(module_path: "std.materialization_object", decl_name: "result_content_identity_from_payloads"),
   decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "evaluation_result_binding_same_eval_different_content_is_conflict"),
   decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "evaluation_result_binding_same_preimage_different_bucket_is_unverifiable"),
-  decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "offered_result_of")
+  decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "offered_result_of"),
+  decl_ref(module_path: "test.claim.native_test_realization_witness", decl_name: "ntr_result")
 ] {
   ResultContentIdentity { bucket: bucket, canonical_preimage: canonical_preimage }
 }

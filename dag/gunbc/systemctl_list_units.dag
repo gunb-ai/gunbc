@@ -6,7 +6,11 @@ import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.systemd.systemctl
 
 fn systemctl_list_units_local(instance_glob: NonEmptyStr) -> String? {
-  let result = systemd.Systemctl.ListUnits(pattern: instance_glob)
+  systemctl_list_units_local_typed(instance_glob: instance_glob, unit_type: "service")
+}
+
+fn systemctl_list_units_local_typed(instance_glob: NonEmptyStr, unit_type: String) -> String? {
+  let result = systemd.Systemctl.ListUnits(pattern: instance_glob, unit_type: unit_type)
   if result.success {
     Present { value: result.stdout }
   } else {
@@ -34,8 +38,8 @@ fn systemctl_list_units_line_as_unit(line: String) -> NonEmptyStr {
   }
 }
 
-fn systemctl_list_units_active_services(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {
-  match systemctl_list_units_local(instance_glob: instance_glob) {
+fn systemctl_list_units_active_of_type(instance_glob: NonEmptyStr, unit_type: String) -> List<NonEmptyStr>? {
+  match systemctl_list_units_local_typed(instance_glob: instance_glob, unit_type: unit_type) {
     Present { value: stdout } =>
       let trimmed = trim(stdout)
       if trimmed == "" {
@@ -46,6 +50,10 @@ fn systemctl_list_units_active_services(instance_glob: NonEmptyStr) -> List<NonE
       }
     Absent => none
   }
+}
+
+fn systemctl_list_units_active_services(instance_glob: NonEmptyStr) -> List<NonEmptyStr>? {
+  systemctl_list_units_active_of_type(instance_glob: instance_glob, unit_type: "service")
 }
 
 fn systemctl_list_units_all_states_local(instance_glob: NonEmptyStr) -> String? {

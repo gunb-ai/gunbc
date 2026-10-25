@@ -1,5 +1,6 @@
 module extdeps.transports.file
 
+import std.optional { optional_absent, optional_present }
 import std.types { FermiDepth, Int, String }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.filesystem.filesystem_io { FilesystemFailureKind }
@@ -20,6 +21,11 @@ type FileTransportConfig {
   base_path: String
 }
 
+// A MOCK IS KEYED BY ITS TRANSPORT'S OWN RESPONSE DISCRIMINATOR (shell: exit status; rest: HTTP status).
+// The file transport observes no status, so its `mock_response` entry is the bare reading `=> payload
+// "doc"`, once; a status-keyed entry on a file operation refuses at the realization wall
+// (v2.compiler.service_realization realization_patternless_arm_step).
+//
 // WHAT THE FILE TRANSPORT OBSERVES, as a value: an operation that succeeded with its byte count and
 // any content it read or listed, or one that failed with the host's CLOSED failure kind and its
 // message. This is the observation a modeled operation realization (v2.std.operation_realization)
@@ -51,13 +57,13 @@ type FileOutputChannel
   | FileContent
 
 fn file_output_channel_of_key(key: String) -> FileOutputChannel? {
-  if key == "write_success" || key == "read_success" || key == "delete_success" || key == "list_success" || key == "success" { Present { value: FileSuccess } }
-  else if key == "bytes_written" || key == "bytes" || key == "byte_count" { Present { value: FileByteCount } }
-  else if key == "path" { Present { value: FilePath } }
-  else if key == "error" { Present { value: FileError } }
-  else if key == "error_kind" { Present { value: FileErrorKind } }
-  else if key == "content" || key == "entries" { Present { value: FileContent } }
-  else { none }
+  if key == "write_success" || key == "read_success" || key == "delete_success" || key == "list_success" || key == "success" { optional_present(value: FileSuccess) }
+  else if key == "bytes_written" || key == "bytes" || key == "byte_count" { optional_present(value: FileByteCount) }
+  else if key == "path" { optional_present(value: FilePath) }
+  else if key == "error" { optional_present(value: FileError) }
+  else if key == "error_kind" { optional_present(value: FileErrorKind) }
+  else if key == "content" || key == "entries" { optional_present(value: extdeps.transports.file.FileContent) }
+  else { optional_absent() }
 }
 
 // THE FIELDS A `transport file { .. }` BLOCK DECLARES: the operation's declared request, not
@@ -67,7 +73,7 @@ type FileBindingField
   | FileBindingVerb
 
 fn file_binding_field_of_key(key: String) -> FileBindingField? {
-  if key == "path" { Present { value: FileBindingPath } }
-  else if key == "verb" { Present { value: FileBindingVerb } }
-  else { none }
+  if key == "path" { optional_present(value: FileBindingPath) }
+  else if key == "verb" { optional_present(value: FileBindingVerb) }
+  else { optional_absent() }
 }

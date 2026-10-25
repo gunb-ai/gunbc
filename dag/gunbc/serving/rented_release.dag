@@ -1,0 +1,462 @@
+module gunbc.serving.rented_release
+
+import std.types { String, NonEmptyStr, Bool, Int, List, Timestamp }
+import std.optional { Present, Absent }
+import std.algebra { list_append }
+import std.apply_mode { ApplyMode, Plan, Apply }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.scoped_authorization { ScopedAuthorization, AuthorizationPending, AuthorizationGranted, AuthorizationDenied }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.tools.gnu_coreutils { rm_force_command }
+import extdeps.procps.kill { procps_ng_kill_term_pgid_argv }
+import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
+import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths, serving_partial_directory, serving_sequence_endangers }
+import gunbc.serving.rented_allocation {
+  RentedServingAllocation, RentedAllocationIdentity, RentedAllocationImported, RentedAllocationAcquired,
+  rented_allocation_wire, rented_engine_served_name,
+}
+import gunbc.serving.rented_host_grant { RentedHostSubject, rented_host_authorizes_subject, rented_host_subject }
+
+// RELEASE OF ONE RENTED ALLOCATION: FOUR ORDERED LEGS, EACH A CONVERGENCE OVER AN INDEPENDENT READBACK (DESIGN
+// 3d), THEN THE READBACK THAT PROVES THE END. A leg never selects and never reads the world itself: it judges a
+// supplied requirement against a supplied reading and answers nothing-to-undo, undo, or a typed refusal. The
+// local sum RentedLegDecision stands where std.upsert_decision UpsertDecision stands in
+// gunbc.serving.serving_launch, and the divergence is stated: that sum's Apply constructor is spelled the same
+// as std.apply_mode ApplyMode Apply, no import aliasing exists, and this module must match on both.
+//
+// A refused leg stops the line: the later legs and the destroy are not decided past it. A NEVER-STARTED
+// allocation (rented, not started or enrolled) is not a refusal anywhere: nothing listening, no anchor file
+// and no partials are each a typed nothing-to-undo, so a failed startup cannot strand a paid card.
+//
+// DRAIN, REVOKE AND CLEAN RUN BEFORE THE DESTROY ALTHOUGH THE INSTANCE TAKES ITS DISK AND PROCESSES WITH IT,
+// because the destroy may be a Plan (a FlexPolicy actuation of Plan) or the instance may be retained or reused: release must leave the host correct in either case.
+type RentedLegDecision<P>
+  = RentedLegNothingToUndo
+  | RentedLegUndo { plan: P }
+  | RentedLegRefused { reason: NonEmptyStr }
+
+// ---- DRAIN: the engine serving_launch started, judged by the port and the models it answers with.
+type RentedDrainReading
+  = RentedDrainNotListening
+  | RentedDrainListening { process_group: Int, healthy: Bool, models: NinferModelsList }
+  | RentedDrainUnreadable { cause: NonEmptyStr }
+
+fn rented_drain_decision(allocation: RentedServingAllocation, reading: RentedDrainReading) -> RentedLegDecision<List<String>> {
+  match reading {
+    RentedDrainNotListening => RentedLegNothingToUndo
+    RentedDrainUnreadable { cause: c } => RentedLegRefused { reason: join(["drain readback unreadable: ", c as String], "") as NonEmptyStr }
+    RentedDrainListening { process_group: g, healthy: _, models: m } =>
+      match m {
+        NinferModelsUnreadable { cause: c } => RentedLegRefused { reason: join(["served model ids unreadable, so the listener is not known to be this allocation's engine: ", c as String], "") as NonEmptyStr }
+        NinferModelsAdvertised { ids: ids } =>
+          if any(xs: ids, predicate: fn(i) { i == (rented_engine_served_name(engine: allocation.engine) as String) }) {
+            RentedLegUndo { plan: procps_ng_kill_term_pgid_argv(pgid: g) }
+          } else {
+            RentedLegRefused { reason: "something listens on the engine port but does not serve this allocation's model id; refusing to signal a process that is not its engine" as NonEmptyStr }
+          }
+      }
+  }
+}
+
+// ---- THE HOST'S REACHABILITY, a typed reading and never a skip. The on-card legs (drain, clean) need the card;
+// a card that never got past acquisition (engine never up, ssh never answered) cannot be read. SILENCE IS NOT
+// DOWN: an ssh that did not answer is read as a down host only when a control from the same vantage reached
+// something else, which excludes a fault on our side. A silent host with a control that did not reach, or was
+// not read, is ambiguous and refuses, because it cannot tell a dead card from our own network. The same
+// distinction DESIGN 4d keeps between a probe that failed and an axis nobody probed (compare
+// gunbc.site_pxe_edge BootNetworkReachabilityDeficit); no shared reachability type carries a
+// vantage control, and extdeps.ssh.session Reachability answers a bare Bool that cannot make the distinction.
+type RentedVantageControl
+  = RentedVantageReached
+  | RentedVantageNotReached
+  | RentedVantageUnread { cause: NonEmptyStr }
+
+type RentedHostReading
+  = RentedHostAnswered { drain: RentedDrainReading, store: RentedStoreReading }
+  | RentedHostSilent { control: RentedVantageControl }
+  | RentedHostUnreadable { cause: NonEmptyStr }
+
+// The reason an on-card leg is held when the host did not answer and silence is not established as down.
+// Answered hosts never reach here.
+fn rented_host_ambiguity(host: RentedHostReading) -> NonEmptyStr? {
+  match host {
+    RentedHostAnswered { drain: _, store: _ } => none
+    RentedHostUnreadable { cause: c } => Present { value: join(["host reachability unreadable: ", c as String], "") as NonEmptyStr }
+    RentedHostSilent { control: c } =>
+      match c {
+        RentedVantageReached => none
+        RentedVantageNotReached => Present { value: "the host did not answer and the vantage control did not reach either, so a fault on our side is not excluded; refusing to read the host as down" as NonEmptyStr }
+        RentedVantageUnread { cause: u } => Present { value: join(["the host did not answer and the vantage control is unread, so a fault on our side is not excluded: ", u as String], "") as NonEmptyStr }
+      }
+  }
+}
+
+// ---- REVOKE. Two facts, kept apart.
+// THE GRANT IS NOT REVOKED: std.scoped_authorization models no early end (expires_at ends it, and a claim is
+// consumed per attempt), so the typed outcome states when it ends and nothing is removed. The row below carries
+// the capability that would let release end it.
+type RentedGrantStanding
+  = RentedGrantNothingGranted
+  | RentedGrantRunsToExpiry { expiries: List<Timestamp> }
+
+fn rented_grant_expiry(a: ScopedAuthorization<RentedHostSubject>) -> Timestamp? {
+  match a {
+    AuthorizationGranted { grant: g, claim: _ } => Present { value: g.expires_at }
+    AuthorizationPending { request: _ } => none
+    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => none
+  }
+}
+
+fn rented_grant_standing(allocation: RentedServingAllocation, authorizations: List<ScopedAuthorization<RentedHostSubject>>) -> RentedGrantStanding {
+  let subject = rented_host_subject(declaration: allocation.host)
+  let held = filter(authorizations, a => rented_host_authorizes_subject(a: a, subject: subject))
+  let expiries = fold(
+    held,
+    init: [],
+    f: (acc, a) =>
+      match rented_grant_expiry(a: a) {
+        Absent => acc
+        Present { value: t } => list_append(left: acc, right: [t])
+      },
+  )
+  if count(expiries) == 0 {
+    RentedGrantNothingGranted
+  } else {
+    RentedGrantRunsToExpiry { expiries: expiries }
+  }
+}
+
+// THE KNOWN-HOST ANCHOR IS A LAB-SIDE FILE the attempt owns (gunbc.fleet.fleet_known_hosts_anchor
+// known_hosts_anchor_path), and it is the file that module says nothing deletes. It is removed with rm -f
+// (never -rf) only when the readback names a path of that shape.
+type RentedAnchorReading
+  = RentedAnchorAbsent
+  | RentedAnchorPresent { path: NonEmptyStr }
+  | RentedAnchorUnreadable { cause: NonEmptyStr }
+
+fn rented_anchor_path_is_an_attempt_anchor(path: String) -> Bool {
+  starts_with(s: path, prefix: "target/fleet-ssh-attempt-")
+    && string_contains(s: path, pattern: "-known-hosts-")
+    && !string_contains(s: path, pattern: "..")
+    && !string_contains(s: path, pattern: "//")
+    && !ends_with(s: path, suffix: "/")
+}
+
+fn rented_anchor_decision(reading: RentedAnchorReading) -> RentedLegDecision<List<ArgvCommand>> {
+  match reading {
+    RentedAnchorAbsent => RentedLegNothingToUndo
+    RentedAnchorUnreadable { cause: c } => RentedLegRefused { reason: join(["known-host anchor readback unreadable: ", c as String], "") as NonEmptyStr }
+    RentedAnchorPresent { path: p } =>
+      if rented_anchor_path_is_an_attempt_anchor(path: p as String) {
+        RentedLegUndo { plan: [rm_force_command(path: p as String)] }
+      } else {
+        RentedLegRefused { reason: join(["the named file is not an attempt-owned known-host anchor, so it is not removed: ", p as String], "") as NonEmptyStr }
+      }
+  }
+}
+
+// ---- CLEAN: stale partials. The reading is every entry under the partial directory that no live attempt
+// owns; the decision removes only paths under that directory derived from THIS allocation's store roots and
+// then judges the whole sequence with the placement module's own protected-path predicate.
+type RentedStoreReading
+  = RentedStoreNoPartials
+  | RentedStorePartials { entries: List<String> }
+  | RentedStoreUnreadable { cause: NonEmptyStr }
+
+fn rented_entry_under_partial(roots: ServingStoreRoots, entry: String) -> Bool {
+  starts_with(s: entry, prefix: concat(serving_partial_directory(roots: roots), "/"))
+}
+
+fn rented_clean_decision(roots: ServingStoreRoots, protected: ServingProtectedPaths, reading: RentedStoreReading) -> RentedLegDecision<List<ArgvCommand>> {
+  match reading {
+    RentedStoreNoPartials => RentedLegNothingToUndo
+    RentedStoreUnreadable { cause: c } => RentedLegRefused { reason: join(["store readback unreadable: ", c as String], "") as NonEmptyStr }
+    RentedStorePartials { entries: es } =>
+      if count(es) == 0 {
+        RentedLegNothingToUndo
+      } else if any(xs: es, predicate: fn(e) { !rented_entry_under_partial(roots: roots, entry: e) }) {
+        RentedLegRefused { reason: "a reported partial is outside the allocation's partial directory, so it is not removed" as NonEmptyStr }
+      } else {
+        let commands = map(es, e => rm_force_command(path: e))
+        if serving_sequence_endangers(commands: commands, protected: protected) {
+          RentedLegRefused { reason: "removing the reported partials would endanger a protected store path" as NonEmptyStr }
+        } else {
+          RentedLegUndo { plan: commands }
+        }
+      }
+  }
+}
+
+// ---- DESTROY, GUARDED. ctrl shares the Vast account, so the instance the destroy names is the instance READ,
+// and it is destroyed only when its id equals the allocation's bound instance id. Inside the guard the origin
+// decides: an Acquired allocation additionally requires the caller-supplied owner label (the flex policy
+// owner) on the read instance; an Imported one is admitted by its typed origin and is not asked for a label.
+// WHAT RELEASE READS OF AN INSTANCE, AND NOTHING ELSE: its id, its owner label and its status text. Every
+// supplier maps its own instance into this (the Vast row: id, label, actual_status; the EC2 row: instance
+// id, the owner tag, the state name), so release is one fold over every supplier and names none of them.
+type RentedObservedInstance {
+  id: NonEmptyStr
+  owner_label: String?
+  status: String?
+}
+
+type RentedInstanceReading
+  = RentedInstanceObserved { instance: RentedObservedInstance }
+  | RentedInstanceAbsent
+  | RentedInstanceUnreadable { cause: NonEmptyStr }
+
+// The Destroy operation's input without its secret: the key is the executor's, never a value here.
+type RentedDestroyRequest {
+  instance_id: NonEmptyStr
+}
+
+type RentedDestroyDecision
+  = RentedDestroyAlreadyGone
+  | RentedDestroyPlanned { request: RentedDestroyRequest }
+  | RentedDestroyAuthorized { request: RentedDestroyRequest }
+  | RentedDestroyRefusedIdMismatch { bound: NonEmptyStr, read: NonEmptyStr }
+  | RentedDestroyRefusedLabel { required: NonEmptyStr, read: String? }
+  | RentedDestroyRefusedUnreadable { cause: NonEmptyStr }
+
+fn rented_bound_instance_id(allocation: RentedServingAllocation) -> NonEmptyStr {
+  allocation.identity.contract
+}
+
+fn rented_instance_is_bound(allocation: RentedServingAllocation, instance: RentedObservedInstance) -> Bool {
+  (instance.id as String) == (rented_bound_instance_id(allocation: allocation) as String)
+}
+
+fn rented_label_matches(instance: RentedObservedInstance, required: NonEmptyStr) -> Bool {
+  match instance.owner_label {
+    Absent => false
+    Present { value: l } => l == (required as String)
+  }
+}
+
+fn rented_destroy_admitted(allocation: RentedServingAllocation, instance: RentedObservedInstance, required_label: NonEmptyStr, mode: ApplyMode) -> RentedDestroyDecision {
+  if !rented_instance_is_bound(allocation: allocation, instance: instance) {
+    RentedDestroyRefusedIdMismatch { bound: rented_bound_instance_id(allocation: allocation), read: instance.id }
+  } else {
+    let request = RentedDestroyRequest { instance_id: instance.id }
+    let admitted = match allocation.origin {
+      RentedAllocationImported { imported_by: _, imported_at: _, found_running: _ } => true
+      RentedAllocationAcquired { owner: _, asked_at: _, asked_rate: _ } => rented_label_matches(instance: instance, required: required_label)
+    }
+    if admitted {
+      match mode {
+        Plan => RentedDestroyPlanned { request: request }
+        Apply => RentedDestroyAuthorized { request: request }
+      }
+    } else {
+      RentedDestroyRefusedLabel { required: required_label, read: instance.owner_label }
+    }
+  }
+}
+
+fn rented_destroy_decision(allocation: RentedServingAllocation, reading: RentedInstanceReading, required_label: NonEmptyStr, mode: ApplyMode) -> RentedDestroyDecision {
+  match reading {
+    RentedInstanceAbsent => RentedDestroyAlreadyGone
+    RentedInstanceUnreadable { cause: c } => RentedDestroyRefusedUnreadable { cause: c }
+    RentedInstanceObserved { instance: i } => rented_destroy_admitted(allocation: allocation, instance: i, required_label: required_label, mode: mode)
+  }
+}
+
+// THE ACTUATION IS THE SUPPLIER'S. An authorized request leaves this module as data; the supplier row
+// performs it (Vast: product.fabric.flex_vast_loop flex_vast_destroy_perform) and its answer is never
+// evidence of release: the gone readback below is what decides.
+
+// ---- GONE READBACK. A LATER read showing the instance absent is the only thing that proves release. An
+// instance still listed under the bound id is pending, never success; a read that names another id is not a
+// reading of this allocation and refuses.
+type RentedGoneVerdict
+  = RentedGone
+  | RentedPendingStillListed { status: String? }
+  | RentedGoneReadRefused { reason: NonEmptyStr }
+
+fn rented_gone_verdict(allocation: RentedServingAllocation, reading: RentedInstanceReading) -> RentedGoneVerdict {
+  match reading {
+    RentedInstanceAbsent => RentedGone
+    RentedInstanceUnreadable { cause: c } => RentedGoneReadRefused { reason: join(["gone readback unreadable: ", c as String], "") as NonEmptyStr }
+    RentedInstanceObserved { instance: i } =>
+      if rented_instance_is_bound(allocation: allocation, instance: i) {
+        RentedPendingStillListed { status: i.status }
+      } else {
+        RentedGoneReadRefused { reason: "the readback names another instance id, so it does not read this allocation" as NonEmptyStr }
+      }
+  }
+}
+
+// ---- THE RELEASE: the receipt, versioned, naming the allocation and each leg's outcome. Spend and health bind
+// to the allocation id it names.
+type RentedLegOutcome
+  = RentedLegOutcomeNothingToUndo
+  | RentedLegOutcomeToUndo { actions: List<String> }
+  | RentedLegOutcomeRefused { reason: NonEmptyStr }
+  | RentedLegOutcomeNotReached
+  | RentedLegOutcomeNotPerformedHostSilent
+
+type RentedReleaseOutcome
+  = RentedReleaseGone
+  | RentedReleasePlanned { request: RentedDestroyRequest }
+  | RentedReleasePending { request: RentedDestroyRequest, status: String? }
+  | RentedReleaseHeld { leg: RentedLeg, reason: NonEmptyStr }
+  | RentedReleaseDestroyRefused { decision: RentedDestroyDecision }
+  | RentedReleaseGoneReadRefused { reason: NonEmptyStr }
+
+// The legs that can hold a release. The anchor leg removes the lab-side known-host file; it does not revoke the grant.
+type RentedLeg
+  = RentedLegDrain
+  | RentedLegKnownHostAnchor
+  | RentedLegClean
+
+type RentedReleaseReceiptV1 {
+  allocation: NonEmptyStr
+  drain: RentedLegOutcome
+  grant: RentedGrantStanding
+  anchor: RentedLegOutcome
+  clean: RentedLegOutcome
+  outcome: RentedReleaseOutcome
+}
+
+fn rented_leg_outcome_of_commands(decision: RentedLegDecision<List<ArgvCommand>>) -> RentedLegOutcome {
+  match decision {
+    RentedLegNothingToUndo => RentedLegOutcomeNothingToUndo
+    RentedLegUndo { plan: cs } => RentedLegOutcomeToUndo { actions: map(cs, c => shell_command_render(command: c)) }
+    RentedLegRefused { reason: r } => RentedLegOutcomeRefused { reason: r }
+  }
+}
+
+fn rented_leg_outcome_of_words(decision: RentedLegDecision<List<String>>) -> RentedLegOutcome {
+  match decision {
+    RentedLegNothingToUndo => RentedLegOutcomeNothingToUndo
+    RentedLegUndo { plan: ws } => RentedLegOutcomeToUndo { actions: [join(ws, " ")] }
+    RentedLegRefused { reason: r } => RentedLegOutcomeRefused { reason: r }
+  }
+}
+
+fn rented_leg_refusal(outcome: RentedLegOutcome) -> NonEmptyStr? {
+  match outcome {
+    RentedLegOutcomeRefused { reason: r } => Present { value: r }
+    RentedLegOutcomeNothingToUndo => none
+    RentedLegOutcomeToUndo { actions: _ } => none
+    RentedLegOutcomeNotReached => none
+    RentedLegOutcomeNotPerformedHostSilent => none
+  }
+}
+
+// An on-card leg's outcome when the host did not answer: a host established silent yields NotPerformed (never
+// NothingToUndo, which would read an unread card as clean), and an ambiguous silence is a typed refusal. The
+// answered case computes the leg's own decision at its call site.
+fn rented_unanswered_on_card_outcome(host: RentedHostReading) -> RentedLegOutcome {
+  match rented_host_ambiguity(host: host) {
+    Present { value: r } => RentedLegOutcomeRefused { reason: r }
+    Absent => RentedLegOutcomeNotPerformedHostSilent
+  }
+}
+
+// THE READINGS THE ORDER NEEDS, supplied together. before is the read that feeds the guard; after is the later
+// read that proves the end, and it is supplied by a caller that has performed (or not) the actuation, so a
+// Plan with an unchanged world yields the pending verdict it should.
+type RentedReleaseReadings {
+  host: RentedHostReading
+  authorizations: List<ScopedAuthorization<RentedHostSubject>>
+  anchor: RentedAnchorReading
+  before: RentedInstanceReading
+  after: RentedInstanceReading
+}
+
+fn rented_release_receipt(
+  allocation: RentedServingAllocation,
+  roots: ServingStoreRoots,
+  protected: ServingProtectedPaths,
+  required_label: NonEmptyStr,
+  mode: ApplyMode,
+  readings: RentedReleaseReadings,
+) -> RentedReleaseReceiptV1 {
+  let drain = match readings.host {
+    RentedHostAnswered { drain: d, store: _ } => rented_leg_outcome_of_words(decision: rented_drain_decision(allocation: allocation, reading: d))
+    other => rented_unanswered_on_card_outcome(host: other)
+  }
+  let drain_refused = match rented_leg_refusal(outcome: drain) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let anchor = if drain_refused {
+    RentedLegOutcomeNotReached
+  } else {
+    rented_leg_outcome_of_commands(decision: rented_anchor_decision(reading: readings.anchor))
+  }
+  let anchor_refused = match rented_leg_refusal(outcome: anchor) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let clean = if drain_refused || anchor_refused {
+    RentedLegOutcomeNotReached
+  } else {
+    match readings.host {
+      RentedHostAnswered { drain: _, store: st } => rented_leg_outcome_of_commands(decision: rented_clean_decision(roots: roots, protected: protected, reading: st))
+      other => rented_unanswered_on_card_outcome(host: other)
+    }
+  }
+  let grant = rented_grant_standing(allocation: allocation, authorizations: readings.authorizations)
+  let held = match rented_leg_refusal(outcome: drain) {
+    Present { value: r } => Present { value: RentedReleaseHeld { leg: RentedLegDrain, reason: r } }
+    Absent =>
+      match rented_leg_refusal(outcome: anchor) {
+        Present { value: r } => Present { value: RentedReleaseHeld { leg: RentedLegKnownHostAnchor, reason: r } }
+        Absent =>
+          match rented_leg_refusal(outcome: clean) {
+            Present { value: r } => Present { value: RentedReleaseHeld { leg: RentedLegClean, reason: r } }
+            Absent => none
+          }
+      }
+  }
+  RentedReleaseReceiptV1 {
+    allocation: rented_allocation_wire(id: allocation.identity),
+    drain: drain,
+    grant: grant,
+    anchor: anchor,
+    clean: clean,
+    outcome: match held {
+      Present { value: h } => h
+      Absent =>
+        match rented_destroy_decision(allocation: allocation, reading: readings.before, required_label: required_label, mode: mode) {
+          RentedDestroyAlreadyGone => RentedReleaseGone
+          RentedDestroyPlanned { request: q } => RentedReleasePlanned { request: q }
+          RentedDestroyAuthorized { request: q } =>
+            match rented_gone_verdict(allocation: allocation, reading: readings.after) {
+              RentedGone => RentedReleaseGone
+              RentedPendingStillListed { status: s } => RentedReleasePending { request: q, status: s }
+              RentedGoneReadRefused { reason: r } => RentedReleaseGoneReadRefused { reason: r }
+            }
+          other => RentedReleaseDestroyRefused { decision: other }
+        }
+    },
+  }
+}
+
+// DECLARED FRONTIERS (DESIGN 3c, 4b).
+data rented_release_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_grant_standing"),
+    reason: "std.scoped_authorization models no early end of a grant, so release reports when the operator grant for the card expires and revokes nothing",
+    dissolution: unbound_dissolution(description: "a std.scoped_authorization early-end transition on ScopedAuthorization, sufficient for release to end a held grant and read the end back"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_release_receipt"),
+    reason: "no flex caller invokes rented_release_receipt yet: binding product.fabric.flex_market FlexOwnedCard to its RentedServingAllocation is the flex lane's step",
+    dissolution: unbound_dissolution(description: "trigger:the flex wet create produces RentedAllocationAcquired allocations per card and calls rented_release_receipt, resolving flex_release_pass's FlexDestroy to its allocation and passing the FlexPolicy actuation as mode"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.fabric.flex_vast_loop", decl_name: "flex_vast_destroy_perform"),
+    reason: "no claim executes flex_vast_destroy_perform: vast_ai.InstanceLifecycle Destroy is Bearer-authenticated, and extdeps.transports.rest RestAuthenticated replay is unexecuted because the invocation input_digest limbs still use a host hash, so only the decisions are witnessed",
+    dissolution: unbound_dissolution(description: "trigger:an authenticated REST replay route in extdeps.transports.rest executes (RestExchangeFixture matched against a RestAuthenticated invocation), and a claim drives flex_vast_destroy_perform over it asserting the route"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_drain_decision"),
+    reason: "no producer yet supplies RentedHostReading: the vantage control and the ssh answer are read by the flex caller, not by this module",
+    dissolution: unbound_dissolution(description: "trigger:the flex caller that resolves a FlexDestroy to its allocation supplies the host reading from an ssh attempt and a control to a second endpoint"),
+  ),
+]

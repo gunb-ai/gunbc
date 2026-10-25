@@ -2,11 +2,11 @@ module gunbc.instrument_targets
 
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
-import gunbc.witness.v2_native_route { NativeRouteMemberRow }
-import v2.compiler.native_test_vocabulary {
-  NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
-  NativeTestRefused
+import gunbc.native_serve_probe_plan {
+  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
+  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
+import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -19,7 +19,9 @@ import gunbc.target_binding {
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
   NativeServeProgramProducer,
+  CliWireProgramProducer,
   native_claim_deadline_if_entry,
+  native_serve_probe_if_entry,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -50,8 +52,8 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, NativeProcessMemoryReading,
-  DependencyDemandCensusProducer,
+  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
+  NativeCensusVerbProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -165,7 +167,7 @@ fn compile_clean_diagnostic_census_label() -> Label {
 // module also behave as the seed does on a discriminating corpus, and that half lives in the three
 // behavioral-receipt instruments beside this one. Nor is it the second generation: the BUILT binary
 // emitting the same closure is the v2 -> v2 boundary, and it refuses today because
-// `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main answers `census` and
+// `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main answers `census` and
 // `adjudicate` and has no compile mode at all. That refusal is the honest next position and belongs
 // in this instrument when a driver can reach it.
 //
@@ -182,7 +184,7 @@ fn self_host_label() -> Label {
 
 // THE V2-EXCLUSIVE CLI INSTRUMENT: THE DOOR THE SELF-HOST STEP STOPS IN FRONT OF.
 //
-// `//gunbc/instruments:self-host` establishes that the seed can emit `v2.compiler.compile` and
+// `//gunbc/instruments:self-host` establishes that the seed can emit `v2.compiler.source_root_eval` and
 // build it clean, and its own row above states what that does NOT establish: the second generation,
 // because that entry declares `SourceRootEvalDriver`, whose rendered main answers `census` and
 // `adjudicate` and has no compile mode. `v2.cli.compile_cli` is the entry that has one -- a
@@ -216,7 +218,7 @@ fn self_host_label() -> Label {
 // The two closures are DIFFERENT rather than nested, and neither contains the other's
 // `compiler_pipeline_entry` declaration -- which is precisely why they can coexist under the
 // emitter's exactly-one rule. They are also close in size, so size is not the argument: the
-// argument is membership. This closure reaches modules `v2.compiler.compile`'s does not,
+// argument is membership. This closure reaches modules `v2.compiler.source_root_eval`'s does not,
 // `v2.extdeps.languages.rust` among them, so a green here and a green there are two facts about
 // two compilations and neither is evidence about the other. One label carrying both would let a
 // regression in either be reported under a name that does not say which.
@@ -229,7 +231,7 @@ fn v2_native_cli_label() -> Label {
 // whose constants test.claim.compiler_gate_emit_build_lane_witness holds against these rows --
 // takes them from here, so a moved subject cannot leave a stale closure reported as covered.
 fn self_host_entry() -> String {
-  "src/v2/compiler/compile.dag"
+  "src/v2/compiler/source_root_eval.dag"
 }
 
 fn v2_native_cli_entry() -> String {
@@ -237,10 +239,10 @@ fn v2_native_cli_entry() -> String {
 }
 
 // THE NATIVE FRONTIER INSTRUMENT: the same adjudicating run as the native route, over the whole
-// native universe, answered by gunbc.native_frontier_ratchet instead of by the lane's route
+// native universe (//v2/...), answered by v2.workflow.native_frontier_ratchet instead of by the lane's route
 // qualification. The two are different questions. Qualification asks whether this run was a sound
 // route. The frontier asks whether this run's debt equals the committed roster
-// (gunbc.native_frontier_roster), and it passes only on `held` or `advanced`. It is a separate label
+// (v2.workflow.native_frontier_roster), and it passes only on `held` or `advanced`. It is a separate label
 // because its verdict is a separate fact: a regressed identity turns this red, while qualification
 // counts a classified refusal and stays green.
 //
@@ -248,7 +250,7 @@ fn v2_native_cli_entry() -> String {
 // 2026-09-27). The nightly `native-frontier` workflow that ran it on a schedule was deleted by that
 // ruling; the lane is promoted under a separate work item and is a declared frontier until it lands
 // (gunbc.rung_drop v2_native_frontier_nightly_cadence). The run's printed proposal is what a mint or
-// re-mint pull request carries (gunbc.native_frontier_debt). Its subject corpus is the self-host instrument's, because the adjudicating binary is
+// re-mint pull request carries (v2.workflow.native_frontier_debt). Its subject corpus is the self-host instrument's, because the adjudicating binary is
 // that instrument's emitted closure.
 fn v2_native_frontier_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-frontier" } }
@@ -257,10 +259,12 @@ fn v2_native_frontier_label() -> Label {
 // THE NATIVE CENSUS INSTRUMENT: the emitted compiler's `census-infer` verb over the self-host
 // corpus (census part 2, docs/plans/census-part-2-inference-design.md section 6: the same label,
 // reaching one more stage). Every front-end, resolve and infer refusal is GROUPED BY THE FATAL REASON
-// (v2.compiler.compile native_census_cause_groups_add), with the stage and head kept as member
+// (v2.compiler.source_root_eval native_census_cause_groups_add), with the stage and head kept as member
 // fields. An import cascade is collapsed to its root (census C): each cascaded module is one member
-// under the root's reason. At infer the only cascade is a refused closure provider leading an
-// importer's chain (native_census_infer_cascade). The roots are ranked by closure fan-out
+// under the root's reason. A module refused through a refused provider's declaration is filed at resolve,
+// as a member of that provider's root (native_census_chain_cascade), and every infer refusal is a root of
+// its own: no cross-module refusal reaches infer (the census part 2 header in
+// v2.compiler.source_root_eval says why). The roots are ranked by closure fan-out
 // (native_census_roots_ranked), and each is marked against the native test target's closure
 // (native_census_subject_closure). The receipt's stderr names the host memory budget's source. It is
 // THE route to that census: the binary's `census` / `census-resolve` / `census-infer` verbs remain
@@ -277,7 +281,7 @@ fn v2_native_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
 }
 
-// THE SCOPED CENSUS (gunbc.plans.census_scoped_run): the same report, over one subject's closure as
+// THE SCOPED CENSUS: the same report, over one subject's closure as
 // v2.compiler.module_acquisition acquires it around its blocks, rather than over the whole tree.
 // `gunbc test //gunbc/instruments:v2-native-census-scoped`. The SUBJECT IS THIS ROW'S OWN FACT, bound
 // here and never a CLI option: the first subject is the native test target (native-seven); a later
@@ -302,9 +306,39 @@ fn type_declaration_use_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "type-declaration-use-census" } }
 }
 
+// THE OCCURRENCE-BINDING CENSUS THE NAMESPACE-XL WAVES ARE DRIVEN FROM (operator ruling 2026-10-15:
+// every name the corpus uses is an ordinary declaration reached by import). One row per module-level
+// reference occurrence of `dag` + `src/v2`, read off resolve's one binding record
+// (v2.compiler.occurrence_binding_census) by the same native census-infer walk; the ambient rows are
+// the names a wave has left to move, grouped by spelling and table by the reader
+// (gunbc.instruments.ambient_name_census_reading), which also refuses when any module recorded one
+// occurrence twice. `gunbc test //gunbc/instruments:ambient-name-census`. A report: its numbers are a
+// receipt, not transcribed into committed prose (DESIGN section 6).
+fn ambient_name_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "ambient-name-census" } }
+}
+
+// THE AMBIENT-OPERATION DISPOSITION CENSUS: the ambient-name census's own run, read by
+// gunbc.instruments.ambient_operation_disposition_reading for which disposition each ambient primitive
+// spelling takes (existing declaration, missing declaration, compiler-generated, host substrate). It
+// measures and rules nothing. `gunbc test //gunbc/instruments:ambient-operation-disposition-census`.
+fn ambient_operation_disposition_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "ambient-operation-disposition-census" } }
+}
+
+// THE NAMESPACE-WAVE BINDING DIFF (gunbc.instruments.namespace_wave_binding_diff): a wave's PR, read
+// occurrence by occurrence against its merge base. The only admitted change is an ambient occurrence
+// binding the home a gunbc.namespace_cut.ambient_name_home row names; any other re-binding refuses,
+// naming the occurrence. Run by the wave's author on the wave's own PR; on no required path (the
+// deleted namespace-wave admission wall is not rebuilt: gunbc.rung_drop
+// namespace_wave_admission_wall_removed). `gunbc test //gunbc/instruments:namespace-wave-binding-diff`.
+fn namespace_wave_binding_diff_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "namespace-wave-binding-diff" } }
+}
+
 // THE NATIVE PROCESS'S OWN MEMORY (gunbc.instruments.native_process_memory_reading): the emitted v2
 // compiler's `census` verb over the self-host corpus (`dag` + `src/v2`, a superset of the
-// v2.compiler.compile closure, because the census verbs take roots, not an entry), with a one-module
+// v2.compiler.source_root_eval closure, because the census verbs take roots, not an entry), with a one-module
 // control run first. Peak resident bytes and wall time of that ONE child, reaped by wait4, so the seed's
 // emission and cargo's build are outside the reading. A report: its numbers are a receipt and are not
 // transcribed into committed prose or a test (DESIGN sections 5 and 6). Self-compilation is a distinct
@@ -313,7 +347,7 @@ fn native_process_memory_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-process-memory-census" } }
 }
 
-// THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
+// THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.source_root_eval`'s
 // closure, `gunbc.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
 // rows from the derived module DAG, the emission's returned edges and the transitive unit
 // dependencies, `v1.compiler.stage0_crates` renders those rows with the one partition renderer,
@@ -348,6 +382,19 @@ fn native_crypto_vectors_label() -> Label {
 
 fn native_crypto_vectors_entry() -> String {
   "dag/gunbc/instruments/native_crypto_vectors.dag"
+}
+
+// THE RECURRING-FAILURE-MODE RUNG CENSUS: the typed `rung` field of every
+// gunbc.recurring_failure_mode row folded by the NativeClaimDriver program
+// gunbc.instruments.rfm_rung_census -- counts of read / below-ceiling / unread-by-cause rows, a
+// refusal of any malformed standing (current at or above ceiling, blank trigger capability), and the
+// discriminating REDs with positive controls. `gunbc test //gunbc/instruments:rfm-rung-census`.
+fn rfm_rung_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "rfm-rung-census" } }
+}
+
+fn rfm_rung_census_entry() -> String {
+  "dag/gunbc/instruments/rfm_rung_census.dag"
 }
 
 // THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion
@@ -386,7 +433,118 @@ fn native_serve_entry() -> String {
 }
 
 fn native_serve_binding() -> TargetBinding {
-  TargetBinding { target: native_serve_label() producer: NativeServeProgramProducer { entry: native_serve_entry() } }
+  TargetBinding { target: native_serve_label() producer: NativeServeProgramProducer { entry: native_serve_entry() probe: native_serve_fixture_probe() } }
+}
+
+// THE FIXTURE'S PROBE DECLARES ALL THREE PHASES: its reader judges the peer-bound REST routes, the
+// refused launch and the stuck-ceiling exit, and the host runs exactly what this row says.
+fn native_serve_fixture_probe() -> NativeServeProbe {
+  NativeServeProbe {
+    reader: "dag/gunbc/native_serve_probe.dag"
+    phases: [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit]
+  }
+}
+
+// THE DEVICE-CRYPTO VERIFIER SIDECAR: std.compiler_entry NativeServeDriver over
+// gunbc.auth.approval_device_crypto_serve, the natively emitted realization of the approval
+// broker's device verifiers (gunbc.auth.approval_device_crypto_realization). The seed emits and
+// builds the service, starts it on a loopback port, sends the requests of
+// gunbc.instruments.native_serve_device_crypto_probe over real TCP and lets that module judge: the
+// published vectors and Apple's iOS 14.4 sample verify or refuse as the folds owe, a mutated
+// signature is answered invalid, and (n-1)*G is answered as not the point at infinity. It declares
+// no phase: the verifier has no peer, and its budget is the door's, observed by the fixture's row.
+// Run by name, not a merge gate. `gunbc test //gunbc/instruments:native-serve-device-crypto`.
+fn native_serve_device_crypto_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-device-crypto" } }
+}
+
+fn native_serve_device_crypto_entry() -> String {
+  "dag/gunbc/auth/approval_device_crypto_serve.dag"
+}
+
+fn native_serve_device_crypto_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_device_crypto_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_device_crypto_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_device_crypto_probe.dag" phases: [] }
+    }
+  }
+}
+
+// THE STARTUP-FOLD CONTROL: std.compiler_entry NativeServeDriver over
+// gunbc.instruments.native_serve_startup_refusal_fixture, whose startup fold (gunbc.native_serve
+// native_serve_startup_entry_function) refuses exactly when dropping each single obligation of
+// gunbc.auth.approval_device_crypto_realization device_crypto_obligations made the handler receipt refuse. The seed
+// emits and builds it and launches it once with a valid revision; gunbc.instruments.native_serve_startup_refusal_probe
+// holds when the process exited by itself with the startup exit code, never bound, and named every dropped evidence. It
+// is the red beside //gunbc/instruments:native-serve-device-crypto, whose real startup fold passes before it binds. Run
+// by name, not a merge gate. `gunbc test //gunbc/instruments:native-serve-startup-refusal`.
+fn native_serve_startup_refusal_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-startup-refusal" } }
+}
+
+fn native_serve_startup_refusal_entry() -> String {
+  "dag/gunbc/instruments/native_serve_startup_refusal_fixture.dag"
+}
+
+fn native_serve_startup_refusal_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_startup_refusal_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_startup_refusal_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_refusal_probe.dag" phases: [NativeServeRefusedLaunch] }
+    }
+  }
+}
+
+// THE SLOW-STARTUP POSITIVE: a startup of a calibrated spin (about 0.6 to 2.4 s) launched with a 100 ms request deadline must still announce, bind and serve, because startup is bounded by its own gunbc.native_serve native_serve_startup_deadline and not the request deadline. `gunbc test //gunbc/instruments:native-serve-startup-slow`. Run by name, not a merge gate.
+fn native_serve_startup_slow_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-startup-slow" } }
+}
+
+fn native_serve_startup_slow_entry() -> String {
+  "dag/gunbc/instruments/native_serve_startup_slow_fixture.dag"
+}
+
+fn native_serve_startup_slow_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_startup_slow_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_startup_slow_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_slow_probe.dag" phases: [] }
+    }
+  }
+}
+
+// THE OVERRUN RED: the entry declares its own 1 s startup bound and a startup far past it; the main must exit with the startup exit code before it binds. `gunbc test //gunbc/instruments:native-serve-startup-overrun`. Run by name, not a merge gate.
+fn native_serve_startup_overrun_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-startup-overrun" } }
+}
+
+fn native_serve_startup_overrun_entry() -> String {
+  "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag"
+}
+
+fn native_serve_startup_overrun_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_startup_overrun_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_startup_overrun_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_overrun_probe.dag" phases: [NativeServeRefusedLaunch] }
+    }
+  }
+}
+
+// THE HOST READ POINT for the probe, as native_claim_child_deadline_count is for the deadline: the
+// row's probe for an entry, never a second map.
+fn native_serve_probe_for_entry(entry: String) -> NativeServeProbe? {
+  fold(instrument_bindings(), init: optional_absent(), f: (acc, b) =>
+    match acc {
+      Present { value: p } => optional_present(value: p)
+      Absent => native_serve_probe_if_entry(producer: b.producer, want: entry)
+    }
+  )
 }
 
 fn dag_emit_real_grammar_round_trips_label() -> Label {
@@ -436,8 +594,36 @@ fn native_emission_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-emission-controls" } }
 }
 
+// The allocation reading of the state-threading specimen: a NativeClaimDriver program that `uses`
+// AllocationCounter, so its emitted binary alone carries the counting allocator.
+fn native_allocation_observation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-allocation-observation" } }
+}
+
+fn native_allocation_observation_entry() -> String {
+  "dag/gunbc/instruments/native_allocation_observation.dag"
+}
+
 fn native_emission_controls_entry() -> String {
   "dag/gunbc/instruments/native_emission_controls.dag"
+}
+
+// THE FLEET CONVERGENCE VERDICT ROUTE (gunbc.instruments.fleet_convergence_verdict_route): resolves the
+// import closure gunbc.fleet.fleet_receipt_collector collect_fleet_convergence_wet loads, then evaluates
+// the verdict's refused-enrolment RED, its control and one inhabitance case over the live roster. A
+// closure that stops resolving is no observation. Seed-evaluated, because that closure does not emit as
+// compilable Rust today; run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:fleet-convergence-verdict-route`.
+fn fleet_convergence_verdict_route_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "fleet-convergence-verdict-route" } }
+}
+
+fn fleet_convergence_verdict_route_entry() -> String {
+  "dag/gunbc/instruments/fleet_convergence_verdict_route.dag"
+}
+
+fn fleet_convergence_verdict_route_function() -> String {
+  "fleet_convergence_verdict_route_wire"
 }
 
 // THE VALUE-POSITION BLOCK NEST CONTROL: native tokenize/parse/normalize of the committed
@@ -511,7 +697,7 @@ fn self_host_behavioral_equivalence_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "self-host-behavioral-equivalence" } }
 }
 
-// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.compile native_demand_census_output, the emitted compiler's
+// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output, the emitted compiler's
 // `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
 // the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
 // Run by name, on no lane: its consumer is the D13 row-deletion change, which executes it at its own
@@ -519,6 +705,26 @@ fn self_host_behavioral_equivalence_label() -> Label {
 // `gunbc test //gunbc/instruments:dependency-demand-census`.
 fn dependency_demand_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
+}
+
+// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (v2.compiler.source_root_eval
+// native_decl_ref_census_output, the emitted compiler's `decl-ref-census` verb): resolves every
+// std.decl_ref DeclarationRef literal and every backtick symbol span in the recurring-failure-mode and
+// rung_drop ledgers against the native ingest's ResolutionContext; exit 1 on any unresolved reference
+// or stale span. `gunbc test //gunbc/instruments:decl-ref-census`.
+fn decl_ref_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "decl-ref-census" } }
+}
+
+// THE EFFECT-PAIR CENSUS (gunbc.plans.demand_engine_program D16 TRIGGER; v2.compiler.source_root_eval
+// native_effect_pair_census_output, the emitted compiler's `effect-pair-census` verb): per function body,
+// every pair of effect-reaching call occurrences with no derived ordering (value use or Branch/Match
+// activation), with the not-derived rows, per-module totals, the unobserved population and a per-root
+// refusal report. Resource identity is unmodelled, so the count OVER-COUNTS and says so. Measurement
+// only: exit 0 means the census was observed, never that no pair exists.
+// `gunbc test //gunbc/instruments:effect-pair-census`.
+fn effect_pair_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "effect-pair-census" } }
 }
 
 // THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
@@ -662,7 +868,15 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
 }
 
 fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
+  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDemand } }
+}
+
+fn decl_ref_census_binding() -> TargetBinding {
+  TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
+}
+
+fn effect_pair_census_binding() -> TargetBinding {
+  TargetBinding { target: effect_pair_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbEffectPair } }
 }
 
 fn generic_identity_census_binding() -> TargetBinding {
@@ -683,6 +897,207 @@ fn cardinality_realization_binding() -> TargetBinding {
 
 fn regen_round_cost_binding() -> TargetBinding {
   TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
+}
+
+fn roster_import_sweep_controls_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-controls" } }
+}
+
+fn roster_import_sweep_controls_entry() -> String {
+  "src/v2/workflow/roster_import_sweep.dag"
+}
+
+fn roster_import_sweep_controls_function() -> String {
+  "roster_import_sweep_controls_wire"
+}
+
+fn roster_import_sweep_controls_binding() -> TargetBinding {
+  TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
+}
+
+fn append_chain_ladder_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "append-chain-ladder" } }
+}
+
+fn append_chain_ladder_entry() -> String {
+  "dag/gunbc/instruments/append_chain_ladder_native.dag"
+}
+
+// THE INSTRUMENT gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear
+// cites, as a label rather than a command in a comment. Non-gating measurement; the threshold fold
+// over its timing rows extends this same label (one instrument, not two).
+fn append_chain_ladder_binding() -> TargetBinding {
+  TargetBinding { target: append_chain_ladder_label() producer: NativeClaimProgramProducer { entry: append_chain_ladder_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn last_use_move_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "last-use-move" } }
+}
+
+// The move-at-last-use fixtures on the emitted path: every shape compiles and agrees with its reference
+// (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
+fn last_use_move_binding() -> TargetBinding {
+  TargetBinding { target: last_use_move_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/last_use_move_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn member_home_cost_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "member-home-cost" } }
+}
+
+// The N7 member wall's cost receipt: each ambient member against its std.algebra home on the emitted path.
+fn member_home_cost_binding() -> TargetBinding {
+  TargetBinding { target: member_home_cost_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/member_home_cost_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn claim_coverage_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "claim-coverage-census" } }
+}
+
+fn claim_coverage_census_entry() -> String {
+  "dag/gunbc/claim_coverage_census_live.dag"
+}
+
+fn claim_coverage_census_function() -> String {
+  "claim_coverage_census_exit"
+}
+
+fn claim_coverage_census_binding() -> TargetBinding {
+  TargetBinding { target: claim_coverage_census_label() producer: CliWireProgramProducer { entry: claim_coverage_census_entry() function: claim_coverage_census_function() } }
+}
+
+// THE KNOWN-RED DERIVATION. The label exists to print a list no file holds: which ExpectedToHold claims
+// fail at the head this run executed on. Its producer is asked only for a head and a population — it
+// reads the schedule from the wet lane's own accessor and the enrollment from floor_expected_red — so
+// the printed rows can only come from a run. See the module header for what each refusal arm refuses.
+fn known_red_derivation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "known-red-derivation" } }
+}
+
+fn known_red_derivation_entry() -> String {
+  "dag/gunbc/instruments/known_red_derivation.dag"
+}
+
+fn known_red_derivation_function() -> String {
+  "known_red_derivation_exit"
+}
+
+fn known_red_derivation_binding() -> TargetBinding {
+  TargetBinding { target: known_red_derivation_label() producer: CliWireProgramProducer { entry: known_red_derivation_entry() function: known_red_derivation_function() } }
+}
+
+// THE ROSTER-REACH INHABITANCE CLAIM (gunbc.instruments.roster_reach_inhabitance): the one real call-reach walk
+// that pairs test.claim.fleet.fleet_converge_roster_token_prelude_witness, which is handed its target. Hours of
+// interpreter time, so it is dispatched by an operator at the head that changes the supplied target and on no lane.
+// `gunbc test //gunbc/instruments:roster-reach-inhabitance`.
+fn roster_reach_inhabitance_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-reach-inhabitance" } }
+}
+
+// THE OFFLINE WITNESS DEFERRAL DROP'S INSTRUMENT. Its subject is the live corpus's typed
+// FrozenPathDeferral identities joined against the declared population of
+// gunbc.rung_drop.witness_deferral_freeze_population_rung_drop — the same gate the required floor
+// consults, rendered for a process boundary. It is dispatch-only like the whole-tree censuses: the
+// additions gate parses every .dag under both roots, so a run is hours of interpreter time and is
+// cited as a receipt, never spent on the merge floor.
+fn witness_deferral_freeze_population_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "witness-deferral-freeze-population" } }
+}
+
+fn witness_deferral_freeze_population_entry() -> String {
+  "dag/gunbc/instruments/witness_deferral_freeze_population.dag"
+}
+
+fn witness_deferral_freeze_population_function() -> String {
+  "witness_deferral_freeze_population_exit"
+}
+
+fn witness_deferral_freeze_population_binding() -> TargetBinding {
+  TargetBinding { target: witness_deferral_freeze_population_label() producer: CliWireProgramProducer { entry: witness_deferral_freeze_population_entry() function: witness_deferral_freeze_population_function() } }
+}
+fn roster_reach_inhabitance_entry() -> String {
+  "dag/gunbc/instruments/roster_reach_inhabitance.dag"
+}
+
+fn roster_reach_inhabitance_function() -> String {
+  "roster_reach_inhabitance_exit"
+}
+
+fn roster_reach_inhabitance_binding() -> TargetBinding {
+  TargetBinding { target: roster_reach_inhabitance_label() producer: CliWireProgramProducer { entry: roster_reach_inhabitance_entry() function: roster_reach_inhabitance_function() } }
+}
+
+fn compute_run_unit_cold_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold" } }
+}
+
+fn compute_run_unit_cold_entry() -> String {
+  "dag/gunbc/instruments/compute_run_unit_cold.dag"
+}
+
+fn compute_run_unit_cold_function() -> String {
+  "compute_run_unit_cold_exit"
+}
+
+fn compute_run_unit_cold_binding() -> TargetBinding {
+  TargetBinding { target: compute_run_unit_cold_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_function() } }
+}
+
+fn compute_wrong_capture_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-wrong-capture" } }
+}
+
+fn compute_wrong_capture_entry() -> String {
+  "dag/gunbc/instruments/compute_wrong_capture.dag"
+}
+
+fn compute_wrong_capture_function() -> String {
+  "compute_wrong_capture_exit"
+}
+
+fn compute_wrong_capture_binding() -> TargetBinding {
+  TargetBinding { target: compute_wrong_capture_label() producer: CliWireProgramProducer { entry: compute_wrong_capture_entry() function: compute_wrong_capture_function() } }
+}
+
+// C5: the dependency-only arm of the same instrument. Same entry FILE, a different entry function,
+// so one body of logic holds both labels (gunbc.instruments.compute_wrong_capture wrong_capture_run).
+fn compute_dependency_wrong_capture_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-dependency-wrong-capture" } }
+}
+
+fn compute_dependency_wrong_capture_entry() -> String {
+  "dag/gunbc/instruments/compute_wrong_capture.dag"
+}
+
+fn compute_dependency_wrong_capture_function() -> String {
+  "compute_dependency_wrong_capture_exit"
+}
+
+fn compute_dependency_wrong_capture_binding() -> TargetBinding {
+  TargetBinding { target: compute_dependency_wrong_capture_label() producer: CliWireProgramProducer { entry: compute_dependency_wrong_capture_entry() function: compute_dependency_wrong_capture_function() } }
+}
+
+fn compute_run_unit_sccache_probe_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-run-unit-sccache-probe" } }
+}
+
+fn compute_run_unit_sccache_probe_function() -> String {
+  "compute_run_unit_sccache_probe_exit"
+}
+
+fn compute_run_unit_sccache_probe_binding() -> TargetBinding {
+  TargetBinding { target: compute_run_unit_sccache_probe_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_sccache_probe_function() } }
+}
+
+fn compute_run_unit_cold_same_path_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold-same-path" } }
+}
+
+fn compute_run_unit_cold_same_path_function() -> String {
+  "compute_run_unit_cold_same_path_exit"
+}
+
+fn compute_run_unit_cold_same_path_binding() -> TargetBinding {
+  TargetBinding { target: compute_run_unit_cold_same_path_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_same_path_function() } }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {
@@ -711,6 +1126,10 @@ fn value_position_block_nests_child_deadline() -> Millisecond {
   millisecond(count: 15000)
 }
 
+fn rfm_rung_census_binding() -> TargetBinding {
+  TargetBinding { target: rfm_rung_census_label() producer: NativeClaimProgramProducer { entry: rfm_rung_census_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
 fn native_crypto_vectors_binding() -> TargetBinding {
   TargetBinding { target: native_crypto_vectors_label() producer: NativeClaimProgramProducer { entry: native_crypto_vectors_entry() deadline: native_claim_policy_child_deadline() } }
 }
@@ -723,6 +1142,10 @@ fn native_app_attest_binding() -> TargetBinding {
   TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+fn native_allocation_observation_binding() -> TargetBinding {
+  TargetBinding { target: native_allocation_observation_label() producer: NativeClaimProgramProducer { entry: native_allocation_observation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
 fn native_xl2_rehearsal_binding() -> TargetBinding {
   TargetBinding { target: native_xl2_rehearsal_label() producer: NativeClaimProgramProducer { entry: native_xl2_rehearsal_entry() deadline: native_claim_policy_child_deadline() } }
 }
@@ -731,12 +1154,33 @@ fn native_emission_controls_binding() -> TargetBinding {
   TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+fn fleet_convergence_verdict_route_binding() -> TargetBinding {
+  TargetBinding { target: fleet_convergence_verdict_route_label() producer: CliWireProgramProducer { entry: fleet_convergence_verdict_route_entry() function: fleet_convergence_verdict_route_function() } }
+}
+
 fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
   TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn native_materialization_store_closure_binding() -> TargetBinding {
   TargetBinding { target: native_materialization_store_closure_label() producer: NativeClaimProgramProducer { entry: native_materialization_store_closure_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+// THE BRAND LOGO FILES' CONTROL: gunbc.design.brand_mark_assets rasterized, encoded and written
+// through Filesystem.WriteBytes by the NativeClaimDriver program
+// gunbc.instruments.brand_mark_assets_control, the executing consumer of the byte write (which has
+// no interpreter realization). Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:brand-mark-assets`.
+fn brand_mark_assets_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "brand-mark-assets" } }
+}
+
+fn brand_mark_assets_entry() -> String {
+  "dag/gunbc/instruments/brand_mark_assets_control.dag"
+}
+
+fn brand_mark_assets_binding() -> TargetBinding {
+  TargetBinding { target: brand_mark_assets_label() producer: NativeClaimProgramProducer { entry: brand_mark_assets_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn value_position_block_nests_label() -> Label {
@@ -753,6 +1197,18 @@ fn value_position_block_nests_binding() -> TargetBinding {
 
 fn type_declaration_use_census_binding() -> TargetBinding {
   TargetBinding { target: type_declaration_use_census_label() producer: V2NativeCensusProducer { reading: TypeDeclarationUseReading } }
+}
+
+fn ambient_operation_disposition_census_binding() -> TargetBinding {
+  TargetBinding { target: ambient_operation_disposition_census_label() producer: V2NativeCensusProducer { reading: AmbientOperationDispositionReading } }
+}
+
+fn ambient_name_census_binding() -> TargetBinding {
+  TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceBindingReading } }
+}
+
+fn namespace_wave_binding_diff_binding() -> TargetBinding {
+  TargetBinding { target: namespace_wave_binding_diff_label() producer: V2NativeCensusProducer { reading: BindingDiffReading } }
 }
 
 fn native_process_memory_census_binding() -> TargetBinding {
@@ -900,19 +1356,21 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), v2_native_census_scoped_label(), type_declaration_use_census_label(), native_process_memory_census_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), v2_native_census_scoped_label(), type_declaration_use_census_label(), ambient_name_census_label(), ambient_operation_disposition_census_label(), namespace_wave_binding_diff_label(), native_process_memory_census_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
-    native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
+    native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label()
+    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
   ]
 }
 
@@ -920,19 +1378,21 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), v2_native_census_scoped_binding(), type_declaration_use_census_binding(), native_process_memory_census_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), v2_native_census_scoped_binding(), type_declaration_use_census_binding(), ambient_name_census_binding(), ambient_operation_disposition_census_binding(), namespace_wave_binding_diff_binding(), native_process_memory_census_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
-    native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
+    native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
   ]
 }
 
@@ -1332,154 +1792,6 @@ fn bare_reference_channel_holds(readings: List<BareReferenceChannelEntryReading>
     && ((bare_reference_channel_unmet_expectations(readings: readings) |> count) == 0)
 }
 
-// THE NATIVE TEST ROUTE'S TOTAL FUNCTION FROM ITS OWN STANDING INTO THE FOUR TERMINATIONS.
-//
-// `gunbc.target_invocation` `InvocationTermination` states the rule this discharges: each producer
-// owns a total function from its native standing into these four states, so a new producer is a new
-// classifier and never a new arm in a consumer that would otherwise collapse causes it does not
-// distinguish. The native route's standing is its PER-IDENTITY population -- one
-// `NativeRouteMemberRow` per selected test, each carrying that test's own `NativeTestVerdict` --
-// and NOT the lane's whole-route admission bit, which answers a different question at a different
-// scope (`gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`
-// is that confusion, filed with both of its arms).
-//
-// THE PRECEDENCE IS A DECISION AND IT IS ARGUED RATHER THAN ASSUMED, because two of the three
-// orderings are defensible and only one is right.
-//
-// A DEFINITE FAILURE OUTRANKS AN UNOBSERVED SIBLING. One identity that evaluated and returned
-// false makes "the selection held" FALSE, and that is a real observation about the selection rather
-// than an absence of one. Ranking refusal above it would hide a known, located defect behind a
-// sibling nobody managed to run, which is the reading that costs an operator a real bug.
-//
-// AN UNOBSERVED IDENTITY OUTRANKS THE PASSES AROUND IT. If nothing failed but something could not
-// be observed, the honest answer is that the selection was not observed -- not that it held. This
-// is the fail-closed direction and it is the arm that keeps a partially-refused population from
-// reading green.
-//
-// AN EMPTY SELECTION IS `SubjectUnreached`, NOT `ObservationHeld`, AND THIS ARM IS DOING REAL WORK.
-// A pattern that selected nothing has produced no evidence about anything; answering "held" would
-// be vacuous truth reported as a passing test, which is the absence-is-not-success distinction
-// DESIGN section 5 keeps. A reviewer will suggest collapsing it into the all-passed arm because
-// "every row passed" is trivially true of no rows; that collapse is the defect.
-type NativeRouteTerminationTally {
-  observed_failure: Bool
-  unobserved: Bool
-  members: Int
-}
-
-fn native_route_termination_step(
-  acc: NativeRouteTerminationTally,
-  row: NativeRouteMemberRow
-) -> NativeRouteTerminationTally {
-  match row.verdict {
-    NativeTestPassed => NativeRouteTerminationTally {
-      observed_failure: acc.observed_failure,
-      unobserved: acc.unobserved,
-      members: acc.members + 1
-    }
-    NativeTestReturnedFalse => NativeRouteTerminationTally {
-      observed_failure: true,
-      unobserved: acc.unobserved,
-      members: acc.members + 1
-    }
-    NativeTestReturnedOther => NativeRouteTerminationTally {
-      observed_failure: true,
-      unobserved: acc.unobserved,
-      members: acc.members + 1
-    }
-    NativeTestRefused { stage: _, diagnostics: _ } => NativeRouteTerminationTally {
-      observed_failure: acc.observed_failure,
-      unobserved: true,
-      members: acc.members + 1
-    }
-  }
-}
-
-// COMPLETENESS IS AN INPUT, NOT AN ASSUMPTION, AND THAT IS THE WHOLE REPAIR (review 70091).
-//
-// An earlier shape of this fold took ONLY the rows. Its contract was a COMPLETE per-identity
-// population and nothing in `List<NativeRouteMemberRow>` says so, so any caller could hand it a
-// short list and get a confident answer about a selection it had not observed. The failing case is
-// concrete and fails green: two tests pass, a third identity emits NO ROW because its file refused
-// to parse, and the fold sees two passes and answers `ObservationHeld` -- exit 0 -- while the lane
-// concurrently refuses with `population_omissions_present`. A non-empty row list hides exactly the
-// defect the empty-selection arm below exists to catch.
-//
-// SO THE EXTENT IS DECLARED BY THE CALLER AND CHECKED HERE. `universe` is how many identities the
-// selection contained and `file_refusals` is how many sources could not be read at all; a caller
-// cannot compute a termination without stating both, which is DESIGN section 5's construction over
-// validation applied to the fold's own contract -- the incomplete call is not merely detected, it
-// is unwritable.
-//
-// A FILE REFUSAL COUNTS EVEN WHEN THE ROW COUNT MATCHES. A source that refused may hold identities
-// discovery never saw, so the universe itself can be short without any row going missing. Treating
-// a non-zero refusal count as observed-nothing is the fail-closed direction: it costs a caller an
-// exit 2 on a run that might have been complete, and the alternative costs a green on one that was
-// not.
-fn native_route_member_termination(
-  rows: List<NativeRouteMemberRow>,
-  universe: Int,
-  file_refusals: Int
-) -> InvocationTermination {
-  let tally = fold(
-    rows,
-    init: NativeRouteTerminationTally { observed_failure: false, unobserved: false, members: 0 },
-    f: (acc, row) => native_route_termination_step(acc: acc, row: row)
-  )
-  if tally.observed_failure {
-    InvocationObservationDidNotHold {}
-  } else if tally.unobserved {
-    InvocationSubjectUnreached {}
-  } else if tally.members != universe {
-    InvocationSubjectUnreached {}
-  } else if file_refusals != 0 {
-    InvocationSubjectUnreached {}
-  } else if tally.members == 0 {
-    InvocationSubjectUnreached {}
-  } else {
-    InvocationObservationHeld {}
-  }
-}
-
-// THE LANE'S QUALIFICATION GATES A POSITIVE ANSWER AND NOTHING ELSE (review 70107).
-//
-// THE ARC THIS CLOSES IS WORTH STATING, because both ends of it were wrong. The first shape
-// consumed the lane's whole-route admission bit AS the operand's verdict, which is the scope
-// conflation rostered at `gunbc.recurring_failure_mode`
-// `route_scoped_qualification_read_as_one_members_verdict`. The repair removed that bit from the
-// decision ENTIRELY -- and that over-corrected: a refused qualification beside an all-passing
-// population answered `ObservationHeld`, exit 0, with the refusal demoted to a sentence. Ruling out
-// "qualification IS the verdict" never licensed "qualification may be IGNORED".
-//
-// WHY A REFUSED ROUTE CANNOT YIELD A PASS. Several qualification clauses are precisely the ones
-// establishing that the verdict surface is trustworthy at all: the false and true controls prove
-// the verdict path is live, and `MalformedSpecimenAccepted` means the route accepted poisoned
-// source -- the lane's own note says that when those fail, every verdict in the census is
-// WORTHLESS. Reporting a pass off rows with no established provenance is the fabricated plausible
-// output DESIGN section 5 forbids, and section 4b puts silent wrongness outside the ladder
-// entirely.
-//
-// AND WHY IT IS A CLAMP RATHER THAN AN OVERRIDE. A definite member failure still passes through
-// unchanged: a test that evaluated and returned false is a real observation whose provenance does
-// not depend on the route's integrity clauses, and demoting it would bury a located defect behind
-// an infrastructure problem. The gate is one-directional -- it can only ever make an answer weaker,
-// never stronger, and it can never manufacture a failure that no member reported.
-fn native_route_termination_under_qualification(
-  members: InvocationTermination,
-  lane_qualified: Bool
-) -> InvocationTermination {
-  if lane_qualified {
-    members
-  } else {
-    match members {
-      InvocationObservationHeld => InvocationSubjectUnreached {}
-      InvocationObservationDidNotHold => InvocationObservationDidNotHold {}
-      InvocationSubjectUnreached => InvocationSubjectUnreached {}
-      InvocationRefused => InvocationRefused {}
-    }
-  }
-}
-
 fn bare_reference_channel_termination(s: BareReferenceChannelStanding) -> InvocationTermination {
   match s {
     BareReferenceChannelRead { readings: r } =>
@@ -1530,4 +1842,42 @@ fn bare_channel_reading_rendered(r: BareReferenceChannelEntryReading) -> String 
     " channel=", bare_channel_eligibility_rendered(e: r.eligibility),
     " pulled=[", join(r.pulled_modules, ", "), "]"
   ], "")
+}
+
+// WHAT THE HOST READS OFF A NATIVE-SERVE ROW, as projections of the probe it holds: the reader
+// module, the declared phase names (joined to the reader's judged phases before anything spawns)
+// and one answer per phase to run. Absent probe is the host's refusal, never a default.
+fn native_serve_probe_reader_for_entry(entry: String) -> String? {
+  match native_serve_probe_for_entry(entry: entry) {
+    Absent => optional_absent()
+    Present { value: p } => optional_present(value: p.reader)
+  }
+}
+
+fn native_serve_probe_declared_names_for_entry(entry: String) -> List<String> {
+  match native_serve_probe_for_entry(entry: entry) {
+    Absent => []
+    Present { value: p } => native_serve_phase_names(phases: p.phases)
+  }
+}
+
+fn native_serve_probe_runs_peer(entry: String) -> Bool {
+  match native_serve_probe_for_entry(entry: entry) {
+    Absent => false
+    Present { value: p } => native_serve_declares_peer(probe: p)
+  }
+}
+
+fn native_serve_probe_runs_refused_launch(entry: String) -> Bool {
+  match native_serve_probe_for_entry(entry: entry) {
+    Absent => false
+    Present { value: p } => native_serve_declares_refused_launch(probe: p)
+  }
+}
+
+fn native_serve_probe_runs_stuck_ceiling_exit(entry: String) -> Bool {
+  match native_serve_probe_for_entry(entry: entry) {
+    Absent => false
+    Present { value: p } => native_serve_declares_stuck_ceiling_exit(probe: p)
+  }
 }

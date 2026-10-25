@@ -3,9 +3,9 @@ module extdeps.tools.jq
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.types { NonEmptyStr, Bool, Int, List, Unit }
-import std.algebra { Cons, Empty, trim, list_append, list_snoc_item, fold_list }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { NonEmptyStr, Bool, Int, List, Unit, Map }
+import std.algebra { Cons, Empty, trim, list_append, list_snoc_item, fold_list, empty_map, map_insert, map_lookup }
+
 import v2.std.compilers.cli_surface { CliArgumentSyntax, CliSurface, cli_long_option_spelling, process_argv_expansion, serialize_cli_arguments }
 import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule }
 import v2.std.compilers.target_model { BoundToken, FixedToken }

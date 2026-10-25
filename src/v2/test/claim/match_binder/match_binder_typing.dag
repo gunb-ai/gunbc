@@ -2,7 +2,7 @@ module v2.test.claim.match_binder.match_binder_typing
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve { empty_module_outcome_index, ResolvedTree }
 import v2.compiler.infer { infer, inferred_facts_resolved_type }
 import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_last_segment }
 import v2.std.witness { Holds, Violates }
@@ -11,11 +11,11 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, contains, list_map, list_append }
+import std.algebra { Cons, Empty, contains, list_map, list_append, empty_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NodeLocus, NonEmptyDiagnostics, None, Outcome, Rejected, Some, node_locus }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Conj,
@@ -31,7 +31,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   core_edge_label,
-  host_text_type_node
+  host_text_type_node,
+  NotADeclaration
 }
 import v2.std.node_query { binder_node, construct_node, field_projection_optional }
 import v2.std.type_binder { type_binder_set_children }
@@ -43,16 +44,18 @@ import v2.std.symbol_index {
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 import v2.compiler.infer {
+  concat_inferred_facts_entries,
   infer_descent_witness_for_node,
   infer_match_coproduct,
   inferred_facts_from_derived_type,
   inferred_facts_grounding_derived,
+  inferred_facts_index_enter,
   inferred_facts_not_derived
 }
-import v2.compiler.inferred_tree { InferredFacts, InferredFactsEntry, ObligatedInferredTree }
+import v2.compiler.inferred_tree { LexicalReferenceUntyped, InferredFacts, InferredFactsEntry, ObligatedInferredTree }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.types { List }
-import v2.std.collection { empty_map }
+import std.types { List, Map }
+
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -293,17 +296,14 @@ data mbt_arms: String = "    Rejected { diagnostics: r } => fallback.tree\n    A
 // (1) THE BINDER IS TYPED ParseArtifact FROM Outcome<ParseArtifact>'s Accepted.value -- the argument
 // the scrutinee's type supplies at the declaration's binder T, not T itself and not the field's
 // authored spelling.
-// DECLARED RUNG DROP (gunbc.rung_drop match_arm_binder_typing_lost_to_lexical_carrier): the binder is NOT
-// typed today, and this row pins exactly HOW it is not, so it flips back -- to `== ^ParseArtifact` -- when
-// match-arm binder typing reaches the lexical-binding carrier (N7-3). The binder's use in the arm body is the
-// lexical reference resolve minted (v2.compiler.resolve resolve_lexical_reference), whose recorded binding
-// declares no type, so infer leaves it underived (v2.compiler.infer infer_lexical_reference_facts), and the
-// arm body `artifact.tree` is reported at ITS OWN LOCUS as infer_match_arm_body_type_underived. Both halves are
-// required: a program refused for an unrelated cause, or an underived binder reported somewhere else, reds it.
-test fn mbt_binder_is_not_yet_typed_and_its_arm_body_is_reported_holds() -> Bool {
+// RESTORED (the former rung drop match_arm_binder_typing_lost_to_lexical_carrier is retired): the binder's
+// use is the lexical reference resolve minted, and infer types it from the binding's variant field at the
+// scrutinee's instantiation. Both halves are required: the binder typed AND no underived advisory at its
+// projection, so a program refused for an unrelated cause reds it.
+test fn mbt_the_binder_is_typed_from_its_variant_field_holds() -> Bool {
   mbt_program_reading().infers
-    && (mbt_program_reading().positive.binder_base_fact == ^mbp_underived)
-    && mbt_program_reading().positive.arm_body_underived_at_binder_projection
+    && (mbt_program_reading().positive.binder_base_fact == ^ParseArtifact)
+    && !mbt_program_reading().positive.arm_body_underived_at_binder_projection
 }
 
 // AND THE MATCH IS TYPED BY ITS ARMS: each arm projects `tree` off a ParseArtifact -- one bound by
@@ -312,13 +312,11 @@ test fn mbt_binder_is_not_yet_typed_and_its_arm_body_is_reported_holds() -> Bool
 // (v2.compiler.infer infer_field_projection_facts), which is not the resolved reference a parameter
 // annotated `ParseTree` carries, so a projection arm beside a parameter arm compares two spellings of
 // one type. That is the projection's typing boundary, reported to its owning lane, not this match's.
-// DECLARED RUNG DROP, as above: the match is accepted at the frontier and NOT typed, because the arm that
-// projects off the binder is underived at the binder projection's locus. Flips back to `== ^ParseTree`
-// with the same trigger.
-test fn mbt_match_is_not_yet_typed_at_the_binder_arm_holds() -> Bool {
+// RESTORED, as above: the arm that projects off the binder derives, so the match is typed ParseTree.
+test fn mbt_the_match_is_typed_by_its_binder_arm_holds() -> Bool {
   mbt_program_reading().infers
-    && (mbt_program_reading().positive.match_fact == ^mbp_underived)
-    && mbt_program_reading().positive.arm_body_underived_at_binder_projection
+    && (mbt_program_reading().positive.match_fact == ^ParseTree)
+    && !mbt_program_reading().positive.arm_body_underived_at_binder_projection
 }
 
 // REVERSED BY RULING: A BINDER MAY NOT HIDE A VISIBLE VALUE BINDING, SO THIS REFUSES. This row asserted
@@ -494,7 +492,7 @@ fn mbp_declaration_named(n: Node, name: Symbol) -> Optional<Node> {
 }
 
 fn mbp_node_within(root: Node, wanted: Node) -> Bool {
-  if root == wanted {
+  if node_same_occurrence(a: root, b: wanted) {
     true
   } else {
     fold(root.children, init: false, f: fn(acc, e) { acc || mbp_node_within(root: e.target, wanted: wanted) })
@@ -569,60 +567,54 @@ fn mbt_reports_within(r: MbtDeclReading, reason: Symbol) -> Bool {
   contains(xs: r.reasons_within, item: reason, eq: fn(a, b) { a == b })
 }
 
-// THE SEVEN'S SHAPE IS ACCEPTED AT THE FRONTIER, AND COUNTED THERE. On this stack the call's declared
-// return is not derived (an application's result is derived only for kernel and Bool returns), so the
-// scrutinee is untyped and the match cannot be checked against Outcome's variants. It is accepted --
-// refusing would convict the program for a route this stage does not reach -- and the acceptance
-// carries infer_match_scrutinee_type_underived at the scrutinee, so the untyped match is a counted
-// site and not a silent green. When the call's return derives, this claim goes red and the positive
-// controls above become the seven's own.
-//
-// THIS ROW STAYS ON THE SOURCE ROUTE, AND THE PAIRING OBLIGATION IS WHY. It was converted to the
-// supplied boundary and the conversion was withdrawn: it is the ONLY row that establishes that an
-// APPLICATION scrutinee really reaches infer's underived-scrutinee arm, and a supplied entry carrying
-// GroundingNotDerived asserts what this file chose rather than what a call's return derivation leaves
-// behind. Supplying it would have removed the last execution of the real path into that arm, which
-// DESIGN section 3 forbids outright -- the two typed-binder rows above inhabit the DERIVED path and
-// cannot stand in for it. It is over the new-witness margin and reported as such, because the
-// alternative is a cheap suite that establishes nothing about the arm it names.
-//
-// THE SUPPLIED ROW BESIDE IT reads the same arm's RESULT CONTRACT at one interface, so the two are a
-// pair rather than a duplicate: this row says the arm is reached, that one says what the arm returns.
+// THE SEVEN'S SHAPE NOW TYPES ITS SCRUTINEE. The call's declared return derives, so the scrutinee is typed
+// and the binder beneath it is typed ParseArtifact; the arm bodies rebuild a generic Outcome from a
+// constructor, which stays on the counted frontier (infer_match_arm_body_type_underived at each body, the
+// match itself underived) -- gunbc.recurring_failure_mode generic_variant_construction_arm_body_not_typed.
+// The earlier form of this row asserted infer_match_scrutinee_type_underived here and went red when the
+// call's return derived, as its own comment predicted. CONSEQUENCE, STATED: no source-route program reaches
+// the underived-scrutinee arm any more, so that arm is executed only at the supplied boundary below
+// (mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds); its source-route
+// inhabitance claim is the tracked row gunbc.recurring_failure_mode
+// underived_scrutinee_arm_has_no_source_route_inhabitance.
 
-test fn mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds() -> Bool {
+test fn mbt_the_sevens_call_scrutinee_is_typed_and_its_constructor_bodies_are_counted_holds() -> Bool {
   mbt_program_reading().infers
-    && mbt_reports_within(r: mbt_program_reading().seven, reason: ^infer_match_scrutinee_type_underived)
+    && (mbt_program_reading().seven.binder_base_fact == ^ParseArtifact)
+    && mbt_reports_within(r: mbt_program_reading().seven, reason: ^infer_match_arm_body_type_underived)
+    && !mbt_reports_within(r: mbt_program_reading().seven, reason: ^infer_match_scrutinee_type_underived)
 }
 
 // WHAT THE FRONTIER ARM RETURNS, at infer_match_coproduct's own interface: an underived scrutinee is
 // ACCEPTED rather than convicted, and the acceptance CARRIES the located advisory. Both halves are
 // properties of the returned Outcome, so they are read from it directly instead of through a whole
-// module's inference. Its inhabitance is the row above.
+// module's inference. Its source-route inhabitance no longer exists (see the seven's row above).
 test fn mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds() -> Bool {
   mbt_supplied_accepts_reporting(
     o: infer_match_coproduct(
       node: mbt_match_node(scrutinee: mbt_scrutinee(), arms: mbt_supplied_arms()),
       partials: Empty,
-      entries: list_append(left: mbt_underived_scrutinee_entry(), right: mbt_typed_bodies()),
+      entries: concat_inferred_facts_entries(a: mbt_underived_scrutinee_entry(), b: mbt_typed_bodies()),
       resolved: mbt_resolved()
     ),
     reason: ^infer_match_scrutinee_type_underived
   )
 }
 
-fn mbt_underived_scrutinee_entry() -> List<InferredFactsEntry> {
+fn mbt_underived_scrutinee_entry() -> Map<Node, List<InferredFacts>> {
   match inferred_facts_not_derived(
+    site: LexicalReferenceUntyped,
     node: mbt_scrutinee(),
     descent: infer_descent_witness_for_node(n: mbt_scrutinee())
   ) {
-    Rejected { diagnostics: _ } => Empty
-    Accepted { value: facts, diagnostics: _ } => [InferredFactsEntry { node: mbt_scrutinee(), facts: facts }]
+    Rejected { diagnostics: _ } => empty_map()
+    Accepted { value: facts, diagnostics: _ } => inferred_facts_index_enter(index: empty_map(), entry: InferredFactsEntry { node: mbt_scrutinee(), facts: facts })
   }
 }
 
-// AN ARM BODY WHOSE TYPE IS NOT DERIVED IS COUNTED, NOT GUESSED. (Its binder conjunct is under the same
-// declared rung drop as the rows above: it asserts the binder's use is underived today, and flips back to
-// `== ^ParseArtifact` with them.) The scrutinee here IS typed, so the
+// AN ARM BODY WHOSE TYPE IS NOT DERIVED IS COUNTED, NOT GUESSED. (Its binder conjunct is the restored typing
+// above; the constructor-body frontier is the standing class
+// gunbc.recurring_failure_mode generic_variant_construction_arm_body_not_typed.) The scrutinee here IS typed, so the
 // patterns are checked and the binder is typed; the bodies rebuild an Outcome from a constructor,
 // which this stage does not type, so the match is accepted at the frontier with one located
 // infer_match_arm_body_type_underived per such body -- and the binder beneath it is still typed.
@@ -631,7 +623,7 @@ fn mbt_underived_scrutinee_entry() -> List<InferredFactsEntry> {
 test fn mbt_an_underived_arm_body_is_a_counted_frontier_holds() -> Bool {
   mbt_program_reading().infers
     && mbt_reports_within(r: mbt_program_reading().constructor_body, reason: ^infer_match_arm_body_type_underived)
-    && (mbt_program_reading().constructor_body.binder_base_fact == ^mbp_underived)
+    && (mbt_program_reading().constructor_body.binder_base_fact == ^ParseArtifact)
 }
 
 // THE MATCH-TYPING BOUNDARY, READ AT ONE INTERFACE WITH SUPPLIED INPUTS. Every refusal row below used
@@ -678,15 +670,15 @@ fn mbt_conj(fields: List<Edge>) -> Node {
 // (v2.std.node_query binder_node), which is what declared_field_from_edge reads. Pattern fields stay
 // mbt_named: a pattern binds an atom, it does not declare a field.
 fn mbt_field(name: Symbol, type_node: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: binder_node(type_node: type_node, default: optional_absent()) }
+  Edge { label: Authored { name: name }, target: binder_node(type_node: type_node, default: optional_absent()), declaration: NotADeclaration }
 }
 
 fn mbt_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn mbt_pos(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 // `Outcome<T> = Accepted { value: T, diagnostics: Diagnostics } | Rejected { diagnostics: NonEmptyDiagnostics }`
@@ -735,7 +727,7 @@ fn mbt_index() -> SymbolIndex {
       resolved: mbt_parse_artifact_declaration()
     ),
     qualified_path: mbt_qn(segs: [^p, ^Outcome]),
-    params: mbt_conj(fields: type_binder_set_children(binders: [Edge { label: Authored { name: ^T }, target: Node { kind: TypeNode { connective: Atom { identity: ^T } }, children: [], occurrence_id: OccurrenceSynthetic } }], source: mbt_conj(fields: [])))
+    params: mbt_conj(fields: type_binder_set_children(binders: [Edge { label: Authored { name: ^T }, target: Node { kind: TypeNode { connective: Atom { identity: ^T } }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration }], source: mbt_conj(fields: [])))
   )
 }
 
@@ -747,9 +739,9 @@ fn mbt_resolved() -> ResolvedTree {
   ResolvedTree {
     root: mbt_atom(s: ^mbt_unused_root),
     symbol_index: mbt_index(),
-    resolved_declarations: empty_symbol_index(),
-    lexical_bindings: empty_map(),
-    unavailable_providers: [],
+    resolved_declarations: mbt_index(),
+    occurrence_bindings: empty_map(), duplicate_binding_records: [],
+    module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
     constructing_module: optional_absent()
@@ -786,17 +778,17 @@ fn mbt_facts_typed(node: Node, ty: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn mbt_entry(node: Node, ty: Node) -> List<InferredFactsEntry> {
+fn mbt_entry(node: Node, ty: Node) -> Map<Node, List<InferredFacts>> {
   match mbt_facts_typed(node: node, ty: ty) {
-    Absent => Empty
-    Present { value: facts } => [InferredFactsEntry { node: node, facts: facts }]
+    Absent => empty_map()
+    Present { value: facts } => inferred_facts_index_enter(index: empty_map(), entry: InferredFactsEntry { node: node, facts: facts })
   }
 }
 
 fn mbt_arm(pattern: Node, body: Node) -> Node {
   mbt_conj(fields: [
-    Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
-    Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
+    Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
   ])
 }
 
@@ -857,17 +849,17 @@ fn mbt_parse_tree_type() -> Node {
   mbt_ref(segs: [^p, ^ParseTree])
 }
 
-fn mbt_typed_bodies() -> List<InferredFactsEntry> {
-  list_append(
-    left: mbt_entry(node: mbt_body_a(), ty: mbt_parse_tree_type()),
-    right: mbt_entry(node: mbt_body_b(), ty: mbt_parse_tree_type())
+fn mbt_typed_bodies() -> Map<Node, List<InferredFacts>> {
+  concat_inferred_facts_entries(
+    a: mbt_entry(node: mbt_body_a(), ty: mbt_parse_tree_type()),
+    b: mbt_entry(node: mbt_body_b(), ty: mbt_parse_tree_type())
   )
 }
 
-fn mbt_entries_for(scrutinee_type: Node) -> List<InferredFactsEntry> {
-  list_append(
-    left: mbt_entry(node: mbt_scrutinee(), ty: scrutinee_type),
-    right: mbt_typed_bodies()
+fn mbt_entries_for(scrutinee_type: Node) -> Map<Node, List<InferredFacts>> {
+  concat_inferred_facts_entries(
+    a: mbt_entry(node: mbt_scrutinee(), ty: scrutinee_type),
+    b: mbt_typed_bodies()
   )
 }
 
@@ -917,4 +909,13 @@ test fn mbt_the_supplied_match_is_accepted_and_typed_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: facts, diagnostics: _ } => inferred_facts_grounding_derived(facts: facts)
   }
+}
+
+// THE UNDECLARED-FIELD REFUSAL ON THE REAL ROUTE: a field read off an arm binder that the matched variant's
+// payload type does not declare is refused by infer, with the receiver reason. The supplied refusal rows
+// establish the boundary; this is the authored-source execution that the restored typing reaches it.
+data mbt_undeclared_field_src: String = mbt_decls + "fn g(h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n    Rejected { diagnostics: r } => fallback.tree\n    Accepted { value: artifact, diagnostics: d } => artifact.nope\n  }\n}\n"
+
+test fn mbt_a_field_off_the_binder_its_payload_does_not_declare_refuses_on_the_source_route_holds() -> Bool {
+  mbp_reports(reading: mbp_reading(src: mbt_undeclared_field_src), reason: ^infer_reason_field_not_declared_on_receiver)
 }

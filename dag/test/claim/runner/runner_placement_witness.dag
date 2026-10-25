@@ -39,7 +39,10 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
           }
           && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
           && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: h.runner_count))
-          && hardware_thread_count_value(t: h.build_tokens) > 0
+          && match h.per_runner_cpu_boundary {
+            CapacityQuota { threads: t } => hardware_thread_count_value(t: t) > 0
+            NoCpuCeiling => false
+          }
       )
 }
 
@@ -330,9 +333,9 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
         HostAllocationUnchargeableOnHost { cause: _ } => false
         ZeroRunnerWidth => false
         CommittedWidthUnresolved { cause: _ } => false
-        JobserverCitationAbsent { cause: _ } => false
         HostCpuAllocationUnchargeable { cause: _ } => false
         HostNotEnrolledInFleet => false
+        HostRealizedByImage => false
       }
     HostRunnerDeploymentDerived { deployment: _ } => false
   }
@@ -414,7 +417,7 @@ test fn a_refusal_cause_does_not_reach_a_derived_deployment() -> Bool {
 // A HOST-TARGETED CONVERGE ADMITS srv3 WHILE srv2 IS REFUSED. Convergence is a host-targeted
 // transaction, so the fleet's incompleteness is not a fact about srv3.
 test fn converge_admits_a_derived_host_while_another_is_refused() -> Bool {
-  match fleet_converge_policy_from(plan: live_plan()) {
+  match fleet_converge_policy_from(plan: live_plan(), image_baked: runner_image_baked_deployment_plan()) {
     ConvergePolicyDerived { hosts: hs } =>
       any(hs, h => (h.identity as String) == (operator_host_srv3 as String))
         && !any(hs, h => (h.identity as String) == (operator_host_srv2 as String))
@@ -432,4 +435,112 @@ test fn srv1_derives_with_the_shakedown_slot_charged_at_its_real_size() -> Bool 
       runner_count_is_the_derived_width(host: operator_host_srv1, count: d.runner_count)
     HostRunnerDeploymentRefused { refusal: _ } => false
   }
+}
+
+// THE CPU ALLOCATION FOLD AT SUPPLIED VALUES (DESIGN 3, a witness discriminates at one interface).
+// The figures are the shapes the overseer reported placing by hand on 2026-10-14 -- srv1 128
+// threads, 512GiB, sessions 128GiB, 11 slots; srv3 128 threads, no sessions slice, 16 slots; srv4
+// 17 slots -- and the fold must reproduce 32 / 8, 0 / 7 and 0 / 7 with the 8-thread host reserve:
+// (128 - 8 - 32) / 11 = 8, (128 - 8) / 16 = 7, (128 - 8) / 17 = 7.
+fn gib(n: Nat) -> ByteSize {
+  byte_size(count: nat_mul(a: n, b: 1073741824))
+}
+
+fn allocation_is(r: HostCpuAllocationResolution, sessions: Nat, per_slot: Nat) -> Bool {
+  match r {
+    HostCpuAllocationDerived { allocation: a } =>
+      hardware_thread_count_value(t: a.sessions_cpu_cap) == sessions
+        && hardware_thread_count_value(t: a.per_slot) == per_slot
+    HostCpuAllocationRefused { reason: _ } => false
+  }
+}
+
+fn allocation_refused(r: HostCpuAllocationResolution) -> Bool {
+  match r {
+    HostCpuAllocationDerived { allocation: _ } => false
+    HostCpuAllocationRefused { reason: _ } => true
+  }
+}
+
+test fn host_cpu_allocation_charges_sessions_by_memory_share_and_the_reserve() -> Bool {
+  allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 512), session_pool: gib(n: 128), slots: 11), sessions: 32, per_slot: 8)
+    && allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 502), session_pool: byte_size(0), slots: 16), sessions: 0, per_slot: 7)
+    && allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 502), session_pool: byte_size(0), slots: 17), sessions: 0, per_slot: 7)
+}
+
+// The RED arm: a width the runner threads cannot give one whole thread each refuses, rather than
+// rendering a zero-percent quota; a zero width refuses as well.
+test fn host_cpu_allocation_refuses_a_width_it_cannot_feed() -> Bool {
+  allocation_refused(r: host_cpu_allocation(threads: hardware_thread_count(count: 16), reserve: host_cpu_reserve_threads, host_ram: gib(n: 64), session_pool: byte_size(0), slots: 9))
+    && allocation_refused(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 512), session_pool: byte_size(0), slots: 0))
+}
+
+// THE INHABITANCE CLAIM, AT THE JOIN (review 80174, DESIGN 3 pairing obligation). For every fleet
+// host whose deployment derives, re-run host_cpu_allocation on THAT host's own inputs -- its primary
+// CPU threads, usable RAM, session reservation and committed width, read from the same producers the
+// real route reads -- and require the deployment the real host_standing_at_width route emitted to
+// carry exactly that answer. A join that hardcoded a quota, or skipped the fold, fails here.
+fn deployment_carries_allocation(d: RunnerHostDeployment, expected: HostCpuAllocationResolution) -> Bool {
+  match expected {
+    HostCpuAllocationRefused { reason: _ } => false
+    HostCpuAllocationDerived { allocation: a } =>
+      hardware_thread_count_value(t: d.sessions_cpu_cap) == hardware_thread_count_value(t: a.sessions_cpu_cap)
+        && match d.per_runner_cpu_boundary {
+          CapacityQuota { threads: t } => hardware_thread_count_value(t: t) == hardware_thread_count_value(t: a.per_slot)
+          NoCpuCeiling => false
+        }
+  }
+}
+
+fn expected_allocation_for(offer: ComputeOffer) -> HostCpuAllocationResolution {
+  let h = offer.supply.physical.identity
+  let facts = host_width_facts(host: h)
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent => HostCpuAllocationRefused { reason: "no primary CPU" }
+    Present { value: cpu } =>
+      match host_usable_ram_or_refusal(host: h, r: facts.usable_ram) {
+        HostUsableRamUnresolved { reason: r } => HostCpuAllocationRefused { reason: r }
+        HostUsableRamResolved { bytes: ram } =>
+          match committed_width_of(f: facts) {
+            RunnerWidthUnresolved { cause: _ } => HostCpuAllocationRefused { reason: "width unresolved" }
+            RunnerWidthDerived { slots: w } =>
+              match session_slice_of(f: facts) {
+                SessionSliceUnsized { reason: r } => HostCpuAllocationRefused { reason: r }
+                SessionSliceNotApplicable => host_cpu_allocation(threads: cpu_facts_threads(cpu: cpu), reserve: host_cpu_reserve_threads, host_ram: ram, session_pool: byte_size(0), slots: w)
+                SessionSliceCharged { bytes: b } => host_cpu_allocation(threads: cpu_facts_threads(cpu: cpu), reserve: host_cpu_reserve_threads, host_ram: ram, session_pool: b, slots: w)
+              }
+          }
+      }
+  }
+}
+
+fn every_derived_host_carries(supplied: fn(RunnerHostDeployment) -> RunnerHostDeployment) -> Bool {
+  let plan = live_plan()
+  let checked = flat_map(fleet_intent_offers, o => match runner_host_deployment_for(p: plan, host: o.supply.physical.identity) {
+    HostRunnerDeploymentDerived { deployment: d } => [deployment_carries_allocation(d: supplied(d), expected: expected_allocation_for(offer: o))]
+    HostRunnerDeploymentRefused { refusal: _ } => []
+  })
+  length(checked) > 0 && all(checked, ok => ok)
+}
+
+test fn every_derived_host_carries_the_fold_as_its_cpu_quota() -> Bool {
+  every_derived_host_carries(supplied: d => d)
+}
+
+// RED: the same claim over a deployment whose join was bypassed with a supplied constant quota (one
+// thread, which no real host derives) must fail -- the claim reads the value, not the shape.
+test fn a_bypassed_join_with_a_constant_quota_fails_the_claim() -> Bool {
+  !every_derived_host_carries(supplied: d => RunnerHostDeployment {
+    identity: d.identity,
+    runner_count: d.runner_count,
+    runner_slice_cap: d.runner_slice_cap,
+    per_runner_memory_cap: d.per_runner_memory_cap,
+    per_runner_memory_swap_cap: d.per_runner_memory_swap_cap,
+    per_runner_memory_high_cap: d.per_runner_memory_high_cap,
+    per_runner_tasks_max: d.per_runner_tasks_max,
+    per_runner_cpu_boundary: CapacityQuota { threads: hardware_thread_count(count: 1) },
+    sessions_cpu_cap: d.sessions_cpu_cap,
+    runner: d.runner,
+    workload_class: d.workload_class,
+  })
 }

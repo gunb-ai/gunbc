@@ -1,6 +1,7 @@
 module v2.test.claim.sql_create_table_fold
 
 
+
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
   SqlColumnDefaultAbsent,
@@ -30,9 +31,7 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,
@@ -52,7 +51,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.node { Conj, Node, TypeNode }
+import v2.std.node { node_same_occurrence, Conj, Node, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -191,7 +190,7 @@ test fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
   match sql_fold_operation_emitted_witness(op: sql_fold_single_col_operation()) {
     Holds { value: single } =>
       match sql_fold_operation_emitted_witness(op: sql_fold_two_col_operation()) {
-        Holds { value: two } => single != two
+        Holds { value: two } => !node_same_occurrence(a: single, b: two)
         Violates { diagnostic: _ } => false
       }
     Violates { diagnostic: _ } => false

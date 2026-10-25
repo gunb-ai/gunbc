@@ -12,6 +12,7 @@ import gunbc.emit_stage_blocking_population_census {
   PristineAtRevision,
   LocallyPerturbed
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // TWO LANES RAN ONE COMMAND ON ONE COMMIT AND GOT OPPOSITE VERDICTS, AND BOTH WERE RIGHT.
 //
@@ -28,16 +29,15 @@ import gunbc.emit_stage_blocking_population_census {
 // TREE AND ITS REVISION ALONE, and a receipt that omits which build produced it is not a
 // measurement of anything a reader can return to.
 data annotation_parse_instrument_agreement_disposition: Disposition = Terminal {
-  reason: "A RECEIPT, NOT A GATE. Nothing here executes on any push and nothing refuses. It records three things that were established by execution: that the two PARSE ENTRY POINTS in this repository reach one admission seam, that the reported refusal reproduces on an installed compiler build and not on one built from the revision under test, and that a red control against this compiler must discriminate on diagnostic identity rather than on population size. The standing enforcement of annotation grain is the required CI parse phase, which folds every authored .dag through the same seam on every push; this module adds no wall beside it and does not weaken it."
+  reason: "A RECEIPT, NOT A GATE. Nothing here executes on any push and nothing refuses. It records three things that were established by execution: that annotation admission runs at exactly one seam (v1.compiler.annotation_bind bind_annotations), that the reported refusal reproduces on an installed compiler build and not on one built from the revision under test, and that a red control against this compiler must discriminate on diagnostic identity rather than on population size. WHICH ROUTES REACH THAT SEAM CHANGED (gunbc P0.2, v1-interface-cull-audit lane B, 2026-10-19): the compile route's front_end_sources no longer calls bind_annotations -- its bound graph fed no consumer, ~35 s of the frontend's 55 s per the audit's section 3a -- so the readers that want bindings demand their own (v1.tests.claim.annotation_gap_round_trip_test, v2.test.claim.manual.annotation_gap_v1_v2_agreement), and gunbc compile itself no longer reaches the seam. That deletion removes demand, not admission: the seam is still reached, still once, and a claim that said otherwise would have been a fabricated citation, so the rows below say this. Annotation grain is not a required parse-sweep phase: B0 deleted claim_executor --required-ci --required-lane witnesses, run_dag_parse_sweep reconstructs declarations and does not call bind_annotations, and this module adds no wall."
 }
 
 // ── WHICH PARSE EACH ENTRY POINT TAKES ────────────────────────────────────────────────────────
 //
-// NOT EVERY ROUTE SITS IN A DECLARATION THE INDEX CAN NAME. The required parse phase is reached
-// through a hand-Rust host in the stage0 seed, which no DeclarationRef addresses; citing a nearby
-// `.dag` symbol for it would be the fabricated citation DESIGN section 3 already records this
-// repository writing twice. The host arm is a real state rather than a gap, and it carries the
-// host symbol as text because that is all the namespace can honestly offer.
+// NOT EVERY ROUTE SITS IN A DECLARATION THE INDEX CAN NAME. A host walk that reconstructs
+// declarations (cli_run run_dag_parse_sweep) is real, but it is not an annotation-admission
+// entry: parse_revision_declarations_with_environment tokenizes and parses and does not call
+// bind_annotations. Citing that walk as reaching the seam would be a fabricated citation.
 type ParseRouteHome
   = RouteInDeclaration { declaration: DeclarationRef }
   | RouteInSeedHost { host_symbol: NonEmptyStr }
@@ -60,31 +60,22 @@ type GrammarAuthorityStanding
 
 data annotation_admission_seam: DeclarationRef = decl_ref(module_path: "v1.compiler.annotation_bind", decl_name: "bind_annotations")
 
-// THE REQUIRED PARSE PHASE. `claim_executor --required-ci --required-lane witnesses` sweeps
-// src/v1, dag and src/v2 and puts every file through the frontend's own per-source census-fill
-// parse -- tokenize into the annotation channel, parse in an occurrence scope, then bind every comment to its gap. The
-// walk is host Rust; the parse it calls is not.
-data required_parse_phase_entry: ParseEntryPoint = ParseEntryPoint {
-  invoked_as: "claim_executor --required-ci --required-lane witnesses (parse phase)" as NonEmptyStr,
-  first_route: RouteInSeedHost { host_symbol: "cli_run.rs run_dag_parse_sweep" as NonEmptyStr },
-  reaches_admission: annotation_admission_seam
-}
-
-// THE COMPILER CLI. `gunbc compile` routes its whole-root subject through cli_run compile_emission
-// into the modeled pipeline, whose frontend and whose census fill are the two callers that
-// v1.compiler.annotation_bind names in its own header as the pair that must not drift.
-data gunbc_compile_entry: ParseEntryPoint = ParseEntryPoint {
-  invoked_as: "gunbc compile --source-root dag --source-root src/v2" as NonEmptyStr,
+// THE ROUTE THAT REACHES THE SEAM TODAY. Since gunbc P0.2 (v1-interface-cull-audit lane B) the
+// compile route (v1.compiler.compile compile_to_resolved_with_options) no longer reaches
+// bind_annotations, so it is not an entry point of this question. The readers that want bindings
+// bind for themselves; the annotation gap claim is the one recorded here. The measurements above
+// were taken when the compile frontend still bound and remain readings of that revision.
+// parse_revision_declarations_with_environment never reached the seam.
+data annotation_gap_claim_entry: ParseEntryPoint = ParseEntryPoint {
+  invoked_as: "claim v1.tests.claim.annotation_gap_round_trip_test" as NonEmptyStr,
   first_route: RouteInDeclaration {
-    declaration: decl_ref(module_path: "v1.compiler.compile", decl_name: "compile_to_resolved_with_options")
+    declaration: decl_ref(module_path: "v1.tests.claim.annotation_gap_round_trip_test", decl_name: "gap_parse")
   },
   reaches_admission: annotation_admission_seam
 }
 
-// THE FINDING'S ORIGINAL QUESTION, ANSWERED. Both entry points arrive at one seam, so there is no
-// second grammar in the source. Established by reading the call chains and declared as a code read;
-// the executions below establish the BEHAVIOUR, which is the half a code read cannot settle -- and
-// which turned out to depend on something a code read cannot see at all.
+// THE FINDING'S ORIGINAL QUESTION, ANSWERED FOR THE ROUTES THAT STILL BIND. They arrive at one
+// seam. The compile route and the parse sweep are not second admissions: neither binds.
 data parse_entry_standing: GrammarAuthorityStanding = OneSharedAdmission { admission: annotation_admission_seam }
 
 fn entry_points_share_one_grammar(s: GrammarAuthorityStanding) -> Bool {
@@ -145,7 +136,7 @@ data measured_revision: CommitSha = "b6003a45e58a5775022f911cc4aabb2ad475da8b"
 // gunbc`, roughly three and a half minutes on a session container.
 data source_build: CompilerBuild = CompilerBuild {
   observed_on: "session quick-lynx-237 (measured by this receipt's author)" as NonEmptyStr,
-  path: "target/release/gunbc" as NonEmptyStr,
+  path: concat(cargo_default_release_dir_rel, "/gunbc") as NonEmptyStr,
   content_digest: "md5:e5f35d562fe512cbb965e8b39adc7937" as NonEmptyStr,
   byte_length: byte_size(count: 25936008),
   provenance: BuiltFromRevision { revision: measured_revision, working_tree_dirty: false }
@@ -416,11 +407,11 @@ fn red_control_count_moved_down(o: RedControlOutcome) -> Bool {
 // 472cadfcfeecfb1fa39c531f529ecf81e38dfae7 with an unidentified build, and neither half is
 // reconstructed here.
 //
-// IT IS NOT A WALL. The standing enforcement of annotation grain is the required parse phase,
-// which folds every authored .dag through the same seam on every push and stops the line on a
-// refusal -- and which, being CI, runs a compiler built from the revision under test rather than
-// whatever is installed on a session container. That is why the corpus stayed admissible while
-// individual lanes could not compile it.
+// IT IS NOT A WALL. Annotation attachment on a compile is front_end_sources calling
+// bind_annotations. There is no required parse-sweep phase on every push that re-runs that seam
+// (B0 deleted claim_executor --required-ci --required-lane witnesses). A CI compile still uses a
+// compiler built from the revision under test rather than whatever is installed on a session
+// container; that is why the corpus stayed admissible while individual lanes could not compile it.
 //
 // THE ADVISORY POPULATION IS CARRIED AS A MEASUREMENT, NEVER AS AN ORACLE. A number measured off
 // the current tree cannot adjudicate a later tree (DESIGN section 5), so nothing here compares

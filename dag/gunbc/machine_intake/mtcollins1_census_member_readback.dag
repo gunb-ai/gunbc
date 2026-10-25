@@ -22,9 +22,9 @@ import gunbc.host_command_binding {
 }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.host.boot_medium { BootImageExport, BootMedium }
-import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, mtcollins1_census_medium_qualification, boot_image_export_text, mtcollins1_boot_medium, mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
+import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, census_medium_qualification, boot_image_export_text, mtcollins1_census_boot_medium, census_image_stock_path, mtcollins1_census_nocloud_dir, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
+import gunbc.host.boot_medium_served_readback { boot_medium_served_path, RemoteAnswer, remote_answer_of }
 
 // THE PUBLISHED IMAGE'S BOOT CHAIN, READ BACK MEMBER BY MEMBER AGAINST THE STOCK MEDIUM IT WAS
 // REMASTERED FROM. The census remaster (extdeps.provisioning.ubuntu_seeded_install_media_remaster)
@@ -164,8 +164,8 @@ type CensusPinGate
   = PinsAdmitted { stock_iso: NonEmptyStr, census_iso: NonEmptyStr }
   | PinsRefused { readback: CensusMemberReadback }
 
-fn census_pin_gate(medium: BootMedium, stock_iso: IsoReading, census_iso: IsoReading) -> CensusPinGate {
-  match mtcollins1_census_medium_qualification(medium: medium) {
+fn census_pin_gate(medium: BootMedium, image_stem: NonEmptyStr, volume_id: NonEmptyStr, stock_iso: IsoReading, census_iso: IsoReading) -> CensusPinGate {
+  match census_medium_qualification(image_stem: image_stem, volume_id: volume_id, medium: medium) {
     CensusMediumNotCensus => PinsRefused { readback: BootChainMediumNotCensus }
     CensusMediumExporterUnsupported { supported: sup, named: n } => PinsRefused { readback: BootChainMediumExporterUnsupported { supported: sup, named: n } }
     CensusMediumQualified { digest: census_pin, export: _ } =>
@@ -202,13 +202,15 @@ type CensusMemberReadings {
 // The pure join over pins and six readings, composed as the producer composes it.
 fn census_member_readback_from_readings(
   medium: BootMedium,
+  image_stem: NonEmptyStr,
+  volume_id: NonEmptyStr,
   stock_iso: IsoReading,
   census_iso: IsoReading,
   stock_grub: MemberReading, census_grub: MemberReading,
   stock_kernel: MemberReading, census_kernel: MemberReading,
   stock_initrd: MemberReading, census_initrd: MemberReading,
 ) -> CensusMemberReadback {
-  match census_pin_gate(medium: medium, stock_iso: stock_iso, census_iso: census_iso) {
+  match census_pin_gate(medium: medium, image_stem: image_stem, volume_id: volume_id, stock_iso: stock_iso, census_iso: census_iso) {
     PinsRefused { readback: r } => r
     PinsAdmitted { stock_iso: s, census_iso: c } =>
       census_member_verdict(stock_iso: s, census_iso: c, readings: CensusMemberReadings {
@@ -276,13 +278,26 @@ data census_member_readback_attempt_raw: String = "mtcollins1-census-member-read
 
 data census_member_readback_receipt_path: String = "target/mtcollins1-census-member-readback.txt"
 
-data census_member_workspace_prefix: String = "/tmp/gunbc-mtcollins1-census-member."
+// THE ATTEMPT'S SCRATCH NAMESPACE, DERIVED FROM THE ATTEMPT ITSELF (DESIGN §3/§5). The generic
+// readback takes the attempt identity as a parameter; the scratch prefix it owns on the target is a
+// fact of that attempt, not a constant the caller can cross. A second or concurrent subject runs
+// under its OWN attempt identity and therefore its OWN namespace -- the attempt owns the paths that
+// materialize the public selector and the verified known_hosts anchor, so two subjects never alias
+// one attempt-owned materialization. mtcollins1's receipt row (census_member_readback_attempt_raw)
+// derives the prefix it always used; the receipt records WHICH attempt the workspace was owned
+// under, so a receipt cannot answer for a context a different attempt prepared.
+fn census_member_workspace_prefix_of(attempt: NonEmptyStr) -> String {
+  concat("/tmp/gunbc-", attempt as String, ".")
+}
+fn census_member_workspace_template_of(attempt: NonEmptyStr) -> NonEmptyStr {
+  concat(census_member_workspace_prefix_of(attempt: attempt), "XXXXXXXX") as NonEmptyStr
+}
 
-data census_member_workspace_template: NonEmptyStr = concat(census_member_workspace_prefix, "XXXXXXXX") as NonEmptyStr
-
-// THE ATTEMPT: the readback and the workspace's outcome, both retained. It holds only when the boot
-// chain is identical to stock AND this attempt's workspace was removed.
+// THE ATTEMPT: the readback and the workspace's outcome, both retained, under the attempt identity
+// that prepared the SSH context. It holds only when the boot chain is identical to stock AND this
+// attempt's workspace was removed.
 type CensusMemberReadbackAttempt {
+  attempt: NonEmptyStr
   readback: CensusMemberReadback
   workspace: ScratchOutcome
 }
@@ -291,27 +306,29 @@ fn census_member_attempt_holds(attempt: CensusMemberReadbackAttempt) -> Bool {
   census_member_readback_holds(readback: attempt.readback) && scratch_removed(o: attempt.workspace)
 }
 
-fn render_workspace_outcome(w: ScratchOutcome) -> String {
-  render_scratch_outcome(label: "workspace", prefix: census_member_workspace_prefix, o: w)
+fn render_workspace_outcome(attempt: NonEmptyStr, w: ScratchOutcome) -> String {
+  render_scratch_outcome(label: "workspace", prefix: census_member_workspace_prefix_of(attempt: attempt), o: w)
 }
 
+// The receipt names the attempt identity it ran under (so a receipt says whose attempt prepared the
+// SSH context) alongside the readback and the workspace's outcome under that attempt's namespace.
 fn render_census_member_attempt(attempt: CensusMemberReadbackAttempt) -> String {
-  concat(render_census_member_readback(readback: attempt.readback), render_workspace_outcome(w: attempt.workspace))
+  concat("attempt=", attempt.attempt as String, "\n", render_census_member_readback(readback: attempt.readback), render_workspace_outcome(attempt: attempt.attempt, w: attempt.workspace))
 }
 
 // THE ATTEMPT'S DECISIONS AS ONE FOLD over the legs that were issued, so the consumer-level controls
 // exercise the same composition the producer runs. `readings` is consulted only when a workspace was
 // acquired; `cleanup` is consulted only then too.
-fn census_member_attempt_of(kind: HostTransportKind, gate: CensusPinGate, creation: HostLeg, readings: fn(NonEmptyStr) -> CensusMemberReadings, cleanup: fn(NonEmptyStr) -> HostLeg) -> CensusMemberReadbackAttempt {
+fn census_member_attempt_of(kind: HostTransportKind, attempt: NonEmptyStr, gate: CensusPinGate, creation: HostLeg, readings: fn(NonEmptyStr) -> CensusMemberReadings, cleanup: fn(NonEmptyStr) -> HostLeg) -> CensusMemberReadbackAttempt {
   match gate {
-    PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
+    PinsRefused { readback: r } => CensusMemberReadbackAttempt { attempt: attempt, readback: r, workspace: CreationNotRequested }
     PinsAdmitted { stock_iso: s, census_iso: c } =>
-      match scratch_acquisition_of(kind: kind, prefix: census_member_workspace_prefix, leg: creation) {
+      match scratch_acquisition_of(kind: kind, prefix: census_member_workspace_prefix_of(attempt: attempt), leg: creation) {
         ScratchNotAcquired { outcome: o } =>
-          CensusMemberReadbackAttempt { readback: BootChainWorkspaceUnavailable { reason: render_workspace_outcome(w: o) }, workspace: o }
+          CensusMemberReadbackAttempt { attempt: attempt, readback: BootChainWorkspaceUnavailable { reason: render_workspace_outcome(attempt: attempt, w: o) }, workspace: o }
         ScratchAcquired { dir: dir } => {
           let readback = census_member_verdict(stock_iso: s, census_iso: c, readings: readings(dir))
-          CensusMemberReadbackAttempt { readback: readback, workspace: scratch_removal_of(kind: kind, dir: dir, leg: cleanup(dir)) }
+          CensusMemberReadbackAttempt { attempt: attempt, readback: readback, workspace: scratch_removal_of(kind: kind, dir: dir, leg: cleanup(dir)) }
         }
       }
   }
@@ -429,31 +446,43 @@ fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, command: Arg
 // returned: a medium naming an unsupported exporter is refused with nothing read, never measured on the
 // supported one. The read body lives inside the qualified arm, so no entry takes a medium and an export
 // as two separately supplied values.
-fn census_member_readback(medium: BootMedium) -> CensusMemberReadbackAttempt {
-  match mtcollins1_census_medium_qualification(medium: medium) {
-    CensusMediumNotCensus => CensusMemberReadbackAttempt { readback: BootChainMediumNotCensus, workspace: CreationNotRequested }
+// The member readback reads the served ISO's boot-chain members (grub, kernel, initrd) against stock;
+// it needs the subject's artifact identity (the image stem and the volume id) to qualify the medium,
+// and the served / stock paths, but not the image's rendered user-data. A refused user-data render does
+// not make the ISO unreadable.
+// THE ATTEMPT IDENTITY IS AN INPUT (DESIGN §3/§5): the generic readback prepares its SSH agent
+// context and owns its scratch namespace under the caller's attempt, not a baked-in mtcollins1
+// constant. mtcollins1's wet wrapper supplies census_member_readback_attempt_raw, which derives the
+// mtcollins1 scratch prefix it always used; a second subject passes its own attempt and therefore
+// owns a disjoint namespace and a receipt that names its own attempt.
+fn census_member_readback(medium: BootMedium, image_stem: NonEmptyStr, volume_id: NonEmptyStr, attempt: NonEmptyStr) -> CensusMemberReadbackAttempt {
+  match census_medium_qualification(image_stem: image_stem, volume_id: volume_id, medium: medium) {
+    CensusMediumNotCensus => CensusMemberReadbackAttempt { attempt: attempt, readback: BootChainMediumNotCensus, workspace: CreationNotRequested }
     CensusMediumExporterUnsupported { supported: sup, named: n } =>
-      CensusMemberReadbackAttempt { readback: BootChainMediumExporterUnsupported { supported: sup, named: n }, workspace: CreationNotRequested }
+      CensusMemberReadbackAttempt { attempt: attempt, readback: BootChainMediumExporterUnsupported { supported: sup, named: n }, workspace: CreationNotRequested }
     CensusMediumQualified { digest: _, export: export } =>
-      match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+      match prepare_fleet_ssh_agent_context(attempt_raw: attempt as String) {
         FleetSshContextRefused { cause: c } =>
-          CensusMemberReadbackAttempt { readback: BootChainHostUnreached { reason: c }, workspace: CreationNotRequested }
+          CensusMemberReadbackAttempt { attempt: attempt, readback: BootChainHostUnreached { reason: c }, workspace: CreationNotRequested }
         FleetSshContextReady { context: context, receipt: _ } => {
           let target = export.target
-          let stock_path = mtcollins1_census_image_stock_path()
-          let census_path = mtcollins1_census_medium_served_path(medium: medium)
+          let stock_path = census_image_stock_path()
+          let census_path = boot_medium_served_path(medium: medium)
           let gate = census_pin_gate(
             medium: medium,
+            image_stem: image_stem,
+            volume_id: volume_id,
             stock_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: stock_path as String))),
             census_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: census_path as String))),
           )
           match gate {
-            PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
+            PinsRefused { readback: r } => CensusMemberReadbackAttempt { attempt: attempt, readback: r, workspace: CreationNotRequested }
             PinsAdmitted { stock_iso: _, census_iso: _ } =>
               census_member_attempt_of(
                 kind: FleetSshTransport,
+                attempt: attempt,
                 gate: gate,
-                creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template)),
+                creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template_of(attempt: attempt))),
                 readings: dir => census_member_readings_on(host: FleetSshCommandHost { target: target, context: context }, dir: dir, stock_path: stock_path, census_path: census_path),
                 cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),
               )
@@ -468,8 +497,10 @@ fn census_member_readback(medium: BootMedium) -> CensusMemberReadbackAttempt {
 // which consumes the fleet SSH key; the receipt is uploaded as that run's artifact whatever the
 // verdict. The run exits nonzero unless the chain is identical AND the workspace was removed.
 fn mtcollins1_census_member_readback_wet() -> ProcessExit {
-  let attempt = census_member_readback(medium: mtcollins1_boot_medium)
-  let attributes = census_member_mapped_attributes(medium: mtcollins1_boot_medium)
+  // mtcollins1's attempt identity, which derives the mtcollins1 scratch prefix the run always used.
+  let census_attempt = census_member_readback_attempt_raw as NonEmptyStr
+  let attempt = census_member_readback(medium: mtcollins1_census_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_attempt)
+  let attributes = census_member_mapped_attributes(medium: mtcollins1_census_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_attempt)
   let rendered = concat(render_census_member_attempt(attempt: attempt), "census_mapped_attributes=\n", attributes, "\n")
   let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)
   if written.success == false {
@@ -484,16 +515,19 @@ fn mtcollins1_census_member_readback_wet() -> ProcessExit {
 // The pinned census ISO's mapped members as the served image records them. A REPORT beside the
 // verdict, not a gate: which user a build baked in is evidence about the build, not about whether the
 // boot chain matches stock.
-fn census_member_mapped_attributes(medium: BootMedium) -> String {
-  match mtcollins1_census_medium_qualification(medium: medium) {
+// THE ATTEMPT IDENTITY IS AN INPUT (DESIGN §3/§5), the same as census_member_readback: the report
+// reads the pinned census ISO's members over a context prepared under the caller's attempt, so it
+// cannot answer for a context a different attempt prepared.
+fn census_member_mapped_attributes(medium: BootMedium, image_stem: NonEmptyStr, volume_id: NonEmptyStr, attempt: NonEmptyStr) -> String {
+  match census_medium_qualification(image_stem: image_stem, volume_id: volume_id, medium: medium) {
     CensusMediumNotCensus => "UNREAD: the medium is not the census image"
     CensusMediumExporterUnsupported { supported: sup, named: n } =>
       concat("UNREAD: the medium names the unsupported exporter ", boot_image_export_text(export: n), " (supported: ", boot_image_export_text(export: sup), ")")
     CensusMediumQualified { digest: _, export: export } =>
-      match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+      match prepare_fleet_ssh_agent_context(attempt_raw: attempt as String) {
         FleetSshContextRefused { cause: c } => concat("UNREAD: no fleet SSH context: ", c)
         FleetSshContextReady { context: context, receipt: _ } =>
-          census_mapped_attributes_on(host: FleetSshCommandHost { target: export.target, context: context }, iso_path: mtcollins1_census_medium_served_path(medium: medium))
+          census_mapped_attributes_on(host: FleetSshCommandHost { target: export.target, context: context }, iso_path: boot_medium_served_path(medium: medium))
       }
   }
 }

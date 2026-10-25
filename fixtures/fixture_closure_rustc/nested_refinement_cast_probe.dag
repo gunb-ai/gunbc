@@ -39,3 +39,6 @@ fn project_branded_to_string(b: BrandedSegment) -> String { b as String }
 fn widen_nested_predicate(raw: String) -> NestedPredicateSegment { raw as NestedPredicateSegment }
 
 fn int_to_float(i: Int) -> Float { i as Float }
+
+type AliasOfBrand = BrandedSegment
+fn project_alias_to_string(a: AliasOfBrand) -> String { a as String }

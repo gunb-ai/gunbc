@@ -5,7 +5,7 @@ import std.types { String, Timestamp, List }
 import gunbc.auth.approval_device_routes { device_pending_response_at }
 import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoRealization, DeviceCryptoObligation, NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt,
+  DeviceCryptoRealization, DeviceCryptoObligation, NativeDeviceCryptoBound, DeviceCryptoRequirement,
   P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder,
 }
 
@@ -16,7 +16,7 @@ import gunbc.auth.approval_device_crypto_realization {
 // gate claims it pairs with stay hermetic in test.claim.approval_device_routes_witness.
 
 fn fx_bound(covered: List<DeviceCryptoObligation>) -> DeviceCryptoRealization {
-  NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture-native-handler", exact_revision: "0000000", covered: covered } }
+  NativeDeviceCryptoBound { requirement: DeviceCryptoRequirement { handler_identity: "fixture-native-handler", required: covered } }
 }
 
 data fx_now: Timestamp = "2026-09-21T12:00:00Z"
@@ -29,4 +29,3 @@ data fx_unrealized: String = "native device-crypto realization is unavailable"
 test fn a_bound_realization_passes_the_read_past_the_gate() -> Bool {
   !string_contains(s: device_pending_response_at(realization: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder]), body: read_authentication_json(a: fx_auth), observed_at: fx_now).body, pattern: fx_unrealized)
 }
-

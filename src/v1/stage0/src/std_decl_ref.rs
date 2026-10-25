@@ -3,6 +3,7 @@
 
 use self::CitationIndexCoverage::*;
 use self::DeclField::*;
+pub use crate::std_algebra::collection_concat_shape;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

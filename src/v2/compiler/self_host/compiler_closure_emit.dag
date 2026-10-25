@@ -29,7 +29,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.std.provenance { SpanIndex }
 import v2.std.program_segment {
   partition_boundary_fail_closed,
@@ -79,7 +79,7 @@ fn compiler_closure_frontier_count(closure: AffectedSetClosureAcc) -> Int {
 fn compiler_closure_frontier_subset_of_ready(root: Node, closure: AffectedSetClosureAcc) -> Bool {
   let ready = ready_set(graph_node: root)
   fold(closure.frontier, init: true, f: fn(ok, node) {
-    ok && contains(xs: ready, item: node, eq: fn(left, right) { left == right })
+    ok && contains(xs: ready, item: node, eq: fn(left, right) { node_same_occurrence(a: left, b: right) })
   })
 }
 

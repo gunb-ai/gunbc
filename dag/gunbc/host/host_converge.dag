@@ -1,9 +1,10 @@
 module gunbc.host.host_converge
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.algebra { FreeSemigroup, fold_list, non_empty_append, non_empty_singleton }
 import std.optional { Absent, Present }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
+import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, HardwareThreadCount, percent_count, Second, second, second_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
@@ -20,6 +21,9 @@ import gunbc.ci.ci_runner_placement {
   RunnerHostDeployment,
   RunnerCpuBoundary, CapacityQuota, NoCpuCeiling,
   runner_deployment_plan,
+  runner_image_baked_deployment_plan,
+  runner_host_deployment_for,
+  host_deployment_refusal_text,
   workload_class_cpu_weight,
   WorkloadClass,
   BatchLatencyTolerant,
@@ -88,24 +92,6 @@ data gunbc_runner_control_dropin_dir_prefix: String = "/etc/systemd/system.contr
 // /etc/systemd/system.control drop-in until reboot or `systemctl revert`. Live 18/20 GiB on
 // gunbc-approval-broker.slice (2026-09-30) is that runtime residue: no row produces it.
 data gunbc_runtime_system_control_dropin_dir_prefix: String = "/run/systemd/system.control/"
-data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
-data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
-data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
-
-// THE DAEMON'S FIFO PATH, WHICH THE RUNNER UNIT HAS TO NAME AND NOTHING HERE PREVIOUSLY DID.
-//
-// The jobserver's token count already lives beside the env file above; the FIFO those tokens are
-// handed out over did not, because no consumer here had to name it until a runner unit was
-// rendered from gunbc. It sits here rather than in `extdeps.jobserver` for the reason that
-// module's placement caveat states: the protocol shape is upstream's, this fleet's installed
-// daemon is ours.
-//
-// It is the DEFAULT. The daemon reads `/etc/default/ctrl-jobserver` and a host may override it
-// there, so a render assuming this path on a host that overrode it would point MAKEFLAGS at a FIFO
-// nobody owns. Hence the unit render takes the path as a parameter and this row is what the fleet
-// passes, rather than the render reaching for a constant it cannot check.
-data gunbc_runner_jobserver_default_fifo: String = "/var/lib/ctrl/jobserver/host.fifo"
-
 data gunbc_runner_slot_unit_placeholder: NonEmptyStr = "system-actions-runner.slice"
 
 data gunbc_root_env_key: String = "GUNBC_ROOT"
@@ -268,7 +254,6 @@ type ConvergeTarget
   = SliceProperty { unit: String, property: String, apply_value: String, expected_effective: String }
   | PerSlotMemoryCap { dropin_path: String, instance_glob: String, property: String, bytes_value: String }
   | RunnerWidth { instance_glob: String }
-  | JobserverTokens { env_file: String, env_key: String, service_unit: String }
   | VerifyOnlyCap { slice_unit: String, property: String }
   | GunbcPinnedTree {
       gunbc_root_env_key: String
@@ -357,7 +342,9 @@ fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity)
 }
 
 type ConvergePolicy
-  = ConvergePolicyDerived { hosts: List<HostConverge> }
+  // `hosts` are converged in place; `image_baked` are the knobs of hosts that boot a RAM image, owed to the
+  // image build input and never applied by a converge (gunbc.fleet.fleet_host_backing ConvergeRealization).
+  = ConvergePolicyDerived { hosts: List<HostConverge>, image_baked: List<HostConverge> }
   | ConvergePolicyUnsound { reason: String }
 
 fn runner_instance_glob(host: HostIdentity) -> String {
@@ -578,20 +565,12 @@ fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 // that systemd reads as unset, through the same drop-in the ceiling would use.
 //
 // A KNOB IS THE DESIRED REPRESENTATION, NOT ITS APPLICATION OR READBACK (review F-R2, 2026-09-19).
-// Nothing in production carries this CPU drop-in through to a host today, for either arm:
-// gunbc.host.host_axis_caps caps_managed_dropin_paths enrols the memory, swap, high-water and tasks
-// drop-ins and not gunbc_runner_per_slot_cpu_dropin_path; gunbc.host.host_runner_memory_provision
-// selects its three memory knobs and has no live apply; and gunbc.runner.runner_unit_live_read
-// converge_target_live_verdict answers a verdict only for the memory properties, so a CPUQuota
-// target has no effective-value reader. This knob therefore does NOT clear a previously installed
-// per-slot quota by production convergence; it declares what a converged unit must carry.
-// EXPLICITLY BLOCKED, with its trigger: enrol the CPU drop-in path in the managed set the deploy
-// apply authority actuates (set-property on the running unit, no restart), and bind its readback as
-// a verdict over CPUQuotaPerSecUSec through parse_systemd_cpu_quota_per_sec_show -- the write is
-// `CPUQuota=` and the satisfying read is `infinity`, two spellings that must stay distinct, and an
-// unreadable property must not satisfy it. The reported srv4 runner-unit census found unlimited
-// quotas; other runner units require their own readback, and this row does not establish
-// fleet-wide quota conformity -- a unit found carrying a finite quota sits behind this block.
+// The write and the readback of this drop-in belong to gunbc.runner.runner_host_file_converge, the
+// one writer of root-evaluated runner files (the fleet-converge workflow's runner_host_file_converge
+// mode, as the administrator principal): it renders 60-fleet-cpu.conf from the same
+// per_runner_cpu_boundary this knob reads, and judges every slot's CPUQuotaPerSecUSec against it.
+// The deploy apply authority here does not also write it -- two writers of one root file is the
+// fork the operator privilege hold (2026-08-13) already rules out for this principal.
 fn runner_cpu_boundary_knobs(h: RunnerHostDeployment, glob: String) -> List<ConvergeKnob> {
   let value = runner_cpu_boundary_directive_value(b: h.per_runner_cpu_boundary)
   [
@@ -676,16 +655,6 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
       unit: gunbc_runner_slot_unit_placeholder,
       property: systemd_cpu_weight_property,
       value: workload_class_cpu_weight(wc: h.workload_class)
-    ),
-    legacy_converge_knob(
-      slice: RunnerSlice,
-      name: "build_tokens",
-      desired: to_string(hardware_thread_count_value(t: h.build_tokens)),
-      target: JobserverTokens {
-        env_file: gunbc_runner_jobserver_env_file,
-        env_key: gunbc_runner_jobserver_env_key,
-        service_unit: gunbc_runner_jobserver_service,
-      }
     ),
     legacy_converge_knob(
       slice: RunnerSlice,
@@ -930,7 +899,7 @@ type SliceControlCaps {
 // other hand drop-in would be a second authority.
 type SliceControl
   = SliceControlNotOwed
-  | SliceControlDerived { caps: List<SliceControlCaps> }
+  | SliceControlDerived { caps: FreeSemigroup<SliceControlCaps> }
   | SliceControlRefused { cause: String }
 
 fn join_slice_control(left: SliceControl, right: SliceControl) -> SliceControl {
@@ -941,7 +910,7 @@ fn join_slice_control(left: SliceControl, right: SliceControl) -> SliceControl {
       match right {
         SliceControlRefused { cause: c } => SliceControlRefused { cause: c }
         SliceControlNotOwed => SliceControlDerived { caps: a }
-        SliceControlDerived { caps: b } => SliceControlDerived { caps: concat(a, b) }
+        SliceControlDerived { caps: b } => SliceControlDerived { caps: non_empty_append(left: a, right: b) }
       }
   }
 }
@@ -965,13 +934,13 @@ fn session_slice_control_for(host: HostIdentity) -> SliceControl {
               }
             Present { value: high } =>
               SliceControlDerived {
-                caps: [
-                  SliceControlCaps {
+                caps: non_empty_singleton(
+                  item: SliceControlCaps {
                     unit: gunbc_oomd_sessions_slice,
                     memory_max: max,
                     memory_high: high,
-                  },
-                ]
+                  }
+                )
               }
           }
       }
@@ -984,13 +953,13 @@ fn approval_broker_slice_control_for(host: HostIdentity) -> SliceControl {
     ApprovalBrokerRuntimeCapsRefused { cause } => SliceControlRefused { cause: cause }
     ApprovalBrokerRuntimeCapsDerived { knobs: _ } =>
       SliceControlDerived {
-        caps: [
-          SliceControlCaps {
+        caps: non_empty_singleton(
+          item: SliceControlCaps {
             unit: gunbc_approval_broker_slice_unit_name,
             memory_max: approval_broker_slice_memory_max,
             memory_high: approval_broker_slice_memory_high,
-          },
-        ]
+          }
+        )
       }
   }
 }
@@ -1000,6 +969,97 @@ fn slice_control_caps_for(host: HostIdentity) -> SliceControl {
     left: session_slice_control_for(host: host),
     right: approval_broker_slice_control_for(host: host),
   )
+}
+
+// THE SESSIONS SLICE'S CPU CAP RIDES ITS CONTROL SEQUENCE AND IS OWED, NOT OPTIONAL. The sessions'
+// CPU share is their memory share, derived with the runner slots' quota in one fold
+// (gunbc.ci.ci_runner_placement host_cpu_allocation; operator ruling 2026-10-14, "slots need a CPU
+// cap"). The control sequence REVERTS the unit before setting it, so a sessions slice converged
+// without its CPU cap would silently drop whatever cap it held: a sessions derivation that cannot
+// produce the cap refuses the whole member, before any mutate, exactly as a memory half that cannot
+// be derived does (slice_control_caps_for). The approval-broker slice has no CPU allocation in the
+// model; that is a different fact, carried by a different arm, not an absent field.
+type SliceControlUnit
+  = SessionsSliceControl { caps: SliceControlCaps, cpu_quota: HardwareThreadCount }
+  | UncappedSliceControl { caps: SliceControlCaps }
+
+// THE ROSTER IS A FREE SEMIGROUP, NOT A LIST: nonemptiness is CONSTRUCTED, not validated
+// (DESIGN §5 "correctness by construction, not validation"; §3b Cardinality/absence, which names
+// std.algebra::FreeSemigroup as the canonical non-empty carrier under ruling
+// nonemptiness_is_constructed_or_proved). A Derived plan that carried zero units was the whole
+// fail-open: downstream, units: [] became an empty script, and an empty script applies cleanly and
+// reports nothing -- the quietest possible way to not converge a host. `head: T` is the wall: this
+// arm cannot be built empty, so no consumer needs an emptiness guard and no guard can be dropped.
+type SliceControlPlan
+  = SliceControlPlanNotOwed
+  | SliceControlPlanDerived { units: FreeSemigroup<SliceControlUnit> }
+  | SliceControlPlanRefused { cause: String }
+
+type SessionsSliceCpuQuota
+  = SessionsSliceCpuQuotaDerived { threads: HardwareThreadCount }
+  | SessionsSliceCpuQuotaRefused { cause: String }
+
+fn sessions_slice_cpu_quota_for(host: HostIdentity) -> SessionsSliceCpuQuota {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: host) {
+    HostRunnerDeploymentRefused { refusal: r } =>
+      SessionsSliceCpuQuotaRefused {
+        cause: concat("the sessions slice is owed a CPU cap and the host CPU allocation that derives it refuses: ", host_deployment_refusal_text(c: r.cause)),
+      }
+    HostRunnerDeploymentDerived { deployment: d } =>
+      if hardware_thread_count_value(t: d.sessions_cpu_cap) == 0 {
+        SessionsSliceCpuQuotaRefused { cause: "the sessions slice is owed a CPU cap and its derived share is zero threads, which systemd would read as no CPU at all" }
+      } else {
+        SessionsSliceCpuQuotaDerived { threads: d.sessions_cpu_cap }
+      }
+  }
+}
+
+// One unit, given the host's sessions CPU standing; the sessions unit is the one whose name is
+// gunbc.oomd_install gunbc_oomd_sessions_slice, the same authority slice_control_caps_for builds it from.
+fn slice_control_unit_of(caps: SliceControlCaps, cpu: SessionsSliceCpuQuota) -> SliceControlPlan {
+  if (caps.unit as String) == (gunbc_oomd_sessions_slice as String) {
+    match cpu {
+      SessionsSliceCpuQuotaRefused { cause: c } => SliceControlPlanRefused { cause: c }
+      SessionsSliceCpuQuotaDerived { threads: t } =>
+        SliceControlPlanDerived { units: non_empty_singleton(item: SessionsSliceControl { caps: caps, cpu_quota: t }) }
+    }
+  } else {
+    SliceControlPlanDerived { units: non_empty_singleton(item: UncappedSliceControl { caps: caps }) }
+  }
+}
+
+// THE FOLD STARTS FROM THE HEAD, NOT FROM AN EMPTY ROSTER. `init: SliceControlPlanDerived { units: [] }`
+// was the hole in another dress: it made the empty plan the fold's identity, so a caps list that
+// folded zero times -- or a fold that was skipped -- reported a well-formed plan with nothing in it.
+// fold_list over cs.tail seeds the accumulator from cs.head, so every reachable accumulator is a
+// plan whose roster already has a member.
+fn slice_control_plan_of(control: SliceControl, cpu: SessionsSliceCpuQuota) -> SliceControlPlan {
+  match control {
+    SliceControlNotOwed => SliceControlPlanNotOwed
+    SliceControlRefused { cause: c } => SliceControlPlanRefused { cause: c }
+    SliceControlDerived { caps: cs } =>
+      fold_list(
+        xs: cs.tail,
+        empty: slice_control_unit_of(caps: cs.head, cpu: cpu),
+        cons: fn(acc, c) {
+          match acc {
+            SliceControlPlanRefused { cause: _ } => acc
+            SliceControlPlanNotOwed => acc
+            SliceControlPlanDerived { units: us } =>
+              match slice_control_unit_of(caps: c, cpu: cpu) {
+                SliceControlPlanRefused { cause: why } => SliceControlPlanRefused { cause: why }
+                SliceControlPlanNotOwed => acc
+                SliceControlPlanDerived { units: more } =>
+                  SliceControlPlanDerived { units: non_empty_append(left: us, right: more) }
+              }
+          }
+        }
+      )
+  }
+}
+
+fn slice_control_plan_for(host: HostIdentity) -> SliceControlPlan {
+  slice_control_plan_of(control: slice_control_caps_for(host: host), cpu: sessions_slice_cpu_quota_for(host: host))
 }
 
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>) -> HostConverge {
@@ -1031,8 +1091,19 @@ type FleetConvergeAcc
   = FleetConvergeHosts { hosts: List<HostConverge> }
   | FleetConvergeUnsound { reason: String }
 
-fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
-  match fold(plan.hosts, init: FleetConvergeHosts { hosts: [] }, f: (acc, st) => match acc {
+fn fleet_converge_policy_from(plan: RunnerDeploymentPlan, image_baked: RunnerDeploymentPlan) -> ConvergePolicy {
+  match converge_hosts_of_plan(plan: plan) {
+    FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
+    FleetConvergeHosts { hosts: applied } =>
+      match converge_hosts_of_plan(plan: image_baked) {
+        FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
+        FleetConvergeHosts { hosts: baked } => ConvergePolicyDerived { hosts: applied, image_baked: baked }
+      }
+  }
+}
+
+fn converge_hosts_of_plan(plan: RunnerDeploymentPlan) -> FleetConvergeAcc {
+  fold(plan.hosts, init: FleetConvergeHosts { hosts: [] }, f: (acc, st) => match acc {
     FleetConvergeUnsound { reason } => FleetConvergeUnsound { reason: reason }
     FleetConvergeHosts { hosts } =>
       match st {
@@ -1058,12 +1129,9 @@ fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
               }
           }
       }
-  }) {
-    FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
-    FleetConvergeHosts { hosts } => ConvergePolicyDerived { hosts: hosts }
-  }
+  })
 }
 
 fn fleet_converge_policy() -> ConvergePolicy {
-  fleet_converge_policy_from(plan: runner_deployment_plan())
+  fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan())
 }

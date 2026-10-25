@@ -52,7 +52,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
@@ -92,27 +92,6 @@ use crate::v1_std_core::{
     Node,
 };
 use serde::Serialize;
-
-/// The frozen legacy path-deferral population, read from the one `.dag` authority by the same
-/// interim source scan as the sibling rosters (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER`).
-///
-/// Fail-closed like its siblings: a `FrozenPathDeferral {` head that does not parse PANICS with
-/// its location rather than yielding no key, because a silently-dropped freeze row would refuse a
-/// legitimately frozen witness — and a silently-*added* one is impossible since keys only come
-/// from parsed heads.
-pub(crate) fn frozen_path_deferral_keys() -> &'static [String] {
-    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
-    KEYS.get_or_init(|| {
-        let content =
-            std::fs::read_to_string(workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "witness deferral freeze: failed to read {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}: {e}"
-                    )
-                });
-        frozen_path_deferral_keys_from_source(&content)
-    })
-}
 
 pub(crate) fn frozen_path_deferral_rows_from_source(content: &str) -> Vec<(String, Vec<String>)> {
     const HEAD: &str = "FrozenPathDeferral {";
@@ -161,46 +140,6 @@ pub(crate) fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String
         }
     }
     keys
-}
-
-#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
-/// The same freeze rows, joined against the ENROLLED-ROSTER identity space instead of the
-/// admission-key space: `module.function` (as `floor_expected_red_roster` writes it) rather
-/// than `entry::function` (as `witness_admission_manifest_key` writes it). Two different keys
-/// over the same two facts, kept as two functions rather than one that returns both — a caller
-/// asking "is this frozen?" wants the admission key; a caller asking "is this row also known-red?"
-/// wants the qualified name, and conflating them would let a shape mismatch hide a real miss.
-///
-/// The module name is read from each entry file's own `module ...` line (`extract_module_path`),
-/// the same authority `run_required_floor` reads for every other qualified name it reports — not
-/// re-derived from the path string, which would silently diverge from the interpreter's own
-/// binding the day a file's module line stops matching its directory.
-pub(crate) fn frozen_path_deferral_qualified_identities_from_source(
-    content: &str,
-    root: &std::path::Path,
-) -> Vec<(String, String)> {
-    let mut out: Vec<(String, String)> = Vec::new();
-    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
-        let file_content = match std::fs::read_to_string(root.join(&entry)) {
-            Ok(c) => c,
-            // Unreachable on the required route: `run_required_floor` refuses every stale row
-            // (`collect_stale_frozen_path_deferrals`, which includes an absent file) BEFORE this
-            // scan runs. A missing file here is therefore an ordering bug, and it says so rather
-            // than skipping the row (DESIGN 5: no absorbing arm).
-            Err(e) => panic!(
-                "witness deferral freeze: frozen row names {entry}, which is not readable ({e}); \
-                 the stale-row refusal must run before the intersection scan"
-            ),
-        };
-        let module = match extract_module_path(&file_content) {
-            Some(m) => m,
-            None => continue,
-        };
-        for function in functions {
-            out.push((entry.clone(), format!("{module}.{function}")));
-        }
-    }
-    out
 }
 
 /// The pure fold the gate is built from — the grain the fixture controls plant into.
@@ -254,8 +193,9 @@ pub fn complexity_linearity_syntactic_site_fired(site: &str) -> bool {
     cla_cached_builtin_cache().sites.contains(site)
 }
 
-pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
-    &cla_cached_wildcard_facts().facts
+pub fn complexity_linearity_wildcard_facts(
+) -> Result<&'static [ComplexityLinearityWildcardFactRaw], String> {
+    Ok(&cla_cached_wildcard_facts()?.facts)
 }
 
 // --- Fallback-arm census (W2, fallback-arm-census (plan doc deleted 2026-08-28)) ---

@@ -1,5 +1,6 @@
 module v2.test.claim.manual.emit_directive_gha
 
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
@@ -8,9 +9,7 @@ import v2.extdeps.languages.bash {
   emit_directive_bash_target_model
 }
 import v2.extdeps.github.diagnostic_emit { emit_directive_gha_target_model }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

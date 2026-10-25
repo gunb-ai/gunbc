@@ -15,7 +15,7 @@ import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.runner.runner_microvm_slot_controller { bind_slot_host }
 import gunbc.runner.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.workspace_allocation { WorkspaceRequest }
 import gunbc.workspace_commissioning_store { workspace_commissioning_committed_for_slot, WorkspaceCommissioningSupplyReady, WorkspaceCommissioningSupplyRefused }
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
@@ -47,7 +47,7 @@ fn workspace_observe_slot_offer(request: WorkspaceRequest, host: HostIdentity, s
   match workspace_commissioning_committed_for_slot(slot: slot) {
     WorkspaceCommissioningSupplyRefused { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason as NonEmptyStr }
     WorkspaceCommissioningSupplyReady { committed } => {
-      let release_dir = approval_broker_release_dir(root: microvm_controller_root,
+      let release_dir = release_locus_dir(root: microvm_controller_root,
         revision: RevisionBoundAtEmission { revision: committed.provenance.source_revision as CommitSha }) as NonEmptyStr
       match workspace_installed_image(release_dir: release_dir as String, identity: request.image) {
         WorkspaceImageRefused { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason as NonEmptyStr }

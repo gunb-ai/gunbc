@@ -1,7 +1,7 @@
 module extdeps.transports.shell_declared
 
 import std.types { Int, String }
-import std.optional { Present }
+import std.optional { optional_absent, optional_present }
 
 // THE DECLARED VOCABULARY OF THE SHELL TRANSPORT (XL-2 PR3a, moved here in PR3b-i): what an operation
 // AUTHORS for this transport -- its binding fields, the channels its `from "key"` names and its exit-status patterns -- apart from
@@ -43,15 +43,15 @@ fn shell_output_channel_key(channel: ShellOutputChannel) -> String {
 }
 
 fn shell_output_channel_of_key(key: String) -> ShellOutputChannel? {
-  if key == "stdout" { Present { value: Stdout } }
-  else if key == "stderr" { Present { value: Stderr } }
-  else if key == "exit_success" || key == "success" || key == "exists" { Present { value: ExitSuccess } }
-  else if key == "exit_code" { Present { value: ExitCode } }
-  else if key == "stdout_lines" { Present { value: StdoutLines } }
-  else if key == "stderr_truncated" { Present { value: StderrTruncated } }
-  else if key == "stderr_total_bytes" { Present { value: StderrTotalBytes } }
-  else if key == "stderr_retained_bytes" { Present { value: StderrRetainedBytes } }
-  else { none }
+  if key == "stdout" { optional_present(value: Stdout) }
+  else if key == "stderr" { optional_present(value: Stderr) }
+  else if key == "exit_success" || key == "success" || key == "exists" { optional_present(value: ExitSuccess) }
+  else if key == "exit_code" { optional_present(value: ExitCode) }
+  else if key == "stdout_lines" { optional_present(value: StdoutLines) }
+  else if key == "stderr_truncated" { optional_present(value: StderrTruncated) }
+  else if key == "stderr_total_bytes" { optional_present(value: StderrTotalBytes) }
+  else if key == "stderr_retained_bytes" { optional_present(value: StderrRetainedBytes) }
+  else { optional_absent() }
 }
 
 // WHAT AN OPERATION'S `exit { .. }` ARM MATCHES: the process's exit status (POSIX.1-2017 2.8.2,
@@ -82,12 +82,12 @@ fn shell_binding_field_key(field: ShellBindingField) -> String {
 }
 
 fn shell_binding_field_of_key(key: String) -> ShellBindingField? {
-  if key == "argv" { Present { value: ShellArgv } }
-  else if key == "stdin" { Present { value: ShellStdin } }
-  else { none }
+  if key == "argv" { optional_present(value: ShellArgv) }
+  else if key == "stdin" { optional_present(value: ShellStdin) }
+  else { optional_absent() }
 }
 
-// WHAT THE AUTHOR WRITES AT EACH FIELD. argv is the shared argv line (v2.std.operation_argv);
+// WHAT THE AUTHOR WRITES AT EACH FIELD. argv is the shared argv line (std.operation_argv);
 // stdin is Template<OperationInputName> (or a list of those). A new field must pick a contract.
 type ShellBindingFieldContract
   = ShellArgvContract

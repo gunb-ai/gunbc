@@ -1,8 +1,8 @@
 module product.compute_board.verilog_projection
 
-import std.types { String, NonEmptyStr, List, list_length }
+import std.types { String, NonEmptyStr, List, list_length, Map }
 import v2.std.node { Node, Symbol }
-import v2.std.collection { Map, map_insert }
+
 import v2.extdeps.languages.verilog {
   VerilogEmission,
   VerilogEmitted,
@@ -52,7 +52,7 @@ import product.compute_board.article {
   BoardArticleIdentity,
   BoardPowerInterfaceArticle,
 }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, map_insert }
 
 // THE VERILOG PROJECTION, NOW A MAPPING RATHER THAN A PRINTER. This module names no Verilog
 // keyword, no punctuation and no layout: it folds board vocabulary onto the target AST and

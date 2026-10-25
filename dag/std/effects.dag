@@ -7,6 +7,7 @@ import extdeps.uri_path {
   has_path_params, last_path_param
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
+import std.algebra { collection_map_shape }
 type EffectShape<K>
   = ReadEffect
   | UpsertEffect { key_source: K }

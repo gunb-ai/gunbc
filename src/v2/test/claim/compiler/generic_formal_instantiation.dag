@@ -16,22 +16,22 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // generic_formal_containing_a_type_variable_unjudged). The accepted controls hold that the match does
 // not over-refuse.
 
-data gfi_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn g<T>(a: List<T>, b: List<T>) -> List<T> {\n  a\n}\n\nfn h<T>(a: List<List<T>>, b: T) -> T {\n  b\n}\n\n"
+data gfi_prelude: String = "module p\n\nimport std.types { List }\n\ntype Pair {\n  target: Int\n}\n\nfn g<T>(a: List<T>, b: List<T>) -> List<T> {\n  a\n}\n\nfn h<T>(a: List<List<T>>, b: T) -> T {\n  b\n}\n\n"
 
 data gfi_not_a_list: String = gfi_prelude + "fn f(a: Int, b: Int) -> Int {\n  0\n}\n\nfn k(a: Int, b: Int) -> List<Int> {\n  g(a, b)\n}\n"
 data gfi_two_instances: String = gfi_prelude + "fn k(a: List<Int>, b: List<Pair>) -> List<Int> {\n  g(a, b)\n}\n"
 data gfi_nested_mismatch: String = gfi_prelude + "fn k(a: List<List<Int>>, b: Pair) -> Pair {\n  h(a, b)\n}\n"
-data gfi_alias_prelude: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { FreeMonoid }\n\ntype Pair {\n  target: Int\n}\n\nfn m<T>(a: FreeMonoid<T>, b: FreeMonoid<T>) -> FreeMonoid<T> {\n  a\n}\n\n"
+data gfi_alias_prelude: String = "module p\n\nimport std.types { List }\nimport std.algebra { FreeMonoid }\n\ntype Pair {\n  target: Int\n}\n\nfn m<T>(a: FreeMonoid<T>, b: FreeMonoid<T>) -> FreeMonoid<T> {\n  a\n}\n\n"
 data gfi_alias_agrees: String = gfi_alias_prelude + "fn k(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  m(a, b)\n}\n"
 data gfi_alias_disagrees: String = gfi_alias_prelude + "fn k(a: List<Pair>, b: List<Int>) -> List<Pair> {\n  m(a, b)\n}\n"
-data gfi_refined_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn nonempty(xs: List<Int>) -> Bool {\n  true\n}\n\ntype Ns = List<Int> where nonempty\n\ntype Wrap {\n  base: List<Int>\n}\n\nfn g<T>(a: List<T>) -> List<T> {\n  a\n}\n\nfn p(a: List<Int>) -> List<Int> {\n  a\n}\n\n"
+data gfi_refined_prelude: String = "module p\n\nimport std.types { List }\n\ntype Pair {\n  target: Int\n}\n\nfn nonempty(xs: List<Int>) -> Bool {\n  true\n}\n\ntype Ns = List<Int> where nonempty\n\ntype Wrap {\n  base: List<Int>\n}\n\nfn g<T>(a: List<T>) -> List<T> {\n  a\n}\n\nfn p(a: List<Int>) -> List<Int> {\n  a\n}\n\n"
 data gfi_refined_carrier: String = gfi_refined_prelude + "fn k(a: Ns) -> List<Int> {\n  g(a)\n}\n"
 data gfi_record_wrapper_generic: String = gfi_refined_prelude + "fn k(a: Wrap) -> List<Int> {\n  g(a)\n}\n"
 data gfi_record_wrapper_plain: String = gfi_refined_prelude + "fn k(a: Wrap) -> List<Int> {\n  p(a)\n}\n"
-data gfi_plain_alias_prelude: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { FreeMonoid }\n\ntype Pair {\n  target: Int\n}\n\nfn q(a: FreeMonoid<Pair>) -> Int {\n  0\n}\n\n"
+data gfi_plain_alias_prelude: String = "module p\n\nimport std.types { List }\nimport std.algebra { FreeMonoid }\n\ntype Pair {\n  target: Int\n}\n\nfn q(a: FreeMonoid<Pair>) -> Int {\n  0\n}\n\n"
 data gfi_plain_alias_agrees: String = gfi_plain_alias_prelude + "fn k(a: List<Pair>) -> Int {\n  q(a)\n}\n"
 data gfi_plain_alias_disagrees: String = gfi_plain_alias_prelude + "fn k(a: List<Int>) -> Int {\n  q(a)\n}\n"
-data gfi_refine_prelude: String = "module p\n\nimport v2.std.collection { List }\n\nfn positive(x: Int) -> Bool {\n  true\n}\n\ntype Pos = Int where positive\n\ntype AliasOfPos = Pos\n\nfn wants_pos(x: Pos) -> Int {\n  0\n}\n\nfn wants_alias_of_pos(x: AliasOfPos) -> Int {\n  0\n}\n\nfn g<T>(a: List<T>, b: List<T>) -> Int {\n  0\n}\n\n"
+data gfi_refine_prelude: String = "module p\n\nimport std.types { List }\n\nfn positive(x: Int) -> Bool {\n  true\n}\n\ntype Pos = Int where positive\n\ntype AliasOfPos = Pos\n\nfn wants_pos(x: Pos) -> Int {\n  0\n}\n\nfn wants_alias_of_pos(x: AliasOfPos) -> Int {\n  0\n}\n\nfn g<T>(a: List<T>, b: List<T>) -> Int {\n  0\n}\n\n"
 data gfi_refined_refuses_raw_plain: String = gfi_refine_prelude + "fn k(x: Int) -> Int {\n  wants_pos(x)\n}\n"
 data gfi_refined_refuses_raw_generic: String = gfi_refine_prelude + "fn k(a: List<Pos>, b: List<Int>) -> Int {\n  g(a, b)\n}\n"
 data gfi_alias_of_refined_refuses_raw: String = gfi_refine_prelude + "fn k(x: Int) -> Int {\n  wants_alias_of_pos(x)\n}\n"

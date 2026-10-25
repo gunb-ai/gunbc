@@ -1,6 +1,6 @@
 module v2.test.claim.native_census.located_refusal
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeCensusModule,
   NativeCensusModuleFileRefused,
   NativeCensusModuleOutcome,
@@ -123,8 +123,8 @@ fn infer_fatal_at(context: NativeTestContext, entry: NativeCensusModule, outcome
         Empty => FileRefusalAtUnresolvedNode
       }
     NativeInferCensusFileRefused => FileRefusalAtUnresolvedNode
-    NativeInferCensusResolveRefused { first: _, rest: _, observation: _ } => FileRefusalAtUnresolvedNode
-    NativeInferCensusInferred { resolved: _, inferred: _ } => FileRefusalAtUnresolvedNode
+    NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: _ } => FileRefusalAtUnresolvedNode
+    NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => FileRefusalAtUnresolvedNode
   }
 }
 

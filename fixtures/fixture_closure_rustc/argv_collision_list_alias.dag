@@ -1,0 +1,9 @@
+module fixture.closure.rustc_argv_collision_list_alias
+
+import std.types { List, String }
+
+// Same leaf as the Int argv RED's CollisionLeaf, different underlying type. In the
+// closure so a leaf-name first-match can pick List<String> and emit .args; identity
+// hop must still see the Int declaration and refuse.
+type CollisionLeaf = List<String>
+type ListCollisionKeep = CollisionLeaf

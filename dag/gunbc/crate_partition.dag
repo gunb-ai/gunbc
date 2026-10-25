@@ -5,9 +5,11 @@ import std.optional { Absent, Optional, Present, optional_present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,
+  CallGraphAdjacencyViews,
   GraphEdge,
+  build_adjacency_views,
   graph_has_multi_node_scc,
-  graph_reverse_reachable_members,
+  graph_reverse_reachable_members_from_views,
   graph_strongly_connected_components
 }
 import gunbc.rust_emitted_edge {
@@ -16,6 +18,7 @@ import gunbc.rust_emitted_edge {
   EmittedModuleTarget,
   EmittedCrateRootTarget
 }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
 
 // THE PARTITION OF A MODULE GRAPH INTO COMPILATION UNITS, OVER ITS MODULES AND EDGES ALONE.
 //
@@ -166,25 +169,33 @@ fn string_member(set: Map<String, Bool>, key: String) -> Bool {
   }
 }
 
-fn reached_set(names: List<String>, graph: CallGraph, start: String) -> Map<String, Bool> {
-  graph_reverse_reachable_members(names: names, graph: graph, start: start)
+fn reached_set(views: CallGraphAdjacencyViews, start: String) -> Map<String, Bool> {
+  graph_reverse_reachable_members_from_views(views: views, start: start)
     |> fold(init: empty_map(), f: (reached, member) => map_insert(reached, member, true))
 }
 
 // What each distinct emitted target reaches along the SOURCE edges, one walk per target rather
 // than one per edge: every emitted module shares the runtime target.
+//
+// THE TRANSPOSE IS BUILT ONCE FOR THIS GRAPH AND SHARED BY EVERY TARGET'S WALK. The transpose is a
+// property of `edges`, not of a target, and until now it was rebuilt inside each per-target query --
+// the same value, once per distinct emitted target, which is the emitted-target fan-out of the
+// post-emit phase. The walk per target, its start-node exclusion, and the set it returns are the
+// ones `std.graph` has always taken over a reverse adjacency; what changes is only how many times
+// that adjacency is constructed.
 fn emitted_target_reach(modules: List<ModuleId>, edges: List<ModuleDagEdge>, emitted: List<EmittedEdge>) -> Map<String, Map<String, Bool>> {
   let names = modules |> map(module_id => module_id as String)
   let forward_as_reverse = CallGraph {
     edges: edges |> map(edge => GraphEdge { caller: edge.to as String, callee: edge.from as String })
   }
+  let transposed = build_adjacency_views(names: names, graph: forward_as_reverse)
   emitted |> fold(init: empty_map(), f: (acc, edge) =>
     match edge.to {
       EmittedCrateRootTarget => acc
       EmittedModuleTarget { module: target } =>
         match map_get(acc, target) {
           Present { value: _ } => acc
-          Absent => map_insert(acc, target, reached_set(names: names, graph: forward_as_reverse, start: target))
+          Absent => map_insert(acc, target, reached_set(views: transposed, start: target))
         }
     }
   )

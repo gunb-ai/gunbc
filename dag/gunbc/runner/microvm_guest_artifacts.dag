@@ -68,6 +68,21 @@ data runner_guest_kernel_artifact: GuestBaseArtifact = GuestBaseArtifact {
   },
 }
 
+// THE REVISION-JOB GUEST'S RUST TOOLCHAIN: the standalone dist for the channel rust-toolchain.toml
+// names (1.93.0) on the guest's architecture (aarch64, the pinned base rootfs's), installed into the
+// image tree by its own install.sh (extdeps.rust.standalone_installer). Pinned by the digest upstream
+// publishes beside the archive, so a fetch that disagrees refuses the build. When rust-toolchain.toml
+// moves, this row moves with it in the same change; the job's host-side toolchain check
+// (gunbc.runner.runner_revision_job_stage) refuses any tree whose channel the image does not carry.
+data revision_job_rust_dist_artifact: GuestBaseArtifact = GuestBaseArtifact {
+  url: "https://static.rust-lang.org/dist/rust-1.93.0-aarch64-unknown-linux-gnu.tar.xz" as NonEmptyStr,
+  filename: "rust-1.93.0-aarch64-unknown-linux-gnu.tar.xz" as NonEmptyStr,
+  integrity: ArtifactDigestPinned {
+    digest: sha256_digest(hex: "b666c705a334792a3eeb1d5984c8b24817f107bc986c6b09dcfd15a0d95b2b6a" as NonEmptyStr),
+    provenance: PublishedByUpstream { authority: "static.rust-lang.org/dist/rust-1.93.0-aarch64-unknown-linux-gnu.tar.xz.sha256" as NonEmptyStr },
+  },
+}
+
 data runner_guest_base_rootfs_artifact: GuestBaseArtifact = GuestBaseArtifact {
   url: firecracker_ci_smoke_rootfs_url as NonEmptyStr,
   filename: "ubuntu-24.04.squashfs" as NonEmptyStr,

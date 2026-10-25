@@ -1,12 +1,11 @@
 module gunbc.host.host_runner_memory_cap_verify
 
-import std.types { String, NonEmptyStr, Bool, Int }
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { list_reverse }
 import gunbc.host.host_effect { LocalShell }
 import std.disposition { Disposition, Terminal }
 import gunbc.clock_read { clock_now_probed_at }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_unit { runner_slot_unit_name }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
@@ -14,7 +13,9 @@ import gunbc.host.host_converge {
   Drifted,
   VerdictAbsent,
   converge_verdict,
+  runner_instance_glob,
 }
+import gunbc.systemctl_list_units { systemctl_list_units_active_services }
 import gunbc.host.host_runner_memory_provision {
   runner_memory_host_converge,
   runner_memory_knobs_from,
@@ -33,10 +34,8 @@ import gunbc.runner.runner_unit_live_read {
   runner_unit_live_read_typed,
 }
 
-data runner_memory_cap_verify_probe_unit_assumption: String = "Path (b) verify read-back samples one representative unit (actions-runner@<host>-01.service; precedent: host_converge_slice1_probe_unit) while apply knobs target runner_instance_glob actions-runner@<host>-*.service (5 slots/host per gunbc.runner.runner_slot_allocation). ASSUMPTION glob-uniform: systemd drop-ins apply the same MemoryMax/MemoryHigh/MemorySwapMax to every slot instance, so the knob tally receipt from -01 is the host-level verdict. Drift confined to -02..-05 alone is invisible until multi-unit fold lands (dissolve-on trigger for path (b) verify close)."
-
 data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
-  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back ONLY over a runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Every live read on this path is now a typed service operation, with zero direct shell.Exec at the intent layer: memory properties route through gunbc.systemctl_show_read typed systemd.Systemctl.ShowProperty local reads and probed_at routes through gunbc.clock_read clock_now_probed_at (extdeps.clock Clock.Now) — both the host_converge_slice1 precedent, so the medium-as-string transport scaffold and the meta_exec_confinement_exception_roster row for this unit are both deleted rather than carried. Any absent read is a typed RunnerMemoryCapVerifyRefused (fail-closed, DESIGN section 5 — a failure arm refuses, never widens to a converged claim). One-unit proxy read (slot -01) under glob-uniform assumption — see runner_memory_cap_verify_probe_unit_assumption."
+  reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back over EVERY active runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts summed across slots, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Every live read on this path is a typed service operation: list-units through gunbc.systemctl_list_units, memory properties through gunbc.systemctl_show_read typed systemd.Systemctl.ShowProperty local reads, probed_at through gunbc.clock_read clock_now_probed_at. Any absent enumeration or unit read is a typed RunnerMemoryCapVerifyRefused (fail-closed, DESIGN section 5 — a failure arm refuses, never widens to a converged claim). Host Converged only if every enumerated slot is."
 }
 
 type RunnerMemoryCapVerifyTally {
@@ -50,15 +49,6 @@ type RunnerMemoryCapVerifyReceipt {
   tally: RunnerMemoryCapVerifyTally
   knob_count: Int
   verdict: ConvergeVerdict
-}
-
-// AN EIGHTH SPELLING OF THE UNIT NAME, and the one whose drift would have been hardest to see: it
-// names the unit a cap read-back SAMPLES. A probe reading a unit systemd does not have gets no
-// value, and this module's own assumption row already records that a drift confined to the slots it
-// does not sample is invisible -- so a probe pointed at a name nothing installs would report the
-// same nothing as a host with no caps at all.
-fn runner_memory_cap_probe_unit(host: HostIdentity) -> NonEmptyStr {
-  runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: 1 })
 }
 
 fn runner_memory_cap_verify_tally_knob(
@@ -146,8 +136,7 @@ fn runner_memory_cap_verify_receipt_from_read(
   }
 }
 
-fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? {
-  let unit = runner_memory_cap_probe_unit(host: host)
+fn runner_memory_cap_live_read_unit(unit: NonEmptyStr) -> RunnerUnitMemoryLiveRead? {
   match clock_now_probed_at() {
     Present { value: probed_at } =>
       match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemoryMax) {
@@ -178,6 +167,84 @@ fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? 
         SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none
+  }
+}
+
+fn runner_memory_cap_live_reads_accumulate(
+  acc: List<RunnerUnitMemoryLiveRead>?,
+  unit: NonEmptyStr,
+) -> List<RunnerUnitMemoryLiveRead>? {
+  match acc {
+    Absent => none
+    Present { value: reads } =>
+      match runner_memory_cap_live_read_unit(unit: unit) {
+        Absent => none
+        Present { value: read } => Present { value: concat([read], reads) }
+      }
+  }
+}
+
+fn runner_memory_cap_live_reads(host: HostIdentity) -> List<RunnerUnitMemoryLiveRead>? {
+  match systemctl_list_units_active_services(instance_glob: runner_instance_glob(host: host) as NonEmptyStr) {
+    Absent => none
+    Present { value: units } =>
+      if length(units) == 0 {
+        none
+      } else {
+        let empty: List<RunnerUnitMemoryLiveRead> = []
+        match fold(units, init: Present { value: empty }, f: fn(acc, unit) {
+          runner_memory_cap_live_reads_accumulate(acc: acc, unit: unit)
+        }) {
+          Absent => none
+          Present { value: reversed } => Present { value: list_reverse(xs: reversed) }
+        }
+      }
+  }
+}
+
+fn runner_memory_cap_verify_tally_add(
+  a: RunnerMemoryCapVerifyTally,
+  b: RunnerMemoryCapVerifyTally,
+) -> RunnerMemoryCapVerifyTally {
+  RunnerMemoryCapVerifyTally {
+    converged: a.converged + b.converged,
+    drifted: a.drifted + b.drifted,
+    absent: a.absent + b.absent,
+  }
+}
+
+fn runner_memory_cap_verify_combine_receipts(
+  a: RunnerMemoryCapVerifyReceipt,
+  b: RunnerMemoryCapVerifyReceipt,
+) -> RunnerMemoryCapVerifyReceipt {
+  let tally = runner_memory_cap_verify_tally_add(a: a.tally, b: b.tally)
+  let knob_count = a.knob_count + b.knob_count
+  RunnerMemoryCapVerifyReceipt {
+    host: a.host,
+    tally: tally,
+    knob_count: knob_count,
+    verdict: runner_memory_cap_verify_verdict_from_tally(tally: tally, knob_count: knob_count),
+  }
+}
+
+fn runner_memory_cap_verify_receipt_from_unit_reads(
+  host: HostIdentity,
+  reads: List<RunnerUnitMemoryLiveRead>,
+) -> RunnerMemoryCapVerifyReceipt? {
+  if length(reads) == 0 {
+    none
+  } else {
+    let start: RunnerMemoryCapVerifyReceipt? = none
+    fold(reads, init: start, f: fn(acc, read) {
+      match runner_memory_cap_verify_receipt_from_read(host: host, read: read) {
+        Absent => none
+        Present { value: next } =>
+          match acc {
+            Absent => Present { value: next }
+            Present { value: so_far } => Present { value: runner_memory_cap_verify_combine_receipts(a: so_far, b: next) }
+          }
+      }
+    })
   }
 }
 
@@ -214,25 +281,54 @@ fn runner_memory_cap_verify_result_from_live_read(
             reason: "host_runner_memory_cap_verify: live typed read absent (Clock.Now or systemd.Systemctl.ShowProperty); fail-closed (verify-only, no apply)",
           }
       }
-    Absent =>
-      RunnerMemoryCapVerifyRefused {
-        host: host,
-        reason: concat(
-          "host_runner_memory_cap_verify: memory-cap converge knobs absent from fleet_converge_policy for ",
-          host as String
-        ),
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
+  }
+}
+
+fn runner_memory_cap_verify_result_from_unit_reads(
+  host: HostIdentity,
+  reads: List<RunnerUnitMemoryLiveRead>?,
+) -> RunnerMemoryCapVerifyRunResult {
+  match runner_memory_host_converge(host: host) {
+    Present { value: _ } =>
+      match reads {
+        Present { value: unit_reads } =>
+          match runner_memory_cap_verify_receipt_from_unit_reads(host: host, reads: unit_reads) {
+            Present { value: receipt } => RunnerMemoryCapVerifyObserved { receipt: receipt }
+            Absent =>
+              RunnerMemoryCapVerifyRefused {
+                host: host,
+                reason: "host_runner_memory_cap_verify: enumerated unit reads produced no host tally; fail-closed",
+              }
+          }
+        Absent =>
+          RunnerMemoryCapVerifyRefused {
+            host: host,
+            reason: "host_runner_memory_cap_verify: live unit enumeration or a per-unit typed read absent (list-units, Clock.Now, or systemd.Systemctl.ShowProperty); fail-closed (verify-only, no apply)",
+          }
       }
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
+  }
+}
+
+fn runner_memory_cap_verify_knobs_absent(host: HostIdentity) -> RunnerMemoryCapVerifyRunResult {
+  RunnerMemoryCapVerifyRefused {
+    host: host,
+    reason: concat(
+      "host_runner_memory_cap_verify: memory-cap converge knobs absent from fleet_converge_policy for ",
+      host as String
+    ),
   }
 }
 
 fn runner_memory_cap_verify_run(host: HostIdentity) -> RunnerMemoryCapVerifyRunResult {
   match runner_memory_host_converge(host: host) {
     Present { value: _ } =>
-      runner_memory_cap_verify_result_from_live_read(
+      runner_memory_cap_verify_result_from_unit_reads(
         host: host,
-        read: runner_memory_cap_live_read(host: host),
+        reads: runner_memory_cap_live_reads(host: host),
       )
-    Absent => runner_memory_cap_verify_result_from_live_read(host: host, read: none)
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
   }
 }
 

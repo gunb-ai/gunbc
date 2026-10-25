@@ -2,7 +2,7 @@ module gunbc.refusal_reason_ownership_join
 
 import v2.std.node { Symbol }
 import std.algebra { Empty, list_snoc_item, fold_list, length }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -234,7 +234,7 @@ data refusal_reason_ownership_debt: List<ReasonOwnershipDebt> = [
   ReasonOwnershipDebt { reason: ^resolve_reason_malformed_tree, standing: DebtOpen },
   ReasonOwnershipDebt { reason: ^resolve_reason_anonymous_parameter_referenced, standing: DebtOpen },
   ReasonOwnershipDebt { reason: ^resolve_reason_type_parameter_in_value_position, standing: DebtOpen },
-  ReasonOwnershipDebt { reason: ^float_literal_not_lowered, standing: DebtOpen },
+  ReasonOwnershipDebt { reason: ^float_literal_not_lowered, standing: DischargedByProducerDeletion },
   ReasonOwnershipDebt { reason: ^resolve_reason_test_code_referenced, standing: DebtOpen },
   ReasonOwnershipDebt { reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration, standing: DebtOpen },
   ReasonOwnershipDebt { reason: ^resolve_reason_observation_incomplete, standing: DebtOpen },

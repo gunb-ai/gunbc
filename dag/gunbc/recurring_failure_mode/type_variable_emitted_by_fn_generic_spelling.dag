@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.type_variable_emitted_by_fn_generic_spelling
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
+
+data type_variable_emitted_by_fn_generic_spelling: RecurringFailureMode = RecurringFailureMode {
+  identity: "type_variable_emitted_by_fn_generic_spelling" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
+
+  receipts: [
+    "INVALID STATE: v1.compiler.emit_rust render_rust_type, on Present TypeVariable { id: tv }, asks type_var_in_fn_generic_scope whether tv is a member of emit_info.fn_generic_param_names by SPELLING (g == id). A TypeVariable whose id coincides with an enclosing fn generic is emitted as that fn parameter (to_pascal(tv)); one whose id is not in the list is emitted as `_`. The TypeVariable's declaration identity is not consulted.",
+
+    "HARM: a Map formal V is captured as the enclosing fn's V when both are spelled V, and an unbound Map formal K renders `_`. The call's instantiated Map<K, V> (e.g. Map<DemandIdentity, DemandEntry<V>>) can be in hand at the field while empty_map still renders Map's own formals. rustc then sees rc_empty_map::<_, V>() against HashMap<DemandIdentity, DemandEntry<V>> (E0308), or a coincidentally compiling wrong type when every captured name happens to be in scope. Measured on gunbc#13925 at demand_engine_empty and dependents/prerequisites after imported collection empty_map began taking rust_empty_map_init_expr; origin/main used a different empty_map route, so the same spelling join was latent there.",
+
+    "DISTINGUISHING FACTS. Neighbour gunbc.recurring_failure_mode generic_identity_decided_by_spelling is infer substituting a type node by its label. This row is emit: the node is already a TypeVariable and the renderer treats its id string as a fn-generic name. Not this class: rust_empty_map_init_expr deferring ::<_, _>() when a direct Map child is a TypeVariable -- that is a consumer declining to write the captured spelling, not a repair of the join. Do not climb this class by testing the rendered turbofish string for `_`.",
+
+    "RUNG FOUND AT: mitigatable on the empty_map path after gunbc#13925 aa807ea -- that consumer defers from the TypeVariable-child fact, with host control host_emit_generic_empty_map_map_k2_entry_v_turbofish_rustc. The spelling join itself remains writable at render_rust_type for every other consumer, and can still compile as the wrong type, so the class minimum is not a wall. RUNG NOW: unchanged at the producer; this PR files the row and does not edit type_var_in_fn_generic_scope.",
+
+    "CEILING: structurally guaranteed -- a TypeVariable denotes a parameter declaration, which is decidable, and two declarations that share a spelling are distinct. NEXT-RUNG TRIGGER, named as the capability: render_rust_type's TypeVariable arm (and type_var_in_fn_generic_scope) join by parameter declaration identity, never by List membership of the id spelling, sufficient for Map's own V inside fn<V> not to render as the fn's V unless they are the same declaration. The empty_map TypeVariable-child deferral and its host control stay enrolled; a climb that only deletes the deferral without identity-keyed render is not this trigger.",
+  ],
+
+  evidence: [],
+}

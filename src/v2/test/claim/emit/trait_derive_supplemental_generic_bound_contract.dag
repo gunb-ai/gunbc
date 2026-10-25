@@ -1,10 +1,11 @@
 module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra {
   Cons,
-  Empty
+  Empty,
+  map_insert
 }
 import std.decl_ref {
   DeclarationRef,
@@ -76,10 +77,7 @@ import v2.extdeps.languages.rust {
   rust_set_collection_primary_choice
 }
 import v2.extdeps.languages.rust_fixtures { rust_sgb_target_model_staging }
-import v2.std.collection {
-  Map,
-  map_insert
-}
+
 import v2.std.diagnostic {
   Accepted,
   Rejected
@@ -94,7 +92,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_rebuild,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import std.optional {
   Absent,
@@ -145,9 +144,9 @@ fn sgb_nested_source_carrier_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_carrier_free_monoid_node() },
-      Edge { label: Positional, target: sgb_left_param_node() },
-      Edge { label: Positional, target: sgb_right_param_node() }
+      Edge { label: Positional, target: target_carrier_free_monoid_node(), declaration: NotADeclaration },
+      Edge { label: Positional, target: sgb_left_param_node(), declaration: NotADeclaration },
+      Edge { label: Positional, target: sgb_right_param_node(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -157,8 +156,8 @@ fn sgb_concrete_source_carrier_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_carrier_free_monoid_node() },
-      Edge { label: Positional, target: char_kernel_type_node() }
+      Edge { label: Positional, target: target_carrier_free_monoid_node(), declaration: NotADeclaration },
+      Edge { label: Positional, target: char_kernel_type_node(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -689,7 +688,7 @@ fn sgb_choice_bundle_with_contract_nodes(
         tail: Cons {
           head: constraints_edge,
           tail: Cons {
-            head: Edge { label: contracts_label, target: _ },
+            head: Edge { label: contracts_label, target: _, declaration: NotADeclaration },
             tail: Empty
           }
         }
@@ -706,7 +705,8 @@ fn sgb_choice_bundle_with_contract_nodes(
             target: fold_list_node(
               xs: contract_nodes,
               item_node: fn(contract_node) { contract_node }
-            )
+            ),
+            declaration: NotADeclaration
           }
         ]
       )
@@ -727,7 +727,7 @@ fn sgb_choice_bundle_with_parameter_nodes(
     Cons {
       head: form_edge,
       tail: Cons {
-        head: Edge { label: params_label, target: _ },
+        head: Edge { label: params_label, target: _, declaration: NotADeclaration },
         tail: Cons {
           head: constraints_edge,
           tail: Cons {
@@ -746,7 +746,8 @@ fn sgb_choice_bundle_with_parameter_nodes(
             target: fold_list_node(
               xs: parameter_nodes,
               item_node: fn(parameter_node) { parameter_node }
-            )
+            ),
+            declaration: NotADeclaration
           },
           constraints_edge,
           contracts_edge
@@ -821,7 +822,8 @@ fn sgb_malformed_contract_row_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: sgb_atom_node(identity: ^target_capability_debug)
+        target: sgb_atom_node(identity: ^target_capability_debug),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

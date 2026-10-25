@@ -11,8 +11,8 @@ import extdeps.cache.types { CacheInterfaceCatalogFacts }
 // transport (extdeps.realization.materialization_store_local) owns the budget's shape and its
 // enforcement and receives these rows as a parameter; the per-host figures live here, beside the
 // consumer that opens the durable root, so revising one never edits the transport. One root per host
-// is structural (std.materialization_store_grant DurableHostVolumeRoot names one path), so the host
-// ceiling is the declared sum of these rows and nothing else.
+// is structural (one DurableHostVolume per host that retains across runs), so
+// the host ceiling is the declared sum of these rows and nothing else.
 
 // POLICY, NAMED AS POLICY: 4 GiB for typed-module results per host. It is not derived from a
 // measurement -- the only measured predecessor stored closure snapshots of ~3.65 GB each, which is not
@@ -41,8 +41,8 @@ data materialization_store_host_ceiling_bytes: ByteSize = local_store_budget_sum
 // The catalog row for the store as DEPLOYED: the realization's facts at this layer's host ceiling.
 data materialization_store_local_facts: CacheInterfaceCatalogFacts = materialization_store_local_facts_at(ceiling: materialization_store_host_ceiling_bytes)
 
-// THE COMPUTE ROW IS CONSUMED BY EXECUTION: gunbc.compute.work_provider_local compute_durable_store
+// THE COMPUTE ROW IS CONSUMED BY EXECUTION: gunbc.compute.work_provider_local compute_store
 // opens the durable root with these rows on every compute request it memoizes. The TYPED-MODULE row's
 // production consumer is still a declared frontier (DESIGN section 3c), named below; the witnesses pass
 // fixture rows of their own, and the host-ceiling control reads the figure above.
-data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the TypecheckModuleRequest consumer (PR C2) opens DurableHostVolumeRoot through extdeps.realization.materialization_store_local passing materialization_store_durable_family_budgets. SUFFICIENT FOR: these rows bound a production store on every run that consumes it; until then they are read only by the host-ceiling control, and this row is retired by that landing and nothing else." as NonEmptyStr)
+data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the TypecheckModuleRequest consumer (PR C2) opens the instance's DurableHostVolume through extdeps.realization.materialization_store_local passing materialization_store_durable_family_budgets. SUFFICIENT FOR: these rows bound a production store on every run that consumes it; until then they are read only by the host-ceiling control, and this row is retired by that landing and nothing else." as NonEmptyStr)

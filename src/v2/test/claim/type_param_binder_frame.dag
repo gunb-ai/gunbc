@@ -1,11 +1,12 @@
 module v2.test.claim.type_param_binder_frame
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import v2.compiler.resolve { ResolvedTree }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.std.arrow_signature { declared_signature }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.program_assembly { PreparedLanguage, assemble_program_from_prepared_ingest, prepare_language }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
@@ -17,6 +18,8 @@ import v2.compiler.emit_produced { emit_produced_decl }
 import v2.compiler.infer { infer }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.extdeps.languages.rust { rust_target_model, rust_type_expression_projection }
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.std.compilers.target_model { TargetModel }
 import v2.compiler.translate { translate_type_expression_project }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
@@ -26,7 +29,7 @@ import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary
 import v2.compiler.trait_derive_completeness { repr_grounding_derive_elem_shape }
 import std.trait_derive_shape { ReprDeriveElemNullaryEnumCopy }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   ComputationNode,
   Conj,
@@ -42,7 +45,9 @@ import v2.std.node {
   well_formed,
   ArrowBodyEdge,
   TypeParamsEdge,
+  BinderTypeEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.text { String }
 import std.optional { Absent, Present }
@@ -90,20 +95,54 @@ data tpb_artifact: Artifact = Artifact {
   file_path: "src/v2/pilot/type_param_binder_frame_pilot.dag"
 }
 
-fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: DagSourceReadWitness {
-        source: Medium { carried: src, fidelity: Lossless },
-        artifact: tpb_artifact,
-        compilation_unit: ^type_param_binder_frame_cu,
-        source_root: V2Tree
-      },
-      tail: Empty
+data tpb_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^type_param_binder_frame_std_artifact,
+  file_path: "src/v2/pilot/type_param_binder_frame_std_pilot.dag"
+}
+
+// A peer std.optional root: a `T?` lowers to the marked reference to that declaration, so a tree whose
+// closure lacks it refuses (ResolveGeneratedReferenceDeclarationAbsent) before the specimen's own claim.
+fn tpb_std_optional_witness() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+    artifact: tpb_std_artifact,
+    compilation_unit: ^type_param_binder_frame_cu,
+    source_root: V2Tree
+  }
+}
+
+fn tpb_src_ingest(src: String) -> List<DagSourceReadWitness> {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: tpb_artifact,
+      compilation_unit: ^type_param_binder_frame_cu,
+      source_root: V2Tree
     },
+    tail: Empty
+  }
+}
+
+data tpb_language: Outcome<PreparedLanguage> = prepare_language(lm: dag_language_model())
+
+fn tpb_assemble_ingest(ingest: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  match tpb_language {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prep, diagnostics: _ } => tpb_assemble_over(ingest: ingest, prep: prep)
+  }
+}
+
+fn tpb_assemble_over(ingest: List<DagSourceReadWitness>, prep: PreparedLanguage) -> Outcome<ResolvedTree> {
+  assemble_program_from_prepared_ingest(
+    ingest: ingest,
     admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
-    lm: dag_language_model()
+    prep: prep
   )
+}
+
+fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
+  tpb_assemble_ingest(ingest: tpb_src_ingest(src: src))
 }
 
 // THE RESOLVED OUTCOME IS THE SHARE POINT, for the reason v2.test.claim.match_arm_binder_frame
@@ -250,7 +289,7 @@ test fn tpb_infer_admits_the_resolved_generic_fn() -> Bool {
 // argument against a formal only when the operator IS an Arrow; (1) above is the inhabitance
 // claim that the real producer emits exactly this type-parameter edge shape.
 fn tpb_binder_edge(name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: dag_type_atom_node(identity: name) }
+  Edge { label: Authored { name: name }, target: dag_type_atom_node(identity: name), declaration: NotADeclaration }
 }
 
 fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
@@ -260,16 +299,17 @@ fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
     children: [
       signature.domain,
       signature.order,
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: TypeParamsEdge),
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: type_binder_set_children(binders: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) }), source: node_synthetic(kind: TypeNode { connective: Conj }, children: []))
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: dag_int_literal_fixture_one() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
 }
@@ -282,8 +322,8 @@ fn tpb_apply(arrow: Node, args: List<Node>) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: concat(
-      [Edge { label: Positional, target: arrow }],
-      fold(args, init: [], f: fn(acc, a) { concat(acc, [Edge { label: Positional, target: a }]) })
+      [Edge { label: Positional, target: arrow, declaration: NotADeclaration }],
+      fold(args, init: [], f: fn(acc, a) { concat(acc, [Edge { label: Positional, target: a, declaration: NotADeclaration }]) })
     )
   )
 }
@@ -371,6 +411,10 @@ test fn tpb_declared_t_is_instantiated_not_judged_unresolved() -> Bool {
 // (v2.test.claim.emit.rust_produced_decl_emit emits it); the specimen is that same decl with one
 // type-parameter edge added, so the refusal is the edge's and not the specimen's.
 fn tpb_with_type_param(decl: Node) -> Node {
+  tpb_with_binders(decl: decl, binders: tpb_t_binders())
+}
+
+fn tpb_with_binders(decl: Node, binders: Node) -> Node {
   node_synthetic(
     kind: decl.kind,
     children: fold(decl.children, init: [], f: fn(acc, e) {
@@ -380,12 +424,49 @@ fn tpb_with_type_param(decl: Node) -> Node {
           kind: e.target.kind,
           children: concat(e.target.children, [Edge {
             label: core_edge_label(marker: TypeParamsEdge),
-            target: tpb_t_binders()
+            target: binders,
+            declaration: NotADeclaration
           }])
-        )
+        ),
+        declaration: NotADeclaration
       }])
     })
   )
+}
+
+// A KINDED binder `<T: Int>`: T's own Atom carries one BinderTypeEdge to the kind, the shape
+// v2.std.node type_binder_conforms admits and v2.std.type_binder kinded_type_param_kind_optional reads.
+fn tpb_kinded_t_binders() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [Edge {
+        label: Authored { name: ^T },
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^T } },
+          children: [Edge { label: core_edge_label(marker: BinderTypeEdge), target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration }]
+        ),
+        declaration: NotADeclaration
+      }],
+      source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+    )
+  )
+}
+
+// RED, REAL ACCEPTANCE PATH: no target declares a kind-spelling row, so a kinded parameter must refuse
+// typed at the Rust header (rows that DO render type parameters), never render as the unkinded `<T>`.
+// The unkinded twin (tpb_emitter_renders_a_generic_arrow_header_where_rows_declare_one) is the accepted
+// positive control over the same decl and target.
+test fn tpb_kinded_type_param_refuses_rather_than_rendering_unkinded() -> Bool {
+  match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decl, diagnostics: _ } =>
+      match emit_produced_decl(decl: tpb_with_binders(decl: decl, binders: tpb_kinded_t_binders()), target: rust_target_model()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^produced_decl_render_type_param_kind_unrealized)
+      }
+  }
 }
 
 // THE EMIT OUTCOMES ARE THE SHARE POINT. Each claim that built the `add` fixture and ran the Rust
@@ -401,24 +482,42 @@ fn tpb_emitted_add_twin() -> Outcome<Medium<String>> {
 }
 
 fn tpb_emitted_add_generic() -> Outcome<Medium<String>> {
+  tpb_emitted_add_generic_for(target: rust_target_model())
+}
+
+fn tpb_emitted_add_generic_for(target: TargetModel) -> Outcome<Medium<String>> {
   match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: decl, diagnostics: _ } =>
-      emit_produced_decl(decl: tpb_with_type_param(decl: decl), target: rust_target_model())
+      emit_produced_decl(decl: tpb_with_type_param(decl: decl), target: target)
   }
 }
 
-test fn tpb_emitter_refuses_a_generic_arrow() -> Bool {
+data tpb_rust_generic_add_golden: String = "fn add<T>(x: i32, y: i32) -> i32 { x + y }"
+
+// POSITIVE CONTROL: Rust's rows declare a type-parameter segment, so the generic header RENDERS its
+// parameter list (no bounds: that is the bound fold's, not the header's). The non-generic twin is
+// byte-identical to the golden `add`.
+test fn tpb_emitter_renders_a_generic_arrow_header_where_rows_declare_one() -> Bool {
   let twin_emits = match tpb_emitted_add_twin() {
-    Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: m, diagnostics: _ } => m.carried == "fn add(x: i32, y: i32) -> i32 { x + y }"
     Rejected { diagnostics: _ } => false
   }
-  let generic_refused = match tpb_emitted_add_generic() {
+  let generic_renders = match tpb_emitted_add_generic() {
+    Accepted { value: m, diagnostics: _ } => m.carried == tpb_rust_generic_add_golden
+    Rejected { diagnostics: _ } => false
+  }
+  twin_emits && generic_renders
+}
+
+// REGRESSION CONTROL (the refusal this seam always had): a target whose rows declare NO type-parameter
+// segment still refuses translate_reason_generic_arrow_not_rendered instead of dropping the list.
+test fn tpb_emitter_refuses_a_generic_arrow_where_rows_declare_no_type_params() -> Bool {
+  match tpb_emitted_add_generic_for(target: ts_target_model()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^translate_reason_generic_arrow_not_rendered)
   }
-  twin_emits && generic_refused
 }
 
 // TYPE DECLARATIONS (trigger (1) of gunbc.recurring_failure_mode
@@ -516,8 +615,8 @@ fn tpb_box_disj() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Authored { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
-      Edge { label: Authored { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+      Edge { label: Authored { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []), declaration: NotADeclaration },
     ]
   )
 }
@@ -537,7 +636,7 @@ fn tpb_box_member(with_params: Bool) -> Node {
 fn tpb_box_member_mixed() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
-    children: concat(tpb_box_disj().children, [Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() }])
+    children: concat(tpb_box_disj().children, [Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders(), declaration: NotADeclaration }])
   )
 }
 
@@ -629,7 +728,7 @@ test fn tpb_binder_mixed_into_a_member_is_refused() -> Bool {
 }
 
 fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {
-  emit_semantic_type_decl(
+  emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], 
     name: ^Box,
     params: Empty,
     node: tpb_box_member(with_params: with_params),
@@ -807,7 +906,7 @@ fn tpb_index_descends(target: Node) -> Bool {
 test fn tpb_index_declares_no_member_under_an_alias() -> Bool {
   let alias_value = type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T))
   !tpb_index_descends(target: alias_value)
-    && (symbol_index_declared(target: alias_value).bound == alias_value)
+    && (node_same_occurrence(a: symbol_index_declared(target: alias_value).bound, b: alias_value))
     && !tpb_index_descends(target: type_opaque_wrapper(binders: tpb_t_binders()))
     && tpb_index_descends(target: tpb_box_member(with_params: true))
 }
@@ -820,8 +919,8 @@ test fn tpb_wrapper_with_no_view_arm_is_refused() -> Bool {
   let stray = node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() },
-      Edge { label: Authored { name: ^stray }, target: dag_type_atom_node(identity: ^Int) }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^stray }, target: dag_type_atom_node(identity: ^Int), declaration: NotADeclaration }
     ]
   )
   !type_binder_labels_conform(root: stray)

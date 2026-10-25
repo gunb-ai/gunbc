@@ -234,9 +234,9 @@ type DgxSparkAdmissionOutcome
   = DgxSparkDeploymentAdmitted { deployment: DgxSparkDeployment }
   | DgxSparkDeploymentRefused { reason: DgxSparkAdmissionRefusalReason }
 
-fn host_identity_is_reserved(identity: HostIdentity) -> Bool {
+fn host_identity_is_reserved(identity: HostIdentity, reserved_identities: List<HostIdentity>) -> Bool {
   fold(
-    dgx_spark_reserved_identities(),
+    reserved_identities,
     init: false,
     f: (acc, reserved) => acc || reserved == identity,
   )
@@ -262,6 +262,7 @@ fn admit_selected_dgx_spark_observation(
   catalog: IntegratedComputeSystemCatalogRow,
   observation: FleetLifecycleObservation,
   router_binding: DgxSparkRouterBinding,
+  reserved_identities: List<HostIdentity>,
 ) -> DgxSparkAdmissionOutcome {
   if observation.envelope.tool != fleet_lifecycle_operation_tool_name(op: DeviceIdentity) {
     DgxSparkDeploymentRefused {
@@ -292,7 +293,7 @@ fn admit_selected_dgx_spark_observation(
             }
           }
         } else {
-          if !host_identity_is_reserved(identity: identity) {
+          if !host_identity_is_reserved(identity: identity, reserved_identities: reserved_identities) {
             DgxSparkDeploymentRefused {
               reason: DeploymentAdmissionIdentityNotReserved { requested_identity: identity }
             }
@@ -348,6 +349,7 @@ fn admit_dgx_spark_deployment(
   catalog: IntegratedComputeSystemCatalogRow,
   selection: ObservationSelection,
   router_binding: DgxSparkRouterBinding,
+  reserved_identities: List<HostIdentity>,
 ) -> DgxSparkAdmissionOutcome {
   match selection {
     ObservationMissing { subject: _ } =>
@@ -367,6 +369,7 @@ fn admit_dgx_spark_deployment(
         catalog: catalog,
         observation: o,
         router_binding: router_binding,
+        reserved_identities: reserved_identities,
       )
   }
 }
@@ -376,20 +379,25 @@ type DgxSparkUnitDisposition
   = DgxSparkUnitDeployed { deployment: DgxSparkDeployment }
   | DgxSparkUnitPending { identity: HostIdentity, reason: DgxSparkAdmissionRefusalReason }
 
+// Converged is head-plus-tail so "every rostered unit is deployed" cannot share a constructor with
+// "nothing was asked". An empty live roster is RosterEmpty: every procured unit was sold, not deployed.
 type DgxSparkProcurementConvergence
-  = DgxSparkProcurementConverged { deployments: List<DgxSparkDeployment> }
+  = DgxSparkProcurementConverged { first: DgxSparkDeployment, more: List<DgxSparkDeployment> }
   | DgxSparkProcurementPending { pending: List<DgxSparkUnitDisposition> }
+  | DgxSparkProcurementRosterEmpty { disposed: List<DgxSparkDisposedUnit> }
 
 // Two arms, not three: a unit is deployed or it is pending with a typed, located cause. There is deliberately no `Unknown` arm -- every reason a unit is not deployed is one of the closed DgxSparkAdmissionRefusalReason causes, so "we could not tell" cannot masquerade as a verdict (§5 state-space conflation). This is a diff-shaped read but NOT an instance of the gunbc.membership_reconcile spine: that spine reconciles a desired member set against an OBSERVED member set of the same type with teardown as the Removed arm, and here the two sides are different types (a reserved identity vs an admitted deployment) and there is no teardown -- you cannot retract a machine that was never present. Instantiating the spine would mean inventing an M that fits neither side, so the genericity would buy nothing and cost a fake member type.
 fn dgx_spark_unit_disposition(
   binding: DgxSparkRouterBinding,
   observations: List<FleetLifecycleObservation>,
+  reserved_identities: List<HostIdentity>,
 ) -> DgxSparkUnitDisposition {
   match admit_dgx_spark_deployment(
     identity: router_binding_identity(binding: binding),
     catalog: dgx_spark_procurement_intent.vendor_catalog,
     selection: select_observation_for_subject(subject: router_binding_identity(binding: binding), observations: observations),
     router_binding: binding,
+    reserved_identities: reserved_identities,
   ) {
     DgxSparkDeploymentAdmitted { deployment: d } => DgxSparkUnitDeployed { deployment: d }
     DgxSparkDeploymentRefused { reason: r } =>
@@ -400,8 +408,9 @@ fn dgx_spark_unit_disposition(
 fn converge_dgx_spark_procurement(
   bindings: List<DgxSparkRouterBinding>,
   observations: List<FleetLifecycleObservation>,
+  reserved_identities: List<HostIdentity>,
 ) -> DgxSparkProcurementConvergence {
-  let dispositions = map(bindings, b => dgx_spark_unit_disposition(binding: b, observations: observations))
+  let dispositions = map(bindings, b => dgx_spark_unit_disposition(binding: b, observations: observations, reserved_identities: reserved_identities))
   let pending = flat_map(dispositions, d =>
     match d {
       DgxSparkUnitPending { identity: i, reason: r } => [DgxSparkUnitPending { identity: i, reason: r }]
@@ -414,16 +423,31 @@ fn converge_dgx_spark_procurement(
       DgxSparkUnitPending { identity: _, reason: _ } => []
     }
   )
-  if count(pending) > 0 {
-    DgxSparkProcurementPending { pending: pending }
+  if count(bindings) == 0 {
+    DgxSparkProcurementRosterEmpty { disposed: dgx_spark_disposed_units }
   } else {
-    DgxSparkProcurementConverged { deployments: deployments }
+    if count(pending) > 0 {
+      DgxSparkProcurementPending { pending: pending }
+    } else {
+      match deployments {
+        Cons { head: first, tail: more } =>
+          DgxSparkProcurementConverged { first: first, more: more }
+        Empty =>
+          DgxSparkProcurementRosterEmpty { disposed: dgx_spark_disposed_units }
+      }
+    }
   }
 }
 
-// The LIVE read, as of 2026-08-07: the real binding roster against the real (empty) collector-observation population. The empty list is not a placeholder standing in for observations that exist -- no read transport for the fleet-lifecycle tools is bound anywhere in the tree (extdeps.systems.nvidia_fleet_lifecycle models the operation shape only), so zero observations is the true observed population even though both machines are now reachable on the LAN. This converges when each slot is assigned to one of the two reserved boxes AND a unique successful device_identity.py observation arrives from that box's reserved address.
+// The LIVE read: the real binding roster against the real (empty) collector-observation population.
+// Every procured unit is sold, so this is RosterEmpty, not Converged and not Pending-for-missing-evidence.
+// Fixture admission walls supply a reserved set at the boundary rather than resurrecting sold hosts.
 fn dgx_spark_procurement_convergence() -> DgxSparkProcurementConvergence {
-  converge_dgx_spark_procurement(bindings: dgx_spark_router_bindings, observations: [])
+  converge_dgx_spark_procurement(
+    bindings: dgx_spark_router_bindings,
+    observations: [],
+    reserved_identities: dgx_spark_reserved_identities(),
+  )
 }
 
 // SPARK-LANE-A (operator addition, 2026-08-07). PAIR ADMISSION: two envelopes that both claim to
@@ -445,6 +469,7 @@ fn dgx_spark_procurement_convergence() -> DgxSparkProcurementConvergence {
 type DgxSparkPairRefusalReason
   = PairUnitNotAdmitted { identity: HostIdentity, reason: DgxSparkAdmissionRefusalReason }
   | PairUnitCountWrong { admitted_count: Int }
+  | PairRosterEmpty { disposed_count: Int }
   | PairSubjectsNotDistinct { identity: HostIdentity }
   | PairHardwareIdentityUnobserved { identity: HostIdentity }
   | PairHardwareIdentityNotDistinct { first: HostIdentity, second: HostIdentity }
@@ -492,23 +517,6 @@ fn admit_dgx_spark_pair_deployments(
   }
 }
 
-// An explicit accumulator for pairing a converged list: "no unit seen yet", "one unit held", and
-// "a verdict reached". Named rather than smuggled into the refusal type, so the fold cannot express
-// a half-state that reads as a refusal reason nobody meant.
-type DgxSparkPairFold
-  = PairFoldEmpty
-  | PairFoldFirst { first: DgxSparkDeployment }
-  | PairFoldOutcome { outcome: DgxSparkPairAdmissionOutcome }
-
-fn dgx_spark_pair_fold_step(acc: DgxSparkPairFold, next: DgxSparkDeployment) -> DgxSparkPairFold {
-  match acc {
-    PairFoldEmpty => PairFoldFirst { first: next }
-    PairFoldFirst { first: held } =>
-      PairFoldOutcome { outcome: admit_dgx_spark_pair_deployments(first: held, second: next) }
-    PairFoldOutcome { outcome: o } => PairFoldOutcome { outcome: o }
-  }
-}
-
 // The pair read over a convergence result. A convergence that is still Pending cannot yield a pair
 // at all, and the first pending unit's own typed cause is carried out rather than replaced by a
 // generic "not converged" -- the reason a pair cannot be admitted is the reason its unit could not
@@ -534,17 +542,18 @@ fn first_pending_pair_refusal(pending: List<DgxSparkUnitDisposition>) -> DgxSpar
 fn admit_dgx_spark_pair(convergence: DgxSparkProcurementConvergence) -> DgxSparkPairAdmissionOutcome {
   match convergence {
     DgxSparkProcurementPending { pending: p } => first_pending_pair_refusal(pending: p)
-    DgxSparkProcurementConverged { deployments: ds } =>
-      if count(ds) != 2 {
-        DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: count(ds) } }
-      } else {
-        match fold(ds, init: PairFoldEmpty, f: (acc, d) => dgx_spark_pair_fold_step(acc: acc, next: d)) {
-          PairFoldOutcome { outcome: o } => o
-          PairFoldFirst { first: _ } =>
-            DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: 1 } }
-          PairFoldEmpty =>
-            DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: 0 } }
-        }
+    DgxSparkProcurementRosterEmpty { disposed: d } =>
+      DgxSparkPairRefused { reason: PairRosterEmpty { disposed_count: count(d) } }
+    DgxSparkProcurementConverged { first: first, more: more } =>
+      match more {
+        Empty =>
+          DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: 1 } }
+        Cons { head: second, tail: rest } =>
+          if count(rest) != 0 {
+            DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: count(rest) + 2 } }
+          } else {
+            admit_dgx_spark_pair_deployments(first: first, second: second)
+          }
       }
   }
 }

@@ -93,23 +93,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// Live compile-clean pipeline module paths for census exclusion silent-loss checks.
-/// Shard entry paths plus their import closures — modules the compile-clean gate may touch.
-pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
-    let pool_roots = default_source_roots();
-    let facts = build_module_graph_facts_live(&pool_roots);
-    let mut paths = BTreeSet::new();
-    let roster = compile_clean_shard_entry_paths_fast().unwrap_or_else(|reason| {
-        panic!("compile_clean_live_pipeline_module_paths: {reason}");
-    });
-    for entry in roster {
-        for path in import_closure_live_paths_with_facts(&entry, &facts) {
-            paths.insert(path);
-        }
-    }
-    paths.into_iter().collect()
-}
-
 pub(crate) fn compile_clean_resolve_has_hard_errors(
     result: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> bool {
@@ -186,14 +169,6 @@ pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
 }
 
 pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
-    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
-/// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
-pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
     if compile_clean_policy_read_refuses_gate() {
         return true;
     }
@@ -500,8 +475,7 @@ pub(crate) fn compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
 }
 
 pub(crate) fn compile_clean_scoping_active() -> bool {
-    FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst)
-        || std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
+    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
         || std::env::var("GITHUB_ACTIONS")
             .map(|v| v == "true")
             .unwrap_or(false)
@@ -541,12 +515,6 @@ pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     }
     match floor_git_diff_name_status_range() {
         Ok((changed_paths, departed_paths)) => {
-            if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
-                return compile_clean_scope_plan_from_touched_paths_floor_fast(
-                    &changed_paths,
-                    &departed_paths,
-                );
-            }
             match compile_clean_scope_plan_from_touched_paths(&changed_paths, &departed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
@@ -558,41 +526,6 @@ pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
             reason: format!("diff observation failed: {msg}"),
         },
     }
-}
-
-/// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
-/// Instrument path for diagnostic histogram — not for cargo tests.
-///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
-/// dissolves when ROADMAP §1 namespace-only lane closes (import strip + global_bare wiring fixed)
-/// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
-/// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
-/// (`compile_to_resolved` on the whole-tree source closure).
-pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<ErrorNode>>, String> {
-    // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
-    // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
-    let (sources, _index) = compile_clean_whole_tree_sources_and_index()?;
-    let result = v1_compiler_compile::compile_to_resolved_with_options(
-        Rc::new(sources.into()),
-        v1_compiler_compile::default_compile_pipeline_options(),
-    );
-    Ok(result
-        .diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .cloned()
-        .collect())
-}
-
-pub(crate) fn compile_clean_whole_tree_resolved(
-) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
-    // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
-    // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
-    let (sources, _index) = compile_clean_whole_tree_sources_and_index()?;
-    Ok(v1_compiler_compile::compile_to_resolved_with_options(
-        Rc::new(sources.into()),
-        v1_compiler_compile::default_compile_pipeline_options(),
-    ))
 }
 
 fn unlisted_import_rows_from_resolved(
@@ -963,6 +896,16 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ReceiverTypeUnestablished { method: s(), span: no_span() },
         TextRepresentationUnidentifiedAtBoundary { position: s(), span: no_span() },
         TextCrossingHasNoImplicitRoute { expected: s(), got: s(), route: s(), span: no_span() },
+        GeneratedProviderUnavailable {
+            declaration: Rc::new(crate::std_decl_ref::DeclarationRef {
+                module_path: s(),
+                decl_name: s(),
+                field: Rc::new(crate::std_decl_ref::DeclField::WholeDeclaration),
+            }),
+            cause:
+                crate::std_generated_provider::GeneratedProviderUnavailableCause::UnavailableModuleAbsent,
+            span: no_span(),
+        },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
         SiblingOperandEffectOrderUndetermined { construct: s(), first_operand: s(), second_operand: s(), span: no_span() },
         PresentArmScrutineeTypeUnresolved { pattern: s(), span: no_span() },
@@ -972,6 +915,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         NonExhaustiveMatch { missing: istrings(), span: no_span() },
         CircularDependency { modules: istrings(), span: no_span() },
         DuplicateModule { name: s(), span: no_span() },
+        TypeAliasCycle { members: istrings(), span: no_span() },
         DuplicateDeclaration { module_name: s(), name: s(), span: no_span() },
         MissingAnnotation { fn_name: s(), what: s(), span: no_span() },
         ParseError { message: s(), span: no_span() },
@@ -1019,6 +963,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         CallNamedArgOnFunctionValue { callee: s(), argument: s(), span: no_span() },
         EqualityOnFunctionMember { type_name: s(), member: s(), span: no_span() },
         EqualityMemberUnjudgeable { type_name: s(), member: s(), span: no_span() },
+        EqualityOnInadmissibleType { type_name: s(), span: no_span() },
         EqualityOptionalityMismatch { optional_side: s(), span: no_span() },
         TypeArgumentArityMismatch { type_name: s(), supplied: 0, declared: 0, span: no_span() },
         OccurrenceTransportViolation {
@@ -1033,6 +978,11 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             declaring_module: s(),
             target: s(),
             missing_realization_fact: s(),
+            span: no_span(),
+        },
+        TypeNameCarriesNoRecordConstructor {
+            type_name: s(),
+            declared_variants: istrings(),
             span: no_span(),
         },
     ]
@@ -1393,34 +1343,6 @@ pub fn compile_clean_diagnostic_census(
     })
 }
 
-/// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
-pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
-    let roots = default_source_roots();
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(
-        &CompileCleanScopePlan::WholeTree,
-    )? {
-        None => return Ok(true),
-        Some(s) => s,
-    };
-    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots).0)
-}
-
-/// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
-/// without the shared-index receipt shortcut (the standalone `gunbc compile` transport).
-pub fn compile_clean_cli_verdict_whole_tree() -> Result<bool, String> {
-    let result = compile_clean_whole_tree_resolved()?;
-    let graph_ok = result.graph.is_some();
-    let hard = compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref());
-    Ok(graph_ok && !hard)
-}
-
-/// Both realizations must agree modulo the single policy row.
-pub fn compile_clean_cli_floor_verdicts_agree() -> Result<bool, String> {
-    let floor = compile_clean_floor_verdict_whole_tree()?;
-    let cli = compile_clean_cli_verdict_whole_tree()?;
-    Ok(floor == cli)
-}
-
 /// `(class, name)` key for histogram aggregation over hard diagnostics.
 ///
 /// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
@@ -1454,6 +1376,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => {
             "TextCrossingHasNoImplicitRoute"
         }
+        CompilerDiagnostic::GeneratedProviderUnavailable { .. } => "GeneratedProviderUnavailable",
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
@@ -1465,6 +1388,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
         CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
         CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::TypeAliasCycle { .. } => "TypeAliasCycle",
         CompilerDiagnostic::DuplicateDeclaration { .. } => "DuplicateDeclaration",
         CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
         CompilerDiagnostic::ParseError { .. } => "ParseError",
@@ -1516,6 +1440,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => "TypeParameterInValuePosition",
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => "EqualityOnFunctionMember",
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
+        CompilerDiagnostic::EqualityOnInadmissibleType { .. } => "EqualityOnInadmissibleType",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
@@ -1538,6 +1463,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => {
             "PresentArmScrutineeTypeUnresolved"
+        }
+        CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => {
+            "TypeNameCarriesNoRecordConstructor"
         }
     };
     let name = match d.diagnostic.as_ref() {
@@ -1562,12 +1490,16 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             position.clone()
         }
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { route, .. } => route.clone(),
+        CompilerDiagnostic::GeneratedProviderUnavailable { declaration, .. } => {
+            format!("{}.{}", declaration.module_path, declaration.decl_name)
+        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
         CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::TypeAliasCycle { .. } => "(alias cycle)".to_string(),
         CompilerDiagnostic::DuplicateDeclaration { name, .. } => name.clone(),
         CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
         CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
@@ -1632,6 +1564,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeParameterInValuePosition { name, .. } => name.clone(),
         CompilerDiagnostic::EqualityOnFunctionMember { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::EqualityOnInadmissibleType { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
         }
@@ -1668,6 +1601,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         // The subject is the arm's pattern name; the span locates the match.
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { pattern, .. } => pattern.clone(),
+        // THE SUBJECT IS THE TYPE NAME WRITTEN AT THE LITERAL, not a field: the repair is one
+        // edit at one name (repoint it at a variant of that union), and keying on a field would
+        // scatter one authoring mistake across a row per field written under it.
+        CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name, .. } => {
+            type_name.clone()
+        }
     };
     (class.to_string(), name)
 }

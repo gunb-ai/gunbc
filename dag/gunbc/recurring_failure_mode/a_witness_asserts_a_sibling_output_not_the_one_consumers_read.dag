@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_witness_asserts_a_sibling_output_not_the_one_consumers_read
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data a_witness_asserts_a_sibling_output_not_the_one_consumers_read: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_witness_asserts_a_sibling_output_not_the_one_consumers_read" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "A feature has several outputs from one demand, and its witness asserts one that is not the output consumers read. The feature goes red-proof in the witness while a consumed output is wrong, and a negative control over the unasserted output passes vacuously because the wrong value (empty) satisfies its premise. DESIGN section 5, done means executed: a witness is a consumer of what it asserts and of nothing else.",
+
+    "SPECIMEN, found 2026-10-15. closure_declarations_demand (#14029) returns module_outcomes, outcome_index and declarations. Its claims (declaration_provider_outcomes and the closure rows beside it) read the outcomes, which are computed before publication. closure_filter_root_published dropped the module shell, so closure.declarations was empty for EVERY grafted module, and nothing asserted a lookup on it. fps_an_unresolvable_provider_drops_from_the_closure_index_holds (fps_closure_lacks over [q, Leg]) was green because the index was empty, not because the provider was dropped. Five fps_* rows and the consumer ResolvedTree.resolved_declarations were red or wrong on main with the required path green. Repaired at the filter by gunbc#14121, whose claim v2.test.claim.name_resolve.closure_declarations_published asserts the lookup through a real consumer, 0 of 5 on main.",
+
+    "RECOGNITION RULE: for a function returning more than one product, list the products and, for each, the consumer that reads it; a witness that names only some of them leaves the others unasserted. A lack-of-X control (fps_closure_lacks, an Absent lookup) over a product with no positive control beside it is a tell: run the same lookup on a case that MUST be present.",
+
+    "ATTAINABLE CEILING: validator. Which product a consumer reads is a fact of the call graph, derivable, but a claim asserting the right value of it is authored. NEXT-RUNG TRIGGER: a roster join from each declared output of a demand function to a claim that reads it by value, refusing an output with none. Every absence-asserting control owes a positive twin on the same fixture.",
+  ],
+
+  evidence: [],
+}

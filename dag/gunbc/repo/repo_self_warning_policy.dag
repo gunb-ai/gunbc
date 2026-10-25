@@ -6,7 +6,7 @@ import std.types { String, List }
 // two ways: as the lint arguments after clippy's `--` separator (gunbc.repo.repo_self_build
 // repo_self_clippy_command), and as the RUSTFLAGS environment cargo forwards to every rustc it
 // spawns -- the form the v2-native route sets EXPLICITLY on the emitted compiler crate's build
-// (gunbc.witness.v2_native_route NativeRouteEmittedBuild). Until that route set it, the emitted
+// (v2.workflow.v2_native_route NativeRouteEmittedBuild). Until that route set it, the emitted
 // crate was built under whatever RUSTFLAGS the runner's toolchain step happened to export -- the
 // setup-rust-toolchain action's DEFAULT input, which this authority never declared -- so the same
 // crate compiled clean on a workstation and refused with status 101 in CI, and the receipt's
@@ -22,7 +22,7 @@ import std.types { String, List }
 // had no way to avoid the transport.
 //
 // THAT COST A REAL FAILURE, which is why the split is worth its own module rather than a comment.
-// gunbc.witness.v2_native_route imported this constant for ONE string comparison -- the admission
+// v2.workflow.v2_native_route imported this constant for ONE string comparison -- the admission
 // clause asking whether the recorded build denied warnings -- and thereby pulled cargo_build and
 // exec.command into the EMITTED COMPILER'S closure, because v2.compiler.compile imports that
 // witness. The emitted compiler never invokes cargo (the host harness does, before the emitted

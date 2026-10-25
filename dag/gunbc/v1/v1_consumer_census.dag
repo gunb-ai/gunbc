@@ -558,26 +558,6 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_build_step"),
-      authority: gunbc_cli_bin,
-      disposition: retired(reason: "fleet-desired withdrawal deleted gunbc.fleet.fleet_desired_admission_workflow; this consumer no longer exists. The admitted revision is origin/main."),
-    ),
-    medium: WorkflowArgv,
-    subject: V1Cli,
-    discovered_by: producer_workflow_argv,
-  },
-  {
-    boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_decide_push_step"),
-      authority: gunbc_cli_bin,
-      disposition: retired(reason: "fleet-desired withdrawal deleted the decide-push step with its workflow. No remaining production consumer of that argv."),
-    ),
-    medium: WorkflowArgv,
-    subject: V1Cli,
-    discovered_by: producer_workflow_argv,
-  },
-  {
-    boundary: v1cc_boundary(
       consumer: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
       authority: invoked_bins_row,
       disposition: retained_open(justification: "the converge build job packs every bin this roster names; the roster names claim_executor and gunbc. Closes with the two CLI rows above; a separate relation because the consumer reaches the bins through a .dag roster row rather than through a literal, and gunbc.ci.ci_release_bins records that this exact roster stranded fleet-converge for two days after FLOOR-Y when a member was removed without draining the row"),
@@ -1156,7 +1136,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       disposition: retired(reason: "the transport's cargo args name the v1-compiler package to run the interpreter-dispatch bijection roster, whose subject is the v1 interpreter's dispatch table. Same class as the recorded-fixture transport: an instrument built to measure a property OF the seed has no successor obligation once the seed is gone")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.live_deploy.emit", decl_name: "emit_artifact_upsert",
+      module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_executable_plan",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the DEPLOYED PRODUCT: the live-deploy pipeline installs the gunbc source tree and binary onto a served host, so v1 is not only a build-time dependency of this repository but a shipped artifact on srv1. This is the relation that makes ProductsV1Free a separate finish line from InterpreterDeleted -- deleting the crate does not by itself remove it from a machine that already runs it. Closes on: the deployment artifact naming a native binary AND the deployed hosts having converged onto it, which is a fleet condition rather than a repository one")
     ),
@@ -1198,7 +1178,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
     v1_dag_argv_consumer(
       module_path: "gunbc.live_deploy.member_observe", decl_name: "release_executable_source_path",
       authority: gunbc_cli_bin, subject: V1Cli,
-      disposition: retained_open(justification: "the path live-deploy READS to observe what a served member is running, the observation twin of gunbc.live_deploy.emit emit_artifact_upsert. Closes on the same fleet condition: a deployed member running a native binary AND this observation naming it, since an observer left pointed at the old path reports absence rather than the truth")
+      disposition: retained_open(justification: "the path live-deploy READS to observe what a served member is running, the observation twin of gunbc.live_deploy.apply_legs deploy_apply_executable_plan. Closes on the same fleet condition: a deployed member running a native binary AND this observation naming it, since an observer left pointed at the old path reports absence rather than the truth")
     ),
     v1_dag_argv_consumer(
       module_path: "gunbc.cli_invoke", decl_name: "claim_executor_bin_name",
@@ -1751,7 +1731,7 @@ fn v1_consumer_population_with(observation: RustReferenceObservation, join: Mint
 
 data producer_native_lane_head: DiscoveryProducer = discovery_producer(
   instrument: "every v1_interpreter entry point the merged native-lane harness calls, and the job its lane authority declares, read against the merge that landed them",
-  command: "rg -n 'run_in_context_with_args|discover_floor_rows_for_source' src/v1/stage0/src/cli_run/native_lane_runner.rs; rg -n 'required_v2_native_job_name' dag/gunbc/witness/v2_native_route.dag",
+  command: "rg -n 'run_in_context_with_args|discover_floor_rows_for_source' src/v1/stage0/src/cli_run/native_lane_runner.rs; rg -n 'required_v2_native_job_name' src/v2/workflow/v2_native_route.dag",
   source_revision: v1_census_step_trace_revision,
   source_tree_hex: v1_census_step_trace_tree,
 )
@@ -1784,7 +1764,7 @@ fn v1_native_lane_consumers() -> List<V1ConsumerRow> {
       obligation: "THE LANE IS INTERPRETER-BRACKETED AT BOTH ENDS, and this is ONE relation rather than two because both ends are the same consumer reaching the same authority. Its population is derived by calling discover_floor_rows_for_source through the seed interpreter over the whole source population, so the set of modules the native route is asked about is chosen by v1; and its census receipt is adjudicated by two further run_in_context_with_args calls in the same function, so the verdict on whether the native route stood is computed by the route it is judging the replacement of. An earlier revision split these into two rows and paid for the split by inventing a symbol for the second consumer -- which is the fabrication this census exists to refuse, so the split is withdrawn rather than repaired: the census keys on consumer x authority, and one function reaching one authority is one relation however many roles it plays. Closes on: the universe deriving AND the admission fold executing outside the seed. The derivation half is the same discovery fold the required floor already runs, so that half closes for both lanes at once or for neither"
     ),
     v1_native_lane_consumer(
-      consumer: decl_ref(module_path: "gunbc.witness.v2_native_route", decl_name: "required_v2_native_job_name"),
+      consumer: decl_ref(module_path: "v2.workflow.v2_native_route", decl_name: "required_v2_native_job_name"),
       authority: claim_executor_bin,
       medium: WorkflowArgv, subject: V1HostedCiBinary,
       obligation: "THE JOB RUNS INSIDE THE SEED BINARY: the lane harness is a claim_executor subcommand, so the lane adds a fourth required use of the v1 executable rather than replacing any of the three this census already carries. Closes on: the lane's harness being a native entry point -- which is downstream of, and not the same as, the emitted compiler accepting a member"

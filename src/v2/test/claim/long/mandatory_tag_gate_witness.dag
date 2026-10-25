@@ -1,18 +1,23 @@
 module v2.test.claim.long.mandatory_tag_gate_witness
 
+
 import std.types { List }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.normalize { normalize }
-import v2.compiler.compile { CompileLens, CompileLensRoot, required_lenses_at_grain }
+import v2.compiler.compile {
+  CompileLens,
+  required_lenses_at_grain,
+  CompileLensRoot
+}
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.mandatory_tag { mandatory_tag_compile_gate_with_provenance }
 import v2.compiler.resolve { member_kind_channel_of_tree }
 import v2.std.member_declaration_kind { MemberKindChannel }
 import v2.compiler.namespace_graft { namespace_graft_build_body_conj, namespace_graft_fold_spine, namespace_graft_wrap_module_shell }
-import std.algebra { Cons, Empty }
-import v2.std.collection { empty_map}
+import std.algebra { Cons, Empty, empty_map }
+
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.integer { Int }
 import v2.std.node { Node, Symbol }

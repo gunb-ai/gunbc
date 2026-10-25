@@ -2,8 +2,8 @@ module v2.compiler.reference_closure
 
 import std.algebra { FreeMonoid, fold_list }
 import v2.compiler.source_authority { reference_prefixes, text_set_has }
-import v2.std.collection { Map }
-import v2.std.node { Node }
+import std.types { Map }
+import v2.std.node { Node, arrow_signature_order_edge }
 import std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
@@ -34,6 +34,15 @@ import v2.std.qualified_name {
 // never named. A PARAMETER REFERENCE PULLS NO MODULE: it names a binder of the declaration it sits
 // in, so its path's owner is that declaration's own module, never a neighbour; it is answered and
 // its spine is not descended.
+
+// AN ARROW'S PARAMETER-ORDER LIST IS NOT A REFERENCE SITE, because the resolver never resolves it: it
+// is the domain's binder LABELS (v2.std.arrow_signature signature_order_edge), carried unwalked by
+// resolve and skipped by infer, asked through the one predicate both use (v2.std.node
+// arrow_signature_order_edge). Its encoding is a list introduction whose head lowering marks as the
+// declaration reference to std.algebra.FreeMonoid (v2-namespace-cutover N2), so walking it read that
+// head as a path the resolver minted and refused every module that declares a fn or data without
+// acquiring std.algebra (reference_closure_target_ownerless on a module with one `data` row). A list
+// literal in a BODY is different: resolve answers its head, so it is a reference and is checked here.
 
 type ReferenceOwnership
   = ReferencesOwned
@@ -78,7 +87,11 @@ fn reference_closure_walk_ownership(
             Present { value: _ } => acc
             Absent =>
               fold(n.children, init: acc, f: fn(a, e) {
-                reference_closure_walk_ownership(n: e.target, roster: roster, at: at, acc: a)
+                if arrow_signature_order_edge(parent: n, edge: e) {
+                  a
+                } else {
+                  reference_closure_walk_ownership(n: e.target, roster: roster, at: at, acc: a)
+                }
               })
           }
       }

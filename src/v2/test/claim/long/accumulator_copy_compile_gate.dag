@@ -7,9 +7,9 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
 import v2.compiler.compile {
-  CompileLensRoot,
   required_lenses_at_grain,
-  run_required_lens_gates
+  run_required_lens_gates,
+  CompileLensRoot
 }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }

@@ -36,6 +36,9 @@ data native_test_universe_artifact_kind: ArtifactKindId = "native_test_universe"
 
 data native_module_verdict_bundle_artifact_kind: ArtifactKindId = "native_module_verdict_bundle"
 
+// One native test's judgment (std.native_test_realization native_test_evaluation_identity, D15).
+data native_test_verdict_artifact_kind: ArtifactKindId = "native_test_verdict"
+
 data compute_work_artifact_kind: ArtifactKindId = "compute_work"
 
 data native_module_resolve_artifact_kind: ArtifactKindId = "native_module_resolve"

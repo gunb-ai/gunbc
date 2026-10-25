@@ -1,0 +1,50 @@
+module v2.test.claim.host_text_chars_typing
+
+import std.types { Bool }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
+import v2.test.claim.compiler.primitive_authority_resolve { par_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ON THE v2 ROUTE, AN IMPORTED std.host_text chars BINDS AND TYPES BY ITS DECLARATION (operator rulings
+// H2/H4, 2026-10-17): a host-text literal inhabits its HostText formal, because v2.extdeps.languages.dag
+// lists std.host_text HostText as the String kernel value type beside its migration-time projection
+// v2.std.node String, and the call's type is the declared List<Char>. A non-text argument still refuses.
+// The fixtures supply std.host_text, std.types and std.algebra as the shapes the real modules declare;
+// the real modules through the real interpreter and Rust emission are test.claim.host_text_chars_scalars
+// and test.claim.resolved_call_emission_identity_witness w_host_text_chars_reaches_the_bridge.
+
+data htc_host_text: String = "module std.host_text\n\nimport std.types { Char, List }\n\ntype HostText\n\nfn chars(text: HostText) -> List<Char> {\n  chars(text: text)\n}\n"
+
+data htc_types: String = "module std.types\n\nimport std.algebra { FreeMonoid }\n\ntype Char = Int\n\ntype List<element> = FreeMonoid<element>\n"
+
+data htc_algebra: String = "module std.algebra\n\ntype FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+data htc_literal_call: String = "module p\n\nimport std.host_text { chars }\nimport std.types { Char, List }\n\nfn f() -> List<Char> {\n  chars(text: \"a\")\n}\n"
+
+data htc_int_call: String = "module p\n\nimport std.host_text { chars }\nimport std.types { Char, List }\n\nfn f() -> List<Char> {\n  chars(text: 7)\n}\n"
+
+data htc_host_text_artifact: Artifact = Artifact { kind: SourceFile, id: ^htc_host_text_artifact, file_path: "src/v2/pilot/htc_host_text.dag" }
+data htc_types_artifact: Artifact = Artifact { kind: SourceFile, id: ^htc_types_artifact, file_path: "src/v2/pilot/htc_types.dag" }
+data htc_algebra_artifact: Artifact = Artifact { kind: SourceFile, id: ^htc_algebra_artifact, file_path: "src/v2/pilot/htc_algebra.dag" }
+
+fn htc_reason(p_src: String) -> Symbol {
+  par_reason(o: bla_assemble_with_peers(p_src: p_src, peers: [
+    bla_source(src: htc_host_text, artifact: htc_host_text_artifact, cu: ^htc_host_text_cu),
+    bla_source(src: htc_types, artifact: htc_types_artifact, cu: ^htc_types_cu),
+    bla_source(src: htc_algebra, artifact: htc_algebra_artifact, cu: ^htc_algebra_cu)
+  ]))
+}
+
+test fn an_imported_host_text_chars_types_a_literal_argument_holds() -> Bool {
+  htc_reason(p_src: htc_literal_call) == ^accepted
+}
+
+test fn an_imported_host_text_chars_refuses_a_non_text_argument_holds() -> Bool {
+  htc_reason(p_src: htc_int_call) == ^application_argument_does_not_inhabit
+}

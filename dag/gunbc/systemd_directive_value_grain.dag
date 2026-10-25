@@ -3,6 +3,7 @@ module gunbc.systemd_directive_value_grain
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.cache.sccache { sccache_server_uds_env_var }
 
 // WHAT THIS CARRIER IS FOR, AND WHY IT IS A FILING RATHER THAN A REPAIR.
 //
@@ -103,7 +104,7 @@ data build_cache_environment_variables: List<BuildCacheEnvironmentVariable> = [
   BuildCacheEnvironmentVariable { name: "SCCACHE_DIR" as NonEmptyStr, authority: ModeledUpstream },
   BuildCacheEnvironmentVariable { name: "SCCACHE_ERROR_LOG" as NonEmptyStr, authority: SpelledInConsumer },
   BuildCacheEnvironmentVariable { name: "SCCACHE_CACHE_SIZE" as NonEmptyStr, authority: ModeledUpstream },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_UDS" as NonEmptyStr, authority: SpelledInConsumer },
+  BuildCacheEnvironmentVariable { name: sccache_server_uds_env_var, authority: ModeledUpstream },
   BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_PORT" as NonEmptyStr, authority: SpelledInConsumer },
 ]
 

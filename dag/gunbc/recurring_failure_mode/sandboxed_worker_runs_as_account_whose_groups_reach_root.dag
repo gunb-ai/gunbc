@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.sandboxed_worker_runs_as_account_whose_groups_reach_root
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data sandboxed_worker_runs_as_account_whose_groups_reach_root: RecurringFailureMode = RecurringFailureMode {
+  identity: "sandboxed_worker_runs_as_account_whose_groups_reach_root" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a dispatched worker, which executes model-driven actions and candidate code, runs as the instance host account, and that account is in groups docker and lxd (and has NOPASSWD sudo). DISTINGUISHING FACT: NoNewPrivileges, RestrictSUIDSGID and an empty CapabilityBoundingSet close the sudo route but not asking a root daemon over its unix socket; ProtectSystem and ProtectHome do not block connect(). HARM: prompt injection through repo content reaches root on srv1, hence prod services and every custody file under /etc. Latent, not an observed incident.",
+
+    "SPECIMEN (bright-moth-475, srv1 2026-10-17): briansrls is in docker (988) and lxd (101), /var/run/docker.sock is root:docker 0660, for both the lab and prod instances. Brief: WORKER-ROOT-EQUIVALENT-1.",
+
+    "RUNG FOUND AT: mitigatable. CEILING: structurally guaranteed (the worker's User= is an account with no root-equivalent group, so no Accepted plan hands it the credential). INTERIM: InaccessiblePaths= deny-list, a declared drop at gunbc.rung_drop.worker_root_equivalent_socket_denylist; it fails open and is dropped by the srv1 user manager. NEXT TRIGGER: dedicated worker account via the system-manager launcher. RECOGNITION: any unit that runs worker-controlled code whose User= or groups are an operator or service account.",
+    "STATE AFTER #14246 AND WORKER-ROOT-EQUIVALENT-2 (declaration level, rung still mitigatable): the srv1 lab declares worker as gunbc-worker (fleet_posix_worker_user, uid/gid 1004 after srv1's ubuntu was read holding 1002), with the attempt, provider-state and git objects/refs/logs directories group-writable to gunbc-attempt, and reviewer, auditor and supervisor units now carry NoNewPrivileges, RestrictSUIDSGID and an empty capability set. NARROWED ONLY ONCE the account exists on srv1 and a live lab worker reads back its groups (no docker, lxd, sudo or adm; sudo -n true fails; the worker commits); nothing in the model converges or reads back the account. PROD STILL RUNS THE WORKER AS THE OWNER. The review roles still run as the owner: they launch through the user manager, which cannot switch uid, and moving them to the system launcher is a separate change.",
+
+    "INSTANCE, 2026-10-19 (srv1 CI job user): ghrunner runs both same-repository pull_request jobs and dispatched deploy runs under one uid, and is in group briansrls (1000). This is the same class: model-driven or candidate code runs as an account whose group and uid reach more than the job needs. Removing ghrunner's whole-binary sudo grants (gunbc.plans.srv1_deploy_principal_split) removes root reach but not the shared-uid co-tenancy, which stays at mitigatable. It is more than a residual: the administrator key reaches a deploy run as an in-run ssh-agent owned by ghrunner, and the modeled runner unit sets no PrivateTmp or namespace directive, so a concurrent same-uid PR job can reach it during the deploy window (host-observed read-only on srv1, 2026-10-19, actions-runner@srv1-01 and -02: PrivateTmp=no, ProtectSystem=no, PrivateUsers=no, InaccessiblePaths= and JoinsNamespaceOf= empty; the socket's reachability in a live run is implied, not exercised). The trigger is a separate uid or runner label for main-pinned dispatches, then the per-job microvm migration. Operator decision D3 in that plan.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.compute.unit_bounds", decl_name: "worker_root_equivalent_socket_paths"),
+    decl_ref(module_path: "test.claim.roadmap.worker_root_equivalent_socket_witness", decl_name: "the_worker_unit_denies_the_docker_and_lxd_sockets"),
+    decl_ref(module_path: "gunbc.rung_drop.worker_root_equivalent_socket_denylist", decl_name: "worker_root_equivalent_socket_denylist"),
+  ],
+}

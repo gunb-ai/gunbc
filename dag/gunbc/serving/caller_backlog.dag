@@ -23,7 +23,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
-  CasGeneration, cas_unreadable_slot_detail,
+  CasGeneration, cas_generation_count, cas_unreadable_slot_detail,
 }
 import gunbc.durable_cas_file_store {
   admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
@@ -844,7 +844,7 @@ type AttemptFence
 fn attempt_fence_generation(fence: AttemptFence) -> Int {
   match fence {
     ComputeCellFence { account: _, presented: g } => g
-    SeatLeaseFence { grant: _, holder: h, at: _ } => h.generation as Int
+    SeatLeaseFence { grant: _, holder: h, at: _ } => cas_generation_count(g: h.generation)
   }
 }
 

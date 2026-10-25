@@ -1,5 +1,6 @@
 module v2.test.claim.emit.rust_record_construct_emit
 
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
@@ -12,9 +13,7 @@ import v2.extdeps.languages.rust_fixtures {
   rust_rec_wrong_value_source_text
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

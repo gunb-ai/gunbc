@@ -1,0 +1,78 @@
+// THE VISUDO (SUDOERS-VALIDATE) OPERATION. Sudoers-file validation runs two elevated commands --
+// a syntax check (`visudo -cf <file>`) and a policy check (`visudo -c -O -P -f <file>`) -- and
+// every site that spells the argv by hand drifts from the others. This module owns the two typed
+// commands.
+//
+// CONSUMED IN THIS CHANGE: the installed-location policy check (gunbc.live_deploy.operations
+// installed_visudo_policy_check_command) and the live drop-in syntax check (gunbc.ci.ci_deploy_sudoers
+// deploy_sudoers_install_stmts, the /etc/sudoers.d file). Both take the file path as a compile-time
+// String and render from visudo_policy_check_command / visudo_check_command respectively, so a
+// change to how the validate command renders reaches them at once.
+//
+// HAND-SPELLED SITES REMAINING (declared frontier): gunbc.live_deploy.operations
+// deploy_stage_visudo_check_command and the staged check in gunbc.ci.ci_deploy_sudoers. Their file
+// path is a runtime shell variable ($STAGE_DIR/<stage_name>), not a compile-time String, so they
+// cannot take these ops as-is; they retire when the apply route takes live_deploy_apply_preamble_on_host (the
+// dissolution rows gunbc.live_deploy.emit deploy_apply_preamble_steps_dissolution and gunbc.ci.ci_deploy_sudoers
+// deploy_sudoers_install_stmts_dissolution), whose staging supplies the staged file path at realization.
+
+// BOTH COMMANDS ARE ELEVATED, and the elevation lives in the argv: /usr/bin/sudo, its -n, the
+// visudo binary by absolute path. visudo is an ARGUMENT to sudo, not a program this repository
+// execs, so it carries no ProgramIdentity row and no program-roster entry -- the shape the
+// extdeps.systemd.systemctl daemon-reload op already records.
+//
+// THE BINARY PATH IS THE SINGLE AUTHORITY for /usr/sbin/visudo. gunbc.fleet.fleet_posix_accounts
+// derives fleet_visudo_binary_path from this row, so the value is spelled once and the fleet
+// roster cannot disagree with it.
+
+module extdeps.sudo.visudo
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+
+// visudo(8) is the authority for the flag vocabulary: -c check-only pass, -f names the file,
+// -O/-P enforce the default owner and mode.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/visudo.man/"
+  }
+}
+
+data visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"
+
+// -cf is the SINGLE combined word, not two words: the shell builder the swap replaces spelled it
+// `-cf`, and the op must render the argv the shell rendered, byte for byte.
+fn visudo_check_arguments(file: String) -> List<String> {
+  [visudo_binary_path as String, "-cf", file]
+}
+
+// The elevated form: sudo's own prefix around the privilege-free arguments, which a transport that
+// applies elevation itself (gunbc.typed_remote_file_write) takes from visudo_check_arguments directly.
+fn visudo_check_command(file: String) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: concat([sudo_non_interactive_flag as String], visudo_check_arguments(file: file)),
+  )
+}
+
+// -c -O -P -f as four separate words: -O and -P are independent enforcement rules (owner, mode)
+// with no combined form in visudo(8). The check runs on the INSTALLED file, where the ownership it
+// enforces is the fact under test.
+fn visudo_policy_check_command(file: String) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: [
+      sudo_non_interactive_flag as String,
+      visudo_binary_path as String,
+      "-c",
+      "-O",
+      "-P",
+      "-f",
+      file,
+    ],
+  )
+}

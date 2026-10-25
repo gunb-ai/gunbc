@@ -23,10 +23,8 @@ import gunbc.roadmap.roadmap_serve {
   roadmap_serve_own_route_specs,
   roadmap_serve_approval_cutover_route_specs,
   ApprovalBrokerCutoverHandler,
-  roadmap_serve_selection_response,
-  roadmap_serve_invoke,
+  roadmap_serve_selection_response_for_instance,
   roadmap_serve_invoke_for_instance,
-  roadmap_serve_respond,
   roadmap_serve_respond_for_instance,
   roadmap_serve_respond_over,
   ServedDailyBodyAuthority, DailyBodyRenderedUnderThisPlan, DailyBodyAuthorityUnknown,
@@ -41,7 +39,7 @@ import gunbc.roadmap.roadmap_serve {
   serve_text_response,
 }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnLaunchPending, SpawnNotAdmitted,
   belt_dispatch_result_exemplars,
   BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
@@ -54,7 +52,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 }
 import gunbc.roadmap.roadmap_readiness { GapAccepted, GapDependencies, GapContract, GapNotAgentWork }
 import gunbc.roadmap.roadmap_execution_contract { OperatorExclusiveMode }
-import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_preview_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source }
 import extdeps.http.server {
@@ -101,7 +99,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
 
 // Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below
 // goes RED (nothing selects) — the discriminating direction; the production path never does this
-// (roadmap_serve_respond answers 500 on Refused).
+// (roadmap_serve_respond_for_instance answers 500 on Refused).
 
 fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
   match roadmap_serve_route_table_build() {
@@ -135,7 +133,8 @@ test fn witness_serve_table_selection() -> Bool {
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
-  let r = roadmap_serve_invoke(
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
     handler: DispatchAssetHandler,
     params: [],
     request: fixture_request(method: GET, path: roadmap_dispatch_asset_path),
@@ -187,7 +186,8 @@ fn fixture_dispatch_params() -> List<PathParamBinding> {
 // INHABITANCE: invoke the real handler with AuthAbsent and no fabric/plan mock. A Get before
 // admission is HostEffectRefused, not 403. Cleanup has no plan argument; dispatch must not force one.
 test fn unauthenticated_dispatch_refuses_before_actuation() -> Bool {
-  let r = roadmap_serve_invoke(
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
     handler: BeltDispatchHandler,
     params: fixture_dispatch_params(),
     request: fixture_request(method: POST, path: "/dispatch/some-node"),
@@ -220,7 +220,8 @@ fn fixture_live_session() -> AuthenticatedSession {
 // CSRF REFUSAL IS BEFORE THE CLOCK. csrf_write_decision does not read observed_at; a live
 // session with an empty body must 403 here without Clock.Now.
 test fn dispatch_without_csrf_refuses_as_cross_site() -> Bool {
-  let r = roadmap_serve_invoke(
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
     handler: BeltDispatchHandler,
     params: fixture_dispatch_params(),
     request: ServeHttpRequest {
@@ -270,7 +271,8 @@ test fn assign_without_csrf_refuses_without_the_clock() -> Bool {
 }
 
 test fn unauthenticated_cleanup_refuses_before_actuation() -> Bool {
-  let r = roadmap_serve_invoke(
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
     handler: BeltStopHandler,
     params: fixture_dispatch_params(),
     request: fixture_request(method: POST, path: "/cleanup/some-node"),
@@ -287,12 +289,12 @@ test fn dispatch_client_posts_the_session_csrf_token() -> Bool {
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
-  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response_for_instance(instance: srv1_live_dashboard_instance(), sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: deploy_witness_release_revision)
   r.status == 404
 }
 
 test fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response_for_instance(instance: srv1_live_dashboard_instance(), sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
@@ -315,11 +317,12 @@ test fn witness_405_response_carries_allowed() -> Bool {
 fn na(r: LaunchRefusal) -> BeltSpawnOutcome { SpawnNotAdmitted { node_id: "n", refusal: r } }
 
 fn status_is_typed(s: Int) -> Bool {
-  s == 200 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
+  s == 200 || s == 202 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
 }
 
 test fn witness_dispatch_status_total() -> Bool {
   belt_dispatch_status(r: Spawned { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar() }) == 200
+    && belt_dispatch_status(r: SpawnLaunchPending { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar(), entry: "e" }) == 202
     && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
     && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
     && belt_dispatch_status(r: na(r: LaunchNodeUnknown)) == 404
@@ -448,7 +451,7 @@ test fn witness_unknown_method_refuses() -> Bool {
 // two arms must stay distinct statuses; collapsing them reds this row.
 
 test fn witness_unknown_method_folds_501_response() -> Bool {
-  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", tailscale_identity: "", release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_respond_for_instance(instance: srv1_live_dashboard_instance(), method_label: "BREW", path: "/", body: "", tailscale_identity: "", release_revision: deploy_witness_release_revision)
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 
@@ -470,7 +473,8 @@ test fn witness_known_methods_parse() -> Bool {
 // would be spent with an audit row naming the operator.
 
 test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
-  let r = roadmap_serve_respond(
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "GET",
     path: "/approve/abc123",
     body: "",
@@ -492,7 +496,8 @@ test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
 // live route from spending effects on the way to a refusal. Redemption of a real segment is
 // covered by the store witness (redeem_over_store) and the live probe.
 test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() -> Bool {
-  let r = roadmap_serve_respond(
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "POST",
     path: "/approve/abc123",
     body: "",
@@ -513,7 +518,8 @@ test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() ->
 // THE RED: drop the admission consult from approval_submit_response and this route parses the
 // body and answers 400 "submission unreadable".
 test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
-  let r = roadmap_serve_respond(
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "POST",
     path: "/approvals",
     body: "not an envelope",
@@ -533,7 +539,8 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
 // test.claim.request_authentication_witness's subject; the wiring between them is one function
 // call, roadmap_serve_request_security.
 test fn a_tailnet_header_without_readback_reaches_the_approval_handler_as_absent() -> Bool {
-  let r = roadmap_serve_respond(
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "POST",
     path: "/approve/abc123",
     body: "",
@@ -546,7 +553,8 @@ test fn a_tailnet_header_without_readback_reaches_the_approval_handler_as_absent
 
 // AND A GENUINELY ABSENT HEADER IS THE SAME ANSWER: no observation, no identity, no default.
 test fn an_absent_header_arrives_at_the_handler_as_absent() -> Bool {
-  let r = roadmap_serve_respond(
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "POST",
     path: "/approve/abc123",
     body: "",
@@ -558,7 +566,8 @@ test fn an_absent_header_arrives_at_the_handler_as_absent() -> Bool {
 }
 
 test fn a_garbage_approval_submission_is_400_and_names_the_unreadable_body() -> Bool {
-  let r = roadmap_serve_respond(
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "POST",
     path: "/approvals",
     body: "nope",

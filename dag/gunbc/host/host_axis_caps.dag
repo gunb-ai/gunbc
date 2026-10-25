@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
-import std.algebra { trim, list_head }
+import std.algebra { FreeSemigroup, list_append, list_flat_map, trim, list_head }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -26,6 +26,9 @@ import gunbc.host.host_converge {
   slice_control_caps_for,
   SliceControlCaps,
   SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+  SliceControlUnit, SessionsSliceControl, UncappedSliceControl,
+  SliceControlPlan, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+  slice_control_plan_for,
 }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -38,7 +41,10 @@ import extdeps.systemd {
   systemd_memory_max_property,
   systemd_memory_high_property,
   systemd_memory_swap_max_property,
+  systemd_tasks_max_property,
+  systemd_cpu_quota_property,
 }
+import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
 import extdeps.systemd.systemctl {
   systemctl_daemon_reload_argv,
   systemctl_revert_memory_caps_argv,
@@ -63,6 +69,9 @@ import gunbc.shell_command_text {
   shell_command_text_of_stmts,
 }
 
+// On the other runner hosts the same derived_runner_slot_cap_members list is written by
+// gunbc.runner.runner_host_file_converge (administrator over the fleet key; host-wide drain-first,
+// live-cgroup readback); the row below predates that route and is left as it was.
 data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
 type CapMemberAt = NonEmptyStr
@@ -264,6 +273,24 @@ fn derived_runner_memory_swap_cap_member() -> CapMember {
 
 fn derived_runner_memory_cap_members() -> List<CapMember> {
   [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member(), derived_runner_memory_swap_cap_member()]
+}
+
+// TasksMax IS THE FOURTH ROW OF THE ONE SLOT-CAP LIST, NOT A SECOND RENDERING. 50-fleet-tasks.conf was
+// authored a second time in gunbc.fleet.fleet_converge_plan beside this list, so the plan and the
+// deploy disagreed on how many drop-ins a slot carries. derived_runner_memory_cap_members stays the
+// three MEMORY rows because live_deploy's staged install consumes exactly that list and srv1's
+// rendered bytes must not move; derived_runner_slot_cap_members is that list plus tasks, and is what
+// the fleet plan and the runner-host converge both read.
+fn derived_runner_tasks_cap_member() -> CapMember {
+  desired_cap_member(
+    dropin_path: gunbc_runner_per_slot_tasks_dropin_path as NonEmptyStr,
+    property: systemd_tasks_max_property,
+    bytes_value: to_string(gunbc_runner_slot_desired().tasks_max) as NonEmptyStr,
+  )
+}
+
+fn derived_runner_slot_cap_members() -> List<CapMember> {
+  concat(derived_runner_memory_cap_members(), [derived_runner_tasks_cap_member()])
 }
 
 // ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────
@@ -644,46 +671,67 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
   shell_command_text_of_stmts(stmts: deploy_memory_cap_shadow_revert_stmts(units: units))
 }
 
-fn slice_control_set_property_stmt(unit: NonEmptyStr, property: NonEmptyStr, bytes: ByteSize) -> Node {
-  shell_privileged_command_intent(
-    argv: systemctl_set_property_argv(
-      unit: unit,
-      property: property,
-      value: to_string(byte_size_count(b: bytes)) as NonEmptyStr,
-    )
+fn slice_control_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, bytes: ByteSize) -> List<String> {
+  systemctl_set_property_argv(
+    unit: unit,
+    property: property,
+    value: to_string(byte_size_count(b: bytes)) as NonEmptyStr,
   )
 }
 
 // Revert once per unit (clears /run/systemd/system.control AND /etc/systemd/system.control
 // set-property drop-ins), then persistent set-property so the model owns system.control.
 // Two properties cannot each revert: the second revert would undo the first set-property.
-fn slice_control_converge_stmts_for_caps(caps: SliceControlCaps) -> List<Node> {
+// THE ARGV LIST IS THE AUTHORITY; the shell statements and the typed realization both project it.
+fn slice_control_converge_argvs_for_caps(caps: SliceControlCaps) -> List<List<String>> {
   [
-    deploy_control_shadow_revert_stmt(u: control_shadow_unit(unit: caps.unit)),
-    slice_control_set_property_stmt(
-      unit: caps.unit,
-      property: systemd_memory_max_property as NonEmptyStr,
-      bytes: caps.memory_max,
-    ),
-    slice_control_set_property_stmt(
-      unit: caps.unit,
-      property: systemd_memory_high_property as NonEmptyStr,
-      bytes: caps.memory_high,
-    ),
+    systemctl_revert_memory_caps_argv(unit: caps.unit),
+    slice_control_set_property_argv(unit: caps.unit, property: systemd_memory_max_property as NonEmptyStr, bytes: caps.memory_max),
+    slice_control_set_property_argv(unit: caps.unit, property: systemd_memory_high_property as NonEmptyStr, bytes: caps.memory_high),
   ]
 }
 
-fn slice_control_converge_stmts(host: HostIdentity) -> List<Node> {
-  match slice_control_caps_for(host: host) {
-    SliceControlNotOwed => []
-    SliceControlRefused { cause: _ } => []
-    SliceControlDerived { caps } =>
-      fold(caps, init: [], f: (acc, c) => concat(acc, slice_control_converge_stmts_for_caps(caps: c)))
+// The sessions CPU cap is appended after MemoryHigh, inside the same single revert: a second revert
+// would undo the memory set-properties.
+fn slice_control_converge_argvs_for_unit(u: SliceControlUnit) -> List<List<String>> {
+  match u {
+    UncappedSliceControl { caps: c } => slice_control_converge_argvs_for_caps(caps: c)
+    SessionsSliceControl { caps: c, cpu_quota: t } =>
+      concat(slice_control_converge_argvs_for_caps(caps: c), [
+        systemctl_set_property_argv(
+          unit: c.unit,
+          property: systemd_cpu_quota_property as NonEmptyStr,
+          value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
+        ),
+      ])
   }
 }
 
-fn deploy_slice_control_converge_script(host: HostIdentity) -> String {
-  shell_command_text_of_stmts(stmts: slice_control_converge_stmts(host: host))
+// ONE UNIT'S CONVERGE INTENTS, SHARED BY THE ROSTER FOLD BELOW AND BY THE PER-UNIT CLAIM
+// (test.claim.host.sessions_slice_cpu_witness imports it to read the CPUQuota/MemoryHigh lines
+// without going through the plan). Untouched from main; it is the leaf the roster enumerates over.
+fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
+  map(slice_control_converge_argvs_for_unit(u: u), argv => shell_privileged_command_intent(argv: argv))
+}
+
+// THE CONTENT PRODUCER TAKES THE ROSTER, NOT THE HOST. Same reason as the caller: re-deriving the
+// plan here would put a second, unguarded copy of the NotOwed/Refused -> [] decision one layer below
+// the caller that already made it, and this is the function whose [] becomes an EMPTY SCRIPT -- the
+// quietest possible way to not converge a host, since an empty script applies cleanly and reports
+// nothing. Callers discriminate once and hand the Derived roster down.
+//
+// THE ROSTER IS A FREE SEMIGROUP (std.algebra::FreeSemigroup), so "at least one unit" is a property
+// of the TYPE, not a check a caller can forget (DESIGN §5, ruling nonemptiness_is_constructed_or_proved).
+// Enumerating head + tail keeps the fold's seed a real unit rather than an empty accumulator.
+fn slice_control_converge_stmts(units: FreeSemigroup<SliceControlUnit>) -> List<Node> {
+  list_append(
+    left: slice_control_converge_stmts_for_unit(u: units.head),
+    right: list_flat_map(xs: units.tail, f: u => slice_control_converge_stmts_for_unit(u: u))
+  )
+}
+
+fn deploy_slice_control_converge_script(units: FreeSemigroup<SliceControlUnit>) -> String {
+  shell_command_text_of_stmts(stmts: slice_control_converge_stmts(units: units))
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.

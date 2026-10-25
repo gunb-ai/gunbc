@@ -1,0 +1,22 @@
+module gunbc.rung_drop.seed_empty_match_arrow_body_only_not_enforced
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
+
+data seed_empty_match_arrow_body_only_not_enforced: RungDrop = RungDrop {
+  identity: "seed_empty_match_arrow_body_only_not_enforced" as NonEmptyStr,
+
+  subject: "the rule that an empty match on the Never declaration is admitted only as an arrow body, on the v1 seed path; v2 enforces it through InferFrame.uninhabited_match_expected, the seed's exhaustiveness check never read the position",
+
+  declared: "2026-10-16",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "v2.compiler.infer infer_uninhabited_match_facts (arrow-body-only, refusing infer_uninhabited_match_expected_type_absent)" },
+    population: Enumerated { members: FreeSemigroup { head: "seed-path (v1) sources with an empty match on the std.error_primitives Never declaration at a non-arrow-body position, e.g. a call argument g(x: match (n) { }); measured on the seed, such a source produced zero blocking diagnostics. The earlier seed claim empty_match_nested_in_call_arg_must_refuse passed only through an unrelated String/Int mismatch and was deleted", tail: [] } },
+    restoration_trigger: "the v1 seed enforces arrow-body-only for an empty match on Never, so a seed-path source with the empty match at a call argument, let value or other non-arrow-body position is refused with the empty match's own reason; a restored claim must use a fn whose declared return agrees with the surrounding context so no unrelated mismatch can supply the refusal",
+  } }
+}

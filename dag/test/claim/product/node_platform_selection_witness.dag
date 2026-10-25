@@ -71,7 +71,7 @@ fn need_mentions(need: SelectionEvidenceNeed, fragment: String) -> Bool {
 test fn live_selection_waits_on_each_route_by_its_own_evidence() -> Bool {
   match node_platform_selection() {
     SelectionNeedsEvidence { needs: ns } =>
-      any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-k1-a (P4261 dev carrier, as built) is not yet qualified: blocked at mechanically mated"))
+      any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-e1-b (P4261 dev carrier, as built) is not yet qualified: blocked at mechanically mated"))
         && any(ns, n => need_mentions(need: n, fragment: "the memory of gh200-dv5-a is unmeasured"))
         && any(ns, n => need_mentions(need: n, fragment: "no supply is chosen for the dev-carrier route"))
         && any(ns, n => need_mentions(need: n, fragment: "no MECAI-GH200 in its factory GH200 Hopper GPU (96GB HBM3) configuration has been delivered"))
@@ -173,7 +173,7 @@ test fn qualifying_one_route_does_not_satisfy_another() -> Bool {
   match node_platform_selection_given(evidence: ev) {
     SelectionNeedsEvidence { needs: ns } =>
       any(ns, n => need_mentions(need: n, fragment: "route MECAI-GH200 factory server (GH200 Hopper GPU (96GB HBM3)) is not yet qualified"))
-        && !any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-k1-a"))
+        && !any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-e1-b"))
     _ => false
   }
 }

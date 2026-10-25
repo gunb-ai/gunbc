@@ -7,7 +7,7 @@
 
 module v2.test.claim.sole_constructor_native_wall
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map, map_insert }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.compiler.body_lowering_fold {
@@ -20,8 +20,8 @@ import v2.compiler.body_lowering_fold {
 import v2.compiler.infer { infer_coproduct_path_of_variant_arm, infer_sole_constructor_diags, infer_sole_constructor_path_diags }
 import v2.std.node_query { construct_node }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
-import v2.compiler.resolve { ResolvedTree }
-import v2.std.collection { empty_map, map_insert }
+import v2.compiler.resolve { empty_module_outcome_index, ResolvedTree }
+
 import v2.std.diagnostic { None, Some, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
@@ -57,8 +57,8 @@ fn wall_tree(channel: TypeDeclarationModifierChannel) -> ResolvedTree {
     root: wall_at,
     symbol_index: empty_symbol_index(),
     resolved_declarations: empty_symbol_index(),
-    lexical_bindings: empty_map(),
-    unavailable_providers: [],
+    occurrence_bindings: empty_map(), duplicate_binding_records: [],
+    module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: channel,
     constructing_module: optional_absent()
@@ -254,8 +254,8 @@ test fn an_unclaimed_alias_construct_refuses_declaration_identity_unavailable_no
       root: wall_alias_construct(),
       symbol_index: wall_unclaimed_alias_index(),
       resolved_declarations: wall_unclaimed_alias_index(),
-      lexical_bindings: empty_map(),
-      unavailable_providers: [],
+      occurrence_bindings: empty_map(), duplicate_binding_records: [],
+      module_outcomes: [], outcome_index: empty_module_outcome_index(),
       member_kinds: no_member_declaration_kinds(),
       type_declaration_modifiers: wall_open_channel(),
       constructing_module: optional_present(value: wall_foreign_module())
@@ -275,8 +275,8 @@ test fn a_withheld_index_refuses_declaration_identity_unavailable_not_modifiers_
       root: wall_alias_construct(),
       symbol_index: empty_symbol_index(),
       resolved_declarations: empty_symbol_index(),
-      lexical_bindings: empty_map(),
-      unavailable_providers: [],
+      occurrence_bindings: empty_map(), duplicate_binding_records: [],
+      module_outcomes: [], outcome_index: empty_module_outcome_index(),
       member_kinds: no_member_declaration_kinds(),
       type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
       constructing_module: optional_present(value: wall_foreign_module())

@@ -4,6 +4,7 @@ import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.algebra { trim }
+import extdeps.firmware.types { firmware_semantic_version_text }
 
 import extdeps.bmc.capability {
   CurrentEvidenceUnclaimed,
@@ -155,6 +156,12 @@ import product.cooling_qualification {
   installed_cooling_verdict_for_host,
 }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
+import product.fan_policy_standing {
+  ConvergeRouteBound,
+  ConvergeRouteUnbound,
+  FanDutyConvergeRoute,
+}
+import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -250,6 +257,7 @@ type BmcFanTypedObservationPlan {
   controller_zone_path: NonEmptyStr
   tach_sensors: List<NonEmptyStr>
   temperature_sensors: List<NonEmptyStr>
+  controller_machine: NonEmptyStr
 }
 
 fn bmc_fan_typed_observation_plan(
@@ -265,7 +273,25 @@ fn bmc_fan_typed_observation_plan(
       ["TEMP_SOC"],
       items: intent.fan_policy.thermal_guard.required_component_sensors,
     ),
+    controller_machine: projection.controller_machine,
   }
+}
+
+type BmcFanRouteAdmission
+  = BmcFanRouteAdmitted { route: FanDutyConvergeRoute }
+  | BmcFanRouteUnbound { read_obligation: NonEmptyStr }
+
+fn bmc_fan_route_admission(route: FanDutyConvergeRoute) -> BmcFanRouteAdmission {
+  match route {
+    ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } =>
+      BmcFanRouteAdmitted { route: route }
+    ConvergeRouteUnbound { authority: _, read_obligation: o } =>
+      BmcFanRouteUnbound { read_obligation: o }
+  }
+}
+
+fn bmc_fan_controller_machine_matches(observed: NonEmptyStr, expected: NonEmptyStr) -> Bool {
+  observed == expected
 }
 
 data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
@@ -1043,11 +1069,15 @@ fn bmc_fan_build_live_observation(
   config_digest: Digest,
   tach_health: List<OpenBmcTachHealth>,
   temperatures: List<BmcFanTemperatureObservation>,
+  controller_machine: NonEmptyStr,
 ) -> BmcFanLiveObservationResult {
-  if identity.machine != "altrad8ud-1l2t" {
+  if !bmc_fan_controller_machine_matches(
+    observed: identity.machine,
+    expected: controller_machine,
+  ) {
     BmcFanLiveObservationRefused {
       reason: concat(
-        "BMC target machine is not altrad8ud-1l2t: ",
+        "BMC OpenBMC target machine differs from the projection's admitted controller machine: ",
         identity.machine as String,
       ),
     }
@@ -1406,21 +1436,24 @@ fn bmc_fan_observe_with_credential(
     BmcFanLiveIdentityRefused { reason: reason } =>
       BmcFanLiveObservationRefused { reason: reason }
     BmcFanLiveIdentityObserved { identity: identity } =>
-      if identity.machine != "altrad8ud-1l2t" {
-        BmcFanLiveObservationRefused {
-          reason: concat(
-            "BMC fan identity is not altrad8ud-1l2t: ",
-            identity.machine as String,
-          ),
-        }
-      } else {
+      match bmc_fan_route_admission(
+        route: fan_converge_route_for_family(family: identity.firmware.family),
+      ) {
+        BmcFanRouteUnbound { read_obligation: o } =>
+          BmcFanLiveObservationRefused {
+            reason: concat(
+              "BMC fan converge route is unbound: ",
+              o as String,
+            ),
+          }
+        BmcFanRouteAdmitted { route: _ } =>
         match fleet_bmc_valid_state.firmware {
           BmcFirmwareUnpinned =>
             BmcFanLiveObservationRefused {
               reason: concat(
                 concat(
                   "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
-                  identity.firmware.version as String,
+                  firmware_semantic_version_text(version: identity.firmware.version),
                 ),
                 concat(
                   "; fleet valid state requires ",
@@ -1440,7 +1473,7 @@ fn bmc_fan_observe_with_credential(
                   reason: concat(
                     concat(
                       "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
-                      identity.firmware.version as String,
+                      firmware_semantic_version_text(version: identity.firmware.version),
                     ),
                     concat(
                       "; fleet valid state requires ",
@@ -1456,7 +1489,7 @@ fn bmc_fan_observe_with_credential(
                     BmcFanLiveObservationRefused {
                       reason: concat(
                         "BMC fan convergence has no exact board-and-firmware projection for observed OpenBMC ",
-                        identity.firmware.version as String,
+                        firmware_semantic_version_text(version: identity.firmware.version),
                       ),
                     }
                   Present { value: projection } =>
@@ -1465,12 +1498,22 @@ fn bmc_fan_observe_with_credential(
                         reason: concat(
                           concat(
                             "BMC fan convergence has no exact config projection for observed OpenBMC ",
-                            identity.firmware.version as String,
+                            firmware_semantic_version_text(version: identity.firmware.version),
                           ),
                           concat(
                             "; available projection is ",
-                            projection.firmware.version as String,
+                            firmware_semantic_version_text(version: projection.firmware.version),
                           ),
+                        ),
+                      }
+                    } else if !bmc_fan_controller_machine_matches(
+                      observed: identity.machine,
+                      expected: projection.controller_machine,
+                    ) {
+                      BmcFanLiveObservationRefused {
+                        reason: concat(
+                          "BMC OpenBMC target machine differs from the projection's admitted controller machine: ",
+                          identity.machine as String,
                         ),
                       }
                     } else {
@@ -1517,14 +1560,15 @@ fn bmc_fan_observe_with_credential(
                             config_digest: config_digest,
                             tach_health: tach_health,
                             temperatures: temperatures,
+                            controller_machine: projection.controller_machine,
                           )
                       }
                     }
                 }
             }
         }
+      }
   }
-}
 }
 }
 

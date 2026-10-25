@@ -3,15 +3,13 @@
 
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_types::{Bool, SourceSpan};
-pub use crate::v1_compiler_parse::parse_with_table;
-pub use crate::v1_compiler_parse::ParseWithTableResult;
+pub use crate::v1_compiler_parse::{parse_with_table, ParseWithTableResult};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::CompilerDiagnostic;
 use crate::v1_std_core::CompilerDiagnostic::ParseError;
 pub use crate::v1_std_core::NewlineIndex;
-pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
+pub use crate::v1_std_core::{build_newline_index, empty_intern_table, CompilerDiagnostic};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -139,7 +137,7 @@ pub fn span_text(source: String, span: Rc<SourceSpan>) -> String {
 pub fn parse_error_at_keyword(source: String, keyword: String) -> bool {
     {
         let parsed = parse_source(source.clone());
-        match parsed.result.clone().error.clone() {
+        match parsed.result.error.clone() {
             std::option::Option::None => false,
             Some(e) => match (*e.diagnostic.clone()).clone() {
                 CompilerDiagnostic::ParseError {
@@ -158,7 +156,7 @@ pub fn parse_error_at_keyword(source: String, keyword: String) -> bool {
 }
 
 pub fn parsed_ok(source: String) -> bool {
-    match parse_source(source.clone()).result.clone().error.clone() {
+    match parse_source(source).result.error.clone() {
         Some(_) => false,
         std::option::Option::None => true,
     }

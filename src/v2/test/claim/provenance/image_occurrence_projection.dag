@@ -1,6 +1,6 @@
 module v2.test.claim.provenance.image_occurrence_projection
 
-import std.types { Bool, Int }
+import std.types { Bool, Int, Map }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -14,7 +14,7 @@ import std.occurrence_identity {
   scoped_occurrence_allocator,
   scoped_occurrence_ref_in_scope,
 }
-import v2.std.collection { Absent, Map, Present, empty_map, list_at_optional, map_insert, map_lookup }
+import std.optional { Absent, Present }
 import v2.std.node {
   Conj,
   Edge,
@@ -24,6 +24,7 @@ import v2.std.node {
   allocate_pending_occurrences,
   close_lowered_image,
   node_with_occurrence_id,
+  NotADeclaration
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
@@ -31,7 +32,7 @@ import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_match
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
-import std.algebra { Empty }
+import std.algebra { Empty, empty_map, list_at_optional, map_insert, map_lookup }
 
 // Fixture: the graph allocator has handed out [0, 10), so the first allocated member gets 10, the
 // next 11, and so on, in pre-order. The lowered source is authored occurrence 5.
@@ -50,7 +51,7 @@ fn iop_minted(id: Int) -> NodeOccurrenceIdentity {
 fn iop_node(occurrence: NodeOccurrenceIdentity, children: List<Node>) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: map(children, c => Edge { label: Positional, target: c }),
+    children: map(children, c => Edge { label: Positional, target: c, declaration: NotADeclaration }),
     occurrence_id: occurrence,
   )
 }
@@ -177,7 +178,7 @@ test fn image_allocation_is_deterministic_holds() -> Bool {
 }
 
 fn iop_admit(root: Node) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(root: root, test_markers: test_marker_channel_empty(), import_bindings: Empty, type_declaration_kinds: Empty, type_declaration_modifiers: Empty, diagnostics: None)
+  admit_normalized_tree(root: root, test_markers: test_marker_channel_empty(), import_bindings: Empty, imported_modules: Empty, type_declaration_kinds: Empty, type_declaration_modifiers: Empty, diagnostics: None)
 }
 
 fn iop_refused_for(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {

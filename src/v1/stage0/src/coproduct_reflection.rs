@@ -26,10 +26,11 @@ use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
     fields_get, sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
 };
+use crate::v1_std_core::Cardinality;
 use crate::v1_std_core::{
-    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    param_node_type_expr, source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex,
-    Node, VarBindingKind,
+    authored_name_at, expr_var_name_at, field_node_cardinality, field_node_default_value,
+    field_node_type_expr, inferred_to_node, param_node_name_at, param_node_type_expr,
+    source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -276,8 +277,149 @@ fn marshal_variant_arm_target(
             .as_ref()
             .and_then(|inf| inferred_to_node(inf.clone()))
             .unwrap_or_else(|| field_node_type_expr(field.clone()));
-        let target = marshal_type_expr_ref(ctx, si, &type_expr)?;
+        let target = marshal_field_binder(ctx, si, field, &field_name, &type_expr)?;
         edges.push(edge_named(ctx, &field_name, target));
+    }
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    ))
+}
+
+fn core_edge_value(ctx: &InterpContext, marker: &str, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("StructuralLabel"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("label"),
+                        Value::Variant {
+                            type_name: ctx.sym("StructuralEdgeLabel"),
+                            variant_name: ctx.sym("CoreMarker"),
+                            fields: Rc::new(vec![(
+                                ctx.sym("marker"),
+                                Value::Variant {
+                                    type_name: ctx.sym("CoreEdgeLabel"),
+                                    variant_name: ctx.sym(marker),
+                                    fields: Rc::new(vec![]),
+                                },
+                            )]),
+                        },
+                    )]),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+// ONE std.optional LAYER over a payload: an Instantiation whose head is the declaration reference
+// std.optional.Optional and whose second child is the payload, the node v2.std.optional_layers
+// wrap_type_node_occupancy builds at depth one (differential claim:
+// test.claim.decl_facts_field_binder_witness). The reference is the marked carrier of
+// v2.std.qualified_name declaration_reference_node: a Conj whose one DeclarationReferenceEdge targets
+// the segment spine v2.std.node fold_list_node builds over synthetic atoms.
+fn optional_layer_node(ctx: &InterpContext, payload: Value) -> Value {
+    let mut spine = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![],
+    );
+    for segment in ["Optional", "optional", "std"] {
+        spine = node_record(
+            ctx,
+            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+            vec![
+                edge_named(ctx, "fold_list_node_head", atom_identity_node(ctx, segment)),
+                edge_named(ctx, "fold_list_node_tail", spine),
+            ],
+        );
+    }
+    let reference = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![core_edge_value(ctx, "DeclarationReferenceEdge", spine)],
+    );
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Instantiation")),
+        vec![
+            edge_positional(ctx, reference),
+            edge_positional(ctx, payload),
+        ],
+    )
+}
+
+// A DECLARED FIELD IS A BINDER NODE, the one shape v2.std.node_query binder_node builds and
+// declared_field_list reads: a Conj of a BinderTypeEdge to the field's type and, when the field
+// declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets one std.optional layer over its
+// type (optional_layer_node), as declared_field_cardinality_of_target decodes. A literal default is a
+// ComputationNode { Value } over the atom of its own spelling. Every non-literal default REFUSES
+// (TypeError): the host cannot elaborate it, and none comes out as no default, which would be a
+// silent loss of a declared fact.
+fn marshal_field_binder(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field: &Rc<Node>,
+    field_name: &str,
+    type_expr: &Rc<Node>,
+) -> InterpResult<Value> {
+    let mut type_target = marshal_type_expr_ref(ctx, si, type_expr)?;
+    if matches!(
+        field_node_cardinality(field.clone()),
+        Cardinality::CardOptional
+    ) {
+        type_target = optional_layer_node(ctx, type_target);
+    }
+    let mut edges = vec![core_edge_value(ctx, "BinderTypeEdge", type_target)];
+    // A parsed field keeps its default in `body`; a normalized one (make_field_node) as child 1.
+    if let Some(default) = field
+        .body
+        .clone()
+        .or_else(|| field_node_default_value(field.clone()))
+    {
+        // A literal is an elaborated value: ComputationNode { Value } over the atom of its own
+        // spelling (a string keeps its quotes, so "false" is not false). Anything else refuses.
+        let spelling = literal_source_lexeme(&default, si);
+        let target = match default.expr_data.as_ref() {
+            ExprData::ExprLiteral { value, .. } => {
+                let lexeme = spelling.or_else(|| match value.as_ref() {
+                    crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                        Some(format!("\"{s}\""))
+                    }
+                    crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
+                    crate::std_syntax::LiteralValue::LitBool { value: b, .. } => {
+                        Some(b.to_string())
+                    }
+                    crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
+                    _ => None,
+                });
+                lexeme.map(|l| {
+                    node_record(
+                        ctx,
+                        node_kind_computation_node(ctx, nullary_behavior_variant(ctx, "Value")),
+                        vec![edge_positional(ctx, atom_identity_node(ctx, &l))],
+                    )
+                })
+            }
+            // binder_node carries an ELABORATED default. The host cannot elaborate a non-literal
+            // expression, and reflecting its source text as the same BinderDefaultEdge would give
+            // that edge two meanings by producer, so every non-literal default refuses below.
+            _ => None,
+        };
+        let Some(target) = target else {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "marshal_field_binder: field `{field_name}` declares a default that is not a literal; the host cannot express it as binder_node's elaborated default, so it refuses rather than reflecting it as source text or as no default"
+                ),
+            });
+        };
+        edges.push(core_edge_value(ctx, "BinderDefaultEdge", target));
     }
     Ok(node_record(
         ctx,
@@ -307,16 +449,6 @@ pub fn marshal_disj_type_item(
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Disj")),
         edges,
     ))
-}
-
-fn logical_qualified_name(module_name: &str, name: &str) -> String {
-    // Concept-index reflection keeps the authored module path (including `v2.`).
-    // Decl-index uses `decl_logical_qualified_name` instead (strips `v2.`).
-    if module_name.is_empty() {
-        name.to_string()
-    } else {
-        format!("{module_name}.{name}")
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -350,7 +482,9 @@ thread_local! {
     /// runner with the census at 138ms of that, were all BUDGET-REFUSED at 503–512ms on the CI
     /// host. The walk is a function of the roots and the prepared tree, not of the witness, so
     /// it is the floor's shared-build attribution defect at memo grain — the same class
-    /// `compile_dag_diagnostic_census` closes with its memo — and it is closed the same way:
+    /// `compile_dag_diagnostic_census` used to close with its own memo (that memo is deleted;
+    /// the census now avoids the recomputation by reading through process-level shared state --
+    /// see its entry point's deletion story) — and it is closed the same way here:
     /// the miss is bracketed as shared-artifact fill on both clocks, which `budgeted_cpu_nanos`
     /// nets from the deadline and `run_claim_measured` reports, never drops. Same roots, same
     /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
@@ -490,75 +624,6 @@ fn floor_decl_parse_memo_store(
     });
 }
 
-fn inventory_entry_under_abs_roots(
-    rel_path: &str,
-    abs_roots: &[String],
-    ws: &std::path::Path,
-) -> bool {
-    let abs = ws.join(rel_path.replace('\\', "/"));
-    abs_roots.iter().any(|root| {
-        let root_path = std::path::Path::new(root);
-        abs == *root_path || abs.starts_with(root_path)
-    })
-}
-
-fn decls_parse_only_from_inventory(
-    inventory: &[crate::cli_run::PreparedSourceView],
-    roots: &[String],
-    files: &[String],
-    want_kinds: &[ItemKind],
-    caller: &str,
-) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
-    let ws = workspace_root();
-    let declared_files: std::collections::BTreeSet<PathBuf> = files
-        .iter()
-        .map(|f| ws.join(f.replace('\\', "/")))
-        .collect();
-    let mut entries: Vec<&crate::cli_run::PreparedSourceView> = inventory
-        .iter()
-        .filter(|e| {
-            let abs = ws.join(e.source.path.replace('\\', "/"));
-            inventory_entry_under_abs_roots(&e.source.path, roots, &ws)
-                || declared_files.contains(&abs)
-        })
-        .collect();
-    entries.sort_by(|a, b| a.source.path.cmp(&b.source.path));
-    let module_count = entries.len();
-    let mut out = Vec::new();
-    for entry in entries {
-        let filename = entry
-            .source
-            .path
-            .rsplit('/')
-            .next()
-            .unwrap_or(&entry.source.path);
-        let parsed = parse_dag_content(&entry.source.content, filename).ok_or_else(|| {
-            format!(
-                "{caller}: failed to parse `{path}` from prepared inventory (fail-closed; no silent skip)",
-                path = entry.source.path
-            )
-        })?;
-        let si = parsed.source_indices;
-        for item in parsed.items.iter() {
-            if !want_kinds.contains(&item_kind(item.clone())) {
-                continue;
-            }
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            out.push(ParsedTypeDecl {
-                module_path: entry.module_path.clone(),
-                rel_path: entry.source.path.clone(),
-                name,
-                item: item.clone(),
-                source_indices: si.clone(),
-            });
-        }
-    }
-    Ok((out, module_count))
-}
-
 fn decls_parse_only_from_disk(
     roots: &[String],
     files: &[String],
@@ -647,63 +712,6 @@ fn decls_parse_only_from_disk(
 /// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
 /// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
 /// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
-/// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
-/// on a walk that silently skips a file, so both callers share this one.
-/// Every `.dag` file the named roots contain on disk, by absolute path. The roots are already
-/// absolute here; this is the same walk `build_module_path_index` performs, without the parse.
-fn dag_files_under_abs_roots(abs_roots: &[String]) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    for root in abs_roots {
-        let root_path = PathBuf::from(root);
-        if root_path.is_dir() {
-            collect_dag_files_tolerant(&root_path, &mut files)
-                .unwrap_or_else(|cause| panic!("acquiring {root}: {cause}"));
-        }
-    }
-    let mut files: Vec<PathBuf> = files.iter().map(|f| f.path().to_path_buf()).collect();
-    files.sort();
-    files
-}
-
-/// WHETHER THE PREPARED INVENTORY CAN ANSWER FOR THIS SUBJECT AT ALL, and it frequently cannot.
-///
-/// The floor registers the REQUIRED-GATE CLOSURE as its prepared inventory, not the full index --
-/// `run_required_floor` takes `full_inventory` out for the discovery phase and hands
-/// `prepared_sources` to the guard. So the inventory is a SUBSET of the tree whose membership is
-/// decided by what preparation admitted, which is an input no caller declares and none can state.
-/// Filtering it by a caller's roots therefore answers with whatever part of the subject happened to
-/// be prepared, and a subject prepared not at all answers EMPTY.
-///
-/// THAT IS THE SILENT-NARROWING FAILURE THIS MODULE EXISTS TO REFUSE, one layer below the one
-/// gunbc#10245 closed in `fn_arrow_decl_facts_live`: the producer takes a declared subject, and the
-/// answer was still a function of an undeclared one. It was found by execution rather than by
-/// reading -- the vacuity controls on that producer's witnesses went red on the required floor while
-/// every discrimination row beside them stayed green, because an empty population satisfies an
-/// exclusion trivially. Nothing asserted non-emptiness before, so the same hole was already open for
-/// `concept_decl_facts` and `data_decl_type_facts` and reported nothing.
-///
-/// COVERAGE IS DECIDABLE, so this is a cache-miss test and not a confidence threshold: the roots
-/// name a set of files on disk, and the inventory either contains all of them or does not. A miss
-/// falls through to the disk walk, which is the SAME ANSWER computed the slower way -- not a wider
-/// one, not a default, and not a degraded one. Answering from a subset would be the fail-open arm.
-fn inventory_covers_subject(
-    inventory: &[crate::cli_run::PreparedSourceView],
-    abs_roots: &[String],
-    files: &[String],
-) -> bool {
-    let ws = workspace_root();
-    let present: std::collections::BTreeSet<PathBuf> = inventory
-        .iter()
-        .map(|e| ws.join(e.source.path.replace('\\', "/")))
-        .collect();
-    dag_files_under_abs_roots(abs_roots)
-        .iter()
-        .all(|f| present.contains(f))
-        && files
-            .iter()
-            .all(|f| present.contains(&ws.join(f.replace('\\', "/"))))
-}
-
 fn decls_parse_only_fail_closed(
     roots: &[String],
     files: &[String],
@@ -713,13 +721,7 @@ fn decls_parse_only_fail_closed(
     if let Some(cached) = floor_decl_parse_memo_lookup(roots, files, want_kinds) {
         return Ok(cached);
     }
-    let inventory = crate::cli_run::floor_prepared_inventory_snapshot()
-        .filter(|inv| inventory_covers_subject(inv, roots, files));
-    let result = if let Some(inventory) = inventory {
-        decls_parse_only_from_inventory(&inventory, roots, files, want_kinds, caller)?
-    } else {
-        decls_parse_only_from_disk(roots, files, want_kinds, caller)?
-    };
+    let result = decls_parse_only_from_disk(roots, files, want_kinds, caller)?;
     floor_decl_parse_memo_store(roots, files, want_kinds, &result);
     Ok(result)
 }
@@ -756,7 +758,7 @@ fn concept_decl_record(
     name: &str,
     item: &Rc<Node>,
 ) -> InterpResult<Value> {
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     let node = concept_decl_node(ctx, si, item)?;
     Ok(Value::Record {
         type_name: ctx.sym("ConceptDecl"),
@@ -794,7 +796,7 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
     let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
     for decl in type_decls {
-        let qualified_name = logical_qualified_name(&decl.module_path, &decl.name);
+        let qualified_name = decl_qualified_name(&decl.module_path, &decl.name);
         let row = concept_decl_record(
             ctx,
             &decl.source_indices,
@@ -1446,7 +1448,7 @@ fn fn_arrow_decl_record(
         .iter()
         .map(|pn| fn_arrow_param_record(ctx, pn))
         .collect();
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     Some(Value::Record {
         type_name: ctx.sym("FnArrowDecl"),
         fields: Rc::new(sorted_fields(vec![
@@ -1585,7 +1587,7 @@ fn data_init_decl_record(
 ) -> Option<Value> {
     let body = item.body.as_ref()?;
     let literal_fp = data_init_literal_fingerprint(body, si)?;
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     Some(Value::Record {
         type_name: ctx.sym("DataInitDecl"),
         fields: Rc::new(sorted_fields(vec![
@@ -1636,15 +1638,14 @@ pub struct DeclFactRaw {
     pub source_indices: SourceIndices,
 }
 
-/// Qualified name for `decl_facts` / `decl_index` — strips the `v2.` layer prefix to match
-/// `v2.std.decl_index.logical_qualified_name_from_module` (concept reflection keeps the
-/// full module path including `v2.` for `concept_index` consumers).
-fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
-    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
-    if logical.is_empty() {
+/// Qualified name for `decl_facts` / `decl_index`: the module's OWN qualified name, `v2.` included,
+/// matching `v2.std.decl_index.qualified_name_from_module`. Stripping the layer prefix made
+/// `v2.std.integer.Int` and `std.integer.Int` share one key (two declarations, one identity).
+pub(crate) fn decl_qualified_name(module_name: &str, name: &str) -> String {
+    if module_name.is_empty() {
         name.to_string()
     } else {
-        format!("{logical}.{name}")
+        format!("{module_name}.{name}")
     }
 }
 
@@ -1865,7 +1866,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             }
             let kind = item_kind(item.clone());
             out.push(DeclFactRaw {
-                qualified_name: decl_logical_qualified_name(&module_path, &name),
+                qualified_name: decl_qualified_name(&module_path, &name),
                 name,
                 kind,
                 node: item.clone(),
@@ -1880,7 +1881,8 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             ItemKind::TypeItem => 1,
             ItemKind::DataItem => 2,
             ItemKind::ServiceItem => 3,
-            ItemKind::OtherItem => 4,
+            ItemKind::ResourceItem => 4,
+            ItemKind::OtherItem => 5,
         };
         (a.rel_path.as_str(), a.name.as_str(), kind_ord(a.kind)).cmp(&(
             b.rel_path.as_str(),
@@ -1906,6 +1908,9 @@ fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
         ItemKind::TypeItem => "TypeItem",
         ItemKind::DataItem => "DataItem",
         ItemKind::ServiceItem => "ServiceItem",
+        // v2.std.decl_index ItemKind has no resource arm, and its consumers read OtherItem as the
+        // census's own cannot-classify answer, which is what a resource was before v1 named it.
+        ItemKind::ResourceItem => "OtherItem",
         ItemKind::OtherItem => "OtherItem",
     };
     Value::Variant {
@@ -2684,18 +2689,119 @@ mod parse_only_uppercase_variant_regression_tests {
 }
 
 #[cfg(test)]
-mod inventory_root_prefix_tests {
-    use super::inventory_entry_under_abs_roots;
-    use std::path::Path;
+mod field_binder_default_tests {
+    use std::rc::Rc;
 
-    #[test]
-    fn sibling_directory_sharing_a_prefix_is_not_under_the_root() {
-        let ws = Path::new("/repo");
-        let roots = vec!["/repo/dag".to_string()];
-        assert!(inventory_entry_under_abs_roots("dag/mod.dag", &roots, ws));
-        assert!(
-            !inventory_entry_under_abs_roots("dag_something/foo.dag", &roots, ws),
-            "a sibling whose name merely starts with the root basename must not be counted"
+    use im::{vector as im_vec, HashMap};
+
+    use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+    use crate::std_syntax::LiteralValue;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, InterpError};
+    use crate::v1_std_core::{
+        build_newline_index, empty_node_list, make_field_node, make_named_expr_node, Cardinality,
+        ExprData, Node, SourceSpan,
+    };
+
+    use super::{literal_source_lexeme, marshal_field_binder};
+
+    // The fixture's one source file. Every expression's span covers its own spelling in it, so
+    // `literal_source_lexeme` READS that spelling: the source-text acceptance path the refusal must
+    // not take is reachable, not starved by an empty index.
+    const SOURCE: &str = "default_computed false";
+
+    fn span_of(start: i64, end: i64) -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start,
+            end,
+        })
+    }
+
+    fn span() -> Rc<SourceSpan> {
+        span_of(0, SOURCE.len() as i64)
+    }
+
+    fn expr_at(name: &str, data: ExprData, at: Rc<SourceSpan>) -> Rc<Node> {
+        make_named_expr_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(data),
+            empty_node_list(),
+            None,
+            at.clone(),
+            at,
+        )
+    }
+
+    fn expr(name: &str, data: ExprData) -> Rc<Node> {
+        expr_at(name, data, span_of(0, 1))
+    }
+
+    fn source_indices() -> Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>> {
+        let mut m = HashMap::new();
+        m.insert(
+            "test.dag".to_string(),
+            build_newline_index("test.dag".to_string(), SOURCE.to_string()),
         );
+        Rc::new(m)
+    }
+
+    fn marshal_with_default(default: Rc<Node>) -> Result<(), InterpError> {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, source_indices(), ExecutionMode::Hermetic);
+        let si = ctx.source_indices();
+        let type_expr = expr("Int", ExprData::NoExprData);
+        let field = make_field_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "f".to_string(),
+            type_expr.clone(),
+            Cardinality::Required,
+            Some(default),
+            Rc::new(im_vec![]),
+            span(),
+            span(),
+        );
+        marshal_field_binder(&ctx, &si, &field, "f", &type_expr).map(|_| ())
+    }
+
+    // RED: a default the host cannot elaborate (a reference to a name) refuses; it is not reflected
+    // as its source text under BinderDefaultEdge (review 83500).
+    #[test]
+    fn a_non_literal_default_refuses() {
+        let reference = expr_at(
+            "default_computed",
+            ExprData::ExprVar { binding_kind: None },
+            span_of(0, 16),
+        );
+        // Precondition that makes this a discriminator: the source IS readable at the default's span,
+        // so restoring a source-text acceptance arm would marshal it and fail the refusal below.
+        assert_eq!(
+            literal_source_lexeme(&reference, &source_indices()).as_deref(),
+            Some("default_computed")
+        );
+        match marshal_with_default(reference) {
+            Err(InterpError::TypeError { msg }) => assert!(msg.contains("not a literal"), "{msg}"),
+            other => panic!("expected a typed refusal, got {other:?}"),
+        }
+    }
+
+    // CONTROL: the same field with a literal default marshals, so the refusal above is the default's
+    // shape and not the field.
+    #[test]
+    fn a_literal_default_marshals() {
+        let literal = expr_at(
+            "false",
+            ExprData::ExprLiteral {
+                value: Rc::new(LiteralValue::LitBool { value: false }),
+            },
+            span_of(17, 22),
+        );
+        marshal_with_default(literal).expect("a literal default marshals");
     }
 }

@@ -1,0 +1,32 @@
+module v2.test.claim.compiler.generic_nullary_declared_position
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// DECLARED RETURN/LET CLOSE OPEN COPRODUCT BINDERS. Native prepare of this module IS the
+// inhabitance: `FsEmpty` at FsList<Int> was infer-refused arrow_body_does_not_inhabit_declared_return
+// (#13964 solved construct fields only). A second module holds the Int-at-String refusal so this
+// file can stay Accepted.
+type FsList<T>
+  = FsEmpty
+  | FsNonEmpty { head: T, tail: FsList<T> }
+
+fn make() -> FsList<Int> { FsEmpty }
+
+fn via_let() -> Int {
+  let x: FsList<Int> = FsEmpty
+  1
+}
+
+fn takes_int_list(xs: FsList<Int>) -> Int { 1 }
+
+fn return_is_fslist_int() -> Int { takes_int_list(xs: make()) }
+
+test fn rcf_generic_nullary_arm_return_is_accepted_and_decided_holds() -> Bool {
+  true
+}
+
+test fn rcf_generic_nullary_arm_let_annotation_is_accepted_holds() -> Bool {
+  true
+}

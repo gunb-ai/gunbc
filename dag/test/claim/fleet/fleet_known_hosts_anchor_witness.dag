@@ -2,10 +2,14 @@ module test.claim.fleet.fleet_known_hosts_anchor_witness
 
 import std.types { String, Bool, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
+import std.types { Port }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow,
   HostKeyEnrollmentProvenance,
   ScannedFirstContact,
+  fleet_name_at_ssh_port,
 }
 import gunbc.fleet.fleet_known_hosts_anchor {
   canonical_known_hosts_fragment,
@@ -30,9 +34,13 @@ fn attempt(raw: String) -> FleetSshAttemptIdentity {
 }
 
 fn row(host: String, endpoint: String, key: String) -> KnownHostKeyRow {
+  row_at(host: host, address: fleet_name_at_ssh_port(labels: [endpoint as DnsLabel]), key: key)
+}
+
+fn row_at(host: String, address: SocketAddress, key: String) -> KnownHostKeyRow {
   KnownHostKeyRow {
     host: host as HostIdentity,
-    endpoint: endpoint,
+    address: address,
     key_type: "ssh-ed25519",
     public_key_base64: key,
     sha256_fingerprint: concat("SHA256:", key),
@@ -100,6 +108,34 @@ test fn red_control_distinct_endpoints_do_not_conflict() -> Bool {
   match known_hosts_endpoint_conflict(rows: forward_rows()) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+fn alpha_on(port: Port) -> SocketAddress {
+  socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["alpha" as DnsLabel] }, qualification: PartiallyQualified }), port: port)
+}
+
+// THE CONFLICT IS COUNTED AT HOST AND PORT, the grain ssh looks a key up by. One host's sshd on 22 and
+// a forwarded sshd on 11055 are two daemons with two keys, so pinning both is not a widened set.
+test fn w_one_host_on_two_ports_does_not_conflict() -> Bool {
+  match known_hosts_endpoint_conflict(rows: [
+    row_at(host: "a", address: alpha_on(port: 22), key: "AAAA"),
+    row_at(host: "a", address: alpha_on(port: 11055), key: "FFFF"),
+  ]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED for the row above: two rows on the SAME non-standard port conflict, and the refusal names the
+// bracketed host field rather than the bare host, so the port was not dropped on the way to the key.
+test fn w_duplicate_non_standard_port_refuses_under_its_bracketed_field() -> Bool {
+  match known_hosts_endpoint_conflict(rows: [
+    row_at(host: "a", address: alpha_on(port: 11055), key: "AAAA"),
+    row_at(host: "impostor", address: alpha_on(port: 11055), key: "EVIL"),
+  ]) {
+    Present { value: c } => string_contains(c, "[alpha]:11055")
+    Absent => false
   }
 }
 

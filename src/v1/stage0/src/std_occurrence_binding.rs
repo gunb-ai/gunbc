@@ -4,9 +4,8 @@
 use self::OccurrenceBindingFoldState::*;
 use self::OccurrenceBindingResult::*;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

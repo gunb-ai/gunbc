@@ -1,9 +1,10 @@
 module gunbc.fleet.app_control_plane_inspection
 
-import std.types { NonEmptyStr, String, Bool, Int, List, Never }
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.error_primitives { Never }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { non_empty_to_list }
+import std.algebra { list_map, non_empty_to_list, string_concat_join }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -320,7 +321,7 @@ fn decode_registration_permissions(doc: JsonValue) -> List<ObservedGitHubPermiss
     JsonMemberAbsent => Present { value: [] }
     JsonMemberFound { value: found } => match found {
       JsonObject { members } => {
-        let decoded = map(members, m => match decode_permission_access(v: m.value) {
+        let decoded = members.map(m => match decode_permission_access(v: m.value) {
           Absent => none
           Present { value: access } => Present {
             value: ObservedGitHubPermission {
@@ -329,10 +330,10 @@ fn decode_registration_permissions(doc: JsonValue) -> List<ObservedGitHubPermiss
             }
           }
         })
-        if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
+        if decoded.any(d => match d { Absent => true, Present { value: _ } => false }) {
           none
         } else {
-          Present { value: flat_map(decoded, d => match d {
+          Present { value: decoded.flat_map(d => match d {
             Present { value } => [value]
             Absent => []
           }) }
@@ -431,7 +432,7 @@ type RegistrationUnknown
   = | RegistrationReadbackNotCarried
 
 fn permission_deviations(required: List<GitHubAppPermission>, held: List<ObservedGitHubPermission>) -> List<RegistrationDeviation> {
-  flat_map(required, r => match observed_access_for(perms: held, axis: r.name) {
+  required.flat_map(r => match observed_access_for(perms: held, axis: r.name) {
     Absent => [RegistrationPermissionShort { required: r, held: none }]
     Present { value: access } =>
       if permission_access_at_least(held: access, requested: r.access) { [] } else {
@@ -485,13 +486,13 @@ fn held_access_wire(held: GitHubAppPermissionAccess?) -> String {
 fn registration_deviation_text(d: RegistrationDeviation) -> String {
   match d {
     RegistrationNamesAnotherApp { observed, expected } =>
-      join(["app_identity:observed=", to_string(observed.value), ",expected=", to_string(expected.value)], "")
+      ["app_identity:observed=", to_string(observed.value), ",expected=", to_string(expected.value)].join("")
     RegistrationPermissionShort { required, held } =>
-      join([
+      [
         "permission:", permission_axis_wire_name(axis: required.name) as String,
         ":required=", access_wire(a: required.access),
         ",held=", held_access_wire(held: held)
-      ], "")
+      ].join("")
   }
 }
 
@@ -555,13 +556,13 @@ fn decode_deliveries_json(body: String) -> ObservationAttempt<List<HookDelivery>
       reason: concat("app hook deliveries response is ", json_document_gap_text(gap: gap)) as NonEmptyStr
     } }
     JsonDocumentParsed { value: JsonArray { elements } } => {
-      let decoded = map(elements, e => decode_delivery(v: e))
-      if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
+      let decoded = elements.map(e => decode_delivery(v: e))
+      if decoded.any(d => match d { Absent => true, Present { value: _ } => false }) {
         ObservationRefused { cause: DeliveriesUndecodable {
           reason: "app hook deliveries contains an element without exact guid/event/status_code fields"
         } }
       } else {
-        ObservationEstablished { observed: flat_map(decoded, d => match d {
+        ObservationEstablished { observed: decoded.flat_map(d => match d {
           Present { value } => [value]
           Absent => []
         }) }
@@ -699,8 +700,8 @@ fn delivery_deviations(deliveries: ObservationAttempt<List<HookDelivery>, Delive
   match deliveries {
     ObservationRefused { cause: _ } => []
     ObservationEstablished { observed } => {
-      let failing = count(filter(observed, d => !delivery_accepted(d: d)))
-      if failing == 0 { [] } else { [HookDeliveriesRejected { failing: failing, sampled: count(observed) }] }
+      let failing = observed.filter(d => !delivery_accepted(d: d)).count()
+      if failing == 0 { [] } else { [HookDeliveriesRejected { failing: failing, sampled: observed.count() }] }
     }
   }
 }
@@ -708,7 +709,7 @@ fn delivery_deviations(deliveries: ObservationAttempt<List<HookDelivery>, Delive
 fn delivery_unknowns(deliveries: ObservationAttempt<List<HookDelivery>, DeliveryReadRefusal>) -> List<HookUnknown> {
   match deliveries {
     ObservationRefused { cause } => [DeliveryLogUnread { cause: cause }]
-    ObservationEstablished { observed } => if count(observed) == 0 { [DeliveryWindowEmpty] } else { [] }
+    ObservationEstablished { observed } => if observed.count() == 0 { [DeliveryWindowEmpty] } else { [] }
   }
 }
 
@@ -717,7 +718,7 @@ fn delivery_unknowns(deliveries: ObservationAttempt<List<HookDelivery>, Delivery
 fn assess_app_hook(goal: AppHookGoal, observed: HookObserved) -> GoalAssessment<Int, HookDeviation, HookUnknown, Never> {
   assess_by_deviations_and_unknowns(
     evidence: match observed.deliveries {
-      ObservationEstablished { observed: ds } => count(ds)
+      ObservationEstablished { observed: ds } => ds.count()
       ObservationRefused { cause: _ } => 0
     },
     deviations: concat(hook_config_deviations(goal: goal, config: observed.config), delivery_deviations(deliveries: observed.deliveries)),
@@ -731,7 +732,7 @@ fn hook_deviation_text(d: HookDeviation) -> String {
     HookContentTypeDiverges { observed: _, desired: _ } => "hook_content_type"
     HookSecretDiverges { observed: _, desired: _ } => "hook_secret_presence"
     HookDeliveriesRejected { failing, sampled } =>
-      join(["deliveries_rejected:", to_string(failing), "/", to_string(sampled)], "")
+      ["deliveries_rejected:", to_string(failing), "/", to_string(sampled)].join("")
   }
 }
 
@@ -768,12 +769,23 @@ fn hook_assessment_wire(a: GoalAssessment<Int, HookDeviation, HookUnknown, Never
   match a {
     GoalSatisfied { evidence: _ } => "satisfied"
     GoalDiverged { deviations } =>
-      join(["diverged:", join(map(non_empty_to_list(xs: deviations), d => hook_deviation_text(d: d)), ",")], "")
+      string_concat_join(
+        fields: ["diverged:", string_concat_join(
+          fields: list_map(xs: non_empty_to_list(xs: deviations), f: d => hook_deviation_text(d: d)),
+          separator: ","
+        )],
+        separator: ""
+      )
     GoalIndeterminate { known_deviations, unknowns } =>
-      join([
-        "indeterminate:known=", join(map(known_deviations, d => hook_deviation_text(d: d)), ","),
-        ";unknown=", join(map(non_empty_to_list(xs: unknowns), u => hook_unknown_text(u: u)), ",")
-      ], "")
+      string_concat_join(
+        fields: [
+          "indeterminate:known=",
+          string_concat_join(fields: list_map(xs: known_deviations, f: d => hook_deviation_text(d: d)), separator: ","),
+          ";unknown=",
+          string_concat_join(fields: list_map(xs: non_empty_to_list(xs: unknowns), f: u => hook_unknown_text(u: u)), separator: ",")
+        ],
+        separator: ""
+      )
     GoalAssessmentRefused { cause: _ } => "assessment_refused"
   }
 }
@@ -782,11 +794,11 @@ fn deliveries_wire(deliveries: ObservationAttempt<List<HookDelivery>, DeliveryRe
   match deliveries {
     ObservationRefused { cause: _ } => "unread"
     ObservationEstablished { observed } =>
-      if count(observed) == 0 { "empty_window" } else {
-        join([
-          "accepted:", to_string(count(filter(observed, d => delivery_accepted(d: d)))),
-          "/", to_string(count(observed))
-        ], "")
+      if observed.count() == 0 { "empty_window" } else {
+        [
+          "accepted:", to_string(observed.filter(d => delivery_accepted(d: d)).count()),
+          "/", to_string(observed.count())
+        ].join("")
       }
   }
 }
@@ -814,7 +826,7 @@ fn observed_permissions_wire(r: ObservedAppRegistration) -> String {
   match r {
     AppRegistrationReadbackUnavailable => "unavailable"
     AppRegistrationReadback { app_id: _, requested_permissions } =>
-      join(map(requested_permissions, p => join([p.name.wire_name as String, ":", access_wire(a: p.access)], "")), ",")
+      requested_permissions.map(p => [p.name.wire_name as String, ":", access_wire(a: p.access)].join("")).join(",")
   }
 }
 
@@ -822,7 +834,7 @@ fn hook_standing_wire(hook: HookStanding) -> String {
   match hook {
     HookNotAttempted => " hook=not_attempted:registration_not_satisfied"
     HookConfigUnread { cause } => concat(" hook=unread:", render_hook_config_read_refusal(cause: cause))
-    HookInspectedStanding { observed: hook, assessment } => join([
+    HookInspectedStanding { observed: hook, assessment } => [
       " hook=read",
       " endpoint=GET-/app/hook/config",
       " hook_url_scheme=", uri_scheme_wire(s: hook.config.url.scheme) as String,
@@ -835,7 +847,7 @@ fn hook_standing_wire(hook: HookStanding) -> String {
       " desired_secret=", hook_secret_wire(s: gunbai_ci_hook_goal.secret),
       " standing=", hook_assessment_wire(a: assessment),
       " deliveries=", deliveries_wire(deliveries: hook.deliveries),
-    ], "")
+    ].join("")
   }
 }
 
@@ -845,7 +857,7 @@ fn app_control_plane_receipt_text(
   hook: HookStanding,
   observed_on: NonEmptyStr
 ) -> String {
-  join([
+  [
     "app=", gunbai_ci_declared.slug as String,
     " declared_app_id=", to_string(gunbai_ci_declared.app_id.value),
     " observed_app_id=", optional_int_wire(v: registration_observed_app_id(r: registration)),
@@ -853,7 +865,7 @@ fn app_control_plane_receipt_text(
     " registration_standing=", registration_assessment_wire(a: registration_assessment),
     hook_standing_wire(hook: hook),
     " observed_at=", observed_on as String, "\n"
-  ], "")
+  ].join("")
 }
 
 // The verdict, after the receipt is written: Absent only when the registration AND the hook are
@@ -896,12 +908,23 @@ fn registration_assessment_wire(a: GoalAssessment<GitHubAppId, RegistrationDevia
   match a {
     GoalSatisfied { evidence: _ } => "satisfied"
     GoalDiverged { deviations } =>
-      join(["diverged:", join(map(non_empty_to_list(xs: deviations), d => registration_deviation_text(d: d)), ",")], "")
+      string_concat_join(
+        fields: ["diverged:", string_concat_join(
+          fields: list_map(xs: non_empty_to_list(xs: deviations), f: d => registration_deviation_text(d: d)),
+          separator: ","
+        )],
+        separator: ""
+      )
     GoalIndeterminate { known_deviations, unknowns } =>
-      join([
-        "indeterminate:known=", join(map(known_deviations, d => registration_deviation_text(d: d)), ","),
-        ";unknown=", join(map(non_empty_to_list(xs: unknowns), u => registration_unknown_text(u: u)), ",")
-      ], "")
+      string_concat_join(
+        fields: [
+          "indeterminate:known=",
+          string_concat_join(fields: list_map(xs: known_deviations, f: d => registration_deviation_text(d: d)), separator: ","),
+          ";unknown=",
+          string_concat_join(fields: list_map(xs: non_empty_to_list(xs: unknowns), f: u => registration_unknown_text(u: u)), separator: ",")
+        ],
+        separator: ""
+      )
     GoalAssessmentRefused { cause: _ } => "assessment_refused"
   }
 }

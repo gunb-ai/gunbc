@@ -1,6 +1,7 @@
 module test.claim.fleet.org_actions_standing_witness
 
-import std.types { Bool, Int, NonEmptyStr, List, Never }
+import std.types { Bool, Int, NonEmptyStr, List }
+import std.error_primitives { Never }
 import gunbc.fleet.org_actions_standing {
   desired_repo_access, ObservedGroupAccess, observed_admits, OrgActionsGoal, RepoRunnerAccess,
   OrgActionsAgreement, OrgActionsDeviation, RepoAdmissionDiverges, RepoPublicExposureDiverges,

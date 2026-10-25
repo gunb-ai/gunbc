@@ -1,0 +1,29 @@
+module extdeps.linux.tmpfs
+
+import std.types { String, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.linux.proc_mountinfo { MountinfoEntry }
+
+// tmpfs, the kernel's Documentation/filesystems/tmpfs.rst. A tmpfs lives in the page cache and "can
+// swap" unless mounted otherwise: its pages are written to swap under memory pressure, so a secret
+// placed on a plain tmpfs can reach a disk. The `noswap` mount option ("Disables swap. Remounts must
+// respect the original settings. By default swap is enabled.") was added in Linux 6.4 and is reported
+// among the superblock options of /proc/self/mountinfo (extdeps.linux.proc_mountinfo MountinfoEntry).
+//
+// A KERNEL OLDER THAN 6.4 REJECTS THE OPTION AT MOUNT AND REPORTS NONE, so the option's absence from
+// the reading is the only evidence an unswappable location is lacking: a consumer admits a location
+// only when the reading shows the option, and never from the kernel's version.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/filesystems/tmpfs.html"
+  }
+}
+
+data tmpfs_filesystem_type: String = "tmpfs"
+data tmpfs_noswap_option: String = "noswap"
+
+fn tmpfs_mount_forbids_swap(entry: MountinfoEntry) -> Bool {
+  entry.fs_type == tmpfs_filesystem_type && any(entry.super_options, o => o == tmpfs_noswap_option)
+}

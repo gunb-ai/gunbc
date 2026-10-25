@@ -1,0 +1,214 @@
+module v2.test.claim.optional_sugar_declaration_bound
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty, fold_list }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { node_same_occurrence, positional_child_target_nodes, Edge, Instantiation, Node, TypeNode, node_subtree_nodes }
+import v2.std.qualified_name { declaration_denotation_of_type, optional_declaration_identity }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.types { Bool, List }
+import std.optional { Absent, Present }
+
+// `T?` AND AN IDENTITY-RESOLVED `Optional<T>` ARE ONE NODE (ruling gunbc.design_ruling optional_sugar_is_declaration_bound),
+// over the real assembly route: the sugar lowers to the std.optional Instantiation by a marked generated reference, an explicit application whose
+// head resolves to std.optional.Optional is the same node by declaration identity, and a local type that merely shares
+// the leaf name is not.
+data osd_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_sugar_declaration_bound_artifact, file_path: "src/v2/pilot/osd_pilot.dag" }
+data osd_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_sugar_declaration_bound_std_artifact, file_path: "src/v2/pilot/osd_std_pilot.dag" }
+
+fn osd_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^optional_sugar_declaration_bound_cu,
+    source_root: V2Tree
+  }
+}
+
+fn osd_std_optional() -> String {
+  "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n"
+}
+
+fn osd_assemble(sources: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: sources,
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn osd_with_std(body: String) -> Outcome<ResolvedTree> {
+  osd_assemble(sources: [
+    osd_witness(src: osd_std_optional(), artifact: osd_std_artifact),
+    osd_witness(src: concat("module p\n\nimport std.optional { Optional }\n\n", body), artifact: osd_artifact)
+  ])
+}
+
+fn osd_is_optional_instance(n: Node) -> Bool {
+  match declaration_denotation_of_type(t: n) {
+    Present { value: denotation } => denotation.declaration == optional_declaration_identity()
+    Absent => false
+  }
+}
+
+fn osd_is_instantiation(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    _ => false
+  }
+}
+
+fn osd_any(n: Node, pred: fn(Node) -> Bool) -> Bool {
+  fold_list(
+    xs: positional_child_target_nodes(node: n),
+    empty: pred(n),
+    cons: fn(acc, c) { acc || osd_any(n: c, pred: pred) }
+  )
+}
+
+// `pred` over every node of the assembled tree. The lookup route (symbol_index_lookup `p.U`) returns the
+// pre-resolution declaration node, so it cannot witness resolve's rewrite; the tree is the resolved output.
+// Every specimen declares only `U`, and osd_std_optional_alone_holds_neither pins that std.optional itself
+// contributes no optional instance or Instantiation, so a hit is `U`'s.
+fn osd_holds(o: Outcome<ResolvedTree>, name: String, pred: fn(Node) -> Bool) -> Bool {
+  match o {
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, m) { acc || pred(m) })
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn osd_sugar_is_the_optional_instance() -> Bool {
+  osd_holds(o: osd_with_std(body: "type U = Int?\n"), name: "p.U", pred: osd_is_optional_instance)
+}
+
+test fn osd_identity_resolved_optional_application_is_the_optional_instance() -> Bool {
+  osd_holds(o: osd_with_std(body: "type U = Optional<Int>\n"), name: "p.U", pred: osd_is_optional_instance)
+}
+
+test fn osd_nested_optional_application_is_two_layers() -> Bool {
+  osd_holds(o: osd_with_std(body: "type U = Optional<Optional<Int>>\n"), name: "p.U", pred: fn(n) { osd_is_optional_instance(n: n) && osd_any(n: n, pred: fn(c) { osd_is_optional_instance(n: c) && !(node_same_occurrence(a: c, b: n)) }) })
+}
+
+test fn osd_local_homonym_is_not_the_optional_instance() -> Bool {
+  !osd_holds(o: osd_assemble(sources: [osd_witness(src: "module p\n\ntype Optional<T>\n  = Nothing\n  | Something { value: T }\n\ntype U = Optional<Int>\n", artifact: osd_artifact)]), name: "p.U", pred: osd_is_optional_instance)
+}
+
+test fn osd_local_homonym_stays_an_application() -> Bool {
+  osd_holds(o: osd_assemble(sources: [osd_witness(src: "module p\n\ntype Optional<T>\n  = Nothing\n  | Something { value: T }\n\ntype U = Optional<Int>\n", artifact: osd_artifact)]), name: "p.U", pred: osd_is_instantiation)
+}
+
+fn osd_is_authored_optional_instance(n: Node) -> Bool {
+  osd_is_optional_instance(n: n) && !(n.occurrence_id == OccurrenceSynthetic)
+}
+
+test fn osd_optional_application_keeps_its_authored_occurrence() -> Bool {
+  osd_holds(o: osd_with_std(body: "type U = Optional<Int>\n"), name: "p.U", pred: osd_is_authored_optional_instance)
+}
+
+// The negative rows above are vacuous if assembly refuses; these pin that the specimens are accepted.
+fn osd_accepted(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn osd_specimens_are_accepted() -> Bool {
+  osd_accepted(o: osd_with_std(body: "type U = Optional<Int>\n"))
+    && osd_accepted(o: osd_with_std(body: "type U = Int?\n"))
+    && osd_accepted(o: osd_assemble(sources: [osd_witness(src: "module p\n\ntype Optional<T>\n  = Nothing\n  | Something { value: T }\n\ntype U = Optional<Int>\n", artifact: osd_artifact)]))
+}
+
+test fn osd_std_optional_alone_holds_neither() -> Bool {
+  osd_accepted(o: osd_with_std(body: "type U = Int\n"))
+    && !osd_holds(o: osd_with_std(body: "type U = Int\n"), name: "p.U", pred: osd_is_optional_instance)
+    && !osd_holds(o: osd_with_std(body: "type U = Int\n"), name: "p.U", pred: osd_is_instantiation)
+}
+
+// THE DECLARATION AT THE CANONICAL PATH MUST BACK THE OPTIONAL INSTANCE (resolve_optional_declaration_refusal_optional): an
+// incompatible declaration there refuses, for `T?` and for an identity-resolved application alike. Each broken shape is
+// a std.optional that assembles on its own.
+fn osd_with_std_text(std_text: String, body: String) -> Outcome<ResolvedTree> {
+  osd_assemble(sources: [
+    osd_witness(src: std_text, artifact: osd_std_artifact),
+    osd_witness(src: concat("module p\n\nimport std.optional { Optional }\n\n", body), artifact: osd_artifact)
+  ])
+}
+
+fn osd_refused_incompatible(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_optional_declaration_incompatible
+  }
+}
+
+fn osd_sugar_and_application_refuse(std_text: String) -> Bool {
+  osd_refused_incompatible(o: osd_with_std_text(std_text: std_text, body: "type U = Int?\n"))
+    && osd_refused_incompatible(o: osd_with_std_text(std_text: std_text, body: "type U = Optional<Int>\n"))
+}
+
+// An application of the two-parameter declaration is refused earlier, by arity; the sugar has no arguments to count, so it
+// reaches the contract.
+test fn osd_two_type_parameters_refuse() -> Bool {
+  osd_refused_incompatible(o: osd_with_std_text(std_text: "module std.optional\n\ntype Optional<T, U>\n  = Absent\n  | Present { value: T }\n", body: "type U = Int?\n"))
+    && !osd_accepted(o: osd_with_std_text(std_text: "module std.optional\n\ntype Optional<T, U>\n  = Absent\n  | Present { value: T }\n", body: "type U = Optional<Int>\n"))
+}
+
+test fn osd_a_missing_absent_arm_refuses() -> Bool {
+  osd_sugar_and_application_refuse(std_text: "module std.optional\n\ntype Optional<T>\n  = Nothing\n  | Present { value: T }\n")
+}
+
+test fn osd_a_missing_present_arm_refuses() -> Bool {
+  osd_sugar_and_application_refuse(std_text: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Something { value: T }\n")
+}
+
+test fn osd_an_extra_arm_refuses() -> Bool {
+  osd_sugar_and_application_refuse(std_text: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n  | Unknown\n")
+}
+
+test fn osd_a_present_arm_with_the_wrong_payload_type_refuses() -> Bool {
+  osd_sugar_and_application_refuse(std_text: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: Int }\n")
+}
+
+test fn osd_a_present_arm_with_the_wrong_field_name_refuses() -> Bool {
+  osd_sugar_and_application_refuse(std_text: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { item: T }\n")
+}
+
+test fn osd_a_present_arm_with_two_fields_refuses() -> Bool {
+  osd_sugar_and_application_refuse(std_text: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T, extra: Int }\n")
+}
+
+test fn osd_an_absent_arm_with_a_payload_refuses() -> Bool {
+  osd_sugar_and_application_refuse(std_text: "module std.optional\n\ntype Optional<T>\n  = Absent { why: Int }\n  | Present { value: T }\n")
+}
+
+test fn osd_a_nongeneric_declaration_refuses_the_sugar() -> Bool {
+  osd_refused_incompatible(o: osd_with_std_text(std_text: "module std.optional\n\ntype Optional\n  = Absent\n  | Present { value: Int }\n", body: "type U = Int?\n"))
+}
+
+test fn osd_the_conforming_declaration_is_not_refused() -> Bool {
+  osd_accepted(o: osd_with_std_text(std_text: osd_std_optional(), body: "type U = Int?\n"))
+    && osd_accepted(o: osd_with_std_text(std_text: osd_std_optional(), body: "type U = Optional<Int>\n"))
+}
+
+
+// A CLOSURE WITHOUT std.optional REFUSES THE SUGAR AT THE MARKED GENERATED REFERENCE, never defaulting to a declaration:
+// the control that the lowered `T?` is bound by identity, not by a fallback.
+fn osd_refused_generated_reference_absent(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_generated_reference_declaration_absent
+  }
+}
+
+test fn osd_sugar_without_std_optional_in_the_closure_refuses() -> Bool {
+  osd_refused_generated_reference_absent(o: osd_assemble(sources: [osd_witness(src: "module p\n\ntype U = Int?\n", artifact: osd_artifact)]))
+}
