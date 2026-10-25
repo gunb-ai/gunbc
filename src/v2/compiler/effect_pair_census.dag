@@ -936,19 +936,25 @@ fn epc_activation_lines(b: BodyNotDerived) -> List<String> {
 }
 
 fn epc_totals(r: EffectPairCensusReport) -> ModuleEffectPairTotals {
-  fold_list(xs: r.modules, empty: ModuleEffectPairTotals { module: Empty, bodies_scanned: 0, bodies_with_pairs: 0, pairs: 0, exclusive_pairs: 0 }, cons: fn(t, m) {
-    ModuleEffectPairTotals {
-      module: t.module,
-      bodies_scanned: t.bodies_scanned + m.totals.bodies_scanned,
-      bodies_with_pairs: t.bodies_with_pairs + m.totals.bodies_with_pairs,
-      pairs: t.pairs + m.totals.pairs,
-      exclusive_pairs: t.exclusive_pairs + m.totals.exclusive_pairs
-    }
-  })
+  fold_list(xs: r.modules, empty: ModuleEffectPairTotals { module: Empty, bodies_scanned: 0, bodies_with_pairs: 0, pairs: 0, exclusive_pairs: 0 }, cons: fn(t, m) { epc_add_totals(t: t, m: m) })
 }
 
+fn epc_add_totals(t: ModuleEffectPairTotals, m: ModuleEffectPairCensus) -> ModuleEffectPairTotals {
+  ModuleEffectPairTotals {
+    module: t.module,
+    bodies_scanned: t.bodies_scanned + m.totals.bodies_scanned,
+    bodies_with_pairs: t.bodies_with_pairs + m.totals.bodies_with_pairs,
+    pairs: t.pairs + m.totals.pairs,
+    exclusive_pairs: t.exclusive_pairs + m.totals.exclusive_pairs
+  }
+}
+
+fn epc_module_repeated(m: ModuleEffectPairCensus) -> Int { length(xs: m.repeated) }
+
+fn epc_module_repetition_unknown(m: ModuleEffectPairCensus) -> Int { length(xs: m.repetition_unknown) }
+
 fn epc_repeated_count(r: EffectPairCensusReport) -> Int {
-  fold_list(xs: r.modules, empty: 0, cons: fn(n, m) { n + length(xs: m.repeated) })
+  fold_list(xs: r.modules, empty: 0, cons: fn(n, m) { n + epc_module_repeated(m: m) })
 }
 
 fn epc_repeated_line(p: RepeatedEffectSite) -> String {
@@ -975,7 +981,7 @@ fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
     " pairs=", to_string(t.pairs),
     " exclusive_pairs=", to_string(t.exclusive_pairs),
     " repeated_sites=", to_string(epc_repeated_count(r: r)),
-    " repetition_unknown_sites=", to_string(fold_list(xs: r.modules, empty: 0, cons: fn(n, m) { n + length(xs: m.repetition_unknown) }))
+    " repetition_unknown_sites=", to_string(fold_list(xs: r.modules, empty: 0, cons: fn(n, m) { n + epc_module_repetition_unknown(m: m) }))
   ])]
   let named = fold_list(xs: r.unclassified_names, empty: head, cons: fn(acc, q) {
     list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-unclassified] operation=", qualified_name_to_dotted_string(qn: q), " semantics=execution_semantics_unknown reaches=true"]))
@@ -983,7 +989,10 @@ fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
   let roots = fold_list(xs: r.roots, empty: named, cons: fn(acc, x) {
     list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-root] root=", epc_root_word(c: x.cause), " cause=", epc_cause_word(c: x.cause), " modules=", to_string(x.modules), " example=", qualified_name_to_dotted_string(qn: x.example)]))
   })
-  fold_list(xs: r.modules, empty: roots, cons: fn(acc, m) {
+  fold_list(xs: r.modules, empty: roots, cons: fn(acc, m) { epc_module_lines(acc: acc, m: m) })
+}
+
+fn epc_module_lines(acc: List<String>, m: ModuleEffectPairCensus) -> List<String> {
     let with_pairs = fold_list(xs: m.repeated, empty: fold_list(xs: m.pairs, empty: acc, cons: fn(a, p) { list_snoc_item(xs: a, item: epc_pair_line(p: p)) }), cons: fn(a, p) { list_snoc_item(xs: a, item: epc_repeated_line(p: p)) })
     let with_unknown = fold_list(xs: m.repetition_unknown, empty: with_pairs, cons: fn(a, p) {
       list_snoc_item(xs: a, item: epc_text(parts: ["[effect-pair-repetition-unknown] module=", qualified_name_to_dotted_string(qn: p.module), " function=", qualified_name_to_dotted_string(qn: p.function), " site=", epc_site_text(s: p.site), " repetition=lambda_instantiation_unknown"]))
@@ -991,7 +1000,6 @@ fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
     fold_list(xs: m.not_derived, empty: with_unknown, cons: fn(a, b) {
       fold_list(xs: epc_activation_lines(b: b), empty: fold_list(xs: epc_not_derived_lines(b: b), empty: a, cons: fn(a2, l) { list_snoc_item(xs: a2, item: l) }), cons: fn(a2, l) { list_snoc_item(xs: a2, item: l) })
     })
-  })
 }
 
 // Held (0) when the census observed at least one module; no observation (2) when it observed none, so a
