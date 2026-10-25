@@ -42,8 +42,8 @@ pub use crate::v1_compiler_complexity::{
 pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_module_shell_node};
 pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote, DagCollectAcc};
 pub use crate::v1_compiler_emit::{
-    cast_realization_diagnostics, unmodeled_file_transport_diagnostics,
-    unmodeled_rest_transport_diagnostics, unmodeled_shell_transport_diagnostics,
+    unmodeled_file_transport_diagnostics, unmodeled_rest_transport_diagnostics,
+    unmodeled_shell_transport_diagnostics,
 };
 pub use crate::v1_compiler_emit_core_support::{escape_json_string, EmitResult};
 pub use crate::v1_compiler_emit_go::emit_go;
@@ -994,32 +994,26 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
 
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
     {
-        let emission_refusals = v1_rt::concat(
+        let unmodeled_transports = v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(
-                    crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(
-                        typed.clone(),
-                        artifact.target.clone(),
-                    ),
-                    crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(
-                        typed.clone(),
-                        artifact.target.clone(),
-                    ),
+                crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(
+                    typed.clone(),
+                    artifact.target.clone(),
                 ),
-                crate::v1_compiler_emit::unmodeled_rest_transport_diagnostics(
+                crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(
                     typed.clone(),
                     artifact.target.clone(),
                 ),
             ),
-            crate::v1_compiler_emit::cast_realization_diagnostics(
+            crate::v1_compiler_emit::unmodeled_rest_transport_diagnostics(
                 typed.clone(),
                 artifact.target.clone(),
             ),
         );
-        if ((emission_refusals.clone().len() as i64) > 0) {
+        if ((unmodeled_transports.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
-                diagnostics: emission_refusals.clone(),
+                diagnostics: unmodeled_transports.clone(),
                 emitted_edges: Rc::new(vec![]),
                 rust_crates: Rc::new(vec![]),
             });

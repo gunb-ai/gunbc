@@ -259,16 +259,6 @@ pub fn dag_refinement_carrier(operand: Rc<DeclarationRef>) -> Rc<RefinementCarri
     }
 }
 
-pub fn dag_refinement_inclusion(source: Rc<DeclarationRef>, target_type: String) -> bool {
-    match (*dag_refinement_carrier(source)).clone() {
-        RefinementCarrier::RefinesCarrier {
-            from_type: carrier, ..
-        } => (carrier.clone() == target_type.clone()),
-        RefinementCarrier::NotARefinementTarget => false,
-        RefinementCarrier::RefinementCarrierAmbiguous { from_types: _, .. } => false,
-    }
-}
-
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     ({
         let mut __found = false;

@@ -16,6 +16,7 @@ use self::NativeEffectHandler::*;
 use self::NativeEffectRealizationAdmission::*;
 use self::NativeEffectResolution::*;
 use self::NativeEffectUnavailableCause::*;
+use self::RepresentationCarrier::*;
 use self::ShellEmissionRefusal::*;
 use self::ShellResultChannel::*;
 use self::TargetEmissionMode::*;
@@ -25,10 +26,13 @@ pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
+use crate::std_coercion::RefinementCarrier::{
+    NotARefinementTarget, RefinementCarrierAmbiguous, RefinesCarrier,
+};
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 use crate::std_coercion::TypeRealizationDecision::*;
-pub use crate::std_coercion::{dag_refinement_inclusion, TypeCheckpoint, TypeRealizationDecision};
+pub use crate::std_coercion::{dag_refinement_carrier, RefinementCarrier, TypeRealizationDecision};
 use crate::std_compiler_entry::CompilerEntryDriver::{
     DirectIngestDriver, NativeClaimDriver, NativeCliDriver, NativeServeDriver,
     RetainedHostCliKernel, SourceRootEvalDriver,
@@ -41,10 +45,8 @@ pub use crate::std_compiler_entry::{
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
-    OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
-};
-pub use crate::std_occurrence_identity::{occurrence_id_eq, NodeOccurrenceIdentity, OccurrenceId};
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -56,8 +58,8 @@ pub use crate::std_unicode_scalar::ascii_lowercase;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
-    can_cast, coerce_container_template, coerce_primitive_type, declaration_realization,
-    literal_suffix, realized_checkpoint, render_cast, target_callable, target_optional_template,
+    can_cast, coerce_container_template, coerce_primitive_type, literal_suffix,
+    realized_checkpoint, render_cast, target_callable, target_optional_template,
     type_realization_decision, type_reference_realization,
 };
 pub use crate::v1_compiler_emit_core_support::{
@@ -79,12 +81,15 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
 };
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
-use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
+use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
+    TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceNamesDeclaration,
+    TypeReferenceUnidentified,
+};
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
     authored_name, declaration_binding_of_ref, empty_symbol_index, lookup_type_for,
-    type_reference_declaration_reading, type_reference_declaration_ref, GlobalBareLookupState,
-    TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
+    type_reference_declaration_reading, GlobalBareLookupState, TypeBinding, TypeEnv,
+    TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{
     item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
@@ -131,7 +136,7 @@ use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{CastRealizationRefused, TransportEmissionNotModeled};
+use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
@@ -6571,72 +6576,84 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
     })
 }
 
-pub fn transparent_representation_root(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RepresentationCarrier {
+    KernelCarrier { name: String },
+    DeclaredCarrier { declaration: Rc<DeclarationRef> },
+}
+
+pub fn representation_carriers_equal(
+    a: Rc<RepresentationCarrier>,
+    b: Rc<RepresentationCarrier>,
+) -> bool {
+    match (*a.clone()).clone() {
+        RepresentationCarrier::KernelCarrier { name: x, .. } => match (*b.clone()).clone() {
+            RepresentationCarrier::KernelCarrier { name: y, .. } => (x.clone() == y.clone()),
+            RepresentationCarrier::DeclaredCarrier { declaration: _, .. } => false,
+        },
+        RepresentationCarrier::DeclaredCarrier { declaration: x, .. } => match (*b.clone()).clone()
+        {
+            RepresentationCarrier::KernelCarrier { name: _, .. } => false,
+            RepresentationCarrier::DeclaredCarrier { declaration: y, .. } => {
+                crate::std_decl_ref::declaration_ref_eq(x.clone(), y.clone())
+            }
+        },
+    }
+}
+
+pub fn representation_carrier(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_env: Rc<TypeEnv>,
-    mut __tco_loop_target: RenderTarget,
     mut __tco_loop_fuel: i64,
-) -> Rc<Node> {
+) -> Option<Rc<RepresentationCarrier>> {
     loop {
         #[allow(unused_mut)]
         let mut n = __tco_loop_n;
         #[allow(unused_mut)]
         let mut env = __tco_loop_env;
         #[allow(unused_mut)]
-        let mut target = __tco_loop_target;
-        #[allow(unused_mut)]
         let mut fuel = __tco_loop_fuel;
         if (fuel.clone() <= 0) {
-            break n.clone();
+            break std::option::Option::None;
         } else {
             if (n.return_cardinality.clone() == Cardinality::CardOptional) {
-                break n.clone();
+                break std::option::Option::None;
             } else {
                 if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
                     match n.children.clone().first().cloned() {
                         Some(base) => {
                             let __tco_0 = base.clone();
                             let __tco_1 = env;
-                            let __tco_2 = target;
-                            let __tco_3 = v1_rt::int_sub(fuel, 1);
+                            let __tco_2 = v1_rt::int_sub(fuel, 1);
                             __tco_loop_n = __tco_0;
                             __tco_loop_env = __tco_1;
-                            __tco_loop_target = __tco_2;
-                            __tco_loop_fuel = __tco_3;
+                            __tco_loop_fuel = __tco_2;
                             continue;
                         }
                         std::option::Option::None => {
-                            break n.clone();
+                            break std::option::Option::None;
                         }
                     }
                 } else {
-                    if (((n.connective.clone() == Connective::NoConnective)
-                        && ((n.children.clone().len() as i64) == 0))
-                        && ((n.params.clone().len() as i64) == 0))
-                    {
-                        match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                let __tco_0 = rt.clone();
-                                let __tco_1 = env;
-                                let __tco_2 = target;
-                                let __tco_3 = v1_rt::int_sub(fuel, 1);
-                                __tco_loop_n = __tco_0;
-                                __tco_loop_env = __tco_1;
-                                __tco_loop_target = __tco_2;
-                                __tco_loop_fuel = __tco_3;
-                                continue;
-                            }
-                            _ => {
-                                break transparent_named_carrier_root(
-                                    n.clone(),
-                                    env.clone(),
-                                    target.clone(),
-                                    fuel.clone(),
-                                );
-                            }
-                        }
+                    if ((n.params.clone().len() as i64) > 0) {
+                        break std::option::Option::None;
                     } else {
-                        break n.clone();
+                        if ((n.module_item_kind.clone()
+                            != ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                            && ((n.children.clone().len() as i64) > 0))
+                        {
+                            break std::option::Option::None;
+                        } else {
+                            match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(n.clone(), env.source_indices.clone(), env.clone())).clone() {
+    TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: k, .. } => { break Some(Rc::new(RepresentationCarrier::KernelCarrier {
+    name: crate::v1_std_core::qualified_last_segment(k.clone()),
+})); },
+    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: d, .. } => { break declared_representation_carrier(n.clone(), d.clone(), env.clone(), v1_rt::int_sub(fuel.clone(), 1)); },
+    TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => { break std::option::Option::None; },
+    TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => { break unidentified_representation_carrier(n.clone(), env.clone(), v1_rt::int_sub(fuel.clone(), 1)); },
+}
+                        }
                     }
                 }
             }
@@ -6644,128 +6661,184 @@ pub fn transparent_representation_root(
     }
 }
 
-pub fn transparent_named_carrier_root(
+pub fn unidentified_representation_carrier(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    target: RenderTarget,
     fuel: i64,
-) -> Rc<Node> {
+) -> Option<Rc<RepresentationCarrier>> {
     {
-        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
-        if representation_carrier_is_grounded(
-            crate::v1_compiler_coercion::type_reference_realization(
-                n.clone(),
-                name,
-                target.clone(),
-            ),
-        ) {
-            n.clone()
-        } else {
-            match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
-                Some(decl) => {
-                    if node_occurrence_ids_equal(
-                        decl.occurrence_identity.clone(),
-                        n.occurrence_identity.clone(),
-                    ) {
-                        if crate::v1_compiler_emit_core_support::is_type_alias_item(
-                            decl.clone(),
-                            env.source_indices.clone(),
-                        ) {
-                            transparent_representation_root(
-                                crate::v1_compiler_infer_types::resolved_type(decl.clone()),
-                                env.clone(),
-                                target.clone(),
-                                v1_rt::int_sub(fuel.clone(), 1),
-                            )
-                        } else {
-                            n.clone()
-                        }
-                    } else {
-                        transparent_representation_root(
-                            decl.clone(),
-                            env.clone(),
-                            target.clone(),
-                            v1_rt::int_sub(fuel.clone(), 1),
-                        )
-                    }
+        let via_inferred = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                if node_is_identified_or_refinement(rt.clone(), env.clone()) {
+                    Some(rt.clone())
+                } else {
+                    std::option::Option::None
                 }
-                std::option::Option::None => n.clone(),
             }
+            _ => std::option::Option::None,
+        };
+        let next = match via_inferred.clone() {
+            Some(rt) => Some(rt.clone()),
+            std::option::Option::None => {
+                match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+                    Some(decl) => {
+                        if node_is_identified_or_refinement(decl.clone(), env.clone()) {
+                            Some(decl.clone())
+                        } else {
+                            std::option::Option::None
+                        }
+                    }
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        };
+        match next.clone() {
+            Some(m) => representation_carrier(m.clone(), env.clone(), fuel),
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
 
-pub fn representation_carrier_is_grounded(decision: Rc<TypeRealizationDecision>) -> bool {
-    match crate::v1_compiler_coercion::realized_checkpoint(decision) {
-        Some(_) => true,
-        std::option::Option::None => false,
-    }
-}
-
-pub fn occurrence_identity_id(identity: Rc<NodeOccurrenceIdentity>) -> Option<OccurrenceId> {
-    match (*identity.clone()).clone() {
-        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
-        NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => Some(id.clone()),
-        NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => std::option::Option::None,
-        NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
-    }
-}
-
-pub fn node_occurrence_ids_equal(
-    left: Rc<NodeOccurrenceIdentity>,
-    right: Rc<NodeOccurrenceIdentity>,
-) -> bool {
-    {
-        let l = occurrence_identity_id(left);
-        let r = occurrence_identity_id(right);
-        if ((l.clone() == std::option::Option::None) || (r.clone() == std::option::Option::None)) {
-            false
-        } else {
-            crate::std_occurrence_identity::occurrence_id_eq(l.clone().unwrap(), r.clone().unwrap())
-        }
-    }
-}
-
-pub fn realization_checkpoints_identical(
-    a: Rc<TypeRealizationDecision>,
-    b: Rc<TypeRealizationDecision>,
-) -> bool {
-    match crate::v1_compiler_coercion::realized_checkpoint(a) {
-        Some(ca) => match crate::v1_compiler_coercion::realized_checkpoint(b) {
-            Some(cb) => {
-                (((ca.dag_name.clone() == cb.dag_name.clone())
-                    && (ca.target_type.clone() == cb.target_type.clone()))
-                    && (ca.grounding_type.clone() == cb.grounding_type.clone()))
-            }
-            std::option::Option::None => false,
-        },
-        std::option::Option::None => false,
-    }
-}
-
-pub fn representation_roots_identical(
-    a: Rc<Node>,
-    b: Rc<Node>,
-    env: Rc<TypeEnv>,
-    target: RenderTarget,
-) -> bool {
-    {
-        let da = crate::v1_compiler_coercion::type_reference_realization(
-            a.clone(),
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), a.clone()),
-            target.clone(),
-        );
-        let db = crate::v1_compiler_coercion::type_reference_realization(
-            b.clone(),
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), b.clone()),
-            target.clone(),
-        );
-        if (representation_carrier_is_grounded(da.clone())
-            && representation_carrier_is_grounded(db.clone()))
+pub fn node_is_identified_or_refinement(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
+        true
+    } else {
+        match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+            n.clone(),
+            env.source_indices.clone(),
+            env.clone(),
+        ))
+        .clone()
         {
-            realization_checkpoints_identical(da.clone(), db.clone())
-        } else {
-            node_occurrence_ids_equal(a.occurrence_identity.clone(), b.occurrence_identity.clone())
+            TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: _, .. } => true,
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: _,
+                ..
+            } => true,
+            TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => false,
+            TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => false,
+        }
+    }
+}
+
+pub fn declared_representation_carrier(
+    n: Rc<Node>,
+    d: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+    fuel: i64,
+) -> Option<Rc<RepresentationCarrier>> {
+    match (*crate::std_coercion::dag_refinement_carrier(d.clone())).clone() {
+        RefinementCarrier::RefinesCarrier { from_type: c, .. } => {
+            Some(Rc::new(RepresentationCarrier::KernelCarrier {
+                name: c.clone(),
+            }))
+        }
+        RefinementCarrier::RefinementCarrierAmbiguous { from_types: _, .. } => {
+            std::option::Option::None
+        }
+        RefinementCarrier::NotARefinementTarget => {
+            match declaration_edge(n, d.clone(), env.clone()) {
+                Some(next) => representation_carrier(
+                    next.clone(),
+                    env.clone(),
+                    v1_rt::int_sub(fuel.clone(), 1),
+                ),
+                std::option::Option::None => {
+                    Some(Rc::new(RepresentationCarrier::DeclaredCarrier {
+                        declaration: d.clone(),
+                    }))
+                }
+            }
+        }
+    }
+}
+
+pub fn declaration_edge(n: Rc<Node>, d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    {
+        let from_resolved = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                if edge_moves_past(rt.clone(), d.clone(), env.clone()) {
+                    Some(rt.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            _ => std::option::Option::None,
+        };
+        let from_resolver = match from_resolved.clone() {
+            Some(rt) => Some(rt.clone()),
+            std::option::Option::None => {
+                match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+                    Some(decl) => {
+                        if edge_moves_past(decl.clone(), d.clone(), env.clone()) {
+                            Some(decl.clone())
+                        } else {
+                            if (crate::v1_compiler_emit_core_support::is_type_alias_item(
+                                decl.clone(),
+                                env.source_indices.clone(),
+                            ) && edge_moves_past(
+                                crate::v1_compiler_infer_types::resolved_type(decl.clone()),
+                                d.clone(),
+                                env.clone(),
+                            )) {
+                                Some(crate::v1_compiler_infer_types::resolved_type(decl.clone()))
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                    }
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        };
+        match from_resolver.clone() {
+            Some(next) => Some(next.clone()),
+            std::option::Option::None => {
+                match crate::v1_compiler_infer_env::declaration_binding_of_ref(
+                    d.clone(),
+                    env.clone(),
+                ) {
+                    Some(b) => match b.alias_rhs.clone() {
+                        Some(rhs) => {
+                            if edge_moves_past(rhs.clone(), d.clone(), env.clone()) {
+                                Some(rhs.clone())
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                        std::option::Option::None => {
+                            if edge_moves_past(b.resolved.clone(), d.clone(), env.clone()) {
+                                Some(b.resolved.clone())
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                    },
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        }
+    }
+}
+
+pub fn edge_moves_past(next: Rc<Node>, d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> bool {
+    if crate::v1_compiler_infer::is_where_refinement_type(next.clone()) {
+        true
+    } else {
+        match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+            next.clone(),
+            env.source_indices.clone(),
+            env.clone(),
+        ))
+        .clone()
+        {
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: e,
+                ..
+            } => !crate::std_decl_ref::declaration_ref_eq(e.clone(), d),
+            TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: _, .. } => true,
+            TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => false,
+            TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => false,
         }
     }
 }
@@ -6774,27 +6847,13 @@ pub fn cast_representation_identical(
     source_type: Rc<Node>,
     target_type_node: Rc<Node>,
     env: Rc<TypeEnv>,
-    target: RenderTarget,
 ) -> bool {
-    representation_roots_identical(
-        transparent_representation_root(source_type, env.clone(), target.clone(), 64),
-        transparent_representation_root(target_type_node, env.clone(), target.clone(), 64),
-        env.clone(),
-        target.clone(),
-    )
-}
-
-pub fn cast_source_representation_identical(
-    expr: Rc<Node>,
-    cast_target_node: Rc<Node>,
-    env: Rc<TypeEnv>,
-    target: RenderTarget,
-) -> bool {
-    match expr.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: n, .. }) => {
-            cast_representation_identical(n.clone(), cast_target_node, env, target)
-        }
-        _ => false,
+    match representation_carrier(source_type, env.clone(), 64) {
+        Some(a) => match representation_carrier(target_type_node, env.clone(), 64) {
+            Some(b) => representation_carriers_equal(a.clone(), b.clone()),
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => false,
     }
 }
 
@@ -6813,19 +6872,11 @@ pub enum CastRealizationRefusal {
         source_type: String,
         target_type: String,
     },
-    CastRouteNotRealizedByTarget {
-        source_type: String,
-        target_type: String,
-        route: String,
-    },
 }
 impl CastRealizationRefusal {
     pub fn source_type(&self) -> String {
         match self {
             CastRealizationRefusal::CastRouteUndeclared {
-                source_type: __val, ..
-            } => __val.clone(),
-            CastRealizationRefusal::CastRouteNotRealizedByTarget {
                 source_type: __val, ..
             } => __val.clone(),
         }
@@ -6835,118 +6886,6 @@ impl CastRealizationRefusal {
             CastRealizationRefusal::CastRouteUndeclared {
                 target_type: __val, ..
             } => __val.clone(),
-            CastRealizationRefusal::CastRouteNotRealizedByTarget {
-                target_type: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
-
-pub fn cast_realization_refusal_fact(refusal: Rc<CastRealizationRefusal>) -> String {
-    match (*refusal.clone()).clone() {
-    CastRealizationRefusal::CastRouteUndeclared { source_type: s, target_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no declared conversion route from ".to_string(), s.clone()), " to ".to_string()), t.clone()), ": the two are not one host representation, std.coercion declares no route between them, and the target's cast syntax has no rule for the pair; name a declared conversion (a checked constructor or a conversion function) instead of `as`".to_string()),
-    CastRealizationRefusal::CastRouteNotRealizedByTarget { source_type: s, target_type: t, route: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared route ".to_string(), r.clone()), " from ".to_string()), s.clone()), " to ".to_string()), t.clone()), " has no realization in this target: the target realizes the two carriers as different host types with no cast rule between them".to_string()),
-}
-}
-
-pub fn cast_source_type_node(expr: Rc<Node>) -> Option<Rc<Node>> {
-    match expr.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: n, .. }) => Some(n.clone()),
-        _ => std::option::Option::None,
-    }
-}
-
-pub fn cast_declared_refinement_inclusion_source(
-    source_type: Rc<Node>,
-    cast_target_node: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
-    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-        source_type,
-        env.source_indices.clone(),
-        env.clone(),
-    ) {
-        Some(d) => {
-            if crate::std_coercion::dag_refinement_inclusion(
-                d.clone(),
-                crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-                    env.source_indices.clone(),
-                    cast_target_node,
-                )),
-            ) {
-                Some(d.clone())
-            } else {
-                std::option::Option::None
-            }
-        }
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn declared_carrier_checkpoint(
-    d: Rc<DeclarationRef>,
-    target: RenderTarget,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<TypeCheckpoint>> {
-    match crate::v1_compiler_infer_env::declaration_binding_of_ref(d.clone(), env) {
-        Some(b) => crate::v1_compiler_coercion::realized_checkpoint(
-            crate::v1_compiler_coercion::declaration_realization(
-                b.resolved.clone(),
-                d.decl_name.clone(),
-                target,
-            ),
-        ),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn realize_declared_refinement_inclusion(
-    source: Rc<DeclarationRef>,
-    cast_target_node: Rc<Node>,
-    src_ty: String,
-    ty_str: String,
-    target: RenderTarget,
-    env: Rc<TypeEnv>,
-) -> Rc<CastRealization> {
-    {
-        let si = env.source_indices.clone();
-        let source_carrier = declared_carrier_checkpoint(source, target.clone(), env.clone());
-        let target_carrier = crate::v1_compiler_coercion::realized_checkpoint(
-            crate::v1_compiler_coercion::type_reference_realization(
-                cast_target_node.clone(),
-                crate::v1_std_core::authored_name_at(si, cast_target_node.clone()),
-                target.clone(),
-            ),
-        );
-        let refused = Rc::new(CastRealization::CastNotRealized {
-            refusal: Rc::new(CastRealizationRefusal::CastRouteNotRealizedByTarget {
-                source_type: src_ty.clone(),
-                target_type: ty_str.clone(),
-                route: "std.coercion dag_refinement_inclusion".to_string(),
-            }),
-        });
-        match source_carrier.clone() {
-            std::option::Option::None => refused,
-            Some(sc) => match target_carrier.clone() {
-                std::option::Option::None => refused,
-                Some(tc) => {
-                    if (sc.grounding_type.clone() == tc.grounding_type.clone()) {
-                        Rc::new(CastRealization::CastOperandUnchanged)
-                    } else {
-                        if crate::v1_compiler_coercion::can_cast(
-                            target.clone(),
-                            sc.grounding_type.clone(),
-                            tc.grounding_type.clone(),
-                        ) {
-                            Rc::new(CastRealization::CastThroughTargetSyntax {
-                                target_spelling: ty_str.clone(),
-                            })
-                        } else {
-                            refused
-                        }
-                    }
-                }
-            },
         }
     }
 }
@@ -6964,48 +6903,23 @@ pub fn cast_realization(
             target.clone(),
             source_indices.clone(),
         );
-        let source_type = cast_source_type_node(expr.clone());
-        let src_ty = match source_type.clone() {
-            Some(n) => emit_node_type(n.clone(), target.clone(), source_indices.clone()),
-            std::option::Option::None => "".to_string(),
-        };
-        if ((src_ty.clone() != "".to_string()) && (src_ty.clone() == ty_str.clone())) {
-            Rc::new(CastRealization::CastOperandUnchanged)
-        } else {
-            if cast_source_representation_identical(
-                expr.clone(),
-                cast_target_node.clone(),
-                env.clone(),
-                target.clone(),
-            ) {
-                Rc::new(CastRealization::CastOperandUnchanged)
-            } else {
-                match source_type.clone() {
-                    Some(st) => match cast_declared_refinement_inclusion_source(
-                        st.clone(),
-                        cast_target_node.clone(),
-                        env.clone(),
-                    ) {
-                        Some(d) => realize_declared_refinement_inclusion(
-                            d.clone(),
-                            cast_target_node.clone(),
-                            src_ty.clone(),
-                            ty_str.clone(),
-                            target.clone(),
-                            env.clone(),
-                        ),
-                        std::option::Option::None => cast_through_target_syntax_or_refuse(
-                            src_ty.clone(),
-                            ty_str.clone(),
-                            target.clone(),
-                        ),
-                    },
-                    std::option::Option::None => cast_through_target_syntax_or_refuse(
+        match expr.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: st, .. }) => {
+                let src_ty = emit_node_type(st.clone(), target.clone(), source_indices.clone());
+                if ((src_ty.clone() == ty_str.clone())
+                    || cast_representation_identical(st.clone(), cast_target_node.clone(), env))
+                {
+                    Rc::new(CastRealization::CastOperandUnchanged)
+                } else {
+                    cast_through_target_syntax_or_refuse(
                         src_ty.clone(),
                         ty_str.clone(),
                         target.clone(),
-                    ),
+                    )
                 }
+            }
+            _ => {
+                cast_through_target_syntax_or_refuse("".to_string(), ty_str.clone(), target.clone())
             }
         }
     }
@@ -7058,124 +6972,28 @@ pub fn emit_typed_cast_shared(
                 ty.clone(),
                 target.clone(),
             ),
-            CastRealization::CastNotRealized { refusal: r, .. } => {
-                let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
-                crate::v1_compiler_emit_core_support::apply_type_template1(
-                    spec.error_type_template.clone(),
-                    cast_realization_refusal_fact(r.clone()),
-                )
-            }
+            CastRealization::CastNotRealized { refusal: r, .. } => emit_error_expr(
+                cast_realization_unsupported_message(r.clone()),
+                target.clone(),
+            ),
         }
     }
 }
 
-pub fn cast_realization_diagnostics(
-    typed: Rc<ResolvedGraph>,
-    target: RenderTarget,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    match target_emission_mode(target.clone()) {
-        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
-        TargetEmissionMode::RealizesTransports => Rc::new({
-            let mut __result = Vec::new();
-            for tm in typed.modules.clone().iter().cloned() {
-                __result.extend(
-                    (*{
-                        let module_name = crate::v1_compiler_infer_env::authored_name(
-                            tm.type_env.clone(),
-                            tm.module.clone(),
-                        );
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for item in tm.items.clone().iter().cloned() {
-                                __result.extend(
-                                    (*match item.body.clone() {
-                                        Some(b) => cast_realization_diagnostics_in(
-                                            b.clone(),
-                                            target.clone(),
-                                            tm.type_env.clone(),
-                                            module_name.clone(),
-                                        ),
-                                        std::option::Option::None => Rc::new(vec![]),
-                                    })
-                                    .iter()
-                                    .cloned(),
-                                );
-                            }
-                            __result
-                        })
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        }),
-    }
-}
-
-pub fn cast_realization_diagnostics_in(
-    texpr: Rc<Node>,
-    target: RenderTarget,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let here = match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprCast => match (*cast_realization(
-                crate::v1_std_core::cast_expr(texpr.clone()),
-                crate::v1_std_core::cast_target(texpr.clone()),
-                target.clone(),
-                env.clone(),
-                env.source_indices.clone(),
-            ))
-            .clone()
-            {
-                CastRealization::CastNotRealized { refusal: r, .. } => {
-                    Rc::new(vec![crate::v1_std_core::make_error_node(
-                        Rc::new(CompilerDiagnostic::CastRealizationRefused {
-                            target: render_target_name(target.clone()),
-                            missing_realization_fact: cast_realization_refusal_fact(r.clone()),
-                            span: texpr.span.clone(),
-                        }),
-                        module_name.clone(),
-                    )])
-                }
-                _ => Rc::new(vec![]),
-            },
-            _ => Rc::new(vec![]),
-        };
-        let nested_body = match texpr.body.clone() {
-            Some(b) => cast_realization_diagnostics_in(
-                b.clone(),
-                target.clone(),
-                env.clone(),
-                module_name.clone(),
-            ),
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        v1_rt::concat(
+pub fn cast_realization_unsupported_message(refusal: Rc<CastRealizationRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+        CastRealizationRefusal::CastRouteUndeclared {
+            source_type: s,
+            target_type: t,
+            ..
+        } => v1_rt::concat(
             v1_rt::concat(
-                here.clone(),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in texpr.children.clone().iter().cloned() {
-                        __result.extend(
-                            (*cast_realization_diagnostics_in(
-                                c.clone(),
-                                target.clone(),
-                                env.clone(),
-                                module_name.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
+                v1_rt::concat("unsupported cast from ".to_string(), s.clone()),
+                " to ".to_string(),
             ),
-            nested_body.clone(),
-        )
-    })
+            t.clone(),
+        ),
+    }
 }
 
 pub fn emit_typed_for_each_shared(

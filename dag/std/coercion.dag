@@ -316,10 +316,13 @@ fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
 //
 // ONE ANSWER, TWO CONSUMERS. What a refinement row declares about its target declaration is the
 // carrier it widens to, and two judgments ask exactly that: the difference of two refinement values
-// escapes to the carrier (v1.compiler.infer_types subtraction_refinement_of), and an explicit cast
-// from a refinement value to that carrier is the row's INCLUSION (dag_refinement_inclusion below).
-// It was spelled SubtractionRefinement while subtraction was its only reader; the second reader is
-// why it now names the fact rather than the first question that asked it.
+// escapes to the carrier (v1.compiler.infer_types subtraction_refinement_of), and a cast between a
+// refinement value and that carrier is the row's INCLUSION, which asks the target for no operation
+// (v1.compiler.emit declared_representation_carrier). The inclusion is total, exact, unique and
+// semantics-preserving -- every std.nat Nat is an Int and no value changes -- so it is a declared
+// exact conversion (DESIGN section 4) whose declaration is this row; it needs no row of its own, and
+// adding one would be a second authority for one fact. It was spelled SubtractionRefinement while
+// subtraction was its only reader; the second reader is why it now names the fact.
 type RefinementCarrier
   = NotARefinementTarget
   | RefinesCarrier { from_type: String }
@@ -335,26 +338,6 @@ fn dag_refinement_carrier(operand: DeclarationRef) -> RefinementCarrier {
       } else {
         RefinementCarrierAmbiguous { from_types: hits |> map(h => h.from_type) }
       }
-  }
-}
-
-// THE INCLUSION IS A DECLARED EXACT CONVERSION, AND THE ROW IS ITS DECLARATION (DESIGN section 4:
-// coercion is the implicit-safe subset of declared conversions). A refinement row says every
-// to_declaration value IS a from_type value; read in the converse direction from the refinement
-// cast it refuses, the same row declares the embedding `n as Int` for n: std.nat Nat -- total (every
-// Nat is an Int), exact (no value changes), unique (one row, the Ambiguous arm refuses many),
-// semantics-preserving and consent-free. So the route needs no row of its own, and adding one beside
-// refinement_cast_rules would be a second authority for one fact (section 3).
-//
-// THE SOURCE IS KEYED BY ITS RESOLVED DECLARATION, the target by the row's from_type spelling,
-// exactly as the row is keyed for the refinement direction: a user coproduct spelled Nat is the
-// to_declaration of no row and has no inclusion. A realization reads this route to decide what to
-// spell; it never decides from its own cast table whether the crossing is legal.
-fn dag_refinement_inclusion(source: DeclarationRef, target_type: String) -> Bool {
-  match dag_refinement_carrier(operand: source) {
-    RefinesCarrier { from_type: carrier } => carrier == target_type
-    NotARefinementTarget => false
-    RefinementCarrierAmbiguous { from_types: _ } => false
   }
 }
 

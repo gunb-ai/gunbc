@@ -864,10 +864,10 @@ fn alias_empty_map_seed_cases() -> List<NativeEmissionCase> {
   ]
 }
 
-// RULE: a cast along a declared route is realized from the carriers the target realizes, never from
-// the rendered names (v1.compiler.emit realize_declared_refinement_inclusion). std.nat Nat renders in
-// Rust as its alias `Nat` and std.types Int as `i64`; both are i64, and `n as Int` is the inclusion
-// std.coercion refinement_cast_rules declares. Compared as rendered names the inclusion read as an
+// RULE: a cast between a type and its declared carrier asks the target for nothing, and the carrier is
+// read from declarations, never from rendered names (v1.compiler.emit cast_representation_identical).
+// std.nat Nat renders in Rust as its alias `Nat` and std.types Int as `i64`; `n as Int` is the
+// inclusion std.coercion refinement_cast_rules declares, so both sides reach the one carrier Int. Compared as rendered names the inclusion read as an
 // unsupported cast and was emitted as a runtime panic, so extdeps.units.iso8601_calendar -- whose
 // constants are Nat and whose arithmetic is Int -- aborted on its first call. The red is the next
 // second: an inclusion that changed a value, or a calendar that ignored its argument, does not
