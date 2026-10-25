@@ -2079,10 +2079,31 @@ fn roster_row_supply_precheck(text: String, path: String, sides: List<RosterHome
               Absent =>
                 match roster_head_supply(text: text, head: h, spans: spans, sites: sites, call: row.call) {
                   SupplyRefused { reason: r } => Present { value: r }
-                  SupplyFound { supply: _ } => roster_call_text_unique(text: text, heads: heads, head: h, spans: spans, call: row.call)
+                  SupplyFound { supply: sup } =>
+                    match roster_key_let_refusal(text: text, parse_root: parse_root, head: h, spans: spans, row: row, supply: sup) {
+                      Present { value: r } => Present { value: r }
+                      Absent => roster_call_text_unique(text: text, heads: heads, head: h, spans: spans, call: row.call)
+                    }
                 }
             }
           })
+      }
+  }
+}
+
+// A key let that cannot be placed refuses here, before any import is planned, not in the rename pass after the imports.
+fn roster_key_let_refusal(text: String, parse_root: Node, head: Node, spans: SpanIndex, row: RosterHeadRow, supply: RosterSiteSupply) -> Optional<RosterRefusalReason> {
+  match supply.key_let {
+    Absent => Absent
+    Present { value: kl } =>
+      match row.head {
+        KeepHead => Absent
+        RenameHead { to: _, positional: positional, supplied: _, sites: _ } =>
+          match roster_key_let_edits(text: text, parse_root: parse_root, head: head, spans: spans, row: row, positional: positional, kl: kl) {
+            LabelsRenameRefused { reason: r } => Present { value: r }
+            LabelsAmbiguous => Present { value: RefusalLabelSitesAmbiguous }
+            LabelsSelected { edits: _ } => Absent
+          }
       }
   }
 }
