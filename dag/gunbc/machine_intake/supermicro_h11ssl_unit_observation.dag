@@ -21,6 +21,8 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
 import extdeps.vendor.amd { amd }
+import extdeps.cpu.types { CpuModelCatalogRow }
+import extdeps.cpu.amd { epyc_7702p_catalog }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.firmware.ami_aptio_status_codes { PostCodeDecode, ami_aptio_decode }
 import extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide { supermicro_ami_aptio_v_post_codes_guide_table }
@@ -53,7 +55,8 @@ type H11sslReadInstant
   | ReadInstantUnrecorded { read_obligation: NonEmptyStr }
 
 // The CPU the unit reported at its last POST. SMBIOS gives the model and cores but reads its
-// serial as "Unknown", so WHICH physical part is fitted is the operator's account, never a read.
+// serial as "Unknown", so WHICH physical part is fitted is not part of the reading: it is the
+// operator's attestation, recorded in supermicro_h11ssl_attested_cpu_parts.
 type H11sslCpuReading {
   manufacturer: Vendor<Hardware>
   manufacturer_as_read: NonEmptyStr
@@ -61,7 +64,6 @@ type H11sslCpuReading {
   cores: Nat
   cores_enabled: Nat
   serial_as_read: NonEmptyStr
-  fitted_part: H11sslReportedFigure
 }
 
 type H11sslDimmReading {
@@ -143,7 +145,6 @@ data supermicro_h11ssl_unit_readings: List<H11sslUnitReading> = [
       cores: 64,
       cores_enabled: 64,
       serial_as_read: "Unknown",
-      fitted_part: H11sslReportedFigure { value: "a claimed-unlocked EPYC 7702P", standing: TranscribedUncited { read_obligation: "Which physical part this is (and whether it is the part that held unit 1 at POST 0x22) is the operator's account. SMBIOS reads the serial as Unknown; read the package marking or the PSP serial to ground it." } },
     },
     dimms: [
       H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD0117108184CA6D", manufacturer: sk_hynix, manufacturer_as_read: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
@@ -194,7 +195,6 @@ data supermicro_h11ssl_unit_readings: List<H11sslUnitReading> = [
       cores: 64,
       cores_enabled: 64,
       serial_as_read: "Unknown",
-      fitted_part: H11sslReportedFigure { value: "the second claimed-unlocked EPYC 7702P, replacing the part that held this unit at POST 0x22", standing: TranscribedUncited { read_obligation: "The operator's account of the swap. SMBIOS reads the serial as Unknown; read the package marking or the PSP serial to ground it." } },
     },
     dimms: [
       H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD011634716CAB6E", manufacturer: sk_hynix, manufacturer_as_read: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
@@ -364,8 +364,113 @@ fn supermicro_h11ssl_shared_ordered_tail(a: H11sslPostTrace, b: H11sslPostTrace)
   xs |> skip((xs |> count) - longest_ordered_suffix_length(sub: xs, sup: nonzero_codes(t: b)))
 }
 
+// ---- The operator's CPU history (DESIGN 4d). An ATTESTATION, not a machine read: the operator
+// handled the parts and is the authority on which part went into which board, but nothing here
+// was read from the parts. SMBIOS reads every serial as Unknown and no PSB fuse state was read,
+// so per-part identity and lock state stay attested; `unread` names what a machine read would add.
+//
+// `attested_on` is a Gregorian day, held as text, because the answer was relayed with its day and
+// no time. An Rfc3339Timestamp would make up a time of day, and v2.std.datetime CalendarDate has no
+// constructor in the corpus yet; extdeps.pin pin_currency_gap records the same gap. Trigger: a
+// CalendarDate constructor. This field then becomes a CalendarDate.
+type H11sslOperatorAttestation {
+  attested_by: NonEmptyStr
+  attested_on: NonEmptyStr
+  statement: NonEmptyStr
+  unread: NonEmptyStr
+}
+
+data supermicro_h11ssl_cpu_history_attestation: H11sslOperatorAttestation = H11sslOperatorAttestation {
+  attested_by: "the operator, answering the open question on gunbc#14975, relayed by merry-fox-82",
+  attested_on: "2026-10-24",
+  statement: "Both H11SSL units now carry two NEW EPYC 7702P parts. The earlier CPUs were locked ('locked / don't work'): vendor-locked parts that would not run in these boards. The 0x22 hold on unit 1 was with its original, locked CPU.",
+  unread: "Per-part identity, and the earlier parts' lock, are the operator's account, not a read: SMBIOS reads each serial as Unknown and no PSB fuse state was read. The package marking or the PSP serial would ground identity; a PSP or BIOS PSB status read would ground a lock state.",
+}
+
+// What the operator said about a part's vendor lock. No arm is a fuse read. The attestation called
+// the replacements NEW, not unlocked, so their lock is PartLockNotAttested. A successful POST shows
+// the board accepts the part, not its fuse state, and that is the PSB inference's bet, not an
+// attestation. PartAttestedUnlocked is for an explicit "unlocked" from the operator. Two folds
+// consume the lock. supermicro_h11ssl_psb_inference_under refuses a PSB link whose fitted part is
+// attested locked while its trace POSTed, since the account and the trace then disagree.
+// supermicro_h11ssl_prior_stall_lock_losses carries the "locked is a diagnosis" loss only when
+// the removed part is attested locked.
+type H11sslCpuPartLock = PartAttestedVendorLocked | PartAttestedUnlocked | PartLockNotAttested { read_obligation: NonEmptyStr }
+
+data supermicro_h11ssl_replacement_lock_not_attested: H11sslCpuPartLock = PartLockNotAttested {
+  read_obligation: "The operator called these parts new, not unlocked; a successful POST shows board compatibility, not fuse state. An explicit statement from the operator, or a PSP or BIOS PSB status read, grounds it.",
+}
+
+type H11sslCpuPartTenure = PartFittedNow | PartRemoved
+
+type H11sslAttestedCpuPart {
+  bmc_mac: Eui48Address
+  model: CpuModelCatalogRow
+  lock: H11sslCpuPartLock
+  tenure: H11sslCpuPartTenure
+  attestation: H11sslOperatorAttestation
+}
+
+// One row per part whose board the attestation places. Unit 1's original is the part the 0x22 hold
+// was with. The model of every row is the upstream catalog row (extdeps.cpu.amd epyc_7702p_catalog),
+// not a copied string. For the original part, that the part was a 7702P is the 2026-10-17 first-contact
+// attestation (gunbc.machine_intake.supermicro_h11ssl_first_contact supermicro_h11ssl_attested_hardware),
+// and the witness checks that row's model number against it. The
+// statement's plural "earlier CPUs" may cover a part beyond unit 1's original, but no board is
+// stated for one, so none is rowed: a row is added when its placement is attested.
+data supermicro_h11ssl_attested_cpu_parts: List<H11sslAttestedCpuPart> = [
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: PartAttestedVendorLocked, tenure: PartRemoved, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: supermicro_h11ssl_replacement_lock_not_attested, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit2_bmc_mac, model: epyc_7702p_catalog, lock: supermicro_h11ssl_replacement_lock_not_attested, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
+]
+
+fn supermicro_h11ssl_attested_part(parts: List<H11sslAttestedCpuPart>, bmc_mac: Eui48Address, tenure: H11sslCpuPartTenure) -> H11sslAttestedCpuPart? {
+  first_where(parts, p => p.bmc_mac == bmc_mac && p.tenure == tenure)
+}
+
+// A premise of an inference is either a figure with its cited standing or an operator
+// attestation. Both an attested and a cited premise admit the link; only an uncited figure, or no
+// premise row at all, leaves it insufficient. An attested premise is never silent: its `unread`
+// becomes a loss on the admitted link (cpu_inference), so a reader sees which conclusion rests on
+// the operator's account.
+//
+// DIVERGES WITH A STATED REASON (DESIGN 3b, 6b). This arm is module-local. Operator attestation is
+// already forked per domain (gunbc.machine_intake.mtcollins1_power_on_account
+// PopulationOperatorAttested, gunbc.machine_intake.mtjade1_access_observation
+// SolSessionOperatorAttested, gunbc.machine_intake.bmc_operator_credential_inventory
+// OperatorAttestedInventoryRow, gunbc.os_install_deduction KvmOperatorAttestation, and the
+// MegaRacVersionFromOperatorAttestation arm). The generalization's home is a warrant arm beside
+// extdeps.external_authority CitedFigureStanding. That arm is not added here: it changes every
+// exhaustive match on that standing, and it needs a ruling on whether an attestation is a cited
+// figure at all. Trigger: that ruling. Follow-up: one arm, these leaves deleted.
+type H11sslPremiseStanding
+  = PremiseFigure { standing: CitedFigureStanding }
+  | PremiseOperatorAttested { attestation: H11sslOperatorAttestation }
+
+fn premise_read_obligation(premise: H11sslPremiseStanding) -> NonEmptyStr? {
+  match premise {
+    PremiseFigure { standing: s } => cited_figure_read_obligation(standing: s)
+    PremiseOperatorAttested { attestation: _ } => Absent
+  }
+}
+
+fn premise_attestation_loss(premise: H11sslPremiseStanding) -> NonEmptyStr? {
+  match premise {
+    PremiseFigure { standing: _ } => Absent
+    PremiseOperatorAttested { attestation: a } => Present { value: a.unread }
+  }
+}
+
+// An attested part premise, or, where the roster has no row, an uncited premise naming the attestation owed.
+fn part_premise(part: H11sslAttestedCpuPart?, owed: NonEmptyStr) -> H11sslPremiseStanding {
+  match part {
+    Present { value: p } => PremiseOperatorAttested { attestation: p.attestation }
+    Absent => PremiseFigure { standing: TranscribedUncited { read_obligation: owed } }
+  }
+}
+
 // ---- The inferences (DESIGN 4d): typed as bets through std.claim_evidence, never as findings.
-// The PSB fuse state of neither part was read.
+// The PSB fuse state of no part was read.
 
 // PartNotPsbLockedToANonSupermicroVendor: AMD Platform Secure Boot fuses a part to one OEM's key,
 // after which it refuses firmware not signed by that key. PriorStallFollowedTheFirstCpu: the 0x22
@@ -374,15 +479,17 @@ type H11sslCpuProposition
   = PartNotPsbLockedToANonSupermicroVendor
   | PriorStallFollowedTheFirstCpu
 
-type H11sslPriorStall { receipt: DeclarationRef, held_code: Int, unit_attribution: CitedFigureStanding }
+// The 0x22 receipt does not name its unit; that it is `unit`, with that unit's original part, is
+// the attestation carried by the unit's PartRemoved row.
+type H11sslPriorStall { receipt: DeclarationRef, held_code: Int, unit: Eui48Address }
 
 data supermicro_h11ssl_unit1_prior_stall: H11sslPriorStall = H11sslPriorStall {
   receipt: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_post_code_receipt", decl_name: "supermicro_h11ssl_post_code_observations"),
   held_code: 34,
-  unit_attribution: TranscribedUncited { read_obligation: "That receipt does not name its unit; that the 0x22 hold was unit 1 (BMC ac:1f:6b:e3:f5:7b) with its first CPU is the operator's account." },
+  unit: supermicro_h11ssl_unit1_bmc_mac,
 }
 
-type H11sslCpuClaim = Claim<Eui48Address, H11sslReportedFigure, H11sslCpuProposition, H11sslResetStimulus, Rfc3339Timestamp>
+type H11sslCpuClaim = Claim<Eui48Address, H11sslCpuReading, H11sslCpuProposition, H11sslResetStimulus, Rfc3339Timestamp>
 
 type H11sslCpuInference = EvidenceInference<H11sslPostTrace, H11sslCpuClaim, NonEmptyStr, H11sslSnoopPolling, ReadBackProbe>
 
@@ -404,20 +511,29 @@ fn passed_dxe_ipl(t: H11sslPostTrace) -> Bool {
   any(t.samples, x => x.code == supermicro_h11ssl_dxe_ipl_code) && match supermicro_h11ssl_last_progress_code(t: t) { Present { value: c } => c != supermicro_h11ssl_dxe_ipl_code && c != supermicro_h11ssl_unit1_prior_stall.held_code  Absent => false }
 }
 
-// The first premise standing that is not established (cited or observed), as its read obligation.
-fn first_unestablished_premise(premises: List<CitedFigureStanding>) -> NonEmptyStr? {
-  fold(premises, init: Absent, f: (acc, p) => match acc { Present { value: o } => Present { value: o }  Absent => cited_figure_read_obligation(standing: p) })
+// The first premise that is not established (cited, observed or attested), as its read obligation.
+fn first_unestablished_premise(premises: List<H11sslPremiseStanding>) -> NonEmptyStr? {
+  fold(premises, init: Absent, f: (acc, p) => match acc { Present { value: o } => Present { value: o }  Absent => premise_read_obligation(premise: p) })
 }
 
-// A link is CONDITIONAL on its premises: while any premise standing is uncited, the inference is
+// Each distinct attestation a link's premises rest on, as one loss.
+fn premise_losses(premises: List<H11sslPremiseStanding>) -> List<NonEmptyStr> {
+  fold(premises, init: [], f: (acc, p) => match premise_attestation_loss(premise: p) {
+    Present { value: l } => if any(acc, x => x == l) { acc } else { acc |> append(l) }
+    Absent => acc
+  })
+}
+
+// A link is CONDITIONAL on its premises: while any premise is unestablished, the inference is
 // EvidenceInsufficient naming that premise's read obligation, never a Supports link carrying the
 // premise as a loss. Losses are what an admitted link still cannot see; an unestablished premise
-// is a reason the link is not admitted at all.
-fn cpu_inference(t: H11sslPostTrace, proposition: H11sslCpuProposition, rule: NonEmptyStr, premises: List<CitedFigureStanding>, losses: List<NonEmptyStr>) -> H11sslCpuInference? {
+// is a reason the link is not admitted at all. An attested premise admits the link and puts what
+// the attestation leaves unread first among its losses.
+fn cpu_inference(t: H11sslPostTrace, proposition: H11sslCpuProposition, rule: NonEmptyStr, premises: List<H11sslPremiseStanding>, losses: List<NonEmptyStr>) -> H11sslCpuInference? {
   match unit_reading(bmc_mac: t.bmc_mac) {
     Absent => Absent
     Present { value: r } => {
-      let claim = Claim { id: rule, subject: t.bmc_mac, target: r.cpu.fitted_part, proposition: proposition, scope: t.stimulus, bound: t.reset_issued_at }
+      let claim = Claim { id: rule, subject: t.bmc_mac, target: r.cpu, proposition: proposition, scope: t.stimulus, bound: t.reset_issued_at }
       let fact = RecordedFact { id: t.source.label, value: t }
       match first_unestablished_premise(premises: premises) {
         Present { value: obligation } => Present { value: insufficient_evidence_inference(insufficiency: EvidenceInsufficiency {
@@ -437,8 +553,8 @@ fn cpu_inference(t: H11sslPostTrace, proposition: H11sslCpuProposition, rule: No
           inference_rule: rule,
           authority: r.observed_by,
           provenance: EvidenceProvenance { entity: t.source.label, activity: "BMC Snooping poll across a host reset", agent: r.observed_by as ProvAgentId },
-          freshness: EvidenceFreshness { maximum_conclusion: claim, basis: "one reset of one unit with the part the operator reports fitted" },
-          fidelity: EvidenceFidelity { boundary: t.polling, losses: losses },
+          freshness: EvidenceFreshness { maximum_conclusion: claim, basis: "one reset of one unit with the part the operator attests fitted" },
+          fidelity: EvidenceFidelity { boundary: t.polling, losses: concat(premise_losses(premises: premises), losses) },
           probe: supermicro_h11ssl_snoop_trace_probe,
         ) }
       }
@@ -450,7 +566,6 @@ fn cpu_inference(t: H11sslPostTrace, proposition: H11sslCpuProposition, rule: No
 data supermicro_h11ssl_psb_losses: List<NonEmptyStr> = [
   "The PSB fuse state was not read (no PSP or BIOS PSB status read).",
   "A part fused to Supermicro's own key would POST on a Supermicro board too, so POSTing here does not separate unlocked from Supermicro-locked.",
-  "Which physical part is fitted is the operator's account; SMBIOS reads the serial as Unknown.",
   "Reading 0x4F as AMI's DXE IPL assumes AMI wrote it (supermicro_h11ssl_post_byte_emitter_standing).",
 ]
 
@@ -458,29 +573,66 @@ data supermicro_h11ssl_prior_stall_losses: List<NonEmptyStr> = [
   "The CPU was not the only change: unit 1 now reads BIOS 3.7 (2026-04-29) and IPMI 01.52.25 where its first contact read BIOS 2.6a and 1.52.00, and the BIOS at the 0x22 hold is not recorded.",
   "The memory changed: the 0x22 receipt's populations were ordinary ECC RDIMMs and an NVDIMM in C1; this trace had one SK Hynix HMA82GR7AFR4N-VK in DIMMC1.",
   "One trace per configuration; a hold that recurs intermittently would not be excluded by one pass.",
+  "The attestation (2026-10-24) names the parts fitted then; that the 2026-10-23 trace ran with that same part assumes no swap in between, which nothing records.",
 ]
+
+data supermicro_h11ssl_attested_lock_is_a_diagnosis_loss: NonEmptyStr = "That the original part was vendor-locked is the operator's diagnosis, not a fuse read; the hold following the part does not say whether the lock or another fault of that part caused it."
+
+// The lock attestation of the removed part shapes the prior-stall link's losses. If it is attested
+// locked, a reader could take the hold as the lock's signature, so the link says that the lock is
+// a diagnosis. If it is attested unlocked, or its lock is not attested, no lock was claimed, and the loss is not carried.
+fn supermicro_h11ssl_prior_stall_lock_losses(removed: H11sslAttestedCpuPart?) -> List<NonEmptyStr> {
+  match removed {
+    Present { value: p } => match p.lock { PartAttestedVendorLocked => [supermicro_h11ssl_attested_lock_is_a_diagnosis_loss]  PartAttestedUnlocked => []  PartLockNotAttested { read_obligation: _ } => [] }
+    Absent => []
+  }
+}
+
+// The PSB link for one trace takes the fitted part's attestation as its premise, since the
+// operator's lock account bears on the proposition. If no part is attested fitted, the premise is
+// owed. A part attested UNLOCKED, or one whose lock is NOT ATTESTED, admits the link: the premise is
+// which part is fitted, and its lock is what the link infers. The attestation's unread is carried. A part
+// attested VENDOR-LOCKED that nevertheless POSTed is a disagreement between the account and the
+// trace, and the link is insufficient until the two are reconciled. It is never a Supports link
+// over a contradicted premise.
+fn supermicro_h11ssl_psb_inference_under(t: H11sslPostTrace, parts: List<H11sslAttestedCpuPart>) -> H11sslCpuInference? {
+  let fitted = supermicro_h11ssl_attested_part(parts: parts, bmc_mac: t.bmc_mac, tenure: PartFittedNow)
+  let premise = match fitted {
+    Present { value: p } => match p.lock {
+      PartAttestedUnlocked => PremiseOperatorAttested { attestation: p.attestation }
+      PartLockNotAttested { read_obligation: _ } => PremiseOperatorAttested { attestation: p.attestation }
+      PartAttestedVendorLocked => PremiseFigure { standing: TranscribedUncited { read_obligation: "The fitted part is attested vendor-locked, yet this trace POSTed on Supermicro firmware: the account and the trace disagree. Reconcile them (re-ask the operator, or read the PSB status) before inferring." } }
+    }
+    Absent => part_premise(part: fitted, owed: "No attested part is recorded as fitted in this unit; the operator's account of the fitted part grounds it.")
+  }
+  cpu_inference(t: t, proposition: PartNotPsbLockedToANonSupermicroVendor, rule: "posted-on-supermicro-firmware-is-consistent-with-not-locked-to-another-vendor", premises: [premise], losses: supermicro_h11ssl_psb_losses)
+}
 
 // One PSB inference per trace: each CPU that POSTed on a Supermicro board.
 fn supermicro_h11ssl_psb_inferences() -> List<H11sslCpuInference?> {
-  supermicro_h11ssl_post_traces
-    |> map(t => cpu_inference(t: t, proposition: PartNotPsbLockedToANonSupermicroVendor, rule: "posted-on-supermicro-firmware-is-consistent-with-not-locked-to-another-vendor", premises: [], losses: supermicro_h11ssl_psb_losses))
+  supermicro_h11ssl_post_traces |> map(t => supermicro_h11ssl_psb_inference_under(t: t, parts: supermicro_h11ssl_attested_cpu_parts))
 }
 
-// The prior-stall inference reads unit 1's trace with the replacement part. Its premises are that
-// the historical 0x22 hold was this unit with its first CPU, and that the fitted part is a
-// different one; both are the operator's account today, so the link is insufficient until both
-// standings are established. The PSB links take no such premise: they are about whatever part
-// POSTed, not which one.
-fn supermicro_h11ssl_prior_stall_inference_under(stall: H11sslPriorStall, fitted: CitedFigureStanding) -> H11sslCpuInference? {
-  match first_where(supermicro_h11ssl_post_traces, t => t.bmc_mac == supermicro_h11ssl_unit1_bmc_mac) {
+// The prior-stall inference reads the stalled unit's trace with its new part. Its premises are
+// the unit's two attested parts: the removed original the 0x22 hold was with, and the part fitted
+// now. Both are the operator's attestation, so the link reads SUPPORTS, carrying what the
+// attestation leaves unread and the confounders (BIOS, IPMI, memory) as losses; without either
+// row it is insufficient. The removed part's lock attestation decides whether the "locked is a
+// diagnosis" loss is carried (supermicro_h11ssl_prior_stall_lock_losses).
+fn supermicro_h11ssl_prior_stall_premises(stall: H11sslPriorStall, parts: List<H11sslAttestedCpuPart>) -> List<H11sslPremiseStanding> {
+  [
+    part_premise(part: supermicro_h11ssl_attested_part(parts: parts, bmc_mac: stall.unit, tenure: PartRemoved), owed: "No attested part is recorded as the one this unit held at 0x22 with; the 0x22 receipt does not name its unit or part. The operator's account of the original part grounds it."),
+    part_premise(part: supermicro_h11ssl_attested_part(parts: parts, bmc_mac: stall.unit, tenure: PartFittedNow), owed: "No attested part is recorded as fitted in this unit now; SMBIOS reads the serial as Unknown. The operator's account of the fitted part, or the package marking or PSP serial, grounds it."),
+  ]
+}
+
+fn supermicro_h11ssl_prior_stall_inference_under(stall: H11sslPriorStall, parts: List<H11sslAttestedCpuPart>) -> H11sslCpuInference? {
+  match first_where(supermicro_h11ssl_post_traces, t => t.bmc_mac == stall.unit) {
     Absent => Absent
-    Present { value: t } => cpu_inference(t: t, proposition: PriorStallFollowedTheFirstCpu, rule: "same-board-passes-the-held-phase-with-another-part", premises: [stall.unit_attribution, fitted], losses: supermicro_h11ssl_prior_stall_losses)
+    Present { value: t } => cpu_inference(t: t, proposition: PriorStallFollowedTheFirstCpu, rule: "same-board-passes-the-held-phase-with-another-part", premises: supermicro_h11ssl_prior_stall_premises(stall: stall, parts: parts), losses: concat(supermicro_h11ssl_prior_stall_losses, supermicro_h11ssl_prior_stall_lock_losses(removed: supermicro_h11ssl_attested_part(parts: parts, bmc_mac: stall.unit, tenure: PartRemoved))))
   }
 }
 
 fn supermicro_h11ssl_prior_stall_inference() -> H11sslCpuInference? {
-  match unit_reading(bmc_mac: supermicro_h11ssl_unit1_bmc_mac) {
-    Absent => Absent
-    Present { value: r } => supermicro_h11ssl_prior_stall_inference_under(stall: supermicro_h11ssl_unit1_prior_stall, fitted: r.cpu.fitted_part.standing)
-  }
+  supermicro_h11ssl_prior_stall_inference_under(stall: supermicro_h11ssl_unit1_prior_stall, parts: supermicro_h11ssl_attested_cpu_parts)
 }

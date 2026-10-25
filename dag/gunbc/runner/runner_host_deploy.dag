@@ -163,7 +163,8 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 // COULD ACT ON IT -- the number was real and there was no provisioning target to hand it to.
 //
 // THE ADDRESSES ARE MEASURED, NOT ASSUMED. Both were read over SSH on 2026-08-23 by connecting and
-// asking the host its own name: srv1 answers at 192.168.1.185 and srv2 at 192.168.1.188. That
+// asking the host its own name: srv1 answers at 192.168.1.185 and srv2 at 192.168.1.188 (both moved
+// by hand to their 1G I210 NICs on 2026-10-24: srv1 now .203, srv2 now .201, DHCP). That
 // matters because this lane started the night with 192.168.1.183 and .184 for these two, which are
 // their BMC addresses rather than their host addresses, and an ssh_target pointing at a management
 // controller would fail in a way that looks like an unreachable host rather than a wrong row.
@@ -188,7 +189,7 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 
 data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv1",
-  ssh_target: "briansrls@192.168.1.185",
+  ssh_target: "briansrls@192.168.1.203",
   runner_user: "briansrls",
   unit_user: "root",
   job_user: "ghrunner",
@@ -270,7 +271,7 @@ fn admitted_deploy_or_refusal(host: HostIdentity, spec: RunnerHostSpec) -> Runne
 
 data srv2_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv2",
-  ssh_target: "briansrls@192.168.1.188",
+  ssh_target: "briansrls@192.168.1.201",
   runner_user: "briansrls",
   unit_user: "root",
   job_user: "ghrunner",
