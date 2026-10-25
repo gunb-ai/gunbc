@@ -27,7 +27,7 @@ import gunbc.host.host_memory_observation {
   HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
   gunbc_ci_srv2_memtotal_measured,
 }
-import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_dependency_wrong_capture_label }
+import gunbc.instrument_targets { effect_pair_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_dependency_wrong_capture_label }
 import gunbc.instruments.compute_run_unit_cold {
   compute_run_unit_cold_unit_grant_bytes, compute_run_unit_cold_job_memory_demand,
 }
@@ -113,11 +113,18 @@ test fn the_dispatch_choice_offers_the_dependency_demand_census_holds() -> Bool 
   contains(generated_text(), "//gunbc/instruments:dependency-demand-census")
 }
 
+// THE EFFECT-PAIR CENSUS IS DISPATCHABLE: the generated choice carries its label (B0, D16 TRIGGER), so the
+// census runs on the fleet at the head under review rather than on a session host.
+test fn the_dispatch_choice_offers_the_effect_pair_census_holds() -> Bool {
+  contains(generated_text(), "//gunbc/instruments:effect-pair-census")
+}
+
 // THE WHOLE-TREE INSTRUMENTS CARRY A DECLARED MEMORY DEMAND (follow-up to gunbc#13141): each census label
 // has a row, every row is dispatchable, and the selected runner target's budget admits every row.
 test fn the_whole_tree_censuses_declare_a_memory_demand_the_selected_target_admits_holds() -> Bool {
   let declared = map(instrument_dispatch_memory_demands(), d => render_label(l: d.label))
   any(declared, l => l == render_label(l: dependency_demand_census_label()))
+    && any(declared, l => l == render_label(l: effect_pair_census_label()))
     && any(declared, l => l == render_label(l: v2_native_census_label()))
     && instrument_dispatch_memory_demands_are_dispatchable()
     && instrument_dispatch_memory_demands_fit_selected_target()
