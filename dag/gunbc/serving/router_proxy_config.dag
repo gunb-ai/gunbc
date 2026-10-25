@@ -165,11 +165,6 @@ fn router_stream_end_hook(v: RouterProxyVocabulary, stream_end_port: Port) -> Ro
   } }
 }
 
-// The callouts the router location carries, in order; router_proxy_directives renders exactly these.
-fn router_proxy_callouts(v: RouterProxyVocabulary, stream_end_port: Port) -> List<RouterCalloutHook> {
-  [router_authz_hook(v: v), router_stream_end_hook(v: v, stream_end_port: stream_end_port)]
-}
-
 fn router_proxy_directives(v: RouterProxyVocabulary, listen_port: Port, authz_port: Port, stream_end_port: Port) -> List<NginxDirective> {
   [
     WorkerProcesses { count: 1 },

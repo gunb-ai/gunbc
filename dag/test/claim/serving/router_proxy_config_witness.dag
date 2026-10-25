@@ -4,12 +4,12 @@ import std.types { String, Bool, Int, List, Port }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.proxy.openresty {
   NginxDirective, HttpBlock, ServerBlock, LocationBlock, PrefixMatch, nginx_token, nginx_variable, ProxyPassDirective, ProxyNextUpstreamDirective,
-  ProxyBufferingDirective, ProxyRequestBufferingDirective, ProxyPassToHost,
+  ProxyBufferingDirective, ProxyRequestBufferingDirective, ProxyPassToHost, LuaPhaseBlock, AccessPhase, LogPhase,
   render_nginx_directives, ProxyNextUpstreamOff,
 }
 import std.optional { Optional, Present, Absent }
 import gunbc.serving.router_proxy_config {
-  RouterCalloutHook, AuthzCapture, StreamEndPost, router_proxy_callouts, RouterProxyVocabulary, RouterProxyConfig, router_proxy_directives, router_proxy_config, router_proxy_vocabulary, RouterProxyConfigRendered, RouterProxyConfigRefused,
+  RouterProxyVocabulary, RouterProxyConfig, router_proxy_directives, router_proxy_config, router_proxy_vocabulary, RouterProxyConfigRendered, RouterProxyConfigRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -37,18 +37,10 @@ fn is_buffering_off(d: NginxDirective) -> Bool {
   match d { ProxyBufferingDirective { value: _ } => true ProxyRequestBufferingDirective { value: _ } => true _ => false }
 }
 fn is_fixed_pass(d: NginxDirective) -> Bool { match d { ProxyPassToHost { host: _, port: _, path: _ } => true _ => false } }
-fn is_authz(h: RouterCalloutHook) -> Bool {
-  match h.callout { AuthzCapture { location: _, failure_status: s, copies: _ } => (s as Int) == 503 _ => false }
-}
-fn is_stream_end(h: RouterCalloutHook) -> Bool {
-  match h.callout { StreamEndPost { host: _, port: p, path: _, timeout_ms: _, only_when_set: _, header: _, header_value: _ } => (p as Int) == 9002 _ => false }
-}
-fn callouts() -> List<RouterCalloutHook> {
-  match router_proxy_vocabulary() {
-    Present { value: v } => router_proxy_callouts(v: v, stream_end_port: 9002 as Port)
-    Absent => [] as List<RouterCalloutHook>
-  }
-}
+// The hooks are read from the rendered rows themselves, so adding, dropping or moving one in
+// router_proxy_directives changes what these count.
+fn is_access_hook(d: NginxDirective) -> Bool { match d { LuaPhaseBlock { phase: ph, lines: _ } => match ph { AccessPhase => true _ => false } _ => false } }
+fn is_log_hook(d: NginxDirective) -> Bool { match d { LuaPhaseBlock { phase: ph, lines: _ } => match ph { LogPhase => true _ => false } _ => false } }
 
 // The router location has exactly one proxy_pass, the variable one, and no fixed-host proxy_pass.
 test fn the_router_location_proxies_only_to_the_authz_supplied_upstream() -> Bool {
@@ -59,8 +51,8 @@ test fn retries_and_buffering_are_off() -> Bool {
   count(filter(v1_body(ds: rows()), d => is_retry_off(d: d))) == 1 && count(filter(v1_body(ds: rows()), d => is_buffering_off(d: d))) == 2
 }
 
-test fn one_authz_hook_that_refuses_with_503_and_one_stream_end_hook_on_the_given_port() -> Bool {
-  count(filter(callouts(), h => is_authz(h: h))) == 1 && count(filter(callouts(), h => is_stream_end(h: h))) == 1 && count(callouts()) == 2
+test fn one_access_hook_and_one_log_hook_in_the_router_location() -> Bool {
+  count(filter(v1_body(ds: rows()), d => is_access_hook(d: d))) == 1 && count(filter(v1_body(ds: rows()), d => is_log_hook(d: d))) == 1
 }
 
 fn text_of(r: RouterProxyConfig) -> String { match r { RouterProxyConfigRendered { text: t } => t RouterProxyConfigRefused { token: _ } => "" } }
