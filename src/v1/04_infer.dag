@@ -19676,8 +19676,8 @@ fn dump_role_label(n: Node) -> String {
 // DISCRIMINATOR DUMP, do not merge.
 fn dump_generic_actual(ar: InferResult, formal: Node, is_lambda: Bool, span: SourceSpan, scope: InferScope) -> InferEmissions {
   let actual = resolved_type(n: ar.typed)
-  if scope.module_name == "extdeps.tools" && !is_lambda && formal.children |> count > 0 {
-    infer_emissions_concat(left: ar.emissions, right: infer_emissions_of_diagnostics([inference_error(message: concat("DUMP formal=", formal.name, "/", dump_count_label(k: formal.children |> count), " actual=", actual.name, "/", dump_count_label(k: actual.children |> count), " role=", dump_role_label(n: actual), " kind=", match actual.module_item_kind { ModuleItemTypeDeclaration => "TypeDecl"  _ => "other" }), span: span, module_name: scope.module_name)]))
+  if (scope.module_name == "extdeps.tools" || scope.module_name == "tools") && !is_lambda {
+    infer_emissions_concat(left: ar.emissions, right: infer_emissions_of_diagnostics([inference_error(message: concat("DUMP mod=", scope.module_name, " formal=", formal.name, "/", dump_count_label(k: formal.children |> count), " actual=", actual.name, "/", dump_count_label(k: actual.children |> count), " role=", dump_role_label(n: actual), " kind=", match actual.module_item_kind { ModuleItemTypeDeclaration => "TypeDecl"  _ => "other" }), span: span, module_name: scope.module_name)]))
   } else { ar.emissions }
 }
 
