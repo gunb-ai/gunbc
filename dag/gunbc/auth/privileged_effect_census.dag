@@ -27,6 +27,7 @@ import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client_interventi
 import gunbc.cloudflare.r2_origin { cloudflare_bootstrap_custody_intervention, cloudflare_account_allocation_intervention }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
 import gunbc.review_sheet_operator { shared_drive_create_intervention, spreadsheet_create_intervention }
+import gunbc.review_sheet_federation { review_sheet_writer_token_creator_intervention, review_sheet_converge_principal_set }
 import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
 import gunbc.fleet.mtcollins_firmware_converge { mtcollins1_ac_power_cycle_effect }
 import gunbc.host.anchored_host_transport { anchored_host_key_scan_effect, anchored_host_key_mint_effect }
@@ -980,6 +981,11 @@ data manual_api_effect_beside_unlanded_approval_adapter: DivergenceReason = Dive
   dissolution: unbound_dissolution(description: "an authority adapter, registered against gunbc.auth.approval_broker redeem_capability, that performs this one effect under a redeemed ApprovalCapability and reads the result back, so the step's entry point requests the capability (gunbc.auth.access_request) instead of emitting an instruction. NOT satisfied by modeling the instruction, nor by a converge member that applies without post-apply readback" as NonEmptyStr),
 }
 
+data review_sheet_writer_cell_outside_the_converge_projects: DivergenceReason = DivergenceReason {
+  statement: "the cell sits on review-sheet-writer's policy in gunbai-sheets, and every role the approval-gated IAM converge and its bootstrap delta hold is a project custom role of the fleet secrets project, which cannot be bound on a resource in another project; so no approval route reaches it, and the operator writes it once in their own session (stern-ram-763, 2026-10-25: chosen over giving iam-converge standing reach into gunbai-sheets)" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "an approval-gated route whose actuator may write the writer's policy without standing project reach in gunbai-sheets -- an organization-level custom role bound on that one account, or an authority adapter under a redeemed ApprovalCapability -- that writes this one cell and reads it back under an independent observer" as NonEmptyStr),
+}
+
 data github_environment_gate_is_not_the_approval_route: DivergenceReason = DivergenceReason {
   statement: "a GitHub environment's required-reviewer gate is a human click in the GitHub UI: it authorizes a whole job rather than one effect, binds no device-signed consent to the effect's parameters, and leaves its protection setting (reviewers, deployment branch rule) as a repository-settings fact the workflow file cannot carry or observe" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "the job requests an access_request for its re-derived effect and proceeds only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability) delivered by the iOS approval app, with the environment reduced to a branch rule. NOT satisfied by adding reviewers to the environment" as NonEmptyStr),
@@ -1881,6 +1887,27 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: manual_operator_api_effect(step: spreadsheet_create_intervention(), subject: "create the buyer review Google Sheet under the operator's account" as NonEmptyStr, cause: "the sheet is owned by the operator's Workspace account; the writer service account is the principal being granted onto it" as NonEmptyStr, reach: MintsNoCredential),
     realized: RealizedHumanStep,
     divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.review_sheet_federation", decl_name: "review_sheet_writer_token_creator_intervention"),
+    effect: manual_operator_api_effect(step: review_sheet_writer_token_creator_intervention(), subject: "grant review-sheet-converge roles/iam.serviceAccountTokenCreator on review-sheet-writer, the one cell the federated review-sheet converge delegates through" as NonEmptyStr, cause: "the cell is in gunbai-sheets, outside every project the approval-gated IAM converge can bind a role in" as NonEmptyStr, reach: MintsResourceScopedCredential),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: review_sheet_writer_cell_outside_the_converge_projects },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.review_sheet_converge_cli", decl_name: "converge_drive_half_cli"),
+    effect: PrivilegedEffect {
+      subject: "converge every review sheet kind on the shared drive -- create the marked spreadsheet, its tabs, header and rows, and formatting -- as review-sheet-writer, every write read back" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: review_sheet_converge_principal_set() as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_publisher_token_mint_intervention"),

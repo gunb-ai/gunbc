@@ -23,7 +23,6 @@ pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
-pub use crate::gunbc_structural_realization_bindings::kernel_grounding_rows;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
@@ -40,12 +39,6 @@ pub use crate::std_compiler_entry::{
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-use crate::std_literal_elaboration::KernelGroundingCrossing::{
-    CrossingRefused, CrossingTotalWidening,
-};
-pub use crate::std_literal_elaboration::{
-    declaration_is_grounded_natural, kernel_grounding_crossing, KernelGroundingCrossing,
-};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
@@ -84,14 +77,11 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
 };
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
-use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
-    TypeReferenceIsKernelType, TypeReferenceNamesDeclaration,
-};
+use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, carried_declaration_ref, empty_symbol_index, lookup_type_for,
-    type_reference_declaration_reading, GlobalBareLookupState, TypeBinding, TypeEnv,
-    TypeReferenceDeclarationReading,
+    authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
+    GlobalBareLookupState, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{
     item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
@@ -6818,60 +6808,6 @@ pub fn cast_source_representation_identical(
     }
 }
 
-pub fn cast_source_grounded_onto_target_carrier(
-    expr: Rc<Node>,
-    cast_target_node: Rc<Node>,
-    env: Rc<TypeEnv>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match expr.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: n, .. }) => {
-            match crate::v1_compiler_infer_env::carried_declaration_ref(
-                n.clone(),
-                source_indices.clone(),
-                env.clone(),
-            ) {
-                Some(d) => {
-                    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
-                        cast_target_node,
-                        source_indices.clone(),
-                        env.clone(),
-                    ))
-                    .clone()
-                    {
-                        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                            declaration: t,
-                            ..
-                        } => match (*crate::std_literal_elaboration::kernel_grounding_crossing(
-                            kernel_grounding_rows(),
-                            d.clone(),
-                            t.clone(),
-                        ))
-                        .clone()
-                        {
-                            KernelGroundingCrossing::CrossingTotalWidening => true,
-                            KernelGroundingCrossing::CrossingRefused { cause: _, .. } => false,
-                        },
-                        TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
-                            name: k,
-                            ..
-                        } => {
-                            ((k.clone() == "Int".to_string())
-                                && crate::std_literal_elaboration::declaration_is_grounded_natural(
-                                    kernel_grounding_rows(),
-                                    d.clone(),
-                                ))
-                        }
-                        _ => false,
-                    }
-                }
-                std::option::Option::None => false,
-            }
-        }
-        _ => false,
-    }
-}
-
 pub fn emit_typed_cast_shared(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
@@ -6899,44 +6835,32 @@ pub fn emit_typed_cast_shared(
             if cast_source_representation_identical(
                 expr.clone(),
                 cast_target_node.clone(),
-                env.clone(),
+                env,
                 target.clone(),
             ) {
                 expr_str.clone()
             } else {
-                if cast_source_grounded_onto_target_carrier(
-                    expr.clone(),
-                    cast_target_node.clone(),
-                    env.clone(),
-                    source_indices.clone(),
+                if crate::v1_compiler_coercion::can_cast(
+                    target.clone(),
+                    src_ty.clone(),
+                    ty_str.clone(),
                 ) {
-                    expr_str.clone()
-                } else {
-                    if crate::v1_compiler_coercion::can_cast(
-                        target.clone(),
-                        src_ty.clone(),
+                    crate::v1_compiler_coercion::render_cast(
+                        expr_str.clone(),
                         ty_str.clone(),
-                    ) {
-                        crate::v1_compiler_coercion::render_cast(
-                            expr_str.clone(),
-                            ty_str.clone(),
-                            target.clone(),
-                        )
-                    } else {
-                        emit_error_expr(
+                        target.clone(),
+                    )
+                } else {
+                    emit_error_expr(
+                        v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "unsupported cast from ".to_string(),
-                                        src_ty.clone(),
-                                    ),
-                                    " to ".to_string(),
-                                ),
-                                ty_str.clone(),
+                                v1_rt::concat("unsupported cast from ".to_string(), src_ty.clone()),
+                                " to ".to_string(),
                             ),
-                            target.clone(),
-                        )
-                    }
+                            ty_str.clone(),
+                        ),
+                        target.clone(),
+                    )
                 }
             }
         }
