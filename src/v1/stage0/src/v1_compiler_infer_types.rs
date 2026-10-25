@@ -794,6 +794,18 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
     })
 }
 
+pub fn container_slot_spelling(element: Rc<Node>, param_name: String) -> Rc<SourceSpan> {
+    match element.ident_span.clone() {
+        Some(spelled) => spelled.clone(),
+        std::option::Option::None => match element.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: variable, .. }) => {
+                crate::v1_std_core::kernel_span(variable.clone())
+            }
+            _ => crate::v1_std_core::kernel_span(param_name.clone()),
+        },
+    }
+}
+
 pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
     match crate::std_types::container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
@@ -805,8 +817,8 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 children: Rc::new(vec![Rc::new(Node {
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: param_name.clone(),
-                    span: crate::v1_std_core::kernel_span(param_name.clone()),
-                    ident_span: Some(crate::v1_std_core::kernel_span(param_name.clone())),
+                    span: container_slot_spelling(element.clone(), param_name.clone()),
+                    ident_span: Some(container_slot_spelling(element.clone(), param_name.clone())),
                     children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
@@ -872,8 +884,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
                             name: key_name.clone(),
-                            span: crate::v1_std_core::kernel_span(key_name.clone()),
-                            ident_span: Some(crate::v1_std_core::kernel_span(key_name.clone())),
+                            span: container_slot_spelling(key.clone(), key_name.clone()),
+                            ident_span: Some(container_slot_spelling(key.clone(), key_name.clone())),
                             children: Rc::new(vec![]),
                             connective: Connective::NoConnective,
                             params: Rc::new(vec![]),
@@ -898,8 +910,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
                             name: val_name.clone(),
-                            span: crate::v1_std_core::kernel_span(val_name.clone()),
-                            ident_span: Some(crate::v1_std_core::kernel_span(val_name.clone())),
+                            span: container_slot_spelling(value.clone(), val_name.clone()),
+                            ident_span: Some(container_slot_spelling(value.clone(), val_name.clone())),
                             children: Rc::new(vec![]),
                             connective: Connective::NoConnective,
                             params: Rc::new(vec![]),
