@@ -7,9 +7,23 @@ module gunbc.host.boot_attempt
 // on the core, never the core on an adapter: the controller-specific readings (SEL, SDR, sensors,
 // inventory, param5, chassis power, the Redfish URLs) and the MegaRAC-shaped diagnostic live in the
 // controller's adapter module (gunbc.machine_intake.megarac_boot_diagnostic_bundle), which imports
-// THIS module. So this module imports no controller-protocol type: no extdeps.bmc.ipmi*, no
+// THIS module. What neutrality holds here is per-DECLARATION (review 85832): NO TYPE IN THIS MODULE NAMES A CONTROLLER PROTOCOL: no type is extdeps.bmc.ipmi*, no
 // megarac_*, and the run record carries the adapter's diagnostic BY REFERENCE (the retained artifact
 // path plus its digest, and the neutral findings), not by the adapter's reading type.
+//
+// THE BOUNDARY LEAK, STATED (review 85832; §4d -- do not assert as deduced what is only inferred).
+// "No type names a protocol" is true; "no protocol is in the import closure" is NOT, and the header
+// claimed that before. The borrowed console declarations -- SpanConsoleReading and span_console_readings
+// from gunbc.machine_intake.mtcollins1_power_on_account -- drag extdeps.bmc.ipmi_sel,
+// extdeps.bmc.ipmi_sdr and extdeps.bmc.redfish_memory_inventory into this closure, because the account
+// module parses SEL/SDR/memory lines into those readings; and mtcollins1_console_milestone_observation
+// is machine-named vocabulary. So the protocol-neutral CLAIM holds per-declaration and the module
+// BOUNDARY does not, until the borrowings retire. BOUNDED TRIGGER (next rung, §4b obligation 2): the
+// six declarations this module borrows are on a typed carrier -- boot_attempt_console_debt_refs, folded
+// by boot_attempt_console_debt_status -- and the re-home that gives them a neutral home
+// (work item node://adhoc-de73c7a1-87b) fires that fold; when it reads Fired, this comment's leak
+// sentence must be deleted along with the six imports. A leak with a trigger that a program can read
+// is admitted debt (§5); this header, until now, was a leak with only prose.
 //
 // THE BY-REFERENCE POINTER (operator ruling 2026-10-14). The attempt record is the same value for a
 // MegaRAC machine and for the next controller (srv3), so it must not name a MegaRAC reading. It names
