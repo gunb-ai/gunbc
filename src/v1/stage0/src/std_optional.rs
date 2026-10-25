@@ -18,6 +18,13 @@ pub fn optional_present<T: Clone>(value: T) -> Option<T> {
     Some(value.clone())
 }
 
+pub fn optional_is_absent<T: Clone>(opt: Option<T>) -> bool {
+    match opt.clone() {
+        std::option::Option::None => true,
+        Some(_) => false,
+    }
+}
+
 pub fn optional_eq<T: Clone>(
     a: Option<T>,
     b: Option<T>,
