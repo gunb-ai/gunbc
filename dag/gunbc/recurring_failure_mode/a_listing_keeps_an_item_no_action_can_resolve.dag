@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.a_listing_keeps_an_item_no_action_can_resolve
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+data a_listing_keeps_an_item_no_action_can_resolve: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_listing_keeps_an_item_no_action_can_resolve" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable: membership depends on the read's instant, so an expired request is a representable store state by construction; the rule is a pure step over the observed slot and instant, refused-or-admitted by a witness at the expiry boundary" as NonEmptyStr } },
+
+  receipts: [
+    "**a 'needs attention' listing filtered on the record's storage generation alone keeps items whose standing no longer admits any action.** INVALID STATE: the approval inbox listing a request whose capability has expired, so Approve and Deny can only be refused CapabilityExpired. HARM: the operator's list fills with entries that can never be decided, and the ones that can are buried among them.",
+    "SPECIMEN, 2026-10-24: gunbc.auth.approval_decision_store pending_escalations listed every slot standing EscalationPending (generation 1); a filing whose workflow was abandoned is never decided, so it stayed pending -- and listed -- forever, while redemption refused it at gunbc.auth.approval_capability's expiry boundary. The client was not retaining anything: AppState.refresh replaces the list with each answer.",
+    "DISTINGUISHING FACTS: the listing and the redemption answered 'is this request still open' with two different rules (generation 1, versus generation 1 and before expires_at), which is a single-authority fork over one standing.",
+    "REPAIR: pending_fold_step admits a pending slot only when request_needs_attention_at holds, which is capability_live_at -- the predicate the redemption verifier applies -- so the list and the decision agree at the boundary instant. Witnessed hermetically over supplied slots (test.claim.approval_decision_store_witness only_an_open_unexpired_request_is_listed) and against a real store (test.claim.approval_decision_store_wet_witness).",
+    "STANDING OF THAT EVIDENCE: the required job evaluates no witness, so both claims sit under the declared drop gunbc.rung_drop v1_required_lanes_withdrawn and execute only when dispatched; the rung stated is the rung the witnesses establish when run, lowered with every other witness by that drop and restored by its trigger.",
+  ],
+
+  evidence: [],
+}
