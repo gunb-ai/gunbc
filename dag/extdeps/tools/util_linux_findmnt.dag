@@ -7,15 +7,14 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
-// findmnt(8), util-linux: "findmnt is a command line tool to list filesystems ... -T, --timeout ...
-// ask findmnt to print the filesystem the given path is ON" (man7.org, util-linux, read 2026-10-24:
-// -T/--ascii is documented as "list all filesystems in a tree-like format" in newer usage text, but
-// the -T option the fleet uses is documented under "findmnt -T path": print the filesystem containing
-// the given path). Only the fstype-probe form is modeled: -no FSTYPE -T <path>, which prints the
-// FILESYSTEM TYPE the path lives on and nothing else. That is the form the mint runbook's tmpfs
-// verification needs -- the answer must be exactly "tmpfs" or the mint refuses -- and it is the only
-// form whose output is a single classification token a caller can compare. -l, -r, -m and the tree
-// forms print more than one field and are not modeled.
+// findmnt(8), util-linux: "findmnt is a command line tool to list filesystems". The option this
+// module models is findmnt(8)'s "-T, --target path" -- "Return all filesystems that contain the
+// given path" -- NOT -w/--timeout and not -a/--ascii (read 2026-10-24, man7.org findmnt(8)). Only
+// the fstype-probe form is modeled: -n -o FSTYPE -T <path>, which prints the FILESYSTEM TYPE the
+// path lives on and nothing else. That is the form the mint runbook's tmpfs verification needs --
+// the answer must be exactly "tmpfs" or the mint refuses -- and it is the only form whose output is
+// a single classification token a caller can compare. -l, -r, -m and the tree forms print more than
+// one field and are not modeled.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

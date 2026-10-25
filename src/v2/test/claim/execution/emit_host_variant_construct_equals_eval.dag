@@ -57,7 +57,7 @@ import v2.std.node {
 import v2.std.node_query {
   find_core_child,
 }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -265,11 +265,11 @@ fn emit_variant_construct_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
 }
 
 fn emit_variant_construct_eval_scrutinee_is_holds(value: RuntimeValue) -> Bool {
-  value == emit_variant_construct_eval_octet_value(n: 1)
+  (runtime_value_equality(a: value, b: emit_variant_construct_eval_octet_value(n: 1)) == RuntimeValuesEqual)
 }
 
 fn emit_variant_construct_eval_scrutinee_is_true(value: RuntimeValue) -> Bool {
-  value == emit_variant_construct_eval_octet_value(n: 0)
+  (runtime_value_equality(a: value, b: emit_variant_construct_eval_octet_value(n: 0)) == RuntimeValuesEqual)
 }
 
 fn emit_variant_construct_eval_choose_arm(
