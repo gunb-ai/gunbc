@@ -26,7 +26,7 @@ import gunbc.serving.serving_benchmark {
 }
 import gunbc.serving.serving_benchmark_run_receipt {
   admit_serving_benchmark_run, ServingBenchmarkRunAdmitted, ServingBenchmarkRunRefused, ServingBenchmarkRunObservation, ServingBenchmarkGap,
-  ServingCellIdentity, ObservedCpu, ObservedGpu, ServingTopology, StrataEngineCell, ServingEngineBuild, ServingArtifact,
+  ServingCellIdentity, ObservedCpu, ObservedGpu, ServingTopology, StrataEngineCell, ServingEngineBuild, ServingArtifact, ServingArtifactFile,
   LevelTelemetry, GpuLevelTelemetry, WallPowerUnmetered, ServingLevelResult,
   GapNoGpu, GapTopologyDoesNotCoverGpus, GapPoolWorkersUnpinned, GapSessionTextsNotDistinct, GapRequestFailed, GapFirstTokenUnread,
   GapLevelRounds, GapTelemetryMissing, GapToolDelta, GapMaxTokens, GapSubmissionSpread, GapPrimeContextOutsideBand,
@@ -140,7 +140,7 @@ fn fx_cell(gpus: List<ObservedGpu>, engines: Nat, gpus_per_engine: Nat, pool_wor
       },
       flags: fx_flags(pool_workers: pool_workers),
     },
-    artifact: ServingArtifact { name: "fixture-weights" as NonEmptyStr, quantization: "IQ3_S" as NonEmptyStr, digest: fx_digest_b },
+    artifact: ServingArtifact { name: "fixture-weights" as NonEmptyStr, quantization: "IQ3_S" as NonEmptyStr, files: [ServingArtifactFile { name: "fixture-00001-of-00001.gguf" as NonEmptyStr, digest: fx_digest_b }] },
     topology: ServingTopology { engines: engines, gpus_per_engine: gpus_per_engine },
   }
 }
