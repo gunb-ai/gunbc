@@ -73,3 +73,20 @@ test fn an_honest_local_row_still_applies_its_encoding() -> Bool {
     ["compile_error!", "#[serde(tag = \"_variant\")]"]
   )
 }
+
+// AN UNREADABLE module_path IS A MALFORMED ROW, REPORTED -- NOT SILENTLY DROPPED (review 85745).
+// The DeclarationRef is well-formed here (the path is a named String, so parse and typing pass),
+// but the row's jurisdiction cannot be READ as a literal: the author believes it governs
+// FixtureCarrier, and the authority indexes it nowhere. DESIGN section 5: every path succeeds
+// fully or fails with a typed, located diagnostic -- a silent widen is a hard reject. BEFORE the
+// fix the row vanished with no word (and its encoding even leaked onto the local same-reading
+// path under name-only matching); AFTER, the emission carries the located compile_error naming
+// the unreadable field, symmetric with the decl_name arm.
+test fn an_unreadable_module_path_still_reports() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cwc_pair_bad_module_path\n\nimport std.serialization { CoproductWireContract, StringVariant, AsAuthored }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\ntype FixtureCarrier = Here0 | Gone0\n\ndata module_path_holder: String = \"cwc_pair_bad_module_path\"\n\ndata bad_module_path_wire_contract: CoproductWireContract = {\n  coproduct: DeclarationRef { module_path: module_path_holder, decl_name: \"FixtureCarrier\", field: WholeDeclaration },\n  encoding: StringVariant { naming: AsAuthored }\n}\n",
+    "src/cwc_pair_bad_module_path.rs",
+    ["compile_error!", "CoproductWireContract.coproduct must be a DeclarationRef with a string module_path"],
+    []
+  )
+}
