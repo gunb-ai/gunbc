@@ -14,7 +14,7 @@ import std.env_binding { EnvSet, EnvBinding }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes,
-  srv1_live_dashboard_instance, dashboard_path_is_under,
+  dashboard_path_is_under, prod_role_realization, ProdRoleRealizedBy, ProdRoleRealizationRefused,
 }
 import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
@@ -91,9 +91,17 @@ type HermeticUserSessionRuntime
   = HermeticUserSessionRuntimeBound { runtime_dir: FilePath }
   | HermeticUserSessionRuntimeAbsent
 
+// THE PRODUCTION ROOT IS THE PROD-ROLE HOLDER'S, resolved through the role, never srv1 by name
+// (gunbc.recurring_failure_mode a_test_deployment_acts_on_the_prod_deployments_state). An unresolved
+// role answers true: a run that cannot tell where production lives refuses rather than risk it.
 fn path_is_under_production_instance_root(path: String) -> Bool {
-  let root = srv1_live_dashboard_instance().instance_root
-  (path == root as String) || dashboard_path_is_under(path: path as FilePath, root: root)
+  match prod_role_realization() {
+    ProdRoleRealizationRefused { cause: _ } => true
+    ProdRoleRealizedBy { holder } => {
+      let root = holder.instance.instance_root
+      (path == root as String) || dashboard_path_is_under(path: path as FilePath, root: root)
+    }
+  }
 }
 
 fn observe_workspace(instance: HostDashboardInstance) -> String {
