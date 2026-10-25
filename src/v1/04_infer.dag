@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentBeforeInference, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization {
@@ -26,6 +26,8 @@ import std.literal_elaboration {
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
+  carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CarrierNotGrounded,
+  kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
@@ -148,7 +150,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, carried_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -7937,6 +7939,13 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
+fn cast_source_declaration(inner: Node, scope: InferScope) -> DeclarationRef? {
+  match inner.inferred {
+    Present { value: Resolved { node: n } } => carried_declaration_ref(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    _ => none
+  }
+}
+
 // The solver's Unit placeholder is the synthesized core `unit_type` node, which has no declaration by
 // construction (OccurrenceSynthetic, kernel span): it is recognized as that node, so a source-authored
 // type spelled Unit, which carries a real occurrence and span, is never mistaken for it.
@@ -8107,11 +8116,69 @@ fn algebra_method_host_text_crossing_diags(method_name: String, semantics: Metho
 // below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
 // source_is_nominal is the head exposure of the source's declaration identity, the same authority
 // product_at_scalar_declared_type reads, never a bare spelling.
-fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
+// A CAST FROM A GROUNDED CARRIER IS DECIDED BY THE DERIVED CROSSING, keyed on both declarations
+// (std.literal_elaboration kernel_grounding_crossing over gunbc.structural_realization_bindings
+// kernel_grounding_rows): onto another grounded carrier it is admitted exactly when the source's extent lies
+// inside the target's, so `Nat as Int` at std.integer Int is the identity re-typing and the converse refuses.
+// A grounded NATURAL source has no route to any other target, so its cast refuses here ("no declared
+// conversion route"), EXCEPT onto the kernel Int: that cast is not an inclusion (the naturals are not inside
+// the 64-bit integers), and stern-bat-401's ruling keeps it on the name-keyed chain below, a declared
+// below-ceiling class (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged). A target that carries no identity
+// (unidentified, or a type variable) is not decided here either: a missing identity is not evidence of a different
+// target, so the name-keyed chain below keeps the answer it gave before. A source no row grounds is not decided here.
+type GroundedCastVerdict
+  = GroundedCastAdmitted
+  | GroundedCastRefused { cause: String }
+  | GroundedCastNotDecided
+
+fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclarationReading) -> GroundedCastVerdict {
+  match carrier_grounding(rows: kernel_grounding_rows, carrier: source) {
+    CarrierGroundingRefused { cause: c } =>
+      match c {
+        CarrierNotGrounded { carrier: _ } => GroundedCastNotDecided
+        _ => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
+      }
+    CarrierGroundingFound { row: _ } =>
+      let natural = declaration_is_grounded_natural(rows: kernel_grounding_rows, d: source)
+      match target {
+        TypeReferenceNamesDeclaration { declaration: t } =>
+          match carrier_grounding(rows: kernel_grounding_rows, carrier: t) {
+            CarrierGroundingFound { row: _ } =>
+              match kernel_grounding_crossing(rows: kernel_grounding_rows, from: source, to: t) {
+                CrossingTotalWidening => GroundedCastAdmitted
+                CrossingRefused { cause: c } => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
+              }
+            CarrierGroundingRefused { cause: CarrierNotGrounded { carrier: _ } } =>
+              if natural { GroundedCastRefused { cause: concat("no declared conversion route onto ", declaration_ref_display_key(ref: t)) } } else { GroundedCastNotDecided }
+            CarrierGroundingRefused { cause: c } => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
+          }
+        TypeReferenceIsKernelType { name: k } =>
+          if k == "Int" { GroundedCastNotDecided }
+          else if natural { GroundedCastRefused { cause: "no declared conversion route" } }
+          else { GroundedCastNotDecided }
+        _ => GroundedCastNotDecided
+      }
+  }
+}
+
+fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
+      let grounded = match source_declaration {
+        Present { value: d } => grounded_cast_verdict(source: d, target: target_reading)
+        Absent => GroundedCastNotDecided
+      }
       if source_name == target_name { none }
+      else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
+      else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
+        let cause = match grounded {
+          GroundedCastRefused { cause: c } => c
+          _ => ""
+        }
+        let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- ", cause)
+        Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
+      }
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
@@ -8126,7 +8193,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
       else if !is_dag_cast_domain_type(name: target_name) { none }
       else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
       else {
-        let msg = concat("invalid cast: ", source_name, " as ", target_name)
+        let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- no declared conversion route in std.coercion")
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
@@ -11157,7 +11224,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: Resolved { node: source_node } } => value_type_is_declared_nominal(t: source_node, scope: scope)
         _ => false
       }
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
