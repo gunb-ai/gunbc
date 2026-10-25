@@ -58,7 +58,7 @@ import gunbc.owned_directory {
   owned_directory_path, owned_directory_member, owned_directory_mode, owned_directory_owner,
 }
 import gunbc.compute.work_provider_local {
-  ComputeStore, ProvideResult, compute_store, compute_principal_refusal,
+  ProvideResult, compute_store, compute_principal_refusal,
   compute_provide_admitted_as, compute_unobservable_principal,
 }
 import gunbc.compute.compute_store_owned_directories { compute_store_owned_directories }
@@ -156,7 +156,7 @@ test fn the_lab_store_hangs_under_the_single_lab_root_the_deploy_declares() -> B
 // goes red.
 test fn the_lab_store_is_demanded_owner_only_and_the_attempt_group_gets_nothing() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  let rows = compute_store_directories(instance: lab)
+  let rows = compute_store_owned_directories(instance: lab)
   && count(rows) == 2
   && all(rows, t =>
     // owner = the instance's directory owner, which IS the service user the verification obligation runs as.
