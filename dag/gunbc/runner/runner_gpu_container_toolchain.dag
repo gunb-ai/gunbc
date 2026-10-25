@@ -1663,13 +1663,25 @@ fn gpu_container_provision_run_action(
     ProvisionRefusal { step: s, cause: c } => [GpuContainerProvisionRefused { step: s, cause: c }]
     // STAGE THEN RUN, as one action, because splitting them invites a caller to run a body it never
     // proved landed. The stage is the typed writer; the run is the interpreter on the staged PATH.
+    //
+    // AN EMPTY BODY IS REFUSED HERE, before anything is written. An empty file is a VALID shell script:
+    // `sh` reads it, runs nothing, and exits 0 — so a staged empty installer would be recorded as
+    // "docker-ce repo install: ok" and the converge would discover the gap only at the read-back, where the
+    // cause reads as a missing package rather than a body that was never assembled. The check lives at the
+    // one place a body becomes a file, rather than in each producer, because there are two producers and a
+    // future third would otherwise re-open the same hole; a whitespace-only body is treated as empty for
+    // the same reason it would be treated as empty by the interpreter.
     ProvisionStagedScript { step: s, name: n, body: b } => {
       let staged = gpu_container_provision_staged_path(name: n)
+      if trim(s: b) == "" {
+        [GpuContainerProvisionRefused { step: s, cause: "staged script body is empty; refusing to write an installer that would run nothing and exit 0" }]
+      } else {
       match gpu_container_provision_repo_script_write(target: admin, context: context, name: n, body: b) {
         Present { value: why } => [GpuContainerProvisionRefused { step: join([s, " stage"], ""), cause: why }]
         Absent => [gpu_container_provision_run_leg(
           leg: gpu_container_provision_leg(step: s, words: gpu_container_provision_run_script_argv(path: staged)),
           transport: transport)]
+      }
       }
     }
     ProvisionOwnedDirectory { step: s, argv: a } =>
@@ -1744,6 +1756,20 @@ fn gpu_container_provision_plan(
       let uid_value = identity.uid
       let home_dir = identity.home
     let displacee_home = gpu_container_displacee_home_lookup(account: ids.displaceable, transport: transport)
+    // THE NVIDIA REPO ACTION IS DECIDED HERE, not inside the body lookup. A host the model declares no
+    // provision script for gets a PROVISION REFUSAL naming the host, and it runs nothing. The alternative
+    // is staging a body that installs nothing and exits 0, which reads as success right up to the read-back
+    // that would then misattribute the cause to a missing package. The refusal carries the host so the
+    // receipt says which runner_host_deploy row is missing.
+    let nvidia_repo_action = match gpu_container_provision_toolkit_body(host: host) {
+      Present { value: b } =>
+        ProvisionStagedScript { step: "nvidia repo install", name: "nvidia-repo" as NonEmptyStr, body: b }
+      Absent =>
+        ProvisionRefusal {
+          step: "nvidia repo install",
+          cause: join(["host ", host as String, " declares no GPU container toolchain provision script in runner_host_deploy; refusing rather than staging an empty installer"], ""),
+        }
+    }
     append(
       append(
         append(
@@ -1751,7 +1777,7 @@ fn gpu_container_provision_plan(
             // 1. THE TWO PINNED REPOS, bodies taken from the host model rather than re-derived here, so
             // the per-host rows remain the single place that says what a host is supposed to have.
             ProvisionStagedScript { step: "docker-ce repo install", name: "docker-ce-repo" as NonEmptyStr, body: runner_host_docker_provision_script() },
-            ProvisionStagedScript { step: "nvidia repo install", name: "nvidia-repo" as NonEmptyStr, body: gpu_container_provision_toolkit_body(host: host) },
+            nvidia_repo_action,
             // 2. THE UNIT DIRECTORY, owned by the JOB USER and not by root. This is the single most
             // counter-intuitive requirement found while building this, and it is measured: with the
             // directory root-owned, daemon-reload succeeded, the daemon started, and the container ran —
@@ -1890,11 +1916,19 @@ fn gpu_container_provision_run_text(r: GpuContainerProvisionRun) -> String {
 // toolchain — which the caller has already excluded, because it only provisions for a host whose row says
 // Desired. The empty string is therefore a contradiction between the two readings of the same row, and it
 // is reported as one rather than staging an empty script that would "succeed" at installing nothing.
-fn gpu_container_provision_toolkit_body(host: NonEmptyStr) -> String {
-  match runner_host_gpu_container_toolchain_provision_script(host: (host as String) as HostIdentity) {
-    Present { value: b } => b
-    Absent => ""
-  }
+// THE NVIDIA REPO SCRIPT FOR THIS HOST, OR NOTHING — and NOTHING IS REPORTED, NOT SMOOTHED OVER.
+//
+// The host model is the only source of this body. When the host declares no provision script the answer
+// is Absent, and Absent must reach the caller: an earlier draft returned the empty string here, which
+// its own comment claimed was "reported as a contradiction" while nothing downstream reported anything of
+// the kind. An empty `body` flows into ProvisionStagedScript, whose arm writes whatever string it is
+// handed, and a staged file containing nothing is a valid POSIX shell script that runs and exits 0 — so
+// the converge would have "installed the NVIDIA repository", moved on, and only failed much later at the
+// read-back, attributing to a missing package a cause that was a missing model row. That is a fabricated
+// default, and DESIGN.md §5 refuses it: the absence is turned into a typed refusal at the call site, and
+// the executor independently refuses any empty body at the choke point where a body becomes a file.
+fn gpu_container_provision_toolkit_body(host: NonEmptyStr) -> String? {
+  runner_host_gpu_container_toolchain_provision_script(host: (host as String) as HostIdentity)
 }
 
 // THE JOB USER, AS PROVISIONING NEEDS TO KNOW IT: its uid and its home, from one lookup.
