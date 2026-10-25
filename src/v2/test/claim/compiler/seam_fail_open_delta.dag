@@ -17,15 +17,13 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import std.types { Bool, List }
 import v2.compiler.dependency_demand { DependencyDemandRow, DemandDerived, DemandUndecided, dependency_demand_of }
 import v2.compiler.dependency_demand_census { DemandCensusModuleFacts, demand_census_module_facts }
-import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.source_root_eval { NativeTestContext, native_test_context_from_ingest, native_test_resolve_module }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Symbol, symbol_intern_lexeme }
+import v2.std.node { symbol_intern_lexeme }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -63,23 +61,29 @@ fn sfd_witness(path: String) -> DagSourceReadWitness {
   }
 }
 
-fn sfd_assemble(extra: List<DagSourceReadWitness>, subject: Symbol) -> Optional<ResolvedTree> {
-  match assemble_program_from_ingest(
-    ingest: fold_list(
-      xs: sfd_closure,
-      empty: extra,
-      cons: fn(acc, path) { list_snoc_item(xs: acc, item: sfd_witness(path: path)) }
-    ),
-    admission: Admission { subject: ResolutionSubject { name: Cons { head: subject, tail: Empty } }, imports: Empty },
-    lm: dag_language_model()
-  ) {
+// THE INSTRUMENT'S OWN ROUTE, byte-identical in shape to operation_declaration_seam's harness, so
+// the same walk settles the OLD arms here and the NEW arms at the model head.
+fn sfd_ingest(extra: List<DagSourceReadWitness>) -> List<DagSourceReadWitness> {
+  fold_list(
+    xs: sfd_closure,
+    empty: extra,
+    cons: fn(acc, path) { list_snoc_item(xs: acc, item: sfd_witness(path: path)) }
+  )
+}
+
+fn sfd_resolved(extra: List<DagSourceReadWitness>, module: QualifiedName) -> Optional<ResolvedTree> {
+  match native_test_context_from_ingest(ingest: sfd_ingest(extra: extra)) {
     Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: module).resolved {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
+      }
   }
 }
 
 fn sfd_seam_facts() -> Optional<DemandCensusModuleFacts> {
-  match sfd_assemble(extra: Empty, subject: ^v2) {
+  match sfd_resolved(extra: Empty, module: qualified_name_from_dotted_string(dotted: "v2.std.data_index")) {
     Absent => optional_absent()
     Present { value: resolved } =>
       optional_present(value: demand_census_module_facts(resolved: resolved, module_qn: qualified_name_from_dotted_string(dotted: "v2.std.data_index")))
@@ -101,7 +105,7 @@ fn sfd_caller_demand() -> Optional<DependencyDemandRow> {
   match sfd_seam_facts() {
     Absent => optional_absent()
     Present { value: seam_facts } =>
-      match sfd_assemble(extra: [sfd_caller_witness()], subject: ^ods) {
+      match sfd_resolved(extra: [sfd_caller_witness()], module: qualified_name_from_dotted_string(dotted: "ods.caller")) {
         Absent => optional_absent()
         Present { value: resolved } =>
           let caller_facts = demand_census_module_facts(resolved: resolved, module_qn: qualified_name_from_dotted_string(dotted: "ods.caller"))
