@@ -20,6 +20,7 @@ import std.human_intervention {
   HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly,
   DischargedAt, NoDischargeSiteModeled,
 }
+import std.scoped_authorization { AuthorizationScope, first_uncovered_scope, authorization_scope_wire }
 import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -157,19 +158,28 @@ fn standing_ruling_discharges_irreversibility(r: StandingDestructiveAuthorizatio
 // is only that the root's site is a rostered row (gunbc.auth.privileged_effect_census
 // convergence_lineage_defects); the census shares the row's value as the root, so the characteristics
 // cannot drift from the row.
+//
+// ENTAILMENT IS SCOPE COVERAGE, NOT A DECLARATION (review 85948). The ruling admits an effect against the
+// approval's std.scoped_authorization scopes, so the root carries the scopes its approval grants and the
+// inheriting effect carries the scopes it exercises, and admission refuses unless every required scope is
+// covered by a granted one (first_uncovered_scope, the same relation authorize() applies to the redeemed
+// grant at run time). An effect that states no scope refuses rather than passing vacuously, which is
+// std.scoped_authorization's own rule. The scopes stated here are what the root's access request must
+// ask for and what the inheriting site must present; the run-time grant is checked against the same rows.
 type ConvergenceRoot {
   site: DeclarationRef
   effect: PrivilegedEffect
+  approved_scopes: List<AuthorizationScope>
 }
 
 type WitnessDischarge
   = NoWitnessDischarge
   | StandingRulingUnderInterlock { ruling: StandingDestructiveAuthorization }
-  | EntailedByApprovedConvergence { root: ConvergenceRoot }
+  | EntailedByApprovedConvergence { root: ConvergenceRoot, required_scopes: List<AuthorizationScope> }
 
 fn convergence_lineage_root(e: PrivilegedEffect) -> ConvergenceRoot? {
   match e.witness_discharge {
-    EntailedByApprovedConvergence { root: r } => Present { value: r }
+    EntailedByApprovedConvergence { root: r, required_scopes: _ } => Present { value: r }
     NoWitnessDischarge => none
     StandingRulingUnderInterlock { ruling: _ } => none
   }
@@ -199,7 +209,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
       match e.witness_discharge {
         NoWitnessDischarge => true
         StandingRulingUnderInterlock { ruling: r } => !standing_ruling_discharges_irreversibility(r: r)
-        EntailedByApprovedConvergence { root: _ } => true
+        EntailedByApprovedConvergence { root: _, required_scopes: _ } => true
       }
     ReversibleByReapply => false
   }
@@ -662,8 +672,8 @@ fn witness_discharge_text(d: WitnessDischarge) -> String {
     NoWitnessDischarge => "NoWitnessDischarge"
     StandingRulingUnderInterlock { ruling: r } =>
       join(["StandingRulingUnderInterlock: under ", standing_ruling_interlock_label(r: r), "; ruling ", r.ruling_text as String], "")
-    EntailedByApprovedConvergence { root: r } =>
-      join(["EntailedByApprovedConvergence: approved at ", declaration_ref_display_key(ref: r.site)], "")
+    EntailedByApprovedConvergence { root: r, required_scopes: rs } =>
+      join(["EntailedByApprovedConvergence: approved at ", declaration_ref_display_key(ref: r.site), "; requires ", join(map(rs, x => scope_text(scope: x)), ", ")], "")
   }
 }
 
@@ -773,6 +783,32 @@ fn root_selects_operator_approval(root: ConvergenceRoot) -> Bool {
   }
 }
 
+fn scope_text(scope: AuthorizationScope) -> String {
+  match authorization_scope_wire(scope: scope) {
+    Present { value: w } => w as String
+    Absent => "an unrenderable scope"
+  }
+}
+
+fn required_scopes_of(e: PrivilegedEffect) -> List<AuthorizationScope> {
+  match e.witness_discharge {
+    EntailedByApprovedConvergence { root: _, required_scopes: rs } => rs
+    NoWitnessDischarge => []
+    StandingRulingUnderInterlock { ruling: _ } => []
+  }
+}
+
+fn scope_entailment(root: ConvergenceRoot, at: String, required: List<AuthorizationScope>) -> InheritanceAdmission {
+  if (required |> count) == 0 {
+    InheritanceRefused { defect: join(["the effect inheriting the approval at ", at, " states no scope, so nothing shows the approved convergence entails it"], "") as NonEmptyStr }
+  } else {
+    match first_uncovered_scope(granted: root.approved_scopes, required: required) {
+      Present { value: missing } => InheritanceRefused { defect: join(["the effect requires ", scope_text(scope: missing), ", which the approval at ", at, " does not grant"], "") as NonEmptyStr }
+      Absent => InheritanceAdmitted
+    }
+  }
+}
+
 fn inheritance_admission(e: PrivilegedEffect) -> InheritanceAdmission {
   match convergence_lineage_root(e: e) {
     Absent => NoInheritanceDeclared
@@ -791,7 +827,7 @@ fn inheritance_admission(e: PrivilegedEffect) -> InheritanceAdmission {
         match convergence_lineage_root(e: root.effect) {
           Present { value: _ } => InheritanceRefused { defect: join(["the lineage root ", at, " declares a lineage of its own; an approval is inherited only from the convergence the operator approved"], "") as NonEmptyStr }
           Absent =>
-            if root_selects_operator_approval(root: root) { InheritanceAdmitted }
+            if root_selects_operator_approval(root: root) { scope_entailment(root: root, at: at, required: required_scopes_of(e: e)) }
             else { InheritanceRefused { defect: join(["the lineage root ", at, " does not select OperatorApprovedCapability, so no operator approval exists to inherit"], "") as NonEmptyStr } }
         }
       }

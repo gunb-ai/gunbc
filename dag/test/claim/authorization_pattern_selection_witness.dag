@@ -45,6 +45,8 @@ import gunbc.auth.privileged_effect_census {
 import gunbc.cloudflare.r2_origin { cloudflare_account_allocation_intervention }
 import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
 import std.decl_ref { decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.scoped_authorization { AuthorizationScope, AuthorizedAction }
+import std.effect_grant { Write, filesystem_position }
 import std.types { NonEmptyStr, String, Int, List }
 import std.logic { Bool }
 
@@ -436,7 +438,7 @@ test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federa
 fn discharged_by_runner_lifecycle_ruling(d: WitnessDischarge) -> Bool {
   match d {
     NoWitnessDischarge => false
-    EntailedByApprovedConvergence { root: _ } => false
+    EntailedByApprovedConvergence { root: _, required_scopes: _ } => false
     StandingRulingUnderInterlock { ruling: g } => (g.ruling_text as String) == (runner_lifecycle_operator_ruling.ruling_text as String)
   }
 }
@@ -601,16 +603,26 @@ test fn the_srv1_host_root_deploy_effects_inherit_the_root_mutation_approval() -
 // a_recurring_host_root_write_selects_the_administrator_edge); with one it selects the inherited
 // approval, at every frequency a human could otherwise be asked at, except break-glass, which is
 // witnessed per instance by declaration.
-fn root_at(decl: String, e: PrivilegedEffect) -> ConvergenceRoot {
-  ConvergenceRoot { site: decl_ref(module_path: "fixture.convergence", decl_name: decl), effect: e }
+fn fixture_write_scope(path: List<String>) -> AuthorizationScope {
+  AuthorizationScope { verb: Write, resource: filesystem_position(path: path), action: "install" as AuthorizedAction }
 }
 
-fn inheriting_under(e: PrivilegedEffect, root: ConvergenceRoot) -> PrivilegedEffect {
+// Every fixture root approves writes under /etc; an inheriting fixture exercises /etc/fixture unless a
+// claim says otherwise.
+fn root_at(decl: String, e: PrivilegedEffect) -> ConvergenceRoot {
+  ConvergenceRoot { site: decl_ref(module_path: "fixture.convergence", decl_name: decl), effect: e, approved_scopes: [fixture_write_scope(path: ["etc"])] }
+}
+
+fn inheriting_requiring(e: PrivilegedEffect, root: ConvergenceRoot, required: List<AuthorizationScope>) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: e.subject, frequency: e.frequency, reversibility: e.reversibility, surface: e.surface,
     workload_identity: e.workload_identity, minted_reach: e.minted_reach, billing: e.billing,
-    witness_discharge: EntailedByApprovedConvergence { root: root },
+    witness_discharge: EntailedByApprovedConvergence { root: root, required_scopes: required },
   }
+}
+
+fn inheriting_under(e: PrivilegedEffect, root: ConvergenceRoot) -> PrivilegedEffect {
+  inheriting_requiring(e: e, root: root, required: [fixture_write_scope(path: ["etc", "fixture"])])
 }
 
 // The approved root is an effect the selection sends to the approval capability on its own.
@@ -660,6 +672,16 @@ test fn a_root_the_selection_does_not_send_to_approval_refuses_the_inheriting_ef
   selected_approved_convergence_grant(s: select_authorization_pattern(e: inheriting_under(e: recurring_host_root_write(), root: approved)))
     && refused_naming(s: select_authorization_pattern(e: inheriting_under(e: recurring_host_root_write(), root: federated)), fragment: "does not select OperatorApprovedCapability")
     && refused_naming(s: select_authorization_pattern(e: inheriting_under(e: recurring_host_root_write(), root: chained)), fragment: "declares a lineage of its own")
+}
+
+// ENTAILMENT IS SCOPE COVERAGE (review 85948): the same effect under the same approved root is admitted
+// only while the root's approval covers every scope it exercises. A scope outside the approved tree, and
+// an effect that states no scope at all, each refuse with a located defect.
+test fn an_effect_inherits_only_the_scopes_the_approval_grants() -> Bool {
+  let approved = root_at(decl: "approved_root", e: one_off_grant_unbindable())
+  selected_approved_convergence_grant(s: select_authorization_pattern(e: inheriting_requiring(e: recurring_host_root_write(), root: approved, required: [fixture_write_scope(path: ["etc", "fixture"])])))
+    && refused_naming(s: select_authorization_pattern(e: inheriting_requiring(e: recurring_host_root_write(), root: approved, required: [fixture_write_scope(path: ["etc", "fixture"]), fixture_write_scope(path: ["var", "lib"])])), fragment: "does not grant")
+    && refused_naming(s: select_authorization_pattern(e: inheriting_requiring(e: recurring_host_root_write(), root: approved, required: [])), fragment: "states no scope")
 }
 
 fn fixture_row(decl: String, e: PrivilegedEffect) -> PrivilegedEffectSite {
