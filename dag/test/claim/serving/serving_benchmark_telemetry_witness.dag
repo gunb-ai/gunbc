@@ -11,7 +11,7 @@ import extdeps.filesystem.filesystem_io
 import extdeps.storage.types { Gen4 }
 import extdeps.nvidia.management_library { NvmlClocksEventGpuIdle, NvmlClocksEventSwPowerCap, NvmlClocksEventSwThermalSlowdown }
 import extdeps.nvidia.system_management_interface {
-  NvidiaSmiGpuIdentity, NvidiaSmiGpuSample, NvidiaSmiPcieSample, NvidiaSmiRowsParsed, NvidiaSmiRowUnparsed,
+  NvidiaSmiGpuIdentity, NvidiaSmiGpuSample, NvidiaSmiPcieSample, NvidiaSmiIdentityRowsParsed, NvidiaSmiIdentityRowUnparsed, NvidiaSmiSampleRowsParsed, NvidiaSmiSampleRowUnparsed, NvidiaSmiPcieRowsParsed, NvidiaSmiPcieRowUnparsed, NvidiaSmiMemoryUsedRowsParsed, NvidiaSmiMemoryUsedRowUnparsed,
   nvidia_smi_identity_rows, nvidia_smi_sample_rows, nvidia_smi_dmon_pcie_rows, nvidia_smi_memory_used_rows,
 }
 import gunbc.serving.serving_benchmark_run_receipt { WallPowerUnmetered, LevelTelemetry, GpuLevelTelemetry }
@@ -35,8 +35,8 @@ fn capture(name: String) -> String {
 
 test fn srv3_identity_reads_both_ada_cards() -> Bool {
   match nvidia_smi_identity_rows(text: capture(name: "query_gpu_identity.csv")) {
-    NvidiaSmiRowUnparsed { line: _ } => false
-    NvidiaSmiRowsParsed { rows: gs } =>
+    NvidiaSmiIdentityRowUnparsed { line: _ } => false
+    NvidiaSmiIdentityRowsParsed { rows: gs } =>
       count(gs) == 2 && match first(gs) {
         Absent => false
         Present { value: g } =>
@@ -56,8 +56,8 @@ test fn srv3_identity_reads_both_ada_cards() -> Bool {
 
 test fn srv3_samples_read_with_utc_timestamps_and_the_idle_mask() -> Bool {
   match nvidia_smi_sample_rows(text: capture(name: "query_gpu_samples_lms500.csv")) {
-    NvidiaSmiRowUnparsed { line: _ } => false
-    NvidiaSmiRowsParsed { rows: ss } =>
+    NvidiaSmiSampleRowUnparsed { line: _ } => false
+    NvidiaSmiSampleRowsParsed { rows: ss } =>
       count(ss) == 12 && match first(ss) {
         Absent => false
         // 2026/10/25 06:29:44.531 UTC; 6.99 W; 210 MHz SM; mask 0x1, GPU idle; an idle link at gen 1 x8
@@ -74,15 +74,15 @@ test fn srv3_samples_read_with_utc_timestamps_and_the_idle_mask() -> Bool {
 
 test fn the_count_option_error_refuses_the_read() -> Bool {
   match nvidia_smi_sample_rows(text: "ERROR: Option --query-gpu=timestamp,uuid is not recognized. Please run 'nvidia-smi -h' for help.\n") {
-    NvidiaSmiRowUnparsed { line: _ } => true
-    NvidiaSmiRowsParsed { rows: _ } => false
+    NvidiaSmiSampleRowUnparsed { line: _ } => true
+    NvidiaSmiSampleRowsParsed { rows: _ } => false
   }
 }
 
 test fn srv3_dmon_reads_pcie_rows_and_skips_its_headers() -> Bool {
   match nvidia_smi_dmon_pcie_rows(text: capture(name: "dmon_pcie.txt")) {
-    NvidiaSmiRowUnparsed { line: _ } => false
-    NvidiaSmiRowsParsed { rows: ps } =>
+    NvidiaSmiPcieRowUnparsed { line: _ } => false
+    NvidiaSmiPcieRowsParsed { rows: ps } =>
       count(ps) == 6 && match first(ps) {
         Absent => false
         Present { value: p } => p.index == 0 && microsecond_count(m: p.at_unix) == 1792909763000000 && bandwidth_count(b: p.rx) == 0
@@ -194,7 +194,7 @@ test fn a_group_the_file_cannot_name_is_refused() -> Bool {
 
 test fn gpu_memory_used_rows_read_per_gpu() -> Bool {
   match nvidia_smi_memory_used_rows(text: "GPU-a, 512\nGPU-b, 2048\n") {
-    NvidiaSmiRowUnparsed { line: _ } => false
-    NvidiaSmiRowsParsed { rows: rs } => count(rs) == 2 && any(rs, r => (r.uuid as String) == "GPU-b" && mebibyte_count(m: r.used) == 2048)
+    NvidiaSmiMemoryUsedRowUnparsed { line: _ } => false
+    NvidiaSmiMemoryUsedRowsParsed { rows: rs } => count(rs) == 2 && any(rs, r => (r.uuid as String) == "GPU-b" && mebibyte_count(m: r.used) == 2048)
   }
 }
