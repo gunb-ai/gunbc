@@ -110,6 +110,25 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
 // absence of any entry invoke in it, and the evaluated `if:` across the input cases.
 fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_name: String) -> List<Node> {
   [
+    // Either name empty: an unnamed process cannot prove it is not the subject, and an unnamed
+    // subject is actuation on an inferred host. Fail closed, both arms in ONE test. Tested FIRST, as
+    // fleet_converge_split_precheck does, so two empty names report absence, not self-subject.
+    bash_build_if_from_stmts(
+      cond: bash_build_or_else(
+        left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: subject_env_name)]),
+        right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: executor_env_name)])
+      ),
+      then_stmts: [
+        bash_build_with_redir(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            bash_build_word_lit(text: join([fleet_converge_split_missing_subject_marker, ": both executor and subject must be named"], "")),
+          ]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ]
+    ),
     // Equal names = the executor is a slot on its own subject: the drain would wait for this very
     // job's executor forever (refused run 40085967610, actions-runner@srv3-13).
     bash_build_if_from_stmts(
@@ -123,24 +142,6 @@ fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_n
           inner: bash_build_command_with_words(words: [
             bash_build_word_lit(text: "echo"),
             bash_build_word_lit(text: fleet_converge_split_refusal_marker),
-          ]),
-          redir: ^bash_production_fold_redir_stdout_to_stderr,
-        ),
-        bash_build_exit(code: "1"),
-      ]
-    ),
-    // Either name empty: an unnamed process cannot prove it is not the subject, and an unnamed
-    // subject is actuation on an inferred host. Fail closed, both arms in ONE test.
-    bash_build_if_from_stmts(
-      cond: bash_build_or_else(
-        left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: subject_env_name)]),
-        right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: executor_env_name)])
-      ),
-      then_stmts: [
-        bash_build_with_redir(
-          inner: bash_build_command_with_words(words: [
-            bash_build_word_lit(text: "echo"),
-            bash_build_word_lit(text: join([fleet_converge_split_missing_subject_marker, ": both executor and subject must be named"], "")),
           ]),
           redir: ^bash_production_fold_redir_stdout_to_stderr,
         ),
