@@ -133,8 +133,8 @@ test fn the_ascent_guard_lowers_a_double_ampersand_chain() -> Bool {
     == "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]"
 }
 
-// Or is the other and-or operator the same lowering carries; if it shared `&&`'s spelling both operators
-// arms would be interchangeable and no consumer of Or could be trusted.
+// Or is the other and-or operator the same lowering carries; if it shared `&&`'s spelling, an Or
+// arm and an And arm would be interchangeable and no consumer of Or could be trusted.
 test fn path_or_lowers_double_pipe_not_double_ampersand() -> Bool {
   lowered(
     predicate: Or {
