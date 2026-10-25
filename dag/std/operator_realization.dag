@@ -63,15 +63,21 @@ type OperandDeclaration {
 //
 // The steps are the least the walk needs: a member compared by the target's equality, a member
 // routed to a declared function, a member compared by another declaration's plan (by reference,
-// so recursive data plans finitely), an optional compared by presence then content, and a
-// finite-support container compared by its type arguments in order (List/Set: the element;
-// Map: key then value).
+// so recursive data plans finitely), an optional compared by presence then content, a free-monoid
+// sequence compared element by element in order, and a finitely supported function (Map) compared
+// on the same keys with each value by its step. Keys, and the elements of a finite power set, are
+// compared by the target (a residual the census rows bound: gunbc.rung_drop
+// derived_equality_residual_field_equality). BY CONSTRUCTION every EqualityThroughPlan in a plan names
+// a declaration the same plan carries, and every step below a plan's root reaches a routed step:
+// the checker rewrites pruned references to EqualityByTarget before it stamps the plan, so a reader
+// has no 'missing declaration' or 'empty container' case to answer.
 type EqualityStep
   = EqualityByTarget
   | EqualityRouted { function: DeclarationRef }
   | EqualityThroughPlan { declaration: String }
   | EqualityPresence { inner: EqualityStep }
-  | EqualityContainer { arguments: List<EqualityStep> }
+  | EqualityElements { element: EqualityStep }
+  | EqualityMapValues { value: EqualityStep }
 
 type EqualityPlanField {
   field: String

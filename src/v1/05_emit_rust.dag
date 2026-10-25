@@ -198,7 +198,7 @@ import std.operator_realization {
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
   HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType, HostTextCarrier,
   OperandShapeFacts, OperandDeclaration,
-  EqualityPlan, EqualityStep, EqualityByTarget, EqualityRouted, EqualityThroughPlan, EqualityPresence, EqualityContainer,
+  EqualityPlan, EqualityStep, EqualityByTarget, EqualityRouted, EqualityThroughPlan, EqualityPresence, EqualityElements, EqualityMapValues,
   EqualityPlanField, EqualityPlanArm, DeclarationEqualityPlan,
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
   OperandDemand, DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
@@ -16821,24 +16821,14 @@ fn emit_rust_equality_step(plan: EqualityPlan, step: EqualityStep, a: String, b:
             Present { value: r } => concat(emit_rust_equality_fn_name(r: r), "(", a, ", ", b, ")")
             Absent => emit_rust_compile_error_expr(message: concat("equality plan: declaration ", key, " has no DeclarationRef"))
           }
-        Absent => concat("(", a, " == ", b, ")")
+        Absent => emit_rust_compile_error_expr(message: concat("equality plan names declaration ", key, " but carries no plan for it; the checker's normalization makes this unconstructible"))
       }
     EqualityPresence { inner: i } =>
       concat("(match (", a, ".as_ref(), ", b, ".as_ref()) { (Some(__px), Some(__py)) => ", emit_rust_equality_step(plan: plan, step: i, a: "__px", b: "__py"), ", (None, None) => true, _ => false })")
-    EqualityContainer { arguments: args } =>
-      if (args |> count) == 2 {
-        match args |> last {
-          Present { value: v } =>
-            concat("(", a, ".len() == ", b, ".len() && ", a, ".iter().all(|(__ck, __cv)| ", b, ".get(__ck).map_or(false, |__cw| ", emit_rust_equality_step(plan: plan, step: v, a: "__cv", b: "__cw"), ")))")
-          Absent => concat("(", a, " == ", b, ")")
-        }
-      } else {
-        match args |> first {
-          Present { value: e } =>
-            concat("(", a, ".len() == ", b, ".len() && ", a, ".iter().zip(", b, ".iter()).all(|(__cx, __cy)| ", emit_rust_equality_step(plan: plan, step: e, a: "__cx", b: "__cy"), "))")
-          Absent => concat("(", a, " == ", b, ")")
-        }
-      }
+    EqualityElements { element: e } =>
+      concat("(", a, ".len() == ", b, ".len() && ", a, ".iter().zip(", b, ".iter()).all(|(__cx, __cy)| ", emit_rust_equality_step(plan: plan, step: e, a: "__cx", b: "__cy"), "))")
+    EqualityMapValues { value: v } =>
+      concat("(", a, ".len() == ", b, ".len() && ", a, ".iter().all(|(__ck, __cv)| ", b, ".get(__ck).map_or(false, |__cw| ", emit_rust_equality_step(plan: plan, step: v, a: "__cv", b: "__cw"), ")))")
   }
 }
 

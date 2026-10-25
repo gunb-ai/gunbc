@@ -14,7 +14,7 @@ import std.target_representation { VariantParentIdentity, VariantParentIdentifie
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization {
   OperandDeclaration, EqualityPlan, EqualityStep, EqualityByTarget, EqualityRouted, EqualityThroughPlan,
-  EqualityPresence, EqualityContainer, EqualityPlanField, EqualityPlanArm, DeclarationEqualityPlan
+  EqualityPresence, EqualityElements, EqualityMapValues, EqualityPlanField, EqualityPlanArm, DeclarationEqualityPlan
 }
 import std.literal_elaboration {
   KernelGroundingView, PeanoGroundingView, SignedGroundingView, KernelGroundingArm,
@@ -179,7 +179,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { FreeSemigroup, CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
+import std.algebra { AlgebraProfile, FreeMonoidCollectionProfile, FinitelySupportedFunctionProfile, FinitePowerSetProfile, algebra_carriers, carrier_spelling_row_present, FreeSemigroup, CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
@@ -3740,13 +3740,38 @@ fn equality_container_walk(name: String, arguments: List<Node>, scope: InferScop
         let w = equality_operand_walk(n: child_type_node(ch: ch), scope: scope, visited: visited, depth: depth + 1, at_root: false)
         EqualityArmWalk { refusal: w.refusal, fields: list_snoc_item(xs: acc.fields, item: EqualityPlanField { field: "", step: w.step }), plans: concat(acc.plans, w.plans) }
     })
+  let steps = a.fields |> map(f => f.step)
   if a.refusal != none {
     equality_walk_refused(r: a.refusal)
-  } else if a.fields |> all(f => equality_step_is_by_target(s: f.step)) {
+  } else if steps |> all(s => equality_step_is_by_target(s: s)) {
     EqualityWalk { refusal: none, step: EqualityByTarget, plans: a.plans }
   } else {
-    EqualityWalk { refusal: none, step: EqualityContainer { arguments: a.fields |> map(f => f.step) }, plans: a.plans }
+    match equality_container_profile(leaf: qualified_last_segment(name: name)) {
+      Present { value: FreeMonoidCollectionProfile } =>
+        match steps |> first {
+          Present { value: e } => EqualityWalk { refusal: none, step: EqualityElements { element: e }, plans: a.plans }
+          Absent => equality_walk_by_target()
+        }
+      Present { value: FinitelySupportedFunctionProfile } =>
+        match steps |> last {
+          Present { value: v } => EqualityWalk { refusal: none, step: EqualityMapValues { value: v }, plans: a.plans }
+          Absent => equality_walk_by_target()
+        }
+      Present { value: FinitePowerSetProfile } => EqualityWalk { refusal: none, step: EqualityByTarget, plans: a.plans }
+      _ => equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a container whose shape the equality plan does not model", member_judged: false))
+    }
   }
+}
+
+// WHICH SHAPE A CONTAINER SPELLING DENOTES is std.algebra's: the declared profile of the carrier one of
+// whose container spellings it is (algebra_carriers), so List/FreeMonoid, Map and Set are told apart by
+// their algebra and never by a spelling list here.
+fn equality_container_profile(leaf: String) -> AlgebraProfile? {
+  fold(algebra_carriers(), init: none, f: (acc, c) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if c.spellings |> any(sp => sp.text == leaf && carrier_spelling_row_present(m: sp.container_algebra_row)) { Present { value: c.profile } } else { none }
+    })
 }
 
 fn equality_presence_walk(inner: EqualityWalk) -> EqualityWalk {
@@ -3898,7 +3923,8 @@ fn equality_step_reaches_route(s: EqualityStep, live: List<String>) -> Bool {
     EqualityRouted { function: _ } => true
     EqualityThroughPlan { declaration: d } => live |> any(l => l == d)
     EqualityPresence { inner: i } => equality_step_reaches_route(s: i, live: live)
-    EqualityContainer { arguments: args } => args |> any(a => equality_step_reaches_route(s: a, live: live))
+    EqualityElements { element: e } => equality_step_reaches_route(s: e, live: live)
+    EqualityMapValues { value: v } => equality_step_reaches_route(s: v, live: live)
   }
 }
 
@@ -3911,11 +3937,40 @@ fn equality_live_plans(plans: List<DeclarationEqualityPlan>, live: List<String>,
   if fuel <= 0 || (next |> count) == (live |> count) { next } else { equality_live_plans(plans: plans, live: next, fuel: fuel - 1) }
 }
 
+// THE STAMPED PLAN IS NORMALIZED: every step that reaches no routed step becomes EqualityByTarget, so a
+// pruned declaration is never named, and a sequence or map whose content compares by the target is
+// itself compared by the target. Readers therefore meet no dangling reference and no empty container.
+fn equality_step_normalized(s: EqualityStep, live: List<String>) -> EqualityStep {
+  if !equality_step_reaches_route(s: s, live: live) {
+    EqualityByTarget
+  } else {
+    match s {
+      EqualityByTarget => EqualityByTarget
+      EqualityRouted { function: f } => EqualityRouted { function: f }
+      EqualityThroughPlan { declaration: d } => EqualityThroughPlan { declaration: d }
+      EqualityPresence { inner: i } => EqualityPresence { inner: equality_step_normalized(s: i, live: live) }
+      EqualityElements { element: e } => EqualityElements { element: equality_step_normalized(s: e, live: live) }
+      EqualityMapValues { value: v } => EqualityMapValues { value: equality_step_normalized(s: v, live: live) }
+    }
+  }
+}
+
+fn equality_declaration_plan_normalized(p: DeclarationEqualityPlan, live: List<String>) -> DeclarationEqualityPlan {
+  DeclarationEqualityPlan {
+    declaration: p.declaration,
+    reference: p.reference,
+    arms: p.arms |> map(a => EqualityPlanArm { arm: a.arm, fields: a.fields |> map(f => EqualityPlanField { field: f.field, step: equality_step_normalized(s: f.step, live: live) }) })
+  }
+}
+
 fn equality_plan_of_walk(w: EqualityWalk) -> EqualityPlan? {
   let plans = equality_plan_dedup(plans: w.plans)
   let live = equality_live_plans(plans: plans, live: [], fuel: (plans |> count) + 1)
   if equality_step_reaches_route(s: w.step, live: live) {
-    Present { value: EqualityPlan { root: w.step, declarations: plans |> filter(p => live |> any(l => l == p.declaration)) } }
+    Present { value: EqualityPlan {
+      root: equality_step_normalized(s: w.step, live: live),
+      declarations: plans |> filter(p => live |> any(l => l == p.declaration)) |> map(p => equality_declaration_plan_normalized(p: p, live: live))
+    } }
   } else {
     none
   }
@@ -4010,7 +4065,12 @@ fn equality_collection_key_rows(t: Node, decl: String, scope: InferScope, fuel: 
   if fuel <= 0 { [] } else {
     let peeled = normalize_access_type_node(n: t)
     let leaf = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled))
-    let here = if (leaf == "Map" || leaf == "Set" || leaf == "HashMap" || leaf == "HashSet") && map_get(equality_extensional_container_rows, leaf) != none {
+    let keyed = match equality_container_profile(leaf: leaf) {
+      Present { value: FinitelySupportedFunctionProfile } => true
+      Present { value: FinitePowerSetProfile } => true
+      _ => false
+    }
+    let here = if keyed {
       match peeled.children |> first {
         Present { value: key } =>
           let kt = child_type_node(ch: key)

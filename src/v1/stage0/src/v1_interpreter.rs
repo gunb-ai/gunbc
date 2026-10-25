@@ -1266,7 +1266,9 @@ fn plan_equal(
                 .iter()
                 .find(|d| &d.declaration == declaration)
             {
-                None => Ok(a == b),
+                None => Err(InterpError::TypeError {
+                    msg: format!("equality plan names declaration '{declaration}' but carries no plan for it (unconstructible after the checker's normalization)"),
+                }),
                 Some(dp) => plan_declaration_equal(ctx, plan, dp, a, b),
             }
         }
@@ -1275,7 +1277,8 @@ fn plan_equal(
             (Some(x), Some(y)) => plan_equal(ctx, plan, inner, &x, &y),
             _ => Ok(false),
         },
-        S::EqualityContainer { arguments } => plan_container_equal(ctx, plan, arguments, a, b),
+        S::EqualityElements { element } => plan_elements_equal(ctx, plan, element, a, b),
+        S::EqualityMapValues { value } => plan_map_values_equal(ctx, plan, value, a, b),
     })
 }
 
@@ -1297,61 +1300,68 @@ fn optional_payload(v: &Value) -> Option<Value> {
     }
 }
 
-fn plan_container_equal(
+fn plan_shape_refusal(what: &str, a: &Value, b: &Value) -> InterpError {
+    InterpError::TypeError {
+        msg: format!(
+            "equality plan expected {what}, found {} and {}",
+            a.type_label(),
+            b.type_label()
+        ),
+    }
+}
+
+fn plan_map_values_equal(
     ctx: &InterpContext,
     plan: &crate::std_operator_realization::EqualityPlan,
-    arguments: &im::Vector<Rc<crate::std_operator_realization::EqualityStep>>,
+    value_step: &crate::std_operator_realization::EqualityStep,
     a: &Value,
     b: &Value,
 ) -> InterpResult<bool> {
-    match (a, b) {
-        (Value::Map(am), Value::Map(bm)) => {
-            let value_step = match arguments.get(1) {
-                Some(s) => s,
-                None => return Ok(a == b),
-            };
-            if am.len() != bm.len() {
-                return Ok(false);
-            }
-            for (k, av) in am.iter() {
-                match bm.get(k) {
-                    None => return Ok(false),
-                    Some(bv) => {
-                        if !plan_equal(ctx, plan, value_step, av, bv)? {
-                            return Ok(false);
-                        }
-                    }
-                }
-            }
-            Ok(true)
-        }
-        (Value::Set(_), Value::Set(_)) => Ok(a == b),
-        _ => {
-            let element_step = match arguments.get(0) {
-                Some(s) => s,
-                None => return Ok(a == b),
-            };
-            let (xs, ys) = match (a, b) {
-                (Value::List(x), Value::List(y)) => (
-                    x.iter().cloned().collect::<Vec<_>>(),
-                    y.iter().cloned().collect::<Vec<_>>(),
-                ),
-                _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
-                    (Some(x), Some(y)) => (x, y),
-                    _ => return Ok(a == b),
-                },
-            };
-            if xs.len() != ys.len() {
-                return Ok(false);
-            }
-            for (x, y) in xs.iter().zip(ys.iter()) {
-                if !plan_equal(ctx, plan, element_step, x, y)? {
+    let (Value::Map(am), Value::Map(bm)) = (a, b) else {
+        return Err(plan_shape_refusal("two maps", a, b));
+    };
+    if am.len() != bm.len() {
+        return Ok(false);
+    }
+    for (k, av) in am.iter() {
+        match bm.get(k) {
+            None => return Ok(false),
+            Some(bv) => {
+                if !plan_equal(ctx, plan, value_step, av, bv)? {
                     return Ok(false);
                 }
             }
-            Ok(true)
         }
     }
+    Ok(true)
+}
+
+fn plan_elements_equal(
+    ctx: &InterpContext,
+    plan: &crate::std_operator_realization::EqualityPlan,
+    element_step: &crate::std_operator_realization::EqualityStep,
+    a: &Value,
+    b: &Value,
+) -> InterpResult<bool> {
+    let (xs, ys) = match (a, b) {
+        (Value::List(x), Value::List(y)) => (
+            x.iter().cloned().collect::<Vec<_>>(),
+            y.iter().cloned().collect::<Vec<_>>(),
+        ),
+        _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+            (Some(x), Some(y)) => (x, y),
+            _ => return Err(plan_shape_refusal("two sequences", a, b)),
+        },
+    };
+    if xs.len() != ys.len() {
+        return Ok(false);
+    }
+    for (x, y) in xs.iter().zip(ys.iter()) {
+        if !plan_equal(ctx, plan, element_step, x, y)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn plan_fields_equal(
@@ -1372,7 +1382,14 @@ fn plan_fields_equal(
         let field = resolve_sym(*name);
         let equal = match arm.fields.iter().find(|f| f.field == field) {
             Some(f) => plan_equal(ctx, plan, &f.step, av, bv)?,
-            None => av == bv,
+            None => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "equality plan arm '{}' carries no step for field '{field}'",
+                        arm.arm
+                    ),
+                })
+            }
         };
         if !equal {
             return Ok(false);
@@ -1392,7 +1409,7 @@ fn plan_declaration_equal(
         (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => {
             match dp.arms.iter().find(|arm| arm.arm.is_empty()) {
                 Some(arm) => plan_fields_equal(ctx, plan, arm, af, bf),
-                None => Ok(a == b),
+                None => Err(plan_shape_refusal("a coproduct for this plan", a, b)),
             }
         }
         (
@@ -1413,10 +1430,19 @@ fn plan_declaration_equal(
             let arm_name = resolve_sym(*va);
             match dp.arms.iter().find(|arm| arm.arm == arm_name) {
                 Some(arm) => plan_fields_equal(ctx, plan, arm, af, bf),
-                None => Ok(a == b),
+                None => Err(InterpError::TypeError {
+                    msg: format!(
+                        "equality plan for '{}' has no arm '{arm_name}'",
+                        dp.declaration
+                    ),
+                }),
             }
         }
-        _ => Ok(a == b),
+        _ => Err(plan_shape_refusal(
+            "two values of one planned declaration",
+            a,
+            b,
+        )),
     }
 }
 
