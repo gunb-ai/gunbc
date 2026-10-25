@@ -39,9 +39,7 @@ import test.claim.plan_citation_census {
   plan_citation_citation_roster,
   plan_citation_occurrences,
   plan_citation_census_pool_roots,
-  plan_citation_census_rows_parsed,
-  plan_citation_census_rows,
-  plan_citation_census_facts,
+  plan_citation_census_read,
   plan_citation_census_rows_in
 }
 import gunbc.plans.p4_home_serving_power_semantics {
@@ -194,9 +192,8 @@ fn p4_citation_count_is_conserved(t: String) -> Bool {
 }
 
 // THE ONE CENSUS KEY PATH. Every census lookup in this module goes through
-// `test.claim.plan_citation_census::plan_citation_census_rows` or
-// `test.claim.plan_citation_census::plan_citation_census_rows_in`, both of which parse the citation the way the document
-// writes it and then ask `v2.std.decl_index::qualified_name_from_module` — the function that OWNS that key — to
+// `test.claim.plan_citation_census::plan_citation_census_rows_in`, which parses the citation the way the document writes it and then asks
+// `v2.std.decl_index::qualified_name_from_module` — the function that OWNS that key — to
 // build it. Three of these lookups used to hand-build the key at the call site and each got it
 // wrong in its own way: two passed `Module::Decl` straight in (the census key contains no `::`, so
 // such a lookup matches nothing and the claim reddens on a fact that is actually true), and one
@@ -217,13 +214,15 @@ fn p4_declares_field(fact: DeclFact, field: String) -> Bool {
   string_contains(s: source.content, pattern: concat("  ", concat(field, ": ")))
 }
 
-// THE CENSUS READ. One full read, joined against every citation: this claim resolves a
-// population, and a keyed read rebuilds the declaration pool on every call (the measurement is
-// recorded on `test.claim.plan_citation_census::plan_citation_census_facts`), so the facts are read once by the
-// claim and passed in. The census keys on the AUTHORED module name, which is why
-// `v1.compiler.infer` resolves although its file is `src/v1/04_infer.dag`, a path no caller
-// could have guessed from the name; the pool roots that make the `v1.*` citations resolve at
-// all are the shared module's, not restated here.
+// THE CENSUS READ. `v2.std.decl_index::decl_facts_at` is the keyed host-side read, not a fold
+// over the whole corpus: the precedent warns that repeated full `decl_facts` calls took a
+// witness "past any bound" (3.6s each measured). Each claim reads it ONCE with every citation it
+// asks about (`plan_citation_census_read`), negative controls included so the census answers them,
+// and joins each citation against that read (`plan_citation_census_rows_in`).
+// Pools dag AND src/v1 -- measured, not assumed: with only ["dag","src/v2"] pooled, the four
+// `v1.*` citations in this plan resolve to ZERO rows. The census keys on the AUTHORED module
+// name, which is why `v1.compiler.infer` resolves although its file is `src/v1/04_infer.dag`,
+// a path no caller could have guessed from the name.
 fn p4_citation_resolves(facts: List<DeclFact>, cite: String) -> Bool {
   let c = plan_citation_parse(w: cite)
   let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
@@ -237,7 +236,11 @@ fn p4_citation_resolves(facts: List<DeclFact>, cite: String) -> Bool {
 test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
   let t = carrier_text()
   let roster = plan_citation_citation_roster(t)
-  let facts = plan_citation_census_facts()
+  let positive = "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission"
+  let near_miss = "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmissionShadow"
+  // Both controls are keys of the ONE read, so the census answers them; a key left out of the
+  // read would come back empty by omission and the negative would pass without being asked.
+  let facts = plan_citation_census_read(cites: concat(roster, [positive, near_miss]))
   // WHAT THE CONTROL DISCRIMINATES: that this resolver can answer BOTH ways, so a citation
   // the document asserts is not satisfied by the document asserting it. It used to rest on
   // `gunbc.serving.home_serving_power_policy` being UNMERGED, a premise the world retired
@@ -250,8 +253,8 @@ test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bo
   // positives beside it run the identical function; alone it is green by construction.
   p4_citation_count_is_conserved(t: t)
     && roster.length() > 0
-    && p4_citation_resolves(facts: facts, cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission")
-    && !p4_citation_resolves(facts: facts, cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmissionShadow")
+    && p4_citation_resolves(facts: facts, cite: positive)
+    && !p4_citation_resolves(facts: facts, cite: near_miss)
     && all(roster, cite => p4_citation_resolves(facts: facts, cite: cite))
 }
 
@@ -381,8 +384,8 @@ test fn the_candidate_ceilings_are_read_from_the_frontier_that_declares_them() -
 // Empty for every census row and the claim was RED ON A TRUE FACT — a conjunct nobody could falsify
 // is not a check. The cardinality is therefore read where it is actually written, in the next two
 // functions, rather than from a node that cannot express it.
-fn p4_declares_field_by_name(cite: String, field: String) -> Bool {
-  let rows = plan_citation_census_rows(cite: cite)
+fn p4_declares_field_by_name(facts: List<DeclFact>, cite: String, field: String) -> Bool {
+  let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
   any(rows, fact => any(p4_declared_field_names(fact: fact), n => n == field))
 }
 
@@ -448,11 +451,11 @@ fn p4_type_block(content: String, decl: String) -> String {
 // inside the type it names (so a retype or a lost `?` reddens it). One conjunct alone would let the
 // other drift: a file that still spells the field while the census no longer carries it, or a census
 // row whose declaring file has been rewritten underneath it.
-fn p4_optional_watt_field(cite: String, field: String) -> Bool {
+fn p4_optional_watt_field(facts: List<DeclFact>, cite: String, field: String) -> Bool {
   let c = plan_citation_parse(w: cite)
-  let rows = plan_citation_census_rows_parsed(c: c)
+  let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
   count(rows) > 0
-    && p4_declares_field_by_name(cite: cite, field: field)
+    && p4_declares_field_by_name(facts: facts, cite: cite, field: field)
     && all(rows, fact => p4_field_is_declared_optional_watt(
       fact: fact,
       decl: c.decl_name,
@@ -484,16 +487,22 @@ fn p4_optional_watt_field(cite: String, field: String) -> Bool {
 // `wattage_ceiling` is the negative for the NAME read: no such field exists on the card row, so a
 // name read that accepted anything at all would be caught here rather than looking strong.
 test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool {
+  let facts = plan_citation_census_read(cites: [
+    "extdeps.gpu.types::GpuModelCatalogRow",
+    "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization"
+  ])
   p4_optional_watt_field(
+    facts: facts,
     cite: "extdeps.gpu.types::GpuModelCatalogRow",
     field: "tdp_watts"
   )
     && p4_optional_watt_field(
+      facts: facts,
       cite: "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization",
       field: "applied_power_limit"
     )
     && all(
-      plan_citation_census_rows(cite: "extdeps.gpu.types::GpuModelCatalogRow"),
+      plan_citation_census_rows_in(facts: facts, cite: "extdeps.gpu.types::GpuModelCatalogRow"),
       row => !p4_field_is_declared_optional_watt(
         fact: row,
         decl: "GpuModelCatalogRow",
@@ -501,6 +510,7 @@ test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool
       )
     )
     && !p4_declares_field_by_name(
+      facts: facts,
       cite: "extdeps.gpu.types::GpuModelCatalogRow",
       field: "wattage_ceiling"
     )
@@ -555,8 +565,8 @@ test fn the_gpu_bench_receipts_parse_through_their_owning_module() -> Bool {
 // readable field — the exact failure this module shipped with — reddens here instead of satisfying a
 // vacuous `all`. The floor is existence, deliberately not a transcribed field count: a frozen number
 // rots (§6), and "the walk saw something" is the whole of what anti-vacuity needs.
-fn p4_no_power_named_field(cite: String) -> Bool {
-  let rows = plan_citation_census_rows(cite: cite)
+fn p4_no_power_named_field(facts: List<DeclFact>, cite: String) -> Bool {
+  let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
   let fields = fold(rows, init: Empty, f: fn(acc, r) {
     concat(acc, p4_declared_field_names(fact: r))
   })
@@ -565,10 +575,16 @@ fn p4_no_power_named_field(cite: String) -> Bool {
 }
 
 test fn no_type_that_would_carry_a_power_reading_declares_one() -> Bool {
+  let facts = plan_citation_census_read(cites: [
+    "extdeps.gpu_bench.request_v2::GpuBenchRequestV2",
+    "extdeps.nvidia.management_library::DeviceMemoryObservation"
+  ])
   p4_no_power_named_field(
+    facts: facts,
     cite: "extdeps.gpu_bench.request_v2::GpuBenchRequestV2"
   )
     && p4_no_power_named_field(
+      facts: facts,
       cite: "extdeps.nvidia.management_library::DeviceMemoryObservation"
     )
 }
