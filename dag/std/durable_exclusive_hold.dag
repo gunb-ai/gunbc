@@ -303,8 +303,9 @@ type DurableHoldNonHolderReleaseRefusal<Observation>
   | NonHolderReleaseSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
   | NonHolderReleaseObservationUnavailable { cause: CasUnreadableSlot }
 
-// The eligible arm keeps the basis it was admitted on, so the free state a consumer writes can say why
-// the slot was freed and a reader can tell evidence from consent.
+// The eligible arm hands the basis it was admitted on back to the caller, so the caller can tell
+// evidence from consent and derive its release reference from it. The free state itself stores only
+// that reference (DurableHoldFree released_by), exactly as for a release or a recovery.
 type DurableHoldNonHolderReleaseBasis<Observation>
   = NonHolderReleasedOnEvidence { observation: Observation }
   | NonHolderReleasedByOperator { grant: OperatorGrant<DurableHoldSubject> }
