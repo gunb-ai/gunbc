@@ -1,5 +1,7 @@
 module v2.test.claim.std.named_child_lookup
 
+import v2.std.node { node_same_occurrence, NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // named_child_lookup is the total primitive and find_named_child its projection. These witnesses pin
@@ -12,7 +14,7 @@ fn ncl_atom(s: Symbol) -> Node {
 }
 
 fn ncl_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn ncl_conj() -> Node {
@@ -21,7 +23,7 @@ fn ncl_conj() -> Node {
     children: [
       ncl_named(name: ^ncl_unique, target: ncl_atom(s: ^ncl_unique_target)),
       ncl_named(name: ^ncl_repeated, target: ncl_atom(s: ^ncl_repeated_first)),
-      Edge { label: Positional, target: ncl_atom(s: ^ncl_positional_target) },
+      Edge { label: Positional, target: ncl_atom(s: ^ncl_positional_target), declaration: NotADeclaration },
       ncl_named(name: ^ncl_repeated, target: ncl_atom(s: ^ncl_repeated_second))
     ],
     occurrence_id: OccurrenceSynthetic
@@ -30,7 +32,7 @@ fn ncl_conj() -> Node {
 
 fn ncl_found_is(lookup: NamedChildLookup, expected: Node) -> Bool {
   match lookup {
-    NamedChildFound { target: t } => t == expected
+    NamedChildFound { target: t } => node_same_occurrence(a: t, b: expected)
     NamedChildMissing => false
     NamedChildAmbiguous => false
   }
@@ -61,7 +63,7 @@ fn ncl_rejected_with(o: Outcome<Node>, reason: Symbol) -> Bool {
 
 fn ncl_accepted_is(o: Outcome<Node>, expected: Node) -> Bool {
   match o {
-    Accepted { value: v, diagnostics: _ } => v == expected
+    Accepted { value: v, diagnostics: _ } => node_same_occurrence(a: v, b: expected)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -81,7 +83,7 @@ fn ncl_transform() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: ncl_atom(s: ^ncl_callee) },
+      Edge { label: Positional, target: ncl_atom(s: ^ncl_callee), declaration: NotADeclaration },
       ncl_named(name: ^ncl_arg, target: ncl_atom(s: ^ncl_arg_value))
     ],
     occurrence_id: OccurrenceSynthetic

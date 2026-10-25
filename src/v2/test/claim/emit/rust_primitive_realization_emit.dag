@@ -1,0 +1,369 @@
+module v2.test.claim.emit.rust_primitive_realization_emit
+
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.rust {
+  rust_production_lex,
+  rust_primitive_realization_rows,
+  rust_operator_realizations_catalog_node,
+  rust_value_expression_projection,
+  rust_primitive_by_shared_reference_row,
+  rust_primitive_method_row,
+  rust_primitive_unlabeled_argument
+}
+import v2.extdeps.languages.rust_fixtures { rust_target_model_with_operators_and_lex }
+import v2.std.compilers.target_model { PrimitivePassByValue, PrimitivePassBySharedReference, TargetPrimitiveRealization, TargetRealizationCatalog, PrimitiveRealizationsUnwired, PrimitiveRealizationsWired, TargetPrimitiveRealizations,
+  TargetModel,
+  TargetValueExpression,
+  canonical_operation_op_add,
+  InfixToken,
+  render_target_text,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  target_value_expression_binding_ref,
+  target_value_expression_callable_apply,
+  target_value_expression_resolved_primitive_call,
+  target_value_expression_to_concrete_tokens
+}
+import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
+import v2.std.node { Node, Symbol, Edge, Authored, Positional, StructuralLabel, NotADeclaration }
+import v2.std.node_query { child_lookup_step, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import std.algebra { list_append }
+import std.decl_ref { DeclarationRef, NamedField }
+import std.types { List, NonEmptyStr }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rust_primitive_string_length_call() -> TargetValueExpression {
+  target_value_expression_resolved_primitive_call(
+    callee: ^string_length,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  )
+}
+
+// The same spelling resolved to a user declaration: no resolved-primitive identity, so an ordinary call.
+fn rust_user_string_length_call() -> TargetValueExpression {
+  target_value_expression_callable_apply(
+    callee: ^string_length,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  )
+}
+
+fn rust_primitive_unknown_call() -> TargetValueExpression {
+  target_value_expression_callable_apply(
+    callee: ^string_to_upper,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  )
+}
+
+fn rust_primitive_operators_only_catalog() -> Node {
+  target_operator_realizations_catalog_node(rows: [
+    target_operator_realization_node(
+      operation: canonical_operation_op_add(),
+      shape: InfixToken { token: ^rust_token_plus }
+    )
+  ])
+}
+
+fn rust_primitive_rows_wired() -> TargetPrimitiveRealizations {
+  PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() }
+}
+
+fn rust_primitive_emit(
+  expr: TargetValueExpression,
+  catalog: Node,
+  primitives: TargetPrimitiveRealizations
+) -> Outcome<String> {
+  bind_outcome(
+    o: target_value_expression_to_concrete_tokens(
+      expr: expr,
+      projection: rust_value_expression_projection(),
+      catalog: TargetRealizationCatalog { operators: catalog, primitives: primitives }
+    ),
+    f: fn(tokens) {
+      bind_outcome(
+        o: serialize_concrete_syntax_tokens_to_source_string(
+          target: rust_target_model_with_operators_and_lex(operator_catalog: catalog, lex: rust_production_lex()),
+          tokens: tokens
+        ),
+        f: fn(carrier) { Accepted { value: render_target_text(t: carrier), diagnostics: None } }
+      )
+    }
+  )
+}
+
+// GREEN: the row, not a seed fact, supplies the shared-reference passing the seed runtime's `&str` parameter needs.
+test fn rust_primitive_string_length_row_realizes_shared_reference_call() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_primitive_string_length_call(),
+    catalog: rust_operator_realizations_catalog_node(),
+    primitives: rust_primitive_rows_wired()
+  ) {
+    Accepted { value: s, diagnostics: d } => (s == "string_length(&x)") && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED: a primitive with no row refuses (typed, located) instead of passing the bare name through.
+test fn rust_primitive_without_row_refuses() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_primitive_string_length_call(),
+    catalog: rust_primitive_operators_only_catalog(),
+    primitives: PrimitiveRealizationsUnwired
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn rust_primitive_refusal_names(outcome: Outcome<String>, reason: Symbol) -> Bool {
+  match outcome {
+    Rejected { diagnostics: ds } => ds.head.reason == reason
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED: a target that states no primitive rows refuses with the Unwired cause, not "missing".
+test fn rust_primitive_on_an_unwired_target_refuses_as_unwired() -> Bool {
+  rust_primitive_refusal_names(
+    outcome: rust_primitive_emit(
+      expr: rust_primitive_string_length_call(),
+      catalog: rust_operator_realizations_catalog_node(),
+      primitives: PrimitiveRealizationsUnwired
+    ),
+    reason: ^target_primitive_realizations_unwired
+  )
+}
+
+// RED: a wired target whose rows do not name the primitive refuses as missing: the two causes stay distinct.
+test fn rust_primitive_absent_from_wired_rows_refuses_as_missing() -> Bool {
+  rust_primitive_refusal_names(
+    outcome: rust_primitive_emit(
+      expr: rust_primitive_string_length_call(),
+      catalog: rust_operator_realizations_catalog_node(),
+      primitives: PrimitiveRealizationsWired { rows: [] }
+    ),
+    reason: ^target_primitive_realization_missing
+  )
+}
+
+// A name that is not a std.primitives contract keeps the ordinary call path.
+test fn rust_non_primitive_call_is_not_row_gated() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_primitive_unknown_call(),
+    catalog: rust_primitive_operators_only_catalog(),
+    primitives: PrimitiveRealizationsUnwired
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == "string_to_upper(x)"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED for the name-keyed join: a user fn spelled string_length, under a catalog that HAS the string_length row, must
+// emit the ordinary call and not the primitive shape (`string_length(&x)`).
+test fn rust_user_fn_spelled_like_a_primitive_is_not_the_primitive() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_user_string_length_call(),
+    catalog: rust_operator_realizations_catalog_node(),
+    primitives: rust_primitive_rows_wired()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == "string_length(x)"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The same user call under a catalog with no primitive rows still emits: it never consults the row family.
+test fn rust_user_fn_spelled_like_a_primitive_needs_no_row() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_user_string_length_call(),
+    catalog: rust_primitive_operators_only_catalog(),
+    primitives: PrimitiveRealizationsUnwired
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == "string_length(x)"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The emitted text of each call, for the execution recipe (v2.test.claim.emit.rust_primitive_realization_emit is run
+// with --function and the text is compiled against the seed runtime's string_length by rustc).
+fn rust_primitive_row_text() -> String {
+  match rust_primitive_emit(expr: rust_primitive_string_length_call(), catalog: rust_operator_realizations_catalog_node(), primitives: rust_primitive_rows_wired()) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+fn rust_primitive_bare_text() -> String {
+  match rust_primitive_emit(expr: rust_user_string_length_call(), catalog: rust_operator_realizations_catalog_node(), primitives: rust_primitive_rows_wired()) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+fn rust_primitive_marker_edges(wire: Node) -> List<Edge> {
+  match fold(wire.children, init: NamedChildMissing, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+      Authored { name: n } => child_lookup_step(acc: acc, hit: n == ^target_value_expr_field_resolved_primitive, target: e.target)
+    }
+  }) {
+    NamedChildFound { target: t } => [Edge { label: Authored { name: ^target_value_expr_field_resolved_primitive }, target: t, declaration: NotADeclaration }]
+    NamedChildMissing => []
+    NamedChildAmbiguous => []
+  }
+}
+
+// A duplicated resolved-primitive marker edge is ambiguous, not "still primitive" (review 82774).
+fn rust_primitive_duplicated_marker_call() -> TargetValueExpression {
+  let one = rust_primitive_string_length_call()
+  TargetValueExpression {
+    kind: one.kind,
+    node: Node {
+      kind: one.node.kind,
+      children: list_append(left: one.node.children, right: rust_primitive_marker_edges(wire: one.node)),
+      occurrence_id: one.node.occurrence_id
+    }
+  }
+}
+
+// RED: the duplicated marker refuses typed as ambiguous.
+test fn rust_primitive_duplicated_marker_edge_refuses_as_ambiguous() -> Bool {
+  rust_primitive_refusal_names(
+    outcome: rust_primitive_emit(
+      expr: rust_primitive_duplicated_marker_call(),
+      catalog: rust_operator_realizations_catalog_node(),
+      primitives: rust_primitive_rows_wired()
+    ),
+    reason: ^target_value_expr_resolved_primitive_marker_ambiguous
+  )
+}
+
+// Two-argument rows (review 82844). The row's argument list excludes a method receiver, so the shipped `join` row
+// (receiver + one argument) never folds past one argument; these rows do. A fold that drops earlier tokens emits
+// `pair_probe(, &b)` and passes the arity check.
+fn rust_primitive_two_argument_rows() -> TargetPrimitiveRealizations {
+  PrimitiveRealizationsWired {
+    rows: [
+      TargetPrimitiveRealization {
+        primitive: rust_primitive_by_shared_reference_row(head: ^pair_probe).primitive,
+        form: rust_primitive_by_shared_reference_row(head: ^pair_probe).form,
+        arguments: [
+          rust_primitive_unlabeled_argument(passing: PrimitivePassByValue),
+          rust_primitive_unlabeled_argument(passing: PrimitivePassBySharedReference { prefix_token: ^rust_token_amp })
+        ],
+        result: rust_primitive_by_shared_reference_row(head: ^pair_probe).result
+      },
+      rust_primitive_method_row(
+        head: ^method_probe,
+        arguments: [
+          rust_primitive_unlabeled_argument(passing: PrimitivePassByValue),
+          rust_primitive_unlabeled_argument(passing: PrimitivePassBySharedReference { prefix_token: ^rust_token_amp })
+        ]
+      )
+    ]
+  }
+}
+
+fn rust_two_argument_text(callee: Symbol, args: List<TargetValueExpression>) -> String {
+  match rust_primitive_emit(
+    expr: target_value_expression_resolved_primitive_call(callee: callee, args: args),
+    catalog: rust_operator_realizations_catalog_node(),
+    primitives: rust_primitive_two_argument_rows()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+test fn rust_primitive_free_call_emits_both_arguments_in_order() -> Bool {
+  rust_two_argument_text(
+    callee: ^pair_probe,
+    args: [
+      target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+      target_value_expression_binding_ref(binding: ^rust_binding_param_y)
+    ]
+  ) == "pair_probe(x, &y)"
+}
+
+test fn rust_primitive_method_call_emits_both_arguments_in_order() -> Bool {
+  rust_two_argument_text(
+    callee: ^method_probe,
+    args: [
+      target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+      target_value_expression_binding_ref(binding: ^rust_binding_param_y),
+      target_value_expression_binding_ref(binding: ^rust_binding_param_x)
+    ]
+  ) == "(x).method_probe(y, &x)"
+}
+
+// RED for the identity join (review 83167): a row keyed by a NAMED FIELD of the contract is a different
+// DeclarationRef from the whole declaration, so it must not realize a whole-declaration callee. The lookup
+// joins on std.decl_ref declaration_ref_eq; comparing module_path and decl_name alone drops the field and
+// would match here, printing `string_length(&x)` from a row that names something else.
+fn rust_primitive_named_field_rows() -> TargetPrimitiveRealizations {
+  PrimitiveRealizationsWired {
+    rows: [
+      TargetPrimitiveRealization {
+        primitive: DeclarationRef {
+          module_path: primitive_contract_declaration_ref(head: ^string_length).module_path,
+          decl_name: primitive_contract_declaration_ref(head: ^string_length).decl_name,
+          field: NamedField { field_name: "x" as NonEmptyStr }
+        },
+        form: rust_primitive_by_shared_reference_row(head: ^string_length).form,
+        arguments: rust_primitive_by_shared_reference_row(head: ^string_length).arguments,
+        result: rust_primitive_by_shared_reference_row(head: ^string_length).result
+      }
+    ]
+  }
+}
+
+test fn rust_named_field_row_does_not_realize_a_whole_declaration_callee() -> Bool {
+  rust_primitive_refusal_names(
+    outcome: rust_primitive_emit(
+      expr: rust_primitive_string_length_call(),
+      catalog: rust_operator_realizations_catalog_node(),
+      primitives: rust_primitive_named_field_rows()
+    ),
+    reason: ^target_primitive_realization_missing
+  )
+}
+
+// to_string and map are transcribed from the control flow of v1.compiler.emit_rust (the free-call to_string arm and
+// emit_rust_map_method_call), not read from rt_function_registry or rust_simple_method_specs, so
+// v2.test.claim.emit.rust_primitive_seed_differential cannot back them. Backing is the text asserted here plus a
+// rustc receipt over exactly that text (manual, rustc 2021 edition; the claim cannot invoke a compiler):
+//   GREEN: `let s: String = (x).to_string(); `  with x: i64 compiles, runs, and asserts s == "5".
+//   RED:   `(x).to_str()` fails E0599 (no method to_str on i64).
+//   map: `(v).map(y)` on a Vec<i64> fails E0599 while `(o).map(y)` on an Option<i64> compiles, so one receiver-blind method row
+//        cannot realize the receiver-polymorphic map contract; it has no row and refuses (the control below).
+fn rust_primitive_real_rows_text(callee: Symbol, args: List<TargetValueExpression>) -> String {
+  match rust_primitive_emit(
+    expr: target_value_expression_resolved_primitive_call(callee: callee, args: args),
+    catalog: rust_operator_realizations_catalog_node(),
+    primitives: rust_primitive_rows_wired()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+test fn rust_to_string_row_emits_a_method_call_on_the_receiver() -> Bool {
+  rust_primitive_real_rows_text(
+    callee: ^to_string,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  ) == "(x).to_string()"
+}
+
+// RED: map has no Rust row (a row carries no receiver type, and `(recv).map(f)` is uncompilable for a List), so it refuses
+// typed as missing rather than emitting Rust that rustc rejects.
+test fn rust_map_has_no_row_because_its_receiver_is_polymorphic() -> Bool {
+  rust_primitive_real_rows_text(
+    callee: ^map,
+    args: [
+      target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+      target_value_expression_binding_ref(binding: ^rust_binding_param_y)
+    ]
+  ) == "REFUSED"
+}

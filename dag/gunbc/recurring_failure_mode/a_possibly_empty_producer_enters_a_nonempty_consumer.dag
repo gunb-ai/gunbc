@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_possibly_empty_producer_enters_a_nonempty_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_possibly_empty_producer_enters_a_nonempty_consumer: RecurringFailureMode = RecurringFailureMode {
   identity: "a_possibly_empty_producer_enters_a_nonempty_consumer" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a possibly-empty producer enters a nonempty consumer** (invalid state: a value whose cardinality lower bound is zero, or unmeasured, reaches a position that requires at least one element. Harm: the operator's canonical seam -- an empty collection into a nonempty consumer -- is a silent wrong answer paid for at runtime or later, DESIGN section 4b's 'floor first, differentiator above it').",

@@ -36,34 +36,3 @@ import extdeps.uri_path {
 
 
 
-fn re_export_derive_op_effect(
-  operation_name: String,
-  method: HttpMethod,
-  path: PathTemplate
-) -> DeriveOpEffectResult {
-  derive_op_effect(
-    operation_name: operation_name,
-    method: method,
-    path: path
-  )
-}
-
-fn re_export_check_modifier(
-  op: DerivedOpEffect,
-  declared_idempotent: Bool,
-  declared_readonly: Bool
-) -> ModifierCheck {
-  check_modifier_vs_derivation(
-    op: op,
-    declared_idempotent: declared_idempotent,
-    declared_readonly: declared_readonly
-  )
-}
-
-fn re_export_parse_path_template(raw: String) -> PathTemplateParseResult {
-  parse_path_template(raw: raw)
-}
-
-fn re_export_has_path_params(template: PathTemplate) -> Bool {
-  has_path_params(template: template)
-}

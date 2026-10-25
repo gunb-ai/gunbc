@@ -4,7 +4,7 @@ module v2.test.claim.compiler.infer_occupancy_type_owes_no_descent
 // Bounded for every connective, Occupancy (T?) included, and repetition enters a program only
 // through the Loop behavior. The discriminating red for T? is
 // v2.test.claim.compiler.infer_application_argument_inhabitance_witness
-// infer_optional_formal_reaches_optional_carrier_frontier_holds; this module holds the control
+// infer_optional_formal_owes_no_descent_holds; this module holds the control
 // that must not move when Occupancy stops owing descent. The tree is SUPPLIED at the infer
 // boundary (DESIGN §3, a witness discriminates at one interface).
 
@@ -32,20 +32,22 @@ import v2.std.node {
   TypeNode,
   LoopBoundEdge,
   core_edge_label,
+  NotADeclaration
 }
 
 fn cod_loop(measure: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: dag_int_literal_fixture_one() },
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
         target: Node {
           kind: TypeNode { connective: Atom { identity: measure } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

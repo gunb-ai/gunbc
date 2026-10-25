@@ -6,7 +6,7 @@ import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   TerminationProof
 }
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
 
 type GraphEdge {
   caller: String
@@ -183,20 +183,40 @@ fn graph_cycle_members(
   )
 }
 
-fn graph_reverse_reachable_members(
-  names: List<String>,
-  graph: CallGraph,
+// ONE INDEX, MANY QUERIES. The traversal over the transpose, with the start node itself reported as
+// not reached, taken from ALREADY-BUILT views instead of building them for this one question. A
+// caller with several start nodes asks this once per start and pays for `build_adjacency_views` once
+// in total; `graph_reverse_reachable_members` below is the single-query convenience over the same
+// two functions.
+//
+// This is not a cache. Nothing is remembered between calls and no query reads another query's
+// residue: every answer is a fresh walk of the map it was handed, so handing these views to a second
+// query reuses the one value that used to be rebuilt per query rather than reusing an answer
+// (DESIGN section 2 -- share the value that was computed twice, never memoize what was computed once).
+fn graph_reverse_reachable_members_from_views(
+  views: CallGraphAdjacencyViews,
   start: String,
 ) -> List<String> {
   let reached = dfs_collect_component(
     node: start,
-    adjacency: reverse_adjacency(names: names, graph: graph),
+    adjacency: views.reverse,
     acc: SccComponentAcc {
       visited: empty_set(),
       members: [],
     },
   )
   reached.members |> filter(member => member != start)
+}
+
+fn graph_reverse_reachable_members(
+  names: List<String>,
+  graph: CallGraph,
+  start: String,
+) -> List<String> {
+  graph_reverse_reachable_members_from_views(
+    views: build_adjacency_views(names: names, graph: graph),
+    start: start,
+  )
 }
 
 fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {

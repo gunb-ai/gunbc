@@ -3,6 +3,7 @@
 
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+pub use crate::std_types::bool_text;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
 use crate::v1_rt;
@@ -46,13 +47,16 @@ pub fn dag_collect_pack_slots(
 ) -> Rc<DagCollectAcc> {
     {
         let ordered_slots = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&slots)).iter().cloned().collect();
-            __sorted.sort_by(|a: &Rc<DagCollectSlot>, b: &Rc<DagCollectSlot>| {
-                let __ka = (|s: Rc<DagCollectSlot>| s.seq.clone())(a.clone());
-                let __kb = (|s: Rc<DagCollectSlot>| s.seq.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_values(&slots))
+                .iter()
+                .cloned()
+                .map(|__e: Rc<DagCollectSlot>| {
+                    let __k = (|s: Rc<DagCollectSlot>| s.seq.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         let order = Rc::new({
             let mut __result = Vec::new();
@@ -79,7 +83,7 @@ pub fn json_quote(s: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "\"".to_string(),
-            crate::v1_compiler_emit_core_support::escape_json_string(s.clone()),
+            crate::v1_compiler_emit_core_support::escape_json_string(s),
         ),
         "\"".to_string(),
     )
@@ -143,13 +147,16 @@ pub fn connective_name(value: Connective) -> String {
 
 pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
     Rc::new({
-        let mut __sorted: Vec<_> = digests.iter().cloned().collect();
-        __sorted.sort_by(|a: &String, b: &String| {
-            let __ka = (|d: String| d.clone())(a.clone());
-            let __kb = (|d: String| d.clone())(b.clone());
-            v1_rt::canonical_key_cmp(&__ka, &__kb)
-        });
-        __sorted
+        let mut __keyed: Vec<_> = digests
+            .iter()
+            .cloned()
+            .map(|__e: String| {
+                let __k = (|d: String| d.clone())(__e.clone());
+                (__k, __e)
+            })
+            .collect();
+        __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
     })
     .iter()
     .cloned()
@@ -203,9 +210,10 @@ pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
         LiteralValue::LitFloat { value: v, .. } => {
             v1_rt::concat("LitFloat:".to_string(), v.clone())
         }
-        LiteralValue::LitBool { value: v, .. } => {
-            v1_rt::concat("LitBool:".to_string(), (v.clone()).to_string())
-        }
+        LiteralValue::LitBool { value: v, .. } => v1_rt::concat(
+            "LitBool:".to_string(),
+            crate::std_types::bool_text(v.clone()),
+        ),
         LiteralValue::LitNull => "LitNull".to_string(),
         LiteralValue::LitSymbol { value: v, .. } => {
             v1_rt::concat("LitSymbol:".to_string(), v.clone())
@@ -251,7 +259,7 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
                 }
                 __result
             });
-            v1_rt::hash_combine(base.clone(), dag_node_seq_hash(field_hashes.clone()))
+            v1_rt::hash_combine(base, dag_node_seq_hash(field_hashes))
         }
         Some(MatchPattern::Wildcard) => v1_rt::atom_identity_hash("Wildcard".to_string()),
     }
@@ -275,21 +283,18 @@ pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
         });
         let with_children = v1_rt::hash_combine(
             dag_node_surface_leaf_mix(node.clone()),
-            child_subtree_hash(node.connective.clone(), child_hashes.clone()),
+            child_subtree_hash(node.connective.clone(), child_hashes),
         );
-        let with_params = v1_rt::hash_combine(
-            with_children.clone(),
-            dag_node_seq_hash(param_hashes.clone()),
-        );
+        let with_params = v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes));
         v1_rt::hash_combine(
-            with_params.clone(),
+            with_params,
             match_pattern_fingerprint_rec(node.match_pattern.clone()),
         )
     })
 }
 
 pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_rec(node.clone())
+    dag_node_surface_fingerprint_rec(node)
 }
 
 pub fn dag_collect_fp_memo_reset() -> bool {
@@ -297,30 +302,5 @@ pub fn dag_collect_fp_memo_reset() -> bool {
 }
 
 pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint(node.clone())
-}
-
-pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
-    {
-        let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
-        let detail = if synthetic.clone() {
-            " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
-                .to_string()
-        } else {
-            "".to_string()
-        };
-        crate::v1_std_core::make_error_node(
-            Rc::new(CompilerDiagnostic::InternalError {
-                message: v1_rt::concat(
-                    v1_rt::concat(
-                        "dag artifact: distinct nodes share identity key ".to_string(),
-                        json_quote(key.clone()),
-                    ),
-                    detail.clone(),
-                ),
-                span: span.clone(),
-            }),
-            "".to_string(),
-        )
-    }
+    dag_node_surface_fingerprint(node)
 }

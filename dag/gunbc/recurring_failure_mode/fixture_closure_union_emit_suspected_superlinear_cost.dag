@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fixture_closure_union_emit_suspected_superlinear_cost
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data fixture_closure_union_emit_suspected_superlinear_cost: RecurringFailureMode = RecurringFailureMode {
   identity: "fixture_closure_union_emit_suspected_superlinear_cost" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "fixture-closure-union-emit suspected superlinear cost: the required floor's fixture-closure-union-emit phase (added by gunbc#13195) emits one union over the closures of the fixture-compiling members. THIS ROW RECORDS A SUSPICION, NOT A MEASUREMENT: the two data points below come from DIFFERENT INSTRUMENTS and one of them is censored, so neither establishes a scaling shape and the cost model is unknown. If the phase grows faster than its union size, a change that touches a few members can move the required floor from minutes to the job cap with no refusal naming the phase.",

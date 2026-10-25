@@ -150,7 +150,24 @@ pub fn node_is_keyed_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((n.children.clone().len() as i64) == 2)
-        && node_is_collection(n.clone(), source_indices.clone()))
+        && (node_is_collection(n.clone(), source_indices.clone())
+            || node_is_keyed_algebra_spelling(n.clone(), source_indices.clone())))
+}
+
+pub fn node_is_keyed_algebra_spelling(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((n.connective.clone() == Connective::NoConnective)
+        && match crate::std_types::container_template_algebra(
+            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                n.clone(),
+            )),
+        ) {
+            Some(algebra) => (algebra.clone() == "FinitelySupportedFunction".to_string()),
+            std::option::Option::None => false,
+        })
 }
 
 pub fn collection_carrier_node(n: Rc<Node>) -> Rc<Node> {
@@ -1158,10 +1175,6 @@ pub fn enrich_base_with_fields(
     })
 }
 
-pub fn placeholder_type_node(name: String) -> Rc<Node> {
-    nominal_type_ref(name.clone())
-}
-
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
     crate::v1_std_core::leaf_node_with_span(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -2161,22 +2174,6 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn global_bare_callable_binding(binding: Rc<TypeBinding>) -> bool {
-    ((((((binding.resolved.transport.clone() == std::option::Option::None)
-        && (binding.resolved.expr_data.clone() == Rc::new(ExprData::NoExprData)))
-        && (binding.resolved.connective.clone() == Connective::NoConnective))
-        && (binding.resolved.inferred.clone() != std::option::Option::None))
-        && ((binding.resolved.properties.clone().len() as i64) == 0))
-        && (binding.resolved.type_annotation.clone() == std::option::Option::None))
-}
-
-pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
-    match resolved.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: ty, .. }) => ty.clone(),
-        _ => resolved,
-    }
-}
-
 pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
     loop {
         #[allow(unused_mut)]
@@ -2443,6 +2440,17 @@ pub fn text_crossing_in_judgment(left: Rc<Node>, right: Rc<Node>, text: Rc<TextJ
 
 pub fn type_node_is_callable(n: Rc<Node>) -> bool {
     ((n.connective.clone() == Connective::Arrow) || ((n.params.clone().len() as i64) > 0))
+}
+
+pub fn applied_field_type(field_type: Rc<Node>) -> Option<Rc<Node>> {
+    if type_node_is_callable(field_type.clone()) {
+        match field_type.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: codomain, .. }) => Some(codomain.clone()),
+            _ => std::option::Option::None,
+        }
+    } else {
+        Some(field_type.clone())
+    }
 }
 
 pub fn node_declaration_file(n: Rc<Node>) -> String {
@@ -3867,24 +3875,15 @@ pub fn infer_arithmetic_binop_type_node(
                 ) {
                     Some(m) => match m.field_node.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
-                            if ((rt.params.clone().len() as i64) > 0) {
-                                match rt.inferred.clone().as_deref().cloned() {
-                                    Some(InferredNode::Resolved {
-                                        node: return_type, ..
-                                    }) => Rc::new(BinOpInferred {
-                                        result_type: return_type.clone(),
-                                        algebra_field: Some(m.field_kind.clone()),
-                                    }),
-                                    _ => Rc::new(BinOpInferred {
-                                        result_type: left_type.clone(),
-                                        algebra_field: Some(m.field_kind.clone()),
-                                    }),
-                                }
-                            } else {
-                                Rc::new(BinOpInferred {
-                                    result_type: rt.clone(),
+                            match applied_field_type(rt.clone()) {
+                                Some(applied) => Rc::new(BinOpInferred {
+                                    result_type: applied.clone(),
                                     algebra_field: Some(m.field_kind.clone()),
-                                })
+                                }),
+                                std::option::Option::None => Rc::new(BinOpInferred {
+                                    result_type: left_type.clone(),
+                                    algebra_field: Some(m.field_kind.clone()),
+                                }),
                             }
                         }
                         _ => Rc::new(BinOpInferred {

@@ -4,8 +4,12 @@ import std.types { List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
-import gunbc.host.managed_host { ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_binding, managed_host_memberships }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity }
+import gunbc.host.managed_host { ManagedHost, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_memberships }
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch,
+  bmc_control_binding, bmc_control_route_account, bmc_control_route_observation,
+}
 import gunbc.host.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_host }
 import gunbc.host.managed_host_boot_phase_timing { BootStart, BootStartUnobserved, boot_start_of }
@@ -21,16 +25,23 @@ import gunbc.machine_intake.oob_boot_handoff {
   OobBootHandoffOutcome,
   OobHandoffAdmitted,
   OobHandoffBootSourceOverrideUnavailable,
-  OobHandoffFirmwareMismatch,
+  OobHandoffRowUncatalogued,
+  OobHandoffRowAmbiguous,
+  oob_boot_handoff_admission_for_row,
   OobHandoffPowerControlUnavailable,
   OobHandoffRouteUnobserved,
   PowerCommandAcceptedNoTransition,
   PowerCommandRefused,
   PowerStateReadFailed,
   oob_boot_handoff,
-  oob_boot_handoff_admission,
   oob_power_action_verb,
   power_transition_progress_text,
+}
+import gunbc.host.bmc_release_capability_catalog {
+  megarac_release_capability_row_for,
+  MegaRacReleaseCapabilityKnown,
+  MegaRacReleaseCapabilityUncatalogued,
+  MegaRacReleaseCapabilityAmbiguous,
 }
 import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 
@@ -100,21 +111,79 @@ fn boot_handoff_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcom
   }
 }
 
+// WHICH RELEASE THE EXECUTED ROUTE CONSULTED, out of the outcome IT returned. Only the arm that
+// reported a control as issued can answer -- every other arm means the controller was never driven to
+// issue, so there was no release consulted to name. The claim asks the outcome, never its own input.
+fn admitted_release_of(outcome: OobBootHandoffOutcome) -> BmcFirmwareReleaseIdentity? {
+  match outcome {
+    BootControlIssued { selected: _, power: _, admitted: a } => Present { value: a }
+    BootSelectionRefused => none
+    BootSelectionNotApplied { requested: _, readback: _ } => none
+    BootSelectionUnverifiable { requested: _, readback: _ } => none
+    BootSelectionFlagInvalid { requested: _, readback: _ } => none
+    BootSelectionNotOneShot { requested: _, readback: _ } => none
+    BootSelectionFirmwareMismatch { requested: _, readback: _ } => none
+    PowerStateReadFailed { selected: _, observed_state: _ } => none
+    PowerCommandRefused { selected: _, action: _ } => none
+    PowerCommandAcceptedNoTransition { selected: _, action: _, progress: _, last_observed: _ } => none
+    BootHandoffNotAdmitted { admission: _ } => none
+  }
+}
+
 // THE HANDOFF'S EXIT AND THE START IT OBSERVED, so the boot's phase timing can say whether the
 // attempt was a cold or a warm boot (gunbc.host.managed_host_boot_phase_timing) without a second chassis
 // read.
+// THE ACCOUNT THAT POWERED THE HOST ON, held only by a handoff that issued the power control. It is
+// sole_constructor, so the one place that mints it is boot_drive_handoff's issued branch, where the
+// account the control was written with is in hand; a consumer that needs a powered host's account
+// (the post-power-on chassis-fan gate, its safe stop) takes this record and cannot be handed a host
+// that was powered on with no account to stop it with.
+type BootHandoffPoweredOn sole_constructor {
+  account: NonEmptyStr
+}
+
 type BootHandoffResult {
   outcome: ProcessExit
   start: BootStart
+  // WHICH RELEASE THE ROUTE CONSULTED, read off the outcome the executed handoff returned. None
+  // whenever the controller was never driven -- every route refusal, and every refusal the fold
+  // itself handed back. Present only with a control the route reported as issued, and then it is the
+  // identity the ADMISSION consumed, not a value any caller supplied.
+  admitted: BmcFirmwareReleaseIdentity?
+  // PRESENT EXACTLY WHEN THE ROUTE REPORTED THE CONTROL ISSUED (the arm the outcome renders as success),
+  // carrying the account it was written with; none on every refusal.
+  powered_on: BootHandoffPoweredOn?
 }
 
 fn boot_handoff_not_issued(outcome: ProcessExit) -> BootHandoffResult {
-  BootHandoffResult { outcome: outcome, start: BootStartUnobserved { reason: "the handoff refused before any controller write" } }
+  BootHandoffResult {
+    outcome: outcome,
+    start: BootStartUnobserved { reason: "the handoff refused before any controller write" },
+    admitted: none,
+    powered_on: none,
+  }
+}
+
+// THE POWER-ON RECORD OF AN ISSUED CONTROL, minted with the account the control was written with.
+fn boot_handoff_powered_on_of(outcome: OobBootHandoffOutcome, account: NonEmptyStr) -> BootHandoffPoweredOn? {
+  match outcome {
+    BootControlIssued { selected: _, power: _, admitted: _ } => Present { value: BootHandoffPoweredOn { account: account } }
+    BootSelectionRefused => none
+    BootSelectionNotApplied { requested: _, readback: _ } => none
+    BootSelectionUnverifiable { requested: _, readback: _ } => none
+    BootSelectionFlagInvalid { requested: _, readback: _ } => none
+    BootSelectionNotOneShot { requested: _, readback: _ } => none
+    BootSelectionFirmwareMismatch { requested: _, readback: _ } => none
+    PowerStateReadFailed { selected: _, observed_state: _ } => none
+    PowerCommandRefused { selected: _, action: _ } => none
+    PowerCommandAcceptedNoTransition { selected: _, action: _, progress: _, last_observed: _ } => none
+    BootHandoffNotAdmitted { admission: _ } => none
+  }
 }
 
 fn boot_handoff_start_of(outcome: OobBootHandoffOutcome) -> BootStart {
   match outcome {
-    BootControlIssued { selected: _, power: p } => boot_start_of(transition: p)
+    BootControlIssued { selected: _, power: p, admitted: _ } => boot_start_of(transition: p)
     BootSelectionRefused => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
     BootSelectionNotApplied { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
     BootSelectionUnverifiable { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
@@ -150,16 +219,25 @@ fn boot_drive_handoff(
     CredentialPathMissing =>
       boot_handoff_not_issued(outcome: exit_failure(reason: concat(label as String, ": no credential path supplied; refusing before any controller write")))
     CredentialPathGiven { path: pw } => {
-      let outcome = oob_boot_handoff(
-        observation: subject.binding.observation,
-        capability_row: subject.binding.host.capability_row,
-        username: subject.binding.account,
-        password_file: pw,
-        selection: subject.selection,
-      )
-      BootHandoffResult {
-        outcome: boot_handoff_render_outcome(label: label, outcome: outcome),
-        start: boot_handoff_start_of(outcome: outcome),
+      match bmc_control_route_account(route: subject.route) {
+        Absent =>
+          boot_handoff_not_issued(outcome: exit_failure(reason: concat(label as String, ": the bound route names no managed account; refusing before any controller write")))
+        Present { value: account } => {
+          let outcome = oob_boot_handoff(
+            observation: bmc_control_route_observation(route: subject.route),
+            username: account,
+            password_file: pw,
+            selection: subject.selection,
+            // the row the boot admission decided on, straight off the subject -- never a re-lookup
+            capability_row: subject.capability_row,
+          )
+          BootHandoffResult {
+            outcome: boot_handoff_render_outcome(label: label, outcome: outcome),
+            start: boot_handoff_start_of(outcome: outcome),
+            admitted: admitted_release_of(outcome: outcome),
+            powered_on: boot_handoff_powered_on_of(outcome: outcome, account: account),
+          }
+        }
       }
     }
   }
@@ -172,27 +250,42 @@ fn boot_drive_handoff(
 // A probe that only ran the green case would pass just as happily against a fold that returned
 // OobHandoffAdmitted unconditionally (DESIGN §5). The pair is asserted in one func so the two cannot
 // drift apart. A host is probed through its binding, so an unbound row refuses rather than being
-// probed with an observation its secured account does not cover.
+// probed with an observation its secured standing does not cover.
 fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
-  match managed_host_binding(host: host) {
-    ManagedHostAccessUnobserved { endpoint: _ } => Present { value: concat(host.host as String, ": controller access is unobserved, so there is nothing to probe") }
-    ManagedHostNotSecured { cause: _ } => Present { value: concat(host.host as String, ": controller is not BmcSecured, so the row is not bound") }
-    ManagedHostEndpointMismatch { observed: _, secured: _ } => Present { value: concat(host.host as String, ": observed and secured controllers differ, so the row is not bound") }
-    ManagedHostBound { binding: b } => {
-      let admitted = match oob_boot_handoff_admission(observation: b.observation, capability_row: host.capability_row) {
-        OobHandoffAdmitted { route: _ } => true
+  match bmc_control_binding(observed: host.access, secured: host.secure) {
+    BmcControlAccessUnobserved { endpoint: _ } => Present { value: concat(host.host as String, ": controller access is unobserved, so there is nothing to probe") }
+    BmcControlNotSecured { cause: _ } => Present { value: concat(host.host as String, ": controller is not BmcSecured, so the row is not bound") }
+    BmcControlEndpointMismatch { observed: _, secured: _ } => Present { value: concat(host.host as String, ": observed and secured controllers differ, so the row is not bound") }
+    BmcControlBound { route: route } => {
+      let b = bmc_control_route_observation(route: route)
+      // THE PROBE ASKS THE CATALOG AS ITSELF. This is a coverage diagnostic -- "is the PROBED
+      // version catalogued, and do its measured rows admit the controller" -- not the live capability
+      // decision, so naming the catalog lookup here is honest. The live path (oob_boot_handoff) never
+      // consults it; it takes the carried row.
+      let probed_row = match megarac_release_capability_row_for(firmware: b.identity.firmware) {
+        MegaRacReleaseCapabilityKnown { row: row } => Present { value: row }
+        MegaRacReleaseCapabilityUncatalogued { firmware: _ } => none
+        MegaRacReleaseCapabilityAmbiguous { firmware: _, count: _ } => none
+      }
+      let admitted = match match probed_row {
+        Absent => OobHandoffRowUncatalogued { firmware: b.identity.firmware }
+        Present { value: row } => oob_boot_handoff_admission_for_row(observation: b, capability_row: row)
+      } {
+        OobHandoffAdmitted { route: _, capability_row: _ } => true
         OobHandoffRouteUnobserved => false
         OobHandoffBootSourceOverrideUnavailable => false
         OobHandoffPowerControlUnavailable => false
-        OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+        OobHandoffRowUncatalogued { firmware: _ } => false
+        OobHandoffRowAmbiguous { firmware: _, count: _ } => false
       }
-      let unexercised = BmcFirmwareReleaseCapabilityRow { firmware: host.capability_row.firmware, capabilities: [] }
-      let refused_without_capability = match oob_boot_handoff_admission(observation: b.observation, capability_row: unexercised) {
-        OobHandoffAdmitted { route: _ } => false
+      let unexercised = BmcFirmwareReleaseCapabilityRow { firmware: b.identity.firmware, capabilities: [] }
+      let refused_without_capability = match oob_boot_handoff_admission_for_row(observation: b, capability_row: unexercised) {
+        OobHandoffAdmitted { route: _, capability_row: _ } => false
         OobHandoffRouteUnobserved => false
         OobHandoffBootSourceOverrideUnavailable => true
         OobHandoffPowerControlUnavailable => false
-        OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+        OobHandoffRowUncatalogued { firmware: _ } => false
+        OobHandoffRowAmbiguous { firmware: _, count: _ } => false
       }
       if admitted == false {
         Present { value: concat(host.host as String, ": measured rows did NOT admit the controller") }

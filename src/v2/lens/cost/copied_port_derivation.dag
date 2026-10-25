@@ -23,7 +23,7 @@ import std.optional {
 }
 import v2.std.node_query { declared_field_from_edge }
 import v2.std.integer { Int }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Atom,
   Conj,
@@ -65,7 +65,7 @@ type CombinerArrowCitation {
 fn cost_linear_in_node(cost: SymbolicCost, n: Node) -> Bool {
   match cost {
     ConstantCost { value: _ } => false
-    LinearCost { variable: sv } => sv.source == n
+    LinearCost { variable: sv } => node_same_occurrence(a: sv.source, b: n)
     LogCost { variable: _ } => false
     PolynomialCost { variable: _, degree: _ } => false
     PolyLogCost { variable: _, exponent: _ } => false

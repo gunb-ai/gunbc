@@ -16,7 +16,7 @@ import v1.std.core { Unmarked,
   field_from_key_property_name,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
-  InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse, TypeArgumentKindMismatch,
+  InternalError, TypeAliasCycle, ArityMismatch, UnresolvedType, UnlistedImportUse, TypeArgumentKindMismatch,
   Cardinality, Required,
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
@@ -43,7 +43,7 @@ import v1.std.core { Unmarked,
 }
 
 import v1.compiler.infer_types {
-  resolved_type, child_type_node, is_type_expr_annotation, node_is_keyed_collection, node_is_collection, is_declared_container_alias_spelling
+  resolved_type, child_type_node, is_type_expr_annotation, node_is_keyed_collection, node_is_keyed_algebra_spelling, node_is_collection, is_declared_container_alias_spelling
 }
 
 import std.induction { SubValueUnknown }
@@ -512,7 +512,10 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   else {
     let decl = resolve_generic_use_decl(env: env, n: n)
     if decl.params |> count > 0 {
-      if is_container_type(name: n.name) { false }
+      // RESIDUE: second consumer of the leaf-spelling classifier (the first is the emitter's
+      // node_is_keyed_collection); tracked by gunbc.recurring_failure_mode
+      // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose trigger covers both sites.
+      if is_container_type(name: n.name) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
       else if decl.inferred != none { true }
       else { true }
     } else { false }
@@ -1032,16 +1035,6 @@ fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> Resource
   }
 }
 
-fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgResolveResult {
-  let value_result = resolve_expr_types(texpr: arg_value(n: arg), env: env, module_name: module_name)
-  let value_expr = value_result.expr
-  let value_diags = value_result.diagnostics
-  NamedArgResolveResult {
-    arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: env.source_indices), value: value_expr, span: arg.span, name_span: node_name_span(n: arg)),
-    diagnostics: value_diags
-  }
-}
-
 fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> FieldInitResolveResult {
   let value_result = resolve_expr_types(texpr: field_init_node_value(n: field_init), env: env, module_name: module_name)
   let value_expr = value_result.expr
@@ -1049,51 +1042,6 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
   FieldInitResolveResult {
     field_init: make_field_init_node(occurrence_identity: field_init.occurrence_identity, name: field_init_node_name_at(n: field_init, source_indices: env.source_indices), value: value_expr, span: field_init.span, name_span: node_name_span(n: field_init)),
     diagnostics: value_diags
-  }
-}
-
-fn resolve_match_arm(arm: Node, env: TypeEnv, module_name: String) -> MatchArmResolveResult {
-  let arm_g = arm_guard(n: arm)
-  let guard_result = match arm_g {
-    Present { value: guard } => Present { value: resolve_expr_types(texpr: guard, env: env, module_name: module_name) }
-    Absent => none
-  }
-  let guard_diags = match guard_result {
-    Present { value: result } => result.diagnostics
-    Absent => []
-  }
-  let body_result = resolve_expr_types(texpr: arm_body(n: arm), env: env, module_name: module_name)
-  let body_expr = body_result.expr
-  let body_diags = body_result.diagnostics
-  MatchArmResolveResult {
-    arm: make_arm_node(occurrence_identity: arm.occurrence_identity,
-      pattern: arm_pattern(n: arm),
-      guard: match guard_result {
-        Present { value: result } => Present { value: result.expr }
-        Absent => none
-      },
-      body: body_expr,
-      span: arm.span
-    ),
-    diagnostics: concat(guard_diags, body_diags)
-  }
-}
-
-fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> StringPartResolveResult {
-  match part {
-    Text { value: value } =>
-      StringPartResolveResult {
-        part: Text { value: value },
-        diagnostics: []
-      }
-    Interpolation { expr: expr } =>
-      let expr_result = resolve_expr_types(texpr: expr, env: env, module_name: module_name)
-      let resolved_expr = expr_result.expr
-      let expr_diags = expr_result.diagnostics
-      StringPartResolveResult {
-        part: Interpolation { expr: resolved_expr },
-        diagnostics: expr_diags
-      }
   }
 }
 
@@ -1529,6 +1477,10 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       [make_error_node(diagnostic: InternalError { message: concat(concat(concat("the name '", dup), concat("' is bound twice in the header of '", authored_name_at(source_indices: env.source_indices, node: item))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them."), span: item.span }, module_name: module_name)]
     Absent => []
   }
+  let alias_cycle_diags = match map_get(env.symbol_index.alias_cycles, concat(module_name, ".", authored_name(env: env, node: item))) {
+    Present { value: members } => [make_error_node(diagnostic: TypeAliasCycle { members: members, span: item.span }, module_name: module_name)]
+    Absent => []
+  }
   let env = env_with_type_variable_bindings(env: env, tp_names: tp_names)
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
@@ -1632,6 +1584,6 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       properties: resolved_props, type_annotation: resolved_anno,
       is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     },
-    diagnostics: concat(collision_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, prop_diags, child_diags)
+    diagnostics: concat(collision_diags, alias_cycle_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, prop_diags, child_diags)
   }
 }

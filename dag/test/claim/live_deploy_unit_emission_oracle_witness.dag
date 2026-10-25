@@ -1,6 +1,10 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
+import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port, Int }
+import std.optional { Present, Absent }
+import gunbc.auth.approval_device_crypto_client { device_crypto_readback_expectation }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, DeviceCryptoRequirement, DeviceCryptoExpectation, device_crypto_gate, approval_device_crypto_realization }
 import std.measure { ByteSize, byte_size_count, second_count }
 import std.layout { render }
 import gunbc.live_deploy.slice_bounds {
@@ -30,36 +34,16 @@ import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
-  emit_slice_unit_doc,
-  live_deploy_protocol,
-  emit_belt_service_unit_doc,
-  emit_systemd_unit_doc,
-  live_deploy_belt_service_unit_file,
-  live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file,
-  live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file,
-  live_deploy_belt_credential_recovery_unit_file,
-  live_deploy_belt_credential_recovery_timer_unit_file,
-  live_deploy_serve_unit_emission,
-  LiveDeployServeUnitEmitted,
-  LiveDeployServeUnitOidcReadbackRefused,
-  live_deploy_slice_unit_file,
-  user_manager_environment_directives,
-  eval_budget_flag_text,
-  emit_approval_broker_slice_unit_doc,
-  emit_approval_broker_unit_doc,
-  approval_broker_slice_unit_file,
-  repository_convergence_slice_unit_file,
-  emit_repository_convergence_slice_unit_doc,
-  user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused,
-  attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused,
-  live_deploy_approval_broker_unit_file,
-  emit_tree_remote_unit_doc,
-  tree_remote_convergence_oneshot,
+  emit_slice_unit_doc, live_deploy_protocol, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, live_deploy_slice_unit_file, user_manager_environment_directives, eval_budget_flag_text, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
+  emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_binary_path,
 }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
+  release_locus_binary_path,
 }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
+import gunbc.auth.approval_device_crypto_client { approval_device_crypto_sidecar_host, approval_device_crypto_sidecar_port }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentServiceConfig,
@@ -298,21 +282,6 @@ test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
 }
 
 
-// ── THE APPROVAL BROKER'S SLICE AND UNIT, BYTE FOR BYTE ─────────────────────────────────────
-// TWO SLICES IS THE WHOLE REPAIR, so the first thing worth pinning is that they are two. Boot 15
-// refused on an approval status poll because the approval routes shared a heap with the roadmap's
-// renders (side-chat ruling 2026-09-19); the construction that removes that is a second cgroup with
-// its own allowance, which the bytes below either carry or do not.
-//
-// MemorySwapMax=0 IS PINNED because it is the receipt's own lesson. The roadmap process was SWAPPED
-// and then killed, and a swapped process is one whose latency is unbounded while it still looks
-// alive -- an approval poll answered after a swap-in has already timed out. Denying swap converts
-// that into an immediate kill at a declared bound.
-test fn the_approval_broker_slice_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc approval broker cgroup bound (separate from the roadmap deployment slice)\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=15032385536\nMemorySwapMax=0\n"
-}
-
 // THE BROKER UNIT. Every difference from the roadmap unit above is the split: a different
 // Description, a different Slice=, a different --entry and --function, a different --port, and NO
 // user-manager Environment= lines -- the broker starts no user unit and observes none, so handing
@@ -355,9 +324,20 @@ test fn the_approval_broker_unit_would_install_these_bytes() -> Bool {
     eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: live_spec().approval_broker.serve_wall_limit),
   ], "")
   emitted == join([
-    "[Unit]\nDescription=gunbc approval broker HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-approval-broker.slice\nWorkingDirectory=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nEnvironment=GUNBC_WORKSPACE_ROOT=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nEnvironment=GUNBC_APPROVAL_BROKER_BASE_URL=https://srv1.tailecbe08.ts.net\nExecStart=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/auth/approval_broker_serve.dag --function approval_broker_handle --host 127.0.0.1 --port 8085 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd",
+    "[Unit]\nDescription=gunbc approval broker HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service gunbc-device-crypto-sidecar.service\nWants=network-online.target gunbc-device-crypto-sidecar.service\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-approval-broker.slice\nWorkingDirectory=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nEnvironmentFile=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd/device-crypto-deployed-digest.env\nEnvironment=GUNBC_WORKSPACE_ROOT=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nEnvironment=GUNBC_APPROVAL_BROKER_BASE_URL=https://srv1.tailecbe08.ts.net\nExecStart=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/auth/approval_broker_serve.dag --function approval_broker_handle --host 127.0.0.1 --port 8085 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd",
     budgets,
     "\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n",
+  ], "")
+}
+
+// THE SIDECAR UNIT: binds the typed port row the broker's client dials, runs the binary installed in the locus, and the
+// broker is ordered after it and loads the digest of that same installed binary from its EnvironmentFile.
+test fn the_sidecar_unit_would_install_these_bytes() -> Bool {
+  let emitted = render(doc: emit_device_crypto_sidecar_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
+  emitted == join([
+    "[Unit]\nDescription=gunbc device-crypto verifier sidecar (native serve entry)\nAfter=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-approval-broker.slice\nWorkingDirectory=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nExecStart=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd/approval_device_crypto_serve --host ",
+    approval_device_crypto_sidecar_host as String, " --port ", to_string(approval_device_crypto_sidecar_port as Int),
+    " --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n",
   ], "")
 }
 
@@ -404,6 +384,18 @@ test fn the_broker_and_the_roadmap_bind_different_ports() -> Bool {
 test fn the_broker_slice_bound_is_not_the_roadmap_deployment_bound() -> Bool {
   byte_size_count(b: approval_broker_slice_memory_max) < byte_size_count(b: live_deploy_slice_memory_max)
     && slice_has_bytes(file: approval_broker_slice_unit_file(), target: approval_broker_slice_memory_max, as_max: true)
+}
+
+// BOTH SERVED SLICES DENY SWAP FROM THE SAME ROW (restored: c11aa2317029 deleted this claim with
+// emit_approval_broker_slice_unit_doc, and the typed apply writes approval_broker_slice_unit_file instead).
+// The roadmap slice's line is also inside the byte pin above; the broker slice's is pinned nowhere else, and
+// at main head d2b027b5f41 deleting it left every surviving claim green. The row's reason is
+// gunbc.live_deploy.slice_bounds' own (a swapped page is a stall on the request path), and the broker serves
+// the approval path.
+test fn both_served_slices_deny_swap_from_the_same_row() -> Bool {
+  let expected = join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], "")
+  string_contains(s: serialize_systemd_unit_file(file: approval_broker_slice_unit_file()), pattern: expected)
+    && string_contains(s: render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol), pattern: expected)
 }
 
 // THE CONVERGENCE SLICE CARRIES ITS OWN ROWS, AND FORBIDS SWAP BY ITS OWN ROW. The slice exists so the
@@ -585,7 +577,7 @@ test fn belt_service_carries_spawn_workdir() -> Bool {
 test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
   let svc = live_spec().service
   service_has(file: belt_service_file(), target: ExecStart { command: join([
-    svc.serve_binary as String,
+    fixed_serve_binary_path(binary: svc.serve_binary),
     " run --source-root dag --source-root src/v2",
     " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli",
   ], "") as NonEmptyStr })
@@ -756,7 +748,7 @@ test fn serve_unit_execstart_carries_admitted_entrypoint() -> Bool {
     RevisionNotInstalled => ""
   }
   service_has(file: serve_file(), target: ExecStart { command: join([
-    svc.serve_binary as String,
+    fixed_serve_binary_path(binary: svc.serve_binary),
     " serve --source-root dag --source-root src/v2",
     " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
     " --host ", host, " --port ", port,
@@ -1114,20 +1106,23 @@ test fn only_the_broker_unit_joins_the_broker_slice() -> Bool {
     && !service_has(file: belt, target: broker_slice)
 }
 
-// ── THE SWAP DENIAL IS ONE ROW, READ BY BOTH SLICES ─────────────────────────────────────────
-// The broker slice used to inline byte_size(0) while the roadmap slice consumed the declared row,
-// so one policy fact had two sources that could drift in either direction invisibly (review 68287).
-// The byte oracles above each pin their own slice's rendered text; what neither can see is whether
-// the two zeros came from the same place.
-//
-// THE RED IS THE EDIT THAT WOULD REOPEN IT: admit any swap on live_deploy_slice_memory_swap_max and
-// BOTH conjuncts fail together, which is the joint a pair of independent literals would not have.
-// Inlining a zero at either site fails it too, because the expected text is derived from the row
-// rather than transcribed.
-test fn both_served_slices_deny_swap_from_the_same_row() -> Bool {
-  let roadmap = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  let broker = render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol)
-  let expected = join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], "")
-  string_contains(s: roadmap, pattern: expected)
-    && string_contains(s: broker, pattern: expected)
+// THE READBACK'S REQUIREMENT IS THE BROKER'S GATE RESULT, one authority: an open gate carrying a requirement the readback
+// would never construct itself (another handler identity, one obligation) is joined verbatim, and a refused gate yields no
+// expectation at all, so a deploy cannot validate a requirement other than the one the running broker opens on.
+test fn the_readback_expectation_is_the_gates_own_requirement_and_a_refused_gate_has_none() -> Bool {
+  let q = DeviceCryptoRequirement { handler_identity: "some-other-handler", required: [] }
+  let digest = "abc123" as NonEmptyStr
+  (match device_crypto_readback_expectation(gate: DeviceCryptoGateOpen { requirement: q }, deployed_digest: digest) {
+    Present { value: e } => (e.requirement.handler_identity as String) == "some-other-handler" && (e.deployed_digest as String) == "abc123"
+    Absent => false
+  })
+    && (match device_crypto_readback_expectation(gate: DeviceCryptoGateRefused { status: 503, reason: "fixture" }, deployed_digest: digest) {
+      Present { value: _ } => false
+      Absent => true
+    })
+    && (match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: digest) {
+      Present { value: _ } => true
+      Absent => false
+    })
 }
+

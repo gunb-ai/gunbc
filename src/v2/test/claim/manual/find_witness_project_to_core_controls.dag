@@ -1,5 +1,7 @@
 module v2.test.claim.manual.find_witness_project_to_core_controls
 
+import v2.std.node { node_same_occurrence, NotADeclaration }
+
 
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
@@ -25,7 +27,7 @@ fn control_rule_accepts(source: Node, target: Node, rule: Symbol) -> Bool {
     predicate: control_predicate(source: source, rule: rule),
     multiplicity_policy: UniqueOnly
   ) {
-    Accepted { value: fw, diagnostics: _ } => fw.candidate == target
+    Accepted { value: fw, diagnostics: _ } => node_same_occurrence(a: fw.candidate, b: target)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -55,7 +57,7 @@ data witness_project_to_core_real_dispatch_accepts_sibling: Bool = match v2.std.
   derivation_algebra: task_id_api_inhabitant_node(),
   multiplicity_policy: UniqueOnly
 ) {
-  Accepted { value: fw, diagnostics: _ } => fw.candidate == task_id_db_inhabitant_node()
+  Accepted { value: fw, diagnostics: _ } => node_same_occurrence(a: fw.candidate, b: task_id_db_inhabitant_node())
   Rejected { diagnostics: _ } => false
 }
 
@@ -85,7 +87,8 @@ fn surface_only_node(surface: Symbol) -> Node {
     children: [
       Edge {
         label: v2.std.node.Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: std.occurrence_identity.OccurrenceSynthetic }
+        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: std.occurrence_identity.OccurrenceSynthetic },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -113,15 +116,18 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
           children: [
             Edge {
               label: v2.std.node.Authored { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [], occurrence_id: OccurrenceSynthetic }
+              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [], occurrence_id: OccurrenceSynthetic },
+              declaration: NotADeclaration
             },
             Edge {
               label: v2.std.node.Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: OccurrenceSynthetic }
+              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: OccurrenceSynthetic },
+              declaration: NotADeclaration
             }
           ],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -152,15 +158,18 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
           children: [
             Edge {
               label: v2.std.node.Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [], occurrence_id: OccurrenceSynthetic }
+              target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [], occurrence_id: OccurrenceSynthetic },
+              declaration: NotADeclaration
             },
             Edge {
               label: v2.std.node.Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [], occurrence_id: OccurrenceSynthetic }
+              target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [], occurrence_id: OccurrenceSynthetic },
+              declaration: NotADeclaration
             }
           ],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -177,7 +186,7 @@ data witness_project_to_core_drops_nested_surface: Bool = match find_witness_der
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: fw, diagnostics: _ } =>
-    fw.candidate == nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface)
+    node_same_occurrence(a: fw.candidate, b: nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface))
   Rejected { diagnostics: _ } => false
 }
 
@@ -200,7 +209,8 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     children: [
       Edge {
         label: v2.std.node.Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -212,7 +222,8 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
         children: [
           Edge {
             label: v2.std.node.Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic }
+            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic },
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -223,7 +234,8 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
       children: [
         Edge {
           label: v2.std.node.Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic }
+          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic },
+          declaration: NotADeclaration
         }
       ],
       occurrence_id: OccurrenceSynthetic
@@ -234,7 +246,8 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     children: [
       Edge {
         label: v2.std.node.Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -255,7 +268,8 @@ fn i32_value_set_interval_first() -> Node {
     children: [
       Edge {
         label: v2.std.node.Authored { name: ^integer_value_set_field_interval },
-        target: integer_interval_spec_node(spec: int32_interval_spec)
+        target: integer_interval_spec_node(spec: int32_interval_spec),
+        declaration: NotADeclaration
       },
       Edge {
         label: v2.std.node.Authored { name: ^integer_value_set_field_kind },
@@ -263,7 +277,8 @@ fn i32_value_set_interval_first() -> Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_interval } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -308,7 +323,8 @@ fn unbounded_value_set_with_extra_field() -> Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_unbounded } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: v2.std.node.Authored { name: ^integer_value_set_field_extra },
@@ -316,7 +332,8 @@ fn unbounded_value_set_with_extra_field() -> Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_field_extra } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

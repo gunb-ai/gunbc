@@ -37,7 +37,7 @@ pub use crate::v1_compiler_infer_env::{
     symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
-    DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
+    DataItem, FnItem, OtherItem, ResourceItem, ServiceItem, TypeItem,
 };
 pub use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_compiler_infer_method::NonDeclarationBinding::{
@@ -65,10 +65,11 @@ pub use crate::v1_compiler_infer_sigs::{
     ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_field,
-    instantiate_algebra_type, is_declared_container_alias_spelling, kernel_profile_lookup,
-    method_receiver_element_node, node_is_keyed_collection, node_is_set_collection,
-    nominal_type_ref, normalize_access_type_node, reground_alias_carrier_identity,
+    applied_field_type, child_type_node, emit_map_has, enrich_kernel_type,
+    instantiate_algebra_field, instantiate_algebra_type, is_declared_container_alias_spelling,
+    kernel_profile_lookup, method_receiver_element_node, node_is_keyed_collection,
+    node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    reground_alias_carrier_identity, type_node_is_callable,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -259,8 +260,10 @@ pub fn census_declaration_identity(
             } => match crate::v1_compiler_infer_items::item_kind(bd.node.clone()) {
                 ItemKind::TypeItem => std::option::Option::None,
                 ItemKind::ServiceItem => std::option::Option::None,
+                ItemKind::ResourceItem => std::option::Option::None,
                 ItemKind::DataItem => std::option::Option::None,
-                _ => Some(bd.clone()),
+                ItemKind::FnItem => Some(bd.clone()),
+                ItemKind::OtherItem => Some(bd.clone()),
             },
             BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
                 std::option::Option::None
@@ -1434,15 +1437,9 @@ pub struct StructuralMethodLookup {
 pub fn product_field_result_type(field: Rc<Node>) -> Option<Rc<Node>> {
     match field.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            if ((rt.params.clone().len() as i64) > 0) {
-                match rt.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved {
-                        node: return_type, ..
-                    }) => Some(return_type.clone()),
-                    _ => Some(rt.clone()),
-                }
-            } else {
-                Some(rt.clone())
+            match crate::v1_compiler_infer_types::applied_field_type(rt.clone()) {
+                Some(applied) => Some(applied.clone()),
+                std::option::Option::None => Some(rt.clone()),
             }
         }
         _ => std::option::Option::None,
@@ -1700,12 +1697,16 @@ pub fn declared_arg_types_for_method(
                 std::option::Option::None => {
                     match mfr.field_node.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: callable, .. }) => {
-                            let expanded = if ((callable.params.clone().len() as i64) > 0) {
+                            let expanded = if crate::v1_compiler_infer_types::type_node_is_callable(
+                                callable.clone(),
+                            ) {
                                 callable.clone()
                             } else {
                                 expand_field_type(callable.clone())
                             };
-                            if ((expanded.params.clone().len() as i64) > 0) {
+                            if crate::v1_compiler_infer_types::type_node_is_callable(
+                                expanded.clone(),
+                            ) {
                                 Rc::new(DeclaredArgContract::ContractKnown {
                                     types: Rc::new({
                                         let mut __result = Vec::new();

@@ -35,6 +35,12 @@ data bootstrap_operation_seed_growth_justification: SeedGrowthJustification = Se
 // boundary, and shipped main performs one generic delegation. The impl is not separately citable
 // until std.decl_ref grows an impl-block identity; RetainedCliHost is its exact declaration owner,
 // and this sentence keeps that uncitable residue explicit rather than silently dropping it.
+// The bounded lifecycle instrumentation of Lane A P0.1 (docs/plans/v1-interface-cull-audit.md) is
+// ALSO declared here rather than as a new exception: main records the main-entry instant
+// (cli_run::pre_entry_phase::record_invocation_start, main's first act, before Cli::parse) and
+// prints the compile receipt on the retained pre-exit paths. It is timing-only observation
+// (PURPOSE: measures the loader for the v2 self-host instruments); it selects no command, no
+// realization, and no build route.
 data cli_dispatch_host_boundary_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef {
@@ -42,9 +48,19 @@ data cli_dispatch_host_boundary_seed_growth_justification: SeedGrowthJustificati
       decl_name: "RetainedCliHost",
       field: WholeDeclaration,
     },
+    DeclarationRef {
+      module_path: "v1_compiler.main",
+      decl_name: "main",
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.main",
+      decl_name: "end_process_without_teardown",
+      field: WholeDeclaration,
+    },
   ],
-  reason: "PURPOSE admission serves the v2 self-host program by moving the complete shipped CLI grammar and realization selection onto the installed generated carrier. Generated: CLI grammar, dispatch envelope, realization selection, and collision-free executor-name construction. Hand-retained: existing host arm bodies, the RetainedCliHost trait impl that exposes them to the carrier, and one generic delegation in the already-existing main function. No command identity or build route is selected in hand Rust.",
+  reason: "PURPOSE admission serves the v2 self-host program by moving the complete shipped CLI grammar and realization selection onto the installed generated carrier. Generated: CLI grammar, dispatch envelope, realization selection, and collision-free executor-name construction. Hand-retained: existing host arm bodies, the RetainedCliHost trait impl that exposes them to the carrier, and one generic delegation in the already-existing main function, which also carries the bounded lifecycle instrumentation named in this justification (the main-entry instant record as main's first act and the compile receipt printing on the retained pre-exit paths — timing-only, per Lane A P0.1; and the one shared terminal exit helper end_process_without_teardown, the flush-and-_exit boundary Verdict::apply and the compile handler's exit sites share so the CLI ends without exit-time teardown, Lane Q — it selects no command, realization or build route). No command identity or build route is selected in hand Rust.",
   owning_dissolution_lane: "BT-7-cli-hollowing" as RoadmapNodeId,
-  trigger: "Delete RetainedCliHost, its impl, this justification, and the main.rs divergence row when retained host bodies are themselves emitted or removed, the shipped main is fully produced by the admitted generated boundary, and candidate main.rs is byte-identical to committed main.rs.",
-  current_boundary: "src/v1/stage0/src/main.rs RetainedCliHost and its CliDispatchHost impl; generated gunbc_cli_dispatch_generated.rs is the sole grammar and realization-selection carrier",
+  trigger: "Delete RetainedCliHost, its impl, this justification, and the main.rs divergence row when retained host bodies and the bounded lifecycle instrumentation are themselves emitted or removed, the shipped main is fully produced by the admitted generated boundary, and candidate main.rs is byte-identical to committed main.rs.",
+  current_boundary: "src/v1/stage0/src/main.rs RetainedCliHost and its CliDispatchHost impl, the main function's one generic delegation and its declared main-entry hook and pre-exit receipt prints, and the shared terminal exit helper end_process_without_teardown; generated gunbc_cli_dispatch_generated.rs is the sole grammar and realization-selection carrier",
 }

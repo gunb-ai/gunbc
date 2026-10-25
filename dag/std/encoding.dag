@@ -1,6 +1,6 @@
 module std.encoding
 
-import std.algebra { BoundedLattice, FreeMonoid, Empty, list_snoc_item }
+import std.algebra { BoundedLattice, FreeMonoid, Empty, list_snoc_item, collection_concat_shape, list_push }
 import std.coercion { unicode_scalar_fold }
 import std.types { Bytes, Char }
 import std.error_primitives { pure_dag_seam_unreachable_string }
