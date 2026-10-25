@@ -261,12 +261,9 @@ pub(crate) fn project_heads_reading(
 fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, String> {
     use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
     use crate::v1_std_core::{ExprData, InferredNode};
-    // BOOTSTRAP-ONLY INTERMEDIATE HEAD: this projection is exhaustive by construction (every `Node`
-    // field and every node- or id-bearing enum arm named, no `..`, no wildcard), but the head that adds
-    // the `application_role` carrier must compile against the committed mirror, which lacks it. This
-    // head names the fields as before, takes `..` for the carrier (it holds no node or id), and
-    // restores the leaf-variant wildcard; the head after heal publishes the mirror restores the
-    // exhaustive destructure naming `application_role` and the exhaustive `inferred` arms.
+    // EXHAUSTIVE BY CONSTRUCTION: every `Node` field, and every arm of every enum below that can
+    // hold a node or an id, is named with no `..` and no wildcard, so a field or variant added
+    // later fails to compile here rather than passing through with file-local ids.
     let Node {
         occurrence_identity,
         name,
@@ -287,10 +284,10 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         has_non_tail_self_call,
         match_pattern,
         module_item_kind,
+        application_role,
         declaration_marker,
         declaration,
         expr_data,
-        ..
     } = &**n;
     let refuse = |what: &str| {
         Err(format!(
@@ -383,8 +380,12 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         Some(InferredNode::Resolved { node }) => Some(Rc::new(InferredNode::Resolved {
             node: project_node(node, base, relabel)?,
         })),
-        // Every remaining variant is a leaf with no nested node to project.
-        Some(_) => inferred.clone(),
+        Some(InferredNode::CompilerError {
+            message: _,
+            span: _,
+        })
+        | Some(InferredNode::TypeVariable { id: _ })
+        | Some(InferredNode::Divergent) => inferred.clone(),
     };
     let match_pattern = match match_pattern.as_deref() {
         None => None,
@@ -426,10 +427,10 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         has_non_tail_self_call: *has_non_tail_self_call,
         match_pattern,
         module_item_kind: module_item_kind.clone(),
+        application_role: application_role.clone(),
         declaration_marker: declaration_marker.clone(),
         declaration: None,
         expr_data: expr_data.clone(),
-        ..(**n).clone()
     }))
 }
 

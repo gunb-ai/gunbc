@@ -46,7 +46,10 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
 pub use crate::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, infer_builtin_call_type, NonDeclarationBinding,
 };
-pub use crate::v1_compiler_infer_resolve::{expand_nominal_alias_rhs, fn_type_param_names};
+pub use crate::v1_compiler_infer_resolve::{
+    expand_nominal_alias_rhs, fn_type_param_names, generic_application_reapplied,
+    is_cache_dropped_application,
+};
 pub use crate::v1_compiler_infer_service::{
     check_service_method_call_node, OpEntry, ServiceMethodResult,
 };
@@ -1199,87 +1202,74 @@ pub fn resolve_scrutinee_type_node_seen(
             return n.clone();
         }
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
-        if (((normed.connective.clone() == Connective::NoConnective)
+        if ((crate::v1_compiler_infer_resolve::is_cache_dropped_application(normed.clone())
+            && (normed.connective.clone() == Connective::NoConnective))
             && ((normed.children.clone().len() as i64) > 0))
-            && (normed.inferred.clone() != std::option::Option::None))
         {
-            match normed.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    crate::v1_std_core::preserve_outer_optional_cardinality(
-                        normed.clone(),
-                        resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone()),
-                    )
+            {
+                let reapplied = crate::v1_compiler_infer_resolve::generic_application_reapplied(
+                    normed.clone(),
+                    env.clone(),
+                );
+                match reapplied.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        crate::v1_std_core::preserve_outer_optional_cardinality(
+                            normed.clone(),
+                            resolve_scrutinee_type_node_seen(
+                                env.clone(),
+                                target.clone(),
+                                seen.clone(),
+                            ),
+                        )
+                    }
+                    _ => normed.clone(),
                 }
-                _ => normed.clone(),
             }
         } else {
-            if ((normed.connective.clone() == Connective::NoConnective)
-                && ((normed.children.clone().len() as i64) == 0))
+            if (((normed.connective.clone() == Connective::NoConnective)
+                && ((normed.children.clone().len() as i64) > 0))
+                && (normed.inferred.clone() != std::option::Option::None))
             {
-                {
-                    let canonical =
-                        crate::v1_compiler_infer_env::authored_name(env.clone(), normed.clone());
-                    if (normed.inferred.clone() != std::option::Option::None) {
-                        {
-                            let next_seen = if (canonical.clone() == "".to_string()) {
-                                seen.clone()
-                            } else {
-                                v1_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
-                            };
-                            match normed.inferred.clone().as_deref().cloned() {
-                                Some(InferredNode::Resolved { node: target, .. }) => {
-                                    if ((((crate::v1_compiler_infer_env::authored_name(
-                                        env.clone(),
-                                        target.clone(),
-                                    ) == canonical.clone())
-                                        && (target.inferred.clone() == std::option::Option::None))
-                                        && (target.connective.clone() == Connective::NoConnective))
-                                        && ((target.children.clone().len() as i64) == 0))
-                                    {
-                                        normed.clone()
-                                    } else {
-                                        crate::v1_std_core::preserve_outer_optional_cardinality(
-                                            normed.clone(),
-                                            resolve_scrutinee_type_node_seen(
-                                                env.clone(),
-                                                target.clone(),
-                                                next_seen.clone(),
-                                            ),
-                                        )
-                                    }
-                                }
-                                _ => normed.clone(),
-                            }
-                        }
-                    } else {
-                        if ((canonical.clone() != "".to_string())
-                            && crate::v1_compiler_infer_types::emit_map_has(
+                match normed.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        crate::v1_std_core::preserve_outer_optional_cardinality(
+                            normed.clone(),
+                            resolve_scrutinee_type_node_seen(
+                                env.clone(),
+                                target.clone(),
                                 seen.clone(),
-                                canonical.clone(),
-                            ))
-                        {
-                            crate::v1_compiler_infer_types::nominal_type_ref(canonical.clone())
-                        } else {
+                            ),
+                        )
+                    }
+                    _ => normed.clone(),
+                }
+            } else {
+                if ((normed.connective.clone() == Connective::NoConnective)
+                    && ((normed.children.clone().len() as i64) == 0))
+                {
+                    {
+                        let canonical = crate::v1_compiler_infer_env::authored_name(
+                            env.clone(),
+                            normed.clone(),
+                        );
+                        if (normed.inferred.clone() != std::option::Option::None) {
                             {
                                 let next_seen = if (canonical.clone() == "".to_string()) {
                                     seen.clone()
                                 } else {
                                     v1_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
                                 };
-                                match crate::v1_compiler_infer_env::lookup_type_for(
-                                    env.clone(),
-                                    normed.clone(),
-                                ) {
-                                    Some(resolved) => {
+                                match normed.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: target, .. }) => {
                                         if ((((crate::v1_compiler_infer_env::authored_name(
                                             env.clone(),
-                                            resolved.clone(),
+                                            target.clone(),
                                         ) == canonical.clone())
-                                            && (resolved.inferred.clone()
+                                            && (target.inferred.clone()
                                                 == std::option::Option::None))
-                                            && (resolved.connective.clone()
+                                            && (target.connective.clone()
                                                 == Connective::NoConnective))
-                                            && ((resolved.children.clone().len() as i64) == 0))
+                                            && ((target.children.clone().len() as i64) == 0))
                                         {
                                             normed.clone()
                                         } else {
@@ -1287,20 +1277,59 @@ pub fn resolve_scrutinee_type_node_seen(
                                                 normed.clone(),
                                                 resolve_scrutinee_type_node_seen(
                                                     env.clone(),
-                                                    resolved.clone(),
+                                                    target.clone(),
                                                     next_seen.clone(),
                                                 ),
                                             )
                                         }
                                     }
-                                    std::option::Option::None => normed.clone(),
+                                    _ => normed.clone(),
+                                }
+                            }
+                        } else {
+                            if ((canonical.clone() != "".to_string())
+                                && crate::v1_compiler_infer_types::emit_map_has(
+                                    seen.clone(),
+                                    canonical.clone(),
+                                ))
+                            {
+                                crate::v1_compiler_infer_types::nominal_type_ref(canonical.clone())
+                            } else {
+                                {
+                                    let next_seen = if (canonical.clone() == "".to_string()) {
+                                        seen.clone()
+                                    } else {
+                                        v1_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
+                                    };
+                                    match crate::v1_compiler_infer_env::lookup_type_for(
+                                        env.clone(),
+                                        normed.clone(),
+                                    ) {
+                                        Some(resolved) => {
+                                            if ((((crate::v1_compiler_infer_env::authored_name(
+                                                env.clone(),
+                                                resolved.clone(),
+                                            ) == canonical.clone())
+                                                && (resolved.inferred.clone()
+                                                    == std::option::Option::None))
+                                                && (resolved.connective.clone()
+                                                    == Connective::NoConnective))
+                                                && ((resolved.children.clone().len() as i64) == 0))
+                                            {
+                                                normed.clone()
+                                            } else {
+                                                crate::v1_std_core::preserve_outer_optional_cardinality(normed.clone(), resolve_scrutinee_type_node_seen(env.clone(), resolved.clone(), next_seen.clone()))
+                                            }
+                                        }
+                                        std::option::Option::None => normed.clone(),
+                                    }
                                 }
                             }
                         }
                     }
+                } else {
+                    normed.clone()
                 }
-            } else {
-                normed.clone()
             }
         }
     })

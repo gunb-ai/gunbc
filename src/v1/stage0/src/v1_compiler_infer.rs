@@ -198,12 +198,13 @@ pub use crate::v1_compiler_infer_env::{
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
     lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
     merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
-    node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
-    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
-    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_type,
-    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
-    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
+    node_with_children, node_with_children_params_inferred_basis, node_with_inferred,
+    overlay_skips_kernel_name, put_inductive_field, put_inductive_field_cross,
+    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
+    qualify_decl_reference_positions, settled_type, settled_type_of_declaration,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
+    text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
     type_reference_declaration, type_reference_declaration_reading, type_reference_declaration_ref,
     unit_variant_index_shadow_insert, GlobalBareCandidate, GlobalBareLookupState,
@@ -258,7 +259,8 @@ pub use crate::v1_compiler_infer_patterns::{
     ConstructorRoster, NodeLookupResult, PatternSubject,
 };
 pub use crate::v1_compiler_infer_resolve::{
-    expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
+    expand_nominal_alias_rhs, fn_type_param_names, generic_application_reapplied,
+    generic_declaration_application, is_applied_declaration_carrier, is_declaration_body,
     is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
     resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
     ItemResolveResult, NodeResolveResult,
@@ -372,6 +374,8 @@ use crate::v1_std_core::ServiceConfigField::{
     SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
+pub use crate::v1_std_core::TypeApplicationRole;
+use crate::v1_std_core::TypeApplicationRole::*;
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
@@ -1046,6 +1050,7 @@ pub fn nominal_ref_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -1072,6 +1077,7 @@ pub fn nominal_ref_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: module_item_kind.clone(),
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -3168,7 +3174,7 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     connective: sf.connective.clone(),
     params: sf.params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: substitute_generics(field_substitution_carrier(sf.clone(), si.clone()), subst.clone(), si.clone()),
+    node: substitute_generics(stamp_field_type_from_decl_params(field_substitution_carrier(sf.clone(), si.clone()), decl.clone(), si.clone()), subst.clone(), si.clone()),
 })),
     return_cardinality: sf.return_cardinality.clone(),
     uses: sf.uses.clone(),
@@ -3180,6 +3186,7 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     has_non_tail_self_call: sf.has_non_tail_self_call.clone(),
     match_pattern: sf.match_pattern.clone(),
     module_item_kind: sf.module_item_kind.clone(),
+    application_role: sf.application_role.clone(),
     declaration_marker: sf.declaration_marker.clone(),
     declaration: sf.declaration.clone(),
     expr_data: sf.expr_data.clone(),
@@ -9421,6 +9428,7 @@ pub fn lambda_arrow_param(lambda_param: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -11657,6 +11665,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -12011,6 +12020,7 @@ pub fn rest_operation_result_type(
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
                         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                        application_role: std::option::Option::None,
                         declaration_marker: DeclarationMarker::Unmarked,
                         declaration: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
@@ -12682,6 +12692,7 @@ let fold_callable = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+    application_role: std::option::Option::None,
     declaration_marker: DeclarationMarker::Unmarked,
     declaration: std::option::Option::None,
     expr_data: Rc::new(ExprData::NoExprData),
@@ -13689,6 +13700,7 @@ pub fn elaborated_expr_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: expr_data.clone(),
@@ -15359,6 +15371,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     .clone(),
                                                 match_pattern: receiver.match_pattern.clone(),
                                                 module_item_kind: receiver.module_item_kind.clone(),
+                                                application_role: receiver.application_role.clone(),
                                                 declaration_marker: receiver
                                                     .declaration_marker
                                                     .clone(),
@@ -17260,6 +17273,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             has_non_tail_self_call: pn.has_non_tail_self_call.clone(),
                             match_pattern: pn.match_pattern.clone(),
                             module_item_kind: pn.module_item_kind.clone(),
+                            application_role: pn.application_role.clone(),
                             declaration_marker: pn.declaration_marker.clone(),
                             declaration: pn.declaration.clone(),
                             expr_data: pn.expr_data.clone(),
@@ -18172,50 +18186,6 @@ pub fn alias_chain_type_arg_subst(
     }
 }
 
-pub fn alias_chain_arity_diagnostics(
-    carrier: Rc<Node>,
-    carrier_name: String,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let type_args = carrier.children.clone();
-        if (((carrier_name.clone() == "".to_string()) || ((type_args.clone().len() as i64) == 0))
-            || crate::std_types::is_container_type(carrier_name.clone()))
-        {
-            Rc::new(vec![])
-        } else {
-            match crate::v1_compiler_infer_env::lookup_type_by_name(
-                env.clone(),
-                carrier_name.clone(),
-            ) {
-                Some(target) => {
-                    let decl =
-                        alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-                    if alias_chain_type_arg_arity_mismatch(
-                        carrier.clone(),
-                        decl.clone(),
-                        type_args.clone(),
-                    ) {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::TypeArgumentArityMismatch {
-                                type_name: carrier_name.clone(),
-                                supplied: (type_args.clone().len() as i64),
-                                declared: (decl.params.clone().len() as i64),
-                                span: carrier.span.clone(),
-                            }),
-                            module_name.clone(),
-                        )])
-                    } else {
-                        Rc::new(vec![])
-                    }
-                }
-                std::option::Option::None => Rc::new(vec![]),
-            }
-        }
-    }
-}
-
 pub fn alias_chain_target_after_args(
     target: Rc<Node>,
     carrier: Rc<Node>,
@@ -18245,7 +18215,11 @@ pub fn alias_chain_target_after_args(
                                 Some(InferredNode::Resolved {
                                     node: alias_body, ..
                                 }) => substitute_generics(
-                                    alias_body.clone(),
+                                    stamp_field_type_from_decl_params(
+                                        alias_body.clone(),
+                                        decl.clone(),
+                                        env.source_indices.clone(),
+                                    ),
                                     subst.clone(),
                                     env.source_indices.clone(),
                                 ),
@@ -18280,11 +18254,13 @@ pub fn expand_alias_chain_for_field_access(
     seen: Rc<HashMap<String, bool>>,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let peel_result = if needs_alias_field_expansion(n.clone(), env.clone()) {
-            peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
+        let application =
+            crate::v1_compiler_infer_resolve::generic_application_reapplied(n.clone(), env.clone());
+        let peel_result = if needs_alias_field_expansion(application.clone(), env.clone()) {
+            peel_alias_once_for_field_access(application.clone(), env.clone(), module_name.clone())
         } else {
             Rc::new(NodeResolveResult {
-                resolved: n.clone(),
+                resolved: application.clone(),
                 diagnostics: Rc::new(vec![]),
             })
         };
@@ -18295,15 +18271,7 @@ pub fn expand_alias_chain_for_field_access(
         } else {
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), carrier.clone())
         };
-        let own_diags = v1_rt::concat(
-            peel_result.diagnostics.clone(),
-            alias_chain_arity_diagnostics(
-                carrier.clone(),
-                carrier_name.clone(),
-                env.clone(),
-                module_name.clone(),
-            ),
-        );
+        let own_diags = peel_result.diagnostics.clone();
         let structural = structural_from_expanded_type(
             crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
                 env.clone(),
@@ -18931,6 +18899,7 @@ pub fn transparent_alias_application_at_head(
                         has_non_tail_self_call: exp.has_non_tail_self_call.clone(),
                         match_pattern: exp.match_pattern.clone(),
                         module_item_kind: exp.module_item_kind.clone(),
+                        application_role: exp.application_role.clone(),
                         declaration_marker: exp.declaration_marker.clone(),
                         declaration: exp.declaration.clone(),
                         expr_data: exp.expr_data.clone(),
@@ -19963,6 +19932,7 @@ Rc::new(FieldInferResult {
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                            application_role: std::option::Option::None,
                             declaration_marker: DeclarationMarker::Unmarked,
                             declaration: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
@@ -19990,6 +19960,7 @@ Rc::new(FieldInferResult {
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    application_role: std::option::Option::None,
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
@@ -22518,6 +22489,7 @@ crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_s
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    application_role: body.application_role.clone(),
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: Rc::new(ExprData::ExprCall {
@@ -22833,6 +22805,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    application_role: body.application_role.clone(),
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: body.expr_data.clone(),
@@ -22963,6 +22936,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    application_role: body.application_role.clone(),
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: body.expr_data.clone(),
@@ -23059,6 +23033,7 @@ Rc::new(BlockAnnotateAcc {
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    application_role: body.application_role.clone(),
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: body.expr_data.clone(),
@@ -23333,6 +23308,7 @@ Rc::new(BlockAnnotateAcc {
                             has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                             match_pattern: body.match_pattern.clone(),
                             module_item_kind: body.module_item_kind.clone(),
+                            application_role: body.application_role.clone(),
                             declaration_marker: body.declaration_marker.clone(),
                             declaration: body.declaration.clone(),
                             expr_data: body.expr_data.clone(),
@@ -23430,6 +23406,7 @@ Rc::new(BlockAnnotateAcc {
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
                     module_item_kind: body.module_item_kind.clone(),
+                    application_role: body.application_role.clone(),
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: body.expr_data.clone(),
@@ -25263,6 +25240,7 @@ pub fn infer_property_values(
                             has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                             match_pattern: p.match_pattern.clone(),
                             module_item_kind: p.module_item_kind.clone(),
+                            application_role: p.application_role.clone(),
                             declaration_marker: p.declaration_marker.clone(),
                             declaration: p.declaration.clone(),
                             expr_data: p.expr_data.clone(),
@@ -25376,6 +25354,7 @@ Rc::new(PropertyInferenceResult {
     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
     match_pattern: p.match_pattern.clone(),
     module_item_kind: p.module_item_kind.clone(),
+    application_role: p.application_role.clone(),
     declaration_marker: p.declaration_marker.clone(),
     declaration: p.declaration.clone(),
     expr_data: p.expr_data.clone(),
@@ -25478,6 +25457,7 @@ pub fn infer_transport_node(
                     has_non_tail_self_call: t.has_non_tail_self_call.clone(),
                     match_pattern: t.match_pattern.clone(),
                     module_item_kind: t.module_item_kind.clone(),
+                    application_role: t.application_role.clone(),
                     declaration_marker: t.declaration_marker.clone(),
                     declaration: t.declaration.clone(),
                     expr_data: t.expr_data.clone(),
@@ -25542,6 +25522,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: item.module_item_kind.clone(),
+                    application_role: item.application_role.clone(),
                     declaration_marker: item.declaration_marker.clone(),
                     declaration: item.declaration.clone(),
                     expr_data: Rc::new(ExprData::NoExprData),
@@ -25692,6 +25673,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             ),
                             match_pattern: std::option::Option::None,
                             module_item_kind: item.module_item_kind.clone(),
+                            application_role: item.application_role.clone(),
                             declaration_marker: item.declaration_marker.clone(),
                             declaration: item.declaration.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
@@ -25767,6 +25749,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: item.module_item_kind.clone(),
+                                application_role: item.application_role.clone(),
                                 declaration_marker: item.declaration_marker.clone(),
                                 declaration: item.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -25815,6 +25798,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: item.module_item_kind.clone(),
+                                application_role: item.application_role.clone(),
                                 declaration_marker: item.declaration_marker.clone(),
                                 declaration: item.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -25858,6 +25842,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: item.module_item_kind.clone(),
+                                application_role: item.application_role.clone(),
                                 declaration_marker: item.declaration_marker.clone(),
                                 declaration: item.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -26172,10 +26157,11 @@ pub fn unify_generics(
                     acc.clone(),
                 )
             } else {
-                if ((((formal.children.clone().len() as i64) > 0)
+                if (((((formal.children.clone().len() as i64) > 0)
                     && (formal.connective.clone() == actual.connective.clone()))
                     && ((formal.children.clone().len() as i64)
                         == (actual.children.clone().len() as i64)))
+                    && !crate::v1_compiler_infer_resolve::is_declaration_body(actual.clone()))
                 {
                     unify_generic_child_pairs(
                         formal.children.clone(),
@@ -26594,18 +26580,11 @@ pub fn substitute_generics_apply(
                 }
             }
             _ => {
-                let nm = type_node_label(n.clone(), source_indices.clone());
-                let is_bare = ((((n.children.clone().len() as i64) == 0)
+                let is_leaf = ((((n.children.clone().len() as i64) == 0)
                     && (n.connective.clone() == Connective::NoConnective))
                     && ((n.params.clone().len() as i64) == 0));
-                if is_bare.clone() {
-                    match v1_rt::map_get(&subst, nm.clone()) {
-                        Some(c) => crate::v1_std_core::preserve_outer_optional_cardinality(
-                            n.clone(),
-                            c.clone(),
-                        ),
-                        std::option::Option::None => n.clone(),
-                    }
+                if is_leaf.clone() {
+                    n.clone()
                 } else {
                     {
                         let new_children = Rc::new({
@@ -26630,26 +26609,30 @@ pub fn substitute_generics_apply(
                             }
                             __result
                         });
-                        let new_inferred = match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                let new_rt = substitute_generics_apply(
-                                    rt.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                );
-                                if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                                    n.inferred.clone()
-                                } else {
-                                    Some(Rc::new(InferredNode::Resolved {
-                                        node: new_rt.clone(),
-                                    }))
-                                }
-                            }
-                            _ => n.inferred.clone(),
+                        let is_carrier =
+                            crate::v1_compiler_infer_resolve::is_applied_declaration_carrier(
+                                n.clone(),
+                            );
+                        let new_inferred = if is_carrier.clone() {
+                            generics_substituted_cache_dropped(n.inferred.clone())
+                        } else {
+                            substitute_generics_resolved(
+                                n.clone(),
+                                subst.clone(),
+                                source_indices.clone(),
+                            )
                         };
-                        if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
+                        let new_role = if (is_carrier.clone()
+                            && (new_inferred.clone() == std::option::Option::None))
+                        {
+                            Some(TypeApplicationRole::ResolvedArguments)
+                        } else {
+                            n.application_role.clone()
+                        };
+                        if (((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
                             && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
                             && (new_inferred.clone() == n.inferred.clone()))
+                            && (new_role.clone() == n.application_role.clone()))
                         {
                             n.clone()
                         } else {
@@ -26674,6 +26657,7 @@ pub fn substitute_generics_apply(
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 module_item_kind: n.module_item_kind.clone(),
+                                application_role: new_role.clone(),
                                 declaration_marker: n.declaration_marker.clone(),
                                 declaration: n.declaration.clone(),
                                 expr_data: n.expr_data.clone(),
@@ -26685,6 +26669,36 @@ pub fn substitute_generics_apply(
             }
         }
     })
+}
+
+pub fn substitute_generics_resolved(
+    n: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<InferredNode>> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            let new_rt =
+                substitute_generics_apply(rt.clone(), subst.clone(), source_indices.clone());
+            if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
+                n.inferred.clone()
+            } else {
+                Some(Rc::new(InferredNode::Resolved {
+                    node: new_rt.clone(),
+                }))
+            }
+        }
+        _ => n.inferred.clone(),
+    }
+}
+
+pub fn generics_substituted_cache_dropped(
+    inferred: Option<Rc<InferredNode>>,
+) -> Option<Rc<InferredNode>> {
+    match inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: _, .. }) => std::option::Option::None,
+        _ => inferred.clone(),
+    }
 }
 
 pub fn kernel_span(name: String) -> Rc<SourceSpan> {
@@ -27385,6 +27399,7 @@ pub fn local_binding_for_item(
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
                         module_item_kind: item.module_item_kind.clone(),
+                        application_role: item.application_role.clone(),
                         declaration_marker: item.declaration_marker.clone(),
                         declaration: item.declaration.clone(),
                         expr_data: Rc::new(ExprData::NoExprData),
@@ -27424,6 +27439,7 @@ pub fn local_binding_for_item(
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: item.module_item_kind.clone(),
+                            application_role: item.application_role.clone(),
                             declaration_marker: item.declaration_marker.clone(),
                             declaration: item.declaration.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
@@ -27464,6 +27480,7 @@ pub fn local_binding_for_item(
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: item.module_item_kind.clone(),
+                                application_role: item.application_role.clone(),
                                 declaration_marker: item.declaration_marker.clone(),
                                 declaration: item.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -27529,6 +27546,7 @@ pub fn local_binding_for_item(
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
                                         module_item_kind: item.module_item_kind.clone(),
+                                        application_role: item.application_role.clone(),
                                         declaration_marker: item.declaration_marker.clone(),
                                         declaration: item.declaration.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
@@ -27589,6 +27607,7 @@ pub fn local_binding_for_item(
                                                 has_non_tail_self_call: false,
                                                 match_pattern: std::option::Option::None,
                                                 module_item_kind: item.module_item_kind.clone(),
+                                                application_role: item.application_role.clone(),
                                                 declaration_marker: item.declaration_marker.clone(),
                                                 declaration: item.declaration.clone(),
                                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -28818,45 +28837,28 @@ pub fn stamp_field_type_from_decl_params(
     serving_decl: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if (((serving_decl.params.clone().len() as i64) == 0)
-        || (field_type.inferred.clone() != std::option::Option::None))
-    {
+    if ((serving_decl.params.clone().len() as i64) == 0) {
         field_type.clone()
     } else {
         {
-            let is_bare = ((((field_type.children.clone().len() as i64) == 0)
-                && (field_type.connective.clone() == Connective::NoConnective))
-                && ((field_type.params.clone().len() as i64) == 0));
-            if is_bare.clone() {
-                {
-                    let nm = type_node_label(field_type.clone(), source_indices.clone());
-                    let is_param = Rc::new({
-                        let mut __result = Vec::new();
-                        for p in serving_decl.params.clone().iter().cloned() {
-                            __result.push(crate::v1_std_core::generic_param_name_at(
-                                p.clone(),
-                                source_indices.clone(),
-                            ));
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    .fold(false, |acc: bool, pn: String| {
-                        (acc || (pn.clone() == nm.clone()))
-                    });
-                    if is_param.clone() {
-                        crate::v1_compiler_infer_env::node_with_inferred(
-                            field_type.clone(),
-                            Some(Rc::new(InferredNode::TypeVariable { id: nm.clone() })),
-                        )
-                    } else {
-                        field_type.clone()
-                    }
-                }
-            } else {
-                field_type.clone()
-            }
+            let param_names = serving_decl.params.clone().iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        crate::v1_std_core::generic_param_name_at(
+                            p.clone(),
+                            source_indices.clone(),
+                        ),
+                        true,
+                    )
+                },
+            );
+            stamp_type_param_occurrences(
+                field_type.clone(),
+                param_names.clone(),
+                source_indices.clone(),
+            )
         }
     }
 }
@@ -28886,9 +28888,8 @@ pub fn stamp_type_param_occurrences(
                 n.clone()
             }
         } else {
-            crate::v1_compiler_infer_env::node_with_children(
-                n.clone(),
-                Rc::new({
+            {
+                let children = Rc::new({
                     let mut __result = Vec::new();
                     for c in n.children.clone().iter().cloned() {
                         __result.push(stamp_type_param_occurrences(
@@ -28898,8 +28899,37 @@ pub fn stamp_type_param_occurrences(
                         ));
                     }
                     __result
-                }),
-            )
+                });
+                let params = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in n.params.clone().iter().cloned() {
+                        __result.push(stamp_type_param_occurrences(
+                            p.clone(),
+                            param_names.clone(),
+                            source_indices.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let inferred = match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: stamp_type_param_occurrences(
+                                rt.clone(),
+                                param_names.clone(),
+                                source_indices.clone(),
+                            ),
+                        }))
+                    }
+                    _ => n.inferred.clone(),
+                };
+                crate::v1_compiler_infer_env::node_with_children_params_inferred_basis(
+                    n.clone(),
+                    children.clone(),
+                    params.clone(),
+                    inferred.clone(),
+                )
+            }
         }
     })
 }
@@ -29518,6 +29548,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -29542,6 +29573,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -29569,6 +29601,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -29624,6 +29657,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -29648,6 +29682,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -29672,6 +29707,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -29696,6 +29732,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            application_role: std::option::Option::None,
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -29800,6 +29837,7 @@ pub fn build_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                application_role: std::option::Option::None,
                                 declaration_marker: DeclarationMarker::Unmarked,
                                 declaration: std::option::Option::None,
                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -29838,6 +29876,7 @@ pub fn build_type_env(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    application_role: std::option::Option::None,
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
@@ -30464,6 +30503,7 @@ pub fn build_type_env_unresolved(
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                application_role: std::option::Option::None,
                                 declaration_marker: DeclarationMarker::Unmarked,
                                 declaration: std::option::Option::None,
                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -30571,6 +30611,7 @@ if has_structure.clone() {
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
     module_item_kind: item.module_item_kind.clone(),
+    application_role: item.application_role.clone(),
     declaration_marker: item.declaration_marker.clone(),
     declaration: item.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
@@ -30605,6 +30646,7 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
     module_item_kind: item.module_item_kind.clone(),
+    application_role: item.application_role.clone(),
     declaration_marker: item.declaration_marker.clone(),
     declaration: item.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
@@ -30653,6 +30695,7 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
     module_item_kind: item.module_item_kind.clone(),
+    application_role: item.application_role.clone(),
     declaration_marker: item.declaration_marker.clone(),
     declaration: item.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
@@ -32415,6 +32458,7 @@ pub fn grounded_node(
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
+        application_role: n.application_role.clone(),
         declaration_marker: n.declaration_marker.clone(),
         declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
@@ -34653,6 +34697,7 @@ pub fn typecheck_module(
                             has_non_tail_self_call: item.has_non_tail_self_call.clone(),
                             match_pattern: item.match_pattern.clone(),
                             module_item_kind: item.module_item_kind.clone(),
+                            application_role: item.application_role.clone(),
                             declaration_marker: item.declaration_marker.clone(),
                             declaration: item.declaration.clone(),
                             expr_data: item.expr_data.clone(),
@@ -36011,6 +36056,7 @@ pub fn compiler_kernel_type_env(
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                application_role: std::option::Option::None,
                                 declaration_marker: DeclarationMarker::Unmarked,
                                 declaration: std::option::Option::None,
                                 expr_data: Rc::new(ExprData::NoExprData),
@@ -36049,6 +36095,7 @@ pub fn compiler_kernel_type_env(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    application_role: std::option::Option::None,
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
