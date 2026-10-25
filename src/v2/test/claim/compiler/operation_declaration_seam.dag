@@ -50,14 +50,13 @@ import v2.std.operation_declaration {
   NativeHostObservation,
   ObservesHost,
   OperationDispositionUnclassified,
-  effect_demand_blocked_operations,
-  effect_demand_implementable_operations,
   effect_demand_operation_classifications,
   every_declaration_is_a_host_seam,
   operation_declaration_for,
   operation_declaration_m2v_population,
   operation_declaration_row_count_for
 }
+import v2.compiler.effect_demand { effect_demand_blocked_operations, effect_demand_implementable_operations }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
