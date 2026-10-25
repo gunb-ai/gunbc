@@ -2242,7 +2242,7 @@ fn fleet_converge_runner_host_restore_step() -> Step {
 // enforced HERE, as a step emitted only for the three act modes and ordered BEFORE all of them: its
 // script holds no entry invocation, and its `if:` fires exactly when the two inputs are equal -- so
 // when it prints, it prints, exits 1, and no drain or mask leg can have run. The control
-// (test.claim.fleet.fleet_converge_executor_subject_split_witness) pins the ordering, the refusal
+// (test.claim.fleet.fleet_converge_host_cap_linkage_witness) pins the ordering, the refusal
 // text, and the absence of any actuation invoke in the step.
 fn fleet_converge_executor_subject_split_gate_step() -> Step {
   RunStep {
@@ -2257,20 +2257,26 @@ fn fleet_converge_executor_subject_split_gate_step() -> Step {
       ]
     },
     working_directory: none,
+    // ONE EXPRESSION TREE, serialized once -- not two strings glued with " && ". Gluing text made
+    // GitHub read `A || B || C && D` as A || B || (C && D): the gate ran on EVERY converge/withdraw
+    // dispatch and was SKIPPED for a restore whose subject_host was empty, which is the case the step
+    // exists to catch (review 38602, review 386096). The serializer wraps an operand that binds looser
+    // than its parent, so this tree renders `(A || B || C) && (host == subject_host)`.
     if_condition: Present {
-      value: concat(
-        concat(fleet_converge_three_act_modes_step_if, " && "),
-        concat(serialize_expression(expression: Equals { left: ContextAccess { context: Github, path: ["event", "inputs", "host"] }, right: ContextAccess { context: Github, path: ["event", "inputs", "subject_host"] } }), ""),
-      )
+      value: serialize_expression(expression: LogicalAnd {
+        left: fleet_converge_any_mode_expression(modes: [RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore]),
+        right: Equals { left: ContextAccess { context: Github, path: ["event", "inputs", "host"] }, right: ContextAccess { context: Github, path: ["event", "inputs", "subject_host"] } },
+      })
     },
     continue_on_error: none,
     timeout_minutes: none
   }
 }
 
-// The three act modes' own gate: exactly converge, withdraw, restore, composed from the mode roster's
-// own expression builder (fleet_converge_any_mode_expression) so the gate and the roster cannot drift.
-data fleet_converge_three_act_modes_step_if: String = serialize_expression(expression: fleet_converge_any_mode_expression(modes: [RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore]))
+// THE THREE ACT MODES' OWN GATE is composed in the gate step (fleet_converge_executor_subject_split_gate_step)
+// as ONE expression tree from the mode roster's own builder (fleet_converge_any_mode_expression), so the
+// gate and the roster cannot drift. It is deliberately NOT a serialized string glued to more text: see the
+// gate step's if_condition comment for the precedence defect that gluing caused (review 38602/386096).
 
 // THE CAP BRACKET'S always() RELEASE: runs after the converge step whatever its fate (success, failure,
 // cancel or its own timeout) and re-admits the declared-live slots, reading each back. always() is a
@@ -6311,6 +6317,10 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
       } else if !fleet_converge_gcp_iam_refusal_script_admitted() {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet.fleet_converge_workflow: v2.workflow.bash_emit refused the gcp-iam-converge refusal script, so no workflow is emitted rather than a step with no script",
+        }
+      } else if !fleet_converge_split_gate_script_admitted() {
+        FleetConvergeYamlGenerationRefused {
+          reason: "REFUSED gunbc.fleet.fleet_converge_workflow: v2.workflow.bash_emit refused the executor/subject split-gate script (gunbc.fleet.fleet_converge_executor_subject_split fleet_converge_split_gate_statements), so no workflow is emitted rather than a precondition step whose shell fails to parse -- a syntax error is neither a full success nor a typed refusal (review 38602/386096 found string-built shell here emitting exactly that)",
         }
       } else if !fleet_ssh_multiplex_teardown_admitted() {
         FleetConvergeYamlGenerationRefused {
