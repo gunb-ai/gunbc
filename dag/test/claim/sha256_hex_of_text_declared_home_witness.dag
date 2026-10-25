@@ -1,0 +1,80 @@
+module test.claim.sha256_hex_of_text_declared_home_witness
+
+import std.logic { Bool }
+import std.types { String }
+import std.content_hash { sha256_hex_of_text, sha256_hex_digest }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DECLARED HOME, EXERCISED: std.content_hash sha256_hex_of_text reached by its declared import (no ambient tier),
+// against known answers. Its declaration names three steps -- UTF-8 encode, SHA-256, lowercase hex -- and each claim
+// below discriminates one of them. The empty and "abc" texts are the FIPS 180-4 published values (the same values
+// test.claim.sha256_fips_witness_test asserts of the pure fold extdeps.crypto.sha2 sha256_hex). The non-ASCII texts
+// separate the NAMED encoding from its neighbours: the known answers were computed with Python hashlib over the UTF-8
+// octets (c3 a9 for U+00E9; e2 82 ac f0 9f 98 80 for U+20AC U+1F600), and the digests of the Latin-1 (e9) and
+// UTF-16LE (e9 00) encodings of U+00E9 are carried as the REDs a wrong encoding would produce.
+fn digest_is(text: String, known: String) -> Bool {
+  sha256_hex_of_text(text: text) == known
+}
+
+test fn the_declared_digest_of_the_empty_text_is_the_fips_answer() -> Bool {
+  digest_is(text: "", known: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+}
+
+test fn the_declared_digest_of_abc_is_the_fips_answer() -> Bool {
+  digest_is(text: "abc", known: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+}
+
+// THE ENCODING STEP: a two-octet UTF-8 scalar digests its UTF-8 octets, and neither its Latin-1 nor its UTF-16LE octets.
+test fn the_declared_digest_of_e_acute_is_over_its_utf8_octets() -> Bool {
+  digest_is(text: "\u{e9}", known: "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c")
+    && !digest_is(text: "\u{e9}", known: "de2e331d891ae267a7009cb45b4e8830f170e0c937288ea2731a1941c7a53b0d")
+    && !digest_is(text: "\u{e9}", known: "63e3c807f93f669a2625f37ee673726c36ef3e99b6b7db02c910be25087e0f9c")
+}
+
+// Three- and four-octet UTF-8 sequences (a BMP scalar beside an astral one, which UTF-16 would split into a surrogate pair).
+test fn the_declared_digest_of_a_three_and_a_four_octet_scalar_is_over_their_utf8_octets() -> Bool {
+  digest_is(text: "\u{20ac}\u{1f600}", known: "aa6ac38b88868c15ec32bf6cca0dda3ffa2595bdf3e1ae98c328b799f889b9ac")
+}
+
+// THE RENDER STEP: the result is 64 lowercase hex digits, so the std.content_hash Sha256Digest wall admits it.
+test fn the_declared_digest_is_admitted_by_the_sha256_hex_wall() -> Bool {
+  match sha256_hex_digest(hex: sha256_hex_of_text(text: "abc")) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE WALL'S CONTROL: the same text rendered in uppercase is refused, so the claim above is not admitting anything.
+test fn the_sha256_hex_wall_refuses_an_uppercase_render() -> Bool {
+  match sha256_hex_digest(hex: "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE REALIZATION BINDING, AT RUST EMISSION. std.content_hash sha256_hex_of_text has a projection row
+// (std.primitive_projection primitive_sha256_hex_of_text, HostRealizedSeam) and no rt_function_registry bridge, so its
+// emitted body is the unrealized-seam refusal -- a panic naming the seam -- and never a self-recursive call. The probe
+// imports it and calls it; the declaration's module is emitted beside the probe.
+test fn w_declared_sha256_seam_emits_the_unrealized_refusal_not_recursion() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.content_hash_sha256_probe\nimport std.types { String }\nimport std.content_hash { sha256_hex_of_text }\nfn probe() -> String { sha256_hex_of_text(text: \"abc\") }\n",
+    "src/std_content_hash.rs",
+    ["unrealized host seam 'sha256_hex_of_text' in std.content_hash"],
+    ["sha256_hex_of_text(text)\n"]
+  )
+}
+
+// A same-named ordinary fn keeps its authored body: the seam is keyed by std.content_hash's declaration through its
+// projection row, never by the spelling `sha256_hex_of_text`.
+test fn w_homonym_sha256_hex_of_text_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_sha256_probe\nimport std.integer { Int }\nfn sha256_hex_of_text(text: Int) -> Int { 424244 }\nfn probe() -> Int { sha256_hex_of_text(text: 1) }\n",
+    "src/test_claim_homonym_sha256_probe.rs",
+    ["424244"],
+    ["unrealized host seam"]
+  )
+}
