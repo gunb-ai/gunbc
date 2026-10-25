@@ -1,0 +1,6 @@
+{"phase": "prefill-heavy", "arm": "fp8_kv_flash_attn", "id": "prefill-30k", "error": null, "prompt_tokens": 30058, "ttft_s": 3.743, "prefill_tps": 8030.8}
+{"status": 200, "total_s": 10.296457452997856, "prompt_tokens": 119966, "completion_tokens": 1, "text": "", "phase": "longctx", "arm": "fp8_kv_flash_attn", "id": "ctx-120k", "target_tokens": 120000}
+{"status": 200, "total_s": 10.583939281001221, "prompt_tokens": 179937, "completion_tokens": 1, "text": "", "phase": "longctx", "arm": "fp8_kv_flash_attn", "id": "ctx-180k", "target_tokens": 180000}
+{"status": 200, "total_s": 10.435638458002359, "prompt_tokens": 239909, "completion_tokens": 1, "text": "", "phase": "longctx", "arm": "fp8_kv_flash_attn", "id": "ctx-240k", "target_tokens": 240000}
+{"status": 200, "total_s": 5.338846457998443, "prompt_tokens": 259900, "completion_tokens": 1, "text": "", "phase": "longctx", "arm": "fp8_kv_flash_attn", "id": "ctx-260k", "target_tokens": 260000}
+DONE
