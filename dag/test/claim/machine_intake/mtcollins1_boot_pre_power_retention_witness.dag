@@ -2,187 +2,180 @@ module test.claim.machine_intake.mtcollins1_boot_pre_power_retention_witness
 
 // WHAT THIS WITNESS HOLDS (PR2 of #15065).
 //
-// The boot's READ-ONLY pre-power phase now also answers `mc info` and `fru print 0`, and each answer is
-// RETAINED VERBATIM under the run's own key and EMITTED IN THE RECEIPT -- the same contract #14982 set
-// for the hpm check. These claims are hermetic: they touch ONLY files this witness wrote itself and
-// pure folds, so they make no BMC call and need no live machine, and they exercise exactly the
-// functions the boot uses -- the same path builders, the same retention fold, the same identity gate,
-// the same receipt-line fn conclude() calls. (The retain fns themselves invoke `ipmitool` and, like
-// the hpm-check fn before them, are exercised by the boot, not here; this witness holds the shape that
-// must hold regardless of what the tool answers.)
+// The boot's READ-ONLY pre-power phase now also answers `mc info` and `fru print 0`; each answer is
+// retained VERBATIM under the run's own key and emitted in the receipt -- the contract #14982 set for
+// the hpm check, extended. These claims are hermetic: pure folds, path builders, and real reads of the
+// committed hpm-check capture (a path under the checkout root is INPUT ACCESS to the interpreter; the
+// run never writes, never reaches the network, and never calls ipmitool -- the retain fns that do are
+// exercised by the boot itself, exactly like mtcollins1_boot_hpm_check before them).
 //
 // Each claim is a fact ONLY this PR can change, and the assertions DISCRIMINATE:
-//  - the key: each retained file carries the id of the run that answered, and both artifacts sit
-//    inside the boot's upload glob (a renamed artifact would escape upload silently);
-//  - the count: the bytes a retention reports are counted from its OWN verbatim content by the fold,
-//    never typed by a caller, and a different content yields a different count;
+//  - the key: each retained file carries the id of the run that answered, and both artifacts sit under
+//    the boot's upload prefix (a renamed artifact would escape the upload silently);
+//  - the size: a retention's ByteSize is derived from its OWN verbatim content through std.measure --
+//    the file's one size authority (review 86396) -- never typed, and a different content yields a
+//    different size;
 //  - the two failure stages stay DISTINCT (review 86381 finding 1): a write that failed and a
-//    read-back that failed each surface their own cause with their own stage verb -- neither is
-//    laundered into the other's message;
+//    read-back that failed each surface their own cause with their own stage verb, never laundered
+//    into one another's message;
 //  - the identity gate: without a run identity NOTHING is read (a missing identity must never read
 //    some other run's file), and the variable that was missing is named;
-//  - the receipt line leads with the cause the attempt record CARRIED, per artifact, from the one
-//    parameterized line fn -- an executed-not-retained cause is never replaced by a read-back's guess.
+//  - the receipt line leads with the cause the attempt record CARRIED, and reads the disk back to
+//    confirm -- exercised end-to-end over the committed capture's real bytes.
 
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import std.algebra { string_contains }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.optional { Present }
+import std.upsert_decision { Absent }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_45, mtcollins1_boot_run_40082618814_hpm_check_artifact_path }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_mc_info_path,
   mtcollins1_boot_fru_print_path,
-  mtcollins1_boot_artifact_glob,
   mtcollins1_pre_power_retention_of,
   mtcollins1_boot_pre_power_retained,
   pre_power_retention_receipt_line,
   PrePowerRetained,
   PrePowerNotRetained,
   AttemptRunId,
-  AttemptIdentityUnavailable
-}
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.optional { Present }
-import std.upsert_decision { Absent }
-import std.prelude { True, False }
-import std.string { string_contains }
-import std.debug { claim_that }
-import std.equal { eq }
-
-test fn each_retention_is_keyed_to_the_run_that_wrote_it() {
-  // The same run id must appear in BOTH artifacts' paths: they are retained together, under one key,
-  // and a different run's id in either name would attribute one run's capture to another.
-  let a = mtcollins1_boot_mc_info_path(run_attempt: "40082618814")
-  let b = mtcollins1_boot_fru_print_path(run_attempt: "40082618814")
-  let _ = claim_that(holds: eq(a: a, b: "artifacts/mtcollins1-boot-mc-info-40082618814.txt"), because: "mc info retention is keyed to the run that wrote it")
-  let _ = claim_that(holds: eq(a: b, b: "artifacts/mtcollins1-boot-fru-print-0-40082618814.txt"), because: "fru print 0 retention is keyed to the same run")
-  // A DIFFERENT run id must produce a DIFFERENT key for both -- otherwise two runs overwrite each
-  // other's capture and only one survives upload.
-  let _ = claim_that(holds: !eq(a: a, b: mtcollins1_boot_mc_info_path(run_attempt: "1")), because: "a different run id yields a different mc info key")
-  let _ = claim_that(holds: !eq(a: b, b: mtcollins1_boot_fru_print_path(run_attempt: "1")), because: "a different run id yields a different fru key")
-  0
+  AttemptIdentityUnavailable,
 }
 
-test fn both_retentions_sit_inside_the_run_upload_glob() {
-  // The boot uploads its artifacts by glob. A retention whose path does not match the glob is written
-  // but never uploaded -- it silently never reaches a reader, so it is NOT retained in any useful sense.
-  let glob = mtcollins1_boot_artifact_glob()
-  let _ = claim_that(holds: string_contains(haystack: mtcollins1_boot_mc_info_path(run_attempt: "42"), needle: glob), because: "the mc info retention is inside the upload glob")
-  let _ = claim_that(holds: string_contains(haystack: mtcollins1_boot_fru_print_path(run_attempt: "42"), needle: glob), because: "the fru print 0 retention is inside the upload glob")
-  0
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn eq_size(a: ByteSize, b: ByteSize) -> Bool {
+  byte_size_count(b: a) == byte_size_count(b: b)
 }
 
-test fn the_retention_states_the_byte_count_of_its_own_verbatim_content() {
-  // The count comes from the content through the fold, not from a number a caller could type. The write
-  // side ("written") and the read-back side ("read back") pass through the SAME fold, so the two sides
-  // cannot disagree about how many bytes a given content is.
-  let kept = mtcollins1_pre_power_retention_of(path: "p", read_ok: True, content: "abc", stage: "written", error: "")
-  let _ = claim_that(holds: match kept { PrePowerRetained { path: _, bytes: n } => eq(a: n, b: byte_size(count: 3))  _ => False }, because: "3 chars of verbatim content retain a ByteSize of 3, through the file's one size authority")
-  let two = mtcollins1_pre_power_retention_of(path: "p", read_ok: True, content: "hello there", stage: "read back", error: "")
-  let _ = claim_that(holds: match two { PrePowerRetained { path: p2, bytes: n } => eq(a: p2, b: "p") && eq(a: n, b: byte_size(count: 11))  _ => False }, because: "the read-back fold keeps the same verbatim bytes and sizes them the same way")
-  // The size is NOT a constant of the fn: a different content yields a different ByteSize.
+
+// THE KEY. Both captures are named by the run that answered, so a run can only ever read back its own
+// bytes -- and a DIFFERENT run id yields a DIFFERENT key, or two runs would overwrite each other's
+// capture and only one would survive the upload.
+test fn each_retention_is_keyed_to_the_run_that_wrote_it() -> Bool {
+  (mtcollins1_boot_mc_info_path(run_attempt: "40082618814") as String) == "artifacts/mtcollins1-boot-mc-info-40082618814.txt"
+    && (mtcollins1_boot_fru_print_path(run_attempt: "40082618814") as String) == "artifacts/mtcollins1-boot-fru-print-0-40082618814.txt"
+    && (mtcollins1_boot_mc_info_path(run_attempt: "1") as String) != (mtcollins1_boot_mc_info_path(run_attempt: "2") as String)
+    && (mtcollins1_boot_fru_print_path(run_attempt: "1") as String) != (mtcollins1_boot_fru_print_path(run_attempt: "2") as String)
+}
+
+// THE RUN UPLOADS THEM: both paths sit under the boot's upload prefix (mtcollins1_boot_artifact_glob).
+// A retention outside the prefix is written but never uploaded -- it silently never reaches a reader,
+// which is not a retention in any useful sense.
+test fn both_retentions_sit_under_the_run_upload_prefix() -> Bool {
+  let prefix = "artifacts/mtcollins1-boot-"
+  string_contains(s: mtcollins1_boot_artifact_glob, pattern: prefix)
+    && string_contains(s: mtcollins1_boot_mc_info_path(run_attempt: "42") as String, pattern: prefix)
+    && string_contains(s: mtcollins1_boot_fru_print_path(run_attempt: "42") as String, pattern: prefix)
+}
+
+// THE SIZE IS THE CONTENT'S OWN. The fold mints the ByteSize from the verbatim bytes through
+// std.measure (the file's one size authority -- review 86396's finding was the bare Int re-minting
+// it); both the write side ("written") and the conclusion's read-back ("read back") pass through this
+// same fold, so the two sides cannot disagree about a given content. A different content yielding a
+// different size is what makes the number a MEASUREMENT rather than a typed constant.
+test fn the_retention_states_the_size_of_its_own_verbatim_content() -> Bool {
+  let kept = mtcollins1_pre_power_retention_of(path: "p" as NonEmptyStr, read_ok: true, content: "abc", stage: "written" as NonEmptyStr, error: "")
+  let two = mtcollins1_pre_power_retention_of(path: "p" as NonEmptyStr, read_ok: true, content: "hello there", stage: "read back" as NonEmptyStr, error: "")
   let ks = match kept { PrePowerRetained { path: _, bytes: n } => n  _ => byte_size(count: 0) }
-  let ts = match two { PrePowerRetained { path: _, bytes: n } => n  _ => byte_size(count: 0) }
-  let _ = claim_that(holds: !eq(a: ks, b: ts), because: "the size tracks the content, so it cannot be a typed constant")
-  let _ = claim_that(holds: eq(a: byte_size_count(b: ks), b: 3), because: "the count is readable back through the same authority the size was minted from")
-  0
+  let ts = match two { PrePowerRetained { path: p2, bytes: n } => if (p2 as String) == "p" { n } else { byte_size(count: 0) }  _ => byte_size(count: 0) }
+  eq_size(a: ks, b: byte_size(count: 3))
+    && eq_size(a: ts, b: byte_size(count: 11))
+    && !eq_size(a: ks, b: ts)
+    && byte_size_count(b: ks) == 3
 }
 
-test fn an_empty_answer_is_reported_never_kept() {
-  // A tool that answered with no bytes at all has NOT been retained, on either side of the write. The
-  // stage verb differs (a write-side empty answer was "written", a read-back-side one was "read back")
-  // but NEITHER may present as a retention.
-  let w = mtcollins1_pre_power_retention_of(path: "p", read_ok: True, content: "", stage: "written", error: "")
-  let _ = claim_that(holds: match w { PrePowerNotRetained { reason: _ } => True  _ => False }, because: "an empty answer on the write side is not a retention")
-  let r = mtcollins1_pre_power_retention_of(path: "p", read_ok: True, content: "", stage: "read back", error: "")
-  let _ = claim_that(holds: match r { PrePowerNotRetained { reason: why } => string_contains(haystack: why, needle: "read back")  _ => False }, because: "an empty answer on the read-back side says read back, and is not a retention")
-  0
+// AN EMPTY ANSWER IS NEVER A RETENTION, on either side of the write: the tool answered with no bytes,
+// so there is nothing verbatim to keep -- recording a 0-byte success would fabricate a reading (§5).
+// The stage verb differs (a write-side empty answer was "written", a read-back-side one was
+// "read back"), and NEITHER arm may present as a retention.
+test fn an_empty_answer_is_reported_never_kept() -> Bool {
+  let w = mtcollins1_pre_power_retention_of(path: "p" as NonEmptyStr, read_ok: true, content: "", stage: "written" as NonEmptyStr, error: "")
+  let r = mtcollins1_pre_power_retention_of(path: "p" as NonEmptyStr, read_ok: true, content: "", stage: "read back" as NonEmptyStr, error: "")
+  let w_ok = match w { PrePowerNotRetained { reason: _ } => true  _ => false }
+  let r_ok = match r { PrePowerNotRetained { reason: why } => string_contains(s: why, pattern: "read back")  _ => false }
+  w_ok && r_ok
 }
 
-test fn the_two_failure_stages_keep_their_own_cause_and_verb() {
-  // The two failure STAGES must stay distinct (review 86381 finding 1): a write that failed and a
-  // read-back that failed are different failures, and each names its own verb and its own cause.
-  let write_failed = mtcollins1_pre_power_retention_of(path: "p", read_ok: False, content: "", stage: "written", error: "disk full")
-  let _ = claim_that(holds: match write_failed { PrePowerNotRetained { reason: why } => string_contains(haystack: why, needle: "could not be written: disk full") && !string_contains(haystack: why, needle: "read back")  _ => False }, because: "a failed write names the write and its cause, and never borrows the read-back's message")
-  let read_back_failed = mtcollins1_pre_power_retention_of(path: "p", read_ok: False, content: "", stage: "read back", error: "no such file")
-  let _ = claim_that(holds: match read_back_failed { PrePowerNotRetained { reason: why } => string_contains(haystack: why, needle: "could not be read back: no such file") && !string_contains(haystack: why, needle: "could not be written")  _ => False }, because: "a failed read-back names the read-back and its cause, and never borrows the write's message")
-  // And the two causes are NOT the same string -- a single shared message would collapse the distinction.
-  let wf = match write_failed { PrePowerNotRetained { reason: w1 } => w1  _ => "" }
-  let rf = match read_back_failed { PrePowerNotRetained { reason: w2 } => w2  _ => "" }
-  let _ = claim_that(holds: !eq(a: wf, b: rf), because: "the two failure stages keep two distinct cause strings")
-  0
+// THE TWO FAILURE STAGES KEEP THEIR OWN CAUSE AND VERB (review 86381 finding 1). A write that failed
+// and a read-back that failed are DIFFERENT failures -- the fold takes the verb from the caller, so
+// one message cannot launder the other: the write's line names the write and carries the write error,
+// the read-back's names the read-back and carries the read error, and the two reasons are distinct
+// strings, so no shared message can collapse them.
+test fn the_two_failure_stages_keep_their_own_cause_and_verb() -> Bool {
+  let write_failed = mtcollins1_pre_power_retention_of(path: "p" as NonEmptyStr, read_ok: false, content: "", stage: "written" as NonEmptyStr, error: "disk full")
+  let read_back_failed = mtcollins1_pre_power_retention_of(path: "p" as NonEmptyStr, read_ok: false, content: "", stage: "read back" as NonEmptyStr, error: "no such file")
+  let wf = match write_failed { PrePowerNotRetained { reason: why } => why as String  _ => "" }
+  let rf = match read_back_failed { PrePowerNotRetained { reason: why } => why as String  _ => "" }
+  string_contains(s: wf, pattern: "could not be written: disk full")
+    && !string_contains(s: wf, pattern: "read back")
+    && string_contains(s: rf, pattern: "could not be read back: no such file")
+    && !string_contains(s: rf, pattern: "could not be written")
+    && wf != rf
 }
 
-test fn without_the_run_identity_nothing_is_read_and_the_variable_is_named() {
-  // Without a run identity there is NO key that belongs to this attempt -- so no file may be read at
-  // all, and the reason NAMES the missing variable. This is the whole gate: a fixed-path fallback would
-  // read another run's file here and call it this run's retention. Both artifacts share the one gate fn.
-  let missing = AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "not set in this environment" }
-  let gate = mtcollins1_boot_pre_power_retained(attempt: missing, path_of: mtcollins1_boot_mc_info_path)
-  let _ = claim_that(holds: match gate { PrePowerNotRetained { reason: why } => string_contains(haystack: why, needle: "GITHUB_RUN_ID") && string_contains(haystack: why, needle: "run identity")  _ => False }, because: "the gate refuses by naming the missing identity variable, for the mc info artifact")
-  // And the SAME refusal for the fru artifact -- the two cannot drift on the gate, because they ARE
-  // one fn whose only artifact parameter is the caller's path fn.
+// WITHOUT THE RUN IDENTITY NOTHING IS READ, and the refusal NAMES the missing variable. This is the
+// whole gate: a fixed-path fallback would read some other run's file here and call it this run's
+// retention. Both captures share the ONE gate fn whose only per-artifact parameter is the caller's
+// path fn, so the gate cannot drift between them.
+test fn without_the_run_identity_nothing_is_read_and_the_variable_is_named() -> Bool {
+  let missing = AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "absent" }
+  let gate_mc = mtcollins1_boot_pre_power_retained(attempt: missing, path_of: mtcollins1_boot_mc_info_path)
   let gate_fru = mtcollins1_boot_pre_power_retained(attempt: missing, path_of: mtcollins1_boot_fru_print_path)
-  let _ = claim_that(holds: match gate_fru { PrePowerNotRetained { reason: why } => string_contains(haystack: why, needle: "GITHUB_RUN_ID")  _ => False }, because: "the same gate refuses for the fru artifact, naming the same variable")
-  0
+  let mc_ok = match gate_mc { PrePowerNotRetained { reason: why } => string_contains(s: why, pattern: "GITHUB_RUN_ID") && string_contains(s: why, pattern: "run identity")  _ => false }
+  let fru_ok = match gate_fru { PrePowerNotRetained { reason: why } => string_contains(s: why, pattern: "GITHUB_RUN_ID")  _ => false }
+  mc_ok && fru_ok
 }
 
-test fn each_receipt_line_names_its_artifact_and_its_bytes() {
-  // The line this PR adds to the receipt names WHICH artifact was retained and how many bytes -- per
-  // artifact, from the ONE parameterized line fn. A line that named the wrong artifact would read as
-  // the other capture having been kept. The write side retains, and the disk agrees here (the same file
-  // this run wrote), so the line reports the write-side count CONFIRMED by the conclusion's read-back.
-  let run = AttemptRunId { run_id: "40082618815" }
-  let mc_path = mtcollins1_boot_mc_info_path(run_attempt: "40082618815")
-  let wrote_mc = Filesystem.Write(path: mc_path, content: "Device ID / FW")
-  let _ = claim_that(holds: wrote_mc.success, because: "this witness writes its own mc info file so the read-back has something true to find")
-  let kept = mtcollins1_pre_power_retention_of(path: mc_path, read_ok: True, content: "Device ID / FW", stage: "written", error: "")
-  let line = pre_power_retention_receipt_line(prefix: "mc-info", executed: Present { value: kept }, run: run, path_of: mtcollins1_boot_mc_info_path)
-  let _ = claim_that(holds: string_contains(haystack: line, needle: "mc-info=retained verbatim 14 bytes at artifacts/mtcollins1-boot-mc-info-40082618815.txt"), because: "the mc-info receipt line names its artifact, its verbatim byte count and its path")
-  let _ = claim_that(holds: string_contains(haystack: line, needle: "read back at conclusion with 14 bytes"), because: "the write-side retention is confirmed by the disk's own read-back in the same line")
-  let fru_path = mtcollins1_boot_fru_print_path(run_attempt: "40082618815")
-  let wrote_fru = Filesystem.Write(path: fru_path, content: "FRU 0 board")
-  let _ = claim_that(holds: wrote_fru.success, because: "this witness writes its own fru file too")
-  let kept_fru = mtcollins1_pre_power_retention_of(path: fru_path, read_ok: True, content: "FRU 0 board", stage: "written", error: "")
-  let line_fru = pre_power_retention_receipt_line(prefix: "fru", executed: Present { value: kept_fru }, run: run, path_of: mtcollins1_boot_fru_print_path)
-  let _ = claim_that(holds: string_contains(haystack: line_fru, needle: "fru=retained verbatim 11 bytes at artifacts/mtcollins1-boot-fru-print-0-40082618815.txt"), because: "the fru receipt line names its own artifact, count and path")
-  // A line for one artifact must NOT name the other artifact's file.
-  let _ = claim_that(holds: !string_contains(haystack: line, needle: "fru-print"), because: "the mc-info line does not claim the fru artifact")
-  let _ = claim_that(holds: !string_contains(haystack: line_fru, needle: "mc-info"), because: "the fru line does not claim the mc-info artifact")
-  0
-}
-
-test fn a_missing_retention_says_why_on_the_receipt() {
-  // Each non-retention reads DIFFERENTLY on the receipt, because the causes are different facts
-  // (review 86381 finding 1): the phase never ran; the capture was never read; the write failed. The
-  // receipt leads with the cause the attempt record CARRIED, so a read-back's file-not-found message
-  // never launders a write-side failure into "nothing was ever written".
+// THE RECEIPT LINE LEADS WITH THE CAUSE THE ATTEMPT RECORD CARRIED (review 86381 finding 1). The three
+// non-retention states read DIFFERENTLY because they are different facts: the phase never ran; the
+// capture was never read (the cause the pre-power phase itself carries); the write failed. None may
+// borrow the read-back's file-not-found message -- that is how two failures become one misleading
+// third. The lines are pairwise DISTINCT, so no arm can collapse into another.
+test fn a_missing_retention_says_its_own_why_on_the_receipt() -> Bool {
   let run = AttemptRunId { run_id: "43" }
-  let never_ran = pre_power_retention_receipt_line(prefix: "mc-info", executed: Absent, run: run, path_of: mtcollins1_boot_mc_info_path)
-  let _ = claim_that(holds: string_contains(haystack: never_ran, needle: "the attempt ended before the pre-power phase ran"), because: "an attempt that ended before the phase ran says the phase never happened")
-  // The cause the pre-power phase itself carries when the tool never answered.
-  let not_read = PrePowerNotRetained { reason: "mc info was not read on this attempt" }
-  let unread = pre_power_retention_receipt_line(prefix: "fru", executed: Present { value: not_read }, run: run, path_of: mtcollins1_boot_fru_print_path)
-  let _ = claim_that(holds: string_contains(haystack: unread, needle: "not retained: mc info was not read on this attempt"), because: "the line leads with the cause the phase carried, verbatim")
-  let _ = claim_that(holds: !string_contains(haystack: unread, needle: "read back"), because: "a never-read capture is NOT reported as a read-back problem -- the causes stay distinct")
-  // A write that failed is reported with the WRITE's cause, not the read-back's file-not-found.
-  let write_failed = mtcollins1_pre_power_retention_of(path: mtcollins1_boot_mc_info_path(run_attempt: "43"), read_ok: False, content: "", stage: "written", error: "disk full")
-  let unwritten = pre_power_retention_receipt_line(prefix: "mc-info", executed: Present { value: write_failed }, run: run, path_of: mtcollins1_boot_mc_info_path)
-  let _ = claim_that(holds: string_contains(haystack: unwritten, needle: "could not be written: disk full"), because: "a failed write reports the write-side cause the phase carried")
-  let _ = claim_that(holds: !string_contains(haystack: unwritten, needle: "read back"), because: "a failed write is NOT laundered into the read-back's file-not-found message")
-  // The three arms are pairwise DIFFERENT lines -- they cannot collapse into one message.
-  let never_read_line = pre_power_retention_receipt_line(prefix: "mc-info", executed: Present { value: PrePowerNotRetained { reason: "fru print 0 was not read on this attempt" } }, run: run, path_of: mtcollins1_boot_mc_info_path)
-  let _ = claim_that(holds: !eq(a: never_ran, b: unread), because: "phase-never-ran and capture-not-read are different facts and read differently")
-  let _ = claim_that(holds: !eq(a: unwritten, b: unread), because: "a failed write and a never-read capture are different facts and read differently")
-  let _ = claim_that(holds: !eq(a: never_read_line, b: unwritten), because: "two different carried causes stay two different lines")
-  0
+  let never_ran = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Absent, run: run, path_of: mtcollins1_boot_mc_info_path)
+  let not_read = pre_power_retention_receipt_line(prefix: "fru" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: "fru print 0 was not read on this attempt" } }, run: run, path_of: mtcollins1_boot_fru_print_path)
+  let write_failed = mtcollins1_pre_power_retention_of(path: mtcollins1_boot_mc_info_path(run_attempt: "43"), read_ok: false, content: "", stage: "written" as NonEmptyStr, error: "disk full")
+  let unwritten = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: write_failed }, run: run, path_of: mtcollins1_boot_mc_info_path)
+  string_contains(s: never_ran, pattern: "mc-info=not retained: the attempt ended before the pre-power phase ran")
+    && string_contains(s: not_read, pattern: "fru=not retained: fru print 0 was not read on this attempt")
+    && !string_contains(s: not_read, pattern: "read back")
+    && string_contains(s: unwritten, pattern: "could not be written: disk full")
+    && !string_contains(s: unwritten, pattern: "read back")
+    && never_ran != not_read
+    && unwritten != not_read
+    && never_ran != unwritten
 }
 
-test fn a_retention_written_then_lost_is_named_as_that() {
-  // A file that WAS written (the write side says retained, with its byte count) but is NOT on disk at
-  // conclusion is the distinct third failure: retained-then-lost. It must say so, and must NOT claim a
-  // successful read-back. Hermetic stand-in for "the write happened, the file is gone": a run id whose
-  // file was never written here, against a write side that claims it was retained.
+// THE RETENTION OVER REAL BYTES, END TO END. The committed hpm-check capture (the PR1 artifact) is on
+// disk in every checkout, so the gate can do its REAL job here: read the file back by a run identity
+// and count what is actually there -- a ByteSize measured off the disk, not typed. The receipt line
+// then reports the write side and the disk AGREE, in one line, naming the artifact and both counts.
+fn committed_hpm_check_path_of(run: NonEmptyStr) -> NonEmptyStr {
+  mtcollins1_boot_run_40082618814_hpm_check_artifact_path
+}
+
+test fn the_gate_reads_back_the_committed_capture_and_the_line_reports_both_ends() -> Bool {
+  let run = AttemptRunId { run_id: "40082618814" }
+  let gate = mtcollins1_boot_pre_power_retained(attempt: run, path_of: committed_hpm_check_path_of)
+  let read_back_ok = match gate { PrePowerRetained { path: p, bytes: n } => (p as String) == (mtcollins1_boot_run_40082618814_hpm_check_artifact_path as String) && byte_size_count(b: n) == 824  _ => false }
+  let line = pre_power_retention_receipt_line(prefix: "hpm" as NonEmptyStr, executed: Present { value: gate }, run: run, path_of: committed_hpm_check_path_of)
+  read_back_ok
+    && string_contains(s: line, pattern: "hpm=retained verbatim 824 bytes at artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt")
+    && string_contains(s: line, pattern: "read back at conclusion with 824 bytes")
+}
+
+// WRITTEN-THEN-LOST IS ITS OWN FACT. The write side says retained (a real ByteSize over real content);
+// at conclusion the file is NOT on disk (this run's mc-info key has no file in any checkout). The line
+// must name it retained-then-lost with the disk's own reason -- never claim a successful read-back,
+// and never degrade into "the phase never ran".
+test fn a_retention_written_then_lost_is_named_as_that() -> Bool {
   let run = AttemptRunId { run_id: "44" }
-  let path = mtcollins1_boot_mc_info_path(run_attempt: "44")
-  let kept = mtcollins1_pre_power_retention_of(path: path, read_ok: True, content: "Device ID / FW", stage: "written", error: "")
-  let line = pre_power_retention_receipt_line(prefix: "mc-info", executed: Present { value: kept }, run: run, path_of: mtcollins1_boot_mc_info_path)
-  let _ = claim_that(holds: string_contains(haystack: line, needle: "written at artifacts/mtcollins1-boot-mc-info-44.txt but not on disk at conclusion"), because: "retained-then-lost is named as retained-then-lost, with the read-back's own reason")
-  let _ = claim_that(holds: !string_contains(haystack: line, needle: "read back at conclusion"), because: "the lost file's line never claims a successful read-back")
-  0
+  let kept = mtcollins1_pre_power_retention_of(path: mtcollins1_boot_mc_info_path(run_attempt: "44"), read_ok: true, content: ipmitool_hpm_check_bmc0_45, stage: "written" as NonEmptyStr, error: "")
+  let line = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: kept }, run: run, path_of: mtcollins1_boot_mc_info_path)
+  string_contains(s: line, pattern: "written at artifacts/mtcollins1-boot-mc-info-44.txt but not on disk at conclusion")
+    && !string_contains(s: line, pattern: "read back at conclusion")
+    && !string_contains(s: line, pattern: "before the pre-power phase ran")
 }
