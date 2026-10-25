@@ -7,17 +7,7 @@ import gunbc.compile_diagnostic_census {
   census_blocking_rows,
   census_total_count
 }
-import gunbc.instruments.multi_module_compile_fixture {
-  MultiModuleCompileFixture,
-  MultiModuleCompileFixtureOutcome,
-  FixtureInstrumentRefused,
-  FixtureCompileRefused,
-  FixtureCompileCompleted,
-  fixture_source,
-  compile_fixture,
-  fixture_blocking_rows
-}
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -102,28 +92,20 @@ test fn c1_a_wrong_arm_over_a_list_is_refused() -> Bool {
   blocking_count(source: list_wrong_arm_source) >= 1
 }
 
-// A VALUE IMPORTED WITHOUT ITS TYPE. The consumer imports `route` but not `Route`, so the scrutinee's
-// type is not visible here by its spelling; the node still names the declaration it resolved to, and
-// expansion keys on that identity (v1.compiler.infer_patterns expand_scrut_from_type_name, Absent arm).
-// Two-module fixture with no corpus roots (gunbc.instruments.multi_module_compile_fixture).
-data route_provider_source: String = "module rva.provider\ntype Route = Direct | Jump\ndata route: Route = Jump\n"
+// A VALUE WHOSE TYPE IS NOT VISIBLE BY ITS SPELLING. A module with no imports reaches a corpus value
+// through the global bare-name fallback (the shape of test.claim.srv3.srv3_subsumption_witness, whose
+// census cascade this removed); the value's type, extdeps.network.reach Reach, resolves nowhere in the
+// module's env, but the node still names the declaration it resolved to, and expansion keys on that
+// identity (v1.compiler.infer_patterns expand_scrut_from_type_name, the Absent arm). The specimen is
+// the corpus value gunbc.fleet.fleet_reach srv3_reach, so the probe is compiled against the corpus.
+data unimported_value_wrong_arm_source: String = "module probe_c1_unimported_value_wrong_arm\nfn hop() -> Bool {\n  match srv3_reach {\n    ProxyJump { jumps: _, target: _ } => true\n    DirectLan { host: _ } => false\n    Teleport { target: _ } => false\n  }\n}\n"
 
-data route_consumer_wrong_arm_source: String = "module rva.consumer\nimport std.types { Bool }\nimport rva.provider { route }\nfn is_jump() -> Bool {\n  match route {\n    Direct => false\n    Hop => true\n  }\n}\n"
+data unimported_value_right_arms_source: String = "module probe_c1_unimported_value_right_arms\nfn hop() -> Bool {\n  match srv3_reach {\n    ProxyJump { jumps: _, target: _ } => true\n    DirectLan { host: _ } => false\n    FabricTunnel { target: _ } => false\n  }\n}\n"
 
-data route_consumer_right_arms_source: String = "module rva.consumer\nimport std.types { Bool }\nimport rva.provider { route }\nfn is_jump() -> Bool {\n  match route {\n    Direct => false\n    Jump => true\n  }\n}\n"
-
-fn imported_value_blocking_count(consumer: String) -> Int {
-  match compile_fixture(MultiModuleCompileFixture { sources: [fixture_source("rva/provider.dag", route_provider_source), fixture_source("rva/consumer.dag", consumer)], entry: "rva/consumer.dag" }) {
-    FixtureInstrumentRefused { cause: _ } => 0 - 1
-    FixtureCompileRefused { module_count: _, diagnostics: d, source_digest: _, compiler_digest: _ } => fixture_blocking_rows(rows: d) |> count
-    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: d } => fixture_blocking_rows(rows: d) |> count
-  }
+test fn c1_a_wrong_arm_over_a_value_whose_type_is_not_visible_is_refused() -> Bool {
+  blocking_count(source: unimported_value_wrong_arm_source) >= 1
 }
 
-test fn c1_a_wrong_arm_over_a_value_imported_without_its_type_is_refused() -> Bool {
-  imported_value_blocking_count(consumer: route_consumer_wrong_arm_source) >= 1
-}
-
-test fn c1_control_the_right_arms_over_a_value_imported_without_its_type_are_accepted() -> Bool {
-  imported_value_blocking_count(consumer: route_consumer_right_arms_source) == 0
+test fn c1_control_the_right_arms_over_a_value_whose_type_is_not_visible_are_accepted() -> Bool {
+  blocking_count(source: unimported_value_right_arms_source) == 0
 }
