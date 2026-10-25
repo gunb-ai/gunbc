@@ -218,7 +218,8 @@ fn swift_expr_door_target(e: SwiftExpr) -> TargetModel {
     binding_spellings: swift_expr_door_spell(names: swift_expr_door_names(e: e), spellings: swift_target_model().binding_spellings),
     token_class_emit_transforms: swift_target_model().token_class_emit_transforms,
     authority_source_text: swift_target_model().authority_source_text,
-    runtime_row: swift_target_model().runtime_row
+    runtime_row: swift_target_model().runtime_row,
+    primitive_realizations: swift_target_model().primitive_realizations
   }
 }
 
