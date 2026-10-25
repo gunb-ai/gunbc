@@ -55,7 +55,7 @@ import extdeps.git {
   git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
   git_maintenance_auto_disabled_config_command,
 }
-import extdeps.tools.findutils { find_subtree_mode_readback_command }
+import extdeps.tools.findutils { find_subtree_mode_readback_command, find_subtree_group_writable_command, find_subtree_ungranted_entry_refusal_command }
 import std.measure { ByteSize, byte_size_count, Kibibyte }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
@@ -3062,6 +3062,41 @@ fn dispatch_attempt_worker_git_entry_readback_command(
   )
 }
 
+// THE WORKTREE IS THE DEDICATED WORKER'S TO EDIT. `git worktree add` checks the attempt's worktree out as the service
+// user under its umask, so every directory under the top is 2755 and every file 0644: the worker (a member of the
+// attempt group, not the owner) can read the checkout and edit nothing in it. The srv1 lab's first full session
+// found exactly that -- 851 of 852 directories and all 10362 files without group write -- and its model wrote its
+// change beside the tree instead. So the spawn grants group write over the whole checkout (directories setgid, so a
+// file the worker creates keeps the attempt group) and then proves it, refusing to start the unit while any entry
+// lacks the grant. The checkout's `.git` file is pruned: it names the attempt's git directory, and the worker must
+// never be able to repoint it. Unlike the shared object store, granting write on FILES here is right: this checkout
+// is the attempt's alone, so a file the worker rewrites in place is its own work, never another attempt's base. A
+// service-user worker owns the checkout and gets no step. The group is the caller's parameter, as below.
+fn dispatch_attempt_worker_worktree_grant(
+  instance: HostDashboardInstance,
+  attempt_worktree: String,
+  group: NonEmptyStr,
+) -> List<ArgvCommand> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      find_subtree_group_writable_command(
+        target: attempt_worktree,
+        pruned: [git_non_bare_git_dir_name],
+        sticky: false,
+        files_group_writable: true,
+        depth: dashboard_git_worker_subtree_walk_depth,
+      ),
+      find_subtree_ungranted_entry_refusal_command(
+        target: attempt_worktree,
+        pruned: [git_non_bare_git_dir_name],
+        group: group as String,
+        depth: dashboard_git_worker_subtree_walk_depth,
+      ),
+    ]
+  }
+}
+
 // THE SPAWN'S OWN GRANT OF THE PER-ATTEMPT ENTRY. THE GROUP IS A PARAMETER LIKE EVERY OTHER GRANT IN
 // THIS SLICE: the token is a host fact the caller owns, the production caller below binds the row
 // fleet_posix_accounts declares, and a witness on a host without that account supplies the token it can
@@ -3590,6 +3625,8 @@ type DispatchSpawnCommands {
   // is deliberately absent here.
   worker_git_entry_grant: List<HostExecArgv>
   worker_git_entry_readback: HostExecArgv
+  // THE CHECKOUT'S GRANT AND ITS PROOF (dispatch_attempt_worker_worktree_grant): empty for a service-user worker.
+  worker_worktree_grant: List<HostExecArgv>
   attempt_state_prepare: List<HostExecArgv>
   attempt_current_pointer: HostExecArgv
   session_container: DispatchSessionContainer
@@ -3744,6 +3781,10 @@ fn dispatch_spawn_commands_for_launch(
               instance: instance,
               attempt_worktree: worktree_path,
             ),
+          ),
+          worker_worktree_grant: map(
+            dispatch_attempt_worker_worktree_grant(instance: instance, attempt_worktree: worktree_path, group: fleet_posix_worker_shared_group_name),
+            command => dispatch_git_owned_host_step_argv(command: command),
           ),
           attempt_state_prepare: state_prepare,
           attempt_current_pointer: attempt_current_pointer_argv_for_instance(

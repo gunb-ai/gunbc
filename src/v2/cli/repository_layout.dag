@@ -5,13 +5,15 @@ import std.optional { Optional, optional_absent, optional_present, Absent, Prese
 import v2.std.text { String }
 import std.algebra { list_head, collection_concat_shape, collection_map_shape }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
-import v2.compiler.source_authority { ModuleFileRef, SourceStorageLayout, StorageNamespaceRoot }
+import v2.compiler.source_authority { ModuleFileRef, SourceStorageLayout, StorageDerivedRoster, StorageNamespaceRoot }
 import gunbc.source_layout {
+  LayoutDerivedRoster,
   LayoutNamespaceRoot,
   LayoutTree,
   LayoutTreeDag,
   LayoutTreeV2,
   layout_default_tree,
+  layout_derived_rosters,
   layout_namespace_roots,
   layout_tree_directory
 }
@@ -44,10 +46,15 @@ fn storage_namespace_root_of_layout(root: LayoutNamespaceRoot) -> StorageNamespa
   }
 }
 
+fn storage_derived_roster_of_layout(roster: LayoutDerivedRoster) -> StorageDerivedRoster {
+  StorageDerivedRoster { row_namespace: roster.row_namespace, row_type: roster.row_type }
+}
+
 fn repository_storage_layout() -> SourceStorageLayout {
   SourceStorageLayout {
     namespace_roots: layout_namespace_roots() |> map(root => storage_namespace_root_of_layout(root: root)),
-    default_tree: source_root_ref_of_layout_tree(tree: layout_default_tree())
+    default_tree: source_root_ref_of_layout_tree(tree: layout_default_tree()),
+    derived_rosters: layout_derived_rosters() |> map(roster => storage_derived_roster_of_layout(roster: roster))
   }
 }
 

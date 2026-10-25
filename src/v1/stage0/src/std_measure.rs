@@ -446,6 +446,13 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     ))
 }
 
+pub fn centi_gibibyte_to_byte_size(centi: Nat) -> ByteSize {
+    byte_size(v1_rt::int_div(
+        v1_rt::int_mul(centi.clone(), gibibyte_scale_factor_bytes()),
+        100,
+    ))
+}
+
 pub fn kibibyte(count: Nat) -> Kibibyte {
     Rc::new(Measure {
         count: count.clone(),
@@ -492,6 +499,11 @@ pub type HardwareThreadMinute =
 pub type PhysicalCoreCount = Rc<Measure<Count, One, Nat>>;
 
 pub type CharacterCount = Rc<Measure<Count, One, Nat>>;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DisplayPixelCount {
+    pub pixels: i64,
+}
 
 pub type TokenCount = Rc<Measure<Count, One, Nat>>;
 
@@ -694,6 +706,15 @@ pub fn positive_measure_count_from_int(count: i64) -> Rc<PositiveMeasureCountBui
 }
 
 pub fn positive_measure_count_value(count: Rc<PositiveMeasureCount>) -> i64 {
+    match (*count.clone()).clone() {
+        PositiveMeasureCount::PositiveMeasureSuccessor {
+            predecessor: predecessor,
+            ..
+        } => v1_rt::int_add(predecessor.clone(), 1),
+    }
+}
+
+pub fn positive_measure_count_nat(count: Rc<PositiveMeasureCount>) -> Nat {
     match (*count.clone()).clone() {
         PositiveMeasureCount::PositiveMeasureSuccessor {
             predecessor: predecessor,
@@ -1711,6 +1732,19 @@ pub fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
     measure_count(r)
 }
 
+pub type GigaTensorOperationsPerSecond = Rc<Measure<Frequency, Giga, Nat>>;
+
+pub fn giga_tensor_operations_per_second(count: Nat) -> GigaTensorOperationsPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn giga_tensor_operations_per_second_count(r: GigaTensorOperationsPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
 pub type MilliRequestsPerSecond = Rc<Measure<Frequency, Milli, Nat>>;
 
 pub fn milli_requests_per_second(count: Nat) -> MilliRequestsPerSecond {
@@ -2032,6 +2066,32 @@ pub fn parts_per_million_count(m: PartsPerMillion) -> Nat {
 
 pub fn parts_per_million_scale_million() -> Nat {
     crate::extdeps_units_dimensionless::parts_per_million_unity_count()
+}
+
+pub type Permille = Rc<Measure<Dimensionless, Milli, Nat>>;
+
+pub fn permille(count: Nat) -> Permille {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn permille_count(p: Permille) -> Nat {
+    measure_count(p.clone())
+}
+
+pub type ConcurrentRequestThousandths = Rc<Measure<Dimensionless, Milli, Nat>>;
+
+pub fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandths {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn concurrent_request_thousandths_count(c: ConcurrentRequestThousandths) -> Nat {
+    measure_count(c.clone())
 }
 
 pub type AmortizationMonths = Rc<Measure<Count, One, Nat>>;
