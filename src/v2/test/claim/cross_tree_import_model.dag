@@ -1,8 +1,8 @@
 module v2.test.claim.cross_tree_import_model
 
-import std.algebra { Cons, Empty, empty_map, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, Map }
+import std.types { Bool }
 import v2.std.text { String }
 import v2.std.cross_tree.import_model {
   CrossTreeAdmissionVerdict,
@@ -30,8 +30,8 @@ data both_roots: SourceRootSet = Cons { head: V2Tree, tail: Cons { head: DagTree
 
 data dag_only_roots: SourceRootSet = Cons { head: DagTree, tail: Empty }
 
-fn declared() -> Map<String, Bool> {
-  map_insert(m: map_insert(m: map_insert(m: empty_map(), key: "test.claim", value: true), key: "std", value: true), key: "v2.std", value: true)
+fn declared() -> FreeMonoid<String> {
+  ["test.claim", "std", "v2.std"]
 }
 
 fn test_claim_to_v2_std() -> CrossTreeImport {
@@ -82,7 +82,7 @@ test fn a_crossing_to_an_undeclared_namespace_is_undeclared() -> Bool {
 
 // There is no default membership: with nothing declared, the same admitted crossing is undeclared.
 test fn with_no_rows_declared_every_crossing_is_undeclared() -> Bool {
-  verdict_kind(verdict: cross_tree_import_admitted(edge: test_claim_to_v2_std(), roots: both_roots, declared: empty_map())) == "undeclared"
+  verdict_kind(verdict: cross_tree_import_admitted(edge: test_claim_to_v2_std(), roots: both_roots, declared: [])) == "undeclared"
 }
 
 // An edge within one tree is not a crossing and reads no membership.
