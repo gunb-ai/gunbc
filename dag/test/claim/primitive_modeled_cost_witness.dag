@@ -48,6 +48,7 @@ import std.primitive_identity {
   EmitRust,
   primitive_chars_cost,
   primitive_list_push_cost,
+  primitive_sha256_hex_of_text_cost,
   primitive_modeled_cost_for_declaration,
   primitive_modeled_cost_in,
   primitive_identity_is_declared,
@@ -71,7 +72,7 @@ import std.primitive_identity {
   primitive_index_by,
   primitive_identity_eq,
 }
-import std.primitive_projection { PrimitiveIdentity, primitive_chars, primitive_list_push }
+import std.primitive_projection { PrimitiveIdentity, primitive_chars, primitive_list_push, primitive_sha256_hex_of_text }
 import std.types { Bool, Int, List, String }
 
 fn modeled_cost_bound(cost: PrimitiveModeledCost) -> CostBound? {
@@ -275,11 +276,12 @@ test fn the_roster_joins_every_cost_row_by_identity() -> Bool {
     && roster_has(p: primitive_index_by)
     && roster_has(p: primitive_list_push)
     && roster_has(p: primitive_chars)
+    && roster_has(p: primitive_sha256_hex_of_text)
 }
 
 // THE OTHER DIRECTION OF THE JOIN, so a roster that grew a row nobody named would be caught too.
-test fn the_roster_carries_no_row_outside_the_seven() -> Bool {
-  (primitive_d0_cost_facts |> count) == 7
+test fn the_roster_carries_no_row_outside_the_eight() -> Bool {
+  (primitive_d0_cost_facts |> count) == 8
     && (primitive_d0_cost_facts |> all(row =>
       primitive_identity_eq(left: row.primitive, right: primitive_map_keys)
         || primitive_identity_eq(left: row.primitive, right: primitive_sorted_map_keys)
@@ -287,17 +289,19 @@ test fn the_roster_carries_no_row_outside_the_seven() -> Bool {
         || primitive_identity_eq(left: row.primitive, right: primitive_fold_list)
         || primitive_identity_eq(left: row.primitive, right: primitive_index_by)
         || primitive_identity_eq(left: row.primitive, right: primitive_list_push)
-        || primitive_identity_eq(left: row.primitive, right: primitive_chars)))
+        || primitive_identity_eq(left: row.primitive, right: primitive_chars)
+        || primitive_identity_eq(left: row.primitive, right: primitive_sha256_hex_of_text)))
 }
 
-// EXACTLY THREE ROWS ARE STRUCTURED TODAY, and this is deliberately an identity statement rather
+// EXACTLY FOUR ROWS ARE STRUCTURED TODAY, and this is deliberately an identity statement rather
 // than a tally: the rows that are structured are named, so enrolling another without modelling its
 // parameter reds here instead of silently changing a count. list_push is not among them: it is
 // carrier-sensitive, which the witnesses below assert separately.
-test fn the_structured_rows_are_exactly_the_three_grounded_ones() -> Bool {
+test fn the_structured_rows_are_exactly_the_four_grounded_ones() -> Bool {
   row_is_structured(row: primitive_map_keys_cost)
     && row_is_structured(row: primitive_map_values_cost)
     && row_is_structured(row: primitive_chars_cost)
+    && row_is_structured(row: primitive_sha256_hex_of_text_cost)
     && !row_is_structured(row: primitive_list_push_cost)
     && !row_is_structured(row: primitive_sorted_map_keys_cost)
     && !row_is_structured(row: primitive_fold_list_cost)
@@ -400,6 +404,28 @@ test fn chars_declaration_reads_its_linear_cost() -> Bool {
   match declared_cost_of(answer: primitive_modeled_cost_for_declaration(declaration: chars_declaration), expected: primitive_chars) {
     Present { value: c } => chars_fact_holds(cost: c)
     Absent => false
+  }
+}
+
+// sha256_hex_of_text's retired contract (work n) re-homed: std.content_hash's declaration reaches a
+// linear bound over the text's length through its projection row.
+data sha256_hex_of_text_declaration: DeclarationRef = decl_ref(module_path: "std.content_hash", decl_name: "sha256_hex_of_text")
+
+test fn sha256_hex_of_text_declaration_reads_its_linear_cost() -> Bool {
+  match declared_cost_of(answer: primitive_modeled_cost_for_declaration(declaration: sha256_hex_of_text_declaration), expected: primitive_sha256_hex_of_text) {
+    Present { value: c } => chars_fact_holds(cost: c)
+    Absent => false
+  }
+}
+
+// A homonym in another module is not priced by the primitive's row.
+test fn a_homonym_sha256_hex_of_text_declaration_is_not_priced() -> Bool {
+  match primitive_modeled_cost_for_declaration(declaration: decl_ref(module_path: "test.claim.primitive_modeled_cost_witness", decl_name: "sha256_hex_of_text")) {
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => true
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
+    DeclarationCostModeled { primitive: _, cost: _ } => false
+    DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
   }
 }
 
