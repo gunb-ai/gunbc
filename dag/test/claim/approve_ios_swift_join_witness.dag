@@ -14,7 +14,9 @@ fn real_listing() -> List<String> {
     "apps/approve-ios/Approve/DeviceKeys.swift", "apps/approve-ios/Approve/EnrolmentMachine.swift",
     "apps/approve-ios/Approve/EnrolmentState.swift", "apps/approve-ios/Approve/Protocol.swift",
     "apps/approve-ios/Approve/Views.swift", "apps/approve-ios/Approve/Wire.swift",
+    "apps/approve-ios/Approve/OperationErrors.swift",
     "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift", "apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift",
+    "apps/approve-ios/ApproveTests/OperationErrorsTests.swift",
     "apps/approve-ios/project.yml"
   ]
 }

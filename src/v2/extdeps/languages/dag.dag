@@ -108,7 +108,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_map,
   lex_rule_set_keyword_class_map,
 }
-import v2.std.node {
+import v2.std.node { node_equal_ignoring_provenance,
   host_text_type_node,
   symbol_lexeme,
   symbol_type_node,
@@ -4215,14 +4215,14 @@ fn dag_grammar_surface_production_type_node() -> Node {
 }
 
 fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool {
-  production.emitted == n
+  node_equal_ignoring_provenance(a: production.emitted, b: n)
 }
 
 // The namespace graft's module-body marker is a surface identity atom of the same kind: it
 // occupies the grammar_production_identity_node_projection slot a production's emitted atom
 // occupies, so it shares that declared type.
 fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
-  if (n == namespace_graft_module_body_marker_node())
+  if (node_equal_ignoring_provenance(a: n, b: namespace_graft_module_body_marker_node()))
     || (dag_grammar_root().productions |> any(fn(production) { dag_grammar_production_emits(production: production, n: n) })) {
     optional_present(value: dag_grammar_surface_production_type_node())
   } else {

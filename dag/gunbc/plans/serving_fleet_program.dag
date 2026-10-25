@@ -133,17 +133,17 @@ data serving_fleet_rows: List<ServingFleetRow> = [
   },
   ServingFleetRow {
     id: SfpA2, section: SfpSupply, title: "AWS EC2 spot g7e, rented and interruptible",
-    owner: SfpUnowned { obligation: "the owner is plan gunbc.plans.flex_supplier_generalization, not yet on main (PRs 14856 plan, 14862 shapes, 14866 serving image, 14879 supplier-agnostic carriers and destroy safety; owned by witty-lynx-354, cited only)." },
-    summary: "The machine identity it extends is `product.fabric.flex_policy::FlexMachineKey`. The boot path (3b) and the aws_cli plus Plan-mode supplier row (4b) are unstarted.",
+    owner: SfpOwnedBy { symbol: "gunbc.plans.flex_supplier_generalization::flex_supplier_generalization_plan" },
+    summary: "Owned by witty-lynx-354 and cited only (PRs 14856 plan, 14862 shapes, 14866 serving image, 14879 supplier-agnostic carriers and destroy safety). The machine identity it extends is `product.fabric.flex_policy::FlexMachineKey`. The boot path (3b) and the aws_cli plus Plan-mode supplier row (4b) are unstarted.",
     standing: SfpModeled, standing_note: "up to 14879", pr: "14856, 14862, 14866, 14879",
     done: "a Plan-mode pass against a real account observed green, and only then Apply, with the destroy read back as for Vast.",
     depends_on: [SfpA3], related: [SfpA1]
   },
   ServingFleetRow {
     id: SfpA3, section: SfpSupply, title: "Pinned serving image and onstart, shared by rented and owned",
-    owner: SfpUnowned { obligation: "the owner is module product.fabric.flex_serving_image, not yet on main (PR 14866)." },
+    owner: SfpOwnedBy { symbol: "product.fabric.flex_serving_image::flex_lil_serving_image" },
     summary: "The frontier it closes is `gunbc.serving.replica_endpoint_launch::replica_incarnation_unverified_obligation`, the declared frontier that the launched incarnation is not yet verified against the image.",
-    standing: SfpModeled, standing_note: "in the PR", pr: "14866",
+    standing: SfpModeled, standing_note: "", pr: "14866",
     done: "the incarnation check executes and a launched replica proves it runs the pinned image, flags and weights.",
     depends_on: [], related: []
   },
@@ -173,15 +173,15 @@ data serving_fleet_rows: List<ServingFleetRow> = [
   },
   ServingFleetRow {
     id: SfpD1, section: SfpRouter, title: "Router design",
-    owner: SfpUnowned { obligation: "the owner is plan gunbc.plans.fabric_serving_router, not yet on main (PR 14929, owned by proud-bear-756, cited only)." },
-    summary: "The contract it realizes is `gunbc.serving.router_realization::router_capability_permission`.",
-    standing: SfpModeled, standing_note: "plan under review", pr: "14929",
+    owner: SfpOwnedBy { symbol: "gunbc.plans.fabric_serving_router::fabric_serving_router_plan" },
+    summary: "Owned by proud-bear-756 and cited only (PR 14929). The contract it realizes is `gunbc.serving.router_realization::router_capability_permission`.",
+    standing: SfpModeled, standing_note: "as an approved plan", pr: "14929",
     done: "a witness drives the router contract over supplied requests, granting a permit and releasing the seat when the stream ends. The first live routed request is a later integration row that depends on this one.",
     depends_on: [SfpD2, SfpD3], related: [SfpD8]
   },
   ServingFleetRow {
     id: SfpD2, section: SfpRouter, title: "Streaming proxy scaffold",
-    owner: SfpUnowned { obligation: "the owner is plan gunbc.plans.fabric_serving_router S1, not yet on main (PR 14938)." },
+    owner: SfpUnowned { obligation: "the owner is slice S1 of the router plan, not yet on main (PR 14938)." },
     summary: "The callouts it must reach are `gunbc.serving.serving_front_door::front_door_stream_end`. The hand-rendered configuration is operator-approved TRACKED debt that dissolves at the v2-native streaming door.",
     standing: SfpExecuted, standing_note: "as a scaffold, not deployed", pr: "14938",
     done: "the falsifier cases of the router plan observed, and this row retires when the native door carries the bytes.",

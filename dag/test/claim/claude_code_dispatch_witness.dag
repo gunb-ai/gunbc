@@ -81,8 +81,8 @@ import gunbc.dispatch_selection {
   provider_selection_request_for_kind,
   resolve_dispatch_selection,
   claude_offer_for_instance,
-  srv1_live_dashboard_instance,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import extdeps.llm.cli_lifecycle { ClaudeCliProvider, CodexCliProvider, CursorCliProvider }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown, ExecutorDefault, ExecutorVendor, RecordedAttemptFingerprint, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, decode_dispatch_executor_request, dispatch_tmux_session_scope_for_recorded, claude_credential_custody_source, ClaudeCustodyBound, ClaudeCustodyUnbound, snapshot_custody_declaration }
