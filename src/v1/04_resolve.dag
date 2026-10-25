@@ -1458,8 +1458,8 @@ fn node_with_declaration(n: Node, declaration: DeclarationRef) -> Node {
 // enclosing header wins. These walks touch only Node.declaration, and they visit the positions
 // v1.tests.claim.carrier_realization_census reads: declaration fields, signature parameter types,
 // the return, the type arguments beneath them, and an arrow's parameter and return positions.
-fn binder_marked_type(n: Node, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> Node {
-  let name = authored_name(env: env, node: n)
+fn binder_marked_type(n: Node, owner: DeclarationRef, binders: List<String>, source_indices: Map<String, NewlineIndex>) -> Node {
+  let name = authored_name_at(source_indices: source_indices, node: n)
   let is_binder_reference = n.declaration == none
     && n.children |> count == 0
     && n.params |> count == 0
@@ -1468,26 +1468,26 @@ fn binder_marked_type(n: Node, owner: DeclarationRef, binders: List<String>, env
     node_with_declaration(n: n, declaration: decl_type_parameter_ref(module_path: owner.module_path as String, decl_name: owner.decl_name as String, parameter: name))
   } else {
     let is_arrow = match n.connective { Arrow => true  _ => false }
-    let children = map(n.children, c => binder_marked_type(n: c, owner: owner, binders: binders, env: env))
-    let params = if is_arrow { map(n.params, p => binder_marked_param(param: p, owner: owner, binders: binders, env: env)) } else { n.params }
-    let inferred = if is_arrow { binder_marked_inferred(inferred: n.inferred, owner: owner, binders: binders, env: env) } else { n.inferred }
+    let children = map(n.children, c => binder_marked_type(n: c, owner: owner, binders: binders, source_indices: source_indices))
+    let params = if is_arrow { map(n.params, p => binder_marked_param(param: p, owner: owner, binders: binders, source_indices: source_indices)) } else { n.params }
+    let inferred = if is_arrow { binder_marked_inferred(inferred: n.inferred, owner: owner, binders: binders, source_indices: source_indices) } else { n.inferred }
     node_with_children_params_inferred(n: n, children: children, params: params, inferred: inferred)
   }
 }
 
-fn binder_marked_inferred(inferred: InferredNode?, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> InferredNode? {
+fn binder_marked_inferred(inferred: InferredNode?, owner: DeclarationRef, binders: List<String>, source_indices: Map<String, NewlineIndex>) -> InferredNode? {
   match inferred {
-    Present { value: Resolved { node: t } } => Present { value: Resolved { node: binder_marked_type(n: t, owner: owner, binders: binders, env: env) } }
+    Present { value: Resolved { node: t } } => Present { value: Resolved { node: binder_marked_type(n: t, owner: owner, binders: binders, source_indices: source_indices) } }
     _ => inferred
   }
 }
 
-fn binder_marked_param(param: Node, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> Node {
+fn binder_marked_param(param: Node, owner: DeclarationRef, binders: List<String>, source_indices: Map<String, NewlineIndex>) -> Node {
   match param.children |> first {
     Present { value: te } =>
       node_with_children_params_inferred(
         n: param,
-        children: concat([binder_marked_type(n: te, owner: owner, binders: binders, env: env)], param.children |> skip(1)),
+        children: concat([binder_marked_type(n: te, owner: owner, binders: binders, source_indices: source_indices)], param.children |> skip(1)),
         params: param.params,
         inferred: param.inferred
       )
@@ -1496,11 +1496,41 @@ fn binder_marked_param(param: Node, owner: DeclarationRef, binders: List<String>
 }
 
 // A field of a product carries its type reference in `inferred`; a coproduct variant carries fields.
-fn binder_marked_member(member: Node, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> Node {
+fn binder_marked_member(member: Node, owner: DeclarationRef, binders: List<String>, source_indices: Map<String, NewlineIndex>) -> Node {
   if member.inferred != none {
-    node_with_children_params_inferred(n: member, children: member.children, params: member.params, inferred: binder_marked_inferred(inferred: member.inferred, owner: owner, binders: binders, env: env))
+    node_with_children_params_inferred(n: member, children: member.children, params: member.params, inferred: binder_marked_inferred(inferred: member.inferred, owner: owner, binders: binders, source_indices: source_indices))
   } else {
-    node_with_children_params_inferred(n: member, children: map(member.children, f => binder_marked_member(member: f, owner: owner, binders: binders, env: env)), params: member.params, inferred: member.inferred)
+    node_with_children_params_inferred(n: member, children: map(member.children, f => binder_marked_member(member: f, owner: owner, binders: binders, source_indices: source_indices)), params: member.params, inferred: member.inferred)
+  }
+}
+
+// THE ONE MARKING SITE FOR A DECLARATION'S PARAMETER IDENTITIES, applied where the declaration copy that
+// every consumer reads is BUILT (v1.compiler.infer local_binding_for_item: the type environment's and the
+// census pool's copy, so the local, imported and census routes all read it). It lives there and not
+// only in resolve_item_types because the environment's copy is built BEFORE resolve_item_types marks
+// Node.declaration on its own output (v1.compiler.infer_emit_info records the same ordering for union
+// members): a consumer reading the copy would otherwise see an unmarked declaration, and substitution,
+// which keys on the (owner, TypeParameter) identity alone, would find no key. It marks the signature's
+// parameter types and return, or a type declaration's members, and changes nothing but Node.declaration.
+fn declaration_with_parameter_marks(item: Node, module_path: String, source_indices: Map<String, NewlineIndex>) -> Node {
+  let tp_names = if item.connective != NoConnective && item.transport == none {
+    item.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+  } else {
+    fn_type_param_names(item: item, source_indices: source_indices)
+  }
+  if (tp_names |> count) == 0 {
+    item
+  } else {
+    let owner = decl_ref(module_path: module_path, decl_name: authored_name_at(source_indices: source_indices, node: item))
+    let members = if (item.connective == Conj || item.connective == Disj) && item.transport == none {
+      map(item.children, c => binder_marked_member(member: c, owner: owner, binders: tp_names, source_indices: source_indices))
+    } else {
+      item.children
+    }
+    let is_function_item = match item.module_item_kind { ModuleItemFunction => true  _ => false }
+    let params = if is_function_item { map(item.params, p => binder_marked_param(param: p, owner: owner, binders: tp_names, source_indices: source_indices)) } else { item.params }
+    let ret = if is_function_item { binder_marked_inferred(inferred: item.inferred, owner: owner, binders: tp_names, source_indices: source_indices) } else { item.inferred }
+    node_with_children_params_inferred(n: item, children: members, params: params, inferred: ret)
   }
 }
 
@@ -1578,7 +1608,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
       let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
       ItemResolveResult {
-        item: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: field_children_with_stamped_type(field: child, source_indices: env.source_indices), connective: child.connective, params: child.params, inferred: field_inferred_with_declaration(field: child, binders: tp_names, env: env), return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, application_role: child.application_role, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
+        item: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: field_children_with_stamped_type(field: child, source_indices: env.source_indices), connective: child.connective, params: child.params, inferred: field_inferred_with_declaration(field: child, binders: tp_names, source_indices: env.source_indices), return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, application_role: child.application_role, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
         diagnostics: type_diags
       }
     )
@@ -1589,7 +1619,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
         let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
         let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
         ItemResolveResult {
-          item: Node { occurrence_identity: field.occurrence_identity, name: field.name, span: field.span, ident_span: field.ident_span, children: field_children_with_stamped_type(field: field, source_indices: env.source_indices), connective: field.connective, params: field.params, inferred: field_inferred_with_declaration(field: field, binders: tp_names, env: env), return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field.module_item_kind, application_role: field.application_role, declaration_marker: field.declaration_marker, declaration: field.declaration, expr_data: NoExprData },
+          item: Node { occurrence_identity: field.occurrence_identity, name: field.name, span: field.span, ident_span: field.ident_span, children: field_children_with_stamped_type(field: field, source_indices: env.source_indices), connective: field.connective, params: field.params, inferred: field_inferred_with_declaration(field: field, binders: tp_names, source_indices: env.source_indices), return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field.module_item_kind, application_role: field.application_role, declaration_marker: field.declaration_marker, declaration: field.declaration, expr_data: NoExprData },
           diagnostics: type_diags
         }
       )
@@ -1606,15 +1636,15 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   let child_diags = flat_map(child_results, cr => cr.diagnostics)
   let owner = decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item))
   let resolved_children = if (item.connective == Conj || item.connective == Disj) && item.transport == none {
-    map(child_results, cr => binder_marked_member(member: cr.item, owner: owner, binders: tp_names, env: env))
+    map(child_results, cr => binder_marked_member(member: cr.item, owner: owner, binders: tp_names, source_indices: env.source_indices))
   } else {
     map(child_results, cr => cr.item)
   }
   let is_function_item = match item.module_item_kind { ModuleItemFunction => true  _ => false }
-  let stamped_params = if is_function_item { map(resolved_params, p => reference_param_with_declaration(param: p, binders: tp_names, env: env)) } else { resolved_params }
-  let stamped_ret = if is_function_item { reference_inferred_with_declaration(inferred: resolved_ret, binders: tp_names, env: env) } else { resolved_ret }
-  let marked_params = map(stamped_params, p => binder_marked_param(param: p, owner: owner, binders: tp_names, env: env))
-  let marked_ret = binder_marked_inferred(inferred: stamped_ret, owner: owner, binders: tp_names, env: env)
+  let stamped_params = if is_function_item { map(resolved_params, p => reference_param_with_declaration(param: p, binders: tp_names, source_indices: env.source_indices)) } else { resolved_params }
+  let stamped_ret = if is_function_item { reference_inferred_with_declaration(inferred: resolved_ret, binders: tp_names, source_indices: env.source_indices) } else { resolved_ret }
+  let marked_params = map(stamped_params, p => binder_marked_param(param: p, owner: owner, binders: tp_names, source_indices: env.source_indices))
+  let marked_ret = binder_marked_inferred(inferred: stamped_ret, owner: owner, binders: tp_names, source_indices: env.source_indices)
 
   ItemResolveResult {
     item: Node {
