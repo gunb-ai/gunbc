@@ -1,0 +1,756 @@
+module extdeps.cloud.aws_ec2
+
+import std.types { Int, Bool, NonEmptyStr, String, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.currency.currency { CurrencyCode, Usd }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.measure { Gigabyte, Gibibyte, Mebibyte, Bandwidth, HardwareThreadCount, MoneyPerHour, gigabyte, gibibyte, bandwidth, hardware_thread_count }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// AMAZON EC2, THE CONTROL-PLANE CALLS THE FLEX LOOP USES, at EC2 API version 2016-11-15 (the Query API
+// version every current EC2 action is published under). Read 2026-10-23 from the Amazon EC2 API Reference
+// and the EC2 User Guide pages cited below. This module owns the request and response SHAPE only: no
+// transport (the Query protocol, SigV4 signing), no policy (which type, which region, what MaxPrice) and
+// no observation of this repository's account. Only the members the loop reads or sets are modeled; an
+// unmodeled member is unread, not absent upstream.
+//
+// NAMES ARE THE API MEMBER NAMES in snake_case, mechanically (instanceId -> instance_id,
+// spotPriceHistorySet -> spot_price_history). Wire enumerations whose documented value set is closed are
+// closed sums here; free-text members stay String.
+//
+// THE SPOT MODEL IS NOT A BID MARKET. A spot instance is charged the current Spot price for its type and
+// availability zone; MaxPrice only caps what the requester will pay, and an instance whose cap falls
+// below the Spot price may be interrupted (User Guide, using-spot-instances). So there is no bid level
+// here, only an observed price (DescribeSpotPriceHistory) and an optional cap (SpotMarketOptions).
+//
+// MONEY ON THE WIRE IS A DECIMAL STRING ("spotPrice", "maxPrice") in US dollars per instance-hour. Here it
+// is std.measure MoneyPerHour, the SAME carrier extdeps.pricing.aws_ec2 AwsEc2OnDemandPriceRow uses for
+// the on-demand hourly price, so a spot and an on-demand quote are one type and compare directly. The
+// parse from the wire string is the ingest step and is not in this module; it refuses a string with more
+// fractional digits than the micro carrier holds rather than rounding a price. Timestamps on the wire are ISO 8601 dateTime strings and stay String here for the
+// same reason.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/Welcome.html" }
+}
+
+data aws_ec2_run_instances_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RunInstances.html" }
+}
+
+data aws_ec2_terminate_instances_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_TerminateInstances.html" }
+}
+
+data aws_ec2_describe_instances_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeInstances.html" }
+}
+
+data aws_ec2_describe_spot_price_history_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSpotPriceHistory.html" }
+}
+
+data aws_ec2_describe_instance_types_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeInstanceTypes.html" }
+}
+
+data aws_ec2_describe_regions_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeRegions.html" }
+}
+
+data aws_ec2_describe_instance_type_offerings_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeInstanceTypeOfferings.html" }
+}
+
+data aws_ec2_create_launch_template_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateLaunchTemplate.html" }
+}
+
+data aws_ec2_spot_interruption_notices_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-instance-termination-notices.html" }
+}
+
+data aws_ec2_instance_lifecycle_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-lifecycle.html" }
+}
+
+data aws_ec2_g7e_product_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "aws.amazon.com/ec2/instance-types/g7e/" }
+}
+
+data aws_ec2_create_launch_template_version_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateLaunchTemplateVersion.html" }
+}
+
+data aws_ec2_describe_launch_template_versions_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeLaunchTemplateVersions.html" }
+}
+
+data aws_ec2_network_interface_specification_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_LaunchTemplateInstanceNetworkInterfaceSpecificationRequest.html" }
+}
+
+data aws_ec2_iam_instance_profile_specification_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_LaunchTemplateIamInstanceProfileSpecificationRequest.html" }
+}
+
+data aws_ec2_describe_subnets_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSubnets.html" }
+}
+
+data aws_ec2_describe_security_groups_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSecurityGroups.html" }
+}
+
+data aws_ec2_describe_vpc_endpoints_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeVpcEndpoints.html" }
+}
+
+data aws_ec2_spot_interruption_event_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-instance-termination-notices.html#ec2-spot-instance-interruption-warning-event" }
+}
+
+data aws_ec2_spot_market_options_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_SpotMarketOptions.html" }
+}
+
+data aws_ec2_interruption_behavior_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/UserGuide/interruption-behavior.html" }
+}
+
+data aws_ec2_instance_market_options_request_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceMarketOptionsRequest.html" }
+}
+
+// THE SUBJECT IS THE SERVICE, not its version: aws_ec2_api_version below is the revision fact of the
+// Query API these shapes are read at (DESIGN 3; extdeps.external_authority ExternalModelScope carries no
+// revision).
+data amazon_ec2_api: NonEmptyStr = "Amazon EC2 API"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.aws_ec2",
+      decl_name: "amazon_ec2_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    aws_ec2_run_instances_page,
+    aws_ec2_terminate_instances_page,
+    aws_ec2_describe_instances_page,
+    aws_ec2_describe_spot_price_history_page,
+    aws_ec2_describe_instance_types_page,
+    aws_ec2_describe_regions_page,
+    aws_ec2_describe_instance_type_offerings_page,
+    aws_ec2_create_launch_template_page,
+    aws_ec2_spot_interruption_notices_page,
+    aws_ec2_instance_lifecycle_page,
+    aws_ec2_g7e_product_page,
+    aws_ec2_create_launch_template_version_page,
+    aws_ec2_describe_launch_template_versions_page,
+    aws_ec2_network_interface_specification_page,
+    aws_ec2_iam_instance_profile_specification_page,
+    aws_ec2_describe_subnets_page,
+    aws_ec2_describe_security_groups_page,
+    aws_ec2_describe_vpc_endpoints_page,
+    aws_ec2_spot_interruption_event_page,
+    aws_ec2_spot_market_options_page,
+    aws_ec2_interruption_behavior_page,
+    aws_ec2_instance_market_options_request_page,
+  ]
+}
+
+data aws_ec2_api_version: NonEmptyStr = "2016-11-15"
+
+// DECLARED FRONTIER (DESIGN 3c): nothing imports this module yet. Its consumer is the AWS supplier row of
+// the flex loop, PR 4 of gunbc.plans.flex_supplier_generalization (the offer screen reads
+// DescribeInstanceTypes / DescribeSpotPriceHistory / DescribeInstanceTypeOfferings, the roster reads
+// DescribeInstances, the write builds RunInstances / TerminateInstances); the launch template of PR 3
+// consumes CreateLaunchTemplate and the interruption-notice members.
+data aws_ec2_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_ec2 for the flex AWS supplier row (gunbc.plans.flex_supplier_generalization PR 3 launch template and PR 4 loop row) and a Plan-mode pass executes over these shapes.")
+
+data aws_ec2_quote_currency: CurrencyCode = Usd
+
+// ---- shared members -------------------------------------------------------------------------------
+
+type AwsEc2Tag {
+  key: NonEmptyStr
+  value: String
+}
+
+// ResourceType in a TagSpecification; only the two resources the loop tags at launch.
+type AwsEc2TaggedResourceType
+  = AwsEc2TagInstance
+  | AwsEc2TagVolume
+
+type AwsEc2TagSpecification {
+  resource_type: AwsEc2TaggedResourceType
+  tags: List<AwsEc2Tag>
+}
+
+// A Filter: a name such as `tag:<key>`, `instance-state-name`, `instance-type` or `availability-zone`,
+// with the values any of which matches (DescribeInstances, DescribeSpotPriceHistory).
+type AwsEc2Filter {
+  name: NonEmptyStr
+  values: List<String>
+}
+
+// InstanceState: the documented name set and its code (0 pending, 16 running, 32 shutting-down,
+// 48 terminated, 64 stopping, 80 stopped). Billing follows the name (instance lifecycle page): billed in
+// running, not billed from shutting-down on, per second with a one-minute minimum per start.
+type AwsEc2InstanceStateName
+  = AwsEc2Pending
+  | AwsEc2Running
+  | AwsEc2ShuttingDown
+  | AwsEc2Terminated
+  | AwsEc2Stopping
+  | AwsEc2Stopped
+
+type AwsEc2InstanceState {
+  code: Int
+  name: AwsEc2InstanceStateName
+}
+
+// InstanceLifecycle is present only for spot and scheduled instances; absent means on-demand.
+type AwsEc2InstanceLifecycle
+  = AwsEc2LifecycleSpot
+  | AwsEc2LifecycleScheduled
+  | AwsEc2LifecycleCapacityBlock
+
+// StateReason.code for the reclaim arms the loop distinguishes; every other code is kept as text.
+type AwsEc2StateReason {
+  code: String
+  message: String
+}
+
+// ---- RunInstances ----------------------------------------------------------------------------------
+
+// SpotMarketOptions's SpotInstanceType and InstanceInterruptionBehavior are NOT independent upstream: a
+// one-time request supports only terminate, and stop and hibernate require a persistent request
+// (RunInstances reference, SpotMarketOptions; User Guide, interruption-behavior). So the pair is ONE closed
+// sum of the combinations EC2 accepts, and an invalid pair (one-time + stop, persistent + terminate) has
+// no constructor. The wire values of each arm are aws_ec2_spot_request_wire below.
+type AwsEc2SpotRequestBehavior
+  = AwsEc2OneTimeTerminate
+  | AwsEc2PersistentStop
+  | AwsEc2PersistentHibernate
+
+// SpotMarketOptions. max_price absent means the on-demand price is the cap (RunInstances reference).
+type AwsEc2SpotMarketOptions {
+  max_price: MoneyPerHour?
+  request_behavior: AwsEc2SpotRequestBehavior
+}
+
+// The wire pair (SpotInstanceType, InstanceInterruptionBehavior) of one arm, in the documented values.
+type AwsEc2SpotRequestWire {
+  spot_instance_type: NonEmptyStr
+  instance_interruption_behavior: NonEmptyStr
+}
+
+fn aws_ec2_spot_request_wire(behavior: AwsEc2SpotRequestBehavior) -> AwsEc2SpotRequestWire {
+  match behavior {
+    AwsEc2OneTimeTerminate => AwsEc2SpotRequestWire { spot_instance_type: "one-time" as NonEmptyStr, instance_interruption_behavior: "terminate" as NonEmptyStr }
+    AwsEc2PersistentStop => AwsEc2SpotRequestWire { spot_instance_type: "persistent" as NonEmptyStr, instance_interruption_behavior: "stop" as NonEmptyStr }
+    AwsEc2PersistentHibernate => AwsEc2SpotRequestWire { spot_instance_type: "persistent" as NonEmptyStr, instance_interruption_behavior: "hibernate" as NonEmptyStr }
+  }
+}
+
+// InstanceMarketOptionsRequest. MarketType is a closed upstream set (spot, capacity-block), and the
+// options member belongs to its market type, so the request is a sum whose arm IS the market type: Spot
+// options can never ride beside a non-spot market type. An on-demand launch omits the member (the
+// request field is optional), and capacity blocks are not launched by the loop, so that arm is not
+// modeled. The wire MarketType of an arm is aws_ec2_market_type_wire.
+type AwsEc2InstanceMarketOptions
+  = | AwsEc2SpotMarket { spot_options: AwsEc2SpotMarketOptions }
+
+fn aws_ec2_market_type_wire(options: AwsEc2InstanceMarketOptions) -> NonEmptyStr {
+  match options {
+    AwsEc2SpotMarket { spot_options: _ } => "spot" as NonEmptyStr
+  }
+}
+
+// LaunchTemplateSpecification: by id or by name, at a version (a number, `$Latest` or `$Default`).
+type AwsEc2LaunchTemplateRef
+  = AwsEc2LaunchTemplateById { launch_template_id: NonEmptyStr, version: NonEmptyStr }
+  | AwsEc2LaunchTemplateByName { launch_template_name: NonEmptyStr, version: NonEmptyStr }
+
+type AwsEc2Placement {
+  availability_zone: NonEmptyStr
+}
+
+// The RunInstances members the loop sets. MinCount = MaxCount = 1: one selected candidate per call
+// (plan gunbc.plans.flex_supplier_generalization, D1). client_token makes the call idempotent across a
+// retry of the same intent (RunInstances reference, ClientToken).
+type AwsEc2RunInstancesRequest {
+  launch_template: AwsEc2LaunchTemplateRef
+  instance_type: NonEmptyStr
+  min_count: Int
+  max_count: Int
+  placement: AwsEc2Placement?
+  instance_market_options: AwsEc2InstanceMarketOptions?
+  tag_specifications: List<AwsEc2TagSpecification>
+  client_token: NonEmptyStr
+}
+
+// One element of instancesSet, the members the loop reads, shared by RunInstances and DescribeInstances.
+type AwsEc2Instance {
+  instance_id: NonEmptyStr
+  instance_type: NonEmptyStr
+  placement: AwsEc2Placement
+  state: AwsEc2InstanceState
+  state_reason: AwsEc2StateReason?
+  instance_lifecycle: AwsEc2InstanceLifecycle?
+  spot_instance_request_id: String?
+  launch_time: String
+  public_ip_address: String?
+  tags: List<AwsEc2Tag>
+}
+
+// GroupIdentifier: a security group as a reservation or an interface names it.
+type AwsEc2GroupIdentifier {
+  group_id: NonEmptyStr
+  group_name: String
+}
+
+// Reservation (reservationId, ownerId, groupSet, instancesSet). owner_id is the account id; it is part of
+// the wire shape and is never written into the corpus as data (plan section 4).
+type AwsEc2Reservation {
+  reservation_id: NonEmptyStr
+  owner_id: NonEmptyStr
+  groups: List<AwsEc2GroupIdentifier>
+  instances: List<AwsEc2Instance>
+}
+
+// RunInstances answers a Reservation AT THE ROOT (RunInstances reference, Response Elements:
+// reservationId, ownerId, groupSet, instancesSet, requesterId), so the response IS that shape and is not
+// wrapped. requester_id is set only when another service launched on the caller's behalf.
+type AwsEc2RunInstancesResponse {
+  reservation_id: NonEmptyStr
+  owner_id: NonEmptyStr
+  requester_id: String?
+  groups: List<AwsEc2GroupIdentifier>
+  instances: List<AwsEc2Instance>
+}
+
+// ---- TerminateInstances ----------------------------------------------------------------------------
+
+type AwsEc2TerminateInstancesRequest {
+  instance_ids: List<NonEmptyStr>
+}
+
+type AwsEc2InstanceStateChange {
+  instance_id: NonEmptyStr
+  current_state: AwsEc2InstanceState
+  previous_state: AwsEc2InstanceState
+}
+
+type AwsEc2TerminateInstancesResponse {
+  instances: List<AwsEc2InstanceStateChange>
+}
+
+// ---- DescribeInstances (paged) ---------------------------------------------------------------------
+
+// Paged by next_token; a roster is complete only when a page answers with no next_token.
+type AwsEc2DescribeInstancesRequest {
+  filters: List<AwsEc2Filter>
+  max_results: Int?
+  next_token: String?
+}
+
+type AwsEc2DescribeInstancesResponse {
+  reservations: List<AwsEc2Reservation>
+  next_token: String?
+}
+
+// ---- DescribeSpotPriceHistory ----------------------------------------------------------------------
+
+type AwsEc2DescribeSpotPriceHistoryRequest {
+  instance_types: List<NonEmptyStr>
+  product_descriptions: List<NonEmptyStr>
+  availability_zone: String?
+  start_time: String?
+  end_time: String?
+  max_results: Int?
+  next_token: String?
+}
+
+// SpotPrice: the price in effect from timestamp on, for one type in one zone and product description.
+type AwsEc2SpotPrice {
+  availability_zone: NonEmptyStr
+  instance_type: NonEmptyStr
+  product_description: NonEmptyStr
+  spot_price: MoneyPerHour
+  timestamp: String
+}
+
+type AwsEc2DescribeSpotPriceHistoryResponse {
+  spot_price_history: List<AwsEc2SpotPrice>
+  next_token: String?
+}
+
+data aws_ec2_product_description_linux: NonEmptyStr = "Linux/UNIX"
+
+// ---- DescribeRegions and DescribeInstanceTypeOfferings (the region axis) ----------------------------
+
+// Region names stay strings (`us-east-1`): the candidate field is every region that offers the type, so
+// the set is read from the account, not enumerated here. extdeps.cloud.cloud AwsRegion is a closed
+// subset for other consumers and is not this axis.
+type AwsEc2RegionOptInStatus
+  = AwsEc2OptInNotRequired
+  | AwsEc2OptedIn
+  | AwsEc2NotOptedIn
+
+type AwsEc2Region {
+  region_name: NonEmptyStr
+  endpoint: NonEmptyStr
+  opt_in_status: AwsEc2RegionOptInStatus
+}
+
+type AwsEc2DescribeRegionsRequest {
+  all_regions: Bool
+}
+
+type AwsEc2DescribeRegionsResponse {
+  regions: List<AwsEc2Region>
+}
+
+type AwsEc2OfferingLocationType
+  = AwsEc2LocationRegion
+  | AwsEc2LocationAvailabilityZone
+  | AwsEc2LocationAvailabilityZoneId
+
+// Asked per region (the call answers for the region it is sent to); location_type availability-zone
+// gives the AZs inside it that offer the type.
+type AwsEc2DescribeInstanceTypeOfferingsRequest {
+  location_type: AwsEc2OfferingLocationType
+  filters: List<AwsEc2Filter>
+  next_token: String?
+}
+
+type AwsEc2InstanceTypeOffering {
+  instance_type: NonEmptyStr
+  location_type: AwsEc2OfferingLocationType
+  location: NonEmptyStr
+}
+
+type AwsEc2DescribeInstanceTypeOfferingsResponse {
+  instance_type_offerings: List<AwsEc2InstanceTypeOffering>
+  next_token: String?
+}
+
+// ---- DescribeInstanceTypes -------------------------------------------------------------------------
+
+// GpuDeviceMemoryInfo {SizeInMiB}.
+type AwsEc2GpuDeviceMemoryInfo {
+  size_in_mib: Mebibyte
+}
+
+// GpuDeviceInfo {Name, Manufacturer, Count, MemoryInfo}.
+type AwsEc2GpuDeviceInfo {
+  name: NonEmptyStr
+  manufacturer: NonEmptyStr
+  count: Int
+  memory_info: AwsEc2GpuDeviceMemoryInfo
+}
+
+// GpuInfo {Gpus, TotalGpuMemoryInMiB}.
+type AwsEc2GpuInfo {
+  gpus: List<AwsEc2GpuDeviceInfo>
+  total_gpu_memory_in_mib: Mebibyte
+}
+
+// VCpuInfo, the member the screen reads (DefaultVCpus); the quota is counted in vCPUs.
+type AwsEc2VCpuInfo {
+  default_vcpus: HardwareThreadCount
+}
+
+// MemoryInfo {SizeInMiB}.
+type AwsEc2MemoryInfo {
+  size_in_mib: Mebibyte
+}
+
+type AwsEc2DiskInfo {
+  size_in_gb: Gigabyte
+  count: Int
+  disk_type: NonEmptyStr
+}
+
+type AwsEc2InstanceStorageInfo {
+  total_size_in_gb: Gigabyte
+  disks: List<AwsEc2DiskInfo>
+  nvme_support: NonEmptyStr
+}
+
+// Sizes on this wire are integers in the unit the member name states (MiB, decimal GB); each is typed
+// with that std.measure carrier, so the live answer and the curated g7e table below hold one fact in one
+// form. A vCPU is a hardware thread (EC2 User Guide, instance-optimize-cpu), so vCPU counts are
+// std.measure HardwareThreadCount; GPU and disk counts stay Int, since no std.measure carrier counts them.
+// InstanceTypeInfo, the members the screen reads, NESTED AS THE API NESTS THEM (VCpuInfo, MemoryInfo,
+// GpuInfo, InstanceStorageInfo). gpu_info is absent for a type with no GPU, instance_storage_info for an
+// EBS-only type: the /cache requirement (plan section 3) refuses such a type by this member, not by its
+// name.
+type AwsEc2InstanceTypeInfo {
+  instance_type: NonEmptyStr
+  v_cpu_info: AwsEc2VCpuInfo
+  memory_info: AwsEc2MemoryInfo
+  gpu_info: AwsEc2GpuInfo?
+  instance_storage_supported: Bool
+  instance_storage_info: AwsEc2InstanceStorageInfo?
+  supported_usage_classes: List<NonEmptyStr>
+}
+
+type AwsEc2DescribeInstanceTypesRequest {
+  instance_types: List<NonEmptyStr>
+  next_token: String?
+}
+
+type AwsEc2DescribeInstanceTypesResponse {
+  instance_types: List<AwsEc2InstanceTypeInfo>
+  next_token: String?
+}
+
+// ---- CreateLaunchTemplate --------------------------------------------------------------------------
+
+type AwsEc2EbsBlockDevice {
+  volume_size_gib: Gibibyte
+  volume_type: NonEmptyStr
+  delete_on_termination: Bool
+}
+
+// BlockDeviceMapping: an EBS root volume, or an instance-store volume by virtual name (ephemeral0..).
+// Nitro instance-store NVMe volumes are attached whether mapped or not; formatting and mounting them at
+// /cache is the user-data's job (PR 3), not a launch-template member.
+type AwsEc2BlockDeviceMapping
+  = AwsEc2EbsMapping { device_name: NonEmptyStr, ebs: AwsEc2EbsBlockDevice }
+  | AwsEc2InstanceStoreMapping { device_name: NonEmptyStr, virtual_name: NonEmptyStr }
+
+// IMDS options: http_tokens required forces IMDSv2, which the interruption poll uses.
+type AwsEc2MetadataOptions {
+  http_tokens: NonEmptyStr
+  http_put_response_hop_limit: Int
+}
+
+// LaunchTemplateIamInstanceProfileSpecificationRequest: by ARN or by name. The instance role is what reads
+// the per-instance SSM parameter and the regional S3 weights bucket (plan section 3).
+type AwsEc2IamInstanceProfileSpecification
+  = AwsEc2IamInstanceProfileByArn { arn: NonEmptyStr }
+  | AwsEc2IamInstanceProfileByName { name: NonEmptyStr }
+
+// LaunchTemplateInstanceNetworkInterfaceSpecificationRequest, the members the template sets: the subnet
+// (and so the VPC and availability zone) and the security groups ride on the primary interface.
+type AwsEc2NetworkInterfaceSpecification {
+  device_index: Int
+  subnet_id: NonEmptyStr
+  groups: List<NonEmptyStr>
+  associate_public_ip_address: Bool
+  delete_on_termination: Bool
+}
+
+// RequestLaunchTemplateData, the members the flex template sets. user_data is base64 on the wire and
+// is readable through DescribeInstanceAttribute by any principal holding that action, so it carries no
+// secret (plan section 3). The security groups are carried ONLY on the network interface: the API refuses
+// SecurityGroupIds beside NetworkInterfaces that name groups, so that pair has no member here and the
+// conflicting request is unwritable. A subnet is per availability zone, so a template whose interface
+// names a subnet launches only in that zone: the template is per (region, AZ) candidate.
+type AwsEc2LaunchTemplateData {
+  image_id: NonEmptyStr
+  block_device_mappings: List<AwsEc2BlockDeviceMapping>
+  user_data: String
+  metadata_options: AwsEc2MetadataOptions
+  iam_instance_profile: AwsEc2IamInstanceProfileSpecification
+  network_interfaces: List<AwsEc2NetworkInterfaceSpecification>
+  instance_initiated_shutdown_behavior: NonEmptyStr
+}
+
+type AwsEc2CreateLaunchTemplateRequest {
+  launch_template_name: NonEmptyStr
+  version_description: String
+  launch_template_data: AwsEc2LaunchTemplateData
+  client_token: NonEmptyStr
+}
+
+type AwsEc2LaunchTemplate {
+  launch_template_id: NonEmptyStr
+  launch_template_name: NonEmptyStr
+  default_version_number: Int
+  latest_version_number: Int
+}
+
+type AwsEc2CreateLaunchTemplateResponse {
+  launch_template: AwsEc2LaunchTemplate
+}
+
+// ---- CreateLaunchTemplateVersion and DescribeLaunchTemplateVersions (the version readback) ----------
+
+// A new image digest or user-data is a new VERSION of the one template, not a new template. The target is
+// the template by id or by name (no version: the version is what this call creates).
+type AwsEc2LaunchTemplateTarget
+  = AwsEc2LaunchTemplateTargetById { launch_template_id: NonEmptyStr }
+  | AwsEc2LaunchTemplateTargetByName { launch_template_name: NonEmptyStr }
+
+type AwsEc2CreateLaunchTemplateVersionRequest {
+  target: AwsEc2LaunchTemplateTarget
+  version_description: String
+  launch_template_data: AwsEc2LaunchTemplateData
+  client_token: NonEmptyStr
+}
+
+// LaunchTemplateVersion, the members the readback compares: the version number the launch will name and
+// the data it holds, which must equal the data the loop rendered or the launch refuses.
+type AwsEc2LaunchTemplateVersion {
+  launch_template_id: NonEmptyStr
+  launch_template_name: NonEmptyStr
+  version_number: Int
+  default_version: Bool
+  launch_template_data: AwsEc2LaunchTemplateData
+}
+
+type AwsEc2CreateLaunchTemplateVersionResponse {
+  launch_template_version: AwsEc2LaunchTemplateVersion
+}
+
+// DescribeLaunchTemplateVersions, asked for exact version numbers (never $Latest at readback: the
+// readback is of the version the launch will name).
+type AwsEc2DescribeLaunchTemplateVersionsRequest {
+  target: AwsEc2LaunchTemplateTarget
+  versions: List<NonEmptyStr>
+  next_token: String?
+}
+
+type AwsEc2DescribeLaunchTemplateVersionsResponse {
+  launch_template_versions: List<AwsEc2LaunchTemplateVersion>
+  next_token: String?
+}
+
+// ---- The network substrate the launch depends on (read, never created by the loop) ------------------
+
+// A candidate's subnet, its security groups and the VPC endpoints that route to S3, SSM and KMS are READ
+// and checked for coherence (one VPC, the subnet in the candidate's zone) before launch; an unread
+// substrate refuses the candidate (plan section 3). The serving port's reachability is a security group
+// rule the loop reads, not one it writes.
+type AwsEc2Subnet {
+  subnet_id: NonEmptyStr
+  vpc_id: NonEmptyStr
+  availability_zone: NonEmptyStr
+  map_public_ip_on_launch: Bool
+  tags: List<AwsEc2Tag>
+}
+
+type AwsEc2DescribeSubnetsRequest {
+  filters: List<AwsEc2Filter>
+  next_token: String?
+}
+
+type AwsEc2DescribeSubnetsResponse {
+  subnets: List<AwsEc2Subnet>
+  next_token: String?
+}
+
+// IpPermission, the members the port check reads: protocol, port range and the IPv4 ranges admitted.
+type AwsEc2IpRange {
+  cidr_ip: NonEmptyStr
+}
+
+type AwsEc2IpPermission {
+  ip_protocol: NonEmptyStr
+  from_port: Int?
+  to_port: Int?
+  ip_ranges: List<AwsEc2IpRange>
+}
+
+type AwsEc2SecurityGroup {
+  group_id: NonEmptyStr
+  group_name: String
+  vpc_id: NonEmptyStr
+  ip_permissions: List<AwsEc2IpPermission>
+  ip_permissions_egress: List<AwsEc2IpPermission>
+}
+
+type AwsEc2DescribeSecurityGroupsRequest {
+  group_ids: List<NonEmptyStr>
+  next_token: String?
+}
+
+type AwsEc2DescribeSecurityGroupsResponse {
+  security_groups: List<AwsEc2SecurityGroup>
+  next_token: String?
+}
+
+// VpcEndpoint, the members the route check reads: which service (com.amazonaws.<region>.s3, .ssm, .kms)
+// is reachable from which VPC, and the endpoint state. An instance with a public address reaches those
+// services without an endpoint; which route a candidate uses is the loop's coherence verdict, not here.
+type AwsEc2VpcEndpoint {
+  vpc_endpoint_id: NonEmptyStr
+  vpc_id: NonEmptyStr
+  service_name: NonEmptyStr
+  state: NonEmptyStr
+}
+
+type AwsEc2DescribeVpcEndpointsRequest {
+  filters: List<AwsEc2Filter>
+  next_token: String?
+}
+
+type AwsEc2DescribeVpcEndpointsResponse {
+  vpc_endpoints: List<AwsEc2VpcEndpoint>
+  next_token: String?
+}
+
+// ---- Spot interruption notice (instance metadata and EventBridge) ----------------------------------
+
+// spot/instance-action in IMDS answers {action, time}; absent (HTTP 404) when no interruption is
+// scheduled. The EventBridge event `EC2 Spot Instance Interruption Warning` carries the same action with
+// the instance id. Both are emitted on a best-effort basis (interruption notices page), so a consumer may
+// never treat the absence of a notice as the absence of an interruption.
+type AwsEc2InstanceAction
+  = AwsEc2ActionTerminate
+  | AwsEc2ActionStop
+  | AwsEc2ActionHibernate
+
+type AwsEc2SpotInstanceActionNotice {
+  action: AwsEc2InstanceAction
+  time: String
+}
+
+data aws_ec2_imds_spot_instance_action_path: NonEmptyStr = "/latest/meta-data/spot/instance-action"
+
+data aws_ec2_spot_interruption_event_detail_type: NonEmptyStr = "EC2 Spot Instance Interruption Warning"
+
+// The EventBridge event's detail member (source aws.ec2): the instance and the action. The envelope
+// (time, region, resources) is EventBridge's, read by the subscription the plan names in PR 4.
+type AwsEc2SpotInterruptionWarningDetail {
+  instance_id: NonEmptyStr
+  instance_action: AwsEc2InstanceAction
+}
+
+// ---- g7e sizes as published -------------------------------------------------------------------------
+
+// The g7e product page's size table, transcribed 2026-10-23, each figure in the std.measure carrier of
+// the unit the page states: GPU memory and local NVMe in decimal GB (Gigabyte; the page writes NVMe as
+// TB, 1.9 TB = 1900 GB), host memory in GiB (Gibibyte), network and EBS bandwidth in Gbps (Bandwidth,
+// bits per second). These are the page's figures, not a
+// DescribeInstanceTypes answer; the loop screens on the live AwsEc2InstanceTypeInfo and these rows are its
+// cited expectation. ebs_bandwidth_up_to marks the page's "Up to" figure (burstable).
+type AwsEc2G7eSize {
+  instance_type: NonEmptyStr
+  gpu_count: Int
+  gpu_memory: Gigabyte
+  vcpus: HardwareThreadCount
+  memory: Gibibyte
+  local_nvme_disks: Int
+  local_nvme_total: Gigabyte
+  network_bandwidth: Bandwidth
+  ebs_bandwidth: Bandwidth
+  ebs_bandwidth_up_to: Bool
+}
+
+data aws_ec2_g7e_sizes: List<AwsEc2G7eSize> = [
+  AwsEc2G7eSize { instance_type: "g7e.2xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory: gigabyte(count: 96), vcpus: hardware_thread_count(count: 8), memory: gibibyte(count: 64), local_nvme_disks: 1, local_nvme_total: gigabyte(count: 1900), network_bandwidth: bandwidth(count: 50000000000), ebs_bandwidth: bandwidth(count: 5000000000), ebs_bandwidth_up_to: true },
+  AwsEc2G7eSize { instance_type: "g7e.4xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory: gigabyte(count: 96), vcpus: hardware_thread_count(count: 16), memory: gibibyte(count: 128), local_nvme_disks: 1, local_nvme_total: gigabyte(count: 1900), network_bandwidth: bandwidth(count: 50000000000), ebs_bandwidth: bandwidth(count: 8000000000), ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.8xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory: gigabyte(count: 96), vcpus: hardware_thread_count(count: 32), memory: gibibyte(count: 256), local_nvme_disks: 1, local_nvme_total: gigabyte(count: 1900), network_bandwidth: bandwidth(count: 100000000000), ebs_bandwidth: bandwidth(count: 16000000000), ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.12xlarge" as NonEmptyStr, gpu_count: 2, gpu_memory: gigabyte(count: 192), vcpus: hardware_thread_count(count: 48), memory: gibibyte(count: 512), local_nvme_disks: 1, local_nvme_total: gigabyte(count: 3800), network_bandwidth: bandwidth(count: 400000000000), ebs_bandwidth: bandwidth(count: 25000000000), ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.24xlarge" as NonEmptyStr, gpu_count: 4, gpu_memory: gigabyte(count: 384), vcpus: hardware_thread_count(count: 96), memory: gibibyte(count: 1024), local_nvme_disks: 2, local_nvme_total: gigabyte(count: 7600), network_bandwidth: bandwidth(count: 800000000000), ebs_bandwidth: bandwidth(count: 50000000000), ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.48xlarge" as NonEmptyStr, gpu_count: 8, gpu_memory: gigabyte(count: 768), vcpus: hardware_thread_count(count: 192), memory: gibibyte(count: 2048), local_nvme_disks: 4, local_nvme_total: gigabyte(count: 15200), network_bandwidth: bandwidth(count: 1600000000000), ebs_bandwidth: bandwidth(count: 100000000000), ebs_bandwidth_up_to: false },
+]
