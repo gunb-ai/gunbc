@@ -87,9 +87,9 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
 };
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, declaration_binding_of_ref, empty_symbol_index, lookup_type_for,
-    type_reference_declaration_reading, GlobalBareLookupState, TypeBinding, TypeEnv,
-    TypeReferenceDeclarationReading,
+    alias_rhs_of_declaration, authored_name, declaration_binding_of_ref, empty_symbol_index,
+    lookup_type_for, type_reference_declaration_reading, GlobalBareLookupState, TypeBinding,
+    TypeEnv, TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{
     item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
@@ -6754,6 +6754,17 @@ pub fn declared_representation_carrier(
 }
 
 pub fn declaration_edge(n: Rc<Node>, d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    match crate::v1_compiler_infer_env::alias_rhs_of_declaration(d.clone(), env.clone()) {
+        Some(rhs) => Some(rhs.clone()),
+        std::option::Option::None => non_alias_declaration_edge(n, d.clone(), env.clone()),
+    }
+}
+
+pub fn non_alias_declaration_edge(
+    n: Rc<Node>,
+    d: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
     {
         let from_resolved = match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {

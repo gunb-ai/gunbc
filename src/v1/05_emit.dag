@@ -43,7 +43,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified, declaration_binding_of_ref }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified, declaration_binding_of_ref, alias_rhs_of_declaration }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -3343,7 +3343,11 @@ fn node_is_identified_or_refinement(n: Node, env: TypeEnv) -> Bool {
 
 // A REFINEMENT ROW'S CARRIER IS NAMED BY ITS SPELLING (from_type), the way the row keys it for an
 // authored `as` target, and every row today names a kernel type, so it reads as that kernel mint.
-// Otherwise the declaration's own edge is followed, from whichever node carries it: the node the
+// Otherwise the declaration's own edge is followed, from whichever node carries it: an alias's
+// declared right-hand side (v1.compiler.infer_env alias_rhs_of_declaration, the one alias authority,
+// which reads an alias declared outside the asking module from the symbol index) -- always followed,
+// because the right-hand side of `type A = B` is B, and a B the reading cannot place resolves through
+// the resolver below or answers nothing -- else the node the
 // reference resolved to, then the declaration node the resolver binds the reference to
 // (v1.compiler.infer_env lookup_type_for, which prefers the reference's resolved identity over its
 // spelling), then the declaration's binding (its alias right-hand side, else the type it is bound
@@ -3361,6 +3365,13 @@ fn declared_representation_carrier(n: Node, d: DeclarationRef, env: TypeEnv, fue
 }
 
 fn declaration_edge(n: Node, d: DeclarationRef, env: TypeEnv) -> Node? {
+  match alias_rhs_of_declaration(item_ref: d, env: env) {
+    Present { value: rhs } => Present { value: rhs }
+    Absent => non_alias_declaration_edge(n: n, d: d, env: env)
+  }
+}
+
+fn non_alias_declaration_edge(n: Node, d: DeclarationRef, env: TypeEnv) -> Node? {
   let from_resolved = match n.inferred {
     Present { value: Resolved { node: rt } } => if edge_moves_past(next: rt, d: d, env: env) { Present { value: rt } } else { none }
     _ => none

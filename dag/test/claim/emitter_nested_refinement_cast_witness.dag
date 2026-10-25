@@ -38,8 +38,8 @@ module test.claim.emitter_nested_refinement_cast_witness
 // moved OUT of that arm: the declared inclusion `n as Int` for n: std.nat Nat
 // (nat_as_int_inclusion_emits_the_operand, run natively by gunbc.instruments.native_emission_controls),
 // the alias of a refinement read through its declared right-hand side
-// (alias_of_refinement_cast_emits_the_operand), and the empty list literal typed by its cast
-// (empty_list_cast_emits_the_operand).
+// (alias_of_refinement_cast_emits_the_operand), the empty list literal and the generic call typed by their cast
+// (empty_list_cast_emits_the_operand, generic_call_cast_emits_the_operand).
 
 fn w_single_refinement_emits_no_unsupported_cast() -> Bool {
   compile_dag_rust_emit_check(
@@ -97,6 +97,18 @@ fn w_unrelated_carriers_still_refuse_the_cast() -> Bool {
     "src/emitnested_unrelated.rs",
     ["unsupported cast"],
     []
+  )
+}
+
+// A GENERIC CALL WHOSE RETURN IS UNSOLVED IS INSTANTIATED BY ITS CAST, the call-shaped sibling of
+// the empty list literal: the specimen is gunbc.package_delivery's fold seed
+// `empty_set() as Set<String>`.
+fn w_generic_call_cast_emits_the_operand() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_generic_call\n\nimport std.types \{ Set, String }\n\nfn seed() -> Set<String> \{\n  empty_set() as Set<String>\n}\n",
+    "src/emitnested_generic_call.rs",
+    ["fn seed"],
+    ["unsupported cast", "compile_error!", "panic!"]
   )
 }
 
@@ -170,6 +182,10 @@ test fn unrelated_carriers_still_refuse_the_cast() -> Bool {
 
 test fn alias_of_refinement_cast_emits_the_operand() -> Bool {
   w_alias_of_refinement_cast_emits_the_operand()
+}
+
+test fn generic_call_cast_emits_the_operand() -> Bool {
+  w_generic_call_cast_emits_the_operand()
 }
 
 test fn empty_list_cast_emits_the_operand() -> Bool {
