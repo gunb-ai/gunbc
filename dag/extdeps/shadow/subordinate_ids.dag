@@ -290,6 +290,33 @@ type SubordinatePlan
 // their first container; a runtime-only check would let the converge displace whoever it liked. The
 // caller therefore supplies `displaceable` from the model and `store_free` from a readback, and this
 // function refuses unless both agree.
+// Does a proposed range collide with anything the plan leaves in the file? "Leaves in the file" is
+// computed rather than guessed: the file as-read, minus the job user's stale ranges (they are deleted),
+// minus the displaceable account's colliding range (deleted), plus the job user's newly declared range
+// (added, and it must be counted — the displacee is moving OUT of exactly the range the job user is
+// moving INTO, so comparing against the pre-plan file would miss the one overlap that matters, and
+// comparing against only the untouched accounts would miss it too).
+fn overlaps_survivors(
+  rs: List<SubordinateRange>,
+  account: NonEmptyStr,
+  want_first: Int,
+  want_count: Int,
+  movable: List<SubordinateRange>,
+  first: Int,
+  count: Int,
+) -> Bool {
+  let proposed = SubordinateRange { account: "proposed" as NonEmptyStr, first: first, count: count }
+  let own_stale = filter(rs, r => (r.account as String) == (account as String) && !(r.first == want_first && r.count == want_count))
+  let survivors = filter(rs, r =>
+    // The job user's stale ranges go away; its exact-match range stays (and equals the proposal).
+    !own_stale.any(s => (s.account as String) == (r.account as String) && s.first == r.first && s.count == r.count)
+      // The displaceable account's colliding range goes away too.
+      && !movable.any(m => (m.account as String) == (r.account as String) && m.first == r.first && m.count == r.count)
+  )
+  append(survivors, items: [SubordinateRange { account: account, first: want_first, count: want_count }])
+    .any(s => subordinate_ranges_overlap(a: proposed, b: s))
+}
+
 fn plan_subordinate_file(
   path: String,
   reading: SubordinateFileReading,
@@ -298,6 +325,7 @@ fn plan_subordinate_file(
   want_count: Int,
   displaceable: NonEmptyStr,
   displaceable_store_free: Bool,
+  displacee_regrant_first: Int,
 ) -> SubordinatePlan {
   match reading {
     SubordinateFileUnreadable { path: p, cause: c } =>
@@ -323,37 +351,77 @@ fn plan_subordinate_file(
           reason: join([displaceable as String, " holds the colliding range on ", p, " and the converge has not established it",
                         " holds no container store; moving a range out from under a store orphans every image in it"], ""),
         }
+      } else if length(filter(movable, o =>
+                  // THE RE-GRANT TARGET MUST NOT ITSELF COLLIDE. The displacee is being moved to a
+                  // declared first; if that first overlaps a range that SURVIVES the plan, the converge
+                  // has cured one collision and manufactured another, and it has done so while reporting
+                  // success. Only ranges that outlive the plan count — computed, not guessed, by
+                  // subtracting everything this plan deletes.
+                  overlaps_survivors(rs: rs, account: account, want_first: want_first, want_count: want_count,
+                                     movable: movable, first: displacee_regrant_first, count: o.count)) {
+        SubordinatePlanRefused {
+          reason: join(["the declared re-grant first ", to_string(displacee_regrant_first), " for ", displaceable as String,
+                        " on ", p, " overlaps a range the plan does not remove; refusing to trade one collision for another"], ""),
+        }
       } else {
         // REMOVE BEFORE ADD, and not as tidiness: adding while the job user still holds a stale range
         // leaves it owning two ranges, and adding while the displaced account still holds the overlap
         // leaves the overlap in place, which is the very condition that breaks the second namespace.
+        //
+        // THE DISPLACED ACCOUNT IS RE-GRANTED, NOT STRIPPED. It arrived holding a range — shadow gave it
+        // one and anything already running under it was built expecting one. Deleting it without a
+        // replacement is a silent downgrade that reads as a successful converge: podman, singularity, or
+        // a second rootless daemon for that account simply stops working, days later, with no log
+        // pointing here. So the displacee's range moves with it, to the declared first and the SAME width
+        // it had, and the width is preserved rather than re-declared because the only thing that was ever
+        // wrong about the old range is where it started.
         let removals = map(stale, r => SubordinateStepRemove { account: account, first: r.first, count: r.count })
         let drops = map(movable, o => SubordinateStepRemove { account: o.account, first: o.first, count: o.count })
+        let regrant = map(movable, o => SubordinateStepAdd { account: o.account, first: displacee_regrant_first, count: o.count })
         let holds_exactly = length(mine) == 1 && length(stale) == 0
         let additions = if holds_exactly { [] } else { [SubordinateStepAdd { account: account, first: want_first, count: want_count }] }
-        SubordinatePlanSteps { steps: append(append(removals, items: drops), items: additions) }
+        SubordinatePlanSteps { steps: append(append(append(removals, items: drops), items: regrant), items: additions) }
       }
     }
   }
 }
 
-// THE ARGV FOR ONE STEP, routed by which file is being reconciled. Kept as one function taking the file
-// rather than eight call sites choosing between uid and gid builders, because the uid/gid mix-up is the
-// mistake this file is most likely to make and most unlikely to notice: -V on a gid file removes a uid
-// range, exits 0, and quietly leaves the intended collision in place.
-fn subordinate_step_argv(f: SubordinateIdFile, step: SubordinateStep) -> List<String> {
-  match step {
-    SubordinateStepRemove { account: a, first: x, count: c } =>
+// THE WORDS OF ONE STEP, WITHOUT ELEVATION. The caller elevates these via
+// extdeps.sudo.elevation sudo_elevate_command — and they must be the INNER words, not the
+// sudo_elevate_argv form the four builders above return: sudo_elevate_command wraps whatever it is
+// given, so handing it an argv that already begins with sudo produces `sudo usermod sudo usermod …`,
+// where the second sudo is a usermod ARGUMENT. That runs, exits nonzero, and reads as a malformed
+// range rather than as double elevation. The four elevated builders stay for callers that want the
+// whole thing; this is the one for callers that do their own elevation, which the converge does
+// because its admin edge is what sudo runs under. Routed by which file is being reconciled in ONE
+// place because the uid/gid mix-up is this file's most likely mistake and its least visible one: -V
+// on a gid file removes a uid range, exits 0, and quietly leaves the intended collision in place.
+fn usermod_step_words(f: SubordinateIdFile, step: SubordinateStep) -> List<String> {
+  let range_text = match step {
+    SubordinateStepRemove { first: x, count: c } => join([to_string(x), "-", to_string(subordinate_range_last(first: x, count: c))], "")
+    SubordinateStepAdd { first: x, count: c } => join([to_string(x), "-", to_string(subordinate_range_last(first: x, count: c))], "")
+  }
+  let flag = match step {
+    SubordinateStepRemove { account: _ } =>
       match f {
-        SubordinateUids => usermod_del_subuids_argv(user: a, first: x, count: c)
-        SubordinateGids => usermod_del_subgids_argv(user: a, first: x, count: c)
+        SubordinateUids => usermod_del_subuids_flag
+        SubordinateGids => usermod_del_subgids_flag
       }
-    SubordinateStepAdd { account: a, first: x, count: c } =>
+    SubordinateStepAdd { account: _ } =>
       match f {
-        SubordinateUids => usermod_add_subuids_argv(user: a, first: x, count: c)
-        SubordinateGids => usermod_add_subgids_argv(user: a, first: x, count: c)
+        SubordinateUids => usermod_add_subuids_flag
+        SubordinateGids => usermod_add_subgids_flag
       }
   }
+  let account = match step {
+    SubordinateStepRemove { account: a, first: _, count: _ } => a
+    SubordinateStepAdd { account: a, first: _, count: _ } => a
+  }
+  [fleet_usermod_binary_path as String, flag as String, range_text, account as String]
+}
+
+fn subordinate_step_argv(f: SubordinateIdFile, step: SubordinateStep) -> List<String> {
+  sudo_elevate_argv(command: usermod_step_words(f: f, step: step))
 }
 
 // WHAT THE RECEIPT SHOULD SAY ABOUT THE PLAN, as text: a no-op needs to be distinguishable from an
