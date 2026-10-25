@@ -17,7 +17,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // std.primitives CLOSURE FROM DISK, so it is RED against a tree where the ambient row still exists: a module using
 // `parse_int` WITHOUT the declared import refuses AT RESOLVE with resolve_reason_unbound_symbol. The control keeps
 // the ambient tier honest (a name whose contract row stands, `to_string`, still binds). The positive restates the
-// home minimally, as the chars claim does; the real declaration's route is executed by
+// home minimally, as the chars claim does, beside the real std.optional (the `Int?` sugar binds to that
+// declaration, so a peer set without it refuses for that reason and not the import's); the real declaration's route is executed by
 // test.claim.integer_parse_int_decimal, which imports it.
 
 fn pir_peer(path: String) -> DagSourceReadWitness {
@@ -63,7 +64,8 @@ test fn declared_import_of_the_home_binds_where_ambient_refuses() -> Bool {
         src: "module std.integer\n\nfn parse_int(s: String) -> Int? {\n  parse_int(s: s)\n}\n",
         artifact: bla_q_artifact,
         cu: ^body_let_annotation_q_cu
-      )
+      ),
+      pir_peer(path: "dag/std/optional.dag")
     ]
   ) {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
