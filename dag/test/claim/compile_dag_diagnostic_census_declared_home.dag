@@ -1,0 +1,115 @@
+module test.claim.compile_dag_diagnostic_census_declared_home
+
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  compile_dag_diagnostic_census,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_count_at_key,
+  census_histograms_equal,
+  census_total_count
+}
+
+// The census resolves its synthetic source against the live checkout's module index.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DECLARED HOME, EXERCISED BY ITS ROWS. Every call below reaches the census through the declared import of
+// gunbc.compile_diagnostic_census compile_dag_diagnostic_census (named arguments, the declaration's own
+// signature), not through the ambient builtin spelling, and each claim reads the ROWS the call returns: which
+// class, at which subject, with which severity, how many times. A claim that only matched CensusObserved would
+// pass for a census that observed nothing, so every positive below is paired with a fixture that must differ.
+
+fn rows_of(source: String) -> List<CompileDiagnosticCensusRow>? {
+  match compile_dag_diagnostic_census(source: source) {
+    CensusObserved { rows: rows } => Present { value: rows }
+    CensusNotRunnable { cause: _ } => none
+  }
+}
+
+data clean_source: String = "module census_home_clean\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, b: 3) }\n"
+
+data one_mislabel_source: String = "module census_home_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
+
+data two_mislabels_source: String = "module census_home_mislabel_twice\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\nfn g() -> Int { sub(a: 1, bb: 2) }\n"
+
+data mislabel_class: String = "CallArgumentNameUnknown"
+
+data mislabel_subject: String = "bb"
+
+// The same call leaves parameter b unfilled, which the compile reports as its own blocking row.
+data deficit_class: String = "CallPositionalDeficit"
+
+data deficit_subject: String = "b"
+
+// A clean single-module source observes NO rows of any severity, so the positives below are not reading a
+// census that always reports something.
+test fn declared_census_of_a_clean_source_has_no_rows() -> Bool {
+  match rows_of(source: clean_source) {
+    Present { value: rows } => count(rows) == 0
+    Absent => false
+  }
+}
+
+// One mislabelled argument is exactly two blocking rows, one per judgment the call provokes: the unknown name bb
+// and the unfilled parameter b. They are the WHOLE census, so no other row of either severity appears: the fixture
+// imports nothing, and no closure row can stand in for them.
+test fn declared_census_reports_the_rows_one_mislabel_provokes() -> Bool {
+  match rows_of(source: one_mislabel_source) {
+    Present { value: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: mislabel_class, subject_name: mislabel_subject, blocking: true) == 1
+        && census_count_at_key(rows: rows, diagnostic_class: deficit_class, subject_name: deficit_subject, blocking: true) == 1
+        && census_total_count(rows: census_blocking_rows(rows: rows)) == 2
+        && census_total_count(rows: rows) == 2
+    Absent => false
+  }
+}
+
+// Two occurrences at the same key are a count of two, not one row present: the census sums occurrences.
+test fn declared_census_counts_two_occurrences_at_one_key() -> Bool {
+  match rows_of(source: two_mislabels_source) {
+    Present { value: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: mislabel_class, subject_name: mislabel_subject, blocking: true) == 2
+        && census_count_at_key(rows: rows, diagnostic_class: deficit_class, subject_name: deficit_subject, blocking: true) == 2
+    Absent => false
+  }
+}
+
+// THE BINDING, read by the census itself. A fixture that imports the declared home and calls it compiles with
+// exactly the rows of the same fixture calling the ambient spelling (the differential cancels the shared closure),
+// so the declaration binds without a rival-authority or ambiguity row, and with no MissingExport at its name. The
+// paired RED imports a spelling the home does not declare: the census reports MissingExport at that spelling, so
+// the equality cannot be a census that ignores the import. Deleting the declaration turns the first claim red the
+// same way.
+data declared_call_source: String = "module census_home_declared_call\nimport std.types { String }\nimport gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, CompileDiagnosticCensus }\nfn f(s: String) -> CompileDiagnosticCensus { compile_dag_diagnostic_census(source: s) }\n"
+
+data ambient_call_source: String = "module census_home_declared_call\nimport std.types { String }\nimport gunbc.compile_diagnostic_census { CompileDiagnosticCensus }\nfn f(s: String) -> CompileDiagnosticCensus { compile_dag_diagnostic_census(source: s) }\n"
+
+data undeclared_import_source: String = "module census_home_declared_call\nimport std.types { String }\nimport gunbc.compile_diagnostic_census { compile_dag_diagnostic_census_not_declared, CompileDiagnosticCensus }\nfn f(s: String) -> CompileDiagnosticCensus { compile_dag_diagnostic_census(source: s) }\n"
+
+test fn declared_import_binds_with_the_ambient_calls_rows() -> Bool {
+  match rows_of(source: declared_call_source) {
+    Present { value: declared } => match rows_of(source: ambient_call_source) {
+      Present { value: ambient } =>
+        census_histograms_equal(a: declared, b: ambient)
+          && census_count_at_key(rows: declared, diagnostic_class: "MissingExport", subject_name: "compile_dag_diagnostic_census", blocking: true) == 0
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+test fn importing_an_undeclared_spelling_from_the_home_moves_the_rows() -> Bool {
+  match rows_of(source: undeclared_import_source) {
+    Present { value: undeclared } => match rows_of(source: ambient_call_source) {
+      Present { value: ambient } =>
+        !census_histograms_equal(a: undeclared, b: ambient)
+          && census_count_at_key(rows: undeclared, diagnostic_class: "MissingExport", subject_name: "compile_dag_diagnostic_census_not_declared", blocking: true) == 1
+      Absent => false
+    }
+    Absent => false
+  }
+}

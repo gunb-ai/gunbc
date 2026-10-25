@@ -344,6 +344,15 @@ pub fn primitive_machine_word_native_operate() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_compile_dag_diagnostic_census() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("compile_dag_diagnostic_census".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn symbol_lexeme_seam_disposition_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -498,6 +507,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_machine_word_native_operate(),
             "std.machine_word".to_string(),
             "machine_word_native_operate".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_compile_dag_diagnostic_census(),
+            "gunbc.compile_diagnostic_census".to_string(),
+            "compile_dag_diagnostic_census".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
