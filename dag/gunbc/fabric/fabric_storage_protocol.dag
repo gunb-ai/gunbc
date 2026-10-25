@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, List, CommitSha }
 import std.nat { Nat }
 import extdeps.http.server { ServeWireResponse }
 import std.fabric_storage {
-  FabricObject, fabric_object_decode, fabric_object_ref_of_wire, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
+  FabricObject, FabricObjectRef, fabric_object_decode, fabric_object_ref_of_wire, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
   FabricReplyUndecodable, FabricHeadNameRefused,
   FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused,
 }
@@ -94,7 +94,7 @@ fn fabric_storage_respond(store: FabricStorageNamespace, operation: String, body
 
 type AdvanceRequest {
   expected: FabricHeadExpectation
-  target: std.fabric_storage.FabricObjectRef
+  target: FabricObjectRef
 }
 
 fn advance_request(ws: List<String>) -> AdvanceRequest? {
