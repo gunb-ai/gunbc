@@ -613,6 +613,9 @@ type EmitGraphInfo {
   // spine depth, keyed by the parameter it advances (v1.compiler.emit_rust cursor_tail_key). Derived once per fn by v1.compiler.emit_rust tco_cursor_plan from the use graph.
   tco_cursor_params: List<String>
   tco_cursor_tails: Map<String, Int>
+  // The function is lowered by tail recursion modulo cons (v1.compiler.emit_rust is_trmc_eligible):
+  // its loop carries `__trmc_out`, the heads emitted so far, and every exit appends to it.
+  trmc_out: Bool
 
   // Terminal record literals (keyed by span start) whose same-typed base parameter dies at the
   // literal, mapped to that parameter. Derived once per fn by v1.compiler.ownership
@@ -663,6 +666,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     expected_type: none,
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
+    trmc_out: false,
     dying_base_sites: empty_map()
   }
 }
@@ -698,6 +702,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     expected_type: emit_info.expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
     dying_base_sites: emit_info.dying_base_sites
   }
 }
@@ -733,6 +738,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     expected_type: fn_return_type,
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
     dying_base_sites: emit_info.dying_base_sites
   }
 }
@@ -773,6 +779,7 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     expected_type: expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
     dying_base_sites: emit_info.dying_base_sites
   }
 }

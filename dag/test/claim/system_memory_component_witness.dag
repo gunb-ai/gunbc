@@ -60,6 +60,7 @@ data larger_hbm_gpu: GpuModelCatalogRow = GpuModelCatalogRow {
   sm_cache: nvidia_gh200_480gb_catalog.gpu.sm_cache,
   sm_cache_citations: nvidia_gh200_480gb_catalog.gpu.sm_cache_citations,
   figure_citations: [],
+  dense_tensor_throughput: [],
 }
 
 fn edited_row(gpu: GpuModelCatalogRow, link_rate_bytes_per_second: Nat) -> CoherentSuperchipCatalogRow {
