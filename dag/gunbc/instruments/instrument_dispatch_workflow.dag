@@ -264,14 +264,14 @@ data instrument_dispatch_whole_tree_memory_demand: ByteSize = byte_size(21474836
 // compiler_gate_stage0_regen_step, the memory note), plus headroom for the seed build's children.
 data instrument_dispatch_stage0_regen_memory_demand: ByteSize = byte_size(17179869184)
 
-// Derived from gunbc.instruments.compute_run_unit_cold compute_run_unit_cold_job_memory_demand:
-// unit grant plus declared launcher headroom. Not a second 16 GiB literal, and not the regen row
-// (DESIGN §3 meaning fork).
 // 48 GiB: the namespace-wave binding diff runs TWO whole-tree censuses (base and head) beside its join. Measured: a run
 // at kit/one-home-grain 0aea75e0351c peaked at 39.6 GB, and the same subject under a 32 GB scope was OOM-killed
 // (sleek-owl-397, srv1, 2026-10-24), so it is not the whole-tree row's class; 48 GiB is that peak plus headroom.
 data instrument_dispatch_namespace_wave_binding_diff_memory_demand: ByteSize = byte_size(51539607552)
 
+// Derived from gunbc.instruments.compute_run_unit_cold compute_run_unit_cold_job_memory_demand:
+// unit grant plus declared launcher headroom. Not a second 16 GiB literal, and not the regen row
+// (DESIGN §3 meaning fork).
 data instrument_dispatch_compute_run_unit_cold_memory_demand: ByteSize = compute_run_unit_cold_job_memory_demand()
 
 fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> {
