@@ -2,7 +2,7 @@ module gunbc.serving.router_dev_policy
 
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
-import std.measure { second }
+import std.measure { second, byte_size }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -239,7 +239,6 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: site.state_dir + "/tls/key.pem") { Absent => RouterDevConfigRefused { token: "certkey" } Present { value: certkey } =>
   match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => RouterDevConfigRefused { token: "ca" } Present { value: ca } =>
   match tok(text: "router_state") { Absent => RouterDevConfigRefused { token: "dict" } Present { value: dict } =>
-  match tok(text: "10m") { Absent => RouterDevConfigRefused { token: "dict_size" } Present { value: dict_size } =>
   match tok(text: "/router/stats") { Absent => RouterDevConfigRefused { token: "stats" } Present { value: stats } =>
   match tok(text: "/v1/models") { Absent => RouterDevConfigRefused { token: "models" } Present { value: models } =>
   match tok(text: "/v1/") { Absent => RouterDevConfigRefused { token: "v1" } Present { value: v1 } =>
@@ -258,7 +257,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         AccessLogOff,
         ClientMaxBodySize { size: router_request_body_limit() },
         ClientBodyBufferSize { size: router_request_body_buffer() },
-        LuaSharedDict { name: dict, size: dict_size },
+        LuaSharedDict { name: dict, size: byte_size(count: 10485760) },
         LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, alias: site.alias) },
         ServerBlock { body: [
           ListenTlsOn { address: addr, port: site.listen_port },
@@ -270,7 +269,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         ] },
       ] },
     ]) }
-  } } } } } } } } } } } } } } } } } } }
+  } } } } } } } } } } } } } } } } } }
 }
 
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
@@ -348,7 +347,7 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card", retiring_names: [] }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [] },
+    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [] },
     RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     // h11-a16 (x86): one engine per GPU, named by its PCI bus (indices renumber when a card is added). Buses
     // 05-08 and 85-88 are the two A16 boards; c1 is an RTX 2000 Ada. A single 16 GB engine serves ~10-13 warm
@@ -365,7 +364,7 @@ fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
     RouterDevUpstream { name: "h11-c1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18089, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router.
     // cap is unused for overflow: the pool's engines admit work and expose their own queue to the bidder.
-    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net", retiring_names: [] }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [] },
+    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [] },
   ]
 }
 
