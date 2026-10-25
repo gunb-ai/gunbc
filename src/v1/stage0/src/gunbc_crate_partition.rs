@@ -252,7 +252,7 @@ pub fn string_member(set: Rc<HashMap<String, bool>>, key: String) -> bool {
 }
 
 pub fn reached_set(views: Rc<CallGraphAdjacencyViews>, start: String) -> Rc<HashMap<String, bool>> {
-    crate::std_graph::graph_reverse_reachable_members_from_views(views.clone(), start.clone())
+    crate::std_graph::graph_reverse_reachable_members_from_views(views, start)
         .iter()
         .cloned()
         .fold(
@@ -288,8 +288,7 @@ pub fn emitted_target_reach(
                 __result
             }),
         });
-        let transposed =
-            crate::std_graph::build_adjacency_views(names.clone(), forward_as_reverse.clone());
+        let transposed = crate::std_graph::build_adjacency_views(names, forward_as_reverse);
         emitted.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, edge: Rc<EmittedEdge>| {
@@ -513,7 +512,7 @@ pub fn partition_components_dependencies_first(
             }
             __result
         }),
-        partition_call_graph(edges.clone()),
+        partition_call_graph(edges),
     ))
 }
 
@@ -525,7 +524,7 @@ pub struct PolicyPartitionFill {
 }
 
 pub fn policy_partition_unit_id(unit_index: i64) -> NonEmptyStr {
-    v1_rt::concat("policy-unit-".to_string(), (unit_index.clone()).to_string())
+    v1_rt::concat("policy-unit-".to_string(), (unit_index).to_string())
 }
 
 pub fn policy_partition_assignment_over(
@@ -656,8 +655,8 @@ pub fn admit_partition_assignment(
                     ),
                 }),
                 std::option::Option::None => match (*validate_partition_r4_over(
-                    edges.clone(),
-                    components.clone(),
+                    edges,
+                    components,
                     assignment.clone(),
                 ))
                 .clone()
@@ -733,7 +732,7 @@ pub fn assignment_unit_graph_has_cycle(
     {
         let unit_edges = Rc::new({
             let mut __result = Vec::new();
-            for e in assignment_unit_dep_edges_over(edges.clone(), assignment.clone())
+            for e in assignment_unit_dep_edges_over(edges, assignment.clone())
                 .iter()
                 .cloned()
             {
@@ -779,7 +778,7 @@ pub fn validate_partition_r4_over(
     components: Rc<Vec<Rc<Vec<String>>>>,
     assignment: Rc<HashMap<NonEmptyStr, NonEmptyStr>>,
 ) -> Rc<PartitionR4ValidityVerdict> {
-    if assignment_has_scc_split(components.clone(), assignment.clone()) {
+    if assignment_has_scc_split(components, assignment.clone()) {
         Rc::new(PartitionR4ValidityVerdict::PartitionR4Refused {
             cause: Rc::new(PartitionR4ValidityCause::SccSplit {
                 detail:
@@ -788,7 +787,7 @@ pub fn validate_partition_r4_over(
             }),
         })
     } else {
-        if assignment_unit_graph_has_cycle(edges.clone(), assignment.clone()) {
+        if assignment_unit_graph_has_cycle(edges, assignment.clone()) {
             Rc::new(PartitionR4ValidityVerdict::PartitionR4Refused {
                 cause: Rc::new(PartitionR4ValidityCause::UnitGraphCycle {
                     detail: "Rust R4: compilation-unit dependency graph is cyclic".to_string(),
