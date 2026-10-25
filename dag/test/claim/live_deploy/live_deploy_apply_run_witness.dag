@@ -17,14 +17,14 @@ import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
   DeployApplyPorts, DeployApplyRun, ApplyRunOk, ApplyRunFailed,
-  deploy_apply_run_legs, live_deploy_apply_verdict, live_deploy_apply_orchestrate,
+  deploy_apply_run_legs, live_deploy_apply_verdict, live_deploy_apply_orchestrate, credstore_copy_bracket,
   LiveDeployPreambleVerdict, PreambleConverged, PreambleRefused, ScratchAcquire,
   DeployRetractPorts, RemovedNoOp,
 }
 import gunbc.systemctl_show_read { SystemdPropertyCaptured }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import gunbc.live_deploy.spec { PublicationHelperPathUnit, deployment_publication_path_unit_path, BeltEventPathUnit, deployment_belt_exit_path_unit_path }
-import extdeps.exec.command { argv_words }
+import extdeps.exec.command { argv_words, ArgvCommand }
 import gunbc.owned_directory { OwnedDirectoryEnsureOutcome, OwnedDirectoryEnsureRefused }
 import gunbc.host.host_axis_caps { CapMember, CapConvergeAuthorized, CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
@@ -32,6 +32,7 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
   ApplyLegRootHelperSnapshot, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile, deploy_apply_unit_plan, deploy_apply_upsert_plan,
+  ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
 }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe }
@@ -150,6 +151,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => false
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
@@ -418,6 +420,7 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
     ApplyPlanReady { legs: Empty } => false
@@ -571,6 +574,7 @@ fn leg_words(leg: DeployApplyLeg) -> List<String> {
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => []
   }
 }
 
@@ -606,6 +610,7 @@ test fn the_cap_install_writes_the_members_content_to_its_dropin() -> Bool {
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => false
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
@@ -629,3 +634,37 @@ test fn the_belt_upsert_retires_the_retired_belt_timer_after_its_units_stand() -
   let retire = step_index(legs: legs, step: "belt-retired-timer-retire")
   retire >= 0 && retire > step_index(legs: legs, step: "belt-daemon-reload")
 }
+
+// ── THE CREDSTORE COPY'S BRACKET (gunbc.live_deploy.apply_legs ApplyLegCredstoreCopy) ─────────────────
+//
+// The fold is pinned over a SUPPLIED command port that answers by program: mktemp prints a stage, and the copy
+// (install), the root install (sudo), rm and rmdir each answer the code given. Each arm is the bracket's remedy:
+// a failed copy is NotEntered with the root install never run (had it run, the arm would be Completed), a failed
+// rmdir is a residue arm, and a stage that cannot be made enters nothing.
+fn credstore_port(mktemp: Int, copy: Int, root: Int, rmdir: Int) -> fn(ArgvCommand) -> RunArgvTransportOutcome {
+  fn(c) {
+    match argv_words(command: c).first() {
+      Absent => observed(code: 1, err: "")
+      Present { value: p } =>
+        if p == "mktemp" { observed_out(code: mktemp, out: "/tmp/gunbc-credstore.abc123\n") }
+        else if p == "install" { observed(code: copy, err: "") }
+        else if ends_with(s: p, suffix: "sudo") { observed(code: root, err: "") }
+        else if p == "rmdir" { observed(code: rmdir, err: "") }
+        else { observed(code: 0, err: "") }
+    }
+  }
+}
+
+fn credstore_run(port: fn(ArgvCommand) -> RunArgvTransportOutcome) -> CredstoreCopyBracket {
+  credstore_copy_bracket(source: "/home/svc/k" as NonEmptyStr, dest: "/etc/credstore/k-lab" as NonEmptyStr, file_name: "k" as NonEmptyStr, run: port)
+}
+
+test fn the_credstore_copy_bracket_answers_each_remedy() -> Bool {
+  (match credstore_run(port: credstore_port(mktemp: 0, copy: 0, root: 0, rmdir: 0)) { CredstoreCopyCompleted { installed: i } => i  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 0, copy: 0, root: 1, rmdir: 0)) { CredstoreCopyCompleted { installed: i } => !i  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 0, copy: 1, root: 0, rmdir: 0)) { CredstoreCopyNotEntered { cause: _ } => true  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 0, copy: 1, root: 0, rmdir: 1)) { CredstoreCopyNotEnteredResidueRemains { cause: _ } => true  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 0, copy: 0, root: 0, rmdir: 1)) { CredstoreCopyCompletedResidueRemains { installed: i } => i  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 1, copy: 0, root: 0, rmdir: 0)) { CredstoreCopyNotEntered { cause: _ } => true  _ => false })
+}
+
