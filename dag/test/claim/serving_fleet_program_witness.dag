@@ -117,16 +117,89 @@ fn row_has_required_parts(l: String) -> Bool {
     && string_contains(s: l, pattern: "Depends on")
 }
 
-fn row_cites_a_resolvable_symbol(l: String) -> Bool {
-  let cites = plan_citation_citation_roster(t: l)
-  cites.length() >= 1 && all(cites, c => citation_resolves(cite: c))
+fn row_citations_resolve(l: String) -> Bool {
+  all(plan_citation_citation_roster(t: l), c => citation_resolves(cite: c))
 }
 
-test fn every_row_has_its_parts_and_cites_a_resolvable_symbol() -> Bool {
+test fn every_row_has_its_parts_and_its_citations_resolve() -> Bool {
   let rows = row_lines()
   rows.length() >= 1
     && all(rows, l => row_has_required_parts(l: l))
-    && all(rows, l => row_cites_a_resolvable_symbol(l: l))
+    && all(rows, l => row_citations_resolve(l: l))
+}
+
+// ── Owner field. The text after `Owner: ` is either a backticked symbol, which must resolve,
+// or the word `unowned`, an explicit modeling obligation. Any other text, or no field, reads
+// as "" and fails: a related symbol elsewhere on the line is not an owner.
+fn row_owner(l: String) -> String {
+  let parts: List<String> = l.split(delimiter: "Owner: ")
+  match parts {
+    Cons { head: _, tail: Cons { head: rest, tail: _ } } =>
+      if rest.length() >= 7 && substring(s: rest, start: 0, end: 7) == "unowned" {
+        "unowned"
+      } else if rest.length() >= 1 && substring(s: rest, start: 0, end: 1) == "`" {
+        let ticks: List<String> = rest.split(delimiter: "`")
+        match ticks {
+          Cons { head: _, tail: Cons { head: cite, tail: _ } } => cite
+          _ => ""
+        }
+      } else {
+        ""
+      }
+    _ => ""
+  }
+}
+
+fn owner_is_declared(l: String) -> Bool {
+  let o = row_owner(l: l)
+  o == "unowned" || (o != "" && citation_resolves(cite: o))
+}
+
+test fn every_row_names_a_resolvable_owner_or_is_unowned() -> Bool {
+  let rows = row_lines()
+  rows.length() >= 1
+    && any(rows, l => row_owner(l: l) != "unowned")
+    && all(rows, l => owner_is_declared(l: l))
+    && !owner_is_declared(l: "Row X1 x. Owner: `gunbc.serving.no_such_module::NoSuchSymbol`. Standing: s.")
+    && !owner_is_declared(l: "Row X1 x. Owner plan `gunbc.serving.serving_enrollment::ServingRoute`. Standing: s.")
+}
+
+// ── Acyclicity. A row's edges are the `Row <label>` references after its `Depends on`.
+// Each round admits every row whose dependencies are all admitted; after as many rounds
+// as there are rows, the graph is acyclic exactly when every row is admitted.
+fn row_dependencies(l: String) -> List<String> {
+  let parts: List<String> = l.split(delimiter: "Depends on")
+  match parts {
+    Cons { head: _, tail: Cons { head: clause, tail: _ } } => referenced_labels(t: clause)
+    _ => []
+  }
+}
+
+fn dependencies_of(rows: List<String>, a: String) -> List<String> {
+  fold(filter(rows, l => row_label(l: l) == a), init: [], f: (acc, l) => row_dependencies(l: l))
+}
+
+fn dependency_graph_is_acyclic(rows: List<String>) -> Bool {
+  let labels = map(rows, l => row_label(l: l))
+  let admitted = fold(labels, init: [], f: (done, round) =>
+    filter(labels, a => any(done, d => d == a)
+      || all(dependencies_of(rows: rows, a: a), d => any(done, x => x == d))))
+  admitted.length() == labels.length()
+}
+
+test fn the_dependency_graph_is_acyclic() -> Bool {
+  let rows = row_lines()
+  rows.length() >= 1
+    && any(rows, l => row_dependencies(l: l).length() >= 1)
+    && dependency_graph_is_acyclic(rows: rows)
+    && dependency_graph_is_acyclic(rows: [
+      "Row X1 a. Standing: s. Depends on Row X2.",
+      "Row X2 b. Standing: s. Depends on: nothing."
+    ])
+    && !dependency_graph_is_acyclic(rows: [
+      "Row X1 a. Standing: s. Depends on Row X2.",
+      "Row X2 b. Standing: s. Depends on Row X1."
+    ])
 }
 
 // Row labels are identities: unique and nonempty, and every reference to a row, each
