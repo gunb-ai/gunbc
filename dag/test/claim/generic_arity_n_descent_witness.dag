@@ -57,6 +57,7 @@ data gan_red_pair_projection_wrong_position_source: String = "module arity_probe
 data gan_red_pair_projection_renamed_params_source: String = "module arity_probe_mod\n\ntype ApPair<A, B> \{ first: A second: B \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_mk<X, Y>(a: X, b: Y) -> ApPair<X, Y> \{ ApPair \{ first: a, second: b \} \}\nfn ap_f(i: Int, t: String) -> Int \{\n  ap_int(x: ap_mk(a: i, b: t).second)\n\}\n"
 data gan_red_pair_projection_permuted_source: String = "module arity_probe_mod\n\ntype ApPair<A, B> \{ first: A second: B \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_mk<B, A>(a: A, b: B) -> ApPair<B, A> \{ ApPair \{ first: b, second: a \} \}\nfn ap_f(i: Int, t: String) -> Int \{\n  ap_int(x: ap_mk(a: i, b: t).first)\n\}\n"
 data gan_pos_alias_type_argument_actual_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_snoc_item \}\nimport std.types \{ List \}\n\ntype IntSeq = FreeMonoid<Int>\n\nfn ap_f(xs: List<IntSeq>, m: FreeMonoid<Int>) -> List<IntSeq> \{\n  if true \{ xs \} else \{ list_snoc_item(xs: xs, item: m) \}\n\}\n"
+data gan_pos_paramless_alias_of_generic_field_source: String = "module arity_probe_mod\n\ntype ApUnit\ntype ApAmount<U> \{ n: Int \}\ntype ApMicro = ApAmount<ApUnit>\ntype ApRate<P> \{ amount: ApMicro \}\ntype ApPerSecond = ApRate<ApUnit>\ntype ApHolder \{ rate: ApPerSecond \}\n\nfn ap_f(q: ApPerSecond) -> Int \{\n  q.amount.n\n\}\n\nfn ap_g(h: ApHolder) -> ApPerSecond \{\n  h.rate\n\}\n"
 data gan_red_alias_applied_args_dropped_source: String = "module arity_probe_mod\n\ntype ApBox<T> \{ v: T \}\ntype IntBox = ApBox<Int>\n\nfn ap_f(b: IntBox<String>) -> Int \{\n  b.v\n\}\n"
 
 data gan_ctl_user_map_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>) -> Map<String, String> \{\n  ap_mk_map_box(m: m).m\n\}\n"
@@ -123,6 +124,11 @@ test fn arity_n_red_pair_projection_permuted() -> Bool {
 // CENSUS:1087 SHAPE (positive control): a valid program; the alias sits only in the type argument of the ACTUAL xs, compared at an if/else join. It was refused while T bound the alias expansion with its arguments lost, and must be accepted now.
 test fn arity_n_pos_alias_type_argument_actual() -> Bool {
   gan_blocking_count(source: gan_pos_alias_type_argument_actual_source) == 0
+}
+
+// MEASURE.DAG SHAPE (positive control, red while a produced node is judged as a written application): parameterless aliases whose right-hand sides are generic applications, used as a parameter type, a field type and a return type, with field access through them. The produced expansion of such an alias names the alias and carries the right-hand side's arguments; it was refused as `expects 0 type arguments, got 1` when re-resolved with the written role.
+test fn arity_n_pos_paramless_alias_of_generic_as_field_type() -> Bool {
+  gan_blocking_count(source: gan_pos_paramless_alias_of_generic_field_source) == 0
 }
 
 // DROPPED ALIAS ARGS: IntBox takes no parameters, so IntBox<String> must refuse; the applied arguments must not be dropped silently.

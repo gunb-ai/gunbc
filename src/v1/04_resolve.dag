@@ -645,7 +645,21 @@ data resolve_node_bounded_masked_boundary: String = "Selective-import fail-close
 // UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on:
 // gunbc.type_ref_hit_ne_bind_measure.authority type_ref_hit_ne_bind_measure_dissolve_trigger.
 
+// THE ONE EXIT of type resolution. A result is produced, never written: whatever the arm built, it carries no
+// AuthoredArguments (only the parser sets that role, and only the INPUT's role is judged for arity), so no producer
+// downstream that copies a resolved node can make it be judged as a written application again.
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
+  let r = resolve_node_arm(n: n, env: env, module_name: module_name, depth: depth, masked: masked)
+  if r.resolved.application_role == Present { value: AuthoredArguments } {
+    NodeResolveResult { resolved: node_with_application_role(n: r.resolved, role: Present { value: ResolvedArguments }), diagnostics: r.diagnostics }
+  } else { r }
+}
+
+fn node_with_application_role(n: Node, role: TypeApplicationRole?) -> Node {
+  Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: role, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+}
+
+fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
   if depth > 100 {
     return NodeResolveResult {
       resolved: n,
@@ -1003,17 +1017,11 @@ fn stamp_kernel_collection(n: Node) -> Node {
   Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: Present { value: Resolved { node: n } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: n.application_role, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
 }
 
-// A node rendered from a resolution result is produced, never written: the alias right-hand side's
-// AuthoredArguments role is the alias item's own authoring, and must not make this use re-judged for arity.
-fn rendered_resolved_role(resolved: Node) -> TypeApplicationRole? {
-  if resolved.application_role == Present { value: AuthoredArguments } && resolved.children |> count > 0 { Present { value: ResolvedArguments } } else { resolved.application_role }
-}
-
 fn rendered_use_site_type(authored: Node, resolved: Node) -> Node {
   if authored.children |> count > 0 {
     Node { occurrence_identity: authored.occurrence_identity, name: authored.name, span: authored.span, ident_span: authored.ident_span, children: resolved.children, connective: authored.connective, params: authored.params, inferred: Present { value: Resolved { node: resolved } }, return_cardinality: authored.return_cardinality, uses: authored.uses, body: authored.body, transport: authored.transport, properties: resolved.properties, type_annotation: authored.type_annotation, is_self_recursive: authored.is_self_recursive, has_non_tail_self_call: authored.has_non_tail_self_call, match_pattern: authored.match_pattern, module_item_kind: authored.module_item_kind, application_role: authored.application_role, declaration_marker: authored.declaration_marker, declaration: authored.declaration, expr_data: authored.expr_data }
   } else {
-    Node { occurrence_identity: authored.occurrence_identity, name: resolved.name, span: resolved.span, ident_span: resolved.ident_span, children: resolved.children, connective: resolved.connective, params: resolved.params, inferred: resolved.inferred, return_cardinality: resolved.return_cardinality, uses: resolved.uses, body: resolved.body, transport: resolved.transport, properties: resolved.properties, type_annotation: resolved.type_annotation, is_self_recursive: resolved.is_self_recursive, has_non_tail_self_call: resolved.has_non_tail_self_call, match_pattern: resolved.match_pattern, module_item_kind: resolved.module_item_kind, application_role: rendered_resolved_role(resolved: resolved), declaration_marker: resolved.declaration_marker, declaration: resolved.declaration, expr_data: resolved.expr_data }
+    Node { occurrence_identity: authored.occurrence_identity, name: resolved.name, span: resolved.span, ident_span: resolved.ident_span, children: resolved.children, connective: resolved.connective, params: resolved.params, inferred: resolved.inferred, return_cardinality: resolved.return_cardinality, uses: resolved.uses, body: resolved.body, transport: resolved.transport, properties: resolved.properties, type_annotation: resolved.type_annotation, is_self_recursive: resolved.is_self_recursive, has_non_tail_self_call: resolved.has_non_tail_self_call, match_pattern: resolved.match_pattern, module_item_kind: resolved.module_item_kind, application_role: resolved.application_role, declaration_marker: resolved.declaration_marker, declaration: resolved.declaration, expr_data: resolved.expr_data }
   }
 }
 
