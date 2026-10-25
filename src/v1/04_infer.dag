@@ -145,7 +145,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, node_is_kernel_mint, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -176,7 +176,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
+import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, collection_join_shape }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
@@ -7618,6 +7618,66 @@ fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String
 // below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
 // source_is_nominal is the head exposure of the source's declaration identity, the same authority
 // product_at_scalar_declared_type reads, never a bare spelling.
+// THROWAWAY CENSUS INSTRUMENT, NEVER MERGE (warm-crane-219, planning census for the ambient join
+// wave): every join the seed types through std.algebra collection_join_shape (keyed on the template,
+// not the spelling), located at the call, with the receiver's element type and the separator's type
+// read by declaration identity, the same reading as the to_string census.
+fn census_type_reading(t: Node, scope: InferScope) -> String {
+  let si = scope.type_env.source_indices
+  let card = if t.return_cardinality == CardOptional { "opt" } else { "req" }
+  let r = match type_reference_declaration_reading(n: t, source_indices: si, env: scope.type_env) {
+    TypeReferenceNamesDeclaration { declaration: d } => concat("decl:", d.module_path as String, ".", d.decl_name as String)
+    TypeReferenceIsKernelType { name: k } => concat("kernel:", k, if node_is_kernel_mint(n: t) { ":mint" } else { ":named" })
+    TypeReferenceIsTypeVariable { id: v } => concat("tyvar:", v)
+    TypeReferenceUnidentified { authored: _, resolved: _ } =>
+      match type_reference_declaration_ref(n: t, source_indices: si, env: scope.type_env) {
+        Present { value: d } => concat("decl-env:", d.module_path as String, ".", d.decl_name as String)
+        Absent => "unidentified"
+      }
+  }
+  concat(r, "/", card)
+}
+
+fn census_binder(value: Node, scope: InferScope) -> String {
+  match value.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let nm = expr_var_name_at(texpr: value, source_indices: scope.type_env.source_indices)
+      if scope.in_flight_lambda_param_names |> any(n => n == nm) { "lambda-param" }
+      else if map_has(scope.match_bound_names, nm) { "match-binder" }
+      else { "var" }
+    _ => "expr"
+  }
+}
+
+fn join_census_diags(route: String, semantics: MethodSemantics?, receiver: Node, args: List<Node>, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  let is_join = match semantics {
+    Present { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } } =>
+      match at { Present { value: t } => t == collection_join_shape()  Absent => false }
+    _ => false
+  }
+  if !is_join { [] }
+  else {
+    let elem = match receiver.inferred {
+      Present { value: Resolved { node: _ } } =>
+        match resolved_type(n: receiver).children |> first {
+          Present { value: ch } => census_type_reading(t: child_type_node(ch: ch), scope: scope)
+          Absent => "no-element"
+        }
+      _ => "unknown-receiver"
+    }
+    let sep = match args |> first {
+      Present { value: a } =>
+        let v = arg_value(n: a)
+        match v.inferred {
+          Present { value: Resolved { node: _ } } => census_type_reading(t: expression_value_type(e: v), scope: scope)
+          _ => "unknown"
+        }
+      Absent => "no-separator"
+    }
+    [inference_error(message: concat("JOINCENSUS ", route, " elem=", elem, " sep=", sep, " binder=", census_binder(value: receiver, scope: scope)), span: span, module_name: scope.module_name)]
+  }
+}
+
 fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
@@ -9687,7 +9747,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name)))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), join_census_diags(route: "bare", semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, span: span, scope: scope))))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
@@ -10070,7 +10130,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name)))])
+        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), join_census_diags(route: "method", semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, span: span, scope: scope)))])
       }
       }
 
