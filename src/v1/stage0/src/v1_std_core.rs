@@ -68,7 +68,7 @@ pub use crate::std_occurrence_identity::{
     occurrence_id_allocator_advance_to, AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity,
     OccurrenceIdAllocator, OccurrenceTransportRefusal,
 };
-pub use crate::std_operator_realization::{EqualityPlan, OperandDeclaration};
+pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -462,7 +462,7 @@ pub enum ExprData {
         op: BinOp,
         algebra_field: Option<AlgebraFieldKind>,
         operand: Option<Rc<OperandDeclaration>>,
-        equality: Option<Rc<EqualityPlan>>,
+        derived: Option<Rc<DeclarationRef>>,
     },
     ExprUnaryOp {
         op: UnaryOpKind,

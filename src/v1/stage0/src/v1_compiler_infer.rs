@@ -7,6 +7,7 @@ use self::CallArgumentFormalSelection::*;
 use self::CarrierMatch::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
+use self::EqualityDerivedTarget::*;
 use self::GroundedArmReading::*;
 use self::GroundedBinding::*;
 use self::GroundedBound::*;
@@ -5289,6 +5290,7 @@ pub fn equality_arm_is_by_target(arm: Rc<EqualityPlanArm>) -> bool {
 pub fn equality_structure_walk(
     identity: String,
     reference: Option<Rc<DeclarationRef>>,
+    generic: bool,
     name: String,
     arms: Rc<Vec<Rc<EqualityPlanArm>>>,
     refusal: Option<Rc<EqualityAdmissionRefusal>>,
@@ -5330,6 +5332,7 @@ pub fn equality_structure_walk(
                         Rc::new(DeclarationEqualityPlan {
                             declaration: identity.clone(),
                             reference: reference.clone(),
+                            generic: generic.clone(),
                             arms: arms.clone(),
                         }),
                     ),
@@ -5367,6 +5370,7 @@ pub fn equality_structure_reference(
 pub fn equality_product_walk(
     identity: String,
     reference: Option<Rc<DeclarationRef>>,
+    generic: bool,
     name: String,
     fields: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
@@ -5384,6 +5388,7 @@ pub fn equality_product_walk(
         equality_structure_walk(
             identity,
             reference,
+            generic,
             name.clone(),
             Rc::new(vec![Rc::new(EqualityPlanArm {
                 arm: "".to_string(),
@@ -5398,6 +5403,7 @@ pub fn equality_product_walk(
 pub fn equality_coproduct_walk(
     identity: String,
     reference: Option<Rc<DeclarationRef>>,
+    generic: bool,
     name: String,
     variants: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
@@ -5444,6 +5450,7 @@ pub fn equality_coproduct_walk(
         equality_structure_walk(
             identity,
             reference,
+            generic,
             name.clone(),
             arms_walk.arms.clone(),
             arms_walk.refusal.clone(),
@@ -5677,6 +5684,7 @@ pub fn equality_operand_walk(
                                                         peeled.clone(),
                                                         scope.clone(),
                                                     ),
+                                                    false,
                                                     name.clone(),
                                                     peeled.children.clone(),
                                                     scope.clone(),
@@ -5691,6 +5699,7 @@ pub fn equality_operand_walk(
                                                             peeled.clone(),
                                                             scope.clone(),
                                                         ),
+                                                        false,
                                                         name.clone(),
                                                         peeled.children.clone(),
                                                         scope.clone(),
@@ -6017,6 +6026,7 @@ pub fn equality_resolved_declaration_structure(
             equality_product_walk(
                 identity.clone(),
                 equality_structure_reference(rt.clone(), peeled.clone(), scope.clone()),
+                ((rt.params.clone().len() as i64) > 0),
                 name.clone(),
                 rt.children.clone(),
                 scope.clone(),
@@ -6028,6 +6038,7 @@ pub fn equality_resolved_declaration_structure(
                 equality_coproduct_walk(
                     identity.clone(),
                     equality_structure_reference(rt.clone(), peeled.clone(), scope.clone()),
+                    ((rt.params.clone().len() as i64) > 0),
                     name.clone(),
                     rt.children.clone(),
                     scope.clone(),
@@ -6255,7 +6266,8 @@ pub fn equality_declaration_plan_normalized(
     {
         let __rb_0_0 = p.declaration.clone();
         let __rb_1_0 = p.reference.clone();
-        let __rb_2_0 = Rc::new({
+        let __rb_2_0 = p.generic.clone();
+        let __rb_3_0 = Rc::new({
             let mut __result = Vec::new();
             for a in p.arms.clone().iter().cloned() {
                 __result.push(Rc::new(EqualityPlanArm {
@@ -6279,13 +6291,15 @@ pub fn equality_declaration_plan_normalized(
             Some(__rb_r) => {
                 __rb_r.declaration = __rb_0_0;
                 __rb_r.reference = __rb_1_0;
-                __rb_r.arms = __rb_2_0;
+                __rb_r.generic = __rb_2_0;
+                __rb_r.arms = __rb_3_0;
             }
             None => {
                 __rb_h = Rc::new(DeclarationEqualityPlan {
                     declaration: __rb_0_0,
                     reference: __rb_1_0,
-                    arms: __rb_2_0,
+                    generic: __rb_2_0,
+                    arms: __rb_3_0,
                 });
             }
         }
@@ -6421,7 +6435,70 @@ pub fn equality_operands_never_inhabit_together(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EqualityAdmission {
     pub diags: Rc<Vec<Rc<ErrorNode>>>,
-    pub plan: Option<Rc<EqualityPlan>>,
+    pub derived: Option<Rc<DeclarationRef>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum EqualityDerivedTarget {
+    EqualityCallsDeclared { function: Rc<DeclarationRef> },
+    EqualityRootRefused { member: String },
+}
+
+pub fn equality_derived_name(decl_name: String) -> String {
+    v1_rt::concat("equality_derived".to_string(), decl_name.clone())
+}
+
+pub fn equality_plan_synthesizable(plan: Rc<EqualityPlan>) -> bool {
+    {
+        let mut __all = true;
+        for d in plan.declarations.clone().iter().cloned() {
+            if !(!d.generic.clone() && (d.reference.clone() != std::option::Option::None)) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    }
+}
+
+pub fn equality_derived_target(plan: Rc<EqualityPlan>) -> Rc<EqualityDerivedTarget> {
+    match (*plan.root.clone()).clone() {
+    EqualityStep::EqualityRouted { function: f, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
+    function: f.clone(),
+}),
+    EqualityStep::EqualityThroughPlan { declaration: key, .. } => match Rc::new({ let mut __result = Vec::new(); for d in plan.declarations.clone().iter().cloned() { if (d.declaration.clone() == key.clone()) { __result.push(d); } } __result }).first().cloned() {
+    Some(d) => if !equality_plan_synthesizable(plan.clone()) {
+        Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: "a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it".to_string(),
+})
+    } else {
+        match d.reference.clone() {
+    Some(r) => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
+    function: crate::std_decl_ref::decl_ref(r.module_path.clone(), equality_derived_name(r.decl_name.clone())),
+}),
+    std::option::Option::None => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: "the declaration reaching a routed equality has no DeclarationRef".to_string(),
+}),
+}
+    },
+    std::option::Option::None => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: "the plan names a declaration it does not carry".to_string(),
+}),
+},
+    EqualityStep::EqualityPresence { inner: _, .. } => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: "an optional whose content reaches a routed equality: compare it with std.optional optional_eq and an element question".to_string(),
+}),
+    EqualityStep::EqualityElements { element: _, .. } => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: "a sequence whose elements reach a routed equality: compare it with std.algebra zip_eq and an element question".to_string(),
+}),
+    EqualityStep::EqualityMapValues { value: _, .. } => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: "a map whose values reach a routed equality: compare it with std.algebra map_values_eq and a value question".to_string(),
+}),
+    EqualityStep::EqualityByTarget => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: "unreachable: a by-target root carries no plan".to_string(),
+}),
+}
 }
 
 pub fn equality_operand_is_type_variable(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
@@ -6590,7 +6667,7 @@ pub fn equality_item_collection_key_rows(
 pub fn equality_admission_refused(diags: Rc<Vec<Rc<ErrorNode>>>) -> Rc<EqualityAdmission> {
     Rc::new(EqualityAdmission {
         diags: diags.clone(),
-        plan: std::option::Option::None,
+        derived: std::option::Option::None,
     })
 }
 
@@ -6756,7 +6833,7 @@ pub fn equality_admission(
     declaration: equality_census_declaration(scope.clone()),
     span: span.clone(),
 }), scope.module_name.clone())]),
-    plan: std::option::Option::None,
+    derived: std::option::Option::None,
 })
                                                 } else {
                                                     if ((plan.clone() != std::option::Option::None) && (equality_operand_root_is_refused_route(lt.clone(), scope.clone()) || equality_operand_root_is_refused_route(rt.clone(), scope.clone()))) {
@@ -6772,10 +6849,23 @@ equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::
 }), scope.module_name.clone())]))
 }
                                             } else {
-                                                Rc::new(EqualityAdmission {
+                                                match plan.clone() {
+    std::option::Option::None => Rc::new(EqualityAdmission {
     diags: Rc::new(vec![]),
-    plan: plan.clone(),
-})
+    derived: std::option::Option::None,
+}),
+    Some(p) => match (*equality_derived_target(p.clone())).clone() {
+    EqualityDerivedTarget::EqualityCallsDeclared { function: f, .. } => Rc::new(EqualityAdmission {
+    diags: Rc::new(vec![]),
+    derived: Some(f.clone()),
+}),
+    EqualityDerivedTarget::EqualityRootRefused { member: m, .. } => equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EqualityMemberUnjudgeable {
+    type_name: crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::normalize_access_type_node(lt.clone())),
+    member: m.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())])),
+},
+}
                                             }
                                                 }
                                             }
@@ -17935,7 +18025,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         scope.clone(),
                         8,
                     ),
-                    equality: eq_admission.plan.clone(),
+                    derived: eq_admission.derived.clone(),
                 }),
                 Rc::new(vec![left_typed.clone(), right_typed.clone()]),
                 Some(Rc::new(InferredNode::Resolved {
@@ -33552,7 +33642,7 @@ pub fn grounded_binop(
                 op: op.clone(),
                 algebra_field: info.algebra_field.clone(),
                 operand: Some(view.operand.clone()),
-                equality: std::option::Option::None,
+                derived: std::option::Option::None,
             }),
             Rc::new(vec![
                 left.clone(),
@@ -33591,7 +33681,7 @@ pub fn grounded_reflect(
                 op: BinOp::Sub,
                 algebra_field: info.algebra_field.clone(),
                 operand: Some(view.operand.clone()),
-                equality: std::option::Option::None,
+                derived: std::option::Option::None,
             }),
             Rc::new(vec![
                 grounded_int_literal(
@@ -35411,28 +35501,527 @@ pub fn ground_kernel_views(
 }
 
 pub fn equality_synthesized_items(
+    items: Rc<Vec<Rc<Node>>>,
     module_name: String,
-    intern_table: Rc<InternTable>,
+    env: Rc<TypeEnv>,
 ) -> Rc<Vec<Rc<Node>>> {
-    if (module_name.clone() != "test.fixture.derived_equality_routes".to_string()) {
-        Rc::new(vec![])
-    } else {
-        Rc::new(vec![equality_synthetic_fn(
-            module_name.clone(),
-            "equality_derived_probe".to_string(),
-            Rc::new(vec![]),
-            equality_synthetic_type(module_name.clone(), "Bool".to_string()),
-            crate::v1_std_core::make_expr_node(
-                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                Rc::new(ExprData::ExprLiteral {
-                    value: Rc::new(LiteralValue::LitBool { value: true }),
-                }),
-                Rc::new(vec![]),
-                std::option::Option::None,
-                equality_synthetic_span(module_name.clone(), "true".to_string()),
-            ),
-        )])
+    {
+        let scope = equality_synthesis_scope(env, module_name);
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*equality_synthesized_for(item.clone(), scope.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        })
     }
+}
+
+pub fn equality_synthesis_scope(env: Rc<TypeEnv>, module_name: String) -> Rc<InferScope> {
+    Rc::new(InferScope {
+        type_env: env.clone(),
+        func_env: Rc::new(ResolvedFuncEnv {
+            name: module_name.clone(),
+            local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            parents: Rc::new(vec![]),
+        }),
+        locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        body_locals: v1_rt::rc_empty_map::<String, bool>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
+        module_name: module_name.clone(),
+        service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+        caller_decl_name: "".to_string(),
+        in_flight_lambda_param_names: Rc::new(vec![]),
+        enclosing_declared_type_param_names: Rc::new(vec![]),
+    })
+}
+
+pub fn equality_synthesized_for(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let is_type_decl = ((((item.connective.clone() == Connective::Conj)
+            || (item.connective.clone() == Connective::Disj))
+            && (item.transport.clone() == std::option::Option::None))
+            && ((item.params.clone().len() as i64) == 0));
+        if !is_type_decl.clone() {
+            Rc::new(vec![])
+        } else {
+            {
+                let si = scope.type_env.source_indices.clone();
+                let name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+                let identity = crate::v1_compiler_infer_types::node_declaration_identity(
+                    item.clone(),
+                    si.clone(),
+                );
+                let w = equality_resolved_declaration_structure(
+                    item.clone(),
+                    item.clone(),
+                    name.clone(),
+                    identity.clone(),
+                    scope.clone(),
+                    v1_rt::rc_map_insert(
+                        v1_rt::rc_empty_map::<String, bool>(),
+                        identity.clone(),
+                        true,
+                    ),
+                    0,
+                    false,
+                );
+                if (w.refusal.clone() != std::option::Option::None) {
+                    Rc::new(vec![])
+                } else {
+                    match equality_plan_of_walk(w.clone()) {
+                        std::option::Option::None => Rc::new(vec![]),
+                        Some(plan) => {
+                            if !equality_plan_synthesizable(plan.clone()) {
+                                Rc::new(vec![])
+                            } else {
+                                match Rc::new({
+                                    let mut __result = Vec::new();
+                                    for d in plan.declarations.clone().iter().cloned() {
+                                        if (d.declaration.clone() == identity.clone()) {
+                                            __result.push(d);
+                                        }
+                                    }
+                                    __result
+                                })
+                                .first()
+                                .cloned()
+                                {
+                                    std::option::Option::None => Rc::new(vec![]),
+                                    Some(dp) => Rc::new(vec![equality_derived_declaration(
+                                        scope.module_name.clone(),
+                                        name.clone(),
+                                        dp.clone(),
+                                    )]),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn equality_derived_declaration(
+    module_name: String,
+    decl_name: String,
+    dp: Rc<DeclarationEqualityPlan>,
+) -> Rc<Node> {
+    {
+        let body = match Rc::new({
+            let mut __result = Vec::new();
+            for a in dp.arms.clone().iter().cloned() {
+                if (a.arm.clone() == "".to_string()) {
+                    __result.push(a);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(product) => equality_synth_fields(
+                module_name.clone(),
+                product.fields.clone(),
+                |f| {
+                    equality_synth_field(
+                        module_name.clone(),
+                        equality_synth_var(module_name.clone(), "a".to_string()),
+                        f,
+                    )
+                },
+                |f| {
+                    equality_synth_field(
+                        module_name.clone(),
+                        equality_synth_var(module_name.clone(), "b".to_string()),
+                        f,
+                    )
+                },
+            ),
+            std::option::Option::None => equality_synth_match(
+                module_name.clone(),
+                equality_synth_var(module_name.clone(), "a".to_string()),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for arm in dp.arms.clone().iter().cloned() {
+                        __result.push(equality_synth_arm(
+                            module_name.clone(),
+                            equality_synth_variant_pattern(
+                                module_name.clone(),
+                                arm.clone(),
+                                "eqa_".to_string(),
+                            ),
+                            equality_synth_match(
+                                module_name.clone(),
+                                equality_synth_var(module_name.clone(), "b".to_string()),
+                                Rc::new(vec![
+                                    equality_synth_arm(
+                                        module_name.clone(),
+                                        equality_synth_variant_pattern(
+                                            module_name.clone(),
+                                            arm.clone(),
+                                            "eqb_".to_string(),
+                                        ),
+                                        equality_synth_fields(
+                                            module_name.clone(),
+                                            arm.fields.clone(),
+                                            |f| {
+                                                equality_synth_var(
+                                                    module_name.clone(),
+                                                    v1_rt::concat("eqa_".to_string(), f.clone()),
+                                                )
+                                            },
+                                            |f| {
+                                                equality_synth_var(
+                                                    module_name.clone(),
+                                                    v1_rt::concat("eqb_".to_string(), f.clone()),
+                                                )
+                                            },
+                                        ),
+                                    ),
+                                    equality_synth_arm(
+                                        module_name.clone(),
+                                        Rc::new(MatchPattern::Wildcard),
+                                        equality_synth_bool(module_name.clone(), false),
+                                    ),
+                                ]),
+                            ),
+                        ));
+                    }
+                    __result
+                }),
+            ),
+        };
+        equality_synthetic_fn(
+            module_name.clone(),
+            equality_derived_name(decl_name.clone()),
+            Rc::new(vec![
+                equality_synth_param(module_name.clone(), "a".to_string(), decl_name.clone()),
+                equality_synth_param(module_name.clone(), "b".to_string(), decl_name.clone()),
+            ]),
+            equality_synthetic_type(module_name.clone(), "Bool".to_string()),
+            body,
+        )
+    }
+}
+
+pub fn equality_synth_fields(
+    m: String,
+    fields: Rc<Vec<Rc<EqualityPlanField>>>,
+    a_of: impl Fn(String) -> Rc<Node> + Clone,
+    b_of: impl Fn(String) -> Rc<Node> + Clone,
+) -> Rc<Node> {
+    match fields.clone().first().cloned() {
+        std::option::Option::None => equality_synth_bool(m.clone(), true),
+        Some(_) => {
+            let cmps = Rc::new({
+                let mut __result = Vec::new();
+                for f in fields.iter().cloned() {
+                    __result.push(equality_synth_compare(
+                        m.clone(),
+                        f.step.clone(),
+                        a_of(f.field.clone()),
+                        b_of(f.field.clone()),
+                        0,
+                    ));
+                }
+                __result
+            });
+            Rc::new(v1_rt::list_skip(&cmps.clone(), 1))
+                .iter()
+                .cloned()
+                .fold(
+                    cmps.clone().first().cloned().clone().unwrap(),
+                    |acc: _, c: Rc<Node>| {
+                        equality_synth_binop(m.clone(), BinOp::And, acc, c.clone())
+                    },
+                )
+        }
+    }
+}
+
+pub fn equality_synth_compare(
+    m: String,
+    step: Rc<EqualityStep>,
+    x: Rc<Node>,
+    y: Rc<Node>,
+    depth: i64,
+) -> Rc<Node> {
+    match (*step.clone()).clone() {
+        EqualityStep::EqualityByTarget => {
+            equality_synth_binop(m.clone(), BinOp::Eq, x.clone(), y.clone())
+        }
+        EqualityStep::EqualityThroughPlan { declaration: _, .. } => {
+            equality_synth_binop(m.clone(), BinOp::Eq, x.clone(), y.clone())
+        }
+        EqualityStep::EqualityRouted { function: f, .. } => equality_synth_qcall(
+            m.clone(),
+            f.module_path.clone(),
+            f.decl_name.clone(),
+            Rc::new(vec![x.clone(), y.clone()]),
+        ),
+        EqualityStep::EqualityPresence { inner: i, .. } => equality_synth_qcall(
+            m.clone(),
+            "std.optional".to_string(),
+            "optional_eq".to_string(),
+            Rc::new(vec![
+                x.clone(),
+                y.clone(),
+                equality_synth_inner(m.clone(), i.clone(), depth.clone()),
+            ]),
+        ),
+        EqualityStep::EqualityElements { element: e, .. } => equality_synth_qcall(
+            m.clone(),
+            "std.algebra".to_string(),
+            "zip_eq".to_string(),
+            Rc::new(vec![
+                x.clone(),
+                y.clone(),
+                equality_synth_inner(m.clone(), e.clone(), depth.clone()),
+            ]),
+        ),
+        EqualityStep::EqualityMapValues { value: v, .. } => equality_synth_qcall(
+            m.clone(),
+            "std.algebra".to_string(),
+            "map_values_eq".to_string(),
+            Rc::new(vec![
+                x.clone(),
+                y.clone(),
+                equality_synth_inner(m.clone(), v.clone(), depth.clone()),
+            ]),
+        ),
+    }
+}
+
+pub fn equality_synth_inner(m: String, step: Rc<EqualityStep>, depth: i64) -> Rc<Node> {
+    {
+        let p = v1_rt::concat("eqp".to_string(), (depth.clone()).to_string());
+        let q = v1_rt::concat("eqq".to_string(), (depth.clone()).to_string());
+        equality_synth_lambda(
+            m.clone(),
+            p.clone(),
+            q.clone(),
+            equality_synth_compare(
+                m.clone(),
+                step,
+                equality_synth_var(m.clone(), p.clone()),
+                equality_synth_var(m.clone(), q.clone()),
+                v1_rt::int_add(depth.clone(), 1),
+            ),
+        )
+    }
+}
+
+pub fn equality_synth_var(m: String, name: String) -> Rc<Node> {
+    crate::v1_std_core::make_named_expr_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name.clone(),
+        Rc::new(ExprData::ExprVar {
+            binding_kind: std::option::Option::None,
+        }),
+        Rc::new(vec![]),
+        std::option::Option::None,
+        equality_synthetic_span(m.clone(), name.clone()),
+        equality_synthetic_span(m.clone(), name.clone()),
+    )
+}
+
+pub fn equality_synth_field(m: String, base: Rc<Node>, field: String) -> Rc<Node> {
+    crate::v1_std_core::make_named_expr_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        field.clone(),
+        Rc::new(ExprData::ExprFieldAccess {
+            summary: std::option::Option::None,
+        }),
+        Rc::new(vec![base.clone()]),
+        std::option::Option::None,
+        equality_synthetic_span(m.clone(), field.clone()),
+        equality_synthetic_span(m.clone(), field.clone()),
+    )
+}
+
+pub fn equality_synth_bool(m: String, value: bool) -> Rc<Node> {
+    crate::v1_std_core::make_expr_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        Rc::new(ExprData::ExprLiteral {
+            value: Rc::new(LiteralValue::LitBool {
+                value: value.clone(),
+            }),
+        }),
+        Rc::new(vec![]),
+        std::option::Option::None,
+        equality_synthetic_span(
+            m,
+            if value.clone() {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            },
+        ),
+    )
+}
+
+pub fn equality_synth_binop(m: String, op: BinOp, l: Rc<Node>, r: Rc<Node>) -> Rc<Node> {
+    crate::v1_std_core::make_expr_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        Rc::new(ExprData::ExprBinOp {
+            op: op.clone(),
+            algebra_field: std::option::Option::None,
+            operand: std::option::Option::None,
+            derived: std::option::Option::None,
+        }),
+        Rc::new(vec![l.clone(), r.clone()]),
+        std::option::Option::None,
+        equality_synthetic_span(m, "==".to_string()),
+    )
+}
+
+pub fn equality_synth_qcall(
+    m: String,
+    module_path: String,
+    fn_name: String,
+    args: Rc<Vec<Rc<Node>>>,
+) -> Rc<Node> {
+    {
+        let segments = Rc::new(
+            module_path
+                .clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        let receiver = Rc::new(v1_rt::list_skip(&segments.clone(), 1))
+            .iter()
+            .cloned()
+            .fold(
+                equality_synth_var(
+                    m.clone(),
+                    segments.clone().first().cloned().clone().unwrap(),
+                ),
+                |acc: Rc<Node>, seg: String| equality_synth_field(m.clone(), acc, seg.clone()),
+            );
+        let sp = equality_synthetic_span(m.clone(), fn_name.clone());
+        crate::v1_std_core::make_named_expr_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            fn_name.clone(),
+            Rc::new(ExprData::ExprMethodCall {
+                method_semantics: std::option::Option::None,
+            }),
+            v1_rt::concat(
+                Rc::new(vec![receiver.clone()]),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for a in args.iter().cloned() {
+                        __result.push(crate::v1_std_core::make_arg_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                            std::option::Option::None,
+                            a.clone(),
+                            sp.clone(),
+                            sp.clone(),
+                        ));
+                    }
+                    __result
+                }),
+            ),
+            std::option::Option::None,
+            sp.clone(),
+            sp.clone(),
+        )
+    }
+}
+
+pub fn equality_synth_lambda(m: String, p: String, q: String, body: Rc<Node>) -> Rc<Node> {
+    crate::v1_std_core::make_expr_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        Rc::new(ExprData::ExprLambda),
+        Rc::new(vec![
+            body.clone(),
+            crate::v1_std_core::leaf_node_with_span(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                p.clone(),
+                equality_synthetic_span(m.clone(), p.clone()),
+            ),
+            crate::v1_std_core::leaf_node_with_span(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                q.clone(),
+                equality_synthetic_span(m.clone(), q.clone()),
+            ),
+        ]),
+        std::option::Option::None,
+        equality_synthetic_span(m.clone(), "fn".to_string()),
+    )
+}
+
+pub fn equality_synth_match(m: String, scrutinee: Rc<Node>, arms: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
+    crate::v1_std_core::make_expr_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        Rc::new(ExprData::ExprMatch),
+        v1_rt::concat(Rc::new(vec![scrutinee.clone()]), arms.clone()),
+        std::option::Option::None,
+        equality_synthetic_span(m, "match".to_string()),
+    )
+}
+
+pub fn equality_synth_arm(m: String, pattern: Rc<MatchPattern>, body: Rc<Node>) -> Rc<Node> {
+    crate::v1_std_core::make_arm_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        pattern,
+        std::option::Option::None,
+        body,
+        equality_synthetic_span(m, "=>".to_string()),
+    )
+}
+
+pub fn equality_synth_variant_pattern(
+    m: String,
+    arm: Rc<EqualityPlanArm>,
+    prefix: String,
+) -> Rc<MatchPattern> {
+    Rc::new(MatchPattern::VariantPattern {
+        name: arm.arm.clone(),
+        parent_enum: std::option::Option::None,
+        field_bindings: Rc::new({
+            let mut __result = Vec::new();
+            for f in arm.fields.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::make_field_binding_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    f.field.clone(),
+                    Rc::new(MatchPattern::Bind {
+                        declaration: crate::v1_std_core::make_pattern_binder_declaration_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                            v1_rt::concat(prefix.clone(), f.field.clone()),
+                            equality_synthetic_span(
+                                m.clone(),
+                                v1_rt::concat(prefix.clone(), f.field.clone()),
+                            ),
+                        ),
+                    }),
+                    equality_synthetic_span(m.clone(), f.field.clone()),
+                    equality_synthetic_span(m.clone(), f.field.clone()),
+                ));
+            }
+            __result
+        }),
+        parent_identity: Rc::new(VariantParentIdentity::VariantParentBeforeInference),
+    })
+}
+
+pub fn equality_synth_param(m: String, name: String, type_name: String) -> Rc<Node> {
+    crate::v1_std_core::make_param_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name.clone(),
+        equality_synthetic_type(m.clone(), type_name),
+        std::option::Option::None,
+        equality_synthetic_span(m.clone(), name.clone()),
+        equality_synthetic_span(m.clone(), name.clone()),
+    )
 }
 
 pub fn equality_synthetic_span(module_name: String, name: String) -> Rc<SourceSpan> {
@@ -35528,7 +36117,7 @@ pub fn typecheck_module(
             resolved.clone(),
             parent_index.clone(),
             source_indices.clone(),
-            intern_table.clone(),
+            intern_table,
             symbol_index,
         );
         let env = env_result.env.clone();
@@ -35580,8 +36169,11 @@ pub fn typecheck_module(
         }
         let resolved_module_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
-        let synthesized_items =
-            equality_synthesized_items(resolved_module_name.clone(), intern_table.clone());
+        let synthesized_items = equality_synthesized_items(
+            crate::v1_std_core::module_items(resolved.module.clone()),
+            resolved_module_name.clone(),
+            env.clone(),
+        );
         let contributions = Rc::new({
             let mut __result = Vec::new();
             for item in v1_rt::concat(

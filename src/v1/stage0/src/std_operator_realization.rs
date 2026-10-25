@@ -61,6 +61,7 @@ pub struct EqualityPlanArm {
 pub struct DeclarationEqualityPlan {
     pub declaration: String,
     pub reference: Option<Rc<DeclarationRef>>,
+    pub generic: bool,
     pub arms: Rc<Vec<Rc<EqualityPlanArm>>>,
 }
 
