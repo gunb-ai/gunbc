@@ -388,6 +388,29 @@ data dashboard_environment_binding_executable: FilePath = env_absolute_program()
 fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
   join([root as String, "/", child], "") as FilePath
 }
+
+// THE INSTANCE ROOT IS ABSOLUTE AND SPELLED ONE WAY, a fact of the instance that every store derived from
+// instance_root reads, so it is answered here once and not per store (review 86022 of gunb-ai/gunbc#15105).
+// A relative root resolves against each process's working directory, so two processes would address two
+// directories as "the" instance; "/" is the host root, not an instance. A doubled or trailing separator, or
+// a `.` or `..` segment, still names the same directory on disk, but every identity this repository takes by
+// string reads it as another: gunbc.durable_exclusive_hold_file_store file_hold_ref (a release over the
+// other spelling refuses as ForAnotherHold), dashboard_declared_instance_roots_are_unique (two rows naming
+// one directory would pass) and dashboard_instance_for_instance_root. NOT ESTABLISHED: that no component is a
+// symlink; the filesystem interface has no resolution operation, so that rests on the declaration.
+fn dashboard_instance_root_spelling_refusal(instance: HostDashboardInstance) -> String? {
+  let root = instance.instance_root as String
+  let segments = split(s: root, delimiter: "/")
+  if !starts_with(s: root, prefix: "/") {
+    Present { value: "it is not absolute" }
+  } else if root == "/" {
+    Present { value: "it is the filesystem root" }
+  } else if any(segments.skip(n: 1), s => s == "" || s == "." || s == "..") {
+    Present { value: "it has an empty, `.` or `..` segment (a doubled or trailing separator, or a relative step)" }
+  } else {
+    none
+  }
+}
 // THE INSTANCE'S TAILNET DOOR: the unix socket its door unit serves on and tailscale serve proxies
 // to. It sits in a directory of its own under the instance root, which the deployment ensures owned
 // by the service principal: the instance root itself need not be the principal's to write (srv1's
@@ -1597,6 +1620,15 @@ fn dashboard_declared_repo_roots_are_unique() -> Bool {
 fn dashboard_declared_instance_roots_are_unique() -> Bool {
   let xs = public_builtin_dashboard_instances()
   all(xs, a => count(xs |> filter(b => b.instance_root == a.instance_root)) == 1)
+}
+
+// The uniqueness law above compares spellings, so it means "one directory per instance" only over roots
+// spelled one way; this is that precondition, read off the same declared rows.
+fn dashboard_declared_instance_roots_are_one_spelling() -> Bool {
+  all(public_builtin_dashboard_instances(), i => match dashboard_instance_root_spelling_refusal(instance: i) {
+    Present { value: _ } => false
+    Absent => true
+  })
 }
 
 // AT MOST ONE per host_identity among instances that answer host lookup. Distinct instance_ids
