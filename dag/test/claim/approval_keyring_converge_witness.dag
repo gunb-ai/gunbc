@@ -15,6 +15,10 @@ import gunbc.auth.approval_keyring_converge {
   keyring_mkdir_argv, store_root_mkdir_argv, claim_store_root_mkdir_argv,
   ntfy_group_admit_argv, roadmap_unit_restart_argv,
 }
+import gunbc.auth.approval_broker_state_directories {
+  approval_decision_store_directory,
+  broker_state_directory_install_argv,
+}
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.deployment_risk { NoProdRole, ProdRoleHeldBy, srv1_daily_workspace_deployment, srv2_deploy_deployment }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under }
@@ -88,6 +92,24 @@ test fn store_root_mkdir_is_install_not_a_local_sudo() -> Bool {
     Present { value: w } => w == "install"
     _ => false
   }
+}
+
+// THE SINGLE SOURCE (DESIGN §3): the converge lane's store-root argv IS the census row's projection —
+// the keyring lane no longer states owner/mode/path for /var/lib/gunbc/approvals; it projects
+// gunbc.auth.approval_broker_state_directories.approval_decision_store_directory through the one
+// projection both lanes share. If either lane re-Inline its own spelling and drifts, this fails.
+test fn the_store_root_argv_projects_the_census_row() -> Bool {
+  store_root_mkdir_argv() == broker_state_directory_install_argv(d: approval_decision_store_directory())
+}
+
+// THE PIN THE PROJECTION MUST STILL SATISFY: the converge step installs the operator's owner-only root
+// at the live srv1 shape. The path and mode are spelled LITERALLY here (not pulled from the declaring
+// modules) so this is a third, independent statement of what /var/lib/gunbc/approvals must be: if the
+// row's dependents or principal change and silently widen or re-home the directory, this fails on the
+// converge side — where the secrets live — not only on the deploy side.
+test fn the_projected_store_root_argv_is_the_operators_owner_only_install() -> Bool {
+  store_root_mkdir_argv()
+    == ["install", "-d", "-m", "00700", "-o", "briansrls", "-g", "briansrls", "/var/lib/gunbc/approvals"]
 }
 
 test fn claim_store_root_mkdir_is_install_for_the_ci_runner() -> Bool {

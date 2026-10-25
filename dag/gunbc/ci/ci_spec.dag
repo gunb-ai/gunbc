@@ -27,7 +27,7 @@ import gunbc.auth.github_apps {
   gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id
 }
 import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
-import extdeps.auth.jws { jws_rs256_protected_header_json }
+import extdeps.auth.jws { jws_protected_header_json, JwsRs256 }
 import extdeps.github.org_admin_auth {
   github_app_jwt_claims_json_of,
   github_app_installation_access_token_url,
@@ -879,6 +879,11 @@ data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunSte
   function: "read",
 }
 
+data gunbc_ci_export_host_reader_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/export_host_reader_converge.dag",
+  function: "export_host_reader_converge_wet",
+}
+
 data gunbc_ci_boot_medium_reader_key_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/boot_medium_reader_key_mint.dag",
   function: "boot_medium_reader_key_mint_wet",
@@ -1418,6 +1423,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_workspace_object_write_mint_target,
     gunbc_ci_r2_cache_object_read_mint_target,
     gunbc_ci_hetzner_cloud_server_read_target,
+    gunbc_ci_export_host_reader_converge_target,
     gunbc_ci_boot_medium_reader_key_mint_target,
     gunbc_ci_flex_pass_target,
     gunbc_ci_flex_template_ensure_target,
@@ -2513,7 +2519,7 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
       app_mint_step(command: "chmod 600 \"$KEY_FILE\""),
       app_mint_step(command: "NOW=$(date +%s)"),
       app_mint_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
-      app_mint_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_rs256_protected_header_json(), "' | b64url)"], "")),
+      app_mint_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_protected_header_json(alg: JwsRs256, kid: none), "' | b64url)"], "")),
       app_mint_step(command: join([
         "JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((NOW-",
         to_string(github_app_jwt_backdate_seconds),
@@ -2757,7 +2763,7 @@ fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "chmod 600 \"$APP_KEY_FILE\"") },
     Do { run: ci_retry_body_run(command: "APP_NOW=$(date +%s)") },
     Do { run: ci_retry_body_run(command: "app_b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
-    Do { run: ci_retry_body_run(command: join(["APP_JWT_HEADER=$(printf '%s' '", jws_rs256_protected_header_json(), "' | app_b64url)"], "")) },
+    Do { run: ci_retry_body_run(command: join(["APP_JWT_HEADER=$(printf '%s' '", jws_protected_header_json(alg: JwsRs256, kid: none), "' | app_b64url)"], "")) },
     Do {
       run: ci_retry_body_run(
         command: join([
@@ -2928,6 +2934,16 @@ fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_branch_run_grant_broker_target.entry,
     function: gunbc_ci_branch_run_grant_broker_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_export_host_reader_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_export_host_reader_converge_target.entry,
+    function: gunbc_ci_export_host_reader_converge_target.function,
     claim_run: false,
     receipt_rel: none
   )
