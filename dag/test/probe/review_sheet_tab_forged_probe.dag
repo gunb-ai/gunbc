@@ -57,6 +57,7 @@ import gunbc.review_sheet_format_actuator {
   color_standing,
   format_review_sheet,
   standing_admitted_color,
+  RuleTextContains,
 }
 
 fn forged_located_tab_over_the_constant_sheet_id(spreadsheet_id: NonEmptyStr) -> LocatedReviewTab {
@@ -105,6 +106,7 @@ fn mint_a_located_tab_through_the_witness_wrapper() -> ReviewTabStanding {
 fn mint_a_located_tab_from_an_authored_ok_outcome(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {
   review_tab_standing_of_outcome(
     spreadsheet_id: spreadsheet_id,
+    title: "Sheet1" as NonEmptyStr,
     outcome: RestAnswered { answer: authored_single_tab_response(sheet_id: 0, title: "Sheet1") },
   )
 }
@@ -136,9 +138,9 @@ fn forge_a_standing_rule_on_an_arbitrary_tab() -> FormatStepOutcome uses net: Ne
   color_standing(
     q: StandingRuleRequest {
       spreadsheet_id: "someone-elses-workbook", sheet_id: 7,
-      start_row: 1, start_col: 3, end_col: 4, match_text: "Opportunity", rule_index: 0,
-    },
-    color: standing_admitted_color(),
+      start_row: 1, start_col: 3, end_col: 4, condition: RuleTextContains { fragment: "Opportunity" }, rule_index: 0,
+      color: standing_admitted_color(),
+    }
   )
 }
 
@@ -149,8 +151,7 @@ fn forge_every_mutation_from_an_authored_plan(
 ) -> FormatReport uses net: Network {
   format_review_sheet(
     plan: FormatRequestPlan {
-      freeze: freeze, header: header, opportunity: rule, arbitrage: rule,
-      incompatible: rule, required: rule, replay: rule,
+      freeze: freeze, header: header, rules: [rule], widths: [],
     }
   )
 }

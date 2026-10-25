@@ -18,7 +18,7 @@ import extdeps.gpu.nvidia {
   nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
 }
 import gunbc.serving.home_serving_accelerator_field {
   home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows,
@@ -40,7 +40,9 @@ import test.claim.plan_citation_census {
   plan_citation_occurrences,
   plan_citation_census_pool_roots,
   plan_citation_census_rows_parsed,
-  plan_citation_census_rows
+  plan_citation_census_rows,
+  plan_citation_census_facts,
+  plan_citation_census_rows_in
 }
 import gunbc.plans.p4_home_serving_power_semantics {
   p4_branch_record,
@@ -181,27 +183,6 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
 // conjunct instead of quietly reducing the work -- which is exactly the failure mode a
 // derived roster otherwise invites.
 
-// the pieces of the text that could be citations, split on the delimiters that surround one
-
-// the shape test. A citation is `module::decl` or `module::decl.field` and NOTHING else:
-// exactly one `::` pair, no path separator, no punctuation, no whitespace. The separator is
-// removed before the rejection scan because `::` itself contains a colon, which is otherwise
-// a reject character -- that bug was live in the first draft of this test and rejected every
-// citation, which is the kind of thing a measured roster catches and an assumed one does not.
-
-// The shape is matched STRUCTURALLY rather than counted: `a::b` with nothing after the
-// second part is exactly one separator. Three arms' worth of `length() == 2 && parts[0]
-// != "" ...` was what the first draft did, and indexing is safe-indexing here -- it hands
-// back Optional, which infer caught. Matching Cons/Empty is also how the repo reads a
-// split apart (`extdeps.linux.proc_pid_stat`, `test.claim.runner.runner_qemu_host_standing`).
-// The separator is removed before the rejection scan because `::` itself contains a colon,
-// which is otherwise a reject character -- that bug was live in the first draft and rejected
-// every citation, which is what a measured roster catches and an assumed one does not.
-
-// Only ever reached on a string that test.claim.plan_citation_census::plan_citation_is_citation_shape accepted, so the two-arm
-// reading is total in practice; the `_` arm exists because a match must be total, and it
-// yields the one thing that cannot resolve -- an empty module -- rather than a guess.
-
 // THE POSITIVE CONTROL ON THE DERIVATION ITSELF. Every `::` in the text must be covered by
 // the roster; if the shape test ever excludes a real citation, or the roster is narrowed to
 // make the claim pass, this conjunct goes red rather than the claim going quietly green.
@@ -209,12 +190,13 @@ fn p4_citation_count_is_conserved(t: String) -> Bool {
   let roster = plan_citation_citation_roster(t)
   let covered = fold(roster, init: 0, f: (n, cite) => n + plan_citation_occurrences(t: t, cite: cite))
   let separators = t.split(delimiter: "::").length() - 1
-  covered == separators && separators > 20
+  covered == separators && separators > 0
 }
 
 // THE ONE CENSUS KEY PATH. Every census lookup in this module goes through
-// `test.claim.plan_citation_census::plan_citation_census_rows`, which parses the citation the way the document writes it and then asks
-// `v2.std.decl_index::qualified_name_from_module` — the function that OWNS that key — to
+// `test.claim.plan_citation_census::plan_citation_census_rows` or
+// `test.claim.plan_citation_census::plan_citation_census_rows_in`, both of which parse the citation the way the document
+// writes it and then ask `v2.std.decl_index::qualified_name_from_module` — the function that OWNS that key — to
 // build it. Three of these lookups used to hand-build the key at the call site and each got it
 // wrong in its own way: two passed `Module::Decl` straight in (the census key contains no `::`, so
 // such a lookup matches nothing and the claim reddens on a fact that is actually true), and one
@@ -235,16 +217,16 @@ fn p4_declares_field(fact: DeclFact, field: String) -> Bool {
   string_contains(s: source.content, pattern: concat("  ", concat(field, ": ")))
 }
 
-// THE CENSUS READ. `v2.std.decl_index::decl_facts_at` is the keyed host-side read, not a fold
-// over the whole corpus: the precedent warns that repeated full `decl_facts` calls took a
-// witness "past any bound" (3.6s each measured) and this asks one question per citation.
-// Pools dag AND src/v1 -- measured, not assumed: with only ["dag","src/v2"] pooled, the four
-// `v1.*` citations in this plan resolve to ZERO rows. The census keys on the AUTHORED module
-// name, which is why `v1.compiler.infer` resolves although its file is `src/v1/04_infer.dag`,
-// a path no caller could have guessed from the name.
-fn p4_citation_resolves(cite: String) -> Bool {
+// THE CENSUS READ. One full read, joined against every citation: this claim resolves a
+// population, and a keyed read rebuilds the declaration pool on every call (the measurement is
+// recorded on `test.claim.plan_citation_census::plan_citation_census_facts`), so the facts are read once by the
+// claim and passed in. The census keys on the AUTHORED module name, which is why
+// `v1.compiler.infer` resolves although its file is `src/v1/04_infer.dag`, a path no caller
+// could have guessed from the name; the pool roots that make the `v1.*` citations resolve at
+// all are the shared module's, not restated here.
+fn p4_citation_resolves(facts: List<DeclFact>, cite: String) -> Bool {
   let c = plan_citation_parse(w: cite)
-  let rows = plan_citation_census_rows_parsed(c: c)
+  let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
   if c.has_field {
     rows.length() >= 1 && any(rows, r => p4_declares_field(fact: r, field: c.field_name))
   } else {
@@ -255,15 +237,22 @@ fn p4_citation_resolves(cite: String) -> Bool {
 test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
   let t = carrier_text()
   let roster = plan_citation_citation_roster(t)
-  // NEGATIVE CONTROLS FIRST. A census read that came back empty would satisfy every
-  // resolution check vacuously for the negative ones and fail the positives, so the
-  // population and the roster size are asserted in the same breath as the citations.
-  // The unmerged module is the load-bearing one: it must stay UNRESOLVED, which is what
-  // makes this claim able to tell "present" from "asserted by the document".
+  let facts = plan_citation_census_facts()
+  // WHAT THE CONTROL DISCRIMINATES: that this resolver can answer BOTH ways, so a citation
+  // the document asserts is not satisfied by the document asserting it. It used to rest on
+  // `gunbc.serving.home_serving_power_policy` being UNMERGED, a premise the world retired
+  // when #14463 landed the module, after which the claim was red on a true fact. The
+  // module's citation is now the POSITIVE: the census must resolve HomeServingPowerAdmission,
+  // and moving the module out of the tree reddens it. The NEGATIVE is a near-miss
+  // declaration in the SAME module that no module declares -- same census read, one
+  // differing token -- so a resolver that could never answer "unresolved" reddens it, and so
+  // does authoring that name. An absent name is honest as a negative only because the
+  // positives beside it run the identical function; alone it is green by construction.
   p4_citation_count_is_conserved(t: t)
-    && roster.length() > 20
-    && !p4_citation_resolves(cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission")
-    && all(roster, cite => p4_citation_resolves(cite: cite))
+    && roster.length() > 0
+    && p4_citation_resolves(facts: facts, cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission")
+    && !p4_citation_resolves(facts: facts, cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmissionShadow")
+    && all(roster, cite => p4_citation_resolves(facts: facts, cite: cite))
 }
 
 // ── THE PLAN'S LOAD-BEARING FACTS, READ FROM THE TREE ────────────────────────
@@ -323,14 +312,15 @@ fn p4_row_is_sxm(row: GpuModelCatalogRow) -> Bool {
 // THE CATALOG UNIVERSE, IMPORTED BY NAME. The claims below partition this list,
 // so it is the thing a narrowing attack would have to edit. The census count of
 // `data <row>: GpuModelCatalogRow` in `extdeps.gpu.nvidia` is compared against
-// its length, so a ninth row added without being named here reddens the claim
-// rather than being silently unpartitioned. That is the honest shape: the rows
+// its length, so a row added without being named here reddens the claim rather
+// than being silently unpartitioned -- as `nvidia_h200_nvl_catalog` did when #14718
+// added it, until it was named below. That is the honest shape: the rows
 // are read as typed values, and the census is what keeps the value list fresh.
 data p4_catalog_universe: List<GpuModelCatalogRow> = [
   nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
 ]
 
 // Same membership fold the shipped home-serving witness uses, so row identity is

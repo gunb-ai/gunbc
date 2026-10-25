@@ -1,0 +1,196 @@
+{
+ "agreement": {
+  "calibration_cells_exact": "104/125",
+  "calibration_problem_vs_not": "115/125",
+  "phase3_false_negatives": "6/60"
+ },
+ "counts_per_class_dimension_site": {
+  "extdeps": {
+   "access": {
+    "Home": 3,
+    "None": 104,
+    "Passed": 16
+   },
+   "authz": {
+    "Home": 3,
+    "None": 117,
+    "Passed": 3
+   },
+   "caching": {
+    "Home": 28,
+    "None": 93,
+    "Passed": 2
+   },
+   "placement": {
+    "Home": 41,
+    "Literal": 2,
+    "None": 76,
+    "Passed": 3,
+    "Rederived": 1
+   },
+   "storage": {
+    "Forked": 3,
+    "Home": 36,
+    "Literal": 4,
+    "None": 77,
+    "Passed": 3
+   }
+  },
+  "production": {
+   "access": {
+    "Forked": 1,
+    "Home": 11,
+    "Literal": 80,
+    "None": 505,
+    "Passed": 71,
+    "Rederived": 13
+   },
+   "authz": {
+    "Home": 21,
+    "Literal": 8,
+    "None": 606,
+    "Passed": 37,
+    "Rederived": 9
+   },
+   "caching": {
+    "Forked": 2,
+    "Home": 12,
+    "Literal": 2,
+    "None": 653,
+    "Passed": 11,
+    "Rederived": 1
+   },
+   "placement": {
+    "Home": 73,
+    "Literal": 96,
+    "None": 322,
+    "Passed": 153,
+    "Rederived": 37
+   },
+   "storage": {
+    "Forked": 99,
+    "Home": 48,
+    "Literal": 105,
+    "None": 363,
+    "Passed": 64,
+    "Rederived": 2
+   }
+  },
+  "roster": {
+   "access": {
+    "None": 3
+   },
+   "authz": {
+    "None": 3
+   },
+   "caching": {
+    "None": 3
+   },
+   "placement": {
+    "None": 3
+   },
+   "storage": {
+    "None": 3
+   }
+  },
+  "seed": {
+   "access": {
+    "Forked": 1,
+    "Literal": 8,
+    "None": 56,
+    "Passed": 6
+   },
+   "authz": {
+    "None": 71
+   },
+   "caching": {
+    "Forked": 22,
+    "None": 46,
+    "Passed": 3
+   },
+   "placement": {
+    "Literal": 12,
+    "None": 59
+   },
+   "storage": {
+    "Forked": 22,
+    "None": 48,
+    "Passed": 1
+   }
+  },
+  "seed-generated": {
+   "access": {
+    "None": 90
+   },
+   "authz": {
+    "None": 90
+   },
+   "caching": {
+    "None": 90
+   },
+   "placement": {
+    "None": 90
+   },
+   "storage": {
+    "None": 90
+   }
+  }
+ },
+ "findings_per_dimension_site": {
+  "access:Forked": 2,
+  "access:Literal": 126,
+  "access:Rederived": 18,
+  "authz:Home": 1,
+  "authz:Literal": 8,
+  "authz:Rederived": 9,
+  "caching:Forked": 76,
+  "caching:Home": 1,
+  "caching:Literal": 2,
+  "caching:Rederived": 1,
+  "other:Other": 20,
+  "placement:Literal": 138,
+  "placement:Rederived": 47,
+  "storage:Forked": 339,
+  "storage:Home": 1,
+  "storage:Literal": 155,
+  "storage:Passed": 2,
+  "storage:Rederived": 5
+ },
+ "hand_read_set_size": 968,
+ "method": {
+  "scripts_sha256": {
+   "scripts/classes.py": "58230f9a7c740b14d701147bb1acd6062bca09a010d89f5f3092c93e1e64b0a8",
+   "scripts/fetch_slice.sh": "df51438e93d7eb41c1e2de11738cf2b24ff26e81e91a91cbafced26e2ccb4ef7",
+   "scripts/merge.py": "026c314e6081ca7d07b8e7bb7efe499c88ab07150e4841d88ec8810969492a96",
+   "scripts/phase1.py": "a2707ac11c41ad6d74550427e6bf00abf7849f379260e37d1c461b8f4d8aca9e",
+   "scripts/profile.sh": "beb5d11ece9baff54abf833fdc68a174b0bf47c51b204bd9ae33ab2ae878f604",
+   "scripts/readme_tables.py": "3ebde471e5b2c0fe015ff74f026f759344ee2daf8fa7f3c19b243a7bd3c2d79d",
+   "scripts/seed_supplement.py": "7be49127a92c47028b8c52d6c76c92fb38941812fbb2d66489280a4d1140c05c",
+   "scripts/signals.sh": "9ce5c16474263bc96194dd91d4a3c9ef6cec41443f4c3f11cef9e4feb63fc9b0",
+   "scripts/slice.py": "51eb0fa5c39b6decec67de58174ca0beb6673f07f476706ce8c2a136cda3f82d"
+  },
+  "slice_commits": {
+   "01-seed": "e97029f",
+   "02-extdeps": "001901d",
+   "03-runner-ci": "d188d2c",
+   "04-fleet-host": "07fcc30",
+   "05-machine-intake-sites": "fc3e189",
+   "06-roadmap-auth-dispatch": "1f59ea7",
+   "07-fabric-compute-workspace": "a0f040b",
+   "09-phase3-shapes": "7d1ae7b"
+  }
+ },
+ "pin": "1dd3eda5696a10e8cb49700f37d61b40c304d326",
+ "population": {
+  "compiler": 530,
+  "extdeps": 1129,
+  "instrument": 145,
+  "ledger": 1008,
+  "production": 2226,
+  "roster": 253,
+  "seed": 315,
+  "test": 4015
+ },
+ "signal_set_size": 877,
+ "unbacked_cells": 7
+}
