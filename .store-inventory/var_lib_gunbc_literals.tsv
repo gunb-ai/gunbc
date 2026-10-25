@@ -1,0 +1,40 @@
+site	inventory_rows(row_id=disposition|cohort)	literal
+extdeps.bmc.os_install_actuator_toolchain:35	S207189fc=NotAStore: tool binary path |	data gunbc_bin_dir: NonEmptyStr = "/var/lib/gunbc/bin"
+extdeps.tools.websocat:29	S207189fc-like=NotAStore: tool binary path (d) [no own row; inventory gap]	data websocat_install_path: NonEmptyStr = "/var/lib/gunbc/bin/websocat
+gunbc.auth.approval_assertion_counter:43	S6d8c00b4=Migrate: seal (slot store)|C-auth	data approval_assertion_counter_root: NonEmptyStr = "/var/lib/gunbc/ap
+gunbc.auth.approval_decision_store:215	Sad60f155=Blocked: shared (gunbc.rung_|	data approval_decision_store_root: NonEmptyStr = "/var/lib/gunbc/appro
+gunbc.auth.approval_device_redemption:419	S32f32964=Migrate: seal (slot store)|C-auth;S480da962=Migrate: seal in place (+For|C-auth	data approval_device_store_root: NonEmptyStr = "/var/lib/gunbc/approva
+gunbc.auth.approval_device_redemption:441	S32f32964=Migrate: seal (slot store)|C-auth;S480da962=Migrate: seal in place (+For|C-auth	data approval_jwks_cache_root: NonEmptyStr = "/var/lib/gunbc/approval-
+gunbc.auth.approval_device_routes:439	S3667ee51=Migrate: seal in place (+For|C-auth	data approval_device_push_root: NonEmptyStr = "/var/lib/gunbc/approval
+gunbc.auth.approval_ntfy_deployment:27	S654afcb8=ReHomedPlacement|	data approval_ntfy_state_root: NonEmptyStr = "/var/lib/gunbc-ntfy"
+gunbc.bmc.bmc_netboot_serve:135	S5b399234=NotAStore: tool binary path |	data bmc_netboot_bootstrap_artifact_dir: NonEmptyStr = "/var/lib/gunbc
+gunbc.bmc.bmc_virtual_media:47	S4d1b67e9=NotAStore: tool binary path |	iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-se
+gunbc.busybox_bmc_build:33	S435fda84=ReHomedPlacement|	output_path: "/var/lib/gunbc/artifacts/netboot/busybox",
+gunbc.claude_setup_token_enrollment:380	S977dd58f=ReHomedAccess|	["/var/lib/gunbc/claude-enrollment/", account_label as String],
+gunbc.durable_cas_file_store:22	Sfeb74402=Migrate: seal (slot store)|C-misc (authorization_claim_slot)	data authorization_claim_store_root: NonEmptyStr = "/var/lib/gunbc/aut
+gunbc.fabric.fabric_allocation_store_substrate:44	S37c6ef21=Migrate: seal (slot store)|C-fabric	namespace_path: "/var/lib/gunbc/fabric" as NonEmptyStr,
+gunbc.fabric.fabric_control_plane:104	Sc3ac0632=Migrate: seal (slot store)|C-fabric	"/var/lib/gunbc/fabric/allocation"
+gunbc.fleet.fleet_converge_state_path:5	S79a9bca4=Blocked: remote-realization;transport (reader gunbc.fleet.fleet_converge_plan)	data fleet_converge_state_root: NonEmptyStr = "/var/lib/gunbc/fleet-co
+gunbc.fleet.fleet_generation_execution:12	S9a693371=Blocked: remote-realization|	data fleet_generation_directory: String = "/var/lib/gunbc/fleet-conver
+gunbc.fleet.printer_workflow_artifact:15	S3b431e69,S95b4e0de,S3f3be123=Migrate: hand lock -> hold|C-printing (printer-starts)	data printer_start_claim_directory: NonEmptyStr = "/var/lib/gunbc/prin
+gunbc.fleet.printer_workflow_artifact:18	S25493894=NotAStore: scratch within one run (M1)	data print_run_directory: NonEmptyStr = "/var/lib/gunbc/print-runs"
+gunbc.host.host_layout:118	S078cfefb=Migrate: seal in place|C-misc (devboot artifact store)	data srv1_devboot_artifact_store_root: FilePath = "/var/lib/gunbc/arti
+gunbc.host_state_root:39	(the declaration itself)	path: "/var/lib/gunbc" as NonEmptyStr,
+gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator:76	Sc17dc3dd=ReHomedObservability|	data fci1_canonical_allocation_parent: String = "/var/lib/gunbc/fabric
+gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator:78	Sc17dc3dd=ReHomedObservability|	data fci1_canonical_allocation_root: String = "/var/lib/gunbc/fabric/a
+gunbc.instruments.fabric_control_plane_live_probe:395	Se4e7cb3d=Migrate: seal (slot store)|(with its store's cohort)	} else if !fci1_path_owner_matches(path: "/var/lib/gunbc/fabric" as No
+gunbc.instruments.fabric_control_plane_live_probe:397	Se4e7cb3d=Migrate: seal (slot store)|(with its store's cohort)	} else if !fci1_path_owner_matches(path: "/var/lib/gunbc/fabric/alloca
+gunbc.runner.runner_microvm_cell_readiness_location:6	S3c5d9ad3=Migrate: seal in place|C-runner	data cell_readiness_store_location: String = "/var/lib/gunbc/microvm-c
+gunbc.runner.runner_microvm_network:751	S1f913a51=Migrate: hand lock/CAS -> ho|C-runner	data runner_microvm_converged_receipt_root: String = "/var/lib/gunbc/m
+gunbc.runner.runner_microvm_network_converge:86	Se8af98ce=ReHomedObservability|	data runner_microvm_staging_dir: NonEmptyStr = "/var/lib/gunbc-microvm
+gunbc.runner.runner_microvm_slot_unit:175	Sf7a6c085=Blocked: append-only|	data microvm_slot_controller_receipt_dir: String = "/var/lib/gunbc/mic
+gunbc.runner.runner_revision_job_unit:60	S4afad7c7=Migrate: seal in place (+For|C-runner	data revision_job_state_root: String = "/var/lib/gunbc/revision-job"
+gunbc.runner.runner_revision_job_unit:61	S4afad7c7=Migrate: seal in place (+For|C-runner	data revision_job_spec_dir: String = "/var/lib/gunbc/revision-job/spec
+gunbc.runner.runner_revision_job_unit:62	S4afad7c7=Migrate: seal in place (+For|C-runner	data revision_job_receipt_store: String = "/var/lib/gunbc/revision-job
+gunbc.spark.fabric_blob_peer:44	S1aad1d5d=Migrate?: unread, child hand|C-spark	data fabric_blob_root: NonEmptyStr = "/var/lib/gunbc/blobs" as NonEmpt
+gunbc.spark.fabric_blob_peer:45	S1aad1d5d=Migrate?: unread, child hand|C-spark	data fabric_blob_staging_directory: NonEmptyStr = "/var/lib/gunbc/blob
+gunbc.spark.fabric_blob_peer:49	S1aad1d5d=Migrate?: unread, child hand|C-spark	data fabric_blob_rsyncd_conf_path: NonEmptyStr = "/var/lib/gunbc/blobs
+gunbc.srv3.srv3_actuate_shell_paths:8	S7a69b711=NotAStore: no store (hand re|	data srv3_sol_console_log_path: NonEmptyStr = "/var/lib/gunbc/logs/srv
+gunbc.workspace_commissioning_location:7	S70fa041b,Sc55f23ab,S08175a2e=Blocked: shared-directory	data workspace_commissioning_store_location: String = "/var/lib/gunbc/
+product.printing.print_runtime:33	S0beef123=ReHomedPlacement|	data print_runtime_root: String = "/var/lib/gunbc/print-runtime"
+std.materialization_store_grant:59	S9742d762=Migrate: seal (slot store)|C-compute (materialization_store_local)	data materialization_store_host_volume_path: String = "/var/lib/gunbc/
