@@ -397,7 +397,13 @@ test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
   }
 }
 
-test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
+fn ct_dag_tree_only() -> SourceRootSet {
+  Cons { head: DagTree, tail: Empty }
+}
+
+// THE POSITIVE CONTROL: with both trees active, a dag-tree module importing a v2-tree module resolves. The
+// gate over modules already read reads no namespace membership (the storage lookup read it before the read).
+test fn witness_cross_tree_dag_to_v2_grounded_resolves_holds() -> Bool {
   match ct_dag_to_v2_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
@@ -407,6 +413,27 @@ test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
       admission: ct_dag_to_v2_admission(),
       index: ct_dag_to_v2_index(),
       active_roots: ct_both_trees(),
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+
+// THE ACTIVE-ROOT DENIAL, STILL ENROLLED, differing from the control above in the active roots alone: the
+// v2 tree is not an active root of this compile, so the same edge refuses at the gate, located at its
+// invariant.
+test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
+  match ct_dag_to_v2_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: ct_dag_to_v2_admission(),
+      index: ct_dag_to_v2_index(),
+      active_roots: ct_dag_tree_only(),
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => false

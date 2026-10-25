@@ -124,6 +124,42 @@ type GrandfatheredRemoval =
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_closure_denied_on_less_fundamental_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_dag_std_to_v2_std_co_fundamental_admitted_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_dag_std_to_v2_std_more_fundamental_admitted_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_fundamentality_unknown_denied_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_import_closure_all_admitted_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_layer_direction_deleted_now_admitted_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_less_fundamental_denied_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_missing_root_denied_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.cross_tree_import_model.witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds" as NonEmptyStr,
+    deleted_in: "the tree-fundamentality order deletion (gunbc.design_ruling cross_tree_admission_is_namespace_membership, gunbc#15080): these claims passed a TreeFundamentalityOrder arm into cross_tree_import_admitted, and that type is deleted; admission is namespace membership, witnessed by the rewritten v2.test.claim.cross_tree_import_model" as NonEmptyStr
+  },
+  WitnessDeleted {
     identity: "v2.test.claim.manual.caret_sigil_surface.caret_sigil_surface_witness_holds" as NonEmptyStr,
     deleted_in: "operator ruling on the v2 parse-population cutover: the caret sigil surface is not carried forward; test.claim.caret_syntax_witness still covers caret"
   },
