@@ -15,7 +15,7 @@ import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferKvNvfp4, NinferMtp
 // completions (reasoning split into reasoning_content, tool calls under tool_calls). --model-id overrides the
 // artifact's own name (qwen3.8-27b), so the id a request names is this launch's, never the container's. The
 // API key is deliberately not a field: it lives in a 0600 file on the consuming host
-// (gunbc.harness.harness_operator_route harness_operator_route credential_relative_path).
+// (gunbc.harness.harness_operator_credential operator_route_credential_file).
 data operator_pod_launch_read_obligation: NonEmptyStr = "Re-read the card's /root/serve/run.sh ninfer-serve line, `ninfer-serve --help`, GET /v1/models with the card key and the reasoning member of one chat completion. max_pending_requests and pending_timeout are NOT read for this launch: its command line omits both flags and --help prints no default for them, so the figures are the 2026-10-11 pod's. Replace this standing with a receipt once the operator route is observed by a modeled probe" as NonEmptyStr
 
 data operator_pod_ninfer_launch: NinferServeLaunch = NinferServeLaunch {
