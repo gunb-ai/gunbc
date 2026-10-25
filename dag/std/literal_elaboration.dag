@@ -1,7 +1,7 @@
 module std.literal_elaboration
 
 import std.optional { Present, Absent }
-import std.types { List, String, Bool, Int, NonEmptyStr, range }
+import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 import std.algebra { collection_concat_shape, collection_count_shape }
@@ -228,17 +228,25 @@ fn elaborate_literal_at(
 // so a kernel literal at its boundary is already its own value (DirectLiteral) and it must carry
 // no LiteralHomomorphism row; the two rosters partition the declarations they name.
 //
-// THE ROW DECLARES ITS RANGE: the kernel values that ARE values of the carrier, in std.types range's own
-// vocabulary (an absent bound constrains nothing). A kernel value outside it denotes no value of the carrier
-// -- std.nat Nat's row declares min 0, so `-1` is no natural -- and a consumer refuses it, derived from the
-// row (kernel_grounding_admits), never from a check of its own.
+// THE ROW DECLARES ITS EXTENT: which integers are values of the carrier, as an extent rather than as two
+// numbers, because a numeric bound must itself be a value on the route that reads it and the widest machine
+// widths' bounds are not (wise-wolf-174's per-width rows; agreed 2026-10-24). A kernel value outside the
+// extent denotes no value of the carrier -- std.nat Nat's row declares the naturals, so `-1` is no natural --
+// and a consumer refuses it, derived from the row (kernel_grounding_admits), never from a check of its own.
+// Crossings between grounded carriers are derived from the same extents (kernel_grounding_crossing).
 type KernelGrounding {
   source_kind: LiteralSourceKind
   carrier: DeclarationRef
-  min: Int?
-  max: Int?
+  extent: IntegerExtent
   view: KernelGroundingView
 }
+
+// THE INTEGERS A GROUNDED CARRIER DENOTES. Every arm is a set closed under the comparison the crossing rule
+// needs, so inclusion between two extents is decided from the arms alone (integer_extent_within) and no bound
+// is ever materialized. The machine widths join as a further arm with their rows.
+type IntegerExtent
+  = UnboundedIntegers
+  | UnboundedNaturals
 
 // How a grounded carrier's constructors denote kernel values (above). An arm names a constructor of the
 // carrier declaration and the field that carries its payload; the carrier's own DeclarationRef scopes it.
@@ -295,7 +303,7 @@ type SignedArmAgreement
   = SignedArmAgrees { natural: DeclarationRef }
   | SignedArmDisagrees { reason: SignedViewDisagreement }
 
-// A grounded NATURAL carrier: a Peano view whose declared range starts at 0.
+// A grounded NATURAL carrier: a Peano view whose declared extent is the naturals.
 fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRef) -> Bool {
   rows |> any(r =>
     declaration_ref_eq(a: r.carrier, b: d)
@@ -303,9 +311,9 @@ fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRe
         PeanoGroundingView => true
         SignedGroundingView { nonnegative: _, negative: _ } => false
       })
-      && (match r.min {
-        Present { value: m } => m == 0
-        Absent => false
+      && (match r.extent {
+        UnboundedNaturals => true
+        UnboundedIntegers => false
       }))
 }
 
@@ -367,10 +375,86 @@ fn signed_view_disagreement_message(reason: SignedViewDisagreement) -> String {
   }
 }
 
-// Whether a kernel integer is a value of a grounded carrier: the ONE range authority, std.types range,
-// over the bounds the row declares.
+// Whether a kernel integer is a value of a grounded carrier, read from the extent the row declares.
 fn kernel_grounding_admits(row: KernelGrounding, value: Int) -> Bool {
-  range(value: value, min: row.min, max: row.max)
+  integer_extent_admits(extent: row.extent, value: value)
+}
+
+fn integer_extent_admits(extent: IntegerExtent, value: Int) -> Bool {
+  match extent {
+    UnboundedIntegers => true
+    UnboundedNaturals => value >= 0
+  }
+}
+
+// Whether every integer of `inner` is an integer of `outer`. Decided from the arms: the naturals are inside
+// the integers, each extent is inside itself, and the integers are inside nothing narrower.
+fn integer_extent_within(inner: IntegerExtent, outer: IntegerExtent) -> Bool {
+  match outer {
+    UnboundedIntegers => true
+    UnboundedNaturals =>
+      match inner {
+        UnboundedNaturals => true
+        UnboundedIntegers => false
+      }
+  }
+}
+
+// A CROSSING BETWEEN GROUNDED CARRIERS IS DERIVED, NEVER LISTED (tidy-raven-397's ruling, 2026-10-24; the
+// signature agreed with wise-wolf-174). Both carriers realize as the kernel integer through their rows, so the
+// one route between them is the pair of groundings, and it is an implicit, total, exact widening exactly when
+// the source's extent lies inside the target's (DESIGN section 4, coercion is the implicit-safe subset). Each
+// carrier must be grounded by exactly one row, or the route is not unique. Keys are declaration identity: a
+// user type spelled Nat or Int has no row and no crossing. A crossing that is not an inclusion refuses here;
+// the partial direction is a declared, named checked constructor, which joins this rule as an arm with its
+// first row.
+type KernelGroundingCrossing
+  = CrossingTotalWidening
+  | CrossingRefused { cause: KernelCrossingRefusal }
+
+type KernelCrossingRefusal
+  = CarrierNotGrounded { carrier: DeclarationRef }
+  | CarrierGroundedTwice { carrier: DeclarationRef }
+  | ExtentNotIncluded { from: DeclarationRef, to: DeclarationRef }
+
+type CarrierGroundingLookup
+  = CarrierGroundingFound { row: KernelGrounding }
+  | CarrierGroundingRefused { cause: KernelCrossingRefusal }
+
+fn carrier_grounding(rows: List<KernelGrounding>, carrier: DeclarationRef) -> CarrierGroundingLookup {
+  let matching = rows |> filter(r => declaration_ref_eq(a: r.carrier, b: carrier))
+  if (matching |> count) > 1 {
+    CarrierGroundingRefused { cause: CarrierGroundedTwice { carrier: carrier } }
+  } else {
+    match matching |> first {
+      Present { value: row } => CarrierGroundingFound { row: row }
+      Absent => CarrierGroundingRefused { cause: CarrierNotGrounded { carrier: carrier } }
+    }
+  }
+}
+
+fn kernel_grounding_crossing(rows: List<KernelGrounding>, from: DeclarationRef, to: DeclarationRef) -> KernelGroundingCrossing {
+  match carrier_grounding(rows: rows, carrier: from) {
+    CarrierGroundingRefused { cause: c } => CrossingRefused { cause: c }
+    CarrierGroundingFound { row: source } =>
+      match carrier_grounding(rows: rows, carrier: to) {
+        CarrierGroundingRefused { cause: c } => CrossingRefused { cause: c }
+        CarrierGroundingFound { row: target } =>
+          if integer_extent_within(inner: source.extent, outer: target.extent) {
+            CrossingTotalWidening
+          } else {
+            CrossingRefused { cause: ExtentNotIncluded { from: from, to: to } }
+          }
+      }
+  }
+}
+
+fn kernel_crossing_refusal_message(cause: KernelCrossingRefusal) -> String {
+  match cause {
+    CarrierNotGrounded { carrier: c } => concat(concat(c.module_path as String, "."), c.decl_name as String)
+    CarrierGroundedTwice { carrier: c } => concat(concat(c.module_path as String, "."), concat(c.decl_name as String, " is grounded by more than one row, so the route is not unique"))
+    ExtentNotIncluded { from: f, to: t } => concat(concat(concat(f.module_path as String, "."), f.decl_name as String), concat(" is not inside ", concat(concat(t.module_path as String, "."), t.decl_name as String)))
+  }
 }
 
 type KernelGroundingLookup

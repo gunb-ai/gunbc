@@ -1,0 +1,107 @@
+module test.claim.emitter_nat_int_cast_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Permanent regression control for `Nat as Int` (#14545: extdeps.units.iso8601_calendar failed rustc
+// with 'unreachable expression' because the emitter rendered the cast as `panic!("unsupported cast
+// from Nat to i64")`). LEGALITY is a source-language fact, decided by declaration identity. Between grounded
+// carriers it is the derived crossing (std.literal_elaboration kernel_grounding_crossing over
+// gunbc.structural_realization_bindings kernel_grounding_rows): std.nat Nat onto std.integer Int is a total
+// widening and the converse refuses. A grounded natural onto any other target refuses at TYPE CHECK ("no
+// declared conversion route"), except onto the KERNEL Int, which stays on the name-keyed chain, the declared
+// below-ceiling class gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged. Emit realizes both admitted shapes as
+// the identity. A cast the checker skips still reaches the emitter's unsupported-cast abort: gunbc.recurring_failure_mode
+// the_checker_admits_a_cast_the_evaluator_refuses.
+//
+// NOT CLAIMED: a user `type Nat` passed at an Int formal. That is the known declared-type-wall gap, which this
+// change neither opens nor closes. Trigger: #14430 closes it; claim it there.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn nat_int_source() -> String {
+  "module nat_int_cast\n\nimport std.types { Int }\nimport std.nat { Nat }\n\nfn width() -> Nat {\n  60\n}\n\nfn widen() -> Int {\n  (width() as Int) * 2\n}\n"
+}
+
+data nat_as_float_source: String = "module probe_nat_as_float\nimport std.types { Float }\nimport std.nat { Nat }\nfn widen(n: Nat) -> Float { n as Float }\n"
+
+// RED: a cast from the std.nat Nat to a type with no declared route refuses at compile.
+test fn w_undeclared_cast_is_refused_at_type_check() -> Bool {
+  blocking_count(nat_as_float_source) >= 1
+}
+
+// CONTROL: the declared route compiles.
+test fn w_nat_as_int_compiles() -> Bool {
+  blocking_count(nat_int_source()) == 0
+}
+
+// CONTROL through emit: the declared route is realized as the identity, no abort spelling.
+test fn w_nat_as_int_is_the_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    nat_int_source(),
+    "src/nat_int_cast.rs",
+    ["pub fn widen"],
+    ["unsupported cast", "panic!"]
+  )
+}
+
+data cross_module_nat_int_source: String = "module probe_cross_module_nat_int\n\nimport std.types { Int }\nimport extdeps.units.iso8601 { iso8601_minutes_per_hour }\n\nfn widen() -> Int {\n  (iso8601_minutes_per_hour() as Int) * 2\n}\n"
+
+// CONTROL, the #14545 shape: the operand is a call whose Nat comes from ANOTHER module and this module
+// never imports Nat, so the source's declaration is read from the carried type, not from this module's names.
+test fn w_cross_module_nat_as_int_is_the_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    cross_module_nat_int_source,
+    "src/probe_cross_module_nat_int.rs",
+    ["pub fn widen"],
+    ["unsupported cast", "panic!"]
+  )
+}
+
+data structural_int_onto_nat_source: String = "module probe_structural_int_onto_nat\n\nimport std.integer { Int }\nimport std.nat { Nat }\n\nfn narrow(i: Int) -> Nat {\n  i as Nat\n}\n"
+
+data nat_onto_structural_int_source: String = "module probe_nat_onto_structural_int\n\nimport std.integer { Int }\nimport std.nat { Nat }\n\nfn widen(n: Nat) -> Int {\n  n as Int\n}\n"
+
+data foreign_nat_onto_int_source: String = "module probe_foreign_nat_onto_int\n\nimport std.types { Int }\n\ntype Nat\n  = Zero\n  | Succ { prev: Nat }\n\nfn widen(n: Nat) -> Int {\n  n as Int\n}\n"
+
+// RED: the converse of the widening refuses at compile. The integers are not inside the naturals, so the
+// derived crossing from std.integer Int onto std.nat Nat is ExtentNotIncluded.
+test fn w_structural_int_onto_nat_is_refused() -> Bool {
+  blocking_count(structural_int_onto_nat_source) >= 1
+}
+
+// CONTROL: std.nat Nat onto std.integer Int, the derived total widening, compiles under the same spelling
+// the kernel cast uses.
+test fn w_nat_onto_structural_int_compiles() -> Bool {
+  blocking_count(nat_onto_structural_int_source) == 0
+}
+
+// CONTROL through emit: the derived widening is realized as the identity.
+test fn w_nat_onto_structural_int_is_the_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    nat_onto_structural_int_source,
+    "src/probe_nat_onto_structural_int.rs",
+    ["pub fn widen"],
+    ["unsupported cast", "panic!"]
+  )
+}
+
+// RED, IDENTITY KEYING: a user-declared coproduct spelled Nat has no grounding row, so no crossing admits it
+// onto the kernel Int, and it refuses as a nominal value with no declared conversion.
+test fn w_foreign_nat_onto_int_is_refused() -> Bool {
+  blocking_count(foreign_nat_onto_int_source) >= 1
+}
