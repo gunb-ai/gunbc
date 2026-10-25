@@ -16361,7 +16361,7 @@ pub fn emit_typed_item(
                     ) || is_trmc_eligible(
                         fn_body.clone(),
                         crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
-                        crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                        emit_info.clone(),
                         env.source_indices.clone(),
                     ));
                     let fn_read_only = if item_is_tco.clone() {
@@ -20631,7 +20631,7 @@ pub fn emit_fn_def(
                 si.clone(),
             ));
         let use_trmc = ((!realized_seam.clone() && !plain_tco.clone())
-            && is_trmc_eligible(body.clone(), name.clone(), inferred.clone(), si.clone()));
+            && is_trmc_eligible(body.clone(), name.clone(), emit_info.clone(), si.clone()));
         let use_tco = (plain_tco.clone() || use_trmc.clone());
         let needs_stacker = ((!realized_seam.clone()
             && crate::v1_compiler_emit::is_self_recursive(
@@ -35275,6 +35275,57 @@ pub fn find_unique_struct_name_by_fields(
     }
 }
 
+pub fn record_lit_variant_parent(
+    variant_surface_name: String,
+    bare_parent_enum: Option<String>,
+    resolved_type: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match contextual_variant_parent(
+        variant_surface_name.clone(),
+        bare_parent_enum.clone(),
+        resolved_type.clone(),
+        emit_info.clone(),
+        si.clone(),
+    ) {
+        Some(context_parent) => Some(context_parent.clone()),
+        std::option::Option::None => {
+            let rt_is_type_var = if (resolved_type.inferred.clone() != std::option::Option::None) {
+                is_type_variable(resolved_type.inferred.clone().clone().unwrap())
+            } else {
+                false
+            };
+            let rt_name = crate::v1_std_core::qualified_last_segment(
+                crate::v1_std_core::authored_name_at(si.clone(), resolved_type.clone()),
+            );
+            if (((((resolved_type.ident_span.clone() != std::option::Option::None)
+                && (rt_name.clone() != variant_surface_name.clone()))
+                && !rt_is_type_var.clone())
+                && (rt_name.clone() != "Error".to_string()))
+                && match (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
+                    emit_info.type_summaries.clone(),
+                    variant_surface_name.clone(),
+                    rt_name.clone(),
+                ))
+                .clone()
+                {
+                    TypeSummaryQuestion::QuestionDecided { value: v, .. } => v.clone(),
+                    _ => false,
+                })
+            {
+                Some(rt_name.clone())
+            } else {
+                bare_parent_enum.clone()
+            }
+        }
+    }
+}
+
+pub fn record_lit_is_host_freemonoid_cons(tn: String, effective_parent: Option<String>) -> bool {
+    ((tn.clone() == "Cons".to_string()) && parent_enum_is_freemonoid(effective_parent))
+}
+
 pub fn emit_typed_record_lit(
     type_name: Option<String>,
     fields: Rc<Vec<Rc<Node>>>,
@@ -35597,51 +35648,15 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), crat
                     }
                 };
                 let ctor_alias_resolved = (ctor_name.clone() != tn.clone());
-                let context_lookup = contextual_variant_parent(
+                let effective_parent = record_lit_variant_parent(
                     variant_surface_name.clone(),
                     bare_parent_enum.clone(),
                     resolved_type.clone(),
                     emit_info.clone(),
                     si.clone(),
                 );
-                let effective_parent = match context_lookup.clone() {
-                    Some(context_parent) => Some(context_parent.clone()),
-                    std::option::Option::None => {
-                        let rt_is_type_var =
-                            if (resolved_type.inferred.clone() != std::option::Option::None) {
-                                is_type_variable(resolved_type.inferred.clone().clone().unwrap())
-                            } else {
-                                false
-                            };
-                        let rt_name = crate::v1_std_core::qualified_last_segment(
-                            crate::v1_std_core::authored_name_at(si.clone(), resolved_type.clone()),
-                        );
-                        if (((((resolved_type.ident_span.clone() != std::option::Option::None)
-                            && (rt_name.clone() != variant_surface_name.clone()))
-                            && !rt_is_type_var.clone())
-                            && (rt_name.clone() != "Error".to_string()))
-                            && match (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                                emit_info.type_summaries.clone(),
-                                variant_surface_name.clone(),
-                                rt_name.clone(),
-                            ))
-                            .clone()
-                            {
-                                TypeSummaryQuestion::QuestionDecided { value: v, .. } => v.clone(),
-                                _ => false,
-                            })
-                        {
-                            Some(rt_name.clone())
-                        } else {
-                            bare_parent_enum.clone()
-                        }
-                    }
-                };
-                let host_freemonoid_cons = ((tn.clone() == "Cons".to_string())
-                    && match effective_parent.clone() {
-                        Some(p) => (p.clone() == "FreeMonoid".to_string()),
-                        std::option::Option::None => false,
-                    });
+                let host_freemonoid_cons =
+                    record_lit_is_host_freemonoid_cons(tn.clone(), effective_parent.clone());
                 if host_freemonoid_cons.clone() {
                     {
                         let head_val = match Rc::new({
@@ -38007,32 +38022,41 @@ pub struct TcoCursorPlan {
 pub fn is_trmc_eligible(
     body: Rc<Node>,
     fn_name: String,
-    return_type: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let returns_list =
-            ((crate::v1_std_core::authored_name_at(si.clone(), return_type.clone())
-                == "List".to_string())
-                || (crate::v1_std_core::authored_name_at(si.clone(), return_type.clone())
-                    == "FreeMonoid".to_string()));
-        ((returns_list.clone() && trmc_has_cons_site(body.clone(), fn_name.clone(), si.clone()))
-            && trmc_tail_ok(body.clone(), fn_name.clone(), si.clone()))
-    }
+    (trmc_has_cons_site(body.clone(), fn_name.clone(), emit_info.clone(), si.clone())
+        && trmc_tail_ok(body.clone(), fn_name.clone(), emit_info.clone(), si.clone()))
 }
 
 pub fn trmc_cons_tail_call(
     n: Rc<Node>,
     fn_name: String,
+    emit_info: Rc<EmitGraphInfo>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match (*n.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit { parent_enum: _, .. } => {
-            let named_cons =
-                match crate::v1_std_core::record_lit_type_name_at(n.clone(), si.clone()) {
-                    Some(tn) => (tn.clone() == "Cons".to_string()),
-                    std::option::Option::None => false,
-                };
+        ExprData::ExprRecordLit {
+            parent_enum: pe, ..
+        } => {
+            let tn = match crate::v1_std_core::record_lit_type_name_at(n.clone(), si.clone()) {
+                Some(t) => t.clone(),
+                std::option::Option::None => "".to_string(),
+            };
+            let bare_parent = match pe.clone() {
+                Some(p) => Some(crate::v1_std_core::qualified_last_segment(p.clone())),
+                std::option::Option::None => std::option::Option::None,
+            };
+            let carrier_cons = record_lit_is_host_freemonoid_cons(
+                tn.clone(),
+                record_lit_variant_parent(
+                    tn.clone(),
+                    bare_parent,
+                    crate::v1_compiler_infer_types::resolved_type(n.clone()),
+                    emit_info,
+                    si.clone(),
+                ),
+            );
             let names = Rc::new({
                 let mut __result = Vec::new();
                 for f in n.children.clone().iter().cloned() {
@@ -38043,7 +38067,7 @@ pub fn trmc_cons_tail_call(
                 }
                 __result
             });
-            let shaped = (((named_cons.clone() && ((names.clone().len() as i64) == 2)) && {
+            let shaped = (((carrier_cons.clone() && ((names.clone().len() as i64) == 2)) && {
                 let mut __found = false;
                 for x in names.iter().cloned() {
                     if (x.clone() == "head".to_string()) {
@@ -38133,15 +38157,17 @@ pub fn trmc_no_self_call(
 pub fn trmc_has_cons_site(
     n: Rc<Node>,
     fn_name: String,
+    emit_info: Rc<EmitGraphInfo>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match trmc_cons_tail_call(n.clone(), fn_name.clone(), si.clone()) {
+        match trmc_cons_tail_call(n.clone(), fn_name.clone(), emit_info.clone(), si.clone()) {
             Some(_) => true,
             std::option::Option::None => {
                 let mut __found = false;
                 for c in n.children.clone().iter().cloned() {
-                    if trmc_has_cons_site(c.clone(), fn_name.clone(), si.clone()) {
+                    if trmc_has_cons_site(c.clone(), fn_name.clone(), emit_info.clone(), si.clone())
+                    {
                         __found = true;
                         break;
                     }
@@ -38155,10 +38181,11 @@ pub fn trmc_has_cons_site(
 pub fn trmc_tail_ok(
     n: Rc<Node>,
     fn_name: String,
+    emit_info: Rc<EmitGraphInfo>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match trmc_cons_tail_call(n.clone(), fn_name.clone(), si.clone()) {
+        match trmc_cons_tail_call(n.clone(), fn_name.clone(), emit_info.clone(), si.clone()) {
             Some(call) => {
                 let head_ok = match trmc_cons_head(n.clone(), si.clone()) {
                     Some(h) => trmc_no_self_call(h.clone(), fn_name.clone(), si.clone()),
@@ -38204,7 +38231,9 @@ pub fn trmc_tail_ok(
                 }
                 ExprData::ExprIf => {
                     let else_ok = match crate::v1_std_core::if_else_branch(n.clone()) {
-                        Some(eb) => trmc_tail_ok(eb.clone(), fn_name.clone(), si.clone()),
+                        Some(eb) => {
+                            trmc_tail_ok(eb.clone(), fn_name.clone(), emit_info.clone(), si.clone())
+                        }
                         std::option::Option::None => true,
                     };
                     ((trmc_no_self_call(
@@ -38214,6 +38243,7 @@ pub fn trmc_tail_ok(
                     ) && trmc_tail_ok(
                         crate::v1_std_core::if_then_branch(n.clone()),
                         fn_name.clone(),
+                        emit_info.clone(),
                         si.clone(),
                     )) && else_ok.clone())
                 }
@@ -38236,6 +38266,7 @@ pub fn trmc_tail_ok(
                             } && trmc_tail_ok(
                                 crate::v1_std_core::arm_body(arm.clone()),
                                 fn_name.clone(),
+                                emit_info.clone(),
                                 si.clone(),
                             )) {
                                 __all = false;
@@ -38247,7 +38278,9 @@ pub fn trmc_tail_ok(
                 }
                 ExprData::ExprLet => {
                     let body_ok = match crate::v1_std_core::let_body(n.clone()) {
-                        Some(b) => trmc_tail_ok(b.clone(), fn_name.clone(), si.clone()),
+                        Some(b) => {
+                            trmc_tail_ok(b.clone(), fn_name.clone(), emit_info.clone(), si.clone())
+                        }
                         std::option::Option::None => true,
                     };
                     (trmc_no_self_call(
@@ -38283,13 +38316,19 @@ pub fn trmc_tail_ok(
                     };
                     (inits_ok.clone()
                         && match ss.clone().last().cloned() {
-                            Some(e) => trmc_tail_ok(e.clone(), fn_name.clone(), si.clone()),
+                            Some(e) => trmc_tail_ok(
+                                e.clone(),
+                                fn_name.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            ),
                             std::option::Option::None => true,
                         })
                 }
                 ExprData::ExprReturn => trmc_tail_ok(
                     crate::v1_std_core::return_value(n.clone()),
                     fn_name.clone(),
+                    emit_info.clone(),
                     si.clone(),
                 ),
                 _ => trmc_no_self_call(n.clone(), fn_name.clone(), si.clone()),
@@ -38979,7 +39018,12 @@ pub fn cursor_walk(
                 }
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
                     let cons_step = if emit_info.trmc_out.clone() {
-                        trmc_cons_tail_call(n.clone(), fn_name.clone(), si.clone())
+                        trmc_cons_tail_call(
+                            n.clone(),
+                            fn_name.clone(),
+                            emit_info.clone(),
+                            si.clone(),
+                        )
                     } else {
                         std::option::Option::None
                     };
@@ -39680,7 +39724,7 @@ pub fn emit_rust_tco_default_return(
     {
         let si = frame.scope.type_env.source_indices.clone();
         let cons_step = if emit_info.trmc_out.clone() {
-            trmc_cons_tail_call(frame.expr.clone(), fn_name, si.clone())
+            trmc_cons_tail_call(frame.expr.clone(), fn_name, emit_info.clone(), si.clone())
         } else {
             std::option::Option::None
         };
