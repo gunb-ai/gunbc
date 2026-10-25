@@ -12,14 +12,14 @@ import std.unicode.scalar { ascii_lowercase }
 import v2.compiler.tokenize { char_in_class, tokenize }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.std.compilers.lexing { IdentContinueChar, IdentStartChar, TokenStream }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, fold_list, is_empty, length, list_find_first, list_head, list_map, list_reverse, skip, empty_map, map_insert, map_lookup, collection_concat_shape, collection_count_shape, collection_join_shape }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, fold_list, is_empty, length, list_find_first, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup, collection_concat_shape, collection_count_shape, collection_join_shape }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, bind_outcome, diagnostics_singleton, outcome_accepted, outcome_rejected, invariant_port_locus, textual_whole_file_diagnostic }
 import v2.std.grammar { ParseTree }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_intern_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.cross_tree.import_model { CrossTreeAdmissionVerdict, CrossTreeAdmitted, CrossTreeDenialReason, CrossTreeDenied, CrossTreeImport, DagTree, SourceRootRef, SourceRootSet, V2Tree, cross_tree_import_admitted, namespace_declared, source_root_ref_eq }
+import v2.std.cross_tree.import_model { CrossTreeAdmissionVerdict, CrossTreeAdmitted, CrossTreeDenialReason, CrossTreeDenied, CrossTreeImport, DagTree, SourceRootRef, SourceRootSet, V2Tree, cross_tree_import_admitted, source_root_ref_eq }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
@@ -1387,7 +1387,7 @@ fn source_authority_round_trip(
 // SourceStorageLayout value at the entry boundary; this module imports no repository fact.
 // `namespace_rows` are the namespace rows (gunbc.source_layout_namespaces) in their order, and
 // `declared_namespaces` is the same rows keyed for the one membership read
-// (v2.std.cross_tree.import_model namespace_declared) the storage lookup asks per candidate and the
+// (std.algebra map_contains_key over these rows) the storage lookup asks per candidate and the
 // population enumeration asks per listed module. source_storage_layout derives the second from the first,
 // so the two cannot disagree.
 type StorageNamespaceRoot {
@@ -1608,7 +1608,7 @@ fn storage_cross_tree_verdict(layout: SourceStorageLayout, from_tree: SourceRoot
 
 // A cross-tree candidate in a namespace with no row names no stored module (see above).
 fn storage_candidate_unstorable(layout: SourceStorageLayout, from_tree: SourceRootRef, module: String, file: ModuleFileRef) -> Bool {
-  !source_root_ref_eq(a: from_tree, b: file.tree) && !namespace_declared(declared: layout.declared_namespaces, namespace: module_namespace(name: module))
+  !source_root_ref_eq(a: from_tree, b: file.tree) && !map_contains_key(m: layout.declared_namespaces, key: module_namespace(name: module))
 }
 
 fn reference_next_read_derived(

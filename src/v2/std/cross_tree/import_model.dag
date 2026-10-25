@@ -1,7 +1,6 @@
 module v2.std.cross_tree.import_model
 
-import std.algebra { FreeMonoid, contains, fold_list, map_lookup }
-import std.optional { Absent, Present }
+import std.algebra { FreeMonoid, contains, fold_list, map_contains_key }
 import std.types { Map }
 import v2.std.text { String }
 
@@ -42,13 +41,6 @@ fn source_root_set_contains(roots: SourceRootSet, r: SourceRootRef) -> Bool {
   contains(xs: roots, item: r, eq: source_root_ref_eq)
 }
 
-fn namespace_declared(declared: Map<String, Bool>, namespace: String) -> Bool {
-  match map_lookup(m: declared, key: namespace) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // THE ACTIVE-ROOT DENIALS: an edge from or to a tree the compile did not activate refuses, whichever
 // namespaces it joins. This is the whole verdict wherever a module is already in hand (v2.compiler.name_resolve
 // admit_import_cross_tree_gate, through v2.std.cross_tree.resolution cross_tree_edge_decision): reaching a
@@ -86,7 +78,7 @@ fn cross_tree_import_admitted(
     CrossTreeAdmitted =>
       if source_root_ref_eq(a: edge.from_tree, b: edge.to_tree) {
         CrossTreeAdmitted
-      } else if namespace_declared(declared: declared, namespace: edge.from_namespace) && namespace_declared(declared: declared, namespace: edge.to_namespace) {
+      } else if map_contains_key(m: declared, key: edge.from_namespace) && map_contains_key(m: declared, key: edge.to_namespace) {
         CrossTreeAdmitted
       } else {
         CrossTreeDenied { reason: CrossTreeFundamentalityUnknownFailClosed }
