@@ -37055,7 +37055,7 @@ pub fn emit_rust_equality_fn_name(r: Rc<DeclarationRef>) -> String {
             ),
             "__".to_string(),
         ),
-        r.decl_name.clone(),
+        crate::v1_compiler_emit_core_support::to_snake(r.decl_name.clone()),
     )
 }
 
