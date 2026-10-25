@@ -1,28 +1,32 @@
 module test.claim.fabric.fabric_storage_fixture
 
 import extdeps.shell
-import std.types { NonEmptyStr, String, FilePath }
+import std.types { Bool, NonEmptyStr, String, FilePath }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.http.server { ServeWireResponse }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_ensure }
 import gunbc.fabric.fabric_storage_placement {
-  fabric_storage_store_root, fabric_state_storage_root,
+  FabricStorage, FabricStateStorage, fabric_storage_store_root, fabric_state_storage_root,
   fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused,
   fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready,
 }
-import gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, fabric_storage_protected_door_over, FabricDoorRosters }
-import gunbc.fabric.fabric_storage_protocol { text_response }
+import gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }
 
 // THE FABRIC DB UNDER A DIRECTORY THE TEST OWNS: the production mints (gunbc.fabric.fabric_storage_placement
-// fabric_storage_placed_store, fabric_state_storage_store) over an instance whose root is the test's, the
-// areas created the way the deployment's directory rows would, so every served claim reaches the store
-// through a real readiness observation exactly as the door does. `files` and `state_files` are the file
-// library's handles over the SAME derived roots, built here only to plant and read back what the sealed
-// store wrote -- the pre-seal route, kept as the readback referent, never handed to the door.
+// fabric_storage_placed_store, fabric_state_storage_store) over an instance whose root is the test's
+// (gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance, the recorded witness route), the areas
+// created the way the deployment's directory rows would, so every claim reaches the stores through a real
+// readiness observation exactly as the door does. `store` and `state_store` are the minted sealed stores;
+// `files` and `state_files` are the file library's handles over the SAME derived roots, built here only to plant
+// and read back what the sealed stores wrote -- the pre-seal route, kept as the readback referent, never handed to
+// the door.
 type FabricFixture {
   instance: HostDashboardInstance
+  store: FabricStorage
+  state_store: FabricStateStorage
   files: FabricStorageFileRoot
   state_files: FabricStorageFileRoot
 }
@@ -41,35 +45,27 @@ fn fabric_fixture_instance(root: String) -> HostDashboardInstance {
   )
 }
 
-// An instance whose root holds nothing: the mints must refuse it (the realization-broken control).
-fn fabric_fixture_unprovisioned() -> FabricFixture {
-  let instance = fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_unprovisioned.XXXXXX").path)
-  FabricFixture {
-    instance: instance,
-    files: fabric_storage_file_root(root: fabric_storage_store_root(instance: instance)),
-    state_files: fabric_storage_file_root(root: fabric_state_storage_root(instance: instance)),
+// ONE FIXTURE PER CLAIM, AND A REFUSED MINT FAILS THE CLAIM. Either mint answering Unready ends the claim with
+// ExitFailure naming the mint's own detail; it is never projected into a 503, an empty head or a refused write,
+// any of which a claim here can expect.
+fn fabric_fixture_run(claim: String, body: fn(FabricFixture) -> Bool) -> ProcessExit {
+  let instance = fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_fixture.XXXXXX").path)
+  let files = fabric_storage_file_root(root: fabric_storage_store_root(instance: instance))
+  let state_files = fabric_storage_file_root(root: fabric_state_storage_root(instance: instance))
+  let _public = fabric_storage_file_root_ensure(root: files)
+  let _state = fabric_storage_file_root_ensure(root: state_files)
+  match fabric_storage_placed_store(instance: instance) {
+    FabricStoragePlacedRootRefused { detail } => exit_failure(reason: concat(concat(claim, ": the public fabric store mint refused, so nothing was observed: "), detail as String))
+    FabricStoragePlacedRootReady { store } => match fabric_state_storage_store(instance: instance) {
+      FabricStateStorageUnready { detail } => exit_failure(reason: concat(concat(claim, ": the state fabric store mint refused, so nothing was observed: "), detail as String))
+      FabricStateStorageReady { store: state_store } =>
+        if body(FabricFixture { instance: instance, store: store, state_store: state_store, files: files, state_files: state_files }) { ExitSuccess }
+        else { exit_failure(reason: concat(claim, ": the claim did not hold over the minted stores")) }
+    }
   }
 }
 
-fn fabric_fixture() -> FabricFixture {
-  let f = fabric_fixture_unprovisioned()
-  let _public = fabric_storage_file_root_ensure(root: f.files)
-  let _state = fabric_storage_file_root_ensure(root: f.state_files)
-  f
-}
-
-// ONE REQUEST AT THE PUBLIC DOOR, over the store minted for the fixture's instance. A mint that refuses
-// answers 503 with its detail, which no caller decodes as a store arm.
+// ONE REQUEST AT THE PUBLIC DOOR, over the store minted for the fixture's instance.
 fn fabric_fixture_served(f: FabricFixture, rosters: FabricDoorRosters, path: String, body: String, login: String, peer: String) -> ServeWireResponse {
-  match fabric_storage_placed_store(instance: f.instance) {
-    FabricStoragePlacedRootRefused { detail } => text_response(status: 503, body: detail as String)
-    FabricStoragePlacedRootReady { store } => fabric_storage_serve_handle_over(store: store, rosters: rosters, method: "POST", path: path, body: body, tailscale_identity: login, peer_user: peer)
-  }
-}
-
-fn fabric_fixture_state_served(f: FabricFixture, rosters: FabricDoorRosters, path: String, body: String, login: String, peer: String) -> ServeWireResponse {
-  match fabric_state_storage_store(instance: f.instance) {
-    FabricStateStorageUnready { detail } => text_response(status: 503, body: detail as String)
-    FabricStateStorageReady { store } => fabric_storage_protected_door_over(store: store, rosters: rosters, method: "POST", path: path, body: body, tailscale_identity: login, peer_user: peer)
-  }
+  fabric_storage_serve_handle_over(store: f.store, rosters: rosters, method: "POST", path: path, body: body, tailscale_identity: login, peer_user: peer)
 }

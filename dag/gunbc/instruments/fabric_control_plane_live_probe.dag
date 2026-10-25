@@ -144,7 +144,7 @@ import gunbc.host.host_effect_realize { srv3_observe_path_owner }
 import extdeps.posix.path_ownership { PathOwnershipObservation, PathOwnerObserved, PathOwnerUnobserved, posix_owner_spec_equal }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathAbsent }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused,
 }
@@ -598,10 +598,6 @@ fn fci1_modeled_ownership_wire(member: FabricCellMember) -> NonEmptyStr {
     Present { value: Owned } => "modeled-ownership-owned"
     Present { value: Ensured } => "modeled-ownership-ensured"
   }
-}
-
-fn fci1_live_replace_held_wire_in(store: FabricAllocationStore) -> String {
-  fci1_held_generation_mutation_wire(mutation: fci1_live_replace_held(store: store))
 }
 
 fn fci1_assert_replace_held_in(
@@ -2214,8 +2210,18 @@ data non_fold_residue_frontier: List<FrontierRow> = [
 //   probe. The store's directory inside a fresh tree is created here, as the substrate creates the canonical one.
 //
 // The dependent submitter's after-reading is the one disposable read that must NOT create the directory: its
-// subject is that the reservation vanished with the unit's RuntimeDirectory, so a tree whose store no longer
-// lists is read as an unreadable reservation (the reading the root-taking probe produced) and never recreated.
+// subject is that the reservation vanished with the unit's RuntimeDirectory. That is read from the host -- the
+// tree's own exact path answering NotFound -- and never from the mint's refusal (see fci1_dependent_after_reading).
+//
+// NO REFUSED MINT IS EVER READ AS AN OBSERVATION. Every entry below answers an Unready mint with ExitFailure, or,
+// for the cp_live_* code entries, with CpLiveStoreUnready -- never a false, a zero or an invented reading, any of
+// which is a value a run can expect.
+//
+// THE OPERATOR-HANDED TREE IS A CALLER-CHOSEN ROOT. fci1_disposable_store and fci1_dependent_after_reading mint
+// over whatever directory the launcher or operator passes, through gunbc.host_state_root isolated_host_state_tree.
+// That route is recorded as a specimen of gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module, and its expecting-red probe is
+// test.claim.fabric.fabric_allocation_store_seal_witness an_operator_handed_tree_mints_an_allocation_store_today.
 
 fn fci1_canonical_store() -> FabricAllocationStoreReading {
   fabric_allocation_store(tree: host_state_tree())
@@ -2295,24 +2301,41 @@ fn fci1_disposable_write_cleanup_receipt(tree: NonEmptyStr, authority_path: Stri
   match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_write_disposable_cleanup_receipt_in(store: store, authority_path: authority_path, path: path) }
 }
 
-fn fci1_live_replace_held_wire() -> String {
-  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => join(["allocation store unready: ", detail as String], "")  FabricAllocationStoreReady { store } => fci1_live_replace_held_wire_in(store: store) }
+// THE DEPENDENT SUBMITTER'S AFTER-READING. The host is asked first whether the submitter's tree still exists. Its
+// exact path answering NotFound is the subject itself -- the RuntimeDirectory, and the reservation's store inside
+// it, went with the unit -- and is read as the reservation being unreadable, the reading the library answers over a
+// vanished root. Any other answer means the tree remains, so the store is minted over it WITHOUT creating its
+// directory and the reservation is read through the sealed store: a reservation that survived reads as survived,
+// and a store that will not mint while its tree remains is a typed refusal, never a vanished reservation.
+type Fci1DependentAfterReading
+  = Fci1DependentTreeVanished { tree: NonEmptyStr }
+  | Fci1DependentStoreRemains { store: FabricAllocationStore }
+  | Fci1DependentStoreRefused { tree: NonEmptyStr, detail: NonEmptyStr }
+
+fn fci1_dependent_after_reading(tree: NonEmptyStr) -> Fci1DependentAfterReading {
+  let r = Filesystem.Read(path: tree as String)
+  match filesystem_exact_read(path: tree as String, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
+    FilesystemExactPathAbsent { path: _ } => Fci1DependentTreeVanished { tree: tree }
+    _ => match fabric_allocation_store(tree: isolated_host_state_tree(dir: tree)) {
+      FabricAllocationStoreReady { store } => Fci1DependentStoreRemains { store: store }
+      FabricAllocationStoreUnready { detail } => Fci1DependentStoreRefused { tree: tree, detail: detail }
+    }
+  }
 }
 
-// THE DEPENDENT SUBMITTER'S AFTER-READING: minted WITHOUT creating the store directory (see above). A tree
-// whose store does not list is the reservation having vanished with the unit, read as unreadable.
-fn fci1_dependent_after_reading(tree: NonEmptyStr) -> FabricAllocationStoreReading {
-  fabric_allocation_store(tree: isolated_host_state_tree(dir: tree))
+fn fci1_tree_vanished_observation(tree: NonEmptyStr) -> RequiredBuildCellObservation {
+  ReservationUnreadable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: CasUnreadableReadRefused { detail: join(["the submitter's host-state tree answered NotFound: ", tree as String], "") } }
 }
 
-fn fci1_vanished_observation() -> RequiredBuildCellObservation {
-  ReservationUnreadable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: CasUnreadableReadRefused { detail: "the dependent submitter's store no longer lists" } }
+fn fci1_dependent_store_refused(tree: NonEmptyStr, detail: NonEmptyStr) -> ProcessExit {
+  exit_failure(reason: join(["the dependent submitter's tree remains but its allocation store will not mint: ", tree as String, ": ", detail as String], ""))
 }
 
 fn fci1_disposable_assert_lifetime_dependent(tree: NonEmptyStr, before_wire: String) -> ProcessExit {
   match fci1_dependent_after_reading(tree: tree) {
-    FabricAllocationStoreReady { store } => fci1_assert_lifetime_dependent_in(store: store, before_wire: before_wire)
-    FabricAllocationStoreUnready { detail: _ } => match fci1_lifetime_verdict_over(before_wire: before_wire, observe: fn() { fci1_vanished_observation() }) {
+    Fci1DependentStoreRemains { store } => fci1_assert_lifetime_dependent_in(store: store, before_wire: before_wire)
+    Fci1DependentStoreRefused { tree: t, detail } => fci1_dependent_store_refused(tree: t, detail: detail)
+    Fci1DependentTreeVanished { tree: t } => match fci1_lifetime_verdict_over(before_wire: before_wire, observe: fn() { fci1_tree_vanished_observation(tree: t) }) {
       ReservationLifetimeDependentOnSubmitter { slot_key: slot } =>
         if slot == "srv3-06" { ExitSuccess } else { exit_failure(reason: "dependent reservation named wrong slot") }
       other => exit_failure(reason: join(["submitter-owned reservation survived: ", required_build_cell_lifetime_verdict_wire(verdict: other)], ""))
@@ -2322,12 +2345,14 @@ fn fci1_disposable_assert_lifetime_dependent(tree: NonEmptyStr, before_wire: Str
 
 fn fci1_disposable_write_lifetime_dependent_receipt(tree: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
   match fci1_dependent_after_reading(tree: tree) {
-    FabricAllocationStoreReady { store } => fci1_write_lifetime_dependent_receipt_in(store: store, before_wire: before_wire, path: path)
-    FabricAllocationStoreUnready { detail: _ } => {
-      let verdict = fci1_lifetime_verdict_over(before_wire: before_wire, observe: fn() { fci1_vanished_observation() })
+    Fci1DependentStoreRemains { store } => fci1_write_lifetime_dependent_receipt_in(store: store, before_wire: before_wire, path: path)
+    Fci1DependentStoreRefused { tree: t, detail } => fci1_dependent_store_refused(tree: t, detail: detail)
+    Fci1DependentTreeVanished { tree: t } => {
+      let verdict = fci1_lifetime_verdict_over(before_wire: before_wire, observe: fn() { fci1_tree_vanished_observation(tree: t) })
       let write = Filesystem.Write(path: path, content: join([
         "before_wire=", before_wire, "\nverdict=", to_string(verdict),
-        "\nslot_observation=", to_string(Fci1SlotUnreadable { path: fabric_allocation_store_path(tree: isolated_host_state_tree(dir: tree)) }),
+        "\nslot_observation=", to_string(Fci1SlotUnreadable { path: fabric_allocation_store_path(tree: isolated_host_state_tree(dir: t)) }),
+        "\ntree_observation=TreeAnsweredNotFound|path=", t as String,
       ], ""))
       if !write.success { exit_failure(reason: "lifetime-dependent receipt write refused") }
       else { match verdict {
@@ -2339,23 +2364,33 @@ fn fci1_disposable_write_lifetime_dependent_receipt(tree: NonEmptyStr, before_wi
   }
 }
 
-// THE EXCLUSION PROBE, over an EMPTY directory an operator hands it as a disposable tree.
-fn cp_live_reservation_is_exclusive(tree: NonEmptyStr) -> Bool {
-  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail: _ } => false  FabricAllocationStoreReady { store } => cp_live_reservation_is_exclusive_in(store: store) }
+// THE EXCLUSION PROBE, over an EMPTY directory an operator hands it as a disposable tree. The Bool entries answer
+// with a ProcessExit; the code entries answer CpLiveCodeObserved with the probe's code, or CpLiveStoreUnready with
+// the mint's detail -- a refused mint has no code, so it can never read as one a run expects.
+type CpLiveCodeReading
+  = CpLiveCodeObserved { code: Int }
+  | CpLiveStoreUnready { detail: NonEmptyStr }
+
+fn cp_live_held(claim: String, held: Bool) -> ProcessExit {
+  if held { ExitSuccess } else { exit_failure(reason: join([claim, ": the claim did not hold over the minted store"], "")) }
 }
 
-fn cp_live_empty_roster_reports_nothing_offered(tree: NonEmptyStr) -> Bool {
-  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail: _ } => false  FabricAllocationStoreReady { store } => cp_live_empty_roster_reports_nothing_offered_in(store: store) }
+fn cp_live_reservation_is_exclusive(tree: NonEmptyStr) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => cp_live_held(claim: "cp_live_reservation_is_exclusive", held: cp_live_reservation_is_exclusive_in(store: store)) }
 }
 
-fn cp_live_nothing_admissible_touches_no_store(tree: NonEmptyStr) -> Int {
-  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail: _ } => 0  FabricAllocationStoreReady { store } => cp_live_nothing_admissible_touches_no_store_in(store: store) }
+fn cp_live_empty_roster_reports_nothing_offered(tree: NonEmptyStr) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => cp_live_held(claim: "cp_live_empty_roster_reports_nothing_offered", held: cp_live_empty_roster_reports_nothing_offered_in(store: store)) }
 }
 
-fn cp_live_broker_reserves_the_cell_the_market_chose(tree: NonEmptyStr) -> Int {
-  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail: _ } => 0  FabricAllocationStoreReady { store } => cp_live_broker_reserves_the_cell_the_market_chose_in(store: store) }
+fn cp_live_nothing_admissible_touches_no_store(tree: NonEmptyStr) -> CpLiveCodeReading {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => CpLiveStoreUnready { detail: detail }  FabricAllocationStoreReady { store } => CpLiveCodeObserved { code: cp_live_nothing_admissible_touches_no_store_in(store: store) } }
 }
 
-fn cp_live_release_frees_the_cell_it_reserved(tree: NonEmptyStr) -> Int {
-  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail: _ } => 0  FabricAllocationStoreReady { store } => cp_live_release_frees_the_cell_it_reserved_in(store: store) }
+fn cp_live_broker_reserves_the_cell_the_market_chose(tree: NonEmptyStr) -> CpLiveCodeReading {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => CpLiveStoreUnready { detail: detail }  FabricAllocationStoreReady { store } => CpLiveCodeObserved { code: cp_live_broker_reserves_the_cell_the_market_chose_in(store: store) } }
+}
+
+fn cp_live_release_frees_the_cell_it_reserved(tree: NonEmptyStr) -> CpLiveCodeReading {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => CpLiveStoreUnready { detail: detail }  FabricAllocationStoreReady { store } => CpLiveCodeObserved { code: cp_live_release_frees_the_cell_it_reserved_in(store: store) } }
 }

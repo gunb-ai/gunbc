@@ -1,9 +1,9 @@
 module test.claim.runner.runner_microvm_slot_reserve_witness
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath }
-import extdeps.shell
-import gunbc.host_state_root { isolated_host_state_tree }
-import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import std.types { String, NonEmptyStr, Bool, List }
+import std.process { ProcessExit }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
+import test.claim.fabric.fabric_allocation_witness_store { allocation_witness_run }
 import std.measure { second, MoneyOnce, MoneyPerSecond, money_amount_micro }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.durable_compare_and_set { cas_generation_first, CasGeneration }
@@ -331,35 +331,29 @@ test fn a_superseding_posture_revision_leaves_the_shakedown_sanction_stale() -> 
 
 // The real CI broker must refuse the workspace-designated cell before consulting a hold store.
 // A storage failure is not an acceptable substitute for the capacity-purpose refusal, so the store is a real,
-// empty one (rs_store) rather than one that cannot answer.
-test fn workspace_transfer_blocks_the_production_ci_broker_before_reservation() -> Bool {
-  let selected = slot()
-  let field = microvm_shakedown_candidate_field(slot: selected)
-  field.admitted.count() == 1 && match rs_store() {
-    Absent => false
-    Present { value: store } => match microvm_shakedown_broker_decide(
-    store: store,
-    slot: selected, field: field, issued_at: "2026-10-15T00:00:00Z",
-  ) {
-    ShakedownBrokerDecided { decision: CellGrantNotSelected { refusal: NoCellAdmissible { considered: _, refused: refusals } } } =>
-      refusals.count() == 1 && match refusals.first() {
-        Present { value: CapacityClassRefused { executor: cell, required: ControlPlaneCapacity, sanctioned: CustomerExecutableCapacity } } =>
-          (cell as String) == "srv1-13"
-        _ => false
-      }
-    _ => false
-  }
-  }
+// empty one (rs_run) rather than one that cannot answer, and a refused mint fails the claim with its detail.
+test fn workspace_transfer_blocks_the_production_ci_broker_before_reservation() -> ProcessExit {
+  rs_run(claim: "workspace_transfer_blocks_the_production_ci_broker_before_reservation", body: fn(dir, store) {
+    let selected = slot()
+    let field = microvm_shakedown_candidate_field(slot: selected)
+    field.admitted.count() == 1 && match microvm_shakedown_broker_decide(
+      store: store,
+      slot: selected, field: field, issued_at: "2026-10-15T00:00:00Z",
+    ) {
+      ShakedownBrokerDecided { decision: CellGrantNotSelected { refusal: NoCellAdmissible { considered: _, refused: refusals } } } =>
+        refusals.count() == 1 && match refusals.first() {
+          Present { value: CapacityClassRefused { executor: cell, required: ControlPlaneCapacity, sanctioned: CustomerExecutableCapacity } } =>
+            (cell as String) == "srv1-13"
+          _ => false
+        }
+      _ => false
+    }
+  })
 }
 
 // THE STORE THE BROKER IS HANDED: the production mint over a host-state tree this witness owns (an empty,
 // listed store). Were the purpose refusal missing, the broker would commit a grant in it and the claim above
 // would read that grant rather than the refusal.
-fn rs_store() -> FabricAllocationStore? {
-  let tree = isolated_host_state_tree(dir: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_slot_reserve.XXXXXX").path as NonEmptyStr)
-  let _made = shell.Mkdir.Parents(path: fabric_allocation_store_path(tree: tree) as String as FilePath)
-  match fabric_allocation_store(tree: tree) {
-    FabricAllocationStoreReady { store } => Present { value: store }
-    FabricAllocationStoreUnready { detail: _ } => none
-  }
+fn rs_run(claim: String, body: fn(NonEmptyStr, FabricAllocationStore) -> Bool) -> ProcessExit {
+  allocation_witness_run(template: "/tmp/gunbc_slot_reserve.XXXXXX", claim: claim, body: body)
 }

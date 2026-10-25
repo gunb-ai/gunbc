@@ -1,10 +1,11 @@
 module test.claim.fabric.fabric_control_plane_witness
 
 import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for, fixture_permit_for }
-import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
-import extdeps.shell
-import gunbc.host_state_root { host_state_tree, isolated_host_state_tree }
-import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit }
+import gunbc.host_state_root { host_state_tree }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store_path }
+import test.claim.fabric.fabric_allocation_witness_store { allocation_witness_run }
 import std.content_hash { content_hash_of_value }
 import product.fabric.execution {
   ReservationRef, LeaseIdentity, Receipt, ReceiptPayload, SettlementReceipt, ExecutionReceipt,
@@ -121,20 +122,18 @@ fn cp_roster_sized(executor: NonEmptyStr, threads: Int) -> List<FabricCellCandid
   )
 }
 
-fn cp_broker(roster: List<FabricCellCandidate>, sanctions: List<ExecutorSanction>) -> CellReservation {
+fn cp_broker(store: FabricAllocationStore, roster: List<FabricCellCandidate>, sanctions: List<ExecutorSanction>) -> CellReservation {
   cp_broker_for(
-    roster: roster, sanctions: sanctions, demand_key: "demand-7", work_key: "work-7")
+    store: store, roster: roster, sanctions: sanctions, demand_key: "demand-7", work_key: "work-7")
 }
 
 fn cp_broker_for(
+  store: FabricAllocationStore,
   roster: List<FabricCellCandidate>,
   sanctions: List<ExecutorSanction>,
   demand_key: DemandKey,
   work_key: WorkKey,
 ) -> CellReservation {
-  match cp_store() {
-  Absent => AttemptRefused { slot_key: "srv3-06", detail: "the witness's isolated allocation store did not mint" }
-  Present { value: store } =>
   broker_reserve_for_demand(
     store: store,
     demand: floor_demand(
@@ -153,22 +152,26 @@ fn cp_broker_for(
     maximum_buy_order: money_amount_micro(count: 1000000),
     delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
   )
-  }
 }
 
-test fn an_executor_refused_on_the_capacity_line_is_reported_not_dropped() -> Bool {
-  let refusals = cp_admission_refusals(
-    r: cp_broker(
-      roster: cp_roster(executor: "srv3-06"),
-      sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: CustomerExecutableCapacity }],
-    ),
-  )
-  (refusals |> count) == 1
-    && fold(refusals, init: false, f: (acc, a) => acc || cp_refusal_is_class(a: a))
+test fn an_executor_refused_on_the_capacity_line_is_reported_not_dropped() -> ProcessExit {
+  cp_run(claim: "an_executor_refused_on_the_capacity_line_is_reported_not_dropped", body: fn(dir, store) {
+    let refusals = cp_admission_refusals(
+      r: cp_broker(
+        store: store,
+        roster: cp_roster(executor: "srv3-06"),
+        sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: CustomerExecutableCapacity }],
+      ),
+    )
+    (refusals |> count) == 1
+      && fold(refusals, init: false, f: (acc, a) => acc || cp_refusal_is_class(a: a))
+  })
 }
 
-test fn an_empty_roster_reports_no_admission_refusals_at_all() -> Bool {
-  (cp_admission_refusals(r: cp_broker(roster: [], sanctions: [])) |> count) == 0
+test fn an_empty_roster_reports_no_admission_refusals_at_all() -> ProcessExit {
+  cp_run(claim: "an_empty_roster_reports_no_admission_refusals_at_all", body: fn(dir, store) {
+    (cp_admission_refusals(r: cp_broker(store: store, roster: [], sanctions: [])) |> count) == 0
+  })
 }
 
 fn cp_refusal_is_class(a: CapacityClassAdmission) -> Bool {
@@ -198,16 +201,12 @@ test fn the_store_root_is_an_absolute_deployment_path() -> Bool {
 }
 
 // THE STORE THE BROKER IS HANDED: the production mint over a host-state tree this witness owns
-// (gunbc.host_state_root isolated_host_state_tree over a temp directory, the store's directory created where the
-// substrate would create it). The claims below refuse before the store is touched; the store is supplied because
-// the broker takes nothing else, and only the mint can make one.
-fn cp_store() -> FabricAllocationStore? {
-  let tree = isolated_host_state_tree(dir: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_control_plane.XXXXXX").path as NonEmptyStr)
-  let _made = shell.Mkdir.Parents(path: fabric_allocation_store_path(tree: tree) as String as FilePath)
-  match fabric_allocation_store(tree: tree) {
-    FabricAllocationStoreReady { store } => Present { value: store }
-    FabricAllocationStoreUnready { detail: _ } => none
-  }
+// (test.claim.fabric.fabric_allocation_witness_store allocation_witness_run). The claims below refuse before the
+// store is touched; the store is supplied because the broker takes nothing else, and only the mint can make one.
+// A refused mint fails the claim with its detail: it is never read as a reservation that refused, whose empty
+// admission or budget refusal list a claim here could expect.
+fn cp_run(claim: String, body: fn(NonEmptyStr, FabricAllocationStore) -> Bool) -> ProcessExit {
+  allocation_witness_run(template: "/tmp/gunbc_control_plane.XXXXXX", claim: claim, body: body)
 }
 
 fn cp_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
@@ -349,10 +348,7 @@ fn cp_cost() -> SelectionCost {
   }
 }
 
-fn cp_priced(account: MoneyAccount) -> CellReservation {
-  match cp_store() {
-  Absent => AttemptRefused { slot_key: "srv3-06", detail: "the witness's isolated allocation store did not mint" }
-  Present { value: store } =>
+fn cp_priced(store: FabricAllocationStore, account: MoneyAccount) -> CellReservation {
   reserve_priced_cell(
     store: store,
     demand_id: cp_demand_id(key: "demand-7"),
@@ -360,7 +356,6 @@ fn cp_priced(account: MoneyAccount) -> CellReservation {
     cost: cp_cost(),
     account: account,
   )
-  }
 }
 
 fn cp_budget_refusal(r: CellReservation) -> List<MoneyRefusal> {
@@ -412,10 +407,12 @@ fn cp_refusal_is_currency(f: MoneyRefusal) -> Bool {
 // carries both an account and no cell, so the partial commit has no constructor.
 // That has no authorable RED -- the invalid state does not compile -- so it is
 // correctly covered by no row at all.
-test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> Bool {
-  let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 1)))
-  (refusals |> count) == 1
-    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
+test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> ProcessExit {
+  cp_run(claim: "an_underfunded_budget_refuses_with_a_ledger_cause", body: fn(dir, store) {
+    let refusals = cp_budget_refusal(r: cp_priced(store: store, account: cp_account(currency: Usd, ceiling: 1)))
+    (refusals |> count) == 1
+      && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
+  })
 }
 
 // THE SECOND REFUSAL, ON THE OTHER AXIS, AND IT IS THE CONTROL THAT EXCLUDES A
@@ -430,12 +427,14 @@ test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> Bool {
 // broker passed the account's own currency through, the two would agree by
 // construction and this refusal could never fire (§4b -- a check whose red is
 // unauthorable is a decoration, not a wall).
-test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> Bool {
-  let refusals = cp_budget_refusal(
-    r: cp_priced(account: cp_account(currency: Eur, ceiling: 1000000)),
-  )
-  (refusals |> count) == 1
-    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_currency(f: f))
+test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> ProcessExit {
+  cp_run(claim: "an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam", body: fn(dir, store) {
+    let refusals = cp_budget_refusal(
+      r: cp_priced(store: store, account: cp_account(currency: Eur, ceiling: 1000000)),
+    )
+    (refusals |> count) == 1
+      && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_currency(f: f))
+  })
 }
 
 // THE LIABILITY IS THE SELECTION'S OWN TOTAL, NOT ONE COMPONENT OF IT, and the
@@ -445,10 +444,12 @@ test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> B
 // the marginal charge alone would present 500, clear 999 comfortably, and this
 // row would go red. That is the discrimination the two rows above cannot make,
 // because both of their ceilings refuse against any nonzero amount.
-test fn the_encumbered_liability_is_the_full_selection_cost() -> Bool {
-  let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 999)))
-  (refusals |> count) == 1
-    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
+test fn the_encumbered_liability_is_the_full_selection_cost() -> ProcessExit {
+  cp_run(claim: "the_encumbered_liability_is_the_full_selection_cost", body: fn(dir, store) {
+    let refusals = cp_budget_refusal(r: cp_priced(store: store, account: cp_account(currency: Usd, ceiling: 999)))
+    (refusals |> count) == 1
+      && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
+  })
 }
 
 // THE RELEASE HALF IS NOT HERE ANY MORE, AND THE REASON IS A WALL. The release
@@ -647,13 +648,16 @@ fn cp_reservation_label(r: CellReservation) -> NonEmptyStr {
 // serve a different one; before this arm the permit's demand was read by nothing on this path -
 // issue_grant checks it, and the broker never calls issue_grant - so the candidate would have been
 // ranked and money reserved for a use nobody admitted.
-test fn w_the_broker_refuses_a_winner_admitted_for_another_demand() -> Bool {
-  cp_reservation_label(r: cp_broker_for(
-    roster: cp_roster_sized(executor: "srv3-06", threads: 8),
-    sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: ControlPlaneCapacity }],
-    demand_key: "demand-nobody-admitted",
-    work_key: "fixture-work",
-  )) == "permit-names-another-demand"
+test fn w_the_broker_refuses_a_winner_admitted_for_another_demand() -> ProcessExit {
+  cp_run(claim: "w_the_broker_refuses_a_winner_admitted_for_another_demand", body: fn(dir, store) {
+    cp_reservation_label(r: cp_broker_for(
+      store: store,
+      roster: cp_roster_sized(executor: "srv3-06", threads: 8),
+      sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: ControlPlaneCapacity }],
+      demand_key: "demand-nobody-admitted",
+      work_key: "fixture-work",
+    )) == "permit-names-another-demand"
+  })
 }
 
 // POSITIVE CONTROL, AND IT IS DELIBERATELY TAKEN AT THE AUTHORITY RATHER THAN THROUGH THE BROKER.
@@ -713,11 +717,14 @@ test fn w_the_same_permit_on_another_demand_does_not_authorize() -> Bool {
 // what forced this row: killing the work comparison in permit_standing reddened the selection and
 // issuance witnesses and left THIS one green, which is the precise shape of a check that is only
 // believed to be covered. The demand matches here, so nothing but the work comparison can answer.
-test fn w_the_broker_refuses_a_winner_admitted_for_another_work() -> Bool {
-  cp_reservation_label(r: cp_broker_for(
-    roster: cp_roster_sized(executor: "srv3-06", threads: 8),
-    sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: ControlPlaneCapacity }],
-    demand_key: "fixture-demand",
-    work_key: "work-nobody-admitted",
-  )) == "permit-names-another-work"
+test fn w_the_broker_refuses_a_winner_admitted_for_another_work() -> ProcessExit {
+  cp_run(claim: "w_the_broker_refuses_a_winner_admitted_for_another_work", body: fn(dir, store) {
+    cp_reservation_label(r: cp_broker_for(
+      store: store,
+      roster: cp_roster_sized(executor: "srv3-06", threads: 8),
+      sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: ControlPlaneCapacity }],
+      demand_key: "fixture-demand",
+      work_key: "work-nobody-admitted",
+    )) == "permit-names-another-work"
+  })
 }

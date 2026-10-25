@@ -1,7 +1,7 @@
 module test.claim.fabric.fabric_cell_grant_wet_witness
 
-import extdeps.shell
-import std.types { Bool, NonEmptyStr, String, List, FilePath }
+import std.types { Bool, NonEmptyStr, String, List }
+import std.process { ProcessExit }
 import std.algebra { Cons, Empty }
 import std.measure { Count, One, hardware_thread_count }
 import std.durable_compare_and_set { cas_generation_count }
@@ -21,7 +21,8 @@ import std.measure { second }
 import product.fabric.selection { SelectedOffer }
 import product.fabric.grant_issue { AttemptNamesAnotherWork }
 import gunbc.host_state_root { isolated_host_state_tree }
-import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store_path }
+import test.claim.fabric.fabric_allocation_witness_store { allocation_witness_run }
 import gunbc.fabric.fabric_cell_grant {
   CellGrant, CellGranted, CellAlreadyGranted, CellGrantIssueRefused,
   grant_selected_cell,
@@ -45,31 +46,20 @@ import test.claim.fabric.fabric_grant_issuance_witness {
 // the held cell), expired-reservation (a released, and then a superseded, grant), work-mismatch
 // (an attempt naming another Work writes nothing).
 
-// THE THROWAWAY ROOT IS A HOST-STATE TREE (gunbc.host_state_root isolated_host_state_tree); the grant and the
-// settlement reach the allocation store only as the sealed value the production mint answers for it
-// (gunbc.fabric.fabric_allocation_store fabric_allocation_store). The reads and the witness's own release open
-// the derived path through the hold library directly: an independent referent for what the sealed store wrote.
-fn cg_fresh_root() -> String {
-  let tree = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_cell_grant.XXXXXX").path
-  let _store = shell.Mkdir.Parents(path: cg_store_path(root: tree as NonEmptyStr) as String as FilePath)
-  tree
+// THE THROWAWAY ROOT IS A HOST-STATE TREE (gunbc.host_state_root isolated_host_state_tree); each claim runs over
+// the sealed store the production mint answers for it (test.claim.fabric.fabric_allocation_witness_store
+// allocation_witness_run), and a refused mint fails the claim with its detail rather than reading as no grant.
+// The reads and the witness's own release open the derived path through the hold library directly: an
+// independent referent for what the sealed store wrote.
+fn cg_run(claim: String, body: fn(NonEmptyStr, FabricAllocationStore) -> Bool) -> ProcessExit {
+  allocation_witness_run(template: "/tmp/gunbc_cell_grant.XXXXXX", claim: claim, body: body)
 }
 
 fn cg_store_path(root: NonEmptyStr) -> NonEmptyStr {
   fabric_allocation_store_path(tree: isolated_host_state_tree(dir: root))
 }
 
-fn cg_store(root: NonEmptyStr) -> FabricAllocationStore? {
-  match fabric_allocation_store(tree: isolated_host_state_tree(dir: root)) {
-    FabricAllocationStoreReady { store } => Present { value: store }
-    FabricAllocationStoreUnready { detail: _ } => none
-  }
-}
-
-fn cg_grant(root: NonEmptyStr, attempt: Attempt<NonEmptyStr>) -> List<CellGrant<Count, One>> {
-  match cg_store(root: root) {
-  Absent => []
-  Present { value: store } =>
+fn cg_grant(store: FabricAllocationStore, attempt: Attempt<NonEmptyStr>) -> List<CellGrant<Count, One>> {
   map(selected_for(offer: admitted_offer), selected => grant_selected_cell(
     store: store,
     work: subject_work,
@@ -83,7 +73,6 @@ fn cg_grant(root: NonEmptyStr, attempt: Attempt<NonEmptyStr>) -> List<CellGrant<
     evidence: fixture_evidence,
     issued_at: "2026-10-14T00:00:00Z",
   ))
-  }
 }
 
 fn cg_granted(outcomes: List<CellGrant<Count, One>>) -> List<ExecutionGrant<NonEmptyStr>> {
@@ -143,74 +132,70 @@ fn cg_release(root: NonEmptyStr, grants: List<ExecutionGrant<NonEmptyStr>>) -> B
   }
 }
 
-test fn one_selected_offer_yields_one_live_cell_grant_by_real_execution() -> Bool {
-  let root_path = cg_fresh_root()
-  let root = root_path as NonEmptyStr
-  let grants = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
-  let read = cg_read(root: root, attempt: first_attempt)
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  let shaped = match grants {
-    Cons { head: g, tail: _ } =>
-      g.context.lease.generation == 1
-        && (g.context.lease.lease_key as String) == (admitted_offer.executor as String)
-        && (g.context.work.key as String) == (subject_work.id.key as String)
-        && (g.context.attempt.key as String) == (first_attempt.id.key as String)
-    Empty {} => false
-  }
-  read == "grant@1" && shaped && removed.success
+test fn one_selected_offer_yields_one_live_cell_grant_by_real_execution() -> ProcessExit {
+  cg_run(claim: "one_selected_offer_yields_one_live_cell_grant_by_real_execution", body: fn(root, store) {
+    let grants = cg_granted(outcomes: cg_grant(store: store, attempt: first_attempt))
+    let read = cg_read(root: root, attempt: first_attempt)
+    let shaped = match grants {
+      Cons { head: g, tail: _ } =>
+        g.context.lease.generation == 1
+          && (g.context.lease.lease_key as String) == (admitted_offer.executor as String)
+          && (g.context.work.key as String) == (subject_work.id.key as String)
+          && (g.context.attempt.key as String) == (first_attempt.id.key as String)
+      Empty {} => false
+    }
+    read == "grant@1" && shaped
+  })
 }
 
 // DUPLICATE-GRANT. The second attempt reaches issuance with an empty roster, exactly as the first
 // did; what refuses it is the held slot, and the holder it reports is the first grant's key.
-test fn a_second_grant_against_a_held_cell_refuses_by_real_execution() -> Bool {
-  let root_path = cg_fresh_root()
-  let root = root_path as NonEmptyStr
-  let first = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
-  let second = cg_grant(root: root, attempt: second_attempt)
-  let still_live = cg_is_live(root: root, attempt: first_attempt)
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  let refused_by_first = match first {
-    Cons { head: g, tail: _ } => match second {
-      Cons { head: CellAlreadyGranted { slot_key: _, holder: h, generation: gen }, tail: _ } =>
-        (h as String) == (g.id.key as String) && cas_generation_count(g: gen) == 1
-      _ => false
+test fn a_second_grant_against_a_held_cell_refuses_by_real_execution() -> ProcessExit {
+  cg_run(claim: "a_second_grant_against_a_held_cell_refuses_by_real_execution", body: fn(root, store) {
+    let first = cg_granted(outcomes: cg_grant(store: store, attempt: first_attempt))
+    let second = cg_grant(store: store, attempt: second_attempt)
+    let still_live = cg_is_live(root: root, attempt: first_attempt)
+    let refused_by_first = match first {
+      Cons { head: g, tail: _ } => match second {
+        Cons { head: CellAlreadyGranted { slot_key: _, holder: h, generation: gen }, tail: _ } =>
+          (h as String) == (g.id.key as String) && cas_generation_count(g: gen) == 1
+        _ => false
+      }
+      Empty {} => false
     }
-    Empty {} => false
-  }
-  refused_by_first && still_live && removed.success
+    refused_by_first && still_live
+  })
 }
 
 // FCI-3'S MUTATIONS, READ THE WAY THE CONTROLLER READS THEM. Before any grant the cell is absent;
 // another attempt reads the first attempt's grant as foreign; once released the grant authorizes
 // nothing; once the cell is granted again the first attempt's grant is foreign at the later
 // generation (expired) and only the second is live.
-test fn absent_foreign_released_and_expired_grants_are_not_live_by_real_execution() -> Bool {
-  let root_path = cg_fresh_root()
-  let root = root_path as NonEmptyStr
-  let absent = cg_read(root: root, attempt: first_attempt) == "absent"
-  let first = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
-  let foreign = cg_read(root: root, attempt: second_attempt) == "foreign@1"
-  let released = cg_release(root: root, grants: first)
-  let after_release = cg_read(root: root, attempt: first_attempt) == "released"
-  let second = cg_granted(outcomes: cg_grant(root: root, attempt: second_attempt))
-  let expired = cg_read(root: root, attempt: first_attempt) == "foreign@3"
-  let second_live = cg_read(root: root, attempt: second_attempt) == "grant@3"
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  absent && foreign && released && after_release && second.length() == 1 && expired && second_live && removed.success
+test fn absent_foreign_released_and_expired_grants_are_not_live_by_real_execution() -> ProcessExit {
+  cg_run(claim: "absent_foreign_released_and_expired_grants_are_not_live_by_real_execution", body: fn(root, store) {
+    let absent = cg_read(root: root, attempt: first_attempt) == "absent"
+    let first = cg_granted(outcomes: cg_grant(store: store, attempt: first_attempt))
+    let foreign = cg_read(root: root, attempt: second_attempt) == "foreign@1"
+    let released = cg_release(root: root, grants: first)
+    let after_release = cg_read(root: root, attempt: first_attempt) == "released"
+    let second = cg_granted(outcomes: cg_grant(store: store, attempt: second_attempt))
+    let expired = cg_read(root: root, attempt: first_attempt) == "foreign@3"
+    let second_live = cg_read(root: root, attempt: second_attempt) == "grant@3"
+    absent && foreign && released && after_release && second.length() == 1 && expired && second_live
+  })
 }
 
 // WORK-MISMATCH. Issuance refuses before the write, so the cell is never touched.
-test fn an_attempt_for_another_work_writes_nothing_by_real_execution() -> Bool {
-  let root_path = cg_fresh_root()
-  let root = root_path as NonEmptyStr
-  let outcome = cg_grant(root: root, attempt: misdirected_attempt)
-  let untouched = cg_read(root: root, attempt: misdirected_attempt) == "absent"
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  let refused = match outcome {
-    Cons { head: CellGrantIssueRefused { slot_key: _, refusal: AttemptNamesAnotherWork { attempt_work: _, subject_work: _ } }, tail: _ } => true
-    _ => false
-  }
-  refused && untouched && removed.success
+test fn an_attempt_for_another_work_writes_nothing_by_real_execution() -> ProcessExit {
+  cg_run(claim: "an_attempt_for_another_work_writes_nothing_by_real_execution", body: fn(root, store) {
+    let outcome = cg_grant(store: store, attempt: misdirected_attempt)
+    let untouched = cg_read(root: root, attempt: misdirected_attempt) == "absent"
+    let refused = match outcome {
+      Cons { head: CellGrantIssueRefused { slot_key: _, refusal: AttemptNamesAnotherWork { attempt_work: _, subject_work: _ } }, tail: _ } => true
+      _ => false
+    }
+    refused && untouched
+  })
 }
 
 // FCI-4 BY REAL EXECUTION. The receipt is a fixture at settlement's interface (its payload is not
@@ -234,11 +219,8 @@ fn cg_ready() -> CellReadiness {
   CellReady { cell: (admitted_offer.executor as String) as CellId }
 }
 
-fn cg_settle(root: NonEmptyStr, receipts: List<Receipt<NonEmptyStr>>, readiness: CellReadiness) -> List<CellGrantSettlement> {
-  match cg_store(root: root) {
-    Absent => []
-    Present { value: store } => map(receipts, r => settle_cell_grant(store: store, work: subject_work.id, offer: admitted_offer.id, receipt: r, readiness: readiness))
-  }
+fn cg_settle(store: FabricAllocationStore, receipts: List<Receipt<NonEmptyStr>>, readiness: CellReadiness) -> List<CellGrantSettlement> {
+  map(receipts, r => settle_cell_grant(store: store, work: subject_work.id, offer: admitted_offer.id, receipt: r, readiness: readiness))
 }
 
 fn cg_settlement_label(s: List<CellGrantSettlement>) -> String {
@@ -257,45 +239,42 @@ fn cg_settlement_label(s: List<CellGrantSettlement>) -> String {
 
 // ONE MATCHING RECEIPT IS ADMITTED ONCE AND ITS SANITIZED CELL RETURNS TO SUPPLY; the duplicate
 // delivery reads AlreadyAdmitted and writes nothing, and the freed cell can be granted again.
-test fn one_receipt_is_admitted_once_and_the_sanitized_cell_returns_to_supply_by_real_execution() -> Bool {
-  let root_path = cg_fresh_root()
-  let root = root_path as NonEmptyStr
-  let grants = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
-  let receipts = cg_receipt(attempt: first_attempt, grants: grants, key: "receipt-1")
-  let first = cg_settlement_label(s: cg_settle(root: root, receipts: receipts, readiness: cg_ready()))
-  let duplicate = cg_settlement_label(s: cg_settle(root: root, receipts: receipts, readiness: cg_ready()))
-  let freed = cg_read(root: root, attempt: first_attempt) == "released"
-  let regranted = cg_granted(outcomes: cg_grant(root: root, attempt: second_attempt)).length() == 1
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  first == "admitted@2" && duplicate == "already@2" && freed && regranted && removed.success
+test fn one_receipt_is_admitted_once_and_the_sanitized_cell_returns_to_supply_by_real_execution() -> ProcessExit {
+  cg_run(claim: "one_receipt_is_admitted_once_and_the_sanitized_cell_returns_to_supply_by_real_execution", body: fn(root, store) {
+    let grants = cg_granted(outcomes: cg_grant(store: store, attempt: first_attempt))
+    let receipts = cg_receipt(attempt: first_attempt, grants: grants, key: "receipt-1")
+    let first = cg_settlement_label(s: cg_settle(store: store, receipts: receipts, readiness: cg_ready()))
+    let duplicate = cg_settlement_label(s: cg_settle(store: store, receipts: receipts, readiness: cg_ready()))
+    let freed = cg_read(root: root, attempt: first_attempt) == "released"
+    let regranted = cg_granted(outcomes: cg_grant(store: store, attempt: second_attempt)).length() == 1
+    first == "admitted@2" && duplicate == "already@2" && freed && regranted
+  })
 }
 
 // A FOREIGN RECEIPT (another attempt's) WRITES NOTHING, and a receipt under another key after
 // admission does not re-admit.
-test fn a_foreign_receipt_is_refused_and_the_grant_stays_live_by_real_execution() -> Bool {
-  let root_path = cg_fresh_root()
-  let root = root_path as NonEmptyStr
-  let grants = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
-  let foreign = cg_settlement_label(s: cg_settle(root: root, receipts: cg_receipt(attempt: second_attempt, grants: grants, key: "receipt-x"), readiness: cg_ready()))
-  let still_live = cg_read(root: root, attempt: first_attempt) == "grant@1"
-  let admitted = cg_settlement_label(s: cg_settle(root: root, receipts: cg_receipt(attempt: first_attempt, grants: grants, key: "receipt-1"), readiness: cg_ready()))
-  let other_key = cg_settlement_label(s: cg_settle(root: root, receipts: cg_receipt(attempt: first_attempt, grants: grants, key: "receipt-2"), readiness: cg_ready()))
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  foreign == "foreign" && still_live && admitted == "admitted@2" && other_key == "other" && removed.success
+test fn a_foreign_receipt_is_refused_and_the_grant_stays_live_by_real_execution() -> ProcessExit {
+  cg_run(claim: "a_foreign_receipt_is_refused_and_the_grant_stays_live_by_real_execution", body: fn(root, store) {
+    let grants = cg_granted(outcomes: cg_grant(store: store, attempt: first_attempt))
+    let foreign = cg_settlement_label(s: cg_settle(store: store, receipts: cg_receipt(attempt: second_attempt, grants: grants, key: "receipt-x"), readiness: cg_ready()))
+    let still_live = cg_read(root: root, attempt: first_attempt) == "grant@1"
+    let admitted = cg_settlement_label(s: cg_settle(store: store, receipts: cg_receipt(attempt: first_attempt, grants: grants, key: "receipt-1"), readiness: cg_ready()))
+    let other_key = cg_settlement_label(s: cg_settle(store: store, receipts: cg_receipt(attempt: first_attempt, grants: grants, key: "receipt-2"), readiness: cg_ready()))
+    foreign == "foreign" && still_live && admitted == "admitted@2" && other_key == "other"
+  })
 }
 
 // NO RELEASE BEFORE SANITATION: unproven sanitation, or sanitation of another cell, refuses and the
 // cell stays held (quarantined); once sanitation is proven the same receipt is admitted.
-test fn unproven_or_foreign_sanitation_leaves_the_cell_held_by_real_execution() -> Bool {
-  let root_path = cg_fresh_root()
-  let root = root_path as NonEmptyStr
-  let grants = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
-  let receipts = cg_receipt(attempt: first_attempt, grants: grants, key: "receipt-1")
-  let cell = (admitted_offer.executor as String) as CellId
-  let unproven = cg_settlement_label(s: cg_settle(root: root, receipts: receipts, readiness: CellQuarantined { cell: cell, unproven: [FactNotObserved { fact: SecretsRemoved }] }))
-  let other_cell = cg_settlement_label(s: cg_settle(root: root, receipts: receipts, readiness: CellReady { cell: "srv9-1" as CellId }))
-  let still_held = cg_read(root: root, attempt: first_attempt) == "grant@1"
-  let admitted = cg_settlement_label(s: cg_settle(root: root, receipts: receipts, readiness: cg_ready()))
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  unproven == "unproven" && other_cell == "other-cell" && still_held && admitted == "admitted@2" && removed.success
+test fn unproven_or_foreign_sanitation_leaves_the_cell_held_by_real_execution() -> ProcessExit {
+  cg_run(claim: "unproven_or_foreign_sanitation_leaves_the_cell_held_by_real_execution", body: fn(root, store) {
+    let grants = cg_granted(outcomes: cg_grant(store: store, attempt: first_attempt))
+    let receipts = cg_receipt(attempt: first_attempt, grants: grants, key: "receipt-1")
+    let cell = (admitted_offer.executor as String) as CellId
+    let unproven = cg_settlement_label(s: cg_settle(store: store, receipts: receipts, readiness: CellQuarantined { cell: cell, unproven: [FactNotObserved { fact: SecretsRemoved }] }))
+    let other_cell = cg_settlement_label(s: cg_settle(store: store, receipts: receipts, readiness: CellReady { cell: "srv9-1" as CellId }))
+    let still_held = cg_read(root: root, attempt: first_attempt) == "grant@1"
+    let admitted = cg_settlement_label(s: cg_settle(store: store, receipts: receipts, readiness: cg_ready()))
+    unproven == "unproven" && other_cell == "other-cell" && still_held && admitted == "admitted@2"
+  })
 }

@@ -42,6 +42,10 @@ data closure_baseline_source: String = "module probe_allocation_baseline\nimport
 
 data plain_hold_literal_path_source: String = "module probe_allocation_plain_literal_path\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nfn f() -> DurableHoldObservation {\n  observe_file_hold(root: \"/any/literal\", key: \"srv3-06\")\n}\n"
 
+data operator_tree_source: String = "module probe_allocation_operator_tree\nimport std.types { NonEmptyStr, String }\nimport std.process { ProcessExit }\nimport gunbc.instruments.fabric_control_plane_live_probe { fci1_disposable_release }\nfn f() -> ProcessExit {\n  fci1_disposable_release(tree: \"/any/operator/dir\")\n}\n"
+
+data operator_tree_baseline_source: String = "module probe_allocation_operator_tree_baseline\nimport std.types { NonEmptyStr, String }\nimport std.process { ProcessExit }\nimport gunbc.instruments.fabric_control_plane_live_probe { fci1_disposable_release }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
 test fn a_forged_allocation_store_literal_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_store_literal_source, subject: "FabricAllocationStore"), holds: fn(n) { n == 1 }))
 }
@@ -75,4 +79,13 @@ test fn the_lawful_allocation_mint_route_is_admitted() -> ProcessExit {
 // that the route is closed.
 test fn the_plain_hold_library_over_a_literal_path_is_accepted_today() -> ProcessExit {
   census_exit(blocking_delta(hostile: plain_hold_literal_path_source, safe: closure_baseline_source, holds: fn(n) { n <= 0 }))
+}
+
+// A SECOND EXPECTING-RED PROBE, for the one caller-chosen-root route this change adds (gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module, the FCI1 instrument's specimen): a foreign module hands the
+// live instrument's disposable entry any directory it likes, and the instrument mints an allocation store over it
+// (gunbc.instruments.fabric_control_plane_live_probe fci1_disposable_store, through
+// gunbc.host_state_root isolated_host_state_tree). It is ACCEPTED today; it must go red when the trigger capability lands.
+test fn an_operator_handed_tree_mints_an_allocation_store_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: operator_tree_source, safe: operator_tree_baseline_source, holds: fn(n) { n <= 0 }))
 }

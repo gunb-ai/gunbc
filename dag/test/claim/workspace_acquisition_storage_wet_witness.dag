@@ -1,6 +1,7 @@
 module test.claim.workspace_acquisition_storage_wet_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.types { Bool, String, NonEmptyStr }
+import std.process { ProcessExit }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_from_json, workspace_reservation_plan_reservation }
 import gunbc.workspace_allocation { workspace_reservation_json }
 import extdeps.shell
@@ -8,8 +9,8 @@ import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted }
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
-import gunbc.host_state_root { isolated_host_state_tree }
-import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
+import test.claim.fabric.fabric_allocation_witness_store { allocation_witness_run }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import extdeps.languages.json.emit { serialize_json, json_array, json_object, json_kv, json_string }
 import gunbc.workspace_acquisition_invocation {
@@ -54,18 +55,13 @@ fn acquisition_actor_wire(plan: WorkspaceReservationPlan, invocation: String) ->
 // The fixture seeds an interrupted owner row, never an actual reservation or host effect. Without
 // the protocol marker legacy absence stays unknown; a marked unelected actor can cancel; an elected
 // actor is replaced only when the slot reading proves its invocation ended and no hold exists.
-// THE ALLOCATION STORE IS MINTED FROM A HOST-STATE TREE THE TEST OWNS (gunbc.host_state_root
-// isolated_host_state_tree over <tmp>/host-state) by the production mint, its directory created where the
-// substrate would create it, and the fixture plan is rooted at that store's identity.
-fn acquisition_cancellation_fixture(store: FabricStorageBinding, tree_dir: NonEmptyStr, marked: Bool, elected: Bool, slot: WorkspaceSlotInvocationReading, expect_released: Bool) -> Bool {
-  let tree = isolated_host_state_tree(dir: tree_dir)
-  let _made = shell.Mkdir.Parents(path: fabric_allocation_store_path(tree: tree) as String as FilePath)
-  match fabric_allocation_store(tree: tree) {
-  FabricAllocationStoreUnready { detail: _ } => false
-  FabricAllocationStoreReady { store: allocation } =>
+// THE ALLOCATION STORE IS MINTED FROM A HOST-STATE TREE THE TEST OWNS by the production mint
+// (test.claim.fabric.fabric_allocation_witness_store allocation_witness_run), and the fixture plan is rooted at
+// that store's identity. A refused mint fails the claim with its detail; it never reads as a retained quota.
+fn acquisition_cancellation_fixture(store: FabricStorageBinding, cells: FabricAllocationStore, marked: Bool, elected: Bool, slot: WorkspaceSlotInvocationReading, expect_released: Bool) -> Bool {
   match launch_fixture_allocation() {
     Absent => false
-    Present { value: fixture } => match acquisition_rooted_plan(root: allocation.root) {
+    Present { value: fixture } => match acquisition_rooted_plan(root: cells.root) {
       Absent => false
       Present { value: prepared } => {
         let retired = WorkspaceAllocation { recorded_at: fixture.recorded_at, retired_at: "2026-09-27T12:30:00Z",
@@ -77,7 +73,7 @@ fn acquisition_cancellation_fixture(store: FabricStorageBinding, tree_dir: NonEm
         let actor = if elected { acquisition_fixture_write(store: store, key: workspace_acquisition_actor_key(plan: prepared),
           value: acquisition_actor_wire(plan: prepared, invocation: "0123456789abcdef0123456789abcdef")) } else { true }
         if !seeded || !protocol || !actor { false } else {
-          match workspace_settle_unelected_retirement(store: store, cells: allocation, owner: fixture.request.owner, idempotency_key: fixture.request.idempotency_key, observed_at: "2026-09-27T12:31:00Z", slot: slot) {
+          match workspace_settle_unelected_retirement(store: store, cells: cells, owner: fixture.request.owner, idempotency_key: fixture.request.idempotency_key, observed_at: "2026-09-27T12:31:00Z", slot: slot) {
             WorkspaceStoreWritten { allocation: settled } => expect_released && settled.phase == WorkspaceReleased
             WorkspaceStoreWriteRefused { reason: _ } => !expect_released
             other => false
@@ -86,40 +82,40 @@ fn acquisition_cancellation_fixture(store: FabricStorageBinding, tree_dir: NonEm
       }
     }
   }
-  }
 }
 
-fn acquisition_cancellation_temporary_store(marked: Bool, elected: Bool, slot: WorkspaceSlotInvocationReading, expect_released: Bool) -> Bool {
-  let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: concat(directory.path as String, "/fabric") as NonEmptyStr)
-  let observed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => acquisition_cancellation_fixture(store: FabricStorageLocalFiles { root: root }, tree_dir: concat(directory.path as String, "/host-state") as NonEmptyStr,
-      marked: marked, elected: elected, slot: slot, expect_released: expect_released)
-    other => false
-  } }
-  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
-  observed && cleaned.success
+// The fabric DB the fixture writes through lives beside the host-state tree's allocation namespace, under its
+// own directory, so the two stores share no entries.
+fn acquisition_cancellation_temporary_store(claim: String, marked: Bool, elected: Bool, slot: WorkspaceSlotInvocationReading, expect_released: Bool) -> ProcessExit {
+  allocation_witness_run(template: "/tmp/gunbc_acquisition.XXXXXX", claim: claim, body: fn(dir, cells) {
+    let root = fabric_storage_file_root(root: concat(dir as String, "/fabric-storage") as NonEmptyStr)
+    match fabric_storage_file_root_ensure(root: root) {
+      FabricStorageRootReady => acquisition_cancellation_fixture(store: FabricStorageLocalFiles { root: root }, cells: cells,
+        marked: marked, elected: elected, slot: slot, expect_released: expect_released)
+      other => false
+    }
+  })
 }
 
-test fn legacy_acquiring_without_actor_journal_retains_quota() -> Bool {
-  acquisition_cancellation_temporary_store(marked: false, elected: false, slot: SlotInvocationUnreadable, expect_released: false)
+test fn legacy_acquiring_without_actor_journal_retains_quota() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "legacy_acquiring_without_actor_journal_retains_quota", marked: false, elected: false, slot: SlotInvocationUnreadable, expect_released: false)
 }
-test fn marked_unelected_actor_cancellation_releases_owner_quota() -> Bool {
-  acquisition_cancellation_temporary_store(marked: true, elected: false, slot: SlotInvocationUnreadable, expect_released: true)
+test fn marked_unelected_actor_cancellation_releases_owner_quota() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "marked_unelected_actor_cancellation_releases_owner_quota", marked: true, elected: false, slot: SlotInvocationUnreadable, expect_released: true)
 }
-test fn elected_actor_cannot_be_cancelled_from_absent_hold_assumption() -> Bool {
-  acquisition_cancellation_temporary_store(marked: true, elected: true, slot: SlotInvocationUnreadable, expect_released: false)
+test fn elected_actor_cannot_be_cancelled_from_absent_hold_assumption() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "elected_actor_cannot_be_cancelled_from_absent_hold_assumption", marked: true, elected: true, slot: SlotInvocationUnreadable, expect_released: false)
 }
 
 // The wedge: the elected actor's invocation ended before its hold CAS. With no hold and a slot
 // running another invocation, retirement cancels the actor by fenced CAS and releases the quota.
-test fn terminal_elected_actor_without_hold_settles_retirement() -> Bool {
-  acquisition_cancellation_temporary_store(marked: true, elected: true, slot: SlotInvocationObserved { current: "fedcba9876543210fedcba9876543210" }, expect_released: true)
+test fn terminal_elected_actor_without_hold_settles_retirement() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "terminal_elected_actor_without_hold_settles_retirement", marked: true, elected: true, slot: SlotInvocationObserved { current: "fedcba9876543210fedcba9876543210" }, expect_released: true)
 }
 
 // Its neighbour: the recorded invocation is still the slot's invocation, so it is retained.
-test fn running_elected_actor_retains_quota() -> Bool {
-  acquisition_cancellation_temporary_store(marked: true, elected: true, slot: SlotInvocationObserved { current: "0123456789abcdef0123456789abcdef" }, expect_released: false)
+test fn running_elected_actor_retains_quota() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "running_elected_actor_retains_quota", marked: true, elected: true, slot: SlotInvocationObserved { current: "0123456789abcdef0123456789abcdef" }, expect_released: false)
 }
 
 // No double hold: two replacements fenced on one recorded generation -- only the first commits.

@@ -369,26 +369,21 @@ type FabricStoragePlacedRoot
   = FabricStoragePlacedRootReady { store: FabricStorage }
   | FabricStoragePlacedRootRefused { detail: NonEmptyStr }
 
-// THE ONE OBSERVATION BOTH MINTS MAKE: the derived root is listed (Filesystem.List), and a root that
-// does not list refuses with its cause rather than yielding a store whose every operation would refuse.
-fn fabric_storage_root_unlisted(root: NonEmptyStr) -> NonEmptyStr? {
-  let listing = Filesystem.List(path: root as String)
-  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => Present { value: join([root as String, " is not admissible: ", c], "") as NonEmptyStr }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => Present { value: join([root as String, " could not be listed: ", e], "") as NonEmptyStr }
-    FilesystemDirectoryListed(_) => none
-  }
-}
-
+// EACH MINT LISTS ITS OWN DERIVED ROOT (Filesystem.List), and a root that does not list refuses with its cause
+// rather than yielding a store whose every operation would refuse. The listing is written in each mint rather than
+// in a helper taking a root: such a helper would be an observer over a caller-chosen directory.
 fn fabric_storage_placed_store(instance: HostDashboardInstance) -> FabricStoragePlacedRoot {
   let root = fabric_storage_store_root(instance: instance)
   match fabric_storage_entry_mode(instance: instance) {
     FabricStorageEntryModeRefused { detail } => FabricStoragePlacedRootRefused { detail: detail }
-    FabricStorageEntryModeDerived { mode } =>
-      match fabric_storage_root_unlisted(root: root) {
-        Present { value: d } => FabricStoragePlacedRootRefused { detail: join(["the fabric DB's directory ", d as String], "") as NonEmptyStr }
-        Absent => FabricStoragePlacedRootReady { store: FabricStorage { instance: instance.instance_id, root: root, entry_mode: mode } }
+    FabricStorageEntryModeDerived { mode } => {
+      let listing = Filesystem.List(path: root as String)
+      match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+        FilesystemDirectorySubjectRefused { directory: _, cause: c } => FabricStoragePlacedRootRefused { detail: join(["the fabric DB's directory ", root as String, " is not admissible: ", c], "") as NonEmptyStr }
+        FilesystemDirectoryListingRefused { directory: _, error: e } => FabricStoragePlacedRootRefused { detail: join(["the fabric DB's directory ", root as String, " could not be listed: ", e], "") as NonEmptyStr }
+        FilesystemDirectoryListed(_) => FabricStoragePlacedRootReady { store: FabricStorage { instance: instance.instance_id, root: root, entry_mode: mode } }
       }
+    }
   }
 }
 
@@ -407,9 +402,11 @@ type FabricStateStorageReading
 
 fn fabric_state_storage_store(instance: HostDashboardInstance) -> FabricStateStorageReading {
   let root = fabric_state_storage_root(instance: instance)
-  match fabric_storage_root_unlisted(root: root) {
-    Present { value: d } => FabricStateStorageUnready { detail: join(["the fabric state store's directory ", d as String], "") as NonEmptyStr }
-    Absent => FabricStateStorageReady { store: FabricStateStorage { instance: instance.instance_id, root: root } }
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => FabricStateStorageUnready { detail: join(["the fabric state store's directory ", root as String, " is not admissible: ", c], "") as NonEmptyStr }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => FabricStateStorageUnready { detail: join(["the fabric state store's directory ", root as String, " could not be listed: ", e], "") as NonEmptyStr }
+    FilesystemDirectoryListed(_) => FabricStateStorageReady { store: FabricStateStorage { instance: instance.instance_id, root: root } }
   }
 }
 
