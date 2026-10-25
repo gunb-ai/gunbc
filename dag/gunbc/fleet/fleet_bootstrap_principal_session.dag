@@ -16,10 +16,14 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy,
   SshTarget,
   PortableRemoteWords,
-  shape_fleet_ssh_exec,
+  FleetRemoteLeg,
+  FleetBareWordLeg,
+  fleet_remote_leg_target,
+  shape_fleet_ssh_leg,
+  shape_fleet_ssh_password_leg_trusting,
   shape_fleet_ssh_exec_over,
   FleetSshFreshConnection,
-  shape_fleet_ssh_password_exec,
+  FleetSshMultiplexedConnection,
   shape_fleet_ssh_password_exec_trusting,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
@@ -287,13 +291,47 @@ fn exec_as_fleet_principal_with_stdin_observed(
   credential: FleetBootstrapCredentialLocus,
   absence: HostCliDependencyAbsence?,
 ) -> FleetPrincipalLegOutcome {
+  exec_fleet_remote_leg_with_stdin_observed(
+    context: context,
+    leg: FleetBareWordLeg { target: target, words: words },
+    stdin_payload: stdin_payload,
+    credential: credential,
+    absence: absence,
+  )
+}
+
+// THE SAME EXECS OVER EITHER LEG (gunbc.fleet.fleet_known_hosts_anchor FleetRemoteLeg): the bare-word entries above
+// and below are these with a bare leg, and a POSIX-quoted leg runs against its proof's target through the same arms.
+fn exec_fleet_remote_leg_with_stdin(
+  context: FleetSshExecutionContext,
+  leg: FleetRemoteLeg,
+  stdin_payload: String,
+  credential: FleetBootstrapCredentialLocus,
+) -> FleetPrincipalLegOutcome {
+  exec_fleet_remote_leg_with_stdin_observed(
+    context: context,
+    leg: leg,
+    stdin_payload: stdin_payload,
+    credential: credential,
+    absence: first_absent_password_session_host_cli_dependency(),
+  )
+}
+
+fn exec_fleet_remote_leg_with_stdin_observed(
+  context: FleetSshExecutionContext,
+  leg: FleetRemoteLeg,
+  stdin_payload: String,
+  credential: FleetBootstrapCredentialLocus,
+  absence: HostCliDependencyAbsence?,
+) -> FleetPrincipalLegOutcome {
+  let target = fleet_remote_leg_target(leg: leg)
   let session = fleet_ssh_session_for_principal(principal: target.principal, trust: context.trust)
   match session {
     FleetSshKeySession =>
       FleetPrincipalLegRan {
         session: session,
         result: ssh_session_exec_portable_words_with_stdin(
-          client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+          client_args: shape_fleet_ssh_leg(context: context, leg: leg, connection: FleetSshMultiplexedConnection),
           stdin_payload: stdin_payload,
         ),
       }
@@ -303,7 +341,7 @@ fn exec_as_fleet_principal_with_stdin_observed(
         PasswordLegPrerequisiteReady { password_file: p } => {
           let r = password_file_ssh_exec_portable_words_with_stdin(
             password_file: p,
-            client_args: shape_fleet_ssh_password_exec(context: context, target: target, words: words),
+            client_args: shape_fleet_ssh_password_leg_trusting(trust: context.trust, leg: leg),
             stdin_payload: stdin_payload,
           )
           FleetPrincipalLegRan {
@@ -328,18 +366,27 @@ fn exec_as_fleet_principal(
   words: PortableRemoteWords,
   credential: FleetBootstrapCredentialLocus,
 ) -> FleetPrincipalLegOutcome {
+  exec_fleet_remote_leg(context: context, leg: FleetBareWordLeg { target: target, words: words }, credential: credential)
+}
+
+fn exec_fleet_remote_leg(
+  context: FleetSshExecutionContext,
+  leg: FleetRemoteLeg,
+  credential: FleetBootstrapCredentialLocus,
+) -> FleetPrincipalLegOutcome {
+  let target = fleet_remote_leg_target(leg: leg)
   let session = fleet_ssh_session_for_principal(principal: target.principal, trust: context.trust)
   match session {
     FleetSshKeySession =>
       FleetPrincipalLegRan {
         session: session,
         result: ssh_session_exec_portable_words(
-          client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+          client_args: shape_fleet_ssh_leg(context: context, leg: leg, connection: FleetSshMultiplexedConnection),
         ),
       }
     FleetSshPasswordSession =>
-      exec_as_fleet_principal_with_stdin(
-        context: context, target: target, words: words, stdin_payload: "", credential: credential,
+      exec_fleet_remote_leg_with_stdin(
+        context: context, leg: leg, stdin_payload: "", credential: credential,
       )
   }
 }
