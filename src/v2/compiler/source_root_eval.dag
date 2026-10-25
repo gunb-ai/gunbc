@@ -18,7 +18,7 @@ import v2.workflow.v2_native_route {
   native_route_package_text_module,
   required_v2_native_job_name
 }
-import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
 import gunbc.native_route_universe {
   native_route_default_pattern,
   native_route_label_in_package,
@@ -270,7 +270,10 @@ import v2.compiler.dependency_demand {
   FunctionFact,
   OperationFact,
 }
+import v2.compiler.self_host.seed_retention_frontier { self_host_frontier_report }
 import v2.compiler.decl_ref_census { LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
+import v2.compiler.effect_pair_census { BodyOrdered, EffectPairCensusReport, ImporteeRefusedCause, ResolveRefusedCause, ResolveUnclassifiedCause, UnobservedRoot, effect_pair_census_exit, effect_pair_census_lines, effect_pair_census_of_module, effect_reach_table, module_ordered_bodies, not_derived_keys_of, unobserved_roots_add, use_edges_of }
+import v2.compiler.value_use_dependency { value_use_dispositions }
 import v2.compiler.dependency_demand_census {
   AuthoredRowReading,
   AuthoredTypeUnresolved,
@@ -316,8 +319,6 @@ import v2.compiler.resolve {
   resolve,
   resolved_tree_of,
   ResolvedTree,
-  ClosureProviderRefusal,
-  module_outcomes_provider_refusals,
 }
 import v2.compiler.tokenize {
   PreparedLexRules,
@@ -359,7 +360,6 @@ import std.algebra {
   list_find_first,
   list_map,
   list_reverse,
-  list_starts_with,
   empty_map,
   map_contains_key,
   map_insert,
@@ -1548,6 +1548,7 @@ type NativeDriverVerb
   | NativeDriverCensusVerb { verb: NativeCensusVerbWord, source_roots: FreeMonoid<String> }
   | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
+  | NativeDriverSelfHostFrontier { manifest_path: String, verdict_path: String, observed_path: String }
 
 type NativeDriverPlan
   = NativeDriverPlanned { verb: NativeDriverVerb }
@@ -1566,6 +1567,14 @@ data native_driver_verb_census_infer: String = "census-infer"
 // emitted run function serve every verb here, and native_census_verb_output is the single dispatch from a
 // verb to its fold. The closed verb type and its spelling are gunbc.native_census_verb.
 
+// THE SELF-HOST FRONTIER MODE (v2.compiler.self_host.seed_retention_frontier self_host_frontier_report): three
+// operands, each a FILE the self-host step wrote or the seed emitted -- the emitted-population
+// manifest, the controls verdict, the observed stage0 paths. It takes no source root, because its
+// subject is not a corpus to ingest but the join of those three populations.
+data native_driver_verb_self_host_frontier: String = "self-host-frontier"
+
+data native_driver_self_host_frontier_needs_operands: String = "REFUSED: self-host-frontier takes <emitted-population-manifest> <controls-verdict> <observed-paths>"
+
 data native_driver_verb_census_scoped: String = "census-scoped"
 
 data native_driver_census_scoped_needs_subject: String = "REFUSED: census-scoped takes a subject package label before the source roots"
@@ -1580,7 +1589,7 @@ data native_driver_census_scoped_against_one_subject: String = "REFUSED: census-
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | decl-ref-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | self-host-frontier <emitted-population-manifest> <controls-verdict> <observed-paths> | decl-ref-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -1621,6 +1630,10 @@ type NativeDriverParseState
   | DriverAdjudicateOptions { facts_path: String }
   | DriverAdjudicateSeekPatternValue { facts_path: String }
   | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
+  | DriverSelfHostFrontierSeekManifest
+  | DriverSelfHostFrontierSeekVerdict { manifest_path: String }
+  | DriverSelfHostFrontierSeekObserved { manifest_path: String, verdict_path: String }
+  | DriverSelfHostFrontierOperands { manifest_path: String, verdict_path: String, observed_path: String }
   | DriverParseRefused { reason: Symbol, detail: String }
 
 fn native_driver_unknown_verb_detail(word: String) -> String {
@@ -1628,7 +1641,7 @@ fn native_driver_unknown_verb_detail(word: String) -> String {
     concat("REFUSED: unknown mode ", word),
     fold_list(
       xs: native_census_verbs,
-      empty: " -- expected adjudicate, census, census-resolve, census-infer, census-scoped",
+      empty: " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier",
       cons: fn(acc, v) { concat(concat(acc, ", "), native_census_verb_word(v: v)) }
     )
   )
@@ -1648,6 +1661,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusResolveRoots { roots: [] }
       } else if word == native_driver_verb_census_infer {
         DriverCensusInferRoots { roots: [] }
+      } else if word == native_driver_verb_self_host_frontier {
+        DriverSelfHostFrontierSeekManifest
       } else if word == native_driver_verb_census_scoped {
         DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
@@ -1699,6 +1714,14 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusScopedRoots { subject: subject, rest: [], against: optional_present(value: word), roots: [] }
     DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: roots } =>
       DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: list_snoc_item(xs: roots, item: word) }
+    DriverSelfHostFrontierSeekManifest => DriverSelfHostFrontierSeekVerdict { manifest_path: word }
+    DriverSelfHostFrontierSeekVerdict { manifest_path: manifest_path } =>
+      DriverSelfHostFrontierSeekObserved { manifest_path: manifest_path, verdict_path: word }
+    DriverSelfHostFrontierSeekObserved { manifest_path: manifest_path, verdict_path: verdict_path } =>
+      DriverSelfHostFrontierOperands { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: word }
+    // A FOURTH OPERAND IS A REFUSAL, not an ignored word: the mode's inputs are exactly three files.
+    DriverSelfHostFrontierOperands { manifest_path: _, verdict_path: _, observed_path: _ } =>
+      DriverParseRefused { reason: ^native_driver_self_host_frontier_extra_operand, detail: native_driver_self_host_frontier_needs_operands }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateOptions { facts_path: word }
     DriverAdjudicateOptions { facts_path: facts_path } =>
@@ -1742,6 +1765,14 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
         reason: ^native_driver_no_verb_given,
         detail: native_driver_usage
       }
+    DriverSelfHostFrontierSeekManifest =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierSeekVerdict { manifest_path: _ } =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierSeekObserved { manifest_path: _, verdict_path: _ } =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierOperands { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: observed_path } =>
+      NativeDriverPlanned { verb: NativeDriverSelfHostFrontier { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: observed_path } }
     DriverAdjudicateSeekFacts =>
       NativeDriverPlanRefused {
         reason: ^native_driver_adjudicate_without_facts_path,
@@ -1810,6 +1841,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusVerb { verb: _, source_roots: roots } => roots
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
+        NativeDriverSelfHostFrontier { manifest_path: _, verdict_path: _, observed_path: _ } => []
       }
   }
 }
@@ -3227,6 +3259,13 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
   }
 }
 
+// THE FRONTIER VERB'S ANSWER: the report and exit are v2.compiler.self_host.seed_retention_frontier
+// self_host_frontier_report's; the host only reads the three files and prints.
+type NativeSelfHostFrontierOutput {
+  lines: List<String>
+  exit: Int
+}
+
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (`decl-ref-census`). Cut to its demand: the
 // candidates (modules whose Node tree constructs a DeclarationRef, or whose prose cites a symbol) and
 // the targets those cite, each reached by one path lookup in the layout and a normalize, never the
@@ -3245,6 +3284,11 @@ fn native_decl_ref_census_file_in_prose_scope(path: String) -> Bool {
 type NativeDeclRefCensusOutput {
   lines: List<String>
   exit: Int
+}
+
+fn native_self_host_frontier_output(manifest_text: String, verdict_text: String, observed_text: String) -> NativeSelfHostFrontierOutput {
+  let report = self_host_frontier_report(manifest_text: manifest_text, verdict_text: verdict_text, observed_text: observed_text)
+  NativeSelfHostFrontierOutput { lines: report.lines, exit: report.exit }
 }
 
 // THE CENSUS DEMANDS THE CANDIDATES AND THE MODULES THEIR CITATIONS NAME, NOTHING ELSE (DESIGN 2:
@@ -3874,10 +3918,12 @@ type NativeCensusCascade
 
 // TWO COUNTS, BECAUSE THEY ARE TWO FACTS (parent ruling on census C, option A).
 // `closure_fan_out` is how many DISTINCT modules have the root in their import closure -- what fixing
-// the root unblocks. Those modules are BLOCKED, not refused: in c -> b -> a with a refused, resolve
-// refuses b (its imports are unbound) and ACCEPTS c, because b's declarations are indexed; c still
-// cannot compile as a program while a is refused. Distinct modules, never paths: a diamond counts
-// its apex once.
+// the root unblocks. That is a fact of the import graph, not of which of those modules refused: in
+// c -> b -> a with a refused, resolve refuses b (its import target's file was refused) and refuses c
+// declarer_refused (it names a declaration of the refused b, v2.compiler.resolve), so both are
+// counted here and both are members of a; a module that only reaches the root through an import it
+// never names would be counted here and refuse nothing. Distinct modules, never paths: a diamond
+// counts its apex once.
 // `resolve_refused_importers` is the directly observed fact beside it: how many modules' resolve
 // refusals this census attributed to the root. Absent means resolve was not run (the `census` verb),
 // not zero.
@@ -4232,21 +4278,46 @@ fn native_census_cause_groups_add_module(
 ) -> NativeCensusCauseGroups {
   match step.outcome {
     NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
-      native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade)
+      native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade, attribution: fn(provider) { native_import_target_attribution(context: step.context, module: provider) })
     NativeCensusModuleFileRefused => groups
     NativeCensusModuleResolved => groups
   }
 }
 
+// A REFUSED PROVIDER'S ROOT, read by the resolve declarer cascade (native_census_chain_cascade). A provider
+// whose own import target's FILE was refused is filed as a member of that file's root (census C,
+// native_census_import_cascade, from the same attribution), so a module refused through it is a member of
+// that root too: roots stay one hop from an ingest refusal, and no member names a provider that is itself a
+// member. Otherwise the provider refused on its own account and is the root, under its own fatal reason.
+fn native_census_provider_root(
+  provider_path: Symbol,
+  provider_reason: Symbol,
+  attribution: NativeImportTargetAttribution
+) -> NativeCensusCascade {
+  match attribution {
+    NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: native_test_file_refusal_fatal_reason(fr: t) }
+    NativeImportTargetsUnreadable { reason: r } => NativeCensusCascadeUnattributed { reason: r }
+    NativeImportTargetsAdmitted => NativeCensusCascadeMemberOf { root: provider_path, root_reason: provider_reason }
+    NativeImportTargetNotAsked => NativeCensusCascadeMemberOf { root: provider_path, root_reason: provider_reason }
+  }
+}
+
 // A CHAIN IS A DECLARER CASCADE ROW WHEN ITS FATAL DIAGNOSTIC CARRIES THE DeclarerRefused CORRECTION, AND THE
-// ROOT IS THAT DECLARER BY IDENTITY, never by reading the chain's reasons. The identity is minted where the
+// PROVIDER IS THAT DECLARER BY IDENTITY, never by reading the chain's reasons. The identity is minted where the
 // refused provider is found (v2.compiler.resolve declarer_refused_diagnostic). A chain is the provider's own
 // chain followed by the referencing site's fatal, so a declarer that itself refused on ITS declarer carries
-// the innermost correction first: the first DeclarerRefused in the chain names the module that refused on its
-// own account, the root, and the diagnostic before it is that root's fatal. None is a chain refused on the
+// the innermost correction first: the first DeclarerRefused in the chain names the innermost refused
+// provider, and the diagnostic before it is that provider's fatal. That provider is the root only when it did
+// not itself refuse on a refused import FILE: such a provider is filed as a member of that file's root
+// (native_census_import_cascade), so its declarer chains name the same root, read through
+// native_census_provider_root. None is a chain refused on the
 // module's own account. A chain whose fatal reason is declarer_refused but carries no declarer was not minted
 // by the resolver: Unattributed, never a root.
-fn native_census_chain_cascade(closure: NativeCensusClosureIndex, chain: NonEmptyDiagnostics) -> NativeCensusCascade {
+fn native_census_chain_cascade(
+  closure: NativeCensusClosureIndex,
+  chain: NonEmptyDiagnostics,
+  attribution: fn(QualifiedName) -> NativeImportTargetAttribution
+) -> NativeCensusCascade {
   if native_census_chain_ends_at_declarer(chain: chain) {
     match native_census_innermost_declarer(chain: chain) {
       Absent => NativeCensusCascadeUnattributed { reason: ^native_census_declarer_missing }
@@ -4257,7 +4328,8 @@ fn native_census_chain_cascade(closure: NativeCensusClosureIndex, chain: NonEmpt
           NativeCensusClosureIndexRead { importers_of: _, imports_of: _, module_paths: module_paths, modules: _, refused_modules: _ } =>
             match map_lookup(module_paths, qualified_name_to_dotted_string(qn: found.declarer)) {
               Absent => NativeCensusCascadeUnattributed { reason: ^native_census_declarer_not_censused }
-              Present { value: root_path } => NativeCensusCascadeMemberOf { root: root_path, root_reason: found.root_reason }
+              Present { value: provider_path } =>
+                native_census_provider_root(provider_path: provider_path, provider_reason: found.root_reason, attribution: attribution(found.declarer))
             }
         }
     }
@@ -4284,13 +4356,14 @@ fn native_census_cause_groups_add_chains_by_chain(
   closure: NativeCensusClosureIndex,
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,
-  rest: List<NonEmptyDiagnostics>
+  rest: List<NonEmptyDiagnostics>,
+  attribution: fn(QualifiedName) -> NativeImportTargetAttribution
 ) -> NativeCensusCauseGroups {
   fold_list(
     xs: Cons { head: first, tail: rest },
     empty: NativeCensusChainFiling { groups: groups, root_filed: false },
     cons: fn(acc, c) {
-      let own = native_census_chain_cascade(closure: closure, chain: c)
+      let own = native_census_chain_cascade(closure: closure, chain: c, attribution: attribution)
       let cascade = match own {
         NativeCensusCascadeNone => if acc.root_filed { NativeCensusCascadeNone } else { native_census_own_root(closure: closure, entry: entry) }
         NativeCensusCascadeMemberOf { root: _, root_reason: _ } => own
@@ -4374,14 +4447,15 @@ fn native_census_cause_groups_add_resolve_refused(
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,
   rest: List<NonEmptyDiagnostics>,
-  cascade: NativeCensusCascade
+  cascade: NativeCensusCascade,
+  attribution: fn(QualifiedName) -> NativeImportTargetAttribution
 ) -> NativeCensusCauseGroups {
   match cascade {
     NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
       native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason, head_reason: ^native_prepare_reason_import_target_file_refused)
     NativeCensusCascadeNone =>
       if native_census_chain_ends_at_declarer(chain: first) && fold_list(xs: rest, empty: true, cons: fn(all, c) { all && native_census_chain_ends_at_declarer(chain: c) }) {
-        match native_census_chain_cascade(closure: closure, chain: first) {
+        match native_census_chain_cascade(closure: closure, chain: first, attribution: attribution) {
           NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
             native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason, head_reason: ^resolve_reason_declarer_refused)
           NativeCensusCascadeNone =>
@@ -4392,7 +4466,7 @@ fn native_census_cause_groups_add_resolve_refused(
             native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
         }
       } else {
-        native_census_cause_groups_add_chains_by_chain(groups: groups, positions: positions, closure: closure, entry: entry, first: first, rest: rest)
+        native_census_cause_groups_add_chains_by_chain(groups: groups, positions: positions, closure: closure, entry: entry, first: first, rest: rest, attribution: attribution)
       }
     NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
       native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
@@ -4403,92 +4477,23 @@ fn native_census_cause_groups_add_resolve_refused(
 
 // ── census part 2: the infer stage ─────────────────────────────────────────────────────────────
 //
-// THE INFER CASCADE IS THE ONE CROSS-MODULE CAUSATION v2 INFER ACTUALLY HAS, AND NOTHING ELSE.
-// docs/plans/census-part-2-inference-design.md section 4 is SUPERSEDED on this point (sharp-raven-357
-// ruling, 2026-10-04). That section assumed an infer->infer edge: M's infer refusing because an imported
-// T's infer refused. No such edge exists. infer_and_discharge reads ONE module's ResolvedTree, and the
-// declarations it reads from imports come from the closure index at RESOLVE grain
-// (v2.compiler.name_resolve closure_declarations_demand). T's inferred tree is never an input, so T
-// refusing infer cannot make M refuse, and a control expecting that cascade would have a red no
-// program can author (DESIGN section 4b). Its proposed edge, a fatal located at T's declaration, is
-// not readable either, because every infer diagnostic is located at a node of M's own tree.
-// What does exist is the edge v2.compiler.infer infer_closure_miss_refusal builds: when a closure
-// provider's own RESOLVE refused (ResolvedTree module_outcomes via ClosureProviderRefusal), M's projection through one of
-// its declarations refuses as a closure miss, with the provider's refusal chain carried immediately
-// ahead of that miss in M's chain. M
-// resolved, so it IS an infer subject. That is a cross-stage cascade the design said could not
-// happen. Such a module is filed ONCE, as a member of the provider's root, in census C's shape.
-// Every other infer refusal is a root of its own.
-// TRIGGER for an infer->infer edge: v2 infer reading another module's INFERRED facts. Until then,
-// none is attributed.
-//
-// THE MATCH IS BY REASON SUFFIX AND FATAL, NOT BY GUESS. The chain must end in the closure-miss reason,
-// and the reasons immediately before it must be exactly the provider's chain. That is the shape
-// infer_closure_miss_refusal builds. The binds enclosing it may prepend M's own pending advisories,
-// so the provider chain sits at the end of M's chain, not at its head (measured on the cascade control
-// in v2.test.claim.native_census.infer_cascade: a seven-element chain carrying a one-element provider
-// chain). A chain that two providers would both match is Unattributed, never assigned to the first. The provider's own root is one hop
-// further when the provider is itself a cascade member of a refused file: that is read through the
-// same attribution authority census C uses (native_import_target_attribution), so the member names the
-// earliest refused module, exactly as a resolve cascade does.
-fn native_census_infer_cascade(
-  context: NativeTestContext,
-  module_paths: Map<String, Symbol>,
-  resolved: ResolvedTree,
-  chain: NonEmptyDiagnostics
-) -> NativeCensusCascade {
-  native_census_infer_cascade_of(
-    module_paths: module_paths,
-    providers: module_outcomes_provider_refusals(outcomes: resolved.module_outcomes),
-    chain: chain,
-    attribution: fn(provider) { native_import_target_attribution(context: context, module: provider) }
-  )
-}
-
-// THE ATTRIBUTION DECISION ITSELF, over the values it reads: the census roster's paths, the tree's refused
-// providers, the module's chain, and the import attribution of a provider. The wrapper above binds the
-// last to the context's own authority; a claim supplies all four at this interface (DESIGN section 3).
-fn native_census_infer_cascade_of(
-  module_paths: Map<String, Symbol>,
-  providers: List<ClosureProviderRefusal>,
-  chain: NonEmptyDiagnostics,
-  attribution: fn(QualifiedName) -> NativeImportTargetAttribution
-) -> NativeCensusCascade {
-  if diagnostics_fatal_reason(d: chain) == ^infer_reason_projection_receiver_declaration_unavailable {
-    let reversed = list_reverse(xs: native_census_chain_reasons(chain: chain))
-    let leading = filter(xs: providers, predicate: fn(p) {
-      list_starts_with(
-        xs: reversed,
-        prefix: Cons { head: ^infer_reason_projection_receiver_declaration_unavailable, tail: list_reverse(xs: native_census_chain_reasons(chain: p.refusal)) },
-        eq: fn(a, b) { a == b }
-      )
-    })
-    match leading {
-      Empty => NativeCensusCascadeNone
-      Cons { head: provider, tail: others } =>
-        if length(xs: others) > 0 {
-          NativeCensusCascadeUnattributed { reason: ^native_census_infer_cascade_provider_ambiguous }
-        } else {
-          match map_lookup(module_paths, qualified_name_to_dotted_string(qn: provider.module)) {
-            Absent => NativeCensusCascadeUnattributed { reason: ^native_census_infer_cascade_provider_not_censused }
-            Present { value: provider_path } =>
-              match attribution(provider.module) {
-                NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: native_test_file_refusal_fatal_reason(fr: t) }
-                NativeImportTargetsUnreadable { reason: r } => NativeCensusCascadeUnattributed { reason: r }
-                NativeImportTargetsAdmitted => NativeCensusCascadeMemberOf { root: provider_path, root_reason: diagnostics_fatal_reason(d: provider.refusal) }
-                NativeImportTargetNotAsked => NativeCensusCascadeMemberOf { root: provider_path, root_reason: diagnostics_fatal_reason(d: provider.refusal) }
-              }
-          }
-        }
-    }
-  } else {
-    NativeCensusCascadeNone
-  }
-}
-
-fn native_census_chain_reasons(chain: NonEmptyDiagnostics) -> List<Symbol> {
-  Cons { head: chain.head.reason, tail: list_map(xs: chain.tail, f: fn(d) { d.reason }) }
-}
+// EVERY INFER REFUSAL IS A ROOT OF ITS OWN, because no cross-module cause reaches infer.
+// docs/plans/census-part-2-inference-design.md section 4 assumed an infer->infer edge (sharp-raven-357
+// ruling, 2026-10-04, superseded it): infer_and_discharge reads ONE module's ResolvedTree, and an import's
+// declarations come from the closure index at RESOLVE grain, so another module's infer refusal is never
+// an input. The one cross-stage edge it once had -- a provider whose RESOLVE refused, read by an importer
+// that resolved and then missed the provider's declaration at infer (v2.compiler.infer
+// infer_closure_miss_refusal) -- is closed at resolve: the closure blocks every declaration that mentions
+// an unpublished one, through the row it sits in (v2.compiler.name_resolve closure_callee_blocking_refusal),
+// and resolve refuses every mention whose enclosing declaration is refused or blocked
+// (v2.compiler.resolve unavailable_provider_for_path, both through v2.std.symbol_index
+// symbol_index_enclosing_declaration_paths). A module that resolved therefore mentions only published
+// declarations, and such a module is filed at resolve as a member of the provider's root
+// (native_census_chain_cascade). The last route that reached infer -- a variant of a refused coproduct --
+// is the control v2.test.claim.native_census.infer_cascade
+// census_infer_variant_of_a_refused_coproduct_is_a_resolve_member_holds.
+// TRIGGER for an infer cascade: v2 infer reading another module's INFERRED facts, or any accepted resolve
+// whose infer refuses on another module's refusal (that control red). Until then none is attributed.
 
 // THE CENSUS ROSTER'S MODULE NAMES TO THEIR PATHS, read once per census, so an attributed root is named
 // by the same path identity every other root carries.
@@ -4498,31 +4503,21 @@ fn native_census_module_paths(modules: List<NativeCensusModule>) -> Map<String, 
 
 // ONE census-infer MODULE'S CONTRIBUTION. A resolve refusal is filed exactly as census-resolve files it,
 // because it is the same decision. An infer refusal is ONE row: infer stops at its first fatal, so
-// native_census_infer_completeness reports that module's observation as a lower bound. The row is either
-// a member of the closure provider's root that led its chain, or a root of its own carrying its fan-out.
+// native_census_infer_completeness reports that module's observation as a lower bound. The row is a root
+// of its own carrying its fan-out (the section header above says why no infer refusal is a member).
 fn native_census_cause_groups_add_infer_module(
   groups: NativeCensusCauseGroups,
   closure: NativeCensusClosureIndex,
-  module_paths: Map<String, Symbol>,
   entry: NativeCensusModule,
   step: NativeInferCensusStep
 ) -> NativeCensusCauseGroups {
   match step.outcome {
     NativeInferCensusFileRefused => groups
     NativeInferCensusResolveRefused { first: f, rest: r, observation: _, partial: _ } =>
-      native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade)
+      native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade, attribution: fn(provider) { native_import_target_attribution(context: step.context, module: provider) })
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => groups
-    NativeInferCensusInferRefused { resolved: resolved, chain: chain } =>
-      match native_census_infer_cascade(context: step.context, module_paths: module_paths, resolved: resolved, chain: chain) {
-        NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
-          native_census_infer_member(groups: groups, positions: step.context.positions, fatal_reason: root_reason, entry: entry, chain: chain, cascade: NativeCensusCascadeMemberOf { root: root, root_reason: root_reason })
-        NativeCensusCascadeUnattributed { reason: r } =>
-          native_census_infer_member(groups: groups, positions: step.context.positions, fatal_reason: diagnostics_fatal_reason(d: chain), entry: entry, chain: chain, cascade: NativeCensusCascadeUnattributed { reason: r })
-        NativeCensusCascadeNone =>
-          native_census_infer_member(groups: groups, positions: step.context.positions, fatal_reason: diagnostics_fatal_reason(d: chain), entry: entry, chain: chain, cascade: native_census_own_root(closure: closure, entry: entry))
-        NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
-          native_census_infer_member(groups: groups, positions: step.context.positions, fatal_reason: diagnostics_fatal_reason(d: chain), entry: entry, chain: chain, cascade: native_census_own_root(closure: closure, entry: entry))
-      }
+    NativeInferCensusInferRefused { resolved: _, chain: chain } =>
+      native_census_infer_member(groups: groups, positions: step.context.positions, fatal_reason: diagnostics_fatal_reason(d: chain), entry: entry, chain: chain, cascade: native_census_own_root(closure: closure, entry: entry))
   }
 }
 
@@ -5905,6 +5900,116 @@ fn list_append_rows(
   right: List<NativeRouteMemberRow>
 ) -> List<NativeRouteMemberRow> {
   fold_list(xs: right, empty: left, cons: fn(acc, r) { list_snoc_item(xs: acc, item: r) })
+}
+
+// THE EFFECT-PAIR CENSUS DRIVER (v2.compiler.effect_pair_census). It reads the SAME per-module facts as the
+// demand census (demand_census_module_facts: one walk, one function-boundary rule) and, per resolved
+// module, derives the module-local order edges and drops the tree; the closure-wide reach table is applied
+// once at the end. A module that did not resolve is counted under its root (first refused file and cause),
+// never as a module with zero pairs.
+type NativeEffectPairCensusWalk {
+  context: NativeTestContext
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  modules: List<ModuleOrderedBodies>
+  roots: List<UnobservedRoot>
+  unobserved_modules: Int
+}
+
+type ModuleOrderedBodies {
+  module: QualifiedName
+  bodies: List<BodyOrdered>
+}
+
+fn native_effect_pair_unobserved(w: NativeEffectPairCensusWalk, step: NativeTestResolved, module_qn: QualifiedName, d: NonEmptyDiagnostics) -> NativeEffectPairCensusWalk {
+  let standing = native_demand_census_resolve_refused(context: step.context, module_qn: module_qn, authored: Empty, d: d)
+  let cause = match standing {
+    DemandModuleImporteeRefused { authored: _, importee_file: f, importee_cause: c } => ImporteeRefusedCause { file: f, cause: c }
+    DemandModuleResolveRefused { authored: _, first_reason: r, first_unbound: _ } => ResolveRefusedCause { reason: r }
+    DemandModuleResolved { readings: _ } => ResolveUnclassifiedCause
+  }
+  NativeEffectPairCensusWalk {
+    context: step.context,
+    functions: w.functions,
+    operations: w.operations,
+    modules: w.modules,
+    roots: unobserved_roots_add(roots: w.roots, cause: cause, module: module_qn),
+    unobserved_modules: w.unobserved_modules + 1
+  }
+}
+
+fn native_effect_pair_census_module(w: NativeEffectPairCensusWalk, root: NormalizedTree) -> NativeEffectPairCensusWalk {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => w
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let step = native_test_resolve_module(context: w.context, module: module_qn)
+      match step.resolved {
+        Rejected { diagnostics: d } => native_effect_pair_unobserved(w: w, step: step, module_qn: module_qn, d: d)
+        Accepted { value: resolved, diagnostics: _ } =>
+          let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
+          let deps = value_use_dispositions(tree: resolved)
+          NativeEffectPairCensusWalk {
+            context: step.context,
+            functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
+            operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
+            modules: list_snoc_item(xs: w.modules, item: ModuleOrderedBodies {
+              module: module_qn,
+              bodies: module_ordered_bodies(module: module_qn, bodies: facts.bodies, uses: use_edges_of(deps: deps), not_derived: not_derived_keys_of(deps: deps))
+            }),
+            roots: w.roots,
+            unobserved_modules: w.unobserved_modules
+          }
+      }
+  }
+}
+
+type NativeEffectPairCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_effect_pair_census_output(ingest: SourceRootIngest) -> NativeEffectPairCensusOutput {
+  match native_effect_pair_census_report(ingest: ingest) {
+    Rejected { diagnostics: d } =>
+      NativeEffectPairCensusOutput { lines: [concat("[effect-pair-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: report, diagnostics: _ } =>
+      NativeEffectPairCensusOutput { lines: effect_pair_census_lines(r: report), exit: effect_pair_census_exit(r: report) }
+  }
+}
+
+fn native_effect_pair_census_report(ingest: SourceRootIngest) -> Outcome<EffectPairCensusReport> {
+  bind_outcome(o: native_test_front_end_prepare(), f: fn(front) {
+    bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+      let folded = fold_list(
+        xs: ingest,
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
+        cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
+      )
+      let walked = fold_list(
+        xs: folded.context.roots,
+        empty: NativeEffectPairCensusWalk {
+          context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
+          functions: Empty,
+          operations: Empty,
+          modules: Empty,
+          roots: Empty,
+          unobserved_modules: 0
+        },
+        cons: fn(w, root) { native_effect_pair_census_module(w: w, root: root) }
+      )
+      let table = effect_reach_table(functions: walked.functions, operations: walked.operations)
+      outcome_accepted(value: EffectPairCensusReport {
+        modules: fold_list(xs: walked.modules, empty: Empty, cons: fn(acc, m) { list_snoc_item(xs: acc, item: effect_pair_census_of_module(module: m.module, bodies: m.bodies, table: table)) }),
+        roots: walked.roots,
+        unobserved_modules: walked.unobserved_modules,
+        unclassified_operations: length(xs: table.unclassified),
+        unclassified_names: table.unclassified,
+        ambiguous_semantics_rows: table.ambiguous_rows,
+        file_refusals: length(xs: folded.context.file_refusals),
+        unreadable_files: length(xs: folded.unreadable)
+      })
+    })
+  })
 }
 
 // THE ENTRY POINT THE DRIVER CALLS IN PLACE OF ITS MODULE LOOP.
@@ -7341,6 +7446,9 @@ fn native_census_verb_output(verb: NativeCensusVerbWord, ingest: SourceRootInges
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
     CensusVerbDeclRef =>
       let o = native_decl_ref_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+    CensusVerbEffectPair =>
+      let o = native_effect_pair_census_output(ingest: ingest)
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
   }
 }

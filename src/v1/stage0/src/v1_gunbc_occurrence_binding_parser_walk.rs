@@ -139,10 +139,7 @@ pub fn reference_named(
     transport: Rc<OccurrenceTransport>,
     name: String,
 ) -> Option<Rc<ReferenceOccurrence>> {
-    match references_named(transport.clone(), name.clone())
-        .first()
-        .cloned()
-    {
+    match references_named(transport, name).first().cloned() {
         Some(reference) => Some(reference.clone()),
         std::option::Option::None => std::option::Option::None,
     }

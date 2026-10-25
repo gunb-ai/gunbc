@@ -7,6 +7,7 @@ import std.algebra { list_snoc_item }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit }
 import extdeps.bmc.redfish_telemetry { RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
@@ -60,10 +61,11 @@ type BmcSelRecord {
 }
 
 // THE READ-ONLY RECORD SURFACES A CONTROLLER SERVES BESIDE ITS STATE, one field per upstream surface
-// and only the ones a prior-life archive reads (docs/plans/machine-intake-design.md §5; consumed by
-// gunbc.machine_intake.prior_life_boundary). Each is Absent when a world does not model it, so a
-// reader that needs a surface refuses rather than reading an unmodeled surface as an empty record;
-// bmc_world() leaves all five unmodeled, and no transition in this module changes any of them.
+// a modeled reader reads: the five a prior-life archive reads (docs/plans/machine-intake-design.md §5;
+// consumed by gunbc.machine_intake.prior_life_boundary) and the IPMI SDR the boot's post-power-on fan
+// gate reads (gunbc.machine_intake.mtcollins1_boot_fan_gate). Each is Absent when a world does not model
+// it, so a reader that needs a surface refuses rather than reading an unmodeled surface as an empty
+// record; bmc_world() leaves all six unmodeled, and no transition in this module changes any of them.
 // - manager_date_time: the Redfish Manager resource's DateTime property (Manager.v1_0_0), as the
 //   controller renders its own clock. It is an observation and never an ordering clock.
 // - log_services: the Redfish LogService resources the controller serves, each with its LogEntry
@@ -72,13 +74,24 @@ type BmcSelRecord {
 //   (session and account changes). Redfish standardizes the entries, not which service holds them.
 // - virtual_media: the VirtualMedia members (extdeps.bmc.redfish_virtual_media).
 // - sensors: the Sensor members (extdeps.bmc.redfish_telemetry RedfishTelemetryPoint, Sensor.v1_2_0).
+// - ipmi_sdr: the sensor records the controller publishes over IPMI, each under the SDR sensor-type
+//   name `ipmitool sdr type` selects by (extdeps.bmc.ipmi SdrTypeList sensor_type) and in the fields
+//   extdeps.bmc.ipmi_sdr decodes. It is a separate surface from `sensors` for the reason the SEL is
+//   separate from log_services: the controller serves both, and the IPMI record carries a sensor number
+//   and entity id a Redfish Sensor does not, so neither is derivable from the other.
 // The IPMI SEL, the boot override and the power state are already fields of BmcWorld.
+type BmcSdrRecord {
+  sensor_type: NonEmptyStr
+  line: SdrTypeLine
+}
+
 type BmcRecordSurfaces {
   manager_date_time: NonEmptyStr?
   log_services: List<RedfishLogService>?
   account_events: List<RedfishLogEntry>?
   virtual_media: List<RedfishVirtualMediaObservation>?
   sensors: List<RedfishTelemetryPoint>?
+  ipmi_sdr: List<BmcSdrRecord>?
 }
 
 data bmc_record_surfaces_unmodeled: BmcRecordSurfaces = BmcRecordSurfaces {
@@ -87,6 +100,7 @@ data bmc_record_surfaces_unmodeled: BmcRecordSurfaces = BmcRecordSurfaces {
   account_events: none,
   virtual_media: none,
   sensors: none,
+  ipmi_sdr: none,
 }
 
 // sol_drop_after_boot, when a scenario sets it, schedules the controller dropping its SOL session that

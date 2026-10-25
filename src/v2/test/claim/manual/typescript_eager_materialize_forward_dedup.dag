@@ -21,7 +21,7 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Conj,
   Node,
   Symbol,
@@ -133,7 +133,7 @@ fn ts_arc1_forward_row_dedup_cutover_green_body() -> Bool {
             rules: ts_arc1_dedup_cutover_rules()
           ) {
             Accepted { value: emitted, diagnostics: d } =>
-              (d == None) && (emitted == ts_task_type_alias_emitted())
+              (d == None) && (node_same_occurrence(a: emitted, b: ts_task_type_alias_emitted()))
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false

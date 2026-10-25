@@ -1,6 +1,6 @@
 module gunbc.heal_workflow
 
-import extdeps.github.expressions { Expression, ContextAccess, Inputs, Github, LogicalOr }
+import extdeps.github.expressions { Expression, ContextAccess, ExpressionTemplate, Inputs, Github, LiteralText, Interpolation, LogicalOr, interpolate, serialize_template }
 
 
 import std.types { Bool, Int, List, String }
@@ -225,11 +225,11 @@ fn heal_candidate_step() -> Step {
     shell: none,
     env: Present {
       value: [
-        kv(key: heal_candidate_repository_env as String, value: yaml_string(s: "${{ github.repository }}")),
-        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: "${{ github.event.pull_request.number || inputs.pull_number }}")),
-        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.head.ref || inputs.head_ref }}")),
-        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.base.ref || inputs.base_ref }}")),
-        kv(key: heal_candidate_run_id_env as String, value: yaml_string(s: "${{ github.run_id }}"))
+        kv(key: heal_candidate_repository_env as String, value: yaml_string(s: heal_repository_read)),
+        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: heal_pull_number_read)),
+        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: heal_head_ref_read)),
+        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: heal_base_ref_read)),
+        kv(key: heal_candidate_run_id_env as String, value: yaml_string(s: heal_run_id_read))
       ]
     },
     working_directory: none,
@@ -401,7 +401,7 @@ fn heal_fork_notice_job() -> Job {
 // candidate the publisher would refuse as stale, and the successor run produces the one that can
 // land. Nothing here reports a verdict about a revision, so cancelling loses no judgment.
 data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax {
-  group: "heal-pr-${{ github.event.pull_request.number || inputs.pull_number }}",
+  group: serialize_template(template: heal_workflow_group_template),
   cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
   explicit_single: none
 }
@@ -521,5 +521,45 @@ fn expected_heal_workflow_yml() -> HealWorkflowGenerationOutcome {
 // The commit the heal dispatch names; a declared revision input (gunbc.action_use_admission).
 data heal_checkout_ref: Expression = LogicalOr {
   left: ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] },
-  right: ContextAccess { context: Inputs, path: ["head_sha"] }
+  right: ContextAccess { context: Inputs, path: [heal_dispatch_head_sha_input.name] }
+}
+
+// THE CANDIDATE STAGE READS THE PULL REQUEST COORDINATES THROUGH THE TYPED EXPRESSION MODEL (the
+// same carrier as heal_checkout_ref above; review 85263, DESIGN section 6b: the same rule at
+// sibling sites). Each read below is a ContextAccess over github or an `event.pull_request.X ||
+// inputs.Y` LogicalOr whose fallback names a declared dispatch input, and the ${{ }} medium exists
+// only in extdeps.github.expressions interpolate. The input names are read from the DispatchInput
+// rows, so a coordinate is spelled once (section 3).
+data heal_repository_read: String =
+  interpolate(expression: ContextAccess { context: Github, path: ["repository"] })
+
+data heal_run_id_read: String =
+  interpolate(expression: ContextAccess { context: Github, path: ["run_id"] })
+
+data heal_pull_number_fallback: Expression = LogicalOr {
+  left: ContextAccess { context: Github, path: ["event", "pull_request", "number"] },
+  right: ContextAccess { context: Inputs, path: [heal_dispatch_pull_number_input.name] }
+}
+
+data heal_pull_number_read: String = interpolate(expression: heal_pull_number_fallback)
+
+data heal_head_ref_read: String = interpolate(expression: LogicalOr {
+  left: ContextAccess { context: Github, path: ["event", "pull_request", "head", "ref"] },
+  right: ContextAccess { context: Inputs, path: [heal_dispatch_head_ref_input.name] }
+})
+
+data heal_base_ref_read: String = interpolate(expression: LogicalOr {
+  left: ContextAccess { context: Github, path: ["event", "pull_request", "base", "ref"] },
+  right: ContextAccess { context: Inputs, path: [heal_dispatch_base_ref_input.name] }
+})
+
+// THE GROUP PREFIX IS THE ONLY TEXT THIS MODEL OWNS for the group; the per-pull coordinate is the
+// typed read above, and serialize_template spells the whole value.
+data heal_workflow_group_prefix: String = "heal-pr-"
+
+data heal_workflow_group_template: ExpressionTemplate = {
+  segments: [
+    LiteralText { text: heal_workflow_group_prefix },
+    Interpolation { expression: heal_pull_number_fallback }
+  ]
 }

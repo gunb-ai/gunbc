@@ -1,0 +1,116 @@
+module test.claim.supermicro_h11ssl_unit1_hand_install_witness
+
+import std.types { Bool }
+import std.optional { Present, Absent }
+import extdeps.network.ipv4 { Ipv4Parsed, Ipv4ParseFailed, parse_ipv4_address, ipv4_address_eq, render_ipv4_address }
+import gunbc.machine_intake.supermicro_h11ssl_first_contact { supermicro_h11ssl_first_contact_receipt }
+import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt {
+  supermicro_h11ssl_unit1_hand_install,
+  supermicro_h11ssl_unit1_install_media_held,
+  supermicro_h11ssl_unit1_hand_install_open_obligations,
+  supermicro_h11ssl_unit1_tracked_fields,
+  supermicro_h11ssl_unit1_install_media_tracked_fields,
+  supermicro_h11ssl_unit1_disk_layout_tracked_fields,
+  supermicro_h11ssl_unit1_system_state_tracked_fields,
+  supermicro_h11ssl_unit1_relayed_day_is_day_granularity,
+  hand_install_field_figure,
+  hand_install_completed_step,
+}
+
+// THE HAND-INSTALL RECEIPT'S CLAIMS (gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt).
+// What this witness holds the record TO is the §4d/§5 line the ruling drew: the install is an
+// operator-performed effect OUTSIDE any modeled route -- so it must be a receipt of a human act, it
+// must NOT read as a converged state, every field the operator has not relayed must stay an explicit
+// unknown with a reading obligation rather than a default, and no timestamp nobody reported may
+// stand in for the day the operator did report (review 85697).
+
+// THE REALIZATION IS THE DECLARED INTENT, NOT A COMPLETED EFFECT. The operator's 2026-10-24 ruling
+// stated the INTENT to install by hand; completion has not been relayed (merry-fox-82's side-chat
+// hold, §4d). So the record's realization is DeclaredByOperator at the relayed ruling day, the day
+// guard refuses instant shapes on it, and the completedness fold hand_install_completed_step must
+// say Absent -- the only arm that wraps the shared completed-step carrier (provider_acquisition
+// AcquisitionRealization) is Completed, buildable solely when the operator relays completion. This
+// row fails the day anyone records a finished install before that relay, or through a modeled route.
+test fn w_the_install_is_recorded_as_a_declared_ruling_not_a_completed_effect() -> Bool {
+  match supermicro_h11ssl_unit1_hand_install.realization {
+    DeclaredByOperator { ruled_on: d, relayed: r } =>
+      d == "2026-10-24"
+        && !(r as String == "")
+        && supermicro_h11ssl_unit1_relayed_day_is_day_granularity(d)
+    Completed { performed: _ } => false
+  }
+    && match hand_install_completed_step(supermicro_h11ssl_unit1_hand_install.realization) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// NOTHING RELAYED YET READS AS COMPLETE. The ISO's identity is not held (name, version, digest all
+// unrelayed as of 2026-10-24), so the held-media fold must say Absent -- the empty picture has to be
+// SAYABLE, not readable as a figure.
+test fn w_unrelayed_media_reads_absent_not_default() -> Bool {
+  match supermicro_h11ssl_unit1_install_media_held(supermicro_h11ssl_unit1_hand_install.install_media) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// EVERY UNRELAYED FIELD CARRIES ITS READING OBLIGATION, AND THE SET IS THE FULL CHECKLIST. The nine
+// tracked fields (media three, disk two, system three, stated phase one) are unrelayed as of
+// 2026-10-24 and each must carry a non-empty read_obligation -- AND the checklist must visit exactly
+// what the by-name record-pattern folds return: a field added to a substructure without joining its
+// tracked fold, or to the record without joining tracked_fields, goes red here (review 85697's
+// drift hole closed with the forcing function the type itself does not give).
+test fn w_open_fields_are_the_checklist_each_with_an_obligation() -> Bool {
+  let open = supermicro_h11ssl_unit1_hand_install_open_obligations()
+  let tracked = supermicro_h11ssl_unit1_tracked_fields()
+  count(open) == 9
+    && all(open, o => !(o as String == ""))
+    && count(tracked) == 9
+    && count(supermicro_h11ssl_unit1_install_media_tracked_fields(supermicro_h11ssl_unit1_hand_install.install_media)) == 3
+    && count(supermicro_h11ssl_unit1_disk_layout_tracked_fields(supermicro_h11ssl_unit1_hand_install.disk_layout)) == 2
+    && count(supermicro_h11ssl_unit1_system_state_tracked_fields(supermicro_h11ssl_unit1_hand_install.system_state)) == 3
+}
+
+// THE DAY GUARD REFUSES AN INSTANT, PASSES A DAY. The guard that keeps the fabricated midnight-UTC
+// out must itself be checked in both directions: a relayed day passes, an instant is refused -- so
+// reintroducing an instant-shaped performed_on or as_of is a red claim, not a silent pass.
+test fn w_the_day_guard_refuses_instant_shapes() -> Bool {
+  supermicro_h11ssl_unit1_relayed_day_is_day_granularity("2026-10-24")
+    && !supermicro_h11ssl_unit1_relayed_day_is_day_granularity("2026-10-24T00:00:00Z")
+}
+
+// THE ONE RELAYED FIELD IS RELAYED WITH ITS FIGURE; THE UNKNOWNS HAVE NONE. Presence goes through
+// std.optional -- the companion-hardware report (heatsink fitted; RAM + SSD added, the operator's
+// own 2026-10-24 statements) presents a figure, while the hostname and stated phase (not relayed)
+// present nothing. A world where NotRelayed could smuggle a standing, or OperatorRelayed drop one,
+// breaks this row.
+test fn w_the_relayed_companion_report_is_distinguishable_from_the_unknowns() -> Bool {
+  match hand_install_field_figure(supermicro_h11ssl_unit1_hand_install.companion_hardware_report) {
+    Present { value: f } => !(f.value as String == "")
+    Absent => false
+  }
+    && match hand_install_field_figure(supermicro_h11ssl_unit1_hand_install.system_state.hostname) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match hand_install_field_figure(supermicro_h11ssl_unit1_hand_install.operator_stated_phase) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// THE UNIT KEY IS THE UNIT THAT WAS RULED ABOUT, TYPED AND CROSS-CHECKED. The BMC address is an
+// extdeps.network.ipv4 Ipv4Address (named octets, not an opaque string -- §2's anemic-modeling
+// rule), and the single authority for "which unit 252 is" is the identity row in
+// gunbc.machine_intake.supermicro_h11ssl_first_contact: parsing ITS bmc_address and asserting typed
+// equality means a mistyped octet in either record, or a receipt pointed at a sibling unit, fails
+// here rather than reading as consistent (§3).
+test fn w_the_receipt_keys_on_the_bmc_252_unit() -> Bool {
+  match parse_ipv4_address(supermicro_h11ssl_first_contact_receipt.bmc_address as String) {
+    Ipv4Parsed { address: a } => ipv4_address_eq(a: a, b: supermicro_h11ssl_unit1_hand_install.bmc_ipv4)
+    Ipv4ParseFailed { error: _ } => false
+  }
+    && supermicro_h11ssl_unit1_hand_install.unit_key == "supermicro-h11ssl-unit1"
+    && (render_ipv4_address(supermicro_h11ssl_unit1_hand_install.bmc_ipv4) as String) == "192.168.1.252"
+}

@@ -1,7 +1,7 @@
 module v2.test.claim.module_acquisition
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, List, Map }
-import v2.compiler.module_acquisition { AcquireEntry, AcquireImportedModule, AcquireImportedMember, AcquireQualifiedReference, AcquiredModule, AcquisitionAdvanced, AcquisitionExact, AcquisitionExactness, AcquisitionEntryUnderivable, AcquisitionEnv, AcquisitionGrammarUnprepared, AcquisitionKind, AcquisitionMemberNotRead, AcquisitionMarkedDeclaration, AcquisitionMarkerRead, AcquisitionMarkersRead, AcquisitionMarkersRefused, AcquisitionMemberRead, AcquisitionMemberRefused, AcquisitionMemberIdentityDisagrees, AcquisitionMemberSitesUnreadable, AcquisitionLookupRefused, AcquisitionMemberReadOk, AcquisitionMemberReadRefused, AcquisitionReadNotRequested, AcquisitionReadTwice, AcquisitionReadWithoutMember, AcquisitionRequest, AcquisitionRequestedNotRead, AcquisitionTreeUnbound, AcquisitionUnknownModule, AcquisitionState, AcquisitionStepRefused, MemberParseRefused, MemberParses, SourceRootBinding, acquisition_env_over, acquisition_exactness, acquisition_ingest, acquisition_member_requests, acquisition_module_path, acquisition_parse, acquisition_step, acquisition_test_markers, acquisition_refusal_text, bound_modules_prepended, namespace_directory_is_the_absent_path, namespace_module_name, namespace_relative_directory, namespace_top_level, top_level_namespaces }
+import v2.compiler.module_acquisition { AcquiredFromFile, AcquireEntry, AcquireImportedModule, AcquireImportedMember, AcquireQualifiedReference, AcquiredModule, AcquisitionAdvanced, AcquisitionExact, AcquisitionExactness, AcquisitionEntryUnderivable, AcquisitionEnv, AcquisitionGrammarUnprepared, AcquisitionKind, AcquisitionMemberNotRead, AcquisitionMarkedDeclaration, AcquisitionMarkerRead, AcquisitionMarkersRead, AcquisitionMarkersRefused, AcquisitionMemberRead, AcquisitionMemberRefused, AcquisitionMemberIdentityDisagrees, AcquisitionDerivedRosterRefused, AcquisitionMemberSitesUnreadable, AcquisitionLookupRefused, AcquisitionMemberReadOk, AcquisitionMemberReadRefused, AcquisitionReadNotRequested, AcquisitionReadTwice, AcquisitionReadWithoutMember, AcquisitionRequest, AcquisitionRequestedNotRead, AcquisitionTreeUnbound, AcquisitionUnknownModule, AcquisitionState, AcquisitionStepRefused, MemberParseRefused, MemberParses, SourceRootBinding, acquisition_env_over, acquisition_exactness, acquisition_ingest, acquisition_member_requests, acquisition_module_path, acquisition_parse, acquisition_step, acquisition_test_markers, acquisition_refusal_text, bound_modules_prepended, namespace_directory_is_the_absent_path, namespace_module_name, namespace_relative_directory, namespace_top_level, top_level_namespaces }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.tokenize { prepare_lex_rules }
@@ -52,7 +52,8 @@ fn a_member(name: String, path: String, requests: List<AcquisitionRequest>) -> A
     host_directory: "src/v2",
     content: "",
     requests: requests,
-    test_markers: []
+    test_markers: [],
+    origin: AcquiredFromFile
   }
 }
 
@@ -995,7 +996,8 @@ fn idle_acquisition_state(known: Map<String, Bool>) -> AcquisitionState {
     known: known,
     absent: empty_map(),
     absent_probes: 0,
-    reads: []
+    reads: [],
+    held: empty_map()
   }
 }
 
@@ -1081,6 +1083,7 @@ test fn a_forbidden_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
             AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => false
             AcquisitionMemberSitesUnreadable { module: _, file: _ } => false
             AcquisitionMemberIdentityDisagrees { module: _, file: _, declared: _ } => false
+            AcquisitionDerivedRosterRefused { module: _, refusal: _ } => false
           }
         AcquisitionAdvanced { state: _ } => false
       }
