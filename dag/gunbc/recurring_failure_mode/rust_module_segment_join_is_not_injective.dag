@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.rust_module_segment_join_is_not_injective
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data rust_module_segment_join_is_not_injective: RecurringFailureMode = RecurringFailureMode {
+  identity: "rust_module_segment_join_is_not_injective" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyImpossible,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "an injective module-identifier spelling shared by the Rust declaration reference form and the seed's per-module file layout, under which two distinct .dag module paths can never spell one Rust module identifier, executed against a RED pair of distinct modules that collide under the current join"
+    }
+  },
+
+  receipts: [
+    "**the Rust module identifier is the .dag module path with its dots replaced by `_`, and that map is not injective.** v2.extdeps.languages.rust rust_declaration_reference_form spells a corpus declaration reference as crate::<module>::<name>, with the module's dotted segments joined by `_` (module_segment_joiner). It states that it follows the seed's per-module layout, which is gunbc.rust_emitted_edge module_to_filename (split on `.`, join with `_`; rust.dag's comment cites it under a stale home, v1.compiler.emit_core_support). So the two share one non-injective map. Underscore is a legal character inside a segment, so a.b_c and a_b.c both become the module identifier a_b_c.",
+
+    "INVALID STATE: two distinct .dag modules in one emitted closure whose module paths flatten to the same Rust module identifier, so that a reference to a declaration in one of them is spelled identically to a reference to the same-named declaration in the other.",
+
+    "HARM: a reference names a different declaration from the one the source resolved, without any refusal at the point of the collision. That is silent wrongness, which is below the ladder (DESIGN section 4b), and it holds wherever the colliding modules declare a same-named item with a compatible shape. Where they do not, rustc refuses at the use site or at a duplicated module, loudly but away from the cause. This row does not establish which outcome the seed's file layout produces when two modules map to one filename (overwrite, merge or refusal); that is unread.",
+
+    "DISTINGUISHING FACTS: the collision is decided entirely by the module paths in the closure, with no type information, so it is detectable at layout time from the module population under gunbc.source_layout. It is distinct from emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer (one LEAF NAME declared in two modules, the module path kept) and from the declaration name after `::`, which this join does not touch.",
+
+    "CENSUS, 2026-10-25, clever-crane-830, one-off and not an instrument: every .dag file on main 6b30f91 mapped to its module path by the section 3 rule (src/v2 -> v2.*, dag/<ns> -> <ns>.*), with dots then replaced by `_`. 9389 modules give 9389 distinct identifiers and 0 colliding pairs, so there is NO LIVE COLLISION today. The state is still writable: adding a module whose path differs from an existing one only by moving a dot to an underscore creates one, and nothing refuses it. Reported by keen-newt-359 (cancelled Charter 6) and routed by sleek-owl-397.",
+
+    "CEILING: structurally impossible. A spelling whose map from module path to identifier is injective by construction (for example, escaping `_` inside a segment before joining, or length-prefixing each segment) leaves the colliding pair without a constructor. A layout-time refusal of colliding paths would reach only mechanically preventable, and is the weaker repair.",
+
+    "NEXT TRIGGER: the census becomes a gunbc test label over the module population under gunbc.source_layout, so that the zero is re-derived rather than transcribed. Separately, the injective spelling is adopted by both the reference form and the seed's layout in one change, since they must agree. The discriminating RED is two fixture modules a.b_c and a_b.c in one closure, each declaring N: today they emit one identifier, and after the change they must emit two distinct, building references. STAFFING (sleek-owl-397, 2026-10-25): waits on the no-new-workers rule unless a census finds a live collision, in which case it jumps the queue.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.extdeps.languages.rust", decl_name: "rust_declaration_reference_form"),
+    decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "DeclarationReferenceForm"),
+    decl_ref(module_path: "gunbc.rust_emitted_edge", decl_name: "module_to_filename"),
+    decl_ref(module_path: "gunbc.source_layout", decl_name: "layout_module_storage_path"),
+  ],
+}
