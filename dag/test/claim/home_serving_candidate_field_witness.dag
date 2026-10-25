@@ -38,7 +38,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { string_contains }
-import std.measure { watt, watt_count }
+import std.measure { Watt, watt, watt_count }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, ParetoEntry }
@@ -73,11 +73,15 @@ fn hscf_live() -> List<ParetoEntry> = home_serving_candidate_field()
 fn hscf_display(e: ParetoEntry) -> String = e.display_label as String
 
 
-fn hscf_entry(ref: DeclarationRef, label: String, watts: Nat) -> ParetoEntry {
+// Takes a Watt, not a Nat, for the same reason the fold's buyer terms do (review 86420): the watt
+// has one authority, and a bare Nat named `watts` would put that fact outside it. Converting through
+// watt_count here also keeps the probes at the SAME scale as the fold's own mint, which reads watt
+// counts into interval_micro -- so a probe and a minted cell are comparable, not merely both ints.
+fn hscf_entry(ref: DeclarationRef, label: String, watts: Watt) -> ParetoEntry {
   ParetoEntry {
     identity: ref,
     display_label: label as NonEmptyStr,
-    readings: [AxisReading { axis: ax_applied_draw_watts, interval_micro: degenerate_interval(point: watts as Int) }],
+    readings: [AxisReading { axis: ax_applied_draw_watts, interval_micro: degenerate_interval(point: watt_count(w: watts) as Int) }],
     missing_inputs: [],
   }
 }
@@ -177,8 +181,8 @@ test fn home_serving_live_verdict_is_never_a_pick_and_never_empty() -> ProcessEx
 // supplies tie_break there would answer the question being asked.
 test fn home_serving_two_equal_survivors_need_policy() -> ProcessExit {
   let tied = [
-    hscf_entry(ref: hscf_probe_a, label: "tied probe A at 200 W", watts: 200),
-    hscf_entry(ref: hscf_probe_b, label: "tied probe B at 200 W", watts: 200),
+    hscf_entry(ref: hscf_probe_a, label: "tied probe A at 200 W", watts: watt(count: 200)),
+    hscf_entry(ref: hscf_probe_b, label: "tied probe B at 200 W", watts: watt(count: 200)),
   ]
   match select_home_serving_candidate(field: tied, terms: hscf_roomy, policy: hscf_no_policy()) {
     SelectionNeedsPolicy { survivors: survivors } =>
@@ -192,8 +196,8 @@ test fn home_serving_two_equal_survivors_need_policy() -> ProcessExit {
 // cannot tell "correctly refuses a tie" from "refuses everything".
 test fn home_serving_distinguished_pair_is_selected() -> ProcessExit {
   let pair = [
-    hscf_entry(ref: hscf_probe_a, label: "probe A at 200 W", watts: 200),
-    hscf_entry(ref: hscf_probe_b, label: "probe B at 600 W", watts: 600),
+    hscf_entry(ref: hscf_probe_a, label: "probe A at 200 W", watts: watt(count: 200)),
+    hscf_entry(ref: hscf_probe_b, label: "probe B at 600 W", watts: watt(count: 600)),
   ]
   match select_home_serving_candidate(field: pair, terms: hscf_roomy, policy: hscf_no_policy()) {
     SelectedWithin { candidate: chosen, receipt: _ } =>
@@ -212,8 +216,8 @@ test fn home_serving_distinguished_pair_is_selected() -> ProcessExit {
 // only where a reading exists — which is why this pair is hand-built and the live field cannot show it.
 test fn home_serving_ceiling_excludes_a_read_candidate_above_the_bound() -> ProcessExit {
   let pair = [
-    hscf_entry(ref: hscf_probe_a, label: "probe A at 200 W", watts: 200),
-    hscf_entry(ref: hscf_probe_b, label: "probe B at 600 W", watts: 600),
+    hscf_entry(ref: hscf_probe_a, label: "probe A at 200 W", watts: watt(count: 200)),
+    hscf_entry(ref: hscf_probe_b, label: "probe B at 600 W", watts: watt(count: 600)),
   ]
   match select_home_serving_candidate(field: pair, terms: hscf_ceiling_350, policy: hscf_no_policy()) {
     SelectedWithin { candidate: chosen, receipt: _ } =>
