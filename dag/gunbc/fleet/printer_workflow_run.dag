@@ -23,7 +23,7 @@ import gunbc.actions_run_binding { actions_variable_trimmed }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused}
 import gunbc.fleet.printer_receipt {write_receipt}
-import gunbc.fleet.print_converge {converge_print}
+import gunbc.fleet.print_converge {converge_print, print_pass_ref, ReviewedMainRef, OffReviewedMainRef}
 import gunbc.fleet.print_request {PrintRequest}
 
 // Discovery reads latest once and records the provider's numeric identity, never the code.
@@ -57,7 +57,10 @@ fn run() -> ProcessExit {
     match select_printer(name: actions_variable_trimmed(name: "PRINTER_TARGET")) {
       PrinterSelectionRefused => exit_failure(reason: "Printer identity is not in the fleet roster")
       PrinterSelected { printer: printer } =>
-        if operation == "observe" { observe_credential_with_source(printer:printer,token_source:WorkloadIdentityToken) }
+        if operation == "observe" { match print_pass_ref(github_ref: actions_variable_trimmed(name: "GITHUB_REF")) {
+          ReviewedMainRef => observe_credential_with_source(printer:printer,token_source:WorkloadIdentityToken)
+          OffReviewedMainRef { ref: _ } => exit_failure(reason: "Observing the printer credential runs only from reviewed main; a branch run holds no printer credential")
+        } }
         else if operation != "converge" { exit_failure(reason: "Unknown printer operation; use observe or converge") }
         else {
           let request_id = actions_variable_trimmed(name: "PRINTER_REQUEST_ID")
@@ -68,6 +71,7 @@ fn run() -> ProcessExit {
             exit_failure(reason: "Converge requires request_id, root and recipe, and an attributed revision")
           } else { converge_print(
             request: PrintRequest { request_id: request_id as NonEmptyStr, root: root as NonEmptyStr, recipe: recipe as NonEmptyStr, printer: printer },
+            pass_ref: print_pass_ref(github_ref: actions_variable_trimmed(name: "GITHUB_REF")),
             source_revision: revision as NonEmptyStr, run_id: run_id, token_source: WorkloadIdentityToken) }
         }
     }
