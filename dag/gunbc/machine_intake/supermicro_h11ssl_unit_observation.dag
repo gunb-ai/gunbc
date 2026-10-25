@@ -21,6 +21,8 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
 import extdeps.vendor.amd { amd }
+import extdeps.cpu.types { CpuModelCatalogRow }
+import extdeps.cpu.amd { epyc_7702p_catalog }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.firmware.ami_aptio_status_codes { PostCodeDecode, ami_aptio_decode }
 import extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide { supermicro_ami_aptio_v_post_codes_guide_table }
@@ -366,6 +368,11 @@ fn supermicro_h11ssl_shared_ordered_tail(a: H11sslPostTrace, b: H11sslPostTrace)
 // handled the parts and is the authority on which part went into which board, but nothing here
 // was read from the parts. SMBIOS reads every serial as Unknown and no PSB fuse state was read,
 // so per-part identity and lock state stay attested; `unread` names what a machine read would add.
+//
+// `attested_on` is a Gregorian day, held as text, because the answer was relayed with its day and
+// no time. An Rfc3339Timestamp would make up a time of day, and v2.std.datetime CalendarDate has no
+// constructor in the corpus yet; extdeps.pin pin_currency_gap records the same gap. Trigger: a
+// CalendarDate constructor. This field then becomes a CalendarDate.
 type H11sslOperatorAttestation {
   attested_by: NonEmptyStr
   attested_on: NonEmptyStr
@@ -388,21 +395,23 @@ type H11sslCpuPartTenure = PartFittedNow | PartRemoved
 
 type H11sslAttestedCpuPart {
   bmc_mac: Eui48Address
-  model: NonEmptyStr
+  model: CpuModelCatalogRow
   lock: H11sslCpuPartLock
   tenure: H11sslCpuPartTenure
   attestation: H11sslOperatorAttestation
 }
 
 // One row per part whose board the attestation places. Unit 1's original is the part the 0x22 hold
-// was with; its model is the 2026-10-17 first-contact attestation
-// (gunbc.machine_intake.supermicro_h11ssl_first_contact supermicro_h11ssl_attested_hardware). The
+// was with. The model of every row is the upstream catalog row (extdeps.cpu.amd epyc_7702p_catalog),
+// not a copied string. For the original part, that the part was a 7702P is the 2026-10-17 first-contact
+// attestation (gunbc.machine_intake.supermicro_h11ssl_first_contact supermicro_h11ssl_attested_hardware),
+// and the witness checks that row's model number against it. The
 // statement's plural "earlier CPUs" may cover a part beyond unit 1's original, but no board is
 // stated for one, so none is rowed: a row is added when its placement is attested.
 data supermicro_h11ssl_attested_cpu_parts: List<H11sslAttestedCpuPart> = [
-  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: "AMD EPYC 7702P", lock: PartAttestedVendorLocked, tenure: PartRemoved, attestation: supermicro_h11ssl_cpu_history_attestation },
-  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: "AMD EPYC 7702P", lock: PartAttestedUnlocked, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
-  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit2_bmc_mac, model: "AMD EPYC 7702P", lock: PartAttestedUnlocked, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: PartAttestedVendorLocked, tenure: PartRemoved, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: PartAttestedUnlocked, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit2_bmc_mac, model: epyc_7702p_catalog, lock: PartAttestedUnlocked, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
 ]
 
 fn supermicro_h11ssl_attested_part(parts: List<H11sslAttestedCpuPart>, bmc_mac: Eui48Address, tenure: H11sslCpuPartTenure) -> H11sslAttestedCpuPart? {
