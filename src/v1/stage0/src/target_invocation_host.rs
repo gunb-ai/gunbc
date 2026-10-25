@@ -538,6 +538,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("roster-import-sweep-native"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/roster_import_sweep_native.dag",
+            },
+        ),
+        (
             instrument_label("native-serve"),
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_fixture.dag",
@@ -5283,6 +5289,31 @@ fn typed_graph_exclusive_bytes_over(
 #[cfg(test)]
 mod native_route_termination_tests {
     use super::*;
+
+    /// THE CONTROL FOR THE NATIVE ROUTE OF THE GENERATOR SWEEP. The instrument's only producer is
+    /// `TargetProducer::NativeClaimProgram` -- emit-by-seed + cargo-build + exec, the same authority
+    /// instrument labels travel. If the row is removed, retargeted at any interpreter route
+    /// (SelfHost/Interpreted/RetainedHost) or downgraded to a wrapper, this test goes red: the
+    /// sweep's native route is the claim, and a fallback in the registry would silently run the
+    /// interpreter instead of the emitted program while still printing rows.
+    #[test]
+    fn roster_import_sweep_native_is_bound_to_the_native_claim_program_producer() {
+        let label = instrument_label("roster-import-sweep-native");
+        let row = instrument_registry()
+            .into_iter()
+            .find(|(l, _)| l == &label)
+            .unwrap_or_else(|| panic!("roster-import-sweep-native lost its registry row"));
+        assert!(
+            matches!(
+                row.1,
+                TargetProducer::NativeClaimProgram {
+                    entry: "dag/gunbc/instruments/roster_import_sweep_native.dag"
+                }
+            ),
+            "roster-import-sweep-native must run through NativeClaimProgramProducer, found a fallback: {:?}",
+            row.1
+        );
+    }
 
     /// `gunbc.target_invocation` `claim_route_termination`, mirrored: the same five rows
     /// `test.claim.target_invocation_witness` `the_claim_route_termination_maps_to_the_three_exit_statuses`
