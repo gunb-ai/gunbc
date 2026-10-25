@@ -52,7 +52,7 @@ import gunbc.compute.work_request { work_default_build, work_declared_outputs, W
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import extdeps.git { shape_git_worktree_add_detached_argv, git_worktree_remove_force_command }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
-import extdeps.linux.procfs { procfs_status_effective_uid }
+import gunbc.host.user_session_runtime { UserSessionRuntimeBound, UserSessionRuntimeAbsent, observe_user_session_runtime, user_session_unit_setenv, user_session_launcher_env }
 import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
@@ -87,10 +87,6 @@ fn compute_run_unit_cold_job_memory_demand() -> ByteSize {
   measure_add(a: compute_run_unit_cold_unit_grant_bytes, b: compute_run_unit_cold_launcher_headroom)
 }
 
-type HermeticUserSessionRuntime
-  = HermeticUserSessionRuntimeBound { runtime_dir: FilePath }
-  | HermeticUserSessionRuntimeAbsent
-
 // THE PRODUCTION ROOT IS THE PROD-ROLE HOLDER'S, resolved through the role, never srv1 by name
 // (gunbc.recurring_failure_mode a_test_deployment_acts_on_the_prod_deployments_state). An unresolved
 // role answers true: a run that cannot tell where production lives refuses rather than risk it.
@@ -116,36 +112,6 @@ fn observe_run_frame() -> Int? {
     ClockUnixMillisRefused { detail: _ } => none
     ClockUnixMillisObserved { millis } => Present { value: millis }
   }
-}
-
-fn observe_hermetic_user_session_runtime() -> HermeticUserSessionRuntime {
-  let status = Filesystem.Read(path: "/proc/self/status")
-  if !status.success {
-    HermeticUserSessionRuntimeAbsent
-  } else {
-    match procfs_status_effective_uid(content: status.content) {
-      Absent => HermeticUserSessionRuntimeAbsent
-      Present { value: uid } => {
-        let runtime_dir = join(["/run/user/", to_string(value: uid)], "")
-        let listed = Filesystem.List(path: runtime_dir as FilePath)
-        if listed.success && any(split(s: listed.entries, delimiter: "\n"), n => n == "bus") {
-          HermeticUserSessionRuntimeBound { runtime_dir: runtime_dir as FilePath }
-        } else {
-          HermeticUserSessionRuntimeAbsent
-        }
-      }
-    }
-  }
-}
-
-fn hermetic_user_session_unit_setenv(runtime_dir: FilePath) -> List<SystemdSetenvBinding> {
-  [
-    SystemdSetenvBinding { name: "XDG_RUNTIME_DIR", value: runtime_dir as String as NonEmptyStr },
-    SystemdSetenvBinding {
-      name: "DBUS_SESSION_BUS_ADDRESS",
-      value: join(["unix:path=", runtime_dir as String, "/bus"], "") as NonEmptyStr,
-    },
-  ]
 }
 
 fn observe_isolated_job_toolchain_homes() -> IsolatedJobToolchainHomes? {
@@ -183,13 +149,6 @@ fn hermetic_toolchain_unit_setenv(homes: IsolatedJobToolchainHomes) -> List<Syst
       name: rustup_home_env_name,
       value: homes.rustup_home as String as NonEmptyStr,
     },
-  ]
-}
-
-fn hermetic_user_session_launcher_env(runtime_dir: FilePath) -> List<EnvBinding> {
-  [
-    EnvSet { name: "XDG_RUNTIME_DIR", value: runtime_dir as String },
-    EnvSet { name: "DBUS_SESSION_BUS_ADDRESS", value: join(["unix:path=", runtime_dir as String, "/bus"], "") },
   ]
 }
 
@@ -293,13 +252,13 @@ fn no_observation(bytes: String, reason: String) -> CliWireResponse {
 }
 
 fn compute_run_unit_cold_exit() -> CliWireResponse {
-  match observe_hermetic_user_session_runtime() {
-    HermeticUserSessionRuntimeAbsent =>
+  match observe_user_session_runtime() {
+    UserSessionRuntimeAbsent =>
       no_observation(
         bytes: "compute-run-unit-cold: no observation: user session bus absent at /run/user/<uid>/bus (systemd-run --user cannot run)",
         reason: "user session bus absent",
       )
-    HermeticUserSessionRuntimeBound { runtime_dir } =>
+    UserSessionRuntimeBound { runtime_dir } =>
       match observe_isolated_job_toolchain_homes() {
         Absent =>
           CliWirePrintable {
@@ -407,10 +366,10 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
         identity_hex: identity,
         argv: ["/usr/bin/printenv"],
         env: concat(
-          hermetic_user_session_unit_setenv(runtime_dir: runtime_dir),
+          user_session_unit_setenv(runtime_dir: runtime_dir),
           hermetic_toolchain_unit_setenv(homes: toolchain_homes),
         ),
-        launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+        launcher_env: user_session_launcher_env(runtime_dir: runtime_dir),
         granted: kibibyte_from_byte_size_floor(b: gibibyte_to_byte_size(g: gibibyte(count: 1))),
         user_runtime_dir: runtime_dir,
         stop_observation: NoStopObservation,
@@ -445,10 +404,10 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
 fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
   let host = observe_sccache_host_probe()
   let head = join(["compute-run-unit-sccache-probe\n", host], "")
-  match observe_hermetic_user_session_runtime() {
-    HermeticUserSessionRuntimeAbsent =>
+  match observe_user_session_runtime() {
+    UserSessionRuntimeAbsent =>
       no_observation(bytes: join([head, "no observation: user session bus absent\n"], ""), reason: "user session bus absent")
-    HermeticUserSessionRuntimeBound { runtime_dir } =>
+    UserSessionRuntimeBound { runtime_dir } =>
       match observe_isolated_job_toolchain_homes() {
         Absent => CliWirePrintable {
           bytes: join([head, "ToolchainHomesNotIsolated\n"], ""),
@@ -627,12 +586,12 @@ fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchain
                     argv: compute_command_argv(instance: instance, layout: argv_layout, op: op, dependency: NoComputeDependency),
                     env: concat(
                       concat(
-                        concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+                        concat(compute_operation_env(op: op), user_session_unit_setenv(runtime_dir: runtime_dir)),
                         hermetic_toolchain_unit_setenv(homes: toolchain_homes),
                       ),
                       [SystemdSetenvBinding { name: "SCCACHE_LOG", value: "debug" as NonEmptyStr }, SystemdSetenvBinding { name: "SCCACHE_ERROR_LOG", value: server_log_path as NonEmptyStr }],
                     ),
-                    launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+                    launcher_env: user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
                     user_runtime_dir: runtime_dir,
                     stop_observation: stop_observation,
@@ -963,10 +922,10 @@ fn first_refusal(a: Optional<String>, b: Optional<String>) -> Optional<String> {
 }
 
 fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
-  match observe_hermetic_user_session_runtime() {
-    HermeticUserSessionRuntimeAbsent =>
+  match observe_user_session_runtime() {
+    UserSessionRuntimeAbsent =>
       no_observation(bytes: "compute-run-unit-cold-same-path: no observation: user session bus absent", reason: "user session bus absent")
-    HermeticUserSessionRuntimeBound { runtime_dir } =>
+    UserSessionRuntimeBound { runtime_dir } =>
       match observe_isolated_job_toolchain_homes() {
         Absent => arm_failed(bytes: "compute-run-unit-cold-same-path: ToolchainHomesNotIsolated", reason: "ToolchainHomesNotIsolated")
         Present { value: homes } =>
