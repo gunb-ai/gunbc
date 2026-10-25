@@ -202,13 +202,16 @@ data native_service_route_denominator: NativeEffectDenominator = NativeEffectDen
 }
 
 // The claim route DECLARES its set rather than excluding from an open one: a claim report may demand
-// the extdeps.filesystem.filesystem_io Filesystem service and nothing else.
+// the extdeps.filesystem.filesystem_io Filesystem service, the allocation counter and, by the
+// operator's 2026-10-25 extension on the D11 row, the fixed-argv extdeps.docker.cli_service DockerCli
+// (the narrow process-spawn effect; generic exec is not admitted), and nothing else.
 data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
   route: NativeClaimDriver,
-  ruling: decl_ref(module_path: "std.compiler_entry", decl_name: "NativeClaimDriver"),
+  ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
   scope: NativeAdmitOnly { admitted: [
     native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
-    native_effect_declared(module_path: "std.realization_measurement", decl_name: "AllocationCounter")
+    native_effect_declared(module_path: "std.realization_measurement", decl_name: "AllocationCounter"),
+    native_effect_declared(module_path: "extdeps.docker.cli_service", decl_name: "DockerCli")
   ] }
 }
 

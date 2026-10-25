@@ -1,0 +1,258 @@
+module gunbc.instruments.router_proxy_falsifier
+
+import std.types { Int, List, String, Bool, NonEmptyStr, Port }
+import std.optional { Optional, Present, Absent }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.docker.cli_service { DockerCli }
+import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
+import extdeps.proxy.openresty {
+  NginxDirective, NginxToken, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
+  LuaPhaseBlock, ContentPhase, LuaSharedDict, nginx_token, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
+}
+import gunbc.serving.router_proxy_config { RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config }
+
+// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b). `gunbc test
+// //gunbc/instruments:router-proxy-falsifier` emits this closure, builds it and runs it: the pinned
+// OpenResty image (extdeps.proxy.openresty openresty_1_27_1_1_image) is given the configuration
+// gunbc.serving.router_proxy_config emits, and every case below is a request through that proxy. Nothing
+// is interpreted, and every process is started through extdeps.docker.cli_service DockerCli, the one
+// process-spawn effect the native claim route admits (ruling gunbc.design_ruling
+// native_claim_route_admits_the_docker_cli).
+//
+// THE WORLD. Three containers share one network namespace, so no host port and no bind mount is used and
+// the run is the same under a local or a remote daemon: the fixture (authz stub on 19001, stream-end sink
+// on 19002, a chunked SSE upstream on 19003), the router on 18443 with the emitted configuration, and a
+// second router on 18444 whose authz port (19009) has no listener. Requests are made by the pinned curl
+// image inside the same namespace. Configurations reach the containers by `docker cp`.
+//
+// THE FIXTURE IS TEST SOURCE, rendered from the same directive model as the router; its Lua is the stub's
+// behaviour, not router policy.
+//
+// NO DAEMON IS NO OBSERVATION. A runner whose docker daemon does not answer `docker version` exits 2,
+// never a skip or a green; the control case below runs the same classification against a daemon address
+// that cannot exist and requires it to read as unavailable. A docker program that cannot be spawned is a
+// transport error, which the claim main also reports as no observation.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn docker() -> NonEmptyStr { "docker" as NonEmptyStr }
+fn fixture_name() -> NonEmptyStr { "gunbc-rpf-fixture" as NonEmptyStr }
+fn router_name() -> NonEmptyStr { "gunbc-rpf-router" as NonEmptyStr }
+fn unreachable_router_name() -> NonEmptyStr { "gunbc-rpf-router-noauthz" as NonEmptyStr }
+fn test_name() -> NonEmptyStr { "gunbc-rpf-test" as NonEmptyStr }
+fn shared_namespace() -> NonEmptyStr { "container:gunbc-rpf-fixture" as NonEmptyStr }
+fn absent_daemon() -> NonEmptyStr { "unix:///nonexistent/gunbc-router-proxy-falsifier.sock" as NonEmptyStr }
+
+fn router_conf_path() -> String { "/tmp/gunbc-rpf-router.conf" }
+fn unreachable_conf_path() -> String { "/tmp/gunbc-rpf-router-noauthz.conf" }
+fn broken_conf_path() -> String { "/tmp/gunbc-rpf-router-broken.conf" }
+fn fixture_conf_path() -> String { "/tmp/gunbc-rpf-fixture.conf" }
+
+type DaemonReading
+  = DaemonAnswered
+  | DaemonUnavailable { stderr: String }
+
+fn daemon_reading(exit_code: Int, stderr: String) -> DaemonReading {
+  if exit_code == 0 { DaemonAnswered } else { DaemonUnavailable { stderr: stderr } }
+}
+
+type FalsifierCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn case_of(identity: String, held: Bool, observed: String) -> FalsifierCase {
+  FalsifierCase { identity: identity, held: held, observed: observed }
+}
+
+fn text_of(r: RouterProxyConfig) -> String {
+  match r { RouterProxyConfigRendered { text: t } => t RouterProxyConfigRefused { token: _ } => "" }
+}
+
+fn tok(text: String) -> NginxToken? { nginx_token(text: text) }
+
+fn fixture_location(path: String, exact: Bool, lines: List<String>) -> List<NginxDirective> {
+  match tok(text: path) {
+    Present { value: p } => [LocationBlock {
+      matching: if exact { ExactMatch { path: p } } else { PrefixMatch { path: p } },
+      body: [LuaPhaseBlock { phase: ContentPhase, lines: lines }],
+    }]
+    Absent => []
+  }
+}
+
+fn fixture_server(port: Int, locations: List<NginxDirective>) -> List<NginxDirective> {
+  match tok(text: "127.0.0.1") {
+    Present { value: host } => [ServerBlock { body: concat([ListenOn { address: host, port: port as Port }], locations) }]
+    Absent => []
+  }
+}
+
+// The authz stub admits every request except one carrying x-deny, naming the upstream and a permit that
+// records the request's x-case; the sink counts stream-end notices and keeps the last permit; the upstream
+// counts its hits and sends one SSE event, flushes, optionally waits four seconds, and sends a second.
+fn fixture_directives() -> List<NginxDirective> {
+  let authz = fixture_location(path: "/authz", exact: true, lines: [
+    "if ngx.var.http_x_deny then return ngx.exit(403) end",
+    "ngx.header['x-upstream'] = '127.0.0.1:19003'",
+    "ngx.header['x-seat-permit'] = 'p-' .. (ngx.var.http_x_case or 'none')",
+    "ngx.say('ok')",
+  ])
+  let stream_end = fixture_location(path: "/stream-end", exact: true, lines: [
+    "ngx.shared.seen:incr('ends', 1, 0)",
+    "ngx.shared.seen:set('last', ngx.var.http_x_seat_permit or '')",
+    "ngx.say('ok')",
+  ])
+  let ends = fixture_location(path: "/ends", exact: true, lines: [
+    "local want = tonumber(ngx.var.arg_n) or 0",
+    "local i = 0",
+    "while (ngx.shared.seen:get('ends') or 0) < want and i < 80 do ngx.sleep(0.1) i = i + 1 end",
+    "ngx.say('ends=', (ngx.shared.seen:get('ends') or 0), ' last=', (ngx.shared.seen:get('last') or ''), ' hits=', (ngx.shared.seen:get('hits') or 0))",
+  ])
+  let upstream = fixture_location(path: "/v1/", exact: false, lines: [
+    "ngx.shared.seen:incr('hits', 1, 0)",
+    "ngx.say('data: one') ngx.say('') ngx.flush(true)",
+    "if ngx.var.arg_slow then ngx.sleep(4) end",
+    "ngx.say('data: two') ngx.say('')",
+  ])
+  let dict = match tok(text: "seen") {
+    Present { value: n } => match tok(text: "1m") { Present { value: z } => [LuaSharedDict { name: n, size: z }] Absent => [] }
+    Absent => []
+  }
+  [
+    WorkerProcesses { count: 1 },
+    EventsBlock,
+    HttpBlock { body: concat(concat(concat(concat([AccessLogOff], dict), fixture_server(port: 19001, locations: authz)), fixture_server(port: 19002, locations: concat(stream_end, ends))), fixture_server(port: 19003, locations: upstream)) },
+  ]
+}
+
+fn curl(arguments: List<String>) -> String {
+  let r = DockerCli.RunRemoved(docker: docker(), network: shared_namespace(), image: curlimages_curl_8_11_1_image, arguments: arguments)
+  concat(concat(r.stdout, " exit="), to_string(r.exit_code))
+}
+
+fn request(port: String, case_header: String, query: String, max_seconds: String) -> String {
+  curl(arguments: ["-sS", "-N", "--max-time", max_seconds, "-H", case_header, "-w", "\n%\{http_code\}", concat(concat(concat("http://127.0.0.1:", port), "/v1/x"), query)])
+}
+
+fn sink(n: String) -> String {
+  curl(arguments: ["-sS", "--max-time", "10", concat("http://127.0.0.1:19002/ends?n=", n)])
+}
+
+fn ready(port: String) -> String {
+  curl(arguments: ["-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "30", "--retry-delay", "1", "--retry-connrefused", concat(concat("http://127.0.0.1:", port), "/ready")])
+}
+
+fn remove_all() -> Int {
+  let a = DockerCli.RemoveForce(docker: docker(), name: test_name())
+  let b = DockerCli.RemoveForce(docker: docker(), name: router_name())
+  let c = DockerCli.RemoveForce(docker: docker(), name: unreachable_router_name())
+  let d = DockerCli.RemoveForce(docker: docker(), name: fixture_name())
+  a.exit_code + b.exit_code + c.exit_code + d.exit_code
+}
+
+fn destination(name: NonEmptyStr) -> NonEmptyStr {
+  concat(concat(name as String, ":"), openresty_image_config_path as String) as NonEmptyStr
+}
+
+// `openresty -t` over one configuration file, in a container with no network: its exit code and stderr.
+fn openresty_test(conf_path: String) -> String {
+  let created = DockerCli.Create(docker: docker(), name: test_name(), network: "none" as NonEmptyStr, image: openresty_1_27_1_1_image, command: ["openresty", "-t"])
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path as NonEmptyStr, destination: destination(name: test_name()))
+  let ran = DockerCli.StartAttached(docker: docker(), name: test_name())
+  let cleaned = DockerCli.RemoveForce(docker: docker(), name: test_name())
+  concat(concat(concat(concat(ran.stderr, " exit="), to_string(ran.exit_code)), " setup="), to_string(created.exit_code + copied.exit_code + cleaned.exit_code))
+}
+
+fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int {
+  let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: [])
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path as NonEmptyStr, destination: destination(name: name))
+  let started = DockerCli.Start(docker: docker(), name: name)
+  created.exit_code + copied.exit_code + started.exit_code
+}
+
+fn contains(s: String, p: String) -> Bool { string_contains(s: s, pattern: p) }
+
+fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
+  let router = text_of(r: router_proxy_config(listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port))
+  let unreachable = text_of(r: router_proxy_config(listen_port: 18444 as Port, authz_port: 19009 as Port, stream_end_port: 19002 as Port))
+  let w1 = Filesystem.Write(path: router_conf_path(), content: router)
+  let w2 = Filesystem.Write(path: unreachable_conf_path(), content: unreachable)
+  let w3 = Filesystem.Write(path: broken_conf_path(), content: concat(router, "gunbc_no_such_directive on;\n"))
+  let w4 = Filesystem.Write(path: fixture_conf_path(), content: render_nginx_directives(rows: fixture_directives()))
+  let written = w1.success && w2.success && w3.success && w4.success && router != "" && unreachable != ""
+  let cleared = remove_all()
+  let t_ok = openresty_test(conf_path: router_conf_path())
+  let t_broken = openresty_test(conf_path: broken_conf_path())
+  let t_unreachable = openresty_test(conf_path: unreachable_conf_path())
+  let started_fixture = start_with(name: fixture_name(), network: "bridge" as NonEmptyStr, conf_path: fixture_conf_path())
+  let started_router = start_with(name: router_name(), network: shared_namespace(), conf_path: router_conf_path())
+  let started_unreachable = start_with(name: unreachable_router_name(), network: shared_namespace(), conf_path: unreachable_conf_path())
+  let ready_sink = ready(port: "19002")
+  let ready_router = ready(port: "18443")
+  let ready_unreachable = ready(port: "18444")
+  let full = request(port: "18443", case_header: "x-case: full", query: "", max_seconds: "10")
+  let after_full = sink(n: "1")
+  let aborted = request(port: "18443", case_header: "x-case: abort", query: "?slow=1", max_seconds: "1")
+  let after_abort = sink(n: "2")
+  let denied = request(port: "18443", case_header: "x-deny: 1", query: "", max_seconds: "10")
+  let after_denied = sink(n: "0")
+  let no_authz = request(port: "18444", case_header: "x-case: noauthz", query: "", max_seconds: "10")
+  let after_no_authz = sink(n: "0")
+  let removed = remove_all()
+  [
+    case_of(identity: "daemon_red_absent_daemon_reads_unavailable", held: match daemon_control { DaemonUnavailable { stderr: _ } => true DaemonAnswered => false }, observed: match daemon_control { DaemonUnavailable { stderr: _ } => "unavailable" DaemonAnswered => "answered" }),
+    case_of(identity: "world_starts", held: written && started_fixture == 0 && started_router == 0 && started_unreachable == 0 && contains(s: ready_sink, p: "404") && contains(s: ready_router, p: "404") && contains(s: ready_unreachable, p: "404"), observed: concat(concat(ready_sink, ready_router), ready_unreachable)),
+    case_of(identity: "nginx_t_accepts_the_emitted_config", held: contains(s: t_ok, p: "test is successful") && contains(s: t_ok, p: " exit=0 setup=0"), observed: t_ok),
+    case_of(identity: "nginx_t_accepts_the_emitted_config_with_an_unreachable_authz_port", held: contains(s: t_unreachable, p: " exit=0 setup=0"), observed: t_unreachable),
+    case_of(identity: "nginx_t_red_unknown_directive_fails", held: contains(s: t_broken, p: "unknown directive") && contains(s: t_broken, p: "test failed") && !contains(s: t_broken, p: " exit=0 "), observed: t_broken),
+    case_of(identity: "sse_completes_through_the_authz_upstream", held: contains(s: full, p: "data: one") && contains(s: full, p: "data: two") && contains(s: full, p: "\n200 exit=0"), observed: full),
+    case_of(identity: "stream_end_fires_on_completion_with_its_permit", held: contains(s: after_full, p: "ends=1 last=p-full hits=1"), observed: after_full),
+    case_of(identity: "sse_is_relayed_before_the_upstream_ends", held: contains(s: aborted, p: "data: one") && !contains(s: aborted, p: "data: two") && contains(s: aborted, p: "exit=28"), observed: aborted),
+    case_of(identity: "stream_end_fires_on_client_abort", held: contains(s: after_abort, p: "ends=2 last=p-abort hits=2"), observed: after_abort),
+    case_of(identity: "authz_refusal_answers_503_and_never_forwards", held: contains(s: denied, p: "\n503 exit=0") && contains(s: after_denied, p: "ends=2 last=p-abort hits=2"), observed: concat(denied, after_denied)),
+    case_of(identity: "unreachable_authz_answers_503_and_never_forwards", held: contains(s: no_authz, p: "\n503 exit=0") && contains(s: after_no_authz, p: "ends=2 last=p-abort hits=2"), observed: concat(no_authz, after_no_authz)),
+    case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
+  ]
+}
+
+fn falsifier_expected_identities() -> List<String> {
+  [
+    "daemon_red_absent_daemon_reads_unavailable",
+    "world_starts",
+    "nginx_t_accepts_the_emitted_config",
+    "nginx_t_accepts_the_emitted_config_with_an_unreachable_authz_port",
+    "nginx_t_red_unknown_directive_fails",
+    "sse_completes_through_the_authz_upstream",
+    "stream_end_fires_on_completion_with_its_permit",
+    "sse_is_relayed_before_the_upstream_ends",
+    "stream_end_fires_on_client_abort",
+    "authz_refusal_answers_503_and_never_forwards",
+    "unreachable_authz_answers_503_and_never_forwards",
+    "world_is_removed",
+  ]
+}
+
+fn case_row(c: FalsifierCase) -> String {
+  join(["case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n"], "")
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let probe = DockerCli.Version(docker: docker())
+  match daemon_reading(exit_code: probe.exit_code, stderr: probe.stderr) {
+    DaemonUnavailable { stderr: e } => NativeClaimReport { stdout: "", terminal: NativeClaimNoObservation { reason: concat("docker daemon unavailable: ", e) } }
+    DaemonAnswered => {
+      let control = DockerCli.VersionAtHost(docker: docker(), host: absent_daemon())
+      let cases = falsifier_cases(daemon_control: daemon_reading(exit_code: control.exit_code, stderr: control.stderr))
+      let roster = join(["roster ", join(falsifier_expected_identities(), ","), "\n"], "")
+      let failed = map(filter(cases, c => !c.held), c => c.identity)
+      let terminal = if count(failed) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", join(failed, ","))) }
+      NativeClaimReport { stdout: concat(roster, join(map(cases, c => case_row(c: c)), "")), terminal: terminal }
+    }
+  }
+}
+
+fn held_terminal() -> NativeClaimTerminal { NativeClaimHeld }
+
+fn not_held_terminal(reason: String) -> NativeClaimTerminal { NativeClaimNotHeld { reason: reason } }
