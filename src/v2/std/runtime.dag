@@ -20,7 +20,7 @@ import v2.std.diagnostic {
 import std.algebra { fold_list }
 import v2.std.machine { Byte }
 import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
-import v2.std.node {
+import v2.std.node { node_equal_ignoring_provenance,
   Atom,
   Behavior,
   Conj,
@@ -331,7 +331,7 @@ fn runtime_value_projected_equality(a: RuntimeValue, b: RuntimeValue) -> Runtime
     RuntimeValueNodeProjected { node: na } =>
       match runtime_value_node_projection(value: b) {
         RuntimeValueNodeProjected { node: nb } =>
-          if na == nb { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+          if node_equal_ignoring_provenance(a: na, b: nb) { RuntimeValuesEqual } else { RuntimeValuesDiffer }
         RuntimeValueNodeUnrepresentable => RuntimeValuesDiffer
       }
     RuntimeValueNodeUnrepresentable =>
@@ -376,7 +376,7 @@ fn runtime_value_equality(a: RuntimeValue, b: RuntimeValue) -> RuntimeValueEqual
     RuntimeUnit { value: ua } =>
       match b {
         RuntimeUnit { value: ub } =>
-          if ua.unit_type == ub.unit_type { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+          if node_equal_ignoring_provenance(a: ua.unit_type, b: ub.unit_type) { RuntimeValuesEqual } else { RuntimeValuesDiffer }
         RuntimePrimitive { value: _ } => RuntimeValuesDiffer
         RuntimeAggregate { value: _ } => RuntimeValuesDiffer
         RuntimeReference { value: _ } => RuntimeValuesDiffer
