@@ -26,7 +26,7 @@ import product.printed_chassis.fan_mount {
 }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, Clearance, FixedFrame, LayOnXY,
-  FanSelfTappingScrew, FrictionFitPlug, FrictionFitSleeve, M3IntoCardInsert, Proposed, block, round, part, mechanical_interface,
+  FanSelfTappingScrew, FrictionFitPlug, FrictionFitSleeve, LocatingSleeveNoRetention, M3IntoCardInsert, Proposed, block, round, part, mechanical_interface,
 }
 import product.printed_chassis.board_mechanical_reference { cited_figure_json }
 import product.printed_chassis.printable_assembly { part_json, interface_json }
@@ -487,7 +487,7 @@ fn admit_blower_duct(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesig
   match blower_unreachable_insert(f: f, d: d, b: b) { Present { value: refused } => return refused Absent => {} }
   BlowerDuctAdmitted {
     parts: blower_duct_parts(f: f, d: d, b: b),
-    interfaces: concat([mechanical_interface(id: "blower-to-duct", members: ["FAN", "DUCT"], fastener: FrictionFitSleeve, quantity: 1, status: Proposed,
+    interfaces: concat([mechanical_interface(id: "blower-to-duct", members: ["FAN", "DUCT"], fastener: LocatingSleeveNoRetention, quantity: 1, status: Proposed,
       requirement: join(["The blower's outlet end slides into the socket. Across the thickness it is a sleeve fit, ", to_string(value: um(m: b.socket_clearance)), " um over the cited 33.0 +/- 0.5 mm per side. Along the face the cavity takes the longest edge the outlet may be on, so the fit there is up to ", to_string(value: blower_face_clearance_loosest(b: b)), " um loose per side and the blower is located by hand against the bottom end, not held by the sleeve, until the outlet edge is read."], ""))],
       card_joints(mount: PlugAndFlange, printed_id: "DUCT")),
   }

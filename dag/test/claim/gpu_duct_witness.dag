@@ -2,7 +2,8 @@ module test.claim.gpu_duct_witness
 
 import std.types { Bool, Int, List }
 import std.measure { Micrometer, micrometer, micrometer_count }
-import product.printed_chassis.assembly_geometry { AssemblyPart, Primitive }
+import product.printed_chassis.assembly_geometry { AssemblyPart, Primitive, MechanicalInterface, LocatingSleeveNoRetention, FrictionFitSleeve }
+import product.printed_chassis.printable_assembly { fastener_display }
 import product.printed_chassis.assembly_review_checks { Bounds, primitive_bounds, review_model_checks }
 import product.printed_chassis.gpu_duct {
   GpuDuctAdmission, GpuDuctAdmitted, GpuDuctInsertReadingsDisagree, GpuDuctFinsAtTheWindowFace, GpuDuctFanMountRefused,
@@ -389,4 +390,15 @@ test fn w_the_face_fit_is_derived_per_outlet_edge() -> Bool {
       Present { value: parts } => match blower_bounds(parts: parts, id: "FAN") { Present { value: fan } => fan.hi_z - fan.lo_z == 2 * 97200 Absent => false }
       Absent => false
     }
+}
+
+// The blower's face-axis fit is loose by design, so its interface must not claim friction retention:
+// the blower-to-duct joint is a locating sleeve, and its printed label says it is not retained, while
+// the card sleeve keeps its friction-fit label (RED arm: the two kinds rendering alike).
+test fn w_the_blower_interface_is_a_locating_sleeve_not_a_friction_fit() -> Bool {
+  let blower_is_locating = match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design) {
+    BlowerDuctAdmitted { parts: _, interfaces: joints } => fold(joints, init: false, f: (seen, j) => seen || (j.id == "blower-to-duct" && match j.fastener { LocatingSleeveNoRetention => true _ => false }))
+    _ => false
+  }
+  blower_is_locating && fastener_display(f: LocatingSleeveNoRetention) != fastener_display(f: FrictionFitSleeve)
 }
