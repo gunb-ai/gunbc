@@ -172,7 +172,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 - **One-off approved access** — requests, capabilities and redemption
   - `gunbc.auth.access_request::AccessRequest`
   - `gunbc.auth.approval_capability::ApprovalCapability`
-  - `gunbc.auth.approval_broker::redeem_capability`
+  - `gunbc.auth.approval_device_redemption::redeem_device_over_store`
 - **Coverage evidence** — classifies the privileged-effect sites that exist today
   - `gunbc.auth.privileged_effect_census::privileged_effect_census`
 
