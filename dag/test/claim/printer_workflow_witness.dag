@@ -1,6 +1,10 @@
 module test.claim.printer_workflow_witness
 
 import std.types { Bool, String }
+import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_start_claim_directory, printer_request_directory, print_run_directory }
+import gunbc.owned_directory { owned_directory_path, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
+import extdeps.access.posix { file_mode_octal }
+import gunbc.fleet.fleet_posix_accounts { fleet_automation_user }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_help_supports_private_options }
 import gunbc.fleet.printer_selection { print_inputs_admitted, select_printer, PrinterSelected, PrinterSelectionRefused }
 import gunbc.fleet.printer_federation { printer_claim_pins }
@@ -11,12 +15,11 @@ import gunbc.auth.oidc_claim_pins {
 
 data project_digest: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-test fn w_print_needs_exact_version_clear_bed_and_digest() -> Bool {
-  print_inputs_admitted(version: "1", digest: project_digest, bed_clear: "true") &&
-  !print_inputs_admitted(version: "latest", digest: project_digest, bed_clear: "true") &&
-  !print_inputs_admitted(version: "pending", digest: project_digest, bed_clear: "true") &&
-  !print_inputs_admitted(version: "1", digest: "", bed_clear: "true") &&
-  !print_inputs_admitted(version: "1", digest: project_digest, bed_clear: "false")
+test fn w_print_needs_exact_version_and_digest() -> Bool {
+  print_inputs_admitted(version: "1", digest: project_digest) &&
+  !print_inputs_admitted(version: "latest", digest: project_digest) &&
+  !print_inputs_admitted(version: "pending", digest: project_digest) &&
+  !print_inputs_admitted(version: "1", digest: "")
 }
 
 test fn w_unknown_printer_never_selects_a_default_machine() -> Bool {
@@ -38,4 +41,15 @@ test fn w_tool_probe_requires_mosquitto_version_two_or_newer() -> Bool {
   !mosquitto_pub_help_supports_private_options(stdout: "mosquitto_pub version 1.6.12 running on libmosquitto 1.6.12.") &&
   !mosquitto_pub_help_supports_private_options(stdout: "") &&
   !mosquitto_pub_help_supports_private_options(stdout: "unrelated tool 2.0")
+}
+
+// The printer's state roots belong to the fleet account, group-writable setgid so the job user reaches
+// them through that group, and the claim root precedes the request root nested in it.
+test fn w_printer_state_roots_are_fleet_owned_group_shared_and_parent_first() -> Bool {
+  let ds = printer_state_directories()
+  count(ds) == 3 &&
+  all(ds, d => (owned_directory_owner(t: d).user as String) == (fleet_automation_user.name as String) && (owned_directory_owner(t: d).group as String) == (fleet_automation_user.name as String) &&
+    (match owned_directory_mode(t: d) { OwnedDirectoryModeResolved { mode: m } => file_mode_octal(mode: m) == "2770" OwnedDirectoryModeRefused { reason: _ } => false })) &&
+  map(ds, d => owned_directory_path(t: d) as String) == [printer_start_claim_directory as String, printer_request_directory() as String, print_run_directory as String] &&
+  starts_with(s: printer_request_directory() as String, prefix: concat(printer_start_claim_directory as String, "/"))
 }

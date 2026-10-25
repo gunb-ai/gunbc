@@ -1,10 +1,10 @@
 module v2.test.claim.compiler.callback_argument_formal
 
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
-import v2.compiler.infer { infer, infer_type_equal_ignoring_provenance }
+import v2.compiler.infer { infer }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Suggested, Unavailable, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol }
+import v2.std.node { node_equal_ignoring_provenance, Authored, Edge, Node, Positional, StructuralLabel, Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool, String }
 
@@ -117,7 +117,7 @@ fn caf_same_type(a: Optional<Node>, b: Optional<Node>) -> Bool {
     Present { value: x } =>
       match b {
         Absent => false
-        Present { value: y } => infer_type_equal_ignoring_provenance(a: x, b: y)
+        Present { value: y } => node_equal_ignoring_provenance(a: x, b: y)
       }
   }
 }
