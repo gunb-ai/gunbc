@@ -1,17 +1,17 @@
 module test.claim.srv3.srv3_install_media_store_mint_witness
 
-// THE MINT'S TWO OBSERVATION ROUTES, EXECUTED ON A MODELLED MACHINE (review 86297). The mint lists
-// first; it ensures (mkdir -p, the acquisition handler's own verb) ONLY after the host answered
-// NotFound for the listing, and admits after an ensure ONLY on a re-listing that lists. These claims
-// run install_media_store over a modeled filesystem whose List answers per path, so the two states a
-// real host passes -- a fresh machine with no artifacts/ yet, and a machine whose artifacts/ exists
-// but is unreadable -- are answered by the model rather than trusted from a comment.
-//
-// THE CLAIM THAT WOULD HAVE BEEN RED BEFORE THE FIX: with the ungated fallback (review 86279's first
-// cut), an existing-but-unreadable directory fell to mkdir -p -- which succeeds on any existing
-// directory, readable or not -- and the mint admitted Ready without ever reading the store. The
-// unreadable-directory claim asserts the ROUTE (List once, Mkdir zero) so a widen that admits on a
-// side effect cannot green it.
+// THE MINT IS A PURE OBSERVER, EXECUTED ON A MODELLED MACHINE. It lists the derived directory and
+// admits on a listing; every refusal is typed and creates NOTHING. Three reviews put it here:
+// review 86279 (a list-only mint on a fresh host gated the fetch that provisions the store) is fixed
+// by ENROLLMENT, not by an effect: install_media_store_directory is a demanded provisioning directory
+// (gunbc.runner.runner_host_grants install_media_store_operations), so a converged host has the
+// directory and an unconverged one is REFUSED, not silently built. Review 86297 (mkdir -p succeeds on
+// unreadable directories -- an ensure fallback admits them as Ready) and review 86365 (the mint also
+// opens the READ paths srv3_seeded_install_media_resolve/publish -- a read that mkdirs is a write in
+// disguise) both forbid the effect. These claims run install_media_store over a modeled filesystem
+// whose List answers per path, and assert the ROUTE: zero shell.Mkdir dispatches on every path. The
+// missing-directory and unreadable-directory claims were RED against every ensure-fallback cut --
+// those admitted Ready on a side effect; this mint refuses both.
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { second }
@@ -128,12 +128,12 @@ fn failure_text(e: InstallMediaStoreReading) -> String {
   }
 }
 
-// A FRESH HOST: no artifacts/ yet. The first listing answers NotFound (the host's own words), the mint
-// runs its mkdir -p -- the verb gunbc.url_file_acquisition ensure_url_file_parent already runs before
-// the staged download -- and the RE-LISTING lists the directory the model just created. Ready, with
-// the route proving the order: List, Mkdir, List. Before review 86279's fix the first listing refused
-// and this claim could never green: the fetch that provisions the store was gated on the mint.
-test fn a_fresh_host_without_artifacts_ensures_through_the_handlers_own_verb_and_lists() -> Bool {
+// AN UNCONVERGED HOST: no artifacts/ yet. The listing answers NotFound and the mint REFUSES with a
+// typed detail -- it does not mkdir. The directory is a DEMANDED PROVISIONING directory (the executor
+// creates it at convergence, gunbc.runner.runner_host_grants install_media_store_operations), so the
+// answer to "not yet" is "refused, not built". RED against every ensure-fallback cut: those ran
+// mkdir -p here (one shell.Mkdir dispatch) and admitted Ready.
+test fn the_mint_refuses_an_unconverged_host_where_the_artifacts_directory_does_not_exist_yet() -> Bool {
   let artifacts = install_media_store_path(tree: host_state_tree()) as String
   match evaluate_in_witness_frame(
     frame: mint_frame(fs: base_fs([]), denied: "/never/denied"),
@@ -141,11 +141,13 @@ test fn a_fresh_host_without_artifacts_ensures_through_the_handlers_own_verb_and
   ) {
     WitnessReturned { value, route, state: _ } =>
       match value {
-        InstallMediaStoreReady { store: s } => install_media_parent_directory(store: s) as String == artifacts
-        InstallMediaStoreUnready { detail: _ } => false
+        InstallMediaStoreReady { store: _ } => false
+        InstallMediaStoreUnready { detail: _ } =>
+          string_contains(s: failure_text(e: value), pattern: "could not be listed")
+            && string_contains(s: failure_text(e: value), pattern: "No such file or directory")
       }
-        && dispatched(route: route, service: "Filesystem", operation: "List") == 2
-        && dispatched(route: route, service: "shell.Mkdir", operation: "Parents") == 1
+        && dispatched(route: route, service: "Filesystem", operation: "List") == 1
+        && dispatched(route: route, service: "shell.Mkdir", operation: "Parents") == 0
     WitnessRefused { diagnostic: _, route: _, state: _ } => false
     WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
   }
@@ -168,7 +170,8 @@ test fn an_existing_but_unreadable_store_refuses_without_any_ensure() -> Bool {
       match value {
         InstallMediaStoreReady { store: _ } => false
         InstallMediaStoreUnready { detail: _ } =>
-          string_contains(s: failure_text(e: value), pattern: "could not be listed and its absence is not established")
+          string_contains(s: failure_text(e: value), pattern: "could not be listed")
+            && string_contains(s: failure_text(e: value), pattern: "Permission denied")
       }
         && dispatched(route: route, service: "Filesystem", operation: "List") == 1
         && dispatched(route: route, service: "shell.Mkdir", operation: "Parents") == 0

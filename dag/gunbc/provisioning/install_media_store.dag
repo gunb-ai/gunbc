@@ -1,12 +1,12 @@
 module gunbc.provisioning.install_media_store
 
 import std.types { NonEmptyStr, FilePath }
-import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow, ubuntu_install_media_install_path }
-import gunbc.host_state_root { HostStateTree, host_state_tree_path, host_state_tree }
+import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow, ubuntu_install_media_install_path, ubuntu_install_media_part_path }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse }
 import extdeps.posix.identity { PosixOwnerNames }
-import extdeps.shell
+
 import extdeps.filesystem.filesystem_io { filesystem_listing_observation, Filesystem, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 
 // THE INSTALL MEDIA ARTIFACT STORE, sealed on the gunbc side (cohort C-host). The store's records are
@@ -24,10 +24,12 @@ import extdeps.filesystem.filesystem_io { filesystem_listing_observation, Filesy
 // THE ONE DECLARATION (operator ruling, sealed-store lane): the member the store lives under in the ONE
 // host-state tree (gunbc.host_state_root host_state_tree_root), and the mode its directory is created
 // with. The mint, the provisioning target and every path derive from THIS data -- no second literal.
-// THE MODE IS THE OBSERVED FACT: the directory is created by the fetching handler itself --
-// gunbc.url_file_acquisition ensure_url_file_parent runs shell.Mkdir.Parents (mkdir -p) before the
-// staged download, at the fetcher's umask 0755 -- so 0755 with the fetcher owning it (the job user on
-// srv1, where the actuator runs). DirectoryOwnerAllEveryoneTraverse is exactly 0755.
+// THE MODE IS THE OBSERVED FACT, NOW ENFORCED: the directory was historically created by the fetching
+// handler at its umask 0755 (gunbc.url_file_acquisition ensure_url_file_parent, mkdir -p); this PR moves
+// creation to the demanded provisioning row (gunbc.runner.runner_host_grants
+// install_media_store_operations), which creates it at that same 0755 with the job user owning it (the
+// actuator host's fetch, seeded publish and resolve all run as that account).
+// DirectoryOwnerAllEveryoneTraverse is exactly 0755.
 type InstallMediaSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
 
 data install_media_slots: InstallMediaSlotsDeclaration = InstallMediaSlotsDeclaration {
@@ -56,63 +58,31 @@ type InstallMediaStoreReading
   = InstallMediaStoreReady { store: InstallMediaStore }
   | InstallMediaStoreUnready { detail: String }
 
-// THE ONE MINT, AND IT TAKES NO PATH: the sealed tree value plus nothing else. It observes the derived
-// directory by the pattern's two routes, LIST first and ENSURE ONLY ON AN ESTABLISHED ABSENCE.
+// THE ONE MINT, AND IT TAKES NO PATH: the sealed tree value plus nothing else. It OBSERVES the derived
+// directory by listing it and refuses when it cannot be listed -- a media store that cannot be read
+// must not be mistaken for an empty one, because a wrong-root media store sends serve traffic
+// (gunbc.srv3.srv3_serve nbdkit) at a file another principal placed.
 //
-// Why an ensure route exists at all: the handler contract this module records is self-provisioning --
-// gunbc.url_file_acquisition ensure_url_file_parent runs shell.Mkdir.Parents before the staged
-// download -- so on a fresh host artifacts/ DOES NOT EXIST until the fetch path creates it; a list-only
-// mint would refuse the very fetch that provisions the store (review 86279: the fetch could never run).
-//
-// Why the ensure is gated (review 86297): mkdir -p succeeds on any existing directory, READABLE OR
-// NOT, so an ungated fallback would admit an unreadable store as Ready -- the exact confusion this
-// mint's refusal exists to prevent (a wrong-root or unreadable media store would send srv3 serve
-// traffic at a file another principal placed), and a silent widen under DESIGN.md §5. The fallback
-// therefore runs ONLY when the host answered NotFound for the listing itself -- the typed
-// error_kind channel, which the wet realization fills from io::ErrorKind and the witness frame fills
-// from filesystem_failure_kind_name, so it is the same classification in every mode. Permission
-// denials, malformed subjects and every other refusal refuse with a typed detail and create nothing.
-// After an ensured mkdir the mint RE-LISTS and admits only if that listing lists: mkdir -p succeeding
-// is not observation, a listing is.
+// The mint is a PURE OBSERVER: no create, no side effect, on any route. Two reviews fixed this:
+// review 86297 -- mkdir -p succeeds on any existing directory, readable or not, so an ensure fallback
+// would admit an unreadable store as Ready (a silent widen, DESIGN.md s5); review 86365 -- the mint is
+// also the open of the READ paths (srv3_seeded_install_media_artifact srv3_seeded_install_media_resolve
+// and ..._publish), and a read that creates a directory is a write in disguise. The derived directory
+// is instead a DEMANDED PROVISIONING DIRECTORY: install_media_store_directory is enrolled where the
+// tree's children are (gunbc.runner.runner_host_grants unit_hold_store_operations), exactly like the
+// boot-attempt and unit-hold roots -- so on a converged host the directory already exists, the listing
+// lists, and a host where it does not is a host that has not converged yet and is refused, not
+// silently built.
 fn install_media_store(tree: HostStateTree) -> InstallMediaStoreReading {
   let root = install_media_store_path(tree: tree)
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectoryListed(_) => InstallMediaStoreReady { store: InstallMediaStore { root: root } }
     FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
       InstallMediaStoreUnready { detail: join(["the install media store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } =>
-      if listing.error_kind == "not_found" {
-        install_media_store_after_ensure(root: root, absent_detail: join(["the install media store's directory was reported absent: ", e], ""))
-      } else {
-        InstallMediaStoreUnready { detail: join(["the install media store's directory could not be listed and its absence is not established (only an established NotFound is self-provisioned): ", e], "") }
-      }
+      InstallMediaStoreUnready { detail: join(["the install media store's directory could not be listed (it is a demanded provisioning directory; a host that has not converged it is refused, not built): ", e], "") }
+    FilesystemDirectoryListed(_) => InstallMediaStoreReady { store: InstallMediaStore { root: root } }
   }
-}
-
-// The ensure fallback of the one mint, reached ONLY on an established NotFound listing. mkdir -p --
-// the acquisition handler's own verb -- then RE-LIST: admission requires a listing, never a side
-// effect. mkdir failing (a file at the derived path, a parent the process may not create) and a
-// re-listing that cannot list or cannot be admitted are all typed refusals.
-fn install_media_store_after_ensure(root: NonEmptyStr, absent_detail: String) -> InstallMediaStoreReading {
-  let made = shell.Mkdir.Parents(path: root as FilePath)
-  if made.success == false {
-    InstallMediaStoreUnready { detail: join([absent_detail, "; and the fetch path's own mkdir -p of the derived directory failed: ", root as String], "") }
-  } else {
-    let relisted = Filesystem.List(path: root as String)
-    match filesystem_listing_observation(directory: root as String, success: relisted.success, entries: relisted.entries, error: relisted.error) {
-      FilesystemDirectoryListed(_) => InstallMediaStoreReady { store: InstallMediaStore { root: root } }
-      FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
-        InstallMediaStoreUnready { detail: join(["the derived directory was created but is not admissible on re-listing: ", c], "") }
-      FilesystemDirectoryListingRefused { directory: _, error: e } =>
-        InstallMediaStoreUnready { detail: join(["the derived directory was created but could not be listed on re-listing: ", e], "") }
-    }
-  }
-}
-
-// THE PRODUCTION CALLER'S ONE LINE.
-fn install_media_store_on_production_host() -> InstallMediaStoreReading {
-  install_media_store(tree: host_state_tree())
 }
 
 // THE BUSINESS PATHS. The install path of a row is the store root plus the row's cited filename; the
@@ -122,18 +92,22 @@ fn install_media_install_path(store: InstallMediaStore, artifact: UbuntuInstallM
   ubuntu_install_media_install_path(dir: store.root, artifact: artifact)
 }
 
+// THE `.part` SIBLING IS THE STAGING PATH OF THE SAME FILE, and the rule for naming it is the EXISTING
+// authority in the upstream model -- extdeps.provisioning.ubuntu_install_media
+// ubuntu_install_media_part_path, which this module feeds its own install path. One rule, one place
+// (DESIGN.md §3); this module does not re-derive the suffix.
 fn install_media_part_path(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  concat(install_media_install_path(store: store, artifact: artifact) as String, ".part") as NonEmptyStr
+  ubuntu_install_media_part_path(install_path: install_media_install_path(store: store, artifact: artifact))
 }
 
-// THE TREE-BASED PAIR, for pure path shapes (module data rows, the seeded write boundary): the same
-// formulation over the derived root.
+// THE TREE-BASED INSTALL PATH, for PURE PATH SHAPES that never touch the store: the fetch plan's data
+// row (gunbc.srv3.srv3_install_media_fetch srv3_ubuntu_install_media_install_path and its planning
+// line) derives WHERE media would live without observing or writing it -- which is exactly why the
+// path is pure and takes the tree value: a plan must not need a minted, effectful store. The `.part`
+// sibling over the tree deliberately does NOT exist: nothing plans a staging path without the sealed
+// store (staging is an effect), and an unclaimed twin of the rule is what review 86331 named dangling.
 fn install_media_install_path_on_tree(tree: HostStateTree, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
   ubuntu_install_media_install_path(dir: install_media_store_path(tree: tree), artifact: artifact)
-}
-
-fn install_media_part_path_on_tree(tree: HostStateTree, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  concat(install_media_install_path_on_tree(tree: tree, artifact: artifact) as String, ".part") as NonEmptyStr
 }
 
 // THE PARENT DIRECTORY A FETCH WRITES INTO, read from the minted record: only this module reads the
@@ -142,10 +116,14 @@ fn install_media_parent_directory(store: InstallMediaStore) -> NonEmptyStr {
   store.root
 }
 
-// THE STORE ROOT IS A DEMANDED DIRECTORY, derived from the same declaration as the path above. The
-// handler that writes media creates the directory itself (mkdir -p before the staged download), so the
-// store is self-provisioning in production; this target carries the same declaration for anyone who
-// audits or enrolls the tree's children, and the mint above refuses a root that cannot be read.
+// THE STORE ROOT IS A DEMANDED PROVISIONING DIRECTORY, derived from the same member declaration as
+// the path above. Its consumer is the provisioning roster: gunbc.runner.runner_host_grants
+// install_media_store_operations enrolls exactly this target (projected through the shared
+// OwnedDirectoryTarget accessors, like its two sibling store rows) on the one host where the fetch,
+// the seeded publish and the resolve run -- the derived srv1 actuator. That enrollment is WHY the mint
+// above can be a pure observer: the executor creates the directory at convergence, so a host where it
+// is absent has not converged and the mint refuses it -- the store is never self-provisioned by a read
+// or a mint (reviews 86297, 86365), only demanded, listed and refused.
 fn install_media_store_directory(tree: HostStateTree, owner: PosixOwnerNames) -> OwnedDirectoryTarget {
   OwnedDirectoryDeclared {
     member: install_media_slots.member,
