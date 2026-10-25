@@ -230,7 +230,7 @@ fn broker_probe(name: String, body: String) -> String {
     "import gunbc.durable_cas_file_store { file_slot_store }\n",
     "import gunbc.roadmap.roadmap_auth_routes { auth_token_signature }\n",
     "import gunbc.auth.approval_device_redemption { BrokerJwksCache, BrokerJwksCacheReady, BrokerJwksCacheUnready, broker_jwks_cache, ApprovalDeviceStore }\n",
-    "import gunbc.auth.approval_device_routes { broker_token_signature_over, PushRegistrationStore }\n",
+    "import gunbc.auth.approval_device_routes { broker_token_signature_over }\n",
     "import gunbc.auth.approval_assertion_counter { AssertionCounterStore }\n",
     body,
   ], "")
@@ -260,10 +260,6 @@ test fn a_forged_assertion_counter_store_cast_is_refused_at_compile() -> Process
   census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_counter_store_cast", subject: "AssertionCounterStore"), subject: "AssertionCounterStore"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_forged_push_registration_store_cast_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_push_store_cast", subject: "PushRegistrationStore"), subject: "PushRegistrationStore"), holds: fn(n) { n == 1 }))
-}
-
 fn literal_source(name: String, subject: String, literal: String) -> String {
   broker_probe(name: name, body: join(["fn f() -> ", subject, " {\n  ", literal, "\n}\n"], ""))
 }
@@ -282,10 +278,6 @@ test fn an_approval_device_store_over_a_literal_path_is_refused_at_compile() -> 
 
 test fn an_assertion_counter_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: literal_source(name: "probe_counter_store_literal", subject: "AssertionCounterStore", literal: "AssertionCounterStore { slots: file_slot_store(root: \"/tmp/forged-assertion-counters\") }"), subject: "AssertionCounterStore"), holds: fn(n) { n == 1 }))
-}
-
-test fn a_push_registration_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: literal_source(name: "probe_push_store_literal", subject: "PushRegistrationStore", literal: "PushRegistrationStore { root: \"/tmp/forged-approval-device-push\" }"), subject: "PushRegistrationStore"), holds: fn(n) { n == 1 }))
 }
 
 // THE JWKS CARRIER ITSELF IS SEALED (ruling of jolly-hawk-60, 2026-10-25): a foreign module cannot spell or cast a

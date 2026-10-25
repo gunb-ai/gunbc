@@ -12,7 +12,13 @@ import gunbc.auth.approval_device_redemption {
   ApprovalDeviceStore, ApprovalDeviceStoreReady, ApprovalDeviceStoreUnready, approval_device_store, approval_device_store_slots, approval_broker_store_path,
   observe_google_enrolment, commit_google_enrolment, revoke_google_enrolment, create_or_read_subject_pin,
   DeviceStoreWritten, DeviceStoreSlotOccupied,
+  observe_push_registration, commit_push_registration, PushRegistrationAbsent, PushRegistrationStored, PushRegistrationSlot, PushRegistrationWrite,
+  PushRegistrationWritten, PushRegistrationUnchanged, observe_device_windowed_slot, commit_device_windowed_slot,
 }
+import gunbc.auth.approval_device_wire { PushRegistration, ApnsRegistration, push_update_json }
+import extdeps.apple.apns { ApnsProduction }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow }
+import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasObservedReadable, CasReadablePresent }
 import gunbc.host_state_root { isolated_host_state_tree }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import test.claim.approval_google_enrolment_witness { first_write, again, key_a, fx_subject, fx_email }
@@ -127,6 +133,75 @@ test fn a_traversal_enrolment_id_is_refused_by_the_store_before_any_read() -> Pr
         _ => false
       })
         && is_absent(s: observe_google_enrolment(devices: devices, enrollment_id: google_enrollment_id(subject: fx_subject, decision_key: key_a))))
+  }
+  let removed = shell.Remove.RecursiveForce(path: path)
+  enrolment_verdict(observed: observed, removed: removed.success)
+}
+
+// THE PUSH REGISTRATION THROUGH THE REAL STORE (#15124's head-only slot, sealed on ApprovalDeviceStore): the
+// route's own sequence over the windowed slot operations (gunbc.durable_cas_file_store slot_observe_windowed
+// and slot_commit_windowed, reached only through commit_push_registration and observe_push_registration):
+// absent, the first token written, the same token again unchanged (the app re-presents it on every launch),
+// a ROTATED token written over it, and the rotated token read back as the head.
+fn fx_push(token: NonEmptyStr) -> PushRegistration {
+  ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: token }
+}
+
+fn push_is(slot: PushRegistrationSlot, expected: PushRegistration) -> Bool {
+  match slot {
+    PushRegistrationStored { registration: r, generation: _ } => push_update_json(p: r) == push_update_json(p: expected)
+    _ => false
+  }
+}
+
+fn push_written(w: PushRegistrationWrite) -> Bool {
+  match w { PushRegistrationWritten => true  _ => false }
+}
+
+test fn a_push_registration_writes_replays_unchanged_and_takes_a_rotated_token_through_the_real_store() -> ProcessExit {
+  let path = fresh_enrolment_root()
+  let observed = match devices_at(dir: path) {
+    DevicesMintRefused { detail: d } => exit_failure(reason: d)
+    DevicesMinted { store: devices } => {
+      let id = google_enrollment_id(subject: fx_subject, decision_key: key_a)
+      let before = observe_push_registration(devices: devices, enrollment_id: id)
+      let first = commit_push_registration(devices: devices, enrollment_id: id, push: fx_push(token: "a1b2c3d4"))
+      let resent = commit_push_registration(devices: devices, enrollment_id: id, push: fx_push(token: "a1b2c3d4"))
+      let rotated = commit_push_registration(devices: devices, enrollment_id: id, push: fx_push(token: "e5f6a7b8"))
+      holds(failing: "the push slot did not run absent, written, unchanged, rotated-written, rotated-read", ok: (match before { PushRegistrationAbsent => true  _ => false })
+        && push_written(w: first)
+        && (match resent { PushRegistrationUnchanged => true  _ => false })
+        && push_written(w: rotated)
+        && push_is(slot: observe_push_registration(devices: devices, enrollment_id: id), expected: fx_push(token: "e5f6a7b8")))
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: path)
+  enrolment_verdict(observed: observed, removed: removed.success)
+}
+
+// THE DEVICE STORE'S WINDOWED SLOT OPERATIONS AS gunbc.auth.approval_apns_publish CALLS THEM (its provider-token
+// cache): a commit expecting an absent slot lands, and the windowed observe reads that payload back as the head.
+test fn a_device_windowed_slot_commits_and_reads_back_its_head_through_the_real_store() -> ProcessExit {
+  let path = fresh_enrolment_root()
+  let observed = match devices_at(dir: path) {
+    DevicesMintRefused { detail: d } => exit_failure(reason: d)
+    DevicesMinted { store: devices } =>
+      match cas_generation_window(k: 2) {
+        CasGenerationWindowTooNarrow { k: _ } => exit_failure(reason: "a window of 2 was refused as too narrow")
+        CasGenerationWindowAdmitted { window: w } =>
+          match admit_cas_attempt_for_derived_payload(key: "apns-provider-token", expected: ExpectSlotAbsent, proposed: "witness-token-1") {
+            DerivedPayloadKeyNotSlotAddressable { key: _ } => exit_failure(reason: "the provider token key was refused as not slot-addressable")
+            DerivedPayloadAdmitted { verified: v } =>
+              holds(failing: "the windowed commit did not land, or the windowed observe did not read its payload as the head", ok: (match commit_device_windowed_slot(devices: devices, verified: v, window: w) { CasCommitted { committed: _ } => true  _ => false })
+                && (match observe_device_windowed_slot(devices: devices, key: "apns-provider-token", window: w) {
+                  CasObservedReadable { readable: r } => (match r {
+                    CasReadablePresent { version: ver } => (ver.value as String) == "witness-token-1"
+                    _ => false
+                  })
+                  _ => false
+                }))
+          }
+      }
   }
   let removed = shell.Remove.RecursiveForce(path: path)
   enrolment_verdict(observed: observed, removed: removed.success)

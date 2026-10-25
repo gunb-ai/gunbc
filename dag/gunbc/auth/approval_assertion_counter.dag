@@ -74,10 +74,9 @@ type AssertionCounterStoreReading
 // THE DIRECTORY THIS STORE DEMANDS, at the path derived from assertion_counter_slots over the production tree,
 // shaped as the device store's row is (gunbc.auth.approval_device_redemption approval_device_store_directory):
 // the device routes that read and write it run as the operator's account, and the counters must survive a
-// retract, so ownership is Ensured. NOTHING ENROLS THIS ROW YET: the broker install converges the device store
-// and the JWKS cache only (gunbc.host.host_effect_realize dark_state_directories_install), so until a
-// host-singleton directory creator lands the mint answers Unready on a real host, exactly as the old
-// literal-root reads refused (gunbc.recurring_failure_mode a_store_root_nothing_creates).
+// retract, so ownership is Ensured. The broker install converges it: the row is a member of the broker
+// state-root census (gunbc.auth.approval_broker_state_directories approval_broker_state_directories), which
+// gunbc.host.host_effect_realize dark_state_directories_install folds.
 fn approval_assertion_counter_directory() -> ManagedDirectory {
   ManagedDirectory {
     member: "approval-assertion-counter-store" as NonEmptyStr,
