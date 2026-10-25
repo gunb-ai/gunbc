@@ -1,5 +1,6 @@
 module gunbc.census_closure_frontier
 
+import gunbc.fleet.fleet_known_hosts_anchor { remote_word_quoting_frontier_rows }
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import gunbc.host.host_assimilation_program { host_assimilation_program_frontier_rows }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
@@ -42,6 +43,7 @@ import gunbc.public_workload_census {
 }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
 import gunbc.review_sheet_identity { review_sheet_identity_consumer_frontier_rows }
+import gunbc.durable_exclusive_hold_file_store { durable_hold_nonholder_release_consumer_frontier_rows }
 import gunbc.review_sheet_converge_cli { review_sheet_whole_estate_consumer_frontier_rows }
 import gunbc.review_sheet_formula_observation { review_sheet_formula_observation_consumer_frontier_rows }
 import gunbc.review_sheet_header_init { review_sheet_header_init_consumer_frontier_rows }
@@ -109,6 +111,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     review_sheet_header_init_consumer_frontier_rows,
     review_sheet_batch_write_consumer_frontier_rows,
     review_sheet_identity_consumer_frontier_rows,
+    durable_hold_nonholder_release_consumer_frontier_rows,
     sheets_bootstrap_project_consumer_frontier_rows,
     actions_allowance_consumer_frontier_rows,
     data_class_frontier_rows,
@@ -117,6 +120,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     hetzner_money_rate_frontier_rows,
     mac_address_anemic_brand_frontier_rows,
     container_state_detail_redundant_bools_frontier_rows,
+    remote_word_quoting_frontier_rows,
     memory_swap_unlimited_convention_frontier_rows,
     hostconfig_containerconfig_anemic_leaves_frontier_rows,
     network_settings_bare_strings_frontier_rows,

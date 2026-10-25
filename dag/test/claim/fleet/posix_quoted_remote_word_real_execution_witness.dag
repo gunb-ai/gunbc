@@ -1,0 +1,82 @@
+module test.claim.fleet.posix_quoted_remote_word_real_execution_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.retained_shell_script { retained_runtime }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  PosixLoginShellProof,
+  LoginShellPosix,
+  LoginShellNotPosix,
+  LoginShellUnreadable,
+  login_shell_standing,
+  posix_quoted_remote_words,
+  portable_remote_words_strings,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INJECTION BOUNDARY BY REAL EXECUTION (merry-fox-82 condition 3): the rendered words are handed to an actual
+// `sh -c` -- the same re-parse the remote login shell performs on the transported command -- prefixed by
+// `printf '%s\n'`, so each word the shell sees becomes one output line. The words pass when the lines equal the raw
+// words exactly (no hostile word is empty, so the non-empty lines are compared: a runner that trims the final
+// newline changes nothing, and a word split in two still reds), and no expansion ran: the canary path named inside a $( ) word and a backtick word is never created.
+// Refused by the hermetic envelope (shell.Exec and shell.Mktemp.Dir have no mock_response), so it is a LocalRepoWetLane
+// exclusion in gunbc.ci.ci_layer_roots.
+
+fn proof_for_this_shell() -> PosixLoginShellProof? {
+  match login_shell_standing(principal: "witness", success: true, output: "witness:x:1000:1000::/home/witness:/bin/sh") {
+    LoginShellPosix { proof: p } => Present { value: p }
+    LoginShellNotPosix { principal: _, shell: _ } => Absent
+    LoginShellUnreadable { principal: _, reason: _ } => Absent
+  }
+}
+
+fn hostile_words(canary: String) -> List<String> {
+  [
+    "plain",
+    "a b  c",
+    "*",
+    "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb",
+    concat(concat("$(touch ", canary), ")"),
+    concat(concat("`touch ", canary), "`"),
+    concat("x;touch ", canary),
+    concat("x&&touch ", canary),
+    "it's",
+    "'\"",
+    "a\\b",
+    "$HOME",
+    "~",
+    "[ab]",
+    "!x",
+    "#x",
+  ]
+}
+
+test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  if dir.success == false {
+    false
+  } else {
+    let canary = join([dir.path as String, "/canary"], "")
+    let words = hostile_words(canary: canary)
+    match proof_for_this_shell() {
+      Absent => false
+      Present { value: p } =>
+        match posix_quoted_remote_words(raws: concat(["printf", "%s\\n"], words), shell: p) {
+          Absent => false
+          Present { value: rendered } => {
+            let command = join(portable_remote_words_strings(words: rendered), " ")
+            let ran = shell.Exec.Run(script: retained_runtime(body: concat("sh -c ", concat(concat("'", join(split(s: command, delimiter: "'"), "'\\''")), "'")), reason: "posix quoted word real-execution witness: one sh -c re-parse" as NonEmptyStr), expect: OutcomeIsData)
+            let canary_absent = shell.Exec.Run(script: retained_runtime(body: concat("test ! -e ", canary), reason: "posix quoted word real-execution witness: canary absent" as NonEmptyStr), expect: OutcomeIsData)
+            let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+            ran.success
+              && filter(split(s: ran.stdout, delimiter: "\n"), l => l != "") == words
+              && canary_absent.success
+              && cleaned.success
+          }
+        }
+    }
+  }
+}

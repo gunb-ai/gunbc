@@ -36,7 +36,7 @@ import v2.lens.cost.valuation {
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat, Succ, Zero, nat_mul }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   Symbol,
@@ -171,7 +171,7 @@ test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        MissingSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        MissingSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
         _ => false
       }
     ExactCost { value: _ } => false
@@ -188,7 +188,7 @@ test fn duplicate_bindings_refuse() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        DuplicateSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        DuplicateSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
         _ => false
       }
     _ => false
@@ -337,7 +337,7 @@ test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        MissingSizeBinding { variable: v, at: _ } => v.source == outer_leaf
+        MissingSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
         _ => false
       }
     _ => false
