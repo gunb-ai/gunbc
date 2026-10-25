@@ -1555,6 +1555,35 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
         {
             Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                 candidates: cands, ..
+            }) => {
+                let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
+                crate::v1_compiler_infer_occurrence_binding::ambiguity_labels_from_decide(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in chain.iter().cloned() {
+                            __result.push(c.module_path.clone());
+                        }
+                        __result
+                    }),
+                    name.clone(),
+                )
+            }
+            _ => Rc::new(vec![]),
+        }
+    }
+}
+
+pub fn global_bare_every_candidate_label(env: Rc<TypeEnv>, name: String) -> Rc<Vec<String>> {
+    {
+        if (v1_rt::name_resolution_policy_is_namespace_only() == false) {
+            return Rc::new(vec![]);
+        }
+        match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
+            .as_deref()
+            .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                candidates: cands, ..
             }) => crate::v1_compiler_infer_occurrence_binding::ambiguity_labels_from_decide(
                 Rc::new({
                     let mut __result = Vec::new();
@@ -1576,7 +1605,7 @@ pub fn bare_name_miss_diagnostic(
     span: Rc<SourceSpan>,
 ) -> Rc<CompilerDiagnostic> {
     {
-        let cands = global_bare_strict_ambiguity_candidates(env, name.clone());
+        let cands = global_bare_every_candidate_label(env, name.clone());
         if ((cands.clone().len() as i64) > 0) {
             Rc::new(CompilerDiagnostic::AmbiguousReference {
                 name: name.clone(),
