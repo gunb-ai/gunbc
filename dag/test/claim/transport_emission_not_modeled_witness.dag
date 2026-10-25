@@ -5,6 +5,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_count_at_key,
   census_rows_of_class,
   census_total_count,
 }
@@ -95,8 +96,29 @@ test fn w_rest_and_shell_transports_emit_without_refusal() -> Bool {
   not_modeled_blocking_count(source: rest_and_shell_source) == 0
 }
 
-test fn w_rest_and_shell_transports_are_clean_of_all_blocking_diagnostics() -> Bool {
-  blocking_diagnostic_count(source: rest_and_shell_source) == 0
+// The census rows are the WHOLE compile's, and this fixture imports extdeps.transports.rest, so an
+// all-blocking total carries that closure's rows and is permanently nonzero
+// (gunbc.compile_diagnostic_census, CompileDiagnosticCensus). The exact form is a count keyed on
+// class AND subject; a TransportEmissionNotModeled row's subject is "<Service>.<Operation>"
+// (compile_clean_diagnostic_histogram_key), so the fixture's own operations are the subjects.
+fn own_operation_refusal_count(source: String, subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "TransportEmissionNotModeled", subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn w_rest_and_shell_transports_are_not_refused_at_their_own_operations() -> Bool {
+  own_operation_refusal_count(source: rest_and_shell_source, subject: "Sh.ListDirs") == 0
+    && own_operation_refusal_count(source: rest_and_shell_source, subject: "Net.Fetch") == 0
+}
+
+// RED + positive control for the keyed form: it must go red on a planted refusal at the fixture's
+// own operation (Fv.Chmod, unmodeled verb) and stay zero at the healthy sibling (Fv.Read).
+test fn w_keyed_count_sees_a_planted_refusal_at_its_own_operation_only() -> Bool {
+  own_operation_refusal_count(source: unmodeled_verb_source, subject: "Fv.Chmod") == 1
+    && own_operation_refusal_count(source: unmodeled_verb_source, subject: "Fv.Read") == 0
 }
 
 test fn w_file_operation_emits_beside_its_rest_and_shell_siblings() -> Bool {
