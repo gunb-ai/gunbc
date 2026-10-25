@@ -801,6 +801,20 @@ type RunnerHostSubordinateIds {
   displacee_regrant_first: Int
 }
 
+type RunnerHostSubordinateIdsFile
+  = SubordinateIdsRowDeclared { ids: RunnerHostSubordinateIds }
+  | SubordinateIdsRowUnmeasured {}
+
+type RunnerHostSubordinateIdRow {
+  host: HostIdentity
+  ids: RunnerHostSubordinateIdsFile
+}
+
+type RunnerHostSubordinateIdsResolution
+  = RunnerHostSubordinateIdsDeclared { spec: RunnerHostSubordinateIds }
+  | RunnerHostSubordinateIdsUnmeasured { reason: String }
+
+
 data runner_host_subordinate_id_rows: List<RunnerHostSubordinateIdRow> = [
   // srv1 /etc/subuid as read: briansrls 100000:65536, ghrunner 100000:65536 (COLLIDE),
   // gunbc-fleet 165536:65536, ubuntu 231072:65536, gunbc-worker 296608:65536. The plan therefore keeps
@@ -808,27 +822,27 @@ data runner_host_subordinate_id_rows: List<RunnerHostSubordinateIdRow> = [
   // colliding range, and re-grants briansrls above gunbc-worker's end at 362143.
   RunnerHostSubordinateIdRow {
     host: operator_host_srv1,
-    ids: RunnerHostSubordinateIds {
+    ids: SubordinateIdsRowDeclared { ids: RunnerHostSubordinateIds {
       job_user_first: 100000, job_user_count: 65536,
       displaceable: "briansrls" as NonEmptyStr, displacee_regrant_first: 362144,
-    },
+    } },
   },
   // srv3 /etc/subuid as read: ghrunner 100000:65536, ubuntu 100000:65536 (COLLIDE),
   // briansrls 165536:65536. The job user keeps 100000:65536 and ubuntu is re-granted above
   // briansrls's end at 231071.
   RunnerHostSubordinateIdRow {
     host: operator_host_srv3,
-    ids: RunnerHostSubordinateIds {
+    ids: SubordinateIdsRowDeclared { ids: RunnerHostSubordinateIds {
       job_user_first: 100000, job_user_count: 65536,
       displaceable: "ubuntu" as NonEmptyStr, displacee_regrant_first: 231072,
-    },
+    } },
   },
   // srv2 and srv4 are never measured, so nothing is declared. A range here would be a value with no
   // measurement behind it, and the converge would usermod accounts on a host whose subordinate file has
   // not been read — on a host where, for all we know, both accounts already have container stores. The
   // gap is recorded as a gap and the converge refuses, which is the honest arm.
-  RunnerHostSubordinateIdRow { host: operator_host_srv2, ids: RunnerHostSubordinateIdsUnmeasured {} },
-  RunnerHostSubordinateIdRow { host: operator_host_srv4, ids: RunnerHostSubordinateIdsUnmeasured {} },
+  RunnerHostSubordinateIdRow { host: operator_host_srv2, ids: SubordinateIdsRowUnmeasured {} },
+  RunnerHostSubordinateIdRow { host: operator_host_srv4, ids: SubordinateIdsRowUnmeasured {} },
 ]
 
 data runner_host_subordinate_id_row_count_bound: Int = 8
@@ -848,16 +862,18 @@ fn subordinate_ids_declared_for(host: HostIdentity) -> RunnerHostSubordinateIdsR
                        " has no subordinate-id row, so the job user has no declared range to be given"),
       }
       Present { value: row } => match row.ids {
-        RunnerHostSubordinateIdsUnmeasured {} => RunnerHostSubordinateIdsUnmeasured {
+        SubordinateIdsRowUnmeasured {} => RunnerHostSubordinateIdsUnmeasured {
           reason: concat("gunbc.runner.runner_host_deploy: host ", host as String,
                          " declares no subordinate range because its /etc/subuid has never been read"),
         }
-        RunnerHostSubordinateIds { job_user_first: f, job_user_count: c, displaceable: d, displacee_regrant_first: g } =>
+        SubordinateIdsRowDeclared { ids: d0 } => match d0 {
+          RunnerHostSubordinateIds { job_user_first: f, job_user_count: c, displaceable: d, displacee_regrant_first: g } =>
           RunnerHostSubordinateIdsDeclared {
             spec: RunnerHostSubordinateIds {
               job_user_first: f, job_user_count: c, displaceable: d, displacee_regrant_first: g,
             },
           },
+        }
       }
     }
   }
