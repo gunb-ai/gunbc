@@ -4,6 +4,7 @@ import std.types { String, Bool, List, Int, Map }
 import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.source_layout { layout_module_storage_path }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.instruments.namespace_wave_binding_shard { shard_owned_rewritten }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitCall, AmbientNameKitType, ambient_name_homes, ambient_name_candidates }
@@ -311,6 +312,16 @@ fn partial_lines(stdout: String) -> List<String> {
 // THE REWRITTEN MODULES THE HEAD RUN REACHED AND REFUSED AT RESOLVE: what the host must probe at the merge base,
 // with the SAME binary, to tell a module this wave broke from one already refused before it. A module with
 // no binding rows is not observed, so this is the not-observed rewritten modules the refused map names.
+// WHERE A MODULE IS STORED, ASKED OF THE ONE AUTHORITY (gunbc.source_layout layout_module_storage_path; DESIGN section 3),
+// never restated in the host: one element when the layout places the module, none when it does not, so the host refuses a
+// module outside the declared layout instead of probing a fabricated path (and so cannot drop it as "absent at base").
+fn ambient_census_module_storage_paths(module: String) -> List<String> {
+  match layout_module_storage_path(module: module) {
+    Present { value: path } => [path]
+    Absent => []
+  }
+}
+
 fn ambient_census_probe_modules(tree_stdout: String, rewritten: String) -> List<String> {
   let refused = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), field_at(line: l, index: 2)) })
   unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)

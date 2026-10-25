@@ -1865,16 +1865,36 @@ fn ambient_probe_modules(
     }
 }
 
-/// The file a module is stored at under `tree`, by the storage rule (`v2.a.b` is `src/v2/a/b.dag`,
-/// `a.b` is `dag/a/b.dag`; DESIGN section 3) -- the inverse of `census_rewritten_modules`.
-fn census_module_path(tree: &std::path::Path, module: &str) -> std::path::PathBuf {
-    match module.strip_prefix("v2.") {
-        Some(rest) => tree
-            .join("src/v2")
-            .join(format!("{}.dag", rest.replace('.', "/"))),
-        None => tree
-            .join("dag")
-            .join(format!("{}.dag", module.replace('.', "/"))),
+/// The file a module is stored at under `tree`, asked of the one authority
+/// (`ambient_census_module_storage_paths`, which delegates to `gunbc.source_layout`
+/// `layout_module_storage_path`); a module the layout does not place is a refusal, never a guessed path.
+fn census_module_path(
+    ctx: &crate::v1_interpreter::InterpContext,
+    tree: &std::path::Path,
+    module: &str,
+) -> Result<std::path::PathBuf, String> {
+    let args = [(
+        Some("module".to_string()),
+        crate::v1_interpreter::Value::Str(module.to_string().into()),
+    )];
+    match &crate::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "ambient_census_module_storage_paths",
+        &args,
+        true,
+    ) {
+        Ok(crate::v1_interpreter::Value::List(items)) => match items.len() {
+            0 => Err(format!(
+                "module {module} is outside the declared source layout (gunbc.source_layout); the probe refuses it"
+            )),
+            1 => match items.iter().next() {
+                Some(crate::v1_interpreter::Value::Str(path)) => Ok(tree.join(path.to_string())),
+                _ => Err("ambient_census_module_storage_paths held a non-string".to_string()),
+            },
+            _ => Err("ambient_census_module_storage_paths held more than one path".to_string()),
+        },
+        Ok(_) => Err("ambient_census_module_storage_paths did not return a list".to_string()),
+        Err(cause) => Err(format!("ambient_census_module_storage_paths failed: {cause}")),
     }
 }
 
@@ -2090,10 +2110,12 @@ fn run_ambient_name_census(
             let head = census_head_commit()?;
             let merge_base = census_merge_base(&head, &base_ref)?;
             add_census_base_tree(&scratch, &base_tree, &merge_base)?;
-            base_probed = refused
-                .into_iter()
-                .filter(|module| census_module_path(&base_tree, module).exists())
-                .collect();
+            base_probed = Vec::new();
+            for module in refused {
+                if census_module_path(&ctx, &base_tree, &module)?.exists() {
+                    base_probed.push(module);
+                }
+            }
             if base_probed.is_empty() {
                 return Ok(None);
             }
