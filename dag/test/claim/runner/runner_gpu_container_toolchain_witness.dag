@@ -1,0 +1,327 @@
+module test.claim.runner.runner_gpu_container_toolchain_witness
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE NEVER-GREEN CONTRACT FOR THE GPU CONTAINER CAPABILITY
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// A slot that cannot run a container seeing a GPU must make the dependent instrument go red — never
+// green with an empty observation. Two folds decide that, and both are pure, so both can be nailed
+// here without a host under them:
+//
+//   * gunbc.runner.runner_gpu_container_toolchain runner_gpu_container_toolchain_ready — the
+//     conjunctive four-arm gate. The container-sees-device arm is one of the four; if it is missing
+//     or unobserved the gate is false even when the toolkit package, the CDI spec and the job-user
+//     daemon all answer ok.
+//   * gunbc.runner.runner_gpu_container_toolchain gpu_docker_labels_outcome_holds — the converge is
+//     green only when the capability read back ready AND the label action was a grant. A revoke on an
+//     unready host is the RIGHT action but a FAILED converge; a grant while unready is impossible and
+//     is what this witness refuses.
+//
+// THE POSITIVE CONTROLS ARE NOT OPTIONAL. An assertion that the unready case goes red is satisfied by
+// a gate that is hard-wired false; each red claim here is paired with the green case that only a
+// correct gate can also admit. A test file whose every claim is a negative is a test file that passes
+// on a module that does nothing.
+//
+// THE SUBORDINATE-RANGE CLAIMS ARE HERE TOO because a namespace collision is the failure mode that
+// reads like something else (see the provisioning commentary in the module under test): a job user
+// sharing a subordinate range with another account makes dockerd-rootless fail in a way that looks
+// like a Docker bug. The plan fold must REFUSE, not install a broken daemon, so the refusal is pinned
+// against the exact range pair srv3 shipped with (two accounts both at 100000+65536).
+
+import std.logic { Bool }
+import std.types { NonEmptyStr }
+
+import gunbc.runner.runner_gpu_container_toolchain {
+  GpuContainerArm,
+  GpuContainerArmOk, GpuContainerArmMissing, GpuContainerArmUnobserved,
+  GpuContainerToolchainReadback,
+  runner_gpu_container_toolchain_ready,
+  GpuDockerLabelsOutcome,
+  GpuDockerLabelsGranted, GpuDockerLabelsRevoked, GpuDockerLabelsFailed,
+  gpu_docker_labels_outcome_holds,
+}
+
+import extdeps.shadow.subordinate_ids {
+  SubordinateRange,
+  SubordinateFileRead, SubordinateFileUnreadable,
+  SubordinatePlanSteps, SubordinatePlanRefused,
+  subordinate_collisions,
+  plan_subordinate_file,
+}
+
+// ── THE READBACK GATE ────────────────────────────────────────────────────────────────────────
+
+fn ok(detail: String) -> GpuContainerArm { GpuContainerArmOk { detail: detail } }
+fn missing(detail: String) -> GpuContainerArm { GpuContainerArmMissing { detail: detail } }
+fn unobserved(reason: String) -> GpuContainerArm { GpuContainerArmUnobserved { reason: reason } }
+
+fn all_four_ok() -> GpuContainerToolchainReadback {
+  GpuContainerToolchainReadback {
+    job_user: "ghrunner" as NonEmptyStr,
+    toolkit_package: ok("nvidia-container-toolkit"),
+    cdi_spec: ok("nvidia.com/gpu=all"),
+    job_user_daemon: ok("rootless"),
+    container_sees_device: ok("GPU 0"),
+  }
+}
+
+// A host that truly has the capability is ready. Without this, every red claim below is vacuous.
+test fn a_host_with_all_four_arms_is_ready() -> Bool {
+  runner_gpu_container_toolchain_ready(r: all_four_ok())
+}
+
+// THE DECIDING ARM: the container that sees no GPU makes the host not ready even though the package,
+// the spec and the daemon all answer ok. This is the exact shape that would let a slot advertise the
+// capability and the dependent instrument observe nothing — it must be unready.
+test fn a_missing_container_device_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: r.toolkit_package,
+    cdi_spec: r.cdi_spec,
+    job_user_daemon: r.job_user_daemon,
+    container_sees_device: missing("exited 125: no such device"),
+  }) == false
+}
+
+// UNOBSERVED IS NOT OK. A leg that could not be run (transport refused, uid unknown) is a refusal to
+// answer, not a green answer; the container arm in particular may never be treated as satisfied
+// because it was never measured.
+test fn an_unobserved_container_device_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: r.toolkit_package,
+    cdi_spec: r.cdi_spec,
+    job_user_daemon: r.job_user_daemon,
+    container_sees_device: unobserved("job user uid unobserved"),
+  }) == false
+}
+
+// The same refusal applied to each of the other three arms in turn: dropping any one of the four to
+// missing makes the host unready, so no single arm can be silently forgotten by a later refactor.
+test fn dropping_the_toolkit_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: missing("dpkg query empty"),
+    cdi_spec: r.cdi_spec,
+    job_user_daemon: r.job_user_daemon,
+    container_sees_device: r.container_sees_device,
+  }) == false
+}
+
+test fn dropping_the_cdi_spec_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: r.toolkit_package,
+    cdi_spec: missing("no spec names the device"),
+    job_user_daemon: r.job_user_daemon,
+    container_sees_device: r.container_sees_device,
+  }) == false
+}
+
+test fn dropping_the_job_user_daemon_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: r.toolkit_package,
+    cdi_spec: r.cdi_spec,
+    job_user_daemon: missing("socket silent"),
+    container_sees_device: r.container_sees_device,
+  }) == false
+}
+
+// ── THE LABEL ACTION GATE ────────────────────────────────────────────────────────────────────
+
+// GRANTED AND READY is the only green pair. This is the positive control for the whole section.
+test fn a_grant_on_a_ready_host_holds() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsGranted, ready: true)
+}
+
+// A GRANT CANNOT BE GREEN WITHOUT THE CAPABILITY. If the readback is unready, a Granted outcome must
+// not hold — otherwise a stale drop-in left by a previous converge could report green on a host that
+// lost the toolkit.
+test fn a_grant_on_an_unready_host_never_holds() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsGranted, ready: false) == false
+}
+
+// A REVOKE ON AN UNREADY HOST IS THE RIGHT ACTION, and is still recorded correctly: holds() is true
+// for the action being right, but the converge's own green test (ready && holds) is false because
+// ready is false. This claim pins that the two are independent — holds() must not be collapsed into
+// "is the converge green", which is what would let a revoke masquerade as success.
+test fn a_revoke_on_an_unready_host_is_the_correct_action() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsRevoked, ready: false)
+}
+
+// A revoke on a READY host is wrong — the host kept the capability but lost its label — so it does not
+// hold, and combined with the green test it can never be reported as success.
+test fn a_revoke_on_a_ready_host_does_not_hold() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsRevoked, ready: true) == false
+}
+
+// A FAILURE holds on neither host, on either host: it is the one outcome with no green path.
+test fn a_failed_label_action_never_holds() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsFailed { cause: "refused" }, ready: true) == false
+    && gpu_docker_labels_outcome_holds(o: GpuDockerLabelsFailed { cause: "refused" }, ready: false) == false
+}
+
+// THE CONVERGE'S GREEN TEST, spelled the way the wet entry spells it (ready && holds), is false for
+// every unready combination — including the grant-on-stale-label shape — and true only for the one
+// green pair above. This is the single line that turns the whole module on or off, so it is asserted
+// as a table rather than left to the reader to re-derive.
+fn converge_is_green(o: GpuDockerLabelsOutcome, ready: Bool) -> Bool {
+  ready && gpu_docker_labels_outcome_holds(o: o, ready: ready)
+}
+
+test fn the_converge_is_green_only_for_a_grant_on_a_ready_host() -> Bool {
+  converge_is_green(o: GpuDockerLabelsGranted, ready: true)
+    && converge_is_green(o: GpuDockerLabelsGranted, ready: false) == false
+    && converge_is_green(o: GpuDockerLabelsRevoked, ready: true) == false
+    && converge_is_green(o: GpuDockerLabelsRevoked, ready: false) == false
+    && converge_is_green(o: GpuDockerLabelsFailed { cause: "x" }, ready: true) == false
+    && converge_is_green(o: GpuDockerLabelsFailed { cause: "x" }, ready: false) == false
+}
+
+// ── THE SUBORDINATE-RANGE PLAN ───────────────────────────────────────────────────────────────
+
+// THE COLLISION SRV3 SHIPPED WITH, DETECTED. Two accounts both at 100000+65536 is exactly what srv3's
+// /etc/subuid had; the collision fold must name the pair rather than pass it as a clean file.
+test fn the_srv3_range_pair_is_reported_as_colliding() -> Bool {
+  let a = SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 }
+  let b = SubordinateRange { account: "ubuntu" as NonEmptyStr, first: 100000, count: 65536 }
+  length(subordinate_collisions(rs: [a, b])) == 1
+}
+
+// A CLEAN FILE HAS NO COLLISION (the positive control for the claim above).
+test fn disjoint_ranges_do_not_collide() -> Bool {
+  let a = SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 }
+  let b = SubordinateRange { account: "briansrls" as NonEmptyStr, first: 165536, count: 65536 }
+  length(subordinate_collisions(rs: [a, b])) == 0
+}
+
+// THE PLAN REFUSES TO MOVE THE JOB USER ONTO A RANGE HELD BY AN ACCOUNT THE MODEL DID NOT NAME AS
+// DISPLACEABLE. srv1's file has the job user and an admin account both at 100000+65536; if the model
+// only permits moving "briansrls" but the account in the way is "gunbc-fleet", the plan must refuse
+// rather than evict an account whose container store nobody has checked.
+test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
+  let reading = SubordinateFileRead {
+    path: "/etc/subuid",
+    ranges: [
+      SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
+      SubordinateRange { account: "gunbc-fleet" as NonEmptyStr, first: 100000, count: 65536 },
+    ],
+  }
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 200000,
+    want_count: 65536,
+    displaceable: "briansrls" as NonEmptyStr,
+    displaceable_store_free: true,
+    displacee_regrant_first: 400000,
+  ) {
+    SubordinatePlanRefused { reason: _ } => true
+    SubordinatePlanSteps { steps: _ } => false
+  }
+}
+
+// THE PLAN REFUSES WHEN THE DISPLACEE CANNOT BE REGRACTED CLEARLY: moving the displacee onto a range
+// that overlaps a surviving account must refuse, not create a fresh collision behind the job user's
+// back. Here briansrls would be re-granted onto 165536, which gunbc-worker already holds.
+test fn a_plan_refuses_when_the_regrant_would_collide() -> Bool {
+  let reading = SubordinateFileRead {
+    path: "/etc/subuid",
+    ranges: [
+      SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
+      SubordinateRange { account: "briansrls" as NonEmptyStr, first: 100000, count: 65536 },
+      SubordinateRange { account: "gunbc-worker" as NonEmptyStr, first: 165536, count: 65536 },
+    ],
+  }
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "briansrls" as NonEmptyStr,
+    displaceable_store_free: true,
+    displacee_regrant_first: 165536,
+  ) {
+    SubordinatePlanRefused { reason: _ } => true
+    SubordinatePlanSteps { steps: _ } => false
+  }
+}
+
+// AN UNREADABLE FILE REFUSES THE PLAN. It is not the same as an empty file: not-knowing is not
+// permission to rewrite the file, and a plan that proceeded here could clobber ranges it never saw.
+test fn an_unreadable_subordinate_file_refuses_the_plan() -> Bool {
+  match plan_subordinate_file(
+    path: "/etc/subgid",
+    reading: SubordinateFileUnreadable { path: "/etc/subgid", cause: "EACCES" },
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu" as NonEmptyStr,
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanRefused { reason: _ } => true
+    SubordinatePlanSteps { steps: _ } => false
+  }
+}
+
+// THE CLEAN MOVE ON THE FILE SRV3 SHIPPED, WITH ITS MODEL-NAMED DISPLACEABLE ACCOUNT: ghrunner keeps
+// 100000+65536, the admin account that collided with it is displaced and re-granted clear of everyone,
+// and no account is left sharing a range. This is the case the whole collision machinery exists to
+// make safe; if it refused, srv3 would never converge, so it must produce steps.
+test fn the_srv3_collision_resolves_to_steps_when_the_named_account_moves() -> Bool {
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: SubordinateFileRead {
+      path: "/etc/subuid",
+      ranges: [
+        SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
+        SubordinateRange { account: "ubuntu" as NonEmptyStr, first: 100000, count: 65536 },
+        SubordinateRange { account: "briansrls" as NonEmptyStr, first: 165536, count: 65536 },
+      ],
+    },
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu" as NonEmptyStr,
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanSteps { steps: _ } => true
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// THE SAME MOVE, BUT THE DISPLACEABLE ACCOUNT HAS A CONTAINER STORE. store_free=false is the readback
+// saying "this account is running containers on the very range you want", which is the constraint the
+// manager put on the re-range: a range move strands that account's images and containers owned by the
+// old uids. The plan must refuse, so a converge never silently breaks a live store.
+test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: SubordinateFileRead {
+      path: "/etc/subuid",
+      ranges: [
+        SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
+        SubordinateRange { account: "ubuntu" as NonEmptyStr, first: 100000, count: 65536 },
+      ],
+    },
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu" as NonEmptyStr,
+    displaceable_store_free: false,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanRefused { reason: _ } => true
+    SubordinatePlanSteps { steps: _ } => false
+  }
+}
