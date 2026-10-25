@@ -1,0 +1,9 @@
+module test.fixture.pipe_head_provider
+
+// Declared functions a pipe reaches by import (test.claim.pipe_into_declared_function_witness).
+// `sub` is not commutative, so a pipe that fed its left operand to any slot but the first would
+// change its value.
+
+fn sub(xs: Int, a: Int) -> Int { xs - a }
+
+fn twice(xs: Int) -> Int { xs * 2 }

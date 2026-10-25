@@ -1,0 +1,61 @@
+module test.claim.pipe_into_declared_function_witness
+
+import std.algebra { list_push }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import test.fixture.pipe_head_provider { sub, twice }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a pipe is the call it abbreviates, with its left operand as the first argument, so a pipe
+// into a DECLARED function binds that function by declaration identity through the import, exactly as
+// the direct call does (v1.compiler.parse pipe_call_expr_data; gunbc.recurring_failure_mode
+// pipe_into_a_declared_function_resolves_as_a_method).
+//
+// ROUTE: this module is itself the specimen. Its pipe sites are compiled by the seed's real
+// acceptance path when the claim runs, and each test fn executes them. RED BEFORE THE REPAIR, measured
+// at 88e8991e557 by the seed built from that tree: this module refused to resolve, with
+// "method 'sub' not found on receiver type 'Primitive(Int)'" at the first pipe into `sub`, so no claim
+// below could run at all.
+//
+// THE KERNEL AND HOST HEADS STAY ON THEIR ROUTE: `count`, `map` and `first` have no declared
+// signature at these sites and bind through the known-method bridge, and `list_push` is the
+// host-realized std.algebra declaration; both must keep their values.
+
+fn piped_named() -> Int { 10 |> sub(a: 3) }
+
+fn piped_positional() -> Int { 10 |> sub(3) }
+
+fn piped_bare() -> Int { 4 |> twice }
+
+fn piped_chain() -> Int { 10 |> sub(a: 3) |> twice }
+
+fn direct_named() -> Int { sub(xs: 10, a: 3) }
+
+test fn a_pipe_into_an_imported_declared_function_binds_the_left_operand_first() -> Bool {
+  piped_named() == 7 && piped_positional() == 7 && piped_named() == direct_named()
+}
+
+test fn a_pipe_into_a_bare_declared_head_is_its_one_argument_call() -> Bool {
+  piped_bare() == 8 && piped_chain() == 14
+}
+
+test fn kernel_and_host_heads_keep_their_route() -> Bool {
+  let mapped = match [1, 2] |> map(x => x + 1) |> first {
+    Present { value: v } => v
+    Absent => 0
+  }
+  ([1, 2, 3] |> count) == 3 && mapped == 2 && ([1] |> list_push(2) |> count) == 2
+}
+
+// THE REFUSALS STAY LOCATED AND TYPED. The pair differs only in the pipe head's spelling: the declared
+// head compiles clean and the undeclared one refuses ("function 'demo_missing' not found in scope").
+// Without the control the refusal arm would be green for any reason a fixture fails.
+test fn an_undeclared_pipe_head_still_refuses_beside_its_declared_control() -> Bool {
+  compile_dag_rust_emit_check(
+    "module pipe_head_declared\nfn demo(x: Int) -> Int { x }\nfn use_demo() -> Int { 1 |> demo }\n",
+    "src/pipe_head_declared.rs", [], []
+  ) && !compile_dag_rust_emit_check(
+    "module pipe_head_undeclared\nfn demo(x: Int) -> Int { x }\nfn use_demo() -> Int { 1 |> demo_missing }\n",
+    "src/pipe_head_undeclared.rs", [], []
+  )
+}
