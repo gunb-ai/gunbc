@@ -320,7 +320,6 @@ test fn the_state_directory_plan_includes_the_assertion_counter_root() -> Bool {
     DarkLegArgv { step: _, command: _ } => false
     DarkLegStdin { step: _, command: _, payload: _ } => false
     DarkLegExpectEmpty { step: _, command: _ } => false
-    DarkLegSameHash { step: _, left: _, right: _ } => false
   })
 }
 
