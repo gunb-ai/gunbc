@@ -4,13 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int }
 import extdeps.systemd.systemd_run { systemd_run_command_argument_words }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  operation_argv_bind_text_list,
-  operation_argv_cause_label,
-}
+import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, operation_argv_bind_text_list, operation_argv_cause_label, shell_materialize_operation_argv }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh,

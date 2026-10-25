@@ -58,6 +58,7 @@ import v2.std.logic { bool_boolean_algebra }
 import v2.std.grammar { derive_grammar_relation_row_for_lhs }
 import v2.std.compilers.target_model { ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
 import std.host_text { chars }
+import std.operation_argv { shell_materialize_operation_argv }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
 // resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated

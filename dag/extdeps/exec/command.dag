@@ -6,12 +6,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_pr
 
 import std.types { NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
-import std.operation_argv {
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  OperationInputBinding,
-  operation_argv_cause_label,
-}
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, operation_argv_cause_label, shell_materialize_operation_argv }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }

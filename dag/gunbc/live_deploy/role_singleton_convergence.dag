@@ -65,12 +65,7 @@ import gunbc.live_deploy.desired {
   instance_id_text, desired_deployment_for_instance_id_over, DesiredDeploymentLookup, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
   DesiredRosterRefusal, desired_roster_refusal_detail,
 }
-import std.operation_argv {
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  operation_argv_bind_text,
-  operation_argv_cause_label,
-}
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, operation_argv_bind_text, operation_argv_cause_label, shell_materialize_operation_argv }
 import gunbc.live_deploy.member_observe {
   ObservationArm,
   OnTheHostItself,

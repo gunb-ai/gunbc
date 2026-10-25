@@ -36,11 +36,7 @@ module test.claim.live_deploy.observed_unhealthy_deploy_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List, CommitSha, HttpStatus, http_status_of }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import std.operation_argv {
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  operation_argv_bind_text,
-}
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, operation_argv_bind_text, shell_materialize_operation_argv }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.optional { Present, Absent }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
