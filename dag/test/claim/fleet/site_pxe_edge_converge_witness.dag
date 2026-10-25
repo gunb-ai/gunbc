@@ -1,5 +1,9 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
+import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
+import extdeps.bootloader.grub { grub_cmdline_arg_render }
+import extdeps.uri { Uri, Http }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
@@ -821,7 +825,10 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/meta-data")
             && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service")
             && contains(grub, "url=http://srv4:8080/iso/ubuntu-24.04.3-live-server-amd64.iso")
-            && contains(grub, "autoinstall ds=nocloud-net\\;s=http://srv4:8080/seed/ac-1f-6b-e3-f7-fe/ ---")
+            && contains(grub, "autoinstall \"ds=nocloud-net;s=http://srv4:8080/seed/ac-1f-6b-e3-f7-fe/\" ---")
+            && contains(grub, "  linux /vmlinuz ip=dhcp cloud-config-url=/dev/null url=")
+            && contains(grub, "  initrd /initrd")
+            && !contains(grub, "\\;")
             && contains(grub, "cloud-config-url=/dev/null")
             && !contains(grub, "192.168.")
         }
@@ -908,4 +915,15 @@ test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
   let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
   let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
   !site_pxe_edge_run_succeeded(run: wildcard) && site_pxe_edge_run_succeeded(run: bound)
+}
+
+// ONE ds= TOKEN (review 86171): the seeded-media string builder now composes the shared token through GRUB's quoting
+// rule, and yields the same bytes as its former literal; the carrier's local arm has no network argument.
+test fn the_net_seed_token_is_built_once_and_quoted_by_grub() -> Bool {
+  (ubuntu_seeded_install_media_grub_kernel_cmdline_net(seed_url: "http://192.0.2.1:8080/seed/x/") as String) == "autoinstall ip=dhcp \"ds=nocloud-net;s=http://192.0.2.1:8080/seed/x/\""
+    && (match nocloud_net_ds_kernel_arg(delivery: NoCloudLocal) { Absent => true Present { value: _ } => false })
+    && (match nocloud_net_ds_kernel_arg(delivery: NoCloudNet { seed_url: Uri { scheme: Http, locator: "srv4:8080/seed/y/" } }) {
+      Present { value: a } => grub_cmdline_arg_render(arg: a) == "\"ds=nocloud-net;s=http://srv4:8080/seed/y/\""
+      Absent => false
+    })
 }

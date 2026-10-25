@@ -1,11 +1,14 @@
 module gunbc.fleet.site_pxe_edge_converge
 
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, serialize_content_hash, sha256_hex_digest }
-import extdeps.uri { Uri }
+import extdeps.uri { Uri, Http, uri_wire }
+import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
+import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address, render_ipv4_address }
 import gunbc.fleet.fleet_intent_network { srv4_host_lan_endpoint, operator_lan_segment }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -791,7 +794,7 @@ data site_pxe_edge_http_root: NonEmptyStr = "/srv/gunbc-site-pxe-edge/http"
 
 data site_pxe_edge_http_scope: FileTreeScope = FileTreeScope { root_path: site_pxe_edge_http_root }
 
-data site_pxe_edge_http_port: Int = 8080
+data site_pxe_edge_http_port: Port = 8080
 
 data site_pxe_edge_http_unit_name: NonEmptyStr = "gunbc-site-pxe-edge-http.service"
 
@@ -849,8 +852,8 @@ fn site_pxe_edge_installer_image_path(image: SitePxeEdgeInstallerImage) -> NonEm
   join([site_pxe_edge_http_root as String, "/", image.served_path as String], "") as NonEmptyStr
 }
 
-fn site_pxe_edge_http_url(name: NonEmptyStr, path: String) -> String {
-  join(["http://", name as String, ":", to_string(site_pxe_edge_http_port), "/", path], "")
+fn site_pxe_edge_http_uri(name: NonEmptyStr, path: String) -> Uri {
+  Uri { scheme: Http, locator: join([name as String, ":", to_string(site_pxe_edge_http_port), "/", path], "") as NonEmptyStr }
 }
 
 // ONE HOST'S INSTALL, as the provisioning attempt hands it over: the client's NIC MAC and its rendered NoCloud
@@ -910,18 +913,44 @@ fn site_pxe_edge_seed_path(mac: Eui48Address) -> String {
 
 // ONE HOST'S GRUB CONFIGURATION: the casper kernel and initrd from this TFTP root, the verified installer image
 // and this host's seed from srv4 over HTTP by name. cloud-config-url=/dev/null keeps cloud-init from reading the
-// url= image as a cloud-config (Canonical's netboot how-to); the semicolon in ds= is escaped because GRUB reads
-// an unescaped one as a command separator.
+// url= image as a cloud-config (Canonical's netboot how-to). The configuration is extdeps.bootloader.grub's model,
+// rendered by grub_config_render, so the ds= argument (built from its NoCloudNet carrier by extdeps.os.ubuntu_autoinstall
+// nocloud_net_ds_kernel_arg) is quoted by grub_cmdline_arg_render's one rule for GRUB's ';' (review 86171).
+fn site_pxe_edge_host_kernel_cmdline(binding: SitePxeEdgeInstallBinding, image: SitePxeEdgeInstallerImage) -> List<KernelCmdlineArg> {
+  let seed = NoCloudNet { seed_url: site_pxe_edge_http_uri(name: site_pxe_edge_seed_origin_name, path: concat(site_pxe_edge_seed_path(mac: binding.client_mac), "/")) }
+  concat(
+    [
+      KernelKeyValue { key: "ip", value: "dhcp" },
+      KernelKeyValue { key: "cloud-config-url", value: "/dev/null" },
+      KernelKeyValue { key: "url", value: uri_wire(uri: site_pxe_edge_http_uri(name: site_pxe_edge_seed_origin_name, path: image.served_path as String)) as String },
+      KernelFlag { name: "autoinstall" },
+    ],
+    concat(
+      match nocloud_net_ds_kernel_arg(delivery: seed) {
+        Present { value: a } => [a]
+        Absent => []
+      },
+      [KernelFlag { name: "---" }],
+    ),
+  )
+}
+
 fn site_pxe_edge_host_grub_cfg(binding: SitePxeEdgeInstallBinding, image: SitePxeEdgeInstallerImage) -> String {
   join([
     "# gunbc.fleet.site_pxe_edge_converge: install binding for ", render_mac_address(addr: binding.client_mac) as String, "\n",
-    "set default=0\n",
-    "set timeout=1\n",
-    "menuentry \"gunbc autoinstall\" {\n",
-    "  linux /vmlinuz ip=dhcp cloud-config-url=/dev/null url=", site_pxe_edge_http_url(name: site_pxe_edge_seed_origin_name, path: image.served_path as String),
-    " autoinstall ds=nocloud-net\\;s=", site_pxe_edge_http_url(name: site_pxe_edge_seed_origin_name, path: concat(site_pxe_edge_seed_path(mac: binding.client_mac), "/")), " ---\n",
-    "  initrd /initrd\n",
-    "}\n",
+    grub_config_render(cfg: GrubConfig {
+      timeout_seconds: 1,
+      default_entry: 0,
+      entries: [
+        GrubMenuEntry {
+          title: "gunbc autoinstall",
+          linux_image: "/vmlinuz",
+          linux_cmdline: site_pxe_edge_host_kernel_cmdline(binding: binding, image: image),
+          initrd_image: "/initrd",
+        },
+      ],
+    }),
+    "\n",
   ], "")
 }
 

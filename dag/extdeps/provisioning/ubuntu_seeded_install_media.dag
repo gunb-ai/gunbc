@@ -12,6 +12,8 @@ import std.content_hash {
 import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.os.ubuntu_autoinstall { nocloud_seedfrom_kernel_arg }
+import extdeps.bootloader.grub { grub_cmdline_arg_render }
 import extdeps.crypto.hash { Digest, Sha256, Sha512 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -156,8 +158,10 @@ fn ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: NonEmptyStr) -> 
   concat("autoinstall \"ds=nocloud;s=/cdrom/", concat(nocloud_dir as String, "/\"")) as NonEmptyStr
 }
 
+// The network form goes through the one token builder and GRUB's quoting rule. The local form above keeps its literal:
+// its consumers include mtcollins1's census image, whose boot path this change does not touch.
 fn ubuntu_seeded_install_media_grub_kernel_cmdline_net(seed_url: NonEmptyStr) -> NonEmptyStr {
-  concat("autoinstall ip=dhcp \"ds=nocloud-net;s=", concat(seed_url as String, "\"")) as NonEmptyStr
+  join(["autoinstall", "ip=dhcp", grub_cmdline_arg_render(arg: nocloud_seedfrom_kernel_arg(datasource: "nocloud-net", seedfrom: seed_url as String))], " ") as NonEmptyStr
 }
 
 fn ubuntu_seeded_install_media_default_nocloud_dir(hostname: NonEmptyStr) -> NonEmptyStr {
