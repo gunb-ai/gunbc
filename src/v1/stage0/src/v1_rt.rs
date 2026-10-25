@@ -931,9 +931,21 @@ mod list_slice_tests {
             let b: Vec<i64> = (100..100 + r as i64).collect();
             let want: std::vec::Vec<i64> = a.iter().chain(b.iter()).cloned().collect();
             let bare = list_concat(a.clone(), b.clone());
-            assert_eq!(bare.iter().cloned().collect::<std::vec::Vec<_>>(), want, "bare {} {}", l, r);
+            assert_eq!(
+                bare.iter().cloned().collect::<std::vec::Vec<_>>(),
+                want,
+                "bare {} {}",
+                l,
+                r
+            );
             let rc = rc_list_concat(Rc::new(a), Rc::new(b));
-            assert_eq!(rc.iter().cloned().collect::<std::vec::Vec<_>>(), want, "rc {} {}", l, r);
+            assert_eq!(
+                rc.iter().cloned().collect::<std::vec::Vec<_>>(),
+                want,
+                "rc {} {}",
+                l,
+                r
+            );
         }
     }
 

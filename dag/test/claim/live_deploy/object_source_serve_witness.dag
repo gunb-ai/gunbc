@@ -15,9 +15,15 @@ import extdeps.git.partial_clone {
   ObjectStoreComplete,
   PartialClonePromisor,
   ShallowClone,
+  PartialCloneFilter,
+  PartialCloneUnreadable,
+  ObservedConfig,
+  SetMeansPromisor,
+  partial_clone_standing_of_observations,
   object_source_serve_admission,
   object_source_serve_refusal_text,
 }
+import extdeps.git.inspect { ConfigUnreadable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -35,4 +41,43 @@ test fn the_refusal_text_names_the_source_path_and_the_cause() -> Bool {
   string_contains(s: text, pattern: fixture_promisor_source)
     && string_contains(s: text, pattern: "promisor")
     && string_contains(s: text, pattern: "cannot serve")
+}
+
+// ── ASSERTIONS RESTORED FROM THE DELETED DECIDE-STEP CLAIMS ──────────────────────────────────────────
+//
+// c11aa2317029 (#14660) deleted the claims below with the bash $PWD decide step they read, and the typed
+// object-source port kept both behaviours. At main head d2b027b5f41 a production mutation breaking each
+// left every surviving claim green (the run witness supplies admissions, and the real-execution witness only
+// produces complete and promisor repositories), so each is restored at the fold it now lives in.
+
+// A COMPLETE SHALLOW CHECKOUT ADMITS (was a_shallow_non_promisor_source_admits_the_apply_plan). Shallow
+// history is not a missing object for the transfer; refusing it would refuse every apply from a CI checkout.
+test fn a_shallow_non_promisor_source_admits() -> Bool {
+  match object_source_serve_admission(source: "/tmp/complete-shallow", standing: ShallowClone) {
+    ObjectSourceCanServe { source: s } => s == "/tmp/complete-shallow"
+    ObjectSourceCannotServe { source: _, cause: _ } => false
+    ObjectSourceServeDecideAtApplyPwd => false
+  }
+}
+
+// AN UNREADABLE CONFIG PROBE REFUSES INSTEAD OF READING AS UNSET (was
+// the_object_source_decide_step_keeps_the_unreadable_config_refusal). An unset key falls through to the next
+// probe and finally to ObjectStoreComplete, so a probe that could not read its key and was taken as unset
+// would admit a promisor clone: the gate fails open on exactly the input it exists to refuse.
+test fn an_unreadable_config_probe_refuses_instead_of_reading_as_unset() -> Bool {
+  let standing = partial_clone_standing_of_observations(observations: [
+    ObservedConfig { set_kind: SetMeansPromisor, label: "extensions.partialClone", reading: ConfigUnreadable { exit_code: 128, stderr: "fatal: bad config" } },
+  ])
+  (match standing {
+    PartialCloneUnreadable { detail: d } => string_contains(s: d, pattern: "exited 128")
+    ObjectStoreComplete => false
+    PartialClonePromisor { detail: _ } => false
+    PartialCloneFilter { detail: _ } => false
+    ShallowClone => false
+  })
+    && match object_source_serve_admission(source: "/src", standing: standing) {
+      ObjectSourceCannotServe { source: _, cause: c } => string_contains(s: c, pattern: "could not be read")
+      ObjectSourceCanServe { source: _ } => false
+      ObjectSourceServeDecideAtApplyPwd => false
+    }
 }
