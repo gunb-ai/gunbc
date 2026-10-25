@@ -3,7 +3,7 @@ module gunbc.recurring_failure_mode.seal_diagnostic_named_module_while_enforcing
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // WHY THIS ROW EXISTS, AND WHY ITS RUNG IS LATENT RATHER THAN REACHED. The seal that protects a
@@ -33,13 +33,35 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 //     collision' -- src.
 //
 // Each of the two ways the carriers could separate is therefore refused at its own producer, so file
-// and module are equal BY CONSTRUCTION and the seal cannot currently tell them apart. That makes this a LATENT meaning fork: the wall and its name
-// agree for every input the compiler accepts today. So the row's rung is those two refusals, and
-// its trigger is precisely a change that relaxes one of them -- while the second refusal also
-// settles what a relaxed rule must still not permit.
+// and module are equal and the seal cannot currently tell them apart: a LATENT meaning fork, where the
+// wall and its name agree for every input the compiler accepts today.
+//
+// WHAT THOSE TWO REFUSALS ARE, AND WHAT THEY ARE NOT (review 86393). They are what holds the fork closed
+// TODAY; they are neither this row's rung nor its ceiling. The reported rung stays BELOW the ladder
+// because no lens, gate, or red inspects a diagnostic whose sentence names one boundary while its
+// predicate enforces another -- and §4b rung 2 would report exactly such a mechanism. The ceiling is
+// where the class could be made unwritable by deriving both readings from one modelled boundary. The
+// two separate cleanly: relaxing a refusal makes the class REACHABLE to exercise; only the missing
+// capability, stated once, is what would close it. The collision refusal additionally settles what a
+// relaxed rule must still not permit (no last-root-wins shadowing).
 data seal_diagnostic_named_module_while_enforcing_file_path: RecurringFailureMode = RecurringFailureMode {
   identity: "seal_diagnostic_named_module_while_enforcing_file_path" as NonEmptyStr,
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of letting one .dag file carry two modules, or two files declare one module name, without a replacement refusal for parse_unmarked_item's item refusal or the module-path-collision refusal -- at which point the seal's file test and the module boundary its text states genuinely diverge, and the fix is either boundary stated once in both places." } },
+  // WHY CEILING IS `StructurallyGuaranteed` AND NOT `MechanicallyPreventable` (review 86393). The two
+  // ingest refusals this row cites are NOT rung 2 for THIS class: §4b rung 2 requires a mechanism that
+  // exposes and blocks the class's own invalid state, and nothing exposes or blocks a diagnostic whose
+  // sentence names a different boundary than its predicate enforces. Those two refusals block the
+  // PRECONDITION (file differing from module) that would make the divergence harmful; crediting them as
+  // this row's ceiling would hand the ledger a gate it never built, and §4b ob. 1 asks for a
+  // discriminating RED and an accepted control established FOR THE CLASS, which do not exist. The class
+  // is decidable and fully modelled, so §4b's "a decidable, fully modeled class may reach structural
+  // impossibility" applies and the ceiling is rung 3: one modelled boundary from which both the sentence
+  // and the predicate are derived leaves no room for them to disagree. Rung 4 is not claimed -- the
+  // sentence is an authored String, so a constructor-free model of agreement would need the wording
+  // generated rather than written, which is a modelling change beyond this class.
+  // WHY `current` STAYS BELOW THE LADDER: nothing is misjudged today, and the divergence has no gate of
+  // its own -- below the ladder, not rung 2. `ClimbableButUnbuilt` is then coherent: the remedy (state
+  // the boundary once) is writable now and nobody has written it.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "stating a boundary once -- one modelled boundary value from which both the diagnostic's sentence and the mint's predicate are derived, so a seal that binds a file cannot say it binds a module. Its absence, not the two ingest refusals, is what keeps this class below its ceiling: no mechanism today exposes or blocks the wording-versus-predicate divergence itself." } },
 
 
   receipts: [
@@ -51,11 +73,13 @@ data seal_diagnostic_named_module_while_enforcing_file_path: RecurringFailureMod
 
     "RECOGNITION RULE: a diagnostic that names a boundary -- module, file, package, tree, namespace, root -- must be read next to the predicate that raises it, because the sentence is authored and the predicate is what runs. The tell is cheap and available before any experiment: the text contains a boundary NOUN while the code compares a different carrier (`span.file` against a `span.file`, a path string against a path string). Where the two disagree, the disagreement is only dangerous to the extent some input can separate the carriers -- so the next question is which executed refusal today makes them inseparable, and a row that cannot name one is asserting a live defect it has not shown to be reachable.",
 
-    "RUNG FOUND AT: BELOW THE LADDER -- latent (below, not outside: section 4b puts silent wrongness below the ladder, where there is no GuaranteeRung to be found at, and guarantee_rung's OutsideTheLadder is a different fact -- an external reality observed at a boundary. The rung the class would occupy once reached is stated in the CEILING receipt below). No artifact is misjudged today: the file/module carriers are held equal by `parse_unmarked_item` and by the module-path-collision refusal, so the seal's wrong noun selects nothing it should not. The defect is real in the text and harmless only for as long as those two refusals hold.",
+    "RUNG FOUND AT: BELOW THE LADDER -- latent (below, not outside: section 4b puts silent wrongness below the ladder, where there is no GuaranteeRung to be found at, and guarantee_rung's OutsideTheLadder is a different fact -- an external reality observed at a boundary. The class is below the ladder today and the CEILING receipt below states where it could be closed TO by derivation -- reaching it is not an event that happens to the class, it is the fix being written). No artifact is misjudged today: the file/module carriers are held equal by `parse_unmarked_item` and by the module-path-collision refusal, so the seal's wrong noun selects nothing it should not. The defect is real in the text and harmless only for as long as those two refusals hold.",
 
-    "CEILING: `MechanicallyPreventable` — read its rung number from `guarantee_rung_index` in gunbc/guarantee_rung.dag rather than from a numeral copied into this row, which is precisely the kind of transcription DESIGN §6 refuses. Prevented by executed refusal, one refusal at each of the two producers named in the latency receipt: the parse-side item refusal (`parse_unmarked_item`, surfaced whole-run by `refuse_unparseable_module_sources`) and the index-side collision refusal (src/v1/stage0/src/cli_run.rs). Because both separating directions meet a refusal, the fork cannot be exercised today. A future change that relaxed either one would let the seal's file-test admit a same-module cross-file construction — and the wording, not the check, is what would mislead the author who made it.",
+    "CEILING: `StructurallyGuaranteed` — rung 3 of gunbc.guarantee_rung, numbered by `guarantee_rung_index`; read the number there rather than from a numeral copied into this row, which is the transcription DESIGN §6 refuses. Derived, not aspirational, in §4b's sense: the boundary at issue is ONE modelled fact, and both the diagnostic's sentence and the mint's predicate are readings of it. A change that derives the wording and the comparison from that one value leaves no room for the two to disagree, so the class becomes unwritable rather than merely exposed. The remedy is already named in the INVALID STATE receipt — compare the defining module instead of `span.file`, or reword to name the file — and either one is writable today, which is why the blocker is `ClimbableButUnbuilt` and not a grounding or a capability. Rung 4 is NOT claimed: the sentence is an authored String, so refusing a divergence outright would need the wording generated from the model rather than written by an author — a modelling change outside this class.",
 
-    "NEXT-RUNG TRIGGER: a change that lets one `.dag` file carry two modules, or two files declare one module name, WITHOUT a new refusal replacing `parse_unmarked_item`'s item refusal or the module-path-collision refusal above. At that point the seal's text and its predicate genuinely diverge and the row moves from latent to reached; the fix is either boundary, stated once. NOTE WHAT THE TRIGGER MUST NOT BE: merely authoring a two-module file, or two files with one module name -- both are already refused, so naming them as the trigger would credit the ledger with a wall it did not have to build. The second refusal also constrains the relaxation: a relaxed rule may not reintroduce last-root-wins shadowing, which is what the collision refusal exists to prevent (extdeps.shell, 2026-07-01).",
+    "WHAT HOLDS IT CLOSED TODAY IS NOT THIS ROW'S RUNG AND NOT ITS CEILING (review 86393 caught the two being conflated). Two ingest refusals, each at its own producer, keep the carriers equal: the parse-side item refusal `parse_unmarked_item` (src/v1/02_parse.dag), surfaced whole-run by `refuse_unparseable_module_sources` (src/v1/stage0/src/cli_run.rs), and the index-side `module-path collision` refusal (same file). They make the fork unexerciseable, so nothing is misjudged — but they enforce a precondition of this class, not the class itself: no lens, gate, or red inspects a diagnostic whose sentence names one boundary while its predicate enforces another. That is why the reported rung is below the ladder and not rung 2 — rung 2 would report a gate for this class that does not exist, and §4b ob. 1 requires the discriminating RED and the accepted control to be established for the class being reported. If either refusal is relaxed without a replacement, the precondition stops holding and the divergence becomes live; the wording, not the check, is what would mislead the author who relaxed it. WHY THE FORK STAYS OPEN IN A LEDGER ROW RATHER THAN BEING CLOSED HERE: the remedy edits the sealing boundary's own renderer (src/v1/02_parse.dag and src/v1/stage0/src/v1_std_core.rs, whose wording 17 tree files carry, two of them pinning it verbatim in an artifact field (gunbc.self_compile_blocking_disposition and gunbc.emit_stage_blocking_population_census), so a reword is a change those fields must be updated with), which is a change to the security boundary rather than a change to the ledger, and it belongs in a PR that reviews the seal and its witnesses together. Today's exposure is a wrong noun in a message nobody can currently act on, which is exactly what a section 4b row is for: naming the class, its harm, and its remedy before the change that needs it exists.",
+
+    "CLIMB TRIGGER — THE CAPABILITY RESTORED, per §4b ob. 3 (a trigger naming an artifact states what happened, not what became possible): the capability is STATING A BOUNDARY ONCE, one modelled boundary value feeding both the diagnostic's sentence and the mint's predicate, so the two cannot be authored apart. What makes the class reachable to exercise is a different event and is NOT the climb: a change that lets one `.dag` file carry two modules, or two files declare one module name, WITHOUT a replacement for `parse_unmarked_item`'s item refusal or the module-path-collision refusal would take the class from latent to live, and at that moment the missing capability is what turns a harmless wrong noun into a misread seal. NOTE WHAT THE TRIGGER MUST NOT BE: merely authoring a two-module file, or two files with one module name -- both are already refused, so naming them as the trigger would credit the ledger with a wall it did not have to build. The second refusal also constrains the relaxation: a relaxed rule may not reintroduce last-root-wins shadowing, which is what the collision refusal exists to prevent (extdeps.shell, 2026-07-01).",
 
     "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster, which `gunbc.rostered_row_join` derives for `RecurringFailureMode` -- so the row is read by being in the tree, with no hand-listed entry to update.",
   ],
