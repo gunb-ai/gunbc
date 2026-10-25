@@ -34,6 +34,9 @@ type ServingBenchmarkWorkload {
   max_output: TokenCount
   retained_sessions: Nat
   active_levels: List<Nat>
+  // Each level's first rounds warm the engine's caches; they must run and succeed like every round, and
+  // no quantity is read from them. rounds_per_level counts the measured rounds after them.
+  warmup_rounds_per_level: Nat
   rounds_per_level: Nat
   // Requests of one round are submitted together; a round whose submissions spread wider than this
   // was serialized somewhere and has no common submission instant.
@@ -81,6 +84,31 @@ data serving_benchmark_v1: ServingBenchmarkVersion = ServingBenchmarkVersion {
     max_output: token_count(count: 1024),
     retained_sessions: 8,
     active_levels: [1, 2, 4, 8],
+    warmup_rounds_per_level: 0,
+    rounds_per_level: 2,
+    submission_spread_bound: millisecond(count: 1000),
+  },
+  quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
+  telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+}
+
+// THE SHORT RUN THE OPERATOR ASKED FOR (2026-10-25): the same per-turn workload as serving-benchmark/1
+// -- the 199,466-token retained context, the 2,000-token delta, 1,024 tokens out -- at ONE concurrency
+// point, 4 active sessions, with one warm-up round and two measured rounds, about a fifth of the full
+// run's time on the srv3 pair. It is its own version because it is a different workload: its rows are
+// comparable turn for turn with serving-benchmark/1, and its one level is never read as the full curve or
+// extrapolated to another level.
+data serving_benchmark_short_n4: ServingBenchmarkVersion = ServingBenchmarkVersion {
+  name: "serving-benchmark/short-n4/1" as NonEmptyStr,
+  workload: ServingBenchmarkWorkload {
+    retained_context: token_count(count: 199466),
+    retained_context_band: basis_point(count: 100),
+    tool_delta: token_count(count: 2000),
+    tool_delta_template_allowance: token_count(count: 64),
+    max_output: token_count(count: 1024),
+    retained_sessions: 4,
+    active_levels: [4],
+    warmup_rounds_per_level: 1,
     rounds_per_level: 2,
     submission_spread_bound: millisecond(count: 1000),
   },

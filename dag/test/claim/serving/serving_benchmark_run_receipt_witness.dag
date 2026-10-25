@@ -20,12 +20,12 @@ import extdeps.strata.serve_flags {
 }
 import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark {
-  ServingBenchmarkVersion, ServingBenchmarkWorkload, serving_benchmark_v1,
+  ServingBenchmarkVersion, ServingBenchmarkWorkload, serving_benchmark_v1, serving_benchmark_short_n4,
   AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour,
   GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower,
 }
 import gunbc.serving.serving_benchmark_run_receipt {
-  admit_serving_benchmark_run, ServingBenchmarkRunAdmitted, ServingBenchmarkRunRefused, ServingBenchmarkRunObservation, ServingBenchmarkGap,
+  admit_serving_benchmark_run, serving_level_result, timed_requests, LevelRead, LevelRefused, ServingBenchmarkRunAdmitted, ServingBenchmarkRunRefused, ServingBenchmarkRunObservation, ServingBenchmarkGap,
   ServingCellIdentity, ObservedCpu, ObservedGpu, ServingTopology, StrataEngineCell, ServingEngineBuild, ServingArtifact, ServingArtifactFile,
   LevelTelemetry, GpuLevelTelemetry, WallPowerUnmetered, ServingLevelResult,
   GapNoGpu, GapTopologyDoesNotCoverGpus, GapPoolWorkersUnpinned, GapSessionTextsNotDistinct, GapRequestFailed, GapFirstTokenUnread,
@@ -51,6 +51,7 @@ data fx_version: ServingBenchmarkVersion = ServingBenchmarkVersion {
     max_output: token_count(count: 1024),
     retained_sessions: 2,
     active_levels: [1, 2],
+    warmup_rounds_per_level: 0,
     rounds_per_level: 1,
     submission_spread_bound: millisecond(count: 1000),
   },
@@ -84,6 +85,8 @@ data fx_prime_short_context: String = "{\"schema\":\"gpu-bench/request/v4\",\"ru
 data fx_prime_same_text: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":199466,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":100000000,\"engine_cpu_usage_usec_end\":160000000,\"engine_memory_current_start\":60000000000,\"engine_memory_current_end\":60000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":160000000,\"engine_cpu_usage_usec_end\":220000000,\"engine_memory_current_start\":60000000000,\"engine_memory_current_end\":60000000000,\"engine_memory_peak\":null}\n"
 
 data fx_level_2_unsampled_engine: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200000000,\"engine_cpu_usage_usec_end\":1400000000,\"engine_memory_current_start\":65000000000,\"engine_memory_current_end\":66000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":null,\"engine_cpu_usage_usec_end\":null,\"engine_memory_current_start\":null,\"engine_memory_current_end\":null,\"engine_memory_peak\":null}\n"
+
+data fx_level_2_round_3: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":3,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"7777777777777777777777777777777777777777777777777777777777777777\",\"t_start\":310.0,\"t_first\":312.0,\"t_end\":330.0,\"prompt_tokens\":207575,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1500000000,\"engine_cpu_usage_usec_end\":1600000000,\"engine_memory_current_start\":67000000000,\"engine_memory_current_end\":67500000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":3,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"8888888888888888888888888888888888888888888888888888888888888888\",\"t_start\":310.1,\"t_first\":313.0,\"t_end\":331.0,\"prompt_tokens\":204565,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1500050000,\"engine_cpu_usage_usec_end\":1626000000,\"engine_memory_current_start\":67000000000,\"engine_memory_current_end\":67200000000,\"engine_memory_peak\":null}\n"
 
 fn rows(text: String) -> List<GpuBenchRequestV4> {
   match gpu_bench_parse_v4_jsonl(text: text) {
@@ -322,4 +325,62 @@ test fn clocks_event_mask_keeps_named_bits_and_the_residue() -> Bool {
     && any(m.reasons, r => match r { NvmlClocksEventSwThermalSlowdown => true, _ => false })
     && any(m.reasons, r => match r { NvmlClocksEventSwPowerCap => true, _ => false })
     && m.unmodeled_bits == 4096
+}
+
+// ── WARM-UP ROUNDS ──────────────────────────────────────────────────────────────────────────────
+//
+// Level 2 run twice: round 2 as above, round 3 shorter (310.0 to 331.0 s). With one warm-up round the
+// level reads round 3 alone: 2,048 tokens over 21 s, each request's 1,023 decode tokens over 18 s, and
+// the engine's 126 s of CPU over the 21 s window.
+test fn a_warm_up_round_runs_and_is_not_measured() -> Bool {
+  match serving_level_result(requests: timed_requests(requests: rows(text: join([fx_prime, fx_level_1, fx_level_2, fx_level_2_round_3], ""))).requests, active: 2, warmup: 1) {
+    LevelRefused { gaps: _ } => false
+    LevelRead { result: l } =>
+      l.rounds == 1
+        && token_count_value(t: l.generated) == 2048
+        && milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 97523
+        && milli_tokens_per_second_count(r: l.decode_median) == 56833
+        && events_per_hour_count(r: l.completed_turns_per_hour) == 342
+        && millicore_count(m: l.engine_cpu_busy) == 6000
+  }
+}
+
+data fx_version_with_warmup: ServingBenchmarkVersion = ServingBenchmarkVersion {
+  name: "serving-benchmark/fixture-warmup" as NonEmptyStr,
+  workload: ServingBenchmarkWorkload {
+    retained_context: token_count(count: 199466),
+    retained_context_band: basis_point(count: 100),
+    tool_delta: token_count(count: 2000),
+    tool_delta_template_allowance: token_count(count: 64),
+    max_output: token_count(count: 1024),
+    retained_sessions: 2,
+    active_levels: [1, 2],
+    warmup_rounds_per_level: 1,
+    rounds_per_level: 1,
+    submission_spread_bound: millisecond(count: 1000),
+  },
+  quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
+  telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+}
+
+// The fixture run has one round per level, so a version demanding a warm-up round before each measured
+// one refuses it at both levels: the warm-up is part of the workload, not an option.
+test fn a_missing_warm_up_round_refuses() -> Bool {
+  match admit_serving_benchmark_run(version: fx_version_with_warmup, observation: observe(cell: fx_cell_complete, text: fx_run_text, telemetry: fx_telemetry)) {
+    ServingBenchmarkRunAdmitted { receipt: _, levels: _ } => false
+    ServingBenchmarkRunRefused { gaps: g } =>
+      any(g, x => match x { GapLevelRounds { active: a, observed: n } => a == 1 && n == 1, _ => false })
+        && any(g, x => match x { GapLevelRounds { active: a, observed: n } => a == 2 && n == 1, _ => false })
+  }
+}
+
+test fn the_short_run_is_its_own_version_at_one_level() -> Bool {
+  let w = serving_benchmark_short_n4.workload
+  (serving_benchmark_short_n4.name as String) != (serving_benchmark_v1.name as String)
+    && w.retained_sessions == 4
+    && count(w.active_levels) == 1 && any(w.active_levels, l => l == 4)
+    && w.warmup_rounds_per_level == 1 && w.rounds_per_level == 2
+    && token_count_value(t: w.max_output) == token_count_value(t: serving_benchmark_v1.workload.max_output)
+    && token_count_value(t: w.tool_delta) == token_count_value(t: serving_benchmark_v1.workload.tool_delta)
+    && token_count_value(t: w.retained_context) == token_count_value(t: serving_benchmark_v1.workload.retained_context)
 }
