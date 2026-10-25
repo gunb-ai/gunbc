@@ -3,7 +3,7 @@ module gunbc.rung_drop.binding_diff_kit_fixtures_unobservable_in_natively_refuse
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
-import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 // THE DECLARED RUNG DROP for the namespace-wave binding diff over its OWN instrument modules (DESIGN 4b(3); tidy-ant-251's
 // ruling A on #15009, 2026-10-25). The label (gunbc test //gunbc/instruments:namespace-wave-binding-diff) observes a wave's
@@ -24,7 +24,7 @@ data binding_diff_kit_fixtures_unobservable_in_natively_refused_instrument_modul
 
   standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
-    temporary: OutsideTheLadder,
+    temporary: Mitigatable,
     reason: LostAsPassenger { carrier: "native resolve refuses these modules at base (unbound ambient names, an undeclared derived-roster module, a denied dag-to-v2 import), so the census has no binding rows for them" },
     population: Enumerated { members: FreeSemigroup {
       head: "gunbc.instruments.ambient_name_census_reading: resolve_reason_unbound_symbol at 130:3; unbound join, split, first, map, map_get, map_keys, flat_map, starts_with, to_string, other",
