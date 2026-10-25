@@ -25,6 +25,7 @@ import std.pareto {
   dominance_of_comparisons,
 }
 import std.primitive_identity {
+  CarrierSensitiveCost,
   CoarseCostOnly,
   PrimitiveCostFact,
   RealizationTarget,
@@ -128,6 +129,7 @@ type CostFidelity
   | RealizationCostUnknown
   | RealizationCostFactsContradict { count: Int }
   | ModeledCostNotStructured
+  | ModeledCostCarrierUnselected
 
 // EVERY ARM BEYOND THE OBVIOUS TWO EXISTS TO KEEP AN HONEST ANSWER FROM BEING REPORTED AS ONE OF
 // THE OTHERS, and the roster is the declaration above rather than a count in this sentence -- a
@@ -144,6 +146,12 @@ type CostFidelity
 // contract that has not yet stated its cost in the structured form cannot be compared at all, and
 // that is a COUNTED coverage obligation rather than a pass. RealizationCostUnknown stays reachable
 // only from a MISSING realization fact -- never as the answer to a comparison.
+// ModeledCostCarrierUnselected is the answer for a model that states one bound per carrier
+// (std.primitive_identity CarrierSensitiveCost). A RealizationCostFact is keyed by primitive and
+// target and names no carrier, so this join cannot tell which reading the realization owes.
+// Comparing against either reading would pick a carrier nobody selected. It is a counted
+// population of its own, not the unmigrated one: that model is fully structured, and the missing
+// fact is the realization's carrier.
 
 type RealizationCostFact {
   primitive: PrimitiveIdentity
@@ -416,19 +424,32 @@ fn realization_cost_fidelity_row(
   }
 }
 
-// A primitive whose model has not yet been restated in the structured form gets a row too, with the
-// frontier arm. Omitting it would shrink the denominator by exactly the population that has not
-// been migrated, which is the population the frontier is about.
-fn unstructured_modeled_row(
+// A MODEL WITH NO SINGLE BOUND STILL GETS A ROW, AND THE REALIZATION SIDE IS STILL LOOKED UP. Two
+// arms land here. A model not yet restated in the structured form answers ModeledCostNotStructured,
+// and omitting its row would shrink the denominator by exactly the population the frontier is
+// about. A carrier-sensitive model answers ModeledCostCarrierUnselected, because no realization
+// fact names a carrier to compare against. Neither arm can compare, but the duplicate-key law is a
+// fact about the REALIZATION facts, not about the model's shape: two facts for one (primitive,
+// target) contradict whatever the model says. So the lookup runs first, through the same
+// realization_cost_for every structured row uses, and a duplicated key answers
+// RealizationCostFactsContradict before the arm's own answer. Both arms skipped it before, the coarse
+// one since the arms were split and the carrier one since it was added.
+fn uncomparable_modeled_row(
   primitive: PrimitiveIdentity,
   target: RealizationTarget,
+  facts: List<RealizationCostFact>,
+  uncontradicted: CostFidelity,
 ) -> RealizationCostFidelityRow {
   RealizationCostFidelityRow {
     primitive: primitive,
     target: target,
     modeled: none,
     realized: none,
-    fidelity: ModeledCostNotStructured,
+    fidelity: match realization_cost_for(facts: facts, primitive: primitive, target: target) {
+      RealizationCostFactsDuplicated { count: n } => RealizationCostFactsContradict { count: n }
+      RealizationCostFactSingleton { cost: _ } => uncontradicted
+      RealizationCostFactAbsent => uncontradicted
+    },
     projected_shape: none,
   }
 }
@@ -507,8 +528,10 @@ fn realization_cost_fidelity_rows(
         concat([match m.cost {
           StructuredCost { bound: b } =>
             realization_cost_fidelity_row(modeled: m, bound: b, target: target, facts: facts)
+          CarrierSensitiveCost { ephemeral: _, persistent: _ } =>
+            uncomparable_modeled_row(primitive: m.primitive, target: target, facts: facts, uncontradicted: ModeledCostCarrierUnselected)
           CoarseCostOnly { shape: _, cause: _ } =>
-            unstructured_modeled_row(primitive: m.primitive, target: target)
+            uncomparable_modeled_row(primitive: m.primitive, target: target, facts: facts, uncontradicted: ModeledCostNotStructured)
         }], acc)
       })) }
   }
@@ -535,6 +558,7 @@ type CostFidelityPopulation
   | PopulationContradicted
   | PopulationUnmeasured
   | PopulationUnmigrated
+  | PopulationCarrierUnselected
 
 fn cost_fidelity_population(fidelity: CostFidelity) -> CostFidelityPopulation {
   match fidelity {
@@ -547,6 +571,7 @@ fn cost_fidelity_population(fidelity: CostFidelity) -> CostFidelityPopulation {
     RealizationCostFactsContradict { count: _ } => PopulationContradicted
     RealizationCostUnknown => PopulationUnmeasured
     ModeledCostNotStructured => PopulationUnmigrated
+    ModeledCostCarrierUnselected => PopulationCarrierUnselected
   }
 }
 
@@ -558,21 +583,23 @@ type CostFidelityCounts {
   contradicted: Int
   unmeasured: Int
   unmigrated: Int
+  carrier_unselected: Int
 }
 
 fn cost_fidelity_counts(rows: List<RealizationCostFidelityRow>) -> CostFidelityCounts {
   rows |> fold(init: CostFidelityCounts {
     preserved: 0, findings: 0, body_dependent: 0,
-    not_orderable: 0, contradicted: 0, unmeasured: 0, unmigrated: 0,
+    not_orderable: 0, contradicted: 0, unmeasured: 0, unmigrated: 0, carrier_unselected: 0,
   }, f: fn(acc, row) {
     match cost_fidelity_population(fidelity: row.fidelity) {
-      PopulationPreserved => CostFidelityCounts { preserved: acc.preserved + 1, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
-      PopulationFinding => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings + 1, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
-      PopulationBodyDependent => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent + 1, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
-      PopulationNotOrderable => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable + 1, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
-      PopulationContradicted => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted + 1, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
-      PopulationUnmeasured => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured + 1, unmigrated: acc.unmigrated }
-      PopulationUnmigrated => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated + 1 }
+      PopulationPreserved => CostFidelityCounts { preserved: acc.preserved + 1, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated, carrier_unselected: acc.carrier_unselected }
+      PopulationFinding => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings + 1, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated, carrier_unselected: acc.carrier_unselected }
+      PopulationBodyDependent => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent + 1, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated, carrier_unselected: acc.carrier_unselected }
+      PopulationNotOrderable => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable + 1, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated, carrier_unselected: acc.carrier_unselected }
+      PopulationContradicted => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted + 1, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated, carrier_unselected: acc.carrier_unselected }
+      PopulationUnmeasured => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured + 1, unmigrated: acc.unmigrated, carrier_unselected: acc.carrier_unselected }
+      PopulationCarrierUnselected => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated, carrier_unselected: acc.carrier_unselected + 1 }
+      PopulationUnmigrated => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated + 1, carrier_unselected: acc.carrier_unselected }
     }
   })
 }
@@ -604,5 +631,6 @@ fn count_cost_model_unmigrated(rows: List<RealizationCostFidelityRow>) -> Int {
   cost_fidelity_counts(rows: rows).unmigrated
 }
 
-
-
+fn count_cost_carrier_unselected(rows: List<RealizationCostFidelityRow>) -> Int {
+  cost_fidelity_counts(rows: rows).carrier_unselected
+}
