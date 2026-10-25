@@ -561,10 +561,3 @@ fn device_notification_sentence(n: DeviceNotification) -> String {
       ], "")
   }
 }
-
-fn device_notification_reached_anyone(n: DeviceNotification) -> Bool {
-  match n {
-    DeviceNotificationNotAttempted { detail: _ } => false
-    DeviceNotificationAttempted { outcomes: os, unregistered: _, unreadable: _ } => any(os, o => device_push_outcome_accepted(o: o))
-  }
-}
