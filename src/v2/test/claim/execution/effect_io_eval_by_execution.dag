@@ -1,5 +1,6 @@
 module v2.test.claim.execution.effect_io_eval_by_execution
 
+
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -41,7 +42,7 @@ import v2.std.diagnostic {
   Rejected,
   diagnostics_singleton
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Edge,
@@ -53,7 +54,7 @@ import v2.std.node {
   TypeNode,
   Value,
 }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -211,11 +212,11 @@ fn effect_io_eval_facts_for(node: Node) -> InferredFacts {
 }
 
 fn effect_io_eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
-  if node == effect_io_eval_roundtrip_node {
+  if node_same_occurrence(a: node, b: effect_io_eval_roundtrip_node) {
     optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_roundtrip_node))
-  } else if node == effect_io_eval_locator_literal {
+  } else if node_same_occurrence(a: node, b: effect_io_eval_locator_literal) {
     optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_locator_literal))
-  } else if node == effect_io_eval_payload_literal {
+  } else if node_same_occurrence(a: node, b: effect_io_eval_payload_literal) {
     optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_payload_literal))
   } else {
     optional_absent()
@@ -235,7 +236,7 @@ test fn effect_io_eval_roundtrip_holds() -> Bool {
     context: effect_io_eval_context_bound(),
     inputs: inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Accepted { value: v, diagnostics: None } => v == effect_io_eval_literal_value()
+    Accepted { value: v, diagnostics: None } => (runtime_value_equality(a: v, b: effect_io_eval_literal_value()) == RuntimeValuesEqual)
     _ => false
   }
 }

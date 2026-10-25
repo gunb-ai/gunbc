@@ -14,7 +14,7 @@ import std.measure {
   ProcessMonotonic,
   ObservationInstant,
 }
-import std.observation { OccurrenceId }
+import std.observation { AttemptOccurrenceId }
 import std.attribution {
   ClockFrame,
   clock_frame_eq,
@@ -41,8 +41,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn worker_domain() -> ClockDomain { ProcessMonotonic { process: "ordinary-worker" as NonEmptyStr } }
 
-fn occ(id: NonEmptyStr) -> OccurrenceId {
-  OccurrenceId { attempt: "attempt-1" as NonEmptyStr, id: id }
+fn occ(id: NonEmptyStr) -> AttemptOccurrenceId {
+  AttemptOccurrenceId { attempt: "attempt-1" as NonEmptyStr, id: id }
 }
 
 fn frame() -> ClockFrame { ClockFrame { domain: worker_domain(), basis: CpuClock } }

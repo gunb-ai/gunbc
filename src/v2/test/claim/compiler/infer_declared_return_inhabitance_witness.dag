@@ -36,6 +36,7 @@ import v2.std.node {
   node_synthetic,
   ArrowBodyEdge,
   core_edge_label,
+  NotADeclaration
 }
 
 // WHAT THIS FILE ESTABLISHES: a fn's body is judged at its declared return. v2.compiler.infer
@@ -84,10 +85,10 @@ fn dr_arrow(return_type: Node, body: Node) -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: return_type },
-      Edge { label: Positional, target: return_type },
+      Edge { label: Positional, target: return_type, declaration: NotADeclaration },
+      Edge { label: Positional, target: return_type, declaration: NotADeclaration },
       signature.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body, declaration: NotADeclaration }
     ]
   )
 }
@@ -102,7 +103,7 @@ fn dr_generic_arrow(type_param: Symbol, return_type: Node, body: Node) -> Node {
         conj: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: type_binder_set_children(binders: [
-            Edge { label: Authored { name: type_param }, target: dag_type_atom_node(identity: type_param) }
+            Edge { label: Authored { name: type_param }, target: dag_type_atom_node(identity: type_param), declaration: NotADeclaration }
           ], source: dag_type_atom_node(identity: type_param))
         )
       )
@@ -126,8 +127,8 @@ fn dr_applied(head: Node, argument: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: head },
-      Edge { label: Positional, target: argument }
+      Edge { label: Positional, target: head, declaration: NotADeclaration },
+      Edge { label: Positional, target: argument, declaration: NotADeclaration }
     ]
   )
 }

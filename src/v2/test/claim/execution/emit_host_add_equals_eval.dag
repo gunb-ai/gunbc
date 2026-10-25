@@ -1,5 +1,6 @@
 module v2.test.claim.execution.emit_host_add_equals_eval
 
+
 import std.types { List, Map }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
@@ -53,7 +54,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   Continue,
@@ -109,7 +110,7 @@ fn emit_eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outco
 }
 
 fn emit_eval_arg_is_two(value: RuntimeValue) -> Bool {
-  value == emit_eval_oct5_value(n: 2)
+  (runtime_value_equality(a: value, b: emit_eval_oct5_value(n: 2)) == RuntimeValuesEqual)
 }
 
 fn emit_eval_args_are_two_twos(args: List<RuntimeValue>) -> Bool {

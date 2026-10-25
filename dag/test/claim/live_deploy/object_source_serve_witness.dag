@@ -4,20 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.orchestration { PipelineStep }
 import gunbc.live_deploy.emit {
-  apply_object_source_serve_fragments,
-  apply_object_source_serve_deferred_to_pwd,
-  apply_object_source_pwd_serve_decide_command,
-  apply_tree_src_expansion_var,
-  host_script_mutate_projection,
-  compose_host_script_standing,
-  compose_host_script_decide_steps,
-  host_script_member_proceed,
   deploy_raw,
-  HostScriptProceed,
-  HostScriptRefused,
-  HostScriptFragment,
-  MutateStepsAdmitted,
-  MutateRefused,
 }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_complete_object_source_serve }
 import extdeps.git.partial_clone {
@@ -28,9 +15,15 @@ import extdeps.git.partial_clone {
   ObjectStoreComplete,
   PartialClonePromisor,
   ShallowClone,
+  PartialCloneFilter,
+  PartialCloneUnreadable,
+  ObservedConfig,
+  SetMeansPromisor,
+  partial_clone_standing_of_observations,
   object_source_serve_admission,
   object_source_serve_refusal_text,
 }
+import extdeps.git.inspect { ConfigUnreadable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -43,113 +36,48 @@ fn promisor_serve() -> ObjectSourceServeAdmission {
   )
 }
 
-fn fragments_with_binary_mutate(serve: ObjectSourceServeAdmission) -> List<HostScriptFragment> {
-  concat(
-    apply_object_source_serve_fragments(object_source_serve: serve),
-    host_script_member_proceed(
-      member: "executable" as NonEmptyStr,
-      mutate_steps: [deploy_raw(command: "install target/release/gunbc /opt/gunbc/bin/gunbc")],
-    ),
-  )
-}
-
-fn mutate_steps_when_admitted(frags: List<HostScriptFragment>) -> List<PipelineStep> {
-  match host_script_mutate_projection(fragments: frags) {
-    MutateStepsAdmitted { steps: s } => s
-    MutateRefused { member: _, cause: _ } => []
-  }
-}
-
-test fn a_supplied_promisor_source_refuses_the_apply_plan_before_any_mutate() -> Bool {
-  let serve = promisor_serve()
-  let frags = fragments_with_binary_mutate(serve: serve)
-  match host_script_mutate_projection(fragments: frags) {
-    MutateStepsAdmitted { steps: _ } => false
-    MutateRefused { member: m, cause: c } =>
-      (m as String) == "object-source"
-        && string_contains(s: c, pattern: fixture_promisor_source)
-        && string_contains(s: c, pattern: "promisor")
-  }
-    && match compose_host_script_standing(fragments: frags) {
-      HostScriptProceed => false
-      HostScriptRefused { cause: c } =>
-        string_contains(s: c, pattern: fixture_promisor_source)
-          && string_contains(s: c, pattern: "promisor")
-    }
-    && !string_contains(
-      s: pipeline_steps_text(steps: mutate_steps_when_admitted(frags: frags)),
-      pattern: "/opt/gunbc/bin/gunbc",
-    )
-}
-
-test fn a_complete_object_source_admits_and_keeps_binary_mutate() -> Bool {
-  let serve = object_source_serve_admission(
-    source: "/home/ghrunner/work/gunbc/gunbc",
-    standing: ObjectStoreComplete,
-  )
-  match serve {
-    ObjectSourceCannotServe { source: _, cause: _ } => false
-    ObjectSourceServeDecideAtApplyPwd => false
-    ObjectSourceCanServe { source: _ } =>
-      match host_script_mutate_projection(
-        fragments: fragments_with_binary_mutate(serve: apply_complete_object_source_serve()),
-      ) {
-        MutateRefused { member: _, cause: _ } => false
-        MutateStepsAdmitted { steps: s } =>
-          string_contains(s: pipeline_steps_text(steps: s), pattern: "/opt/gunbc/bin/gunbc")
-      }
-  }
-}
-
-test fn a_shallow_non_promisor_source_admits_the_apply_plan() -> Bool {
-  let serve = object_source_serve_admission(
-    source: "/tmp/complete-shallow",
-    standing: ShallowClone,
-  )
-  match serve {
-    ObjectSourceCannotServe { source: _, cause: _ } => false
-    ObjectSourceServeDecideAtApplyPwd => false
-    ObjectSourceCanServe { source: _ } =>
-      match host_script_mutate_projection(
-        fragments: fragments_with_binary_mutate(serve: serve),
-      ) {
-        MutateRefused { member: _, cause: _ } => false
-        MutateStepsAdmitted { steps: s } =>
-          string_contains(s: pipeline_steps_text(steps: s), pattern: "/opt/gunbc/bin/gunbc")
-      }
-  }
-}
-
-test fn the_wet_apply_defers_standing_to_pwd_instead_of_fabricating_canserve() -> Bool {
-  match apply_object_source_serve_deferred_to_pwd() {
-    ObjectSourceCanServe { source: _ } => false
-    ObjectSourceCannotServe { source: _, cause: _ } => false
-    ObjectSourceServeDecideAtApplyPwd =>
-      match host_script_mutate_projection(
-        fragments: fragments_with_binary_mutate(serve: apply_object_source_serve_deferred_to_pwd()),
-      ) {
-        MutateRefused { member: _, cause: _ } => false
-        MutateStepsAdmitted { steps: s } =>
-          string_contains(s: pipeline_steps_text(steps: s), pattern: "/opt/gunbc/bin/gunbc")
-      }
-  }
-}
-
-test fn a_can_serve_apply_decide_inspects_the_pwd_named_as_tree_src() -> Bool {
-  let frags = fragments_with_binary_mutate(serve: apply_complete_object_source_serve())
-  let decide = pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: frags))
-  apply_tree_src_expansion_var == "PWD"
-    && string_contains(s: decide, pattern: "git")
-    && string_contains(s: decide, pattern: apply_tree_src_expansion_var)
-    && string_contains(s: decide, pattern: "extensions.partialClone")
-    && string_contains(s: decide, pattern: "--local")
-    && string_contains(s: decide, pattern: "partialclonefilter")
-    && string_contains(s: apply_object_source_pwd_serve_decide_command(), pattern: apply_tree_src_expansion_var)
-}
-
 test fn the_refusal_text_names_the_source_path_and_the_cause() -> Bool {
   let text = object_source_serve_refusal_text(admission: promisor_serve())
   string_contains(s: text, pattern: fixture_promisor_source)
     && string_contains(s: text, pattern: "promisor")
     && string_contains(s: text, pattern: "cannot serve")
+}
+
+// ── ASSERTIONS RESTORED FROM THE DELETED DECIDE-STEP CLAIMS ──────────────────────────────────────────
+//
+// c11aa2317029 (#14660) deleted the claims below with the bash $PWD decide step they read, and the typed
+// object-source port kept both behaviours. At main head d2b027b5f41 a production mutation breaking each
+// left every surviving claim green (the run witness supplies admissions, and the real-execution witness only
+// produces complete and promisor repositories), so each is restored at the fold it now lives in.
+
+// A COMPLETE SHALLOW CHECKOUT ADMITS (was a_shallow_non_promisor_source_admits_the_apply_plan). Shallow
+// history is not a missing object for the transfer; refusing it would refuse every apply from a CI checkout.
+test fn a_shallow_non_promisor_source_admits() -> Bool {
+  match object_source_serve_admission(source: "/tmp/complete-shallow", standing: ShallowClone) {
+    ObjectSourceCanServe { source: s } => s == "/tmp/complete-shallow"
+    ObjectSourceCannotServe { source: _, cause: _ } => false
+    ObjectSourceServeDecideAtApplyPwd => false
+  }
+}
+
+// AN UNREADABLE CONFIG PROBE REFUSES INSTEAD OF READING AS UNSET (was
+// the_object_source_decide_step_keeps_the_unreadable_config_refusal). An unset key falls through to the next
+// probe and finally to ObjectStoreComplete, so a probe that could not read its key and was taken as unset
+// would admit a promisor clone: the gate fails open on exactly the input it exists to refuse.
+test fn an_unreadable_config_probe_refuses_instead_of_reading_as_unset() -> Bool {
+  let standing = partial_clone_standing_of_observations(observations: [
+    ObservedConfig { set_kind: SetMeansPromisor, label: "extensions.partialClone", reading: ConfigUnreadable { exit_code: 128, stderr: "fatal: bad config" } },
+  ])
+  (match standing {
+    PartialCloneUnreadable { detail: d } => string_contains(s: d, pattern: "exited 128")
+    ObjectStoreComplete => false
+    PartialClonePromisor { detail: _ } => false
+    PartialCloneFilter { detail: _ } => false
+    ShallowClone => false
+  })
+    && match object_source_serve_admission(source: "/src", standing: standing) {
+      ObjectSourceCannotServe { source: _, cause: c } => string_contains(s: c, pattern: "could not be read")
+      ObjectSourceCanServe { source: _ } => false
+      ObjectSourceServeDecideAtApplyPwd => false
+    }
 }

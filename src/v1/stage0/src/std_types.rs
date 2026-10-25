@@ -55,7 +55,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
 }
 
 pub fn is_container_type(name: String) -> bool {
-    match container_expected_arity(name.clone()) {
+    match container_expected_arity(name) {
         Some(_) => true,
         std::option::Option::None => false,
     }
@@ -78,7 +78,7 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
 
 pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     {
-        let names = container_param_names_for(kind_name.clone());
+        let names = container_param_names_for(kind_name);
         match Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new({
@@ -168,6 +168,14 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
 
 pub type Bool = bool;
 
+pub fn bool_text(b: bool) -> String {
+    if b.clone() {
+        "true".to_string()
+    } else {
+        "false".to_string()
+    }
+}
+
 pub type Unit = ();
 
 pub type Json = serde_json::Value;
@@ -180,7 +188,7 @@ pub type List<Element> = Vec<Element>;
 
 pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
 
-pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;
+pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.iter().fold(0, |acc: i64, _| v1_rt::int_add(acc, 1))
@@ -424,8 +432,6 @@ pub type WorkflowProducerId = String;
 pub type WorkflowObserverId = String;
 
 pub type WorkflowProverId = String;
-
-pub type WorkflowRunId = String;
 
 pub type GitRef = String;
 

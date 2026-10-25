@@ -125,14 +125,6 @@ data session_placement_schema: String = "gunbc.session-placement/v1"
 // carried as EpochSecs (SessionPlacementRecord.granted_at / expires_at), so they are not part of it.
 data session_placement_term_seconds: Nat = 14400
 
-// THE BOUNDS A GRANT DOES NOT CARRY. product.capacity.pool grants memory only, so CPU and task
-// ceilings are stated beside it rather than pretended to come from it (DESIGN 3b: a divergence with
-// its reason). They are policy budgets for the dogfood capped unit (operator ruling 2026-10-03: a
-// capped systemd unit plus a lease is sufficient): eight cores and 4096 tasks bound a runaway
-// session without throttling the single `gunbc run` a harness worker is. Falsifiable: a worker unit
-// ending in Result=resources, or a throughput regression attributed to CPUQuota, re-derives them.
-data session_process_bounds: UnitProcessBounds = UnitProcessBounds { cpu_quota: millicore(count: 8000), tasks_max: 4096 }
-
 // THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT, derived rather than chosen: the belt already
 // admits at most max_concurrent workers, so a pool of that many ceilings refuses only for memory the
 // machine lacks, never for a count launch admission did not impose.
@@ -1185,6 +1177,49 @@ fn session_settle_release(stores: SessionPlacementStores, host: String, unit: No
   let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: kibibyte(count: 0), reference: unit, reason: why)
   let write = session_placement_release_write(records_dir: stores.records_dir, node_id: attempt.node_id, attempt_key: attempt.attempt_key, grant_binding: binding, reason: why, freed: freed)
   SessionSettlementReleaseAttempted { unit: unit as String, freed: freed, detail: join([reason, session_write_note(w: write)], "") }
+}
+
+// THE SLOT RECORDS A CLIENT FOLLOWS AFTER A 202. A dispatch whose attempt-unit start request was
+// enqueued but not yet answered (SpawnLaunchPending) leaves its placement slot "launching"; the
+// served /attempts.json carries every slot through attempt_record_json (the one serializer), each
+// naming its owner_node and state, so the client reads that node's slot until it is no longer
+// launching. A slot that cannot be read is carried as its own refusal, never dropped.
+type SessionSlotRecords
+  = SessionSlotRecordsRead { records: List<AttemptRecord>, unreadable: List<String> }
+  | SessionSlotRecordsRefused { detail: String }
+
+// ONE READ PER SLOT: each key is read once into this classification, then records and unreadable are
+// projections of the same reads, so a slot that changes state mid-serve cannot appear in both lists or
+// neither, and the lists are built by flat_map rather than a copied accumulator.
+type SessionSlotObserved
+  = SessionSlotObservedHeld { record: AttemptRecord }
+  | SessionSlotObservedUnreadable { line: String }
+  | SessionSlotObservedAbsent
+
+fn session_placement_slot_records(stores: SessionPlacementStores) -> SessionSlotRecords {
+  match cas_slot_keys(root: stores.slots_root) {
+    CasSlotKeysListed { keys } => {
+      let observed = map(keys, k => match attempt_slot_read(root: stores.slots_root, reference: k) {
+        AttemptSlotHeld { record: r, generation: _ } => SessionSlotObservedHeld { record: r }
+        AttemptSlotAbsent => SessionSlotObservedAbsent
+        AttemptSlotUnreadable { detail: d } => SessionSlotObservedUnreadable { line: join([k as String, ": ", d], "") }
+      })
+      SessionSlotRecordsRead {
+        records: flat_map(observed, o => match o {
+          SessionSlotObservedHeld { record: r } => [r]
+          SessionSlotObservedUnreadable { line: _ } => []
+          SessionSlotObservedAbsent => []
+        }),
+        unreadable: flat_map(observed, o => match o {
+          SessionSlotObservedUnreadable { line: l } => [l]
+          SessionSlotObservedHeld { record: _ } => []
+          SessionSlotObservedAbsent => []
+        }),
+      }
+    }
+    CasSlotKeysListingRefused { root: r, detail: d } => SessionSlotRecordsRefused { detail: join(["the session slot store at ", r as String, " could not be listed: ", d], "") }
+    CasSlotKeysSubjectRefused { root: r, cause: c } => SessionSlotRecordsRefused { detail: join(["the session slot store path ", r as String, " is not admissible: ", c], "") }
+  }
 }
 
 // THE PASS TAKES THE UNIT OBSERVATIONS AS A FUNCTION OF THE UNIT NAME so a witness can plant them;

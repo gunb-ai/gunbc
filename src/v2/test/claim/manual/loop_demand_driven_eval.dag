@@ -1,4 +1,5 @@
 module v2.test.claim.manual.loop_demand_driven_eval
+
 import std.types { List, Map }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -45,7 +46,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Arrow,
   ComputationNode,
@@ -62,6 +63,7 @@ import v2.std.node {
   ArrowBodyEdge,
   LoopBoundEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -165,7 +167,7 @@ fn loop_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcom
         }
       Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
-  } else if node == loop_eval_divergent_value_node {
+  } else if node_same_occurrence(a: node, b: loop_eval_divergent_value_node) {
     outcome_rejected(d: loop_eval_diagnostic(n: node))
   } else {
     outcome_rejected(d: loop_eval_diagnostic(n: node))
@@ -269,8 +271,8 @@ fn loop_eval_loop_node(body: Node) -> Node {
     kind: ComputationNode { behavior: Loop },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: body },
-      Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_eval_measure() }
+      Edge { label: Positional, target: body, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_eval_measure(), declaration: NotADeclaration }
     ]
   }
 }
@@ -279,7 +281,7 @@ fn loop_eval_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
-    children: [Edge { label: Positional, target: callee }]
+    children: [Edge { label: Positional, target: callee, declaration: NotADeclaration }]
   }
 }
 
@@ -290,10 +292,10 @@ fn loop_eval_arrow_with_body(body: Node) -> Node {
     occurrence_id: OccurrenceSynthetic,
     children: [
       signature.domain,
-      Edge { label: Positional, target: loop_eval_i64() },
-      Edge { label: Positional, target: loop_eval_i64() },
+      Edge { label: Positional, target: loop_eval_i64(), declaration: NotADeclaration },
+      Edge { label: Positional, target: loop_eval_i64(), declaration: NotADeclaration },
       signature.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body, declaration: NotADeclaration }
     ]
   }
 }
@@ -303,8 +305,8 @@ fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Authored { name: ^loop_eval_actual }, target: call },
-      Edge { label: Authored { name: ^loop_eval_expected }, target: expected }
+      Edge { label: Authored { name: ^loop_eval_actual }, target: call, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^loop_eval_expected }, target: expected, declaration: NotADeclaration }
     ]
   }
 }
