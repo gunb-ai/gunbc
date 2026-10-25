@@ -5823,6 +5823,53 @@ mod compiler_tests {
         );
     }
 
+    // A GROUNDED NATURAL BEYOND THE 64-BIT RANGE CANNOT BE PRODUCED ON THE EMITTED ROUTE. std.nat Nat
+    // realizes as the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows), and
+    // its arithmetic emits through the kernel integer's checked runtime. Measured on main 06acbbcc48 by
+    // building and running the emission of `nat_at_i64_max() + 1` and `* 2` on std.nat Nat: both panic in
+    // v1_rt. THE REDS: the runtime refuses i64::MAX + 1 and i64::MAX * 2; the arithmetic emits through it,
+    // not through a wrapping operator; and an integer literal past the range refuses at compile.
+    #[test]
+    fn nat_beyond_the_64_bit_range_refuses_on_the_emitted_route() {
+        use crate::v1_compiler_compile::SourceFile;
+        assert!(
+            std::panic::catch_unwind(|| crate::v1_rt::int_add(i64::MAX, 1)).is_err(),
+            "the emitted runtime must refuse i64::MAX + 1"
+        );
+        assert!(
+            std::panic::catch_unwind(|| crate::v1_rt::int_mul(i64::MAX, 2)).is_err(),
+            "the emitted runtime must refuse i64::MAX * 2"
+        );
+        let arithmetic = std::rc::Rc::new(SourceFile { path: "fixtures/nat_beyond_range/arithmetic.dag".to_string(), content: "module hom.nat_arithmetic\n\nfn grow(a: Int) -> Int {\n  a + 1\n}\n\nfn double(a: Int) -> Int {\n  a * 2\n}\n".to_string() });
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(vec![arithmetic].into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let emitted = result
+            .files
+            .iter()
+            .find(|f| f.path.contains("hom_nat_arithmetic"))
+            .map(|f| f.content.clone())
+            .unwrap_or_default();
+        assert!(
+            emitted.contains("v1_rt::int_add(") && emitted.contains("v1_rt::int_mul("),
+            "kernel-integer arithmetic must emit through the checked runtime:\n{emitted}"
+        );
+        let literal = std::rc::Rc::new(SourceFile {
+            path: "fixtures/nat_beyond_range/literal.dag".to_string(),
+            content: "module hom.nat_literal\n\nfn past() -> Int {\n  9223372036854775808\n}\n"
+                .to_string(),
+        });
+        let refused = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(vec![literal].into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        assert!(
+            !refused.diagnostics.is_empty(),
+            "an integer literal past the 64-bit range must refuse at compile"
+        );
+    }
+
     // A SAME-LEAF TYPE ANYWHERE MUST NOT CHANGE ANOTHER MODULE'S EMISSION. hom.user returns the kernel
     // optional's Absent; hom.edge declares an unrelated enum that also has an Absent variant. With the
     // leaf-keyed type summaries, adding hom.coll (a coproduct it declares as Optional) replaced the
