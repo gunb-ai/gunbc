@@ -990,6 +990,7 @@ type SitePxeEdgeHttpListenStanding
   | HttpListenWildcard { local: String }
   | HttpListenOtherAddress { local: String }
   | HttpListenAbsent
+  | HttpListenUnobservable { reason: String }
 
 fn site_pxe_edge_http_listen_standing(output: String, bind: Ipv4Address) -> SitePxeEdgeHttpListenStanding {
   let expected = concat(concat(render_ipv4_address(addr: bind) as String, ":"), to_string(site_pxe_edge_http_port))
@@ -1725,8 +1726,10 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
               HttpLegActivation {
                 activation: http_activation,
                 listen: match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["ss", "-ltnH"]) {
-                  TypedArgvExecRefused { reason: _ } => HttpListenAbsent
-                  TypedArgvExecConverged { result: r } => site_pxe_edge_http_listen_standing(output: r.stdout, bind: bind)
+                  TypedArgvExecRefused { reason: why } => HttpListenUnobservable { reason: why }
+                  TypedArgvExecConverged { result: r } =>
+                    if r.success { site_pxe_edge_http_listen_standing(output: r.stdout, bind: bind) }
+                    else { HttpListenUnobservable { reason: join(["ss -ltnH exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
                 },
               }
           }
@@ -1785,7 +1788,7 @@ fn site_pxe_edge_run_succeeded(run: SitePxeEdgeRun) -> Bool {
           HttpLegNotNeeded => true
           HttpLegNotRead { reason: _ } => false
           HttpLegActivation { activation: a, listen: l } =>
-            site_pxe_edge_probe_held(probe: a) && (match l { HttpListenBoundTo { address: _ } => true HttpListenWildcard { local: _ } => false HttpListenOtherAddress { local: _ } => false HttpListenAbsent => false })
+            site_pxe_edge_probe_held(probe: a) && (match l { HttpListenBoundTo { address: _ } => true HttpListenWildcard { local: _ } => false HttpListenOtherAddress { local: _ } => false HttpListenAbsent => false HttpListenUnobservable { reason: _ } => false })
         })
         && (match run.post_activation {
           PostActivationDigestHeld => true
