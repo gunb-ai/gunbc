@@ -20,6 +20,9 @@ import extdeps.git.plumbing {
 }
 import extdeps.git.object_store { GitRefName, GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.service_exec { ServiceResult, ServiceResultSuccess, ServiceResultExitCode, service_result_of_wire }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import gunbc.devboot.transport { devboot_repo_address, devboot_observe_ref }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecord,
@@ -32,10 +35,11 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // how its unit ended. A hand-authored fixture would owe a separate claim that a real worker emits that shape;
 // a recording owes none ONCE recording_capture runs, which is why the replay executor takes recordings and nothing else.
 //
-// DECLARED FRONTIER: recording_capture has no executing consumer in this change. Until a belt step after the result
-// commit (or an instrument entry) calls it and a witness runs that route, a recording can only be written by hand,
-// and the 'owes none' claim above is NOT yet established. Trigger: the follow-up PR that binds capture to a
-// completed attempt's belt step. Until then the lab operator writes a recording by calling recording_capture directly.
+// DECLARED FRONTIER: recording_capture has no executing consumer on the production path in this change; until it
+// does, a recording can only be written by hand and the 'owes none' claim above is NOT yet established. The
+// tracking authority is the frontier row below (dispatch_replay_recording_frontier_rows), read by
+// gunbc.census_closure_frontier; until it dissolves, the lab operator writes a recording by calling
+// recording_capture directly.
 //
 // WHERE IT LIVES: refs/gunbc/recordings/<RecordingId> in the controller's repository, a commit whose tree is the
 // result tree and whose single parent is the base. The existing refs/gunbc/ consumers are named single refs
@@ -303,3 +307,11 @@ fn recording_replay_admission(id: RecordingId, attempt_base: String) -> Recordin
     RecordingReplayBaseMismatch { recorded_base: recording_object_hex(oid: id.base), attempt_base: attempt_base }
   }
 }
+
+data dispatch_replay_recording_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.dispatch_replay_recording", decl_name: "recording_capture"),
+    reason: "recording_capture is not yet bound to a completed attempt's belt step, so it is executed only by its wet witness and a recording on the lab is written by the operator calling it directly",
+    dissolution: unbound_dissolution(description: "a completed lab attempt's belt step captures its recording"),
+  ),
+]
