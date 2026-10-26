@@ -92,18 +92,17 @@ fn lil_serve_environment_argv(e: LilServeEnvironmentEntry) -> List<String> {
   ["--env" as String, lil_serve_environment_wire(e: e)]
 }
 
-// The API-key element of the pass-through tail, spelled the way srv1's wrapper spells it. THE MEDIUM IS
-// STATED, NOT IMPLIED: this whole render is the token sequence of the COMMAND STRING the container's
-// `bash -lc` parses at exec time — it is NOT an exec-argv, and nothing execs it directly (no host
-// execution route is modeled; gunbc.serving.srv1_serving_launch carries that as a frontier row). Within
-// that string, bash performs this substitution when the container starts, which is why the KEY VALUE
-// never enters the model: only the file path it is read from does. A future direct-exec consumer must
-// pass the file's contents read at start, and must not reuse this wire — the witness
-// test.claim.serving.srv1_serving_launch_witness pins the render to the inspected Cmd tail so the
-// medium cannot silently change under a caller.
-fn lil_serve_api_key_read_wire(file: NonEmptyStr) -> String {
-  join(["\x24(cat ", file as String, ")"], "")
-}
+// WHERE THE API KEY COMES FROM — an INTERFACE shape, deliberately carrying NO shell spelling. This
+// module owns the launcher's interface; the bash `-lc` substitution srv1's wrapper uses is one
+// REALIZATION of it, rendered where that medium is a fact of the deployment
+// (gunbc.serving.srv1_serving_launch srv1_serving_api_key_substitution). The interface refuses to bake
+// a transport: DESIGN 3, "transport has fused when an operation is forked per transport" — the key
+// value, the substitution wire, and the direct-exec file-read are the SAME operation across transports,
+// so the interface states only the source and each realization spells its own token.
+// FromFile is the only arm today: a literal key in the model would put a secret in the substrate, and
+// an env-var arm has no observed user — naming it now would be inventing argv (DESIGN 4d).
+type LilServeApiKeySource
+  = LilServeApiKeyFromFile { path: NonEmptyStr }
 
 // ── the pass-through engine flags a serving row may pin ──────────────────────────────────────
 // Deliberately NOT a copy of extdeps.vllm.engine_args.VllmEngineArgs: that record is the argument
@@ -168,12 +167,21 @@ type LilServeLaunch {
   // a deployment fact (srv1's CN is read by the router as its TLS name).
   ssl_keyfile: NonEmptyStr
   ssl_certfile: NonEmptyStr
-  api_key_file: NonEmptyStr
+  // The key's SOURCE, not its value and not any transport's spelling of reading it (see
+  // LilServeApiKeySource). srv1's is a file the wrapper mounts read-only and reads at exec time.
+  api_key: LilServeApiKeySource
   listen_port: Port
   standing: CitedFigureStanding
 }
 
-fn lil_serve_launch_argv(launch: LilServeLaunch) -> List<String> {
+// Render the launcher's argument tokens. `api_key_wire` is the token a REALIZATION passes for the key
+// VALUE at the transport this launch is started through: for srv1's container (a `bash -lc` command
+// string) it is the substitution wire rendered by gunbc.serving.srv1_serving_launch
+// srv1_serving_api_key_substitution; a direct-exec realization would pass the file's contents read at
+// start. The interface does not choose between them (DESIGN 3: no fused transport); the witness
+// test.claim.serving.srv1_serving_launch_witness pins the srv1 realization's full token sequence to
+// what `docker inspect` showed, so a medium cannot silently change under a caller.
+fn lil_serve_launch_argv(launch: LilServeLaunch, api_key_wire: String) -> List<String> {
   let head = [
     "lil-serve" as String,
     "--profile" as String,
@@ -194,7 +202,7 @@ fn lil_serve_launch_argv(launch: LilServeLaunch) -> List<String> {
     "--ssl-certfile" as String,
     launch.ssl_certfile as String,
     "--api-key" as String,
-    lil_serve_api_key_read_wire(file: launch.api_key_file),
+    api_key_wire,
   ]
   let served = match launch.engine.served_model_name {
     Absent => []

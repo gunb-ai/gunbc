@@ -7,12 +7,12 @@ import std.algebra { length, string_contains }
 import std.dissolution { dissolution_is_bound }
 import std.roster_frontier { DeclSubject }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
-import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
+import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeySource, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, QWEN3_8_FLASH_NEXT_REVISION }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import gunbc.serving.srv1_serving_launch {
-  srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
+  srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv, srv1_serving_api_key_substitution,
   srv1_serving_image, srv1_serving_pinned_checkpoint, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
 }
@@ -91,8 +91,8 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
     && string_contains(s: b, pattern: "pool-card")
     && string_contains(s: b, pattern: ".pool_key")
     && string_contains(s: b, pattern: "lil-serve")
-    && (srv1_serving_wrapper.dissolves_to.module_path as String) == "extdeps.vllm.lil_serve"
-    && (srv1_serving_wrapper.dissolves_to.decl_name as String) == "lil_serve_launch_argv"
+    && (srv1_serving_wrapper.dissolves_to.module_path as String) == "extdeps.docker.cli"
+    && (srv1_serving_wrapper.dissolves_to.decl_name as String) == "docker_run_foreground_argv"
 }
 
 // THE PINNED CHECKPOINT AND THE IMAGE ARE ONE ROW EACH, and they agree with what the engine's startup
@@ -156,7 +156,23 @@ test fn a_port_override_changes_only_the_port() -> Bool {
 }
 
 fn srv1_serving_render_with_port(port: Port) -> List<String> {
-  lil_serve_launch_argv(launch: srv1_serving_launch_for_port(port: port))
+  lil_serve_launch_argv(
+    launch: srv1_serving_launch_for_port(port: port),
+    api_key_wire: srv1_serving_api_key_substitution(source: srv1_serving_launch_for_port(port: port).api_key),
+  )
+}
+
+// THE INTERFACE CARRIES NO SHELL, THE REALIZATION SPELLS IT: the key source is a typed file reference
+// in the interface row (no `$` anywhere in it), and the ONLY place the bash substitution is spelled is
+// srv1's realization fn. A caller through a different transport supplies its own wire instead.
+test fn the_key_is_a_typed_source_in_the_interface_and_shell_only_in_the_realization() -> Bool {
+  match srv1_serving_launch.api_key {
+    LilServeApiKeyFromFile { path: p } =>
+      (p as String) == "/root/.pool_key"
+        && !string_contains(s: p as String, pattern: "$")
+        && !string_contains(s: p as String, pattern: "cat")
+        && srv1_serving_api_key_substitution(source: srv1_serving_launch.api_key) == "$(cat /root/.pool_key)"
+  }
 }
 
 // WHAT THIS MODULE DOES NOT MODEL is keyed, and the relaunch half stays UNBOUNDED on purpose: no row
