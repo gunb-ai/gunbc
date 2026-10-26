@@ -3447,9 +3447,12 @@ fn belt_spawn_admitted(
     steps: concat(
       [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
       concat(
-        map(
-          cmds.worker_git_entry_grant,
-          command => BeltExecStep { step: "worker-git-entry-grant", command: command },
+        concat(
+          map(
+            cmds.worker_git_entry_grant,
+            command => BeltExecStep { step: "worker-git-entry-grant", command: command },
+          ),
+          map(cmds.worker_worktree_grant, command => BeltExecStep { step: "worker-worktree-grant", command: command }),
         ),
         map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
       ),
