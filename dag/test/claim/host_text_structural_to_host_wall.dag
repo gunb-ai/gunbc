@@ -4,16 +4,20 @@ import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+  census_blocking_rows, census_blocking_rows_of_class_at_subject, census_total_count,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// A STRUCTURAL TEXT VALUE REACHES std.host_text HostText ONLY THROUGH text_of_chars, chars' DECLARED
-// INVERSE, OR THE CROSSING REFUSES (DESIGN section 4, ruling text_crossings_go_through_the_unfold). r_
-// rows hand a code-point sequence to a HostText position with no crossing named -- a declared return, a
-// call argument, the qualified structural String -- and each must be a blocking refusal on the real
-// compile path. The p_ row is the same return through the declared inverse and must compile clean, so a
-// wall that refused every HostText position, or every import of std.host_text, reds the control.
+// THE WALL IN THE OTHER DIRECTION (operator ruling H4; ruling text_crossings_go_through_the_unfold).
+// text_boundary_identity_wall_witness walls the host -> structural meeting; this one walls the meeting
+// of a code-point sequence with a host-text position. The one declared route across is std.host_text
+// text_of_chars, chars' declared inverse, reached as std.coercion unicode_scalar_fold -- so an implicit
+// crossing refuses with TextCrossingHasNoImplicitRoute NAMING THAT ROUTE, and calling it admits. The
+// carriers are the ones the checker classifies (v1.compiler.infer text_representation_by_identity): a
+// qualified v2.std.text String is a code-point sequence, the kernel-minted String is host text (the
+// migration-time projection of std.host_text HostText). A bare `type HostText` is not yet classified, so
+// spelling the destination that way would observe no crossing at all -- a fixture that could never red.
 
 fn blocking_total(c: CompileDiagnosticCensus) -> Int {
   match c {
@@ -33,18 +37,76 @@ fn admitted(source: String) -> Bool {
   blocking_total(c: compile_dag_diagnostic_census(source)) == 0
 }
 
-test fn r_code_point_list_at_host_text_return_refuses() -> Bool {
-  refuses(source: "module probe_htw_return\nimport std.host_text { HostText, chars, text_of_chars }\nimport std.types { Char, List }\nfn back(xs: List<Char>) -> HostText { xs }\n")
+fn names_route(source: String, route: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusNotRunnable { cause: _ } => false
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: "TextCrossingHasNoImplicitRoute", wanted_subject: route)) > 0
+  }
 }
 
-test fn r_code_point_list_at_host_text_argument_refuses() -> Bool {
-  refuses(source: "module probe_htw_argument\nimport std.host_text { HostText, chars, text_of_chars }\nimport std.types { Char, List }\nfn again(xs: List<Char>) -> List<Char> { chars(text: xs) }\n")
+// The structural carrier spelled by its qualified name, so it resolves to FreeMonoid<Char>; the kernel
+// String is what the checker reads as host text today (std.host_text header, ONE HOME ONE NAME).
+fn text_header() -> String {
+  "import v2.std.text { string_is_empty }\n"
 }
 
-test fn r_qualified_structural_string_at_host_text_argument_refuses() -> Bool {
-  refuses(source: "module probe_htw_qualified\nimport std.host_text { HostText, chars, text_of_chars }\nimport std.types { Char, List }\nimport v2.std.text { string_is_empty }\nfn again(t: v2.std.text.String) -> List<Char> { chars(text: t) }\n")
+// AN IMPLICIT STRUCTURAL -> HOST USE AT A RETURN: the code-point sequence is handed to a host-text
+// position with no route named. It must refuse, and the refusal must name the route to call.
+fn implicit_return() -> String {
+  concat("module probe_ht_implicit_return\n", text_header(), "fn back(xs: v2.std.text.String) -> String { xs }\n")
 }
 
-test fn p_code_point_list_through_text_of_chars_is_admitted() -> Bool {
-  admitted(source: "module probe_htw_declared\nimport std.host_text { HostText, chars, text_of_chars }\nimport std.types { Char, List }\nfn back(xs: List<Char>) -> HostText { text_of_chars(scalars: xs) }\n")
+test fn r_code_point_sequence_at_host_text_return_refuses() -> Bool {
+  refuses(source: implicit_return())
+}
+
+test fn r_code_point_sequence_at_host_text_return_names_the_fold_route() -> Bool {
+  names_route(source: implicit_return(), route: "unicode_scalar_fold")
+}
+
+// AN IMPLICIT STRUCTURAL -> HOST USE AT A CALL ARGUMENT: the same crossing one position earlier, so a
+// wall that only guards returns reds here.
+fn implicit_argument() -> String {
+  concat("module probe_ht_implicit_argument\n", text_header(), "fn take(s: String) -> Int { string_length(s: s) }\nfn at(xs: v2.std.text.String) -> Int { take(s: xs) }\n")
+}
+
+// OBSERVED, NOT ASSERTED: at a call argument the crossing gate blocks with class `InternalError`
+// (subject "text representation crossing at a call argument: declared Primitive(String), ..."), where at
+// a return it blocks with TextCrossingHasNoImplicitRoute naming the route. The refusal is right; the
+// class is a defect in v1.compiler.infer's argument arm, outside this crossing. Asserting only that it
+// REFUSES: this row stays correct when the arm is fixed to name the route, and goes red if the argument
+// position ever admits an implicit crossing. It does not certify the class.
+test fn r_code_point_sequence_at_host_text_argument_refuses() -> Bool {
+  refuses(source: implicit_argument())
+}
+
+// THE DECLARED CROSSING AT THE SAME POSITION: the inverse called by name admits, with no blocking row
+// at all -- the refusal is of the implicit meeting, not of the shape.
+fn declared_return() -> String {
+  concat("module probe_ht_declared_return\nimport std.host_text { text_of_chars }\n", text_header(), "fn back(xs: v2.std.text.String) -> String { text_of_chars(scalars: xs) }\n")
+}
+
+test fn a_declared_inverse_call_at_host_text_return_admits() -> Bool {
+  admitted(source: declared_return())
+}
+
+// THE SAME POSITION THROUGH THE CONVERSION PLAN'S ROUTE: std.coercion unicode_scalar_fold, the name the
+// refusal gives, admits -- a caller told what to call can call it.
+fn route_return() -> String {
+  concat("module probe_ht_route_return\nimport std.coercion { unicode_scalar_fold }\n", text_header(), "fn back(xs: v2.std.text.String) -> String { unicode_scalar_fold(xs) }\n")
+}
+
+test fn a_conversion_plan_route_at_host_text_return_admits() -> Bool {
+  admitted(source: route_return())
+}
+
+// A CONTROL WITH NO CROSSING: the same carriers meeting their OWN representation, so a wall that
+// refuses by shape rather than by representation reds here.
+fn no_crossing() -> String {
+  concat("module probe_ht_no_crossing\n", text_header(), "fn same(xs: v2.std.text.String) -> v2.std.text.String { xs }\nfn other(s: String) -> String { s }\n")
+}
+
+test fn c_no_crossing_admits() -> Bool {
+  admitted(source: no_crossing())
 }
