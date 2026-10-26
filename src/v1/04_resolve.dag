@@ -465,10 +465,15 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 
 data parameterized_use_site_prefers_parameterized_decl: String = "A use site WITH type arguments (children > 0) whose primary name lookup lands on a PARAMLESS decl is definitionally mis-resolved - type args imply a generic declaration. The concrete seam: the kernel prelude binding for a name (e.g. the kernel Optional) shadows an explicitly imported user generic of the same name in the ancestry rung, so v2's Optional<T> consumers resolved the paramless kernel decl, is_user_generic_use_site went false, the sig return was never expanded, and pattern bindings went error-typed with zero diagnostics (the interpreted-parse cascade; pre-existing on main). Retry the DIRECT import parents (str_bindings) for a parameterized decl before accepting the paramless one - the params filter naturally excludes the kernel parent, and the ancestry rung itself carries the kernel-shadowed entry so it cannot serve as the retry source."
 
+// THE RETRY ASKS THE SAME QUESTION THE ACCEPTANCE PATH ASKS, through the same reader: is the sibling
+// binding a DECLARATION WITH TYPE PARAMETERS. The raw read (b.resolved.params |> count > 0) answered it
+// for a resolved ARROW too, where params are the callable's VALUE parameters: a paramless primary
+// binding in front of a same-named direct import that is a non-generic fn-type alias put the retry on
+// the path that selects the alias as the use's declaration.
 fn resolve_paramless_generic_use_decl_with_children(env: TypeEnv, n: Node, decl: Node, brand: String) -> Node {
   match env.parents |> filter(parent =>
     match map_get(parent.str_bindings, brand) {
-      Present { value: b } => b.resolved.params |> count > 0
+      Present { value: b } => declaration_type_parameters(decl: b.resolved) |> count > 0
       Absent => false
     }
   ) |> first {
@@ -652,8 +657,13 @@ fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: 
   }
 }
 
+// THE OTHER SEMANTIC READER of "is this declaration parameterized": a parametric type alias declares
+// TYPE parameters, so it reads them through declaration_type_parameters too -- the same question, the
+// same reader (side-chat census on #15171: every read of Node.params AS a declaration's type parameters
+// goes through the helper; the remaining raw reads are structural copies, Arrow value-parameter walks,
+// and __param__-header name scans).
 fn is_parametric_type_alias_decl(item: Node) -> Bool {
-  (item.params |> count) > 0 && item.connective == NoConnective && item.body == none && item.transport == none && item.inferred != none
+  (declaration_type_parameters(decl: item) |> count) > 0 && item.connective == NoConnective && item.body == none && item.transport == none && item.inferred != none
 }
 
 fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
