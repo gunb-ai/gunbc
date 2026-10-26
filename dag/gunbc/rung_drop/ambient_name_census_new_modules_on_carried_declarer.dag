@@ -1,0 +1,39 @@
+module gunbc.rung_drop.ambient_name_census_new_modules_on_carried_declarer
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { population_from_list, RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_drop.ambient_name_census_carried_refusals { ambient_census_listed_new_modules }
+
+// THE CLOSED IDENTITY LIST of modules this change adds that import gunbc.rung_drop, a declarer the base already refuses at
+// resolve (the list itself is ambient_census_listed_new_modules, beside the row it carries). A module absent at the base has
+// no base import edge to compare, so the census would call it newly refused; these are admitted as cascades by identity and
+// by nothing wider: any other new module on a carried declarer is newly refused, and an existing module that GAINS an edge
+// still fails (none of these names was observed at the merge base).
+//
+// THE APPROVALS, outside the diff as DESIGN.md §5 requires, both of them:
+//   (1) operator approval 2026-10-26, dashboard escalation msg_3bd137d1-94e0-4153-9254-1c1ce6465b24, recorded at
+//       https://github.com/gunb-ai/gunbc/pull/14868#issuecomment-6410170804 -- scope: exactly this PR's 2 new modules,
+//       with trigger gunbc.rung_drop resolving natively; and
+//   (2) operator approval 2026-10-26, dashboard escalation msg_976728c8 (widen to 3, default-approved on the
+//       recommendation) -- scope: the third name only, THIS file, which became a module importing the carried declarer
+//       solely because main's derived-roster rule (c2e0eca8694d) mandates one row per file.
+// The population list (ambient_census_listed_new_modules) and the restoration_trigger below carry exactly that scope
+// and nothing beyond it.
+//
+// The row was authored beside gunbc.rung_drop.ambient_name_census_carried_refusals until main's derived-roster rule
+// (c2e0eca8694d, one row per file under its own stem) required this file.
+data ambient_name_census_new_modules_on_carried_declarer: RungDrop = RungDrop {
+  identity: "ambient_name_census_new_modules_on_carried_declarer" as NonEmptyStr,
+  subject: "Ambient-name census judgement of the modules this change adds, each importing the declarer gunbc.rung_drop that the merge base already refuses at resolve",
+  declared: "2026-10-25",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "judging a module absent at the base by a base import edge that cannot exist; the closed list is printed as refused_by_carried_dependency rows and counted on every run, and any other new module on a carried declarer exits 1"
+    },
+    population: population_from_list(xs: ambient_census_listed_new_modules),
+    restoration_trigger: "THE CAPABILITY: gunbc.rung_drop resolves natively under the native compiler, so these modules resolve and are judged at occurrence grain rather than classified by dependency. The drop retires when refused_by_carried_dependency_count is zero; the native-unbound join root belongs to the import-wave program of tidy-ant-251."
+  } }
+}
