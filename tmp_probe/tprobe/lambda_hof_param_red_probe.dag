@@ -2,18 +2,28 @@ module tprobe.lambda_hof_param_red_probe
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.list { distinct_by_key, duplicated_by_key, list_map }
-import std.algebra { fold, list_push }
+import std.algebra { fold, list_push, FreeMonoid }
 
-// THE RED SHAPE, verbatim in kind from gunbc.durable_cas_file_store cas_slot_keys: a fold
-// ACCUMULATOR whose element type is fixed only by the fold's seed and update is passed as the
-// element-list argument of a GENERIC HIGHER-ORDER FUNCTION whose lambda casts its parameter.
-fn red_cast_through_fold_accumulator(names: List<String>) -> List<NonEmptyStr> {
+// A: THE REAL SITE'S SHAPE. A fold accumulator whose element type is fixed only by the
+// fold's update — passed as the element-list argument of a generic HOF whose lambda casts
+// its parameter.
+fn a_fold_accumulator(names: List<String>) -> List<NonEmptyStr> {
   let keys = fold(names, init: [], f: (acc, n) => acc |> list_push(n as NonEmptyStr))
   distinct_by_key(xs: keys, key: fn(k) { k as String })
 }
 
-// THE CONTROL: same call, same lambda, element list carried by a declared parameter.
-fn control_cast_through_declared_param(xs: List<NonEmptyStr>) -> List<NonEmptyStr> {
+// B: CONTROL — the same call spelled through the List alias. Green today.
+fn b_alias_param(xs: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: xs, key: fn(k) { k as String })
+}
+
+// C: the same call spelled through the carrier behind the alias.
+fn c_carrier_param(xs: FreeMonoid<NonEmptyStr>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: xs, key: fn(k) { k as String })
+}
+
+// D: the same call spelled through the variant that carries the element.
+fn d_variant_param(xs: Cons<NonEmptyStr, List<NonEmptyStr>>) -> List<NonEmptyStr> {
   distinct_by_key(xs: xs, key: fn(k) { k as String })
 }
 
@@ -22,14 +32,14 @@ type probe_point {
   weight: Int
 }
 
-// FIELD-READ SIBLING on the fold-accumulator shape.
-fn red_field_read_through_fold_accumulator(points: List<probe_point>) -> List<probe_point> {
+// E: FIELD-READ sibling on the fold-accumulator shape.
+fn e_field_read_fold(points: List<probe_point>) -> List<probe_point> {
   let kept = fold(points, init: [], f: (acc, p) => acc |> list_push(p))
   duplicated_by_key(xs: kept, key: fn(p) { p.name as String })
 }
 
-// A THIRD CAST SITE ON A DIFFERENT HOF.
-fn red_map_through_fold_accumulator(names: List<String>) -> List<String> {
+// F: a different HOF, same fold-accumulator shape.
+fn f_map_fold(names: List<String>) -> List<String> {
   let keys = fold(names, init: [], f: (acc, n) => acc |> list_push(n as NonEmptyStr))
   list_map(xs: keys, f: fn(k) { k as String })
 }
