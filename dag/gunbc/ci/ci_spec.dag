@@ -992,6 +992,20 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+// THE PRIMARY NETWORK CONVERGE RUNS ON AN OBSERVER AND ACTS ON A TARGET (gunbc.host.host_primary_network_apply):
+// a readback taken from the target itself never crosses the uplink it judges.
+data host_primary_network_receipt_path: String = "target/host-primary-network-receipt.txt"
+
+data gunbc_ci_host_primary_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_primary_network_apply.dag",
+  function: "host_primary_network_observe_ci_wet",
+}
+
+data gunbc_ci_host_primary_network_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_primary_network_apply.dag",
+  function: "host_primary_network_converge_ci_wet",
+}
+
 data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_cap_release_ci_wet",
@@ -1471,6 +1485,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_host_cap_release_target,
+    gunbc_ci_host_primary_network_observe_target,
+    gunbc_ci_host_primary_network_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
@@ -3136,6 +3152,26 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
   )
 }
 
+fn gunbc_ci_host_primary_network_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_primary_network_observe_target.entry,
+    function: gunbc_ci_host_primary_network_observe_target.function,
+    claim_run: false,
+    receipt_rel: host_primary_network_receipt_path
+  )
+}
+
+fn gunbc_ci_host_primary_network_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_primary_network_converge_target.entry,
+    function: gunbc_ci_host_primary_network_converge_target.function,
+    claim_run: false,
+    receipt_rel: host_primary_network_receipt_path
+  )
+}
+
 fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -4080,7 +4116,7 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
 //
 // TWO POPULATION ARMS, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The
 // GeneratedArtifactPhase now issues ONE verdict over the REGISTRY (roughly 35 artifacts including
-// DESIGN.md, ROADMAP.md and the workflow emissions) AND the stage0 mirror population formerly
+// DESIGN.md and the workflow emissions) AND the stage0 mirror population formerly
 // adjudicated by a sibling RegenPhase. The component diagnostics remain separate and located; only
 // their independently-green terminal outcomes are gone. A generated `.rs` outside both --
 // `gunbc_rust_source_type_bindings.rs` on #9949 -- is in neither, which is why an authored `.dag`

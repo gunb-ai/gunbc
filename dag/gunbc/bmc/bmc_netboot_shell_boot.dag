@@ -17,7 +17,7 @@ import extdeps.tools.busybox { busybox_tftpd_over_udpsvd_command }
 import gunbc.bmc.bmc_netboot_serve {
   BmcNetbootServePlan,
   srv4_bmc_netboot_serve_plan,
-  bmc_netboot_seed_datasource,
+  bmc_netboot_seed_kernel_arg,
 }
 
 data tftp_authority: ExternalAuthority = ExternalAuthority {
@@ -44,7 +44,7 @@ fn shell_boot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineArg
     KernelKeyValue { key: "ip", value: "dhcp" },
     KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
     KernelFlag { name: "autoinstall" },
-    KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
+    bmc_netboot_seed_kernel_arg(plan: plan),
   ]
 }
 
