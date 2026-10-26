@@ -191,7 +191,8 @@ test fn every_node_is_an_ancestor_of_the_goal() -> Bool {
 }
 
 // ── THE BOUND PREDICATE. Installed and committed cards are in bound, and a card outside names why;
-// the fixtures pin each arm, and section 0 must cite the predicate it is derived from.
+// the fixtures pin each arm, and section 0 must cite the predicate it is derived from. Whether every
+// in-bound row names its host is NOT claimed here: an unconfirmed host is Absent, and D0 supplies it.
 test fn the_bound_is_one_predicate_over_the_census() -> Bool {
   let census = gpu_card_working_census
   any(census, r => gpu_card_in_bound(m: r.membership))
@@ -201,8 +202,8 @@ test fn the_bound_is_one_predicate_over_the_census() -> Bool {
     && !gpu_card_in_bound(m: OutsideBound { because: "rented" })
     && all(census, r => match r.membership {
       OutsideBound { because } => because != ""
-      InstalledInFleetHost => r.host != ""
-      CommittedToFleetHost => r.host != ""
+      InstalledInFleetHost => true
+      CommittedToFleetHost => true
     })
     && string_contains(s: carrier_text(), pattern: "gunbc.plans.gpu_card_host_program::gpu_card_in_bound")
 }

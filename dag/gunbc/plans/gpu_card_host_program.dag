@@ -5,6 +5,7 @@ import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, CodeBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+import std.optional { Present, Absent }
 
 // THE DESIGN CARRIER FOR "INSTALL A CARD, GET DRIVERS, POWER AND FANS RIGHT". DESIGN.md preamble: a plan's
 // authority is its `.dag` carrier, so there is no docs/plans/*.md for it (`PlanIsAuthorityOnly`).
@@ -34,9 +35,11 @@ type GpuCardBoundMembership
   | CommittedToFleetHost
   | OutsideBound { because: String }
 
+// An unconfirmed host is Absent, not a placeholder string: a placeholder satisfies a non-empty
+// check while saying nothing, and D0 is what supplies the host.
 type GpuCardCensusReading {
   cards: String
-  host: String
+  host: String?
   membership: GpuCardBoundMembership
 }
 
@@ -49,13 +52,13 @@ fn gpu_card_in_bound(m: GpuCardBoundMembership) -> Bool {
 }
 
 data gpu_card_working_census: List<GpuCardCensusReading> = [
-  GpuCardCensusReading { cards: "2 × NVIDIA A16 (8 GPUs), SLOT2 and SLOT6", host: "the H11 host, identity not yet allocated", membership: InstalledInFleetHost },
-  GpuCardCensusReading { cards: "NVIDIA RTX PRO 6000 Blackwell Workstation (600 W)", host: "srv1", membership: InstalledInFleetHost },
-  GpuCardCensusReading { cards: "2 × NVIDIA RTX 2000 Ada", host: "unconfirmed", membership: InstalledInFleetHost },
-  GpuCardCensusReading { cards: "2 × AMD Radeon AI PRO R9700", host: "not yet chosen", membership: CommittedToFleetHost },
-  GpuCardCensusReading { cards: "NVIDIA RTX PRO 6000 Blackwell Max-Q", host: "rented x86 host", membership: OutsideBound { because: "a rented Vast deployment: the supplier owns the host image, so this leg cannot converge its driver" } },
-  GpuCardCensusReading { cards: "NVIDIA A2, NVIDIA T10", host: "none", membership: OutsideBound { because: "figures from external reports; no such card is in the fleet" } },
-  GpuCardCensusReading { cards: "NVIDIA GB10 (DGX Spark)", host: "srv9 to srv12", membership: OutsideBound { because: "the driver ships with DGX OS and has its own program" } },
+  GpuCardCensusReading { cards: "2 × NVIDIA A16 (8 GPUs), SLOT2 and SLOT6", host: Present { value: "the H11 host, identity not yet allocated" }, membership: InstalledInFleetHost },
+  GpuCardCensusReading { cards: "NVIDIA RTX PRO 6000 Blackwell Workstation (600 W)", host: Present { value: "srv1" }, membership: InstalledInFleetHost },
+  GpuCardCensusReading { cards: "2 × NVIDIA RTX 2000 Ada", host: Absent, membership: InstalledInFleetHost },
+  GpuCardCensusReading { cards: "2 × AMD Radeon AI PRO R9700", host: Absent, membership: CommittedToFleetHost },
+  GpuCardCensusReading { cards: "NVIDIA RTX PRO 6000 Blackwell Max-Q", host: Present { value: "rented x86 host" }, membership: OutsideBound { because: "a rented Vast deployment: the supplier owns the host image, so this leg cannot converge its driver" } },
+  GpuCardCensusReading { cards: "NVIDIA A2, NVIDIA T10", host: Present { value: "not in the fleet" }, membership: OutsideBound { because: "figures from external reports; no such card is in the fleet" } },
+  GpuCardCensusReading { cards: "NVIDIA GB10 (DGX Spark)", host: Present { value: "srv9 to srv12" }, membership: OutsideBound { because: "the driver ships with DGX OS and has its own program" } },
 ]
 
 fn gc_membership_text(m: GpuCardBoundMembership) -> String {
@@ -66,8 +69,15 @@ fn gc_membership_text(m: GpuCardBoundMembership) -> String {
   }
 }
 
+fn gc_host_text(h: String?) -> String {
+  match h {
+    Present { value } => value
+    Absent => "unconfirmed (D0)"
+  }
+}
+
 fn gc_census_projection(r: GpuCardCensusReading) -> MarkdownTableRow {
-  row(cells: [cell(text: r.cards), cell(text: r.host), cell(text: gc_membership_text(m: r.membership))])
+  row(cells: [cell(text: r.cards), cell(text: gc_host_text(h: r.host)), cell(text: gc_membership_text(m: r.membership))])
 }
 
 // THE DEPENDENCY GRAPH IS TYPED ROWS; section 7's table is their projection. An id is a closed sum,
@@ -292,7 +302,7 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
         t4(a: "fan converge routes", b: "`gunbc.fleet.fleet_fan_converge_routes`", c: "an OpenBMC route that is bound, and a MegaRAC route that is unbound", d: "`extdeps.bmc.endpoint::BmcFirmwareFamily` has no Supermicro arm, and there is no model of Supermicro's OEM fan-mode and zone-duty commands"),
         t4(a: "ipmitool transport", b: "`extdeps.bmc.ipmi`", c: "one operation per command, including a `raw` precedent (`MasterWriteReadAuthenticated`)", d: "the Supermicro OEM operations belong in their own module, which binds to this transport"),
         t4(a: "GPU catalog", b: "`extdeps.gpu.types::GpuModelCatalogRow`, `extdeps.gpu.nvidia`", c: "one TDP per row; rows for the RTX PRO 6000 (Workstation, Max-Q, Server), PRO 5000, 5090, B200, B300 and H200 NVL; `GpuRuntime` already includes `Rocm`", d: "no rows for the A2, T10, RTX 2000 Ada or R9700, and no AMD GPU module. There is no field for a configurable power range (A2 40–60 W, PRO 6000 Server 400–600 W). The A16 (`extdeps.gpu.nvidia_a16`) is deliberately not a catalog row, because the board carries four GPUs, so a board-of-N-GPUs shape is missing"),
-        t4(a: "nvidia-smi", b: "`extdeps.nvidia.system_management_interface`", c: "`QueryComputeApps` only, with a parse that cannot turn a refusal into zero", d: "no power, clock, P-state or persistence queries, and no `-pl`, `-pm`, `-lmc`/`-rmc`, `-lgc`/`-rgc`, `-lmi` or supported-clock operations"),
+        t4(a: "nvidia-smi", b: "`extdeps.nvidia.system_management_interface`", c: "`QueryComputeApps` only, with a parse that cannot turn a refusal into zero", d: "no power, clock, P-state or persistence queries, and no `-pl`, `-pm`, `-lmc`/`-rmc`, `-lgc`/`-rgc` or supported-clock operations"),
         t4(a: "NVML / CUDA", b: "`extdeps.nvidia.management_library`, `extdeps.nvidia.cuda_driver`", c: "device-memory observation that can refuse; a modelled attribute query", d: "nothing for driver packaging, versions, open versus proprietary kernel module, or `nvidia-persistenced`"),
         t4(a: "watt semantics", b: "`gunbc.serving.home_serving_power_policy`", c: "the catalog TDP and an applied limit are distinct figures; an applied limit above TDP is refused", d: "the device-reported **minimum** (48.75 W per A16 GPU) is a third figure. It is a reading of the card, not the catalog's TDP and not a policy choice"),
         t4(a: "operating-point selection", b: "`product.mt_collins_power_policy` (first consumer of `std.decision`)", c: "selection of a fleet operating point, with a receipt", d: "the per-card cap and park choice should be another consumer of the same selection, not a constant written into a policy row"),
@@ -310,7 +320,8 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
         t3(a: "bare CUDA context, no work", b: "P0, 27.0 W, 1755 / 6251 MHz", c: "measured. This happens with any context, not only Strata's"),
         t3(a: "Strata loaded, idle", b: "P0, 27.0 W", c: "measured"),
         t3(a: "Strata loaded, memory clock locked to its minimum", b: "P8, about 12.5–15.6 W, warm state retained, wake about 1–2 s", c: "measured. The wake time is approximate"),
-        t3(a: "minimum power limit", b: "48.75 W; the driver refuses anything lower", c: "measured as a refusal; not cited to NVIDIA"),
+        t3(a: "minimum power limit", b: "48.75 W, maximum 62.50 W. `-pl 40` exits 2 with \"not a valid power limit which should be between 48.75 W and 62.50 W\" and leaves the cap unchanged", c: "measured on driver 595.91.07; not cited to NVIDIA"),
+        t3(a: "supported clocks, GPU 0", b: "memory 405 or 6251 MHz; at 405 MHz memory, graphics 405–420 MHz. `-lmc 405,405` accepted at runtime; `-lmi` is not a recognized option (exit 255)", c: "measured on driver 595.91.07"),
         t3(a: "48.75 W against the stock 62.5 W, in this chassis", b: "same throughput: the cards hit their thermal limit before the cap", c: "measured on one cooling configuration"),
         t3(a: "core clock locked to 900 MHz", b: "about 20% lower throughput", c: "measured"),
         t3(a: "warm decode bottleneck, 16 GB engine", b: "about 60% memory bandwidth, about 38% SM; PCIe about 0.5 GB/s average with 7 GB/s bursts", c: "measured, one sensitivity run"),
@@ -334,7 +345,7 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
     h2(text: "5. The model, by layer"),
     h3(text: "5.1 Upstream facts (extdeps): one module per independently versioned upstream"),
     ul(items: [
-      li(text: "**`extdeps.nvidia.system_management_interface`** (extended, since it is the same upstream): power queries (`power.draw`, `power.limit`, `power.min_limit`, `power.max_limit`, `pstate`, `clocks.gr`, `clocks.mem`, `persistence_mode`), `-q -d SUPPORTED_CLOCKS`, and `-lmi`, which reports whether memory-clock changes are unsupported, deferred or runtime-modifiable. It also gets the effects `-pl`, `-pm`, `-lmc`/`-rmc` and `-lgc`/`-rgc`. Each operation's \"not supported\" output is its own arm, as `QueryComputeApps` already does."),
+      li(text: "**`extdeps.nvidia.system_management_interface`** (extended, since it is the same upstream): power queries (`power.draw`, `power.limit`, `power.min_limit`, `power.max_limit`, `pstate`, `clocks.gr`, `clocks.mem`, `persistence_mode`), `--query-supported-clocks`, `clocks_event_reasons.active`, and the effects `-pl`, `-pm`, `-lmc`/`-rmc` and `-lgc`/`-rgc`. Each operation's \"not supported\" output is its own arm, as `QueryComputeApps` already does, and so is an option the installed driver does not recognize. The option surface is a fact of the driver release (N2a), not of nvidia-smi in general: `-lmi` appears in NVIDIA's documentation, but 595.91.07 rejects it with exit 255."),
       li(text: "**`extdeps.nvidia.persistence_daemon`** (new): `nvidia-persistenced` and its unit shape, including the case where the packaged unit is `static` and has no `[Install]` section."),
       li(text: "**`extdeps.nvidia.linux_driver`** (new): driver branches and releases, the distribution package names, open versus proprietary kernel module, and the supported-GPU list per release, each cited to NVIDIA's release notes. It holds no version pin: a pin is policy."),
       li(text: "**`extdeps.amd.amdgpu_driver`** and **`extdeps.amd.rocm`** (new), plus **`extdeps.amd.amd_smi`** (new): the kernel driver and firmware the R9700 needs, the ROCm release that supports the card and on which distributions, and the power-cap and clock operations. The R9700's figures (architecture, memory, board power, PCIe) are read obligations until they are cited. None is transcribed here from memory."),
@@ -362,7 +373,7 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
     },
     ul(items: [
       li(text: "**The operating point is selected per installed realization, not per model.** The full-load receipt shows the first GPU on each A16 board throttling while its siblings on the same board run 10–30 °C cooler. So the key is the installed realization: host, slot, GPU position on the board, fan reach, driver, engine and workload. The catalog supplies the admissible range, and the device-reported [min, max] narrows it. The applied cap, the park threshold and its hysteresis are then a `std.decision` selection over measured curves: throughput, card energy, whole-host wall energy and wake cost. `gunbc.serving.home_serving_power_policy` already refuses an applied limit above TDP. The result is a `SelectionReceipt`, the same shape `product.mt_collins_power_policy` produces, and a change to any keyed fact makes it a different decision."),
-      li(text: "**The park clock is a reading, never a constant.** The minimum comes from `SUPPORTED_CLOCKS` for that card, and the park is admitted only when `-lmi` reports the change as runtime-modifiable. 405 MHz is the A16's reading, not a fleet number. When `-lmi` reports the change as deferred or unsupported, parking for that card refuses; it does not fall back to a power cap."),
+      li(text: "**The park clock is a reading, never a constant.** The minimum comes from `--query-supported-clocks` for that card. 405 MHz is the A16's reading on 595.91.07, not a fleet number. Whether a lock takes effect at runtime is established by the effect itself, not by a capability query: the park is admitted for a card once a `-lmc` lock to its minimum is followed by a `clocks.mem` readback equal to the lock, and a reset is followed by a readback above it. When the lock refuses, or the readback disagrees, parking for that card refuses; it does not fall back to a power cap."),
       li(text: "**A power cap is not an idle control.** A cap constrains the card under load. Idle power is governed by context, clocks, firmware and fans, so the model keeps them as two separate fields, and a policy cannot claim idle savings from a cap."),
       li(text: "**Break-even is a fold, not prose:** `t = E_wake / (P_old − P_new)`. On the A16, ClockParked and no-process both read about 15.5 W, so the denominator for stopping the engine is about zero, and stopping the engine never wins on GPU energy alone. The fold must refuse when the denominator is not positive. It must not report infinity as a recommendation."),
       li(text: "**Wake is part of the contract:** reset the clocks, read back that they reset, then dispatch. A wake that returns without that readback has not converged (DESIGN §3d)."),
@@ -393,7 +404,7 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
    A2 bare CUDA/HIP context
    A3 context + 1 GiB allocation
    A4 engine loaded, idle (2-5 min)
-   A5 clock-parked (min read from SUPPORTED_CLOCKS, gated by -lmi)
+   A5 clock-parked (min read from --query-supported-clocks; admitted by lock + readback)
    A6 wake: reset clocks, one warm request -> time to normal clocks + first useful token
    A7 engine stopped, driver persisted (the floor)
 B  active power-cap sweep under a representative warm load
