@@ -1,6 +1,11 @@
 module gunbc.compute.work_provider_local
 
-import gunbc.durable_cas_file_store { file_slot_store }
+import gunbc.compute.compute_attempt_slots_root {
+  compute_attempt_slots, ComputeSeat, ComputeFlatSeat, compute_seat_of, compute_seat_directory, compute_seat_holder_line,
+  ComputeSeatStore, compute_seat_store, ComputeSeatStoreReady, ComputeSeatStoreUnready,
+  compute_dispatch_seats, ComputeSeatsListed, ComputeSeatsUnreadable,
+}
+import gunbc.owned_directory { owned_directory_path }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
@@ -153,7 +158,6 @@ type ComputeLayout {
   target_dir: String
   log_path: String
   consumption_path: String
-  attempts_dir: String
 }
 
 // THE PRODUCER LEASE'S LOCATION IS DERIVED ONCE: the layout and the discharge both read it here.
@@ -163,14 +167,6 @@ fn compute_leases_dir(root: String) -> String {
 
 fn compute_lease_path(leases_dir: String, identity_hex: String) -> String {
   join([leases_dir, "/", identity_hex], "")
-}
-
-// THE LEASE NAMES ITS HOLDER: the first line is the owning attempt's seat directory (compute_seat_dir), which is
-// unique per dispatch attempt. A reservation reference (identity#ordinal) cannot be the holder: the lease is
-// taken BEFORE the ordinal is minted, and two attempts of one identity both mint identity#1 in their own
-// directories. Only the holder may drop the lease; a legacy lease (commit + clock, no holder line) names no one.
-fn compute_lease_holder_line(seat_dir: String) -> String {
-  join(["holder ", seat_dir, "\n"], "")
 }
 
 // THE LAYOUT EXISTS ONLY FOR AN INSTANCE THAT DECLARES A STORE, because its staging directory is
@@ -208,7 +204,6 @@ fn compute_layout_in(instance: HostDashboardInstance, store_root: Materializatio
     target_dir: owned_cargo_target_dir(base_root: work_root, owner: identity_hex),
     log_path: join([work_dir, "/log"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
-    attempts_dir: join([root, "/attempts"], ""),
   }
 }
 
@@ -302,6 +297,16 @@ fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> S
         Absent => SubjectResolutionRefused { detail: join(["git show printed no tree object id for ", commit, ": ", trim(s: stdout)], "") }
         Present { value: tree } => SubjectResolved { subject: ExactTree { tree: tree } }
       }
+  }
+}
+
+// A SEAT'S DIRECTORY IS CREATED FROM ITS DECLARED TARGET (gunbc.compute.compute_attempt_slots_root
+// compute_seat_directory): its path and mode are the declaration's, so the store minted over it and the
+// directory created for it cannot name two places.
+fn compute_ensure_seat_dir(instance: HostDashboardInstance, seat: ComputeSeat) -> Bool {
+  match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: compute_attempt_slots.mode), paths: [owned_directory_path(t: compute_seat_directory(instance: instance, seat: seat)) as String])) {
+    ComputeExecOk { stdout: _, stderr: _ } => true
+    ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
   }
 }
 
@@ -1260,12 +1265,22 @@ fn compute_gate_from_transition(t: AttemptTransition, record: AttemptRecord, wha
   }
 }
 
-fn compute_open_attempt(layout: ComputeLayout, identity: String, reference: NonEmptyStr, granted: Kibibyte, owner: AttemptOwner) -> AttemptGate {
+// THE SEAT'S STORE IS MINTED AT EACH STEP from the instance and the owner the record names (the seat is the
+// owner's, gunbc.compute.compute_attempt_slots_root compute_seat_of), so a step whose seat directory is not
+// there refuses as an unready store rather than reading the absence as an empty slot.
+fn compute_seat_gate(instance: HostDashboardInstance, owner: AttemptOwner, record: AttemptRecord, what: String, step: fn(ComputeSeatStore) -> AttemptTransition) -> AttemptGate {
+  match compute_seat_store(instance: instance, seat: compute_seat_of(owner: owner)) {
+    ComputeSeatStoreUnready { detail: d } => AttemptGateRefused { detail: join([what, " was refused: the seat's attempt store is not ready: ", d], "") }
+    ComputeSeatStoreReady { store } => compute_gate_from_transition(t: step(store), record: record, what: what)
+  }
+}
+
+fn compute_open_attempt(instance: HostDashboardInstance, identity: String, reference: NonEmptyStr, granted: Kibibyte, owner: AttemptOwner) -> AttemptGate {
   match now_epoch_seconds() {
     Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
     Present { value: now } => {
       let record = compute_attempt_record(identity: identity, reference: reference, granted: granted, now: now, owner: owner)
-      compute_gate_from_transition(t: attempt_open(store: file_slot_store(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner)), record: record), record: record, what: "opening the attempt")
+      compute_seat_gate(instance: instance, owner: owner, record: record, what: "opening the attempt", step: seat => attempt_open(store: seat.slots, record: record))
     }
   }
 }
@@ -1421,11 +1436,11 @@ fn compute_run_opened(
       let retry_grant = GrantAtCeiling { class: work_class_of(op: op), amount: ceiling, reason: ClassRetryAfterGrantExceeded { exceeded: granted } }
       let retry_reference = compute_ceiling_retry_reference(reference: reference)
       let first_closed = compute_settle_attempt(
-        layout: layout, gate: attempt.gate,
+        instance: instance, gate: attempt.gate,
         verdict: AttemptWorkEnded { ending: work_outcome_ending_of(o: attempt.outcome) },
         detail: join(["grant exceeded (oom-kill); ", compute_release_wire(r: returned), "; retried at the ceiling as ", retry_reference as String], ""))
       provide_result_with_host_record(
-        r: match compute_open_retry_attempt(layout: layout, identity: identity, reference: retry_reference, granted: ceiling, first: attempt.gate) {
+        r: match compute_open_retry_attempt(instance: instance, identity: identity, reference: retry_reference, granted: ceiling, first: attempt.gate) {
           AttemptGateRefused { detail: d } =>
             compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: join(["the retry's attempt slot could not be opened, so nothing was reserved: ", d], "") })
           AttemptGateReady { record: rec, generation: g } => {
@@ -1483,11 +1498,11 @@ fn compute_run_ceiling_retry(
 // returned. A terminal transition that got there first moved the generation, so this is refused by
 // the STORE -- one linearized step -- and the producer learns it here rather than discovering it
 // after a unit is already consuming memory nobody holds.
-fn compute_begin_launch(layout: ComputeLayout, gate: AttemptGate) -> AttemptGate {
+fn compute_begin_launch(instance: HostDashboardInstance, gate: AttemptGate) -> AttemptGate {
   match gate {
     AttemptGateRefused { detail: d } => AttemptGateRefused { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      compute_gate_from_transition(t: attempt_begin_launch(store: file_slot_store(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: rec.owner)), reference: rec.reference as NonEmptyStr, expected: g), record: rec, what: "the launch")
+      compute_seat_gate(instance: instance, owner: rec.owner, record: rec, what: "the launch", step: seat => attempt_begin_launch(store: seat.slots, reference: rec.reference as NonEmptyStr, expected: g))
   }
 }
 
@@ -1516,16 +1531,21 @@ type AttemptSettlement
   | AttemptNotSettled { detail: String }
   | AttemptUnsettleable { detail: String }
 
-fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: AttemptVerdict, detail: String) -> AttemptSettlement {
+fn compute_settle_attempt(instance: HostDashboardInstance, gate: AttemptGate, verdict: AttemptVerdict, detail: String) -> AttemptSettlement {
   match gate {
     AttemptGateRefused { detail: d } => AttemptUnsettleable { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      match attempt_terminate(store: file_slot_store(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: rec.owner)), reference: rec.reference as NonEmptyStr, expected: g, verdict: verdict, detail: detail) {
+      match compute_seat_store(instance: instance, seat: compute_seat_of(owner: rec.owner)) {
+      ComputeSeatStoreUnready { detail: d } =>
+        AttemptNotSettled { detail: join(["the attempt slot for ", rec.reference, " could not be closed: the seat's attempt store is not ready (", d, "); the attempt stays open in the store"], "") }
+      ComputeSeatStoreReady { store: seat } =>
+      match attempt_terminate(store: seat.slots, reference: rec.reference as NonEmptyStr, expected: g, verdict: verdict, detail: detail) {
         AttemptAdvanced { state: _, generation: _ } => AttemptSettled
         AttemptLostRace { expected: e, observed: o } =>
           AttemptNotSettled { detail: join(["the attempt slot for ", rec.reference, " could not be closed: expected ", e, " and it holds ", o, "; the attempt stays open in the store and the seat's settlement is recorded only here"], "") }
         AttemptTransitionRefused { detail: d } =>
           AttemptNotSettled { detail: join(["the attempt slot for ", rec.reference, " could not be closed: ", d, "; the attempt stays open in the store"], "") }
+      }
       }
   }
 }
@@ -1611,7 +1631,7 @@ fn compute_run_and_settle(
       reservation: reservation, returned: returned, reference: reference, termination: termination)
   }
   let closed = compute_settle_attempt(
-    layout: layout, gate: launched,
+    instance: instance, gate: launched,
     verdict: AttemptWorkEnded { ending: work_outcome_ending_of(o: outcome) },
     detail: join([unit_termination_wire(t: termination), "; ", compute_release_wire(r: returned)], ""))
   let dropped = compute_drop_producer_lease(layout: layout)
@@ -2316,10 +2336,10 @@ fn compute_provide_produce(
   op: WorkOperation,
   dependency: ComputeDependency,
 ) -> ProvideResult {
-  if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.staging_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir) && compute_ensure_dir(instance: instance, path: layout.attempts_dir)) {
+  if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.staging_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir) && compute_ensure_seat_dir(instance: instance, seat: ComputeFlatSeat)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
   } else {
-    let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([compute_lease_holder_line(seat_dir: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner) as String), commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
+    let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([compute_seat_holder_line(instance: instance, seat: compute_seat_of(owner: owner)), commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
     if !lease.success {
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
     } else {
@@ -2353,10 +2373,10 @@ fn compute_reserve_and_run(
   dependency: ComputeDependency,
 ) -> ProvideResult {
   let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
-  if !compute_ensure_dir(instance: instance, path: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner) as String) {
+  if !compute_ensure_seat_dir(instance: instance, seat: compute_seat_of(owner: owner)) {
     compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: "the seat directory for the owning attempt could not be created, so nothing was reserved" })
   } else {
-  match compute_open_attempt_minted(layout: layout, identity: identity, granted: work_class_grant_amount(g: grant), owner: owner, ordinal: 1) {
+  match compute_open_attempt_minted(instance: instance, identity: identity, granted: work_class_grant_amount(g: grant), owner: owner, ordinal: 1) {
     AttemptGateRefused { detail: d } =>
       compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: join(["the attempt slot could not be opened, so nothing was reserved: ", d], "") })
     AttemptGateReady { record: rec, generation: g } =>
@@ -2407,7 +2427,7 @@ fn compute_refused_after_open(
   opened: AttemptGate,
   cause: WorkInfrastructureRefusal,
 ) -> ProvideResult {
-  let closed = compute_settle_attempt(layout: layout, gate: opened, verdict: AttemptRecovered, detail: join(["reservation refused: ", work_refusal_detail(r: cause)], ""))
+  let closed = compute_settle_attempt(instance: instance, gate: opened, verdict: AttemptRecovered, detail: join(["reservation refused: ", work_refusal_detail(r: cause)], ""))
   provide_result_with_host_record(
     r: compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: cause),
     carried: attempt_settlement_host_record(s: closed))
@@ -2437,19 +2457,6 @@ fn compute_refused_after_open(
 // reference is already recorded under its attempt when it is reserved.
 data compute_reservation_ordinal_limit: Int = 4096
 
-// THE SEAT'S SLOT LIVES WHERE ITS OWNER CAN READ IT. A DispatchOwned seat's compute attempt slot is
-// under a directory named by the dispatch attempt's own key, so the dispatch attempt's terminal path
-// derives its seats by reading ITS directory -- cost proportional to the attempt, never a scan of the
-// host's compute slots. A DirectInvocation or unrecorded owner has no dispatch attempt and keeps the
-// compute root.
-fn compute_seat_dir(attempts_dir: String, owner: AttemptOwner) -> NonEmptyStr {
-  match owner {
-    DispatchOwned { node_id: _, attempt_key: k } => join([attempts_dir, "/dispatch-", k], "") as NonEmptyStr
-    DirectInvocation { why: _ } => attempts_dir as NonEmptyStr
-    OwnerUnrecorded { why: _ } => attempts_dir as NonEmptyStr
-  }
-}
-
 // THE REFERENCE IS UNIQUE OVER THE LEDGER'S RETAINED HISTORY, NOT ONLY IN ONE SEAT DIRECTORY. The
 // encumbrance ledger refuses any reference it has ever held, Released included, and a dispatch
 // attempt's seat directory is its own, so two dispatch attempts of one work identity would both win
@@ -2465,7 +2472,7 @@ fn compute_reservation_reference(identity: String, owner: AttemptOwner, ordinal:
   }
 }
 
-fn compute_open_attempt_minted(layout: ComputeLayout, identity: String, granted: Kibibyte, owner: AttemptOwner, ordinal: Int) -> AttemptGate {
+fn compute_open_attempt_minted(instance: HostDashboardInstance, identity: String, granted: Kibibyte, owner: AttemptOwner, ordinal: Int) -> AttemptGate {
   if ordinal > compute_reservation_ordinal_limit {
     AttemptGateRefused { detail: join(["every reservation ordinal up to ", to_string(value: compute_reservation_ordinal_limit), " is already claimed for identity ", identity], "") }
   } else {
@@ -2474,10 +2481,14 @@ fn compute_open_attempt_minted(layout: ComputeLayout, identity: String, granted:
       Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
       Present { value: now } => {
         let record = compute_attempt_record(identity: identity, reference: reference, granted: granted, now: now, owner: owner)
-        match attempt_open(store: file_slot_store(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner)), record: record) {
-          AttemptLostRace { expected: _, observed: _ } => compute_open_attempt_minted(layout: layout, identity: identity, granted: granted, owner: owner, ordinal: ordinal + 1)
+        match compute_seat_store(instance: instance, seat: compute_seat_of(owner: owner)) {
+        ComputeSeatStoreUnready { detail: d } => AttemptGateRefused { detail: join(["opening the attempt was refused: the seat's attempt store is not ready: ", d], "") }
+        ComputeSeatStoreReady { store: seat } =>
+        match attempt_open(store: seat.slots, record: record) {
+          AttemptLostRace { expected: _, observed: _ } => compute_open_attempt_minted(instance: instance, identity: identity, granted: granted, owner: owner, ordinal: ordinal + 1)
           AttemptAdvanced { state: s, generation: g } => compute_gate_from_transition(t: AttemptAdvanced { state: s, generation: g }, record: record, what: "opening the attempt")
           AttemptTransitionRefused { detail: d } => compute_gate_from_transition(t: AttemptTransitionRefused { detail: d }, record: record, what: "opening the attempt")
+        }
         }
       }
     }
@@ -2487,9 +2498,9 @@ fn compute_open_attempt_minted(layout: ComputeLayout, identity: String, granted:
 // The retry inherits the first attempt's RECORDED owner. A first gate that never opened recorded no
 // owner, and inventing one (DirectInvocation) would place the retry's seat at the flat attempts root
 // where exit-driven discharge under dispatch-<key>/ never looks -- so the retry is refused instead.
-fn compute_open_retry_attempt(layout: ComputeLayout, identity: String, reference: NonEmptyStr, granted: Kibibyte, first: AttemptGate) -> AttemptGate {
+fn compute_open_retry_attempt(instance: HostDashboardInstance, identity: String, reference: NonEmptyStr, granted: Kibibyte, first: AttemptGate) -> AttemptGate {
   match first {
-    AttemptGateReady { record: r, generation: _ } => compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: granted, owner: r.owner)
+    AttemptGateReady { record: r, generation: _ } => compute_open_attempt(instance: instance, identity: identity, reference: reference, granted: granted, owner: r.owner)
     AttemptGateRefused { detail: d } => AttemptGateRefused { detail: join(["the first attempt's gate was not open, so no owner was recorded for the retry to inherit: ", d], "") }
   }
 }
@@ -2715,7 +2726,7 @@ fn compute_run_leased(
         gate: opened,
       }
     ComputeExecOk { stdout: _, stderr: _ } =>
-      match compute_begin_launch(layout: layout, gate: opened) {
+      match compute_begin_launch(instance: instance, gate: opened) {
         AttemptGateRefused { detail: d } =>
           ComputeAttempt { outcome: WorkCancelled { identity: identity, detail: d }, summary: compute_unspawned_summary(), gate: AttemptGateRefused { detail: d } }
         AttemptGateReady { record: rec2, generation: g2 } =>
@@ -2923,10 +2934,6 @@ fn compute_leases_root(instance: HostDashboardInstance) -> String {
   compute_leases_dir(root: compute_root(instance: instance) as String)
 }
 
-fn compute_attempts_root(instance: HostDashboardInstance) -> NonEmptyStr {
-  join([compute_root(instance: instance) as String, "/attempts"], "") as NonEmptyStr
-}
-
 // THE TERMINAL TRANSITION AND THE RELEASE ARE TWO FACTS AND THE MIDDLE ARM IS THE ONE THAT
 // MATTERS. The attempt can settle -- history written, generation advanced -- and the seat can still
 // fail to come back, and reporting that as a success would be exactly the recording-failure-as-
@@ -2958,10 +2965,11 @@ fn compute_recovery_wire(r: ComputeRecovery) -> String {
 // form of re-check that cannot be overtaken between the checking and the acting.
 //
 // THE STORE IS A PARAMETER (the next-rung trigger of gunbc.recurring_failure_mode
-// a_held_compute_seat_has_no_in_corpus_discharge). compute_recover_attempt_in takes the attempts
-// root and the capacity subject it discharges against, so a control can hold a seat in a temporary
-// directory and drive it through THIS door; compute_recover_attempt is the same door with the
-// instance's own root, subject and an OBSERVED unit. There is no second recovery path: the wrapper
+// a_held_compute_seat_has_no_in_corpus_discharge). compute_recover_attempt_in takes the seat's sealed
+// store (gunbc.compute.compute_attempt_slots_root ComputeSeatStore) and the capacity subject it discharges
+// against, so a control can hold a seat under an instance rooted in a temporary directory and drive it
+// through THIS door; compute_recover_attempt is the same door with the instance's own seats, subject and
+// an OBSERVED unit. There is no second recovery path: the wrapper
 // below is one call.
 type UnitLifecycleSource
   = ObserveUnitLifecycle
@@ -3011,63 +3019,79 @@ fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyS
   match compute_capacity_subject(instance: instance, request: kibibyte(count: 0)) {
     ComputeSubjectHostUnresolved { host: h } => RecoveryRefused { detail: join(["no capacity subject resolves for host ", h as String], "") }
     ComputeSubjectResolved { subject: subj } =>
-      compute_recover_attempt_resolved(
-        flat: compute_attempts_root(instance: instance) as String,
-        subject: subj,
-        reference: reference)
+      compute_recover_attempt_resolved(instance: instance, subject: subj, reference: reference)
   }
 }
 
-fn compute_recover_attempt_resolved(flat: String, subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeRecovery {
-  match compute_recover_roots(attempts_root: flat, reference: reference) {
-    RecoverRootsUnreadable { reason: r } => RecoveryRefused { detail: r }
-    RecoverRootsFound { at_flat: f, dispatch_roots: rs } => compute_recover_attempt_at(flat: flat, at_flat: f, found: rs, subject: subject, reference: reference)
+fn compute_recover_attempt_resolved(instance: HostDashboardInstance, subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeRecovery {
+  match compute_recover_seats(instance: instance, reference: reference) {
+    RecoverSeatsUnreadable { reason: r } => RecoveryRefused { detail: r }
+    RecoverSeatsFound { holders: hs } => compute_recover_attempt_at(instance: instance, holders: hs, subject: subject, reference: reference)
   }
 }
 
-fn compute_recover_attempt_at(flat: String, at_flat: Bool, found: List<String>, subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeRecovery {
-  let holders = count(found) + (if at_flat { 1 } else { 0 })
-  if holders > 1 {
-    RecoveryRefused { detail: join(["the reference ", reference as String, " has an attempt slot in ", to_string(value: holders), " seat directories, and a reference names exactly one hold; nothing was released"], "") }
+// No seat holding the reference is the flat seat's question to answer (it reports the absent slot); more than
+// one is refused, because a reference names exactly one hold.
+fn compute_recover_attempt_at(instance: HostDashboardInstance, holders: List<ComputeSeatStore>, subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeRecovery {
+  if count(holders) > 1 {
+    RecoveryRefused { detail: join(["the reference ", reference as String, " has an attempt slot in ", to_string(value: count(holders)), " seat directories, and a reference names exactly one hold; nothing was released"], "") }
   } else {
-    let chosen = found |> fold(init: flat, f: (acc, r) => r)
-    compute_recover_attempt_in(attempts_root: chosen as NonEmptyStr, subject: subject, reference: reference, source: ObserveUnitLifecycle)
+    match holders.first() {
+      Present { value: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycle)
+      Absent =>
+        match compute_seat_store(instance: instance, seat: ComputeFlatSeat) {
+          ComputeSeatStoreUnready { detail: d } => RecoveryRefused { detail: join(["the attempts directory's own store is not ready: ", d], "") }
+          ComputeSeatStoreReady { store: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycle)
+        }
+    }
   }
 }
 
-// THE OPERATOR DOOR FINDS THE SEAT WHEREVER ITS OWNER PUT IT. A DispatchOwned seat lives under
-// attempts/dispatch-<key>/ and a DirectInvocation or unrecorded one at the attempts root
-// (compute_seat_dir), so a door that read only the flat root could not see the primary population.
-// The roots holding a slot for the reference are collected; a listing that cannot be read refuses
-// rather than reading as "no dispatch seats".
-type ComputeRecoverRoots
-  = RecoverRootsFound { at_flat: Bool, dispatch_roots: List<String> }
-  | RecoverRootsUnreadable { reason: String }
+// THE OPERATOR DOOR FINDS THE SEAT WHEREVER ITS OWNER PUT IT. A DispatchOwned seat has its own directory and
+// a DirectInvocation or unrecorded one is the attempts root (gunbc.compute.compute_attempt_slots_root
+// compute_seat_of), so a door that read only the flat seat could not see the primary population. The seats
+// holding a slot for the reference are collected; a seat listing that cannot be read, or a listed seat whose
+// store is not ready, refuses rather than reading as "not held there".
+type ComputeRecoverSeats
+  = RecoverSeatsFound { holders: List<ComputeSeatStore> }
+  | RecoverSeatsUnreadable { reason: String }
 
-fn compute_recover_slot_present(root: String, reference: NonEmptyStr) -> Bool {
-  match attempt_slot_read(store: file_slot_store(root: root as NonEmptyStr), reference: reference) {
+fn compute_recover_slot_present(seat: ComputeSeatStore, reference: NonEmptyStr) -> Bool {
+  match attempt_slot_read(store: seat.slots, reference: reference) {
     AttemptSlotAbsent => false
     AttemptSlotHeld { record: _, generation: _ } => true
     AttemptSlotUnreadable { detail: _ } => true
   }
 }
 
-fn compute_recover_roots(attempts_root: String, reference: NonEmptyStr) -> ComputeRecoverRoots {
-  let listed = Filesystem.List(path: attempts_root)
-  match filesystem_listing_observation(directory: attempts_root, success: listed.success, entries: listed.entries, error: listed.error) {
-    FilesystemDirectoryListed(admitted) => {
-      let dispatch = filesystem_listing_entry_names(listing: admitted)
-        |> filter(n => starts_with(s: n, prefix: "dispatch-"))
-        |> map(n => join([attempts_root, "/", n], ""))
-      RecoverRootsFound { at_flat: compute_recover_slot_present(root: attempts_root, reference: reference), dispatch_roots: dispatch |> filter(r => compute_recover_slot_present(root: r, reference: reference)) }
-    }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => RecoverRootsUnreadable { reason: join(["the attempts directory could not be listed: ", e], "") }
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => RecoverRootsUnreadable { reason: join(["the attempts directory could not be listed: ", c], "") }
+type ComputeSeatStoresMinted
+  = ComputeSeatStoresReady { stores: List<ComputeSeatStore> }
+  | ComputeSeatStoresUnready { detail: String }
+
+fn compute_seat_stores_of(instance: HostDashboardInstance, seats: List<ComputeSeat>) -> ComputeSeatStoresMinted {
+  fold(seats, init: ComputeSeatStoresReady { stores: [] }, f: (acc, seat) => match acc {
+    ComputeSeatStoresUnready { detail: d } => ComputeSeatStoresUnready { detail: d }
+    ComputeSeatStoresReady { stores: ss } =>
+      match compute_seat_store(instance: instance, seat: seat) {
+        ComputeSeatStoreReady { store } => ComputeSeatStoresReady { stores: ss |> list_push(store) }
+        ComputeSeatStoreUnready { detail } => ComputeSeatStoresUnready { detail: detail }
+      }
+  })
+}
+
+fn compute_recover_seats(instance: HostDashboardInstance, reference: NonEmptyStr) -> ComputeRecoverSeats {
+  match compute_dispatch_seats(instance: instance) {
+    ComputeSeatsUnreadable { reason: r } => RecoverSeatsUnreadable { reason: r }
+    ComputeSeatsListed { seats } =>
+      match compute_seat_stores_of(instance: instance, seats: concat([ComputeFlatSeat], seats)) {
+        ComputeSeatStoresUnready { detail: d } => RecoverSeatsUnreadable { reason: join(["a seat's attempt store is not ready: ", d], "") }
+        ComputeSeatStoresReady { stores } => RecoverSeatsFound { holders: stores |> filter(st => compute_recover_slot_present(seat: st, reference: reference)) }
+      }
   }
 }
 
-fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource) -> ComputeRecovery {
-  match attempt_slot_read(store: file_slot_store(root: attempts_root), reference: reference) {
+fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource) -> ComputeRecovery {
+  match attempt_slot_read(store: seat.slots, reference: reference) {
     AttemptSlotUnreadable { detail: d } =>
       RecoveryRefused { detail: join(["the attempt slot for ", reference as String, " could not be read (", d, "), and an unreadable slot is not an absent one -- releasing on a read that failed would return a seat whose attempt was never observed"], "") }
     AttemptSlotAbsent =>
@@ -3082,7 +3106,7 @@ fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapaci
             RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
             RecoveryTerminalRecordMayRelease { state: st } => compute_recover_after_terminal(subject: subject, rec: rec, state: st, lifecycle: lifecycle)
             RecoveryMayTerminate { reason: why } =>
-              match attempt_terminate(store: file_slot_store(root: attempts_root), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+              match attempt_terminate(store: seat.slots, reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
                   RecoveryRefused { detail: join(["the attempt moved while recovery was deciding: expected ", e, " and the slot holds ", o, "; the observation this recovery would act on is stale, so nothing is released"], "") }
                 AttemptTransitionRefused { detail: d } => RecoveryRefused { detail: join(["the attempt slot would not take the terminal generation: ", d], "") }

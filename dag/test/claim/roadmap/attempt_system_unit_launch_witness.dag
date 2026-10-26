@@ -59,7 +59,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 import gunbc.live_deploy.lab_host_plan { lab_plan_worker_sandbox_choice, SystemManagerLauncherSelected, LabPlanRefused, LabOsUnobserved }
 import gunbc.live_deploy.spec { deployment_attempt_unit_drain_steps }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.roadmap.spool_stall { SpoolStallEntry }
+import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallClaim }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptUnitDrainPass, attempt_unit_pass_of, AttemptUnitEntryOutcome, AttemptUnitEntryHandled, AttemptUnitEntryUnmovable, AttemptUnitEntrySkipped, AttemptUnitAnswered, AttemptUnitAnswerUnwritten,
   AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
@@ -96,7 +96,7 @@ import gunbc.cli_invoke {
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
-  HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ManualStepRequired, NoAdmissiblePattern,
+  HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ApprovedConvergenceGrant, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
 }
 import gunbc.auth.privileged_effect_census {
@@ -207,6 +207,7 @@ test fn the_launcher_effect_selects_federated_scoped_grant() -> Bool {
     PatternSelected { pattern: HumanOnlyStep { step: _ }, receipt: _ } => false
     PatternSelected { pattern: OperatorOwnSession, receipt: _ } => false
     PatternSelected { pattern: AdministratorEdge, receipt: _ } => false
+    PatternSelected { pattern: ApprovedConvergenceGrant, receipt: _ } => false
     ManualStepRequired { step: _, receipt: _ } => false
     NoAdmissiblePattern { causes: _, scope: _ } => false
     PatternSelectionNeedsEvidence { needs: _ } => false
@@ -1107,9 +1108,9 @@ test fn a_request_whose_answer_cannot_be_written_fails_the_pass() -> Bool {
 test fn the_pass_keeps_the_first_failure_and_lists_unmovable_entries_in_order() -> Bool {
   let pass = attempt_unit_pass_of(outcomes: [
     AttemptUnitEntrySkipped,
-    AttemptUnitEntryUnmovable { entry: "a", step: "claim", cause: "c1" },
+    AttemptUnitEntryUnmovable { entry: "a", step: SpoolStallClaim, cause: "c1" },
     answered(refusal: Absent),
-    AttemptUnitEntryUnmovable { entry: "b", step: "claim", cause: "c2" },
+    AttemptUnitEntryUnmovable { entry: "b", step: SpoolStallClaim, cause: "c2" },
   ])
   let names = map(pass.unmovable, u => u.entry)
   pass.retired == 1 && count(pass.unmovable) == 2 && names == ["a", "b"]
