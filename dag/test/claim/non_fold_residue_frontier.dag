@@ -1,7 +1,11 @@
 module test.claim.non_fold_residue_frontier
 
 import std.types { NonEmptyStr }
-import gunbc.non_fold_residue { non_fold_residue_frontier }
+import gunbc.non_fold_residue {
+  non_fold_residue_frontier,
+  nfr_reason_variant_test_predicate,
+  nfr_dissolve_derived_variant_test,
+}
 import std.roster_frontier {
   FrontierRow,
   PathSubject,
@@ -72,4 +76,30 @@ test fn non_fold_residue_frontier_red_control_duplicate_path_reds() -> Bool {
     KeyedRosterBuilt { rows: _ } => false
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
   }
+}
+
+// THE TAXONOMY IS A MEANING, AND A MEANING NEEDS A GUARD. The variant-test pairing
+// (nfr_reason_variant_test_predicate with nfr_dissolve_derived_variant_test) is the roster's one
+// reason/dissolution PAIRING: the reason names what the arm IS (a closed-coproduct constructor test
+// whose wildcard is the residue) and the dissolution names the CAPABILITY that retires it (a derived
+// `x is V` test, per DESIGN 4b meta-obligation 3: "a drop is retired by its trigger and nothing
+// else"). Filing a variant-test predicate under the generic wildcard reason instead makes it a
+// member of a class whose own reason text says such a row is not a variant-test predicate -- a
+// second meaning under one name (DESIGN 3) -- and it then never retires when the capability lands,
+// because its dissolution names an artifact (the owning file's fold) instead of that capability.
+// This claim is the wall review 86021 asked for: every roster row carries the pairing together or
+// carries neither. A row mutated onto half the pairing (the RED) reds this witness; the same
+// witness is the positive control at a paired head.
+fn row_is_variant_test_reason(row: FrontierRow) -> Bool {
+  match row { FrontierRow { subject: _, reason: r, dissolution: _ } => r == nfr_reason_variant_test_predicate }
+}
+
+fn row_is_variant_test_dissolution(row: FrontierRow) -> Bool {
+  match row { FrontierRow { subject: _, reason: _, dissolution: d } => d == nfr_dissolve_derived_variant_test }
+}
+
+test fn non_fold_residue_frontier_variant_test_pairing_holds() -> Bool {
+  fold(non_fold_residue_frontier, init: true, f: fn(acc, row) {
+    acc && (row_is_variant_test_reason(row: row) == row_is_variant_test_dissolution(row: row))
+  })
 }

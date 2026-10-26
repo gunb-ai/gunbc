@@ -7,7 +7,7 @@ import v2.std.node_query { coproduct_arm_list_from_node }
 import extdeps.apple.apns { ApnsDevelopment, ApnsProduction }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, proposed_decision_name }
 import gunbc.auth.approval_device_wire {
-  MobileIos, MobileAndroid, platform_wire, enrolment_refusal_kinds, enrolment_refusal_wire_label,
+  MobileIos, MobileAndroid, platform_wire, google_enrolment_refusal_kinds, google_enrolment_refusal_wire_label, stored_enrolment_field_wire_kinds, stored_enrolment_field_wire_label,
   wire_admission_platform, wire_admission_apns_environment, wire_admission_decision, wire_admission_signature_suite,
   wire_admission_public_key_encoding, wire_admission_signature_encoding, EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire, apns_environment_wire,
 }
@@ -40,7 +40,17 @@ fn platform_spellings() -> List<String> {
 }
 
 fn refusal_spellings() -> List<String> {
-  map(enrolment_refusal_kinds(), k => enrolment_refusal_wire_label(k: k) as String)
+  map(google_enrolment_refusal_kinds(), k => google_enrolment_refusal_wire_label(k: k) as String)
+}
+
+// The nested closed sum's own spellings, and the refusal sum's TOP-LEVEL arms: the stored-mismatch arm
+// is spelled "stored_mismatch:<field>" and counts once as an arm.
+fn stored_field_spellings() -> List<String> {
+  map(stored_enrolment_field_wire_kinds(), f => stored_enrolment_field_wire_label(f: f) as String)
+}
+
+fn refusal_arm_spellings() -> List<String> {
+  concat(filter(refusal_spellings(), x => !string_contains(s: x, pattern: ":")), ["stored_mismatch"])
 }
 
 fn standing_spellings() -> List<String> {
@@ -60,7 +70,7 @@ fn no_repeat(xs: List<String>) -> Bool {
 }
 
 test fn every_nullary_wire_spelling_is_injective() -> Bool {
-  no_repeat(xs: platform_spellings()) && no_repeat(xs: refusal_spellings()) && no_repeat(xs: standing_spellings())
+  no_repeat(xs: platform_spellings()) && no_repeat(xs: refusal_spellings()) && no_repeat(xs: stored_field_spellings()) && no_repeat(xs: standing_spellings())
     && no_repeat(xs: apns_spellings()) && no_repeat(xs: decision_spellings())
 }
 
@@ -78,7 +88,8 @@ test fn the_named_spelling_is_the_first_repeat_in_declaration_order() -> Bool {
 test fn supplied_arm_lists_cover_the_declared_arms() -> Bool {
   let facts = decl_facts(pool_roots: ["dag", "src/v2"])
   covers(facts: facts, name: "gunbc.auth.approval_device_wire.MobilePlatform", spellings: platform_spellings())
-    && covers(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentRefusalWire", spellings: refusal_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_device_wire.GoogleEnrolmentRefusalWire", spellings: refusal_arm_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_device_wire.StoredEnrolmentFieldWire", spellings: stored_field_spellings())
     && covers(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentStandingWire", spellings: standing_spellings())
     && covers(facts: facts, name: "extdeps.apple.apns.ApnsEnvironment", spellings: apns_spellings())
     && covers(facts: facts, name: "gunbc.auth.approval_capability.ProposedDecision", spellings: decision_spellings())
@@ -90,10 +101,10 @@ test fn supplied_arm_lists_cover_the_declared_arms() -> Bool {
 // RED: the same comparison refuses a list one arm short, a list one arm long, and an undeclared name.
 test fn the_cover_comparison_refuses_a_list_that_is_not_the_declared_arms() -> Bool {
   let facts = decl_facts(pool_roots: ["dag", "src/v2"])
-  let refusal = "gunbc.auth.approval_device_wire.EnrolmentRefusalWire"
-  !covers(facts: facts, name: refusal, spellings: filter(refusal_spellings(), x => x != "code_not_issued"))
-    && !covers(facts: facts, name: refusal, spellings: concat(refusal_spellings(), ["extra"]))
-    && !covers(facts: facts, name: "gunbc.auth.approval_device_wire.NoSuchSum", spellings: refusal_spellings())
+  let refusal = "gunbc.auth.approval_device_wire.GoogleEnrolmentRefusalWire"
+  !covers(facts: facts, name: refusal, spellings: filter(refusal_arm_spellings(), x => x != "token_refused"))
+    && !covers(facts: facts, name: refusal, spellings: concat(refusal_arm_spellings(), ["extra"]))
+    && !covers(facts: facts, name: "gunbc.auth.approval_device_wire.NoSuchSum", spellings: refusal_arm_spellings())
 }
 
 fn covers(facts: List<DeclFact>, name: String, spellings: List<String>) -> Bool {

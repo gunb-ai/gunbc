@@ -37,6 +37,8 @@ data refusal_reabsorbed_by_intermediate_default: RecurringFailureMode = Recurrin
   ],
 
   evidence: [
-    decl_ref(module_path: "v2.extdeps.languages.bash_orch_if", decl_name: "bash_orch_if_leaf_text"),
+    decl_ref(module_path: "v2.extdeps.languages.bash_orch_if", decl_name: "bash_path_predicate_target_model"),
+    decl_ref(module_path: "v2.extdeps.languages.bash_orch_if", decl_name: "bash_path_intent_invalid_diagnostic"),
+    decl_ref(module_path: "test.claim.path_predicate_bash_lowering_witness", decl_name: "lowered"),
   ],
 }

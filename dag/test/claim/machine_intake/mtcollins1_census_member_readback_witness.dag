@@ -26,7 +26,7 @@ import gunbc.host_command_binding {
   Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
 }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { RemoteAnswer }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

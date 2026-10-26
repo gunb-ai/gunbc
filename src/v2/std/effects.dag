@@ -1,7 +1,7 @@
 module v2.std.effects
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, ComputationNode, Edge, Authored, Node, Symbol, Transform, TypeNode }
+import v2.std.node { Atom, Conj, ComputationNode, Edge, Authored, Node, Symbol, Transform, TypeNode, NotADeclaration }
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
   PostAlways, CreateIfAbsent, KeylessFallback
@@ -132,11 +132,13 @@ fn key_source_node(key_source: SubstrateKeySource) -> Node {
         children: [
           Edge {
             label: Authored { name: ^key_source_path_param_field },
-            target: atom_node(s: ^key_source_path_param_field)
+            target: atom_node(s: ^key_source_path_param_field),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^key_source_path_param_value_field },
-            target: atom_node(s: p)
+            target: atom_node(s: p),
+            declaration: NotADeclaration
           },
         ],
         occurrence_id: OccurrenceSynthetic
@@ -147,11 +149,13 @@ fn key_source_node(key_source: SubstrateKeySource) -> Node {
         children: [
           Edge {
             label: Authored { name: ^key_source_input_field_field },
-            target: atom_node(s: ^key_source_input_field_field)
+            target: atom_node(s: ^key_source_input_field_field),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^key_source_input_value_field },
-            target: atom_node(s: f)
+            target: atom_node(s: f),
+            declaration: NotADeclaration
           },
         ],
         occurrence_id: OccurrenceSynthetic
@@ -165,11 +169,13 @@ fn keyed_shape_node(variant_marker: Symbol, key_source: SubstrateKeySource) -> N
     children: [
       Edge {
         label: Authored { name: variant_marker },
-        target: atom_node(s: variant_marker)
+        target: atom_node(s: variant_marker),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^idempotent_operation_key_source_field },
-        target: key_source_node(key_source: key_source)
+        target: key_source_node(key_source: key_source),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: OccurrenceSynthetic
@@ -201,11 +207,13 @@ fn classified_idempotent_effect_node(shape: EffectShape<SubstrateKeySource>) -> 
     children: [
       Edge {
         label: Authored { name: ^effect_shape_is_idempotent_field },
-        target: atom_node(s: ^effect_shape_is_idempotent_field)
+        target: atom_node(s: ^effect_shape_is_idempotent_field),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^effect_shape_inner_field },
-        target: effect_shape_node(shape: shape)
+        target: effect_shape_node(shape: shape),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: OccurrenceSynthetic
@@ -218,7 +226,8 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
     children: [
       Edge {
         label: Authored { name: ^idempotent_operation_callable_field },
-        target: atom_node(s: operation.callable)
+        target: atom_node(s: operation.callable),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: OccurrenceSynthetic
@@ -233,11 +242,13 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
         children: [
           Edge {
             label: Authored { name: ^effect_shape_inner_field },
-            target: classified_idempotent_effect_node(shape: ReadEffect)
+            target: classified_idempotent_effect_node(shape: ReadEffect),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^idempotent_operation_callable_field },
-            target: idempotent_operation_ref_node(operation: operation)
+            target: idempotent_operation_ref_node(operation: operation),
+            declaration: NotADeclaration
           },
         ],
         occurrence_id: OccurrenceSynthetic
@@ -248,11 +259,13 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
         children: [
           Edge {
             label: Authored { name: ^effect_shape_inner_field },
-            target: classified_idempotent_effect_node(shape: UpsertEffect { key_source: key_source })
+            target: classified_idempotent_effect_node(shape: UpsertEffect { key_source: key_source }),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^idempotent_operation_callable_field },
-            target: idempotent_operation_ref_node(operation: operation)
+            target: idempotent_operation_ref_node(operation: operation),
+            declaration: NotADeclaration
           },
         ],
         occurrence_id: OccurrenceSynthetic
@@ -263,11 +276,13 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
         children: [
           Edge {
             label: Authored { name: ^effect_shape_inner_field },
-            target: classified_idempotent_effect_node(shape: DeleteEffect { key_source: key_source })
+            target: classified_idempotent_effect_node(shape: DeleteEffect { key_source: key_source }),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^idempotent_operation_callable_field },
-            target: idempotent_operation_ref_node(operation: operation)
+            target: idempotent_operation_ref_node(operation: operation),
+            declaration: NotADeclaration
           },
         ],
         occurrence_id: OccurrenceSynthetic
@@ -280,11 +295,13 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             label: Authored { name: ^effect_shape_inner_field },
             target: classified_idempotent_effect_node(
               shape: CreateEffect { cause: CreateIfAbsent { key_source: key_source } }
-            )
+            ),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^idempotent_operation_callable_field },
-            target: idempotent_operation_ref_node(operation: operation)
+            target: idempotent_operation_ref_node(operation: operation),
+            declaration: NotADeclaration
           },
         ],
         occurrence_id: OccurrenceSynthetic
@@ -298,11 +315,13 @@ fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOpe
     children: [
       Edge {
         label: Authored { name: ^idempotent_apply_state_field },
-        target: state
+        target: state,
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^idempotent_apply_operation_field },
-        target: idempotent_operation_witness_node(subject: subject)
+        target: idempotent_operation_witness_node(subject: subject),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: OccurrenceSynthetic

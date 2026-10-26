@@ -7,14 +7,13 @@ import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import std.algebra { FreeSemigroup, string_contains }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host_unit_hold { admit_unit_hold_subject, UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided }
 import gunbc.host.managed_host {
   managed_host_fixture,
   managed_host_admission,
   mtcollins1_managed_host_admission,
   project_managed_host_admission,
   OrdinaryMember,
-  ResetNoUnitHold,
-  ResetUnitHoldRequired,
   managed_host_smpro_subject,
   managed_hosts,
 }
@@ -42,7 +41,7 @@ import gunbc.host.smpro_platform_capability {
   MixedRosterWithoutInstalledSelection, AccessUnobserved, ControlRouteNotSecured, ControlEndpointMismatch,
 }
 import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
-import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.toolchain.types { Aarch64 }
 import extdeps.cpu.ampere { altra_q6430_catalog, ampere_altra_soc_family, ampere_altra_max_soc_family }
 import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
 import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
@@ -54,6 +53,7 @@ import gunbc.host.host_reset_subject_roster {
   ResetRosterHostUnderDeclaredDrop,
   ResetSubjectAdmitted,
   ResetSubjectControllerNotAdmitted,
+  ResetSubjectHoldUndecided,
   ResetSubjectNoSelection,
   ResetSubjectUnbound,
   admit_reset_subject,
@@ -126,10 +126,12 @@ test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission()
           ResetSubjectUnbound { standing: _ } => false
           ResetSubjectNoSelection { host: _, cause: _ } => false
           ResetSubjectControllerNotAdmitted { admission: _ } => false
+          ResetSubjectHoldUndecided { host: _ } => false
         }
-        && match h.unit_hold {
-          ResetUnitHoldRequired { key: _, store_host: _ } => true
-          ResetNoUnitHold => false
+        && match admit_unit_hold_subject(host: h) {
+          UnitHoldSubjectAdmitted { subject: _ } => true
+          UnitHoldNotRequired { host: _ } => false
+          UnitHoldUndecided { host: _ } => false
         })
     && count(roster) == 1
     && roster |> all(r => match r {
@@ -204,7 +206,7 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, smpro: h.smpro)
     }
     let mismatched = match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
       BmcControlEndpointMismatch { observed: ob, secured: _ } => (ob.host as String) == "fixture-other-bmc"
@@ -229,7 +231,7 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
     // operator's evidence, which now reports a build no release row has been established for -- so its
     // boot selection derives to nothing. Rewriting a probe receipt to say "now it runs 9.9.9" is exactly
     // what the release stopped being read off, so it is no longer a lever any witness may pull.
-    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, secure: h.secure, smpro: h.smpro)
     let bound = match bmc_control_binding(observed: unselected.access, secured: unselected.secure) {
       BmcControlBound { route: _ } => true
       BmcControlAccessUnobserved { endpoint: _ } => false
@@ -241,6 +243,7 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
       ResetSubjectAdmitted { subject: _ } => false
       ResetSubjectUnbound { standing: _ } => false
       ResetSubjectControllerNotAdmitted { admission: _ } => false
+      ResetSubjectHoldUndecided { host: _ } => false
     }
     // TWO LEGS, because the operator's evidence is ONE ARGUMENT and is keyed by controller: the roster
     // carried under the unread-build reading drops the machine with no selection entirely, and the roster
@@ -251,6 +254,29 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
     let roster_capable = reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: [h])
     bound && refused && count(roster_unselected) == 0 && count(roster_capable) == 1
       && roster_capable |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A BOUND, SELECTABLE HOST WITH NO UNIT HOLD DECISION IS NOT A RESET SUBJECT. The real row's
+// standings under a host name gunbc.host.host_maintenance_hold_reason unit_hold_decision has no row for,
+// under the committed evidence: it binds, and its controller gives it a selection and a handoff (the
+// selection is keyed by controller, not by name), so the ONLY thing it lacks is a hold decision. The
+// reset admission refuses it as undecided -- never as a subject that needs no hold -- and the roster
+// over it and the real row is exactly mtcollins1. A hold admission that read a missing decision as
+// ResetNoUnitHold admits it and turns this red.
+test fn w_a_bound_selectable_host_with_no_hold_decision_is_not_a_reset_subject() -> Bool {
+  managed_hosts() |> all(h => {
+    let undecided = managed_host_fixture(host: "fixture-undecided-host", access: h.access, secure: h.secure, smpro: h.smpro)
+    let refused = match admit_reset_subject(evidence: megarac_operation_evidence(), host: undecided) {
+      ResetSubjectHoldUndecided { host: x } => (x as String) == "fixture-undecided-host"
+      ResetSubjectAdmitted { subject: _ } => false
+      ResetSubjectUnbound { standing: _ } => false
+      ResetSubjectNoSelection { host: _, cause: _ } => false
+      ResetSubjectControllerNotAdmitted { admission: _ } => false
+    }
+    let roster = reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: [undecided, h])
+    refused && count(roster) == 1
+      && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
   }) && count(managed_hosts()) == 1
 }
 
@@ -486,57 +512,8 @@ test fn w_a_board_admitting_carrying_and_non_carrying_families_is_unestablished(
   mixed && no_read && unanimous_still_carries && unanimous_no_still_absent
 }
 
-// ================================================================================================
-// THE SUPPLIED x86 SPECIMEN -- a witness input, NOT a corpus fact and NOT an observed machine.
-//
-// WHAT THIS IS. The fleet has NO x86 machine, so the claim 'an x86 machine is a valid controlled
-// machine' cannot be witnessed against a real one yet. Everything below is a SUPPLIED VALUE AT THE
-// INTERFACE UNDER TEST (DESIGN 3, 'a witness discriminates at one interface'): a board label, a vendor
-// name and a BMC firmware family invented for the purpose, deliberately kept in this test module and
-// NEVER in extdeps, never in a production roster, and never imported by production code. Nothing in
-// this file's production dependencies can see these names.
-//
-// WHAT IS REAL, AND WHY THAT IS WHAT THE CLAIM NEEDS. The claim is about the PLATFORM VERDICT, so the
-// part that decides it is the cited AMD silicon: x86_supplied_fixture_families carries the corpus's own
-// AMD SoC family, whose model rows are the cited 7950X3D catalog row (extdeps.cpu.amd). NotCarried is
-// therefore produced by the cited carrying set against real silicon facts, not by an invented platform
-// -- the fixture only supplies the board wrapper around it.
-//
-// RESTORATION TRIGGER (manager ruling, 2026-10-16). Real x86 hardware has arrived: 2x Supermicro
-// H11SSL-i REV 2.0 with 2x AMD EPYC 7702P (Rome, Zen 2, 64 cores), boards delivered 2026-10-16. When
-// an H11SSL-i's FRU, BMC and CPU reads are taken at arrival, THIS FIXTURE IS DELETED and the claims
-// re-point at the observed machine: a Supermicro board module in extdeps (board row + authority + FRU
-// receipt from the read bytes), a board->SoC edge for it, and an EPYC 7702P silicon row in
-// extdeps.cpu.amd citing AMD's own product documentation. Those rows are authored FROM THE READS AND
-// CITED VENDOR DOCUMENTS -- not from anyone's memory of the specifications. Until then this file is the
-// only place these names exist, and the PR says so.
-// ================================================================================================
-
-// THE SUPPLIED BOARD LABEL. A hypothesis for the interface under test, named as such; it is not a
-// Supermicro product claim and must never be read as one.
-data x86_supplied_fixture_board_label: NonEmptyStr = "SUPPLIED-FIXTURE-x86-Board-NotObserved"
-
-// THE SUPPLIED SoC ROSTER: one family, the corpus's cited AMD family, so the NotCarried verdict is
-// produced by real silicon facts. Not a fleet claim: no board in the corpus admits it.
-data x86_supplied_fixture_families: FreeSemigroup<SoCFamily> = FreeSemigroup {
-  head: amd_7950x3d_soc_family,
-  tail: [],
-}
-
-test fn w_an_x86_platform_with_no_smpro_facility_is_not_carried_by_the_cited_set() -> Bool {
-  // The supplied roster's verdict comes from the cited carrying set applied to the cited AMD family.
-  match smpro_facility_of_families(families: x86_supplied_fixture_families) {
-    SmproFacilityNotCarried { family: f } =>
-      // the family answered negatively is the AMD family itself, and it really is x86 silicon
-      soc_family_eq(a: f, b: amd_7950x3d_soc_family)
-      && match soc_family_architecture(family: amd_7950x3d_soc_family) {
-        Present { value: a } => a == X86_64
-        Absent => false
-      }
-    SmproFacilityCarried { family: _ } => false
-    SmproFacilityUnestablished { cause: _ } => false
-  }
-}
+// The supplied x86 stand-in that stood here is dissolved: the x86 NotCarried verdict is witnessed against
+// the cited H11SSL edge in gunbc test claim host h11ssl_smpro_platform_witness.
 
 // RED (review 81149, finding 3): A FAMILY ROW THAT MERELY SPELLS ITS NAME 'Altra' DOES NOT CARRY SMpro.
 // Membership was first decided by comparing `name`, which handed the SMpro facility to any row that
@@ -590,7 +567,7 @@ test fn w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject() -> Bool {
     // no separate licensing step left to delete: making the gate license everything -- the pre-rework
     // behaviour -- turns this red, because a NotCarried row would mint a subject.
     let not_carried_binds_nothing = match managed_host_smpro_subject(
-      host: managed_host_fixture(host: h.host, access: h.access, secure: h.secure, unit_hold: h.unit_hold,
+      host: managed_host_fixture(host: h.host, access: h.access, secure: h.secure,
         smpro: SmproPlatformNotCarried { family: amd_7950x3d_soc_family }),
       control: bmc_control_binding(observed: h.access, secured: h.secure)) {
       SmproSubjectNotCarried { family: f } => soc_family_eq(a: f, b: amd_7950x3d_soc_family)
@@ -598,7 +575,7 @@ test fn w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject() -> Bool {
     }
     // ...and on an UNKNOWN platform, whose reason survives rather than collapsing into not-carried.
     let unknown_binds_nothing_with_its_own_reason = match managed_host_smpro_subject(
-      host: managed_host_fixture(host: h.host, access: h.access, secure: h.secure, unit_hold: h.unit_hold,
+      host: managed_host_fixture(host: h.host, access: h.access, secure: h.secure,
         smpro: SmproPlatformUnestablished {
           cause: MixedRosterWithoutInstalledSelection { total: 2, carrying: 1 },
         }),
@@ -637,7 +614,7 @@ test fn w_the_supplied_x86_specimen_is_managed_and_carries_no_smpro_site() -> Bo
         host: h.host,
         access: h.access,
         secure: h.secure,
-        unit_hold: h.unit_hold,
+       
         smpro: SmproPlatformNotCarried { family: amd_7950x3d_soc_family },
       )
       // (1) the platform answers with the cited AMD family, negatively -- no site anywhere in the arm
@@ -772,7 +749,7 @@ test fn w_only_an_absent_interface_joins_the_roster_a_failed_read_does_not() -> 
 test fn w_a_refused_smpro_site_on_a_bound_route_reports_a_refused_site_not_a_missing_controller() -> Bool {
   managed_hosts() |> all(h => {
     let refused = managed_host_fixture(
-      host: h.host, access: h.access, secure: h.secure, unit_hold: h.unit_hold,
+      host: h.host, access: h.access, secure: h.secure,
       // THE CAUSE IS THE CLAIM'S OWN: SiteHasNoTargets is what smpro_site_admit answers to an empty
       // target roster, so this is the shape a real read produces, not an arm nobody can reach.
       smpro: SmproPlatformSiteRefused { family: ampere_altra_soc_family, cause: SiteHasNoTargets },
@@ -861,7 +838,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       // claim goes RED.
       let not_carried = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure,
           smpro: SmproPlatformNotCarried { family: amd_7950x3d_soc_family },
           receipt: r.receipt,
           current_subject: Present { value: r.binding.subject },
@@ -884,7 +861,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       // witness would have caught it. Now one does, in both directions.
       let site_refused = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure,
           smpro: SmproPlatformSiteRefused {
             family: ampere_altra_soc_family, cause: SiteHasNoTargets,
           },
@@ -897,7 +874,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       )
       let unknown = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure,
           smpro: SmproPlatformUnestablished { cause: NoBoardRowBound { endpoint: fixture_bmc_endpoint } },
           receipt: r.receipt,
           current_subject: Present { value: r.binding.subject },
@@ -941,7 +918,7 @@ test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> 
       SmproSiteRefused { cause: _ } => false
       SmproSiteAdmitted { site: admitted_site } => {
         let crossed = managed_host_fixture(
-          host: h.host, access: h.access, secure: h.secure, unit_hold: h.unit_hold,
+          host: h.host, access: h.access, secure: h.secure,
           smpro: SmproPlatformCarried { family: ampere_altra_soc_family, site: admitted_site },
         )
         match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {

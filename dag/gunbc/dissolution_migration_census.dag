@@ -88,7 +88,6 @@ fn dissolves_by_greening_rows() -> List<LifecycleResidueRow> {
 // pattern and would be mis-migrated by a name-driven sweep.
 fn refusal_or_reason_rows() -> List<LifecycleResidueRow> {
   [
-    residue_row(module_path: "gunbc.live_deploy.emit", decl_name: "live_deploy_systemd_retirement_emit_refused_poison", class: RefusalOrReasonCarrier, rationale: "a located poison marker deliberately not valid deploy shell, so the drift gate reds"),
     residue_row(module_path: "gunbc.stage0.stage0_rust_lifecycle_totality", decl_name: "lifecycle_totality_retirement_trigger_underived_reason", class: RefusalOrReasonCarrier, rationale: "the reason a disposition path set cannot be derived, carried beside the refusal"),
     residue_row(module_path: "gunbc.roadmap.roadmap_authority", decl_name: "observation_raw_print_retirement_contract_note", class: RefusalOrReasonCarrier, rationale: "names the discriminating binding a sibling contract deliberately withholds"),
   ]

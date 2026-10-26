@@ -18,8 +18,8 @@ import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
 
 fn auth_step_matches(st: Step) -> Bool {
   match st {
-    UsesStep { name: _, id, uses: _, with: args, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match id { Present { value: value } => value == "wif_auth" && match args {
+    UsesStep { name: _, id, uses: _, with: args, env: _, if_condition: cond, continue_on_error: _, timeout_minutes: _ } =>
+      match id { Present { value: value } => value == "wif_auth" && (match cond { Present { value: c } => c == "github.ref == 'refs/heads/main'" Absent => false }) && match args {
         Present { value: fields } => any(fields, f => f.key == "service_account" && match f.value { YamlString { value: v } => v == (printer_service_account as String) _ => false })
           && any(fields, f => f.key == "workload_identity_provider" && match f.value { YamlString { value: v } => v == printer_provider_resource() _ => false })
         Absent => false
@@ -27,6 +27,8 @@ fn auth_step_matches(st: Step) -> Bool {
     _ => false
   }
 }
+// The printer credential is signed in only on reviewed main (design A, 2026-10-25): the one auth step
+// carries the exact main-ref condition, so a branch run of this job holds no printer token.
 test fn separate_job_uses_dedicated_identity() -> Bool {
   let job = fleet_converge_printer_job()
   job.id == "printer" && match job.environment { Present { value } => value == "printer-lan" Absent => false }
@@ -36,8 +38,9 @@ test fn separate_job_uses_dedicated_identity() -> Bool {
 test fn observer_has_no_fleet_ssh_demand() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: PrinterWorkflow) { FleetSshKeyNotConsumed => true _ => false }
 }
+// Re-contracted post-#14359: fleet_converge_checkout_ref widened to LogicalOr{needs.build.outputs.revision, github.sha}; the left arm is the gated plan-revision job's OUTPUT, never the raw dispatch input. The security conjuncts below (event-sha checkout + no expected_revision) are the wall; the old == github.sha literal here was #14359's stale contract, red on main (control run 7a9928584d).
 test fn trusted_code_cannot_be_replaced_by_dispatch_revision() -> Bool {
-  fleet_converge_checkout_ref_expr == "${{ github.sha }}"
+  fleet_converge_checkout_ref_expr == "${{ needs.build.outputs.revision || github.sha }}"
     && fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
     && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
     && string_contains(s: fleet_converge_shared_job_if, pattern: "github.event.inputs.mode != 'printer'")

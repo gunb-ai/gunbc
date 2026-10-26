@@ -102,14 +102,6 @@ test fn witness_deploy_job_not_on_ubicloud_runner() -> Bool {
   }
 }
 
-test fn witness_preflight_script_checks_target_host() -> Bool {
-  let script = deploy_target_host_preflight_script(access: ci_deploy_srv1_access)
-  string_contains(s: script, pattern: "deploy-target-host: PASS host=srv1")
-    && string_contains(s: script, pattern: deploy_target_host_refusal_local)
-    && string_contains(s: script, pattern: "hostname -s")
-    && string_contains(s: script, pattern: "printenv RUNNER_NAME")
-}
-
 test fn witness_local_proof_requires_host_identity() -> Bool {
   match deploy_target_proof_from_access(access: ci_deploy_srv1_access) {
     RunnerIdentityOnHost { host: id } => id == operator_host_srv1

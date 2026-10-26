@@ -33,6 +33,7 @@ import v2.std.node {
   well_formed,
   ArrowBodyEdge,
   core_edge,
+  NotADeclaration
 }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
@@ -63,11 +64,11 @@ fn fold_call_atom(id: Symbol) -> Node {
 }
 
 fn fold_call_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn fold_call_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn fold_call_domain_signature() -> DeclaredSignatureEdges {

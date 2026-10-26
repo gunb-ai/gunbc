@@ -2,7 +2,7 @@ module gunbc.scm.checkout
 
 import std.types { List, String, NonEmptyStr }
 
-import v2.std.node { Node, Edge, node_synthetic }
+import v2.std.node { Node, Edge, node_synthetic, NotADeclaration }
 
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -116,7 +116,7 @@ fn checkout_edge_step(store: ObjectStore, acc: CheckoutEdgeAcc, stored: StoredEd
           CheckoutEdgeAcc { edges: acc.edges, refusal: Present { value: cause } }
         CheckedOut { program: child } =>
           CheckoutEdgeAcc {
-            edges: concat([Edge { label: stored.label, target: child }], acc.edges),
+            edges: concat([Edge { label: stored.label, target: child, declaration: NotADeclaration }], acc.edges),
             refusal: acc.refusal,
           }
       }

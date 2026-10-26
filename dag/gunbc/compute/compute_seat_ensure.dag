@@ -6,7 +6,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, UpsertClassification, ObservationVerdict, Converged, Drifted, Inaccessible, UnknownRefused }
 import std.list { distinct_by_key }
 import std.measure { Kibibyte, kibibyte, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
-import gunbc.durable_cas_file_store { cas_slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
+import gunbc.durable_cas_file_store { file_slot_store, cas_slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, DispatchOwned, OwnerUnrecorded,
@@ -275,7 +275,7 @@ fn seat_apply_plan(attempts_root: NonEmptyStr, leases_dir: String, subject: Comp
 }
 
 fn compute_seat_ensure_in(attempts_root: NonEmptyStr, leases_dir: String, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource, owner: SeatOwnerStanding) -> SeatEnsureOutcome {
-  let reading = attempt_slot_read(root: attempts_root, reference: reference)
+  let reading = attempt_slot_read(store: file_slot_store(root: attempts_root), reference: reference)
   let lifecycle = match reading {
     AttemptSlotHeld { record: rec, generation: _ } => unit_lifecycle_from_source(source: source, unit: rec.unit as NonEmptyStr)
     _ => UnitLifecycleUnknown { detail: "no attempt record to observe a unit for" }

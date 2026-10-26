@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.binding_diff_base_and_head_measured_by_different_instrument_revisions
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data binding_diff_base_and_head_measured_by_different_instrument_revisions: RecurringFailureMode = RecurringFailureMode {
+  identity: "binding_diff_base_and_head_measured_by_different_instrument_revisions" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the binding diff measures base and head with a single instrument revision (the head census run over each revision subject modules), so the instrument own code never differs between the sides -- executed check = a census-row-format change on the head that leaves every untouched module equal between base and head on the namespace-wave-binding-diff route" } },
+
+  receipts: [
+    "binding diff base and head measured by different instrument revisions: the namespace-wave-binding-diff reads base rows from the merge base's own seed and head rows from the head's, and the census instrument's code lives in the same subject roots the census measures. A PR that changes the census row format therefore makes every module's rows differ between the two sides (specimen, found on #14324: the census locus field made roughly 190 modules differ while the PR edited 10 files, and the label timed out in the join). The vintage-skew is not a wave edit, and no join over the two sides can tell them apart.",
+
+    "REPAIR AT THE FIRST OCCURRENCE: the census change lands in its own predecessor PR, so the next gate PR's base is already the same vintage. This fixes it once. Every future PR that changes the census re-hits the skew, because the hand-listed alternative (overlay the head's census files on the base tree) is a second authority in Rust that rots as the census closure grows.",
+
+    "ATTAINABLE CEILING: structurally guaranteed once base and head are measured by ONE instrument revision. NEXT-RUNG TRIGGER, at capability grain: the binding diff measures base and head with a single instrument revision (the head's census run over each revision's subject modules), so the instrument's own code never differs between the sides. Until then a census-changing PR splits its census change out ahead of the gate.",
+  ],
+
+  evidence: [],
+}

@@ -42,7 +42,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   edges_conform,
-  is_empty_conj_root
+  is_empty_conj_root,
+  NotADeclaration
 }
 
 type SugarLowering
@@ -295,7 +296,8 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
             Accepted {
               value: Edge {
                 label: Authored { name: name },
-                target: sugar_type_node(connective: Conj, children: [], n: variant)
+                target: sugar_type_node(connective: Conj, children: [], n: variant),
+                declaration: NotADeclaration
               },
               diagnostics: None
             }

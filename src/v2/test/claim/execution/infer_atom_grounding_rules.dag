@@ -28,7 +28,7 @@ import v2.std.compilers.target_model {
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Conj,
   Authored,
@@ -88,7 +88,7 @@ fn atom_grounding_count_evidence(
   match atom_grounding_node_evidence(inferred: inferred, n: n) {
     Absent => acc
     Present { value: evidence } =>
-      if evidence == wanted { acc + 1 } else { acc }
+      if node_same_occurrence(a: evidence, b: wanted) { acc + 1 } else { acc }
   }
 }
 
@@ -221,14 +221,14 @@ fn atom_grounding_standalone_evidence(n: Node) -> Optional<Node> {
 test fn declared_inhabitant_record_derives_type_denotation_kind_holds() -> Bool {
   match atom_grounding_standalone_evidence(n: dag_int_inhabitant_node()) {
     Absent => false
-    Present { value: evidence } => evidence == kind_node(kind: TypeDenotationKind)
+    Present { value: evidence } => node_same_occurrence(a: evidence, b: kind_node(kind: TypeDenotationKind))
   }
 }
 
 test fn declared_inhabitant_fact_derives_type_fact_kind_holds() -> Bool {
   match atom_grounding_standalone_evidence(n: dag_inhabitant_atom(id: ^dag_surface_spelling_int)) {
     Absent => false
-    Present { value: evidence } => evidence == kind_node(kind: TypeFactKind)
+    Present { value: evidence } => node_same_occurrence(a: evidence, b: kind_node(kind: TypeFactKind))
   }
 }
 
@@ -251,14 +251,14 @@ fn predicate_atom(id: Symbol) -> Node {
 test fn ordering_predicate_atom_derives_ordering_predicate_type_holds() -> Bool {
   match atom_grounding_standalone_evidence(n: predicate_atom(id: ordering_predicate_wire_symbol(predicate: IsLess))) {
     Absent => false
-    Present { value: evidence } => evidence == target_model_ordering_predicate_type_node()
+    Present { value: evidence } => node_same_occurrence(a: evidence, b: target_model_ordering_predicate_type_node())
   }
 }
 
 test fn equality_predicate_atom_derives_equality_predicate_type_holds() -> Bool {
   match atom_grounding_standalone_evidence(n: predicate_atom(id: equality_predicate_wire_symbol(predicate: IsNotEqual))) {
     Absent => false
-    Present { value: evidence } => evidence == target_model_equality_predicate_type_node()
+    Present { value: evidence } => node_same_occurrence(a: evidence, b: target_model_equality_predicate_type_node())
   }
 }
 

@@ -27,10 +27,6 @@ import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
   SudoNopasswdGrantListProbeShape,
 }
-import extdeps.sudo.nopasswd_execute_probe_check_op {
-  sudo_nopasswd_execute_probe_shell_condition,
-  sudo_nopasswd_grant_list_shell_condition,
-}
 import gunbc.ci.ci_deploy_access {
   DeployAccess,
   PrivilegedCommand,
@@ -127,78 +123,6 @@ fn deploy_sudoers_dropin_body(access: DeployAccess) -> String {
   deploy_sudoers_dropin_body_for(accesses: deploy_accesses_on_host(host: access.host))
 }
 
-// THE ELEVATION PREFIX IS READ FROM extdeps.sudo.elevation sudo_elevate_argv, not typed here, so the
-// two tokens that cross the privilege boundary have one authority in the repository.
-fn deploy_sudoers_elevated(command: List<String>, tail: List<Node>) -> Node {
-  bash_build_command_with_words(words: concat(map(sudo_elevate_argv(command: command), w => bash_build_word_lit(text: w)), tail))
-}
-
-fn deploy_sudoers_stage_word() -> Node {
-  bash_build_word_concat_from_nodes(parts: [
-    bash_build_word_var(name: "_gunbc_stage"),
-    bash_build_word_lit(text: "/gunbc-deploy.sudoers"),
-  ])
-}
-
-// THE FULL ROSTER IS DEMANDED HERE, AFTER THE INSTALL, AND A MISS STOPS THE SCRIPT BEFORE ANY OTHER
-// MUTATION. The pre-mutation gate demands only what the install spends
-// (gunbc.ci.ci_deploy_access deploy_access_sudoers_install_scope), because the install is what grants
-// the rest; so this is where the rest is required, one probe per privileged command, with the same
-// probe kind the roster row declares: an execute check runs the sudo -n argv of
-// extdeps.sudo.nopasswd_execute_probe_check_op sudo_nopasswd_execute_probe_argv, and a grant-list
-// check (a binary that may not be installed yet) requires an exact NOPASSWD row in `sudo -n -l`, the
-// same exact-row reading as sudo_nopasswd_grant_list_line_admits_probe. The refusal is loud and
-// exits nonzero; it is not a warning.
-data deploy_sudoers_post_install_refusal_prefix: String = "deploy_access: typed refusal after sudoers install, before any other mutation -- roster command not granted by the installed drop-in:"
-
-fn deploy_sudoers_post_install_refusal(cmd: PrivilegedCommand) -> List<Node> {
-  [
-    bash_build_with_redir(
-      inner: bash_build_command_from_lits(lits: ["echo", concat(concat(deploy_sudoers_post_install_refusal_prefix, " "), cmd.grant.command_path as String)]),
-      redir: ^bash_production_fold_redir_stdout_to_stderr
-    ),
-    bash_build_exit(code: "1"),
-  ]
-}
-
-fn deploy_sudoers_post_install_probe_stmt(cmd: PrivilegedCommand) -> Node {
-  let probe = match cmd.grant.probe {
-    NopasswdExecuteCheck { check_argv: a } =>
-      sudo_nopasswd_execute_probe_shell_condition(probe: SudoNopasswdExecuteProbeShape {
-        command_path: cmd.grant.command_path,
-        check_argv: a,
-      })
-    NopasswdGrantListCheck =>
-      sudo_nopasswd_grant_list_shell_condition(probe: cmd.grant.command_path as SudoNopasswdGrantListProbeShape)
-  }
-  bash_build_if_from_stmts(cond: bash_build_negation(inner: probe), then_stmts: deploy_sudoers_post_install_refusal(cmd: cmd))
-}
-
-fn deploy_sudoers_post_install_roster_probe_stmts(access: DeployAccess) -> List<Node> {
-  map(access.privileged_commands, cmd => deploy_sudoers_post_install_probe_stmt(cmd: cmd))
-}
-
-// visudo and install are read from gunbc.fleet.fleet_posix_accounts ci_runner_sudo_binary_path, the same
-// rows ci_runner_sudoers_install_binaries names, so what this step spends and what the pre-install
-// gate demands cannot drift apart.
-data deploy_sudoers_install_stmts_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: deploy_sudoers_install_stmts is the bash body of the deploy preamble, shadowed by the typed gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host (live on the retract route). DISSOLVES WHEN the apply route takes live_deploy_apply_preamble_on_host: the ONE apply PR switches the apply root and deletes this function. NOT satisfied by the typed preamble existing, nor by a claim comparing the two bodies." as NonEmptyStr,
-)
-
-fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
-  let visudo = ci_runner_sudo_binary_path(b: SudoVisudo) as String
-  let install = ci_runner_sudo_binary_path(b: SudoInstall) as String
-  let dropin = gunbc_deploy_sudoers_dropin as String
-  concat(
-    [
-      deploy_sudoers_elevated(command: [visudo, "-cf"], tail: [deploy_sudoers_stage_word()]),
-      deploy_sudoers_elevated(command: [install, coreutils_install_mode_flag as String, deploy_sudoers_file_mode as String], tail: [deploy_sudoers_stage_word(), bash_build_word_lit(text: dropin)]),
-      bash_build_command_from_lits(lits: argv_words(command: visudo_check_command(file: dropin))),
-    ],
-    deploy_sudoers_post_install_roster_probe_stmts(access: access)
-  )
-}
-
 // THE SAME INSTALL, AS A TYPED ARGV — the sibling of deploy_sudoers_install_stmts for the typed route
 // (gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host). Both read deploy_sudoers_file_mode
 // and coreutils_install_mode_flag, so the `0440` policy is spelled ONCE in this module and neither route
@@ -213,26 +137,4 @@ fn deploy_sudoers_install_argv(stage: String, dropin: String) -> ArgvCommand {
   sudo_elevate_command(
     command: [install, coreutils_install_mode_flag as String, deploy_sudoers_file_mode as String, stage, dropin],
   )
-}
-
-// The String seam into gunbc.live_deploy.emit deploy_raw cannot carry diagnostics, so a refused
-// emission becomes a marker that is not valid shell and fails the deploy step loudly. It is never a
-// partial script (DESIGN 5: refuse, never widen).
-data deploy_sudoers_install_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ gunbc.ci.ci_deploy_sudoers deploy_sudoers_install_shell: the bash serializer refused the install program; this marker is not valid shell\n"
-
-fn deploy_sudoers_install_shell(access: DeployAccess) -> String {
-  let heredoc = bash_emit_heredoc(
-    path_spelling: "\"$_gunbc_stage/gunbc-deploy.sudoers\"",
-    delimiter: "GUNBC_SUDOERS_EOF",
-    body: deploy_sudoers_dropin_body(access: access)
-  )
-  match heredoc {
-    Rejected { diagnostics: _ } => deploy_sudoers_install_refused_poison
-    Accepted { value: dropin_text, diagnostics: _ } =>
-      match bash_emit_stmts(statements: deploy_sudoers_install_stmts(access: access), set_e: false) {
-        Rejected { diagnostics: _ } => deploy_sudoers_install_refused_poison
-        Accepted { value: program, diagnostics: _ } =>
-          bash_emit_program_sequence_script(programs: [concat(dropin_text, "\n"), program])
-      }
-  }
 }

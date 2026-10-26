@@ -10,7 +10,7 @@ import v2.compiler.infer { InferredTree }
 import v2.std.change { AffectedDependency, AffectedExclusion, AffectedSet, AffectedSetDiagnostics, AffectedSetEvidence, AffectedSetFailClosed, AffectedSetProduced, AffectedSetReason, Change, ChangeSet, DependencyDependent, DependencyEndpoint, DependencySource, NodeChanged }
 import v2.std.dependency { Contains, DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy, dependency_lens }
 import v2.std.diagnostic { Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Accepted, None, Rejected, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_accepted }
-import v2.std.node { Arrow, Atom, Behavior, Bind, Branch, ComputationNode, Conj, Connective, Diff, Disj, Edit, Hash, Instantiation, Loop, Node, Path, Symbol, Transform, TypeNode, Value, content_hash }
+import v2.std.node { Arrow, Atom, Behavior, Bind, Branch, ComputationNode, Conj, Connective, Diff, Disj, Edit, Hash, Instantiation, Loop, Node, Path, Symbol, Transform, TypeNode, Value, content_hash, node_same_occurrence }
 import v2.std.node_reflection { coproduct_arm_keys }
 import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at, find_child_by_label }
 
@@ -303,7 +303,7 @@ fn dependency_in_lens_frontier(dependency: DependencyView) -> Bool {
 
 fn node_in_list(nodes: List<Node>, needle: Node) -> Bool {
   fold(nodes, init: false, f: fn(found, node) {
-    found || (node == needle)
+    found || node_same_occurrence(a: node, b: needle)
   })
 }
 
@@ -962,7 +962,7 @@ fn re_exec_frontier_from_diff(
 fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt {
   match find_child_by_name(root: node, name: ^affected_set_boundary_pure_receipt_edge) {
     Accepted { value: receipt, diagnostics: _ } =>
-      if receipt == affected_set_boundary_pure_receipt_node() {
+      if node_same_occurrence(a: receipt, b: affected_set_boundary_pure_receipt_node()) {
         BoundaryPruned {
           proof: UnchangedPureBoundary {
             content_hash: h
@@ -1177,7 +1177,7 @@ fn canonical_propagation_receipt(
   } else {
     match find_child_by_name(root: dependency.usage_site, name: ^affected_set_dimension_not_read_receipt_edge) {
       Accepted { value: receipt, diagnostics: _ } =>
-        if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
+        if node_same_occurrence(a: receipt, b: affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension)) {
           DoesNotPropagate {
             proof: DimensionNotRead {
               usage_site: dependency.usage_site,

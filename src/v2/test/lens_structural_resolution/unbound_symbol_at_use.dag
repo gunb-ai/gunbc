@@ -1,12 +1,11 @@
 module v2.test.lens_structural_resolution.unbound_symbol_at_use
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 
 import v2.std.dependency { DependencyView }
 
-import v2.std.node { Authored }
+import v2.std.node { node_same_occurrence, Authored, NotADeclaration }
 import std.types { Map }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.dependency { BindsTo, ClassifiedDependencyView, DependencyView }
@@ -27,7 +26,7 @@ data sr_unbound_use: Node = sr_unbound_claim_atom(s: ^sr_unbound_use_symbol)
 data sr_unbound_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
+    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_unbound_use, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -68,7 +67,7 @@ fn sr_unbound_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
   let resolved = sr_unbound_resolved_facts()
   PartialFunction {
     lookup: fn(key) {
-      if key == sr_unbound_use {
+      if node_same_occurrence(a: key, b: sr_unbound_use) {
         optional_absent()
       } else {
         optional_present(value: resolved)
@@ -80,8 +79,7 @@ fn sr_unbound_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
 fn sr_unbound_claim_tree() -> InferredTree {
   InferredTree {
     root: sr_unbound_decl,
-    facts: sr_unbound_claim_fact_map(),
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: sr_unbound_claim_fact_map()
   }
 }
 

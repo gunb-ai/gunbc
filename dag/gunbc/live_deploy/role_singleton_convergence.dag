@@ -558,7 +558,10 @@ type MarkerRead
   | MarkerReadRefused { cause: String }
 
 fn read_marker(arm: ObservationArm, path: NonEmptyStr) -> MarkerRead {
-  match unit_document_leg(arm: arm, path: path as String) {
+  // THE CONTRADICTION POLICY: marker_sighting_of has ALREADY established presence via entry_presence
+  // before calling, so a marker missing at read-back contradicts that listing -- which is exactly what
+  // the shared leg refused with before the standing policy existed for the posture member.
+  match unit_document_leg(arm: arm, path: path as String, absent: AbsentContradictsListing) {
     LegRefused { cause } => MarkerReadRefused { cause: cause }
     LegOut { stdout: content } => match stat_leg(arm: arm, path: path as String, field: MarkerStatMode, leg: "reading the marker's mode") {
       LegRefused { cause } => MarkerReadRefused { cause: cause }

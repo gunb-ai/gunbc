@@ -1,5 +1,6 @@
 module v2.test.claim.manual.medium_node_instantiation
 
+import v2.std.node { node_same_occurrence }
 import std.live_tree { LiveTreeDisposition }
 import v2.extdeps.runtimes.v2_evaluator { v2_eval_bool_literal_pin }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -11,7 +12,7 @@ fn medium_node_lossless() -> Medium<Node> {
 }
 
 test fn medium_node_carried_is_expected() -> Bool {
-  medium_node_lossless().carried == v2_eval_bool_literal_pin
+  node_same_occurrence(a: medium_node_lossless().carried, b: v2_eval_bool_literal_pin)
 }
 
 test fn medium_node_fidelity_is_lossless() -> Bool {

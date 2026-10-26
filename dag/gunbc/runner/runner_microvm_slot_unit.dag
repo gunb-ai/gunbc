@@ -72,7 +72,7 @@ data runner_microvm_slot_unit_disposition: ConstructionMechanism = SingleAuthori
 // path-unrestricted /usr/bin/install on this host (gunbc.rung_drop
 // the_job_user_holds_a_path_unrestricted_root_grant), so the sentence "root must not exec a binary
 // the job user can write" is the OBLIGATION this ownership serves, not a property srv1 establishes
-// (review 70080). gunbc.live_deploy.emit release_locus_tree_copy_steps carries the full statement.
+// (review 70080).
 data microvm_slot_unit_template_name: NonEmptyStr = "gunbc-microvm-slot@.service" as NonEmptyStr
 
 fn microvm_slot_unit_path() -> NonEmptyStr {

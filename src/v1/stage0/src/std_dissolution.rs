@@ -67,7 +67,7 @@ pub fn dissolution_trigger_fired(
     {
         let present = crate::std_decl_ref::declaration_ref_in_list(
             dissolution_trigger_ref(trigger.clone()),
-            present_decls.clone(),
+            present_decls,
         );
         match (*trigger.clone()).clone() {
             DissolutionTrigger::DeclarationAppears { ref_: _, .. } => present.clone(),
@@ -82,7 +82,7 @@ pub fn dissolution_status(
 ) -> DissolutionStatus {
     match (*condition.clone()).clone() {
         DissolutionCondition::BoundDissolution { trigger: t, .. } => {
-            if dissolution_trigger_fired(t.clone(), present_decls.clone()) {
+            if dissolution_trigger_fired(t.clone(), present_decls) {
                 DissolutionStatus::DissolutionFired
             } else {
                 DissolutionStatus::DissolutionPending
@@ -113,7 +113,7 @@ pub fn unbound_dissolution(description: String) -> Rc<DissolutionCondition> {
 }
 
 pub fn dissolution_is_bound(condition: Rc<DissolutionCondition>) -> bool {
-    match dissolution_status(condition.clone(), Rc::new(vec![])) {
+    match dissolution_status(condition, Rc::new(vec![])) {
         DissolutionStatus::DissolutionPending => true,
         DissolutionStatus::DissolutionFired => true,
         DissolutionStatus::DissolutionUnbound => false,

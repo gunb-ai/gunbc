@@ -23,7 +23,7 @@ module gunbc.firmware_network_boot_standing
 
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
 import std.algebra { length, fold_list, list_append, contains, list_map, string_concat_join, Cons, Empty }
-import std.optional { Optional, Present, Absent, optional_prefer_first_present }
+import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
 import extdeps.provisioning.network_boot {
@@ -31,13 +31,13 @@ import extdeps.provisioning.network_boot {
   UefiHttpBoot,
   UefiPxe,
 }
-// THE TARGET ENUM IS NOT MINE TO REINVENT (review 81711). extdeps.bmc.types already models the
+// THE TARGET ENUM IS NOT MINE TO REINVENT. extdeps.bmc.types already models the
 // Redfish BootSourceOverrideTarget value set that the BMC protocol defines; classifying a boot
 // entry as network-or-not is a question about THAT enum, so it is asked against it.
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishBootTargetNetworkStanding, NetworkBootTarget, NotNetworkBootTarget, redfish_boot_target_network_standing, redfish_boot_target_wire, BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp }
 import gunbc.secure_boot_observation { FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import gunbc.network_boot_delivery { BootControlReceiptStanding }
-// THE FRONTIER IS DATA, NOT PROSE (review 81734 / DESIGN 3c). A '//' note naming the future probe
+// THE FRONTIER IS DATA, NOT PROSE. A '//' note naming the future probe
 // is unreadable to any tool and is deleted by the next refactor that does not happen to need it;
 // std.dissolution already models 'an obligation discharged by a declaration that does not exist
 // yet' as a bound trigger over a DeclarationRef, and dissolution_status answers Pending or Fired
@@ -68,7 +68,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // BootOrder is the firmware's own list of what it will try. A network stack in this list is the
 // precondition the readiness fn checks first, because every remote override mechanism merely
 // points at an entry this list already contains.
-// A BOOT ENTRY IS TYPED, NOT NAMED (review 81711). These two lists once held the firmware's label
+// A BOOT ENTRY IS TYPED, NOT NAMED. These two lists once held the firmware's label
 // strings and the seam GUESSED network-ness by substring over them: "IPv4" matches an iSCSI entry,
 // "HTTP" matches vendor diagnostics tooling, "Network" matches a disabled legacy option, and a
 // wrong guess here is a Ready that boots nothing -- the exact class of failure this seam exists to
@@ -79,8 +79,8 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // human reads when a kind is not enough to find the entry on a console -- and it is never
 // consulted by a decision.
 // BOOT ORDER AND BOOT OPTIONS ARE DIFFERENT READS OF THE SAME THING, AND UNTIL THIS CHANGE THE
-// SEAM COULD NOT TELL THEM APART -- both were List<BootEntry>, each entry carrying its own `kind`
-// (merry-fox-82, blocker 1). That single shape is what produced the false Ready: the fold filtered
+// SEAM COULD NOT TELL THEM APART -- both were List<BootEntry>, each entry carrying its own `kind`.
+// That single shape is what produced the false Ready: the fold filtered
 // a list down to the network-kind entries and took the head, so a BootOrder of [Hdd, Pxe] reported
 // the head as Pxe and answered Ready, when the firmware's own first entry says it boots the disk.
 // And a BootOrder of [Pxe] against options [UefiHttp] reported Ready while quoting a target the
@@ -90,7 +90,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // label, and NO KIND: kind exists only on an enumerated BootOption. So "the head of the boot order
 // is a network target" is not a question this module can ask of BootOrder alone -- it can only be
 // answered by JOINING the head's reference to the enumeration, and the join is where enabled-ness
-// and kind come from together. The wrong answer merry found is not caught by a new predicate; it
+// and kind come from together. The false Ready is not caught by a new predicate; it
 // has no spelling (DESIGN 5: stronger than catching a wrong state is making it unwritable).
 type BootOrderEntry {
   // Redfish BootOptionReference (e.g. "0000" / "Boot0001"). The ONLY thing the two reads agree on,
@@ -111,7 +111,7 @@ type BootOption {
   enabled: Bool
 }
 
-// WHAT ONE REFERENCE IS SAID TO MEAN, as it appears in a receipt (merry-fox-82 HOLD 2b). Deliberately
+// WHAT ONE REFERENCE IS SAID TO MEAN, as it appears in a receipt. Deliberately
 // not the whole BootOption: `reference` is the KEY being disputed, so it appears once on the outer
 // record rather than twice inside the readings, and `label` is omitted because no judgement here is
 // made from a label -- carrying it in a receipt would advertise it as evidence.
@@ -221,7 +221,7 @@ fn firmware_boot_observation(
 // looked.
 // ---------------------------------------------------------------------------
 
-// THE ROUTE IS THE CATALOG ROW, AND THE CATALOG ROW IS THE ROUTE (review 81760).
+// THE ROUTE IS THE CATALOG ROW, AND THE CATALOG ROW IS THE ROUTE.
 //
 // I had written this down twice. `FirmwareNetworkBootPreparationRoute` was a flat union of six
 // mechanisms, and beside it `RouteAuthority` was a union of five rows carrying `*Remedy` unions of
@@ -252,7 +252,7 @@ fn firmware_boot_observation(
 // 'The boot order has no network stack at all' -- empty, or every entry's KIND is non-network. The
 // only thing that changes that is making the stack exist, which is a persistent BIOS attribute
 // PATCH followed by a reset and a BootOrder re-read.
-// WHAT A ROUTE DEMANDS OF ITS EXECUTOR, TYPED (review 81802). Every route used to carry this as
+// WHAT A ROUTE DEMANDS OF ITS EXECUTOR, TYPED. Every route used to carry this as
 // one `obligation: NonEmptyStr`, and four separate facts were smeared through it: whether the
 // change persists or dies with the next boot, whether a reset is needed, which property to re-read
 // to prove the change landed, and whether a human has to consent first. Only the prose said so,
@@ -266,10 +266,9 @@ fn firmware_boot_observation(
 // that). DESIGN 4c: an invariant belongs in a carrier, and a String whose only purpose was
 // commentary was misplaced data.
 //
-// WHAT THIS ACTUALLY GUARANTEES, STATED AT ITS REAL RUNG (review 81884, DESIGN 4b meta-obligation
+// WHAT THIS ACTUALLY GUARANTEES, STATED AT ITS REAL RUNG (DESIGN 4b meta-obligation
 // 1: the reported rung must equal the rung the evidence establishes -- an inflated class never ranks
-// for climbing). This is RUNG 2, mechanically preventable, NOT a type guarantee, and the earlier
-// version of this comment claimed otherwise. Precisely:
+// for climbing). This is RUNG 2, mechanically preventable, NOT a type guarantee. Precisely:
 //   * The catalog stores ROUTES ONLY. It has no blocker field, because `blocker_of` derives the
 //     blocker from the arm. So 'pair this redirect with that blocker' is not something an author can
 //     write down as data at all -- there is nowhere to write it.
@@ -280,7 +279,7 @@ fn firmware_boot_observation(
 //     the mutation is a one-line edit to that one function.
 //   * A true rung 3 would PARTITION the route union so the option-denying blockers could not name a
 //     redirect constructor. Deliberately not done: the release catalog is required to hold ONE
-//     mechanism union (review 81760 deleted a second route vocabulary for exactly that reason), and
+//     mechanism union, and
 //     partitioning it by capability reintroduces two namespaces over one family of mechanisms. The
 //     precondition lives in the arms; the check lives in one function; the witness ties them.
 type ProcedureRequires
@@ -321,7 +320,7 @@ fn route_requires(route: FirmwareNetworkBootPreparationRoute) -> List<ProcedureR
   match route {
     EnableNetworkStack { service_root: _, attribute: _, authority: _ } => [
       RequiresPersistentChange,
-      // READBACK AFTER THE RESET, not before (merry-fox-82 blocker 3). This route is a persistent
+      // READBACK AFTER THE RESET, not before. This route is a persistent
       // BIOS attribute write; the firmware does not assemble its BootOrder from the newly-enabled
       // network stack until POST has run. Reading BootOrder before the reset returns the order from
       // BEFORE the change, and an executor that compared that readback to what it wrote would call a
@@ -333,8 +332,7 @@ fn route_requires(route: FirmwareNetworkBootPreparationRoute) -> List<ProcedureR
     ]
     PointUefiBootNext { service_root: _, boot_option: _, authority: _ } => [
       RequiresOneShotOnly,
-      // THREE LAYERS, THREE NAMES (merry-fox-82 blocker 3, restated in HOLD 4f because my first
-      // correction had it half-wrong). The Redfish PROPERTY is `ComputerSystem.Boot.BootNext`, and it
+      // THREE LAYERS, THREE NAMES. The Redfish PROPERTY is `ComputerSystem.Boot.BootNext`, and it
       // is what carries a BootOptionReference. `UefiBootNext` is not a property at all -- it is the
       // VALUE of `BootSourceOverrideTarget` that tells the firmware to use that BootNext. And the UEFI
       // variable whose contents prove the one-shot was armed is `BootNext`. So: readback asks for the
@@ -398,7 +396,7 @@ fn route_prose(route: FirmwareNetworkBootPreparationRoute) -> NonEmptyStr {
 // a given firmware implements an attribute called `NetworkStack` or one called `NicBootSelection` --
 // those are vendor keys sitting behind a schema-defined container, and the ALTRAD8UD-1L2T's BIOS
 // setup has never been read into this corpus. So an abstract catalog row carries a slot saying 'a
-// firmware name goes here and I do not have it', and only a read may fill it (merry-fox-82 blocker 3).
+// firmware name goes here and I do not have it', and only a read may fill it.
 //
 // WHY A UNION AND NOT A STRING SOMEONE REMEMBERS TO FILL: the failure this prevents is a PLAUSIBLE
 // route -- right mechanism, right blocker, a name no firmware implements -- reaching an executor that
@@ -429,7 +427,7 @@ type MechanismNameGrounding
 
 // HOW AN ATTRIBUTE SLOT GETS FILLED: by EDITING THE CATALOG ROW, with the read that established the
 // name attached as the row's `authority`. Not by the fold, and the reason is that the catalog is a
-// FLEET artifact with a review trail while a fold runs against one unit at a time. A name read off
+// FLEET artifact reviewed as a claim about the fleet while a fold runs against one unit at a time. A name read off
 // one board is a fact about that board's firmware version; putting it in a row makes it a claim about
 // every unit that shares the mechanism, which is a claim an operator has to accept -- so it arrives
 // through the same route every other catalog fact arrives through, carrying a citation. The version is
@@ -451,7 +449,7 @@ fn firmware_attribute_name_from_read(
 }
 
 // THE RESULT OF TRYING TO MAKE ONE ABSTRACT CATALOG ROW USABLE FOR ONE UNIT. Split out of the route
-// type on purpose (merry-fox-82 blocker 3): the catalog is FLEET knowledge and stays abstract, a
+// type on purpose: the catalog is FLEET knowledge and stays abstract, a
 // bound route is UNIT knowledge and is derived, and the third answer is what keeps the derivation
 // honest -- there is no path from 'we own the mechanism' to 'we know what to write' that does not
 // pass through a read.
@@ -469,7 +467,7 @@ type RouteBindingStanding
   // per-firmware attribute read exists.
   // THE NAME IS REAL, BUT NOT SHOWN CURRENT FOR THIS UNIT. A transcription carries the BIOS version it
   // was read against (MechanismNameGrounding) and the binder refuses unless the two version STRINGS
-  // agree. State the rung exactly (merry-fox-82, round 2): that comparison is an equality over
+  // agree. State the rung exactly: that comparison is an equality over
   // SPELLINGS. Agreement shows the transcription and this unit's read say the same version; it does NOT
   // establish board or family identity -- two different boards can report the same version string, and
   // nothing here reads a model, a vendor, or a board id -- so this arm never claims to have rejected a
@@ -508,7 +506,7 @@ type RouteBindingRefusal
 // WHY IT IS ITS OWN VALUE AND NOT A LOOKUP INSIDE THE BINDER: the same question -- is there anything
 // to point at -- is asked twice, once by the redirect arm of the binder and once by the caller that
 // wants to know whether a redirect is even on the table. Two lookups is two answers waiting to
-// disagree, and this module has spent four review rounds deleting second answers.
+// disagree, and a second answer is a fork.
 //
 // WHY THE HEAD IS PREFERRED OVER THE AVAILABLE LIST: the blocker this route answers is 'an option
 // EXISTS and is not selected', so the thing the operator wants booted is the entry the firmware put
@@ -590,8 +588,7 @@ type FirmwareNetworkBootPreparationRoute
     }
 
 // THE BLOCKER IS READ OFF THE ARM. A stored copy could contradict the mechanism it sits beside (a
-// row that says 'no network stack' while driving a one-shot override is the bug that shipped twice,
-// in 81711 and again in 81734's critique of my first fix), so nothing stores it: the arm you were
+// row that says 'no network stack' while driving a one-shot override), so nothing stores it: the arm you were
 // able to construct already answers it, and this fn is the single place the answer is written.
 fn blocker_of(route: FirmwareNetworkBootPreparationRoute) -> PreparationBlockingOn {
   match route {
@@ -644,7 +641,7 @@ fn authority_of(route: FirmwareNetworkBootPreparationRoute) -> CitedFigureStandi
   }
 }
 
-// NO `obligation_of`, AND NO OBLIGATION FIELD ON ANY ROUTE (review 81802). The routes used to
+// NO `obligation_of`, AND NO OBLIGATION FIELD ON ANY ROUTE. The routes used to
 // carry `obligation: NonEmptyStr` -- unclassified prose that read exactly like the executor's
 // procedure and was read by nobody: not `network_boot_attempt`, not the readiness fold, not the
 // witness. Unread prose is dead code that has convinced its author a check exists, and here it was
@@ -660,7 +657,7 @@ data firmware_network_boot_console_authority: CitedFigureStanding = TranscribedU
   read_obligation: "Re-derive per unit from the board vendor manual's boot-menu section; the ALTRAD8UD-1L2T prompt key has never been transcribed into this corpus, which is why HumanConsole rows are uncited and stay that way until someone reads the manual."
 }
 
-// THE CATALOG: the mechanisms the fleet actually drives, one entry per (blocker, mechanism) it
+// THE CATALOG: the mechanisms the fleet actually drives, one entry per mechanism it
 // knows how to drive. A row is a route, not a pointer to one -- so there is nothing to mis-pair and
 // nothing to look up twice. Rows are keyed on the BLOCKER and on nothing unit-shaped: this table
 // says which mechanisms the fleet knows how to drive and says nothing about which unit needs which
@@ -733,8 +730,8 @@ data firmware_network_boot_preparation_routes: List<FirmwareNetworkBootPreparati
   },
 ]
 
-// MAKES ONE ABSTRACT CATALOG ROW USABLE FOR ONE UNIT, OR REFUSES. The whole of merry-fox-82's
-// blocker 3 in one function: `PointUefiBootNext` used to carry the catalog literal
+// MAKES ONE ABSTRACT CATALOG ROW USABLE FOR ONE UNIT, OR REFUSES. The
+// unbound-name defect in one function: `PointUefiBootNext` used to carry the catalog literal
 // "uefi-boot-next" as its boot option on every unit in the fleet, which is not a
 // BootOptionReference at all -- it is a string that looks like one, and an executor would have
 // pointed the unit's next-boot variable at it. Now a redirect's target can only be the reference the
@@ -754,7 +751,7 @@ data firmware_network_boot_preparation_routes: List<FirmwareNetworkBootPreparati
 // What it says is 'this name was not read from anywhere a BIOS attribute can be read from', which is
 // refused on the same grounds as a missing name.
 // BIND A ROW THAT NEEDS AN OPTION TO ALREADY EXIST, BY ASKING THE REQUIREMENTS LIST WHETHER IT NEEDS
-// ONE (merry-fox-82 HOLD 2a). Kept separate from `bind_route_from`'s match so the prerequisite is
+// ONE. Kept separate from `bind_route_from`'s match so the prerequisite is
 // enforced in one place for every row that declares it, instead of once per arm -- per-arm enforcement
 // is how the two one-shot rows came to bind unconditionally while their requirements said otherwise.
 //
@@ -772,7 +769,7 @@ fn bind_consuming_existing_option(
     RouteBound { route: route }
   } else {
     // THE ANSWER CONSULTED IS EXISTENCE, NOT USABILITY, and the difference is the defect this
-    // function exists to close (merry-fox-82 HOLD 2a). `redirect_to` answers 'could a redirect point
+    // function exists to close. `redirect_to` answers 'could a redirect point
     // at something usable NOW' -- it filters on `enabled`, because a redirect embeds a reference and
     // pointing at an option that cannot boot fails at the console. A one-shot is the opposite
     // mechanism: Force-PXE is precisely how you boot an entry the order does not select, so a PXE
@@ -871,7 +868,7 @@ fn bind_route_from(
     // BootSourceOverrideTarget, which IS schema-defined and is not stored here, so there is no slot
     // to bind and no name to invent. They pass through unchanged, and that is a fact about Redfish
     // rather than a pass-through convenience.
-    // THE ONE-SHOTS NOW CONSUME THEIR OWN PREREQUISITE (merry-fox-82 HOLD 2a). These two rows used
+    // THE ONE-SHOTS NOW CONSUME THEIR OWN PREREQUISITE. These two rows used
     // to bind unconditionally -- `RouteBound { route: route }` with no look at `redirect_to` -- while
     // their OWN `route_requires` list said `RequiresExistingBootOption`. That is the requirements list
     // existing as a comment: it said a network boot option must already exist, and the binder did not
@@ -1038,51 +1035,40 @@ fn route_readiness_of(
   }
 }
 
-// WHAT A SWEEP OF ADMISSIBLE ROWS SETTLES, both questions answered in the same pass. The two answers
-// travel together because they are produced by the same walk over the same list; two selector fns each
-// with their own Bool predicate (an earlier shape here) classified every row twice, needed an arm that
-// could not be reached in each, and those arms were fabricated `Absent`s -- a made-up answer standing
-// in for 'the filter and the rematch disagree', which is exactly the case a reader most needs to see.
-type AdmissibleRouteSelection {
+// WHAT A SWEEP OF ADMISSIBLE ROWS SETTLES, as one of exactly three states. A pair of Optionals made a
+// fourth state writable (neither answer present for a non-empty sweep), and every reader then needed an
+// arm for a case the fold cannot produce; as a sum that state has no constructor.
+type AdmissibleRouteSelection
   // THE MOST-PREFERRED ROW AN ACTUATOR COULD DRIVE, in catalog order.
-  executable: Optional<FirmwareNetworkBootPreparationRoute>,
-  // THE MOST-PREFERRED ROW THAT COULD NOT BE DRIVEN, which is the remedy to pursue: it belongs to the
-  // same mechanism the fleet would have tried first, and it carries the read that ends it.
-  first_refusal: Optional<RouteBindingRefusal>,
-}
+  = Executable { route: FirmwareNetworkBootPreparationRoute }
+  // NO ROW COULD BE DRIVEN; this is the MOST-PREFERRED refusal, which is the remedy to pursue: it
+  // belongs to the same mechanism the fleet would have tried first, and it carries the read that ends it.
+  | AllRefused { first: RouteBindingRefusal }
+  // THE SWEEP WAS EMPTY: no catalog row resolves this blocker.
+  | NoAdmissibleRows
 
-// ONE SWEEP, ONE CLASSIFICATION PER ROW. Each row's arm is read ONCE, by this match, and decides which
-// accumulator field it feeds -- so there is no predicate to keep in step with a rematch, and a row
-// cannot be counted into both answers or into neither. First-wins (which is catalog order, which is
-// fleet preference) comes from `std.optional`'s existing prefer-first combiner rather than a fresh
-// 'is this already filled' test, which would have re-introduced the Bool this deletes.
-//
-// An empty answer in either field means what it says: no row in that state existed. Both fields empty
-// is only possible for an empty input, which is why the callers can distinguish 'no mechanism in the
-// catalog' from 'mechanism known, name unread' without a third state.
+// ONE SWEEP, ONE CLASSIFICATION PER ROW. Each row's arm is read ONCE, by this match. An executable row
+// outranks any refusal wherever it sits in the list, and within each class the first row wins (catalog
+// order, which is fleet preference).
 fn select_admissible(
   readiness: List<RouteReadinessStanding>
 ) -> AdmissibleRouteSelection {
   fold_list(
     xs: readiness,
-    empty: AdmissibleRouteSelection { executable: Absent, first_refusal: Absent },
+    empty: NoAdmissibleRows,
     cons: fn(acc, row) {
       match row {
         RouteExecutable { route: route, requires: _ } =>
-          AdmissibleRouteSelection {
-            executable: optional_prefer_first_present(
-              left: acc.executable,
-              right: Present { value: route },
-            ),
-            first_refusal: acc.first_refusal,
+          match acc {
+            Executable { route: kept } => Executable { route: kept }
+            AllRefused { first: _ } => Executable { route: route }
+            NoAdmissibleRows => Executable { route: route }
           }
         RouteNotExecutable { mechanism: _, refusal: refusal } =>
-          AdmissibleRouteSelection {
-            executable: acc.executable,
-            first_refusal: optional_prefer_first_present(
-              left: acc.first_refusal,
-              right: Present { value: refusal },
-            ),
+          match acc {
+            Executable { route: kept } => Executable { route: kept }
+            AllRefused { first: kept } => AllRefused { first: kept }
+            NoAdmissibleRows => AllRefused { first: refusal }
           }
       }
     },
@@ -1140,10 +1126,9 @@ fn attribute_slot_refusal(
             // THE WRAPPER IS THE TYPE. attribute_slot_refusal answers Optional<RouteBindingStanding>,
             // and RouteBindingStanding's not-executable arm is `BindingRefused { refusal }` -- returning
             // the bare RouteBindingRefusal here would answer 'this row cannot be driven' with the reason
-            // where the caller expects the wrapper, so the refusal would not be a refusal. (merry-fox-82
-            // HOLD 3b: this arm shipped un-wrapped; the compiler caught it, and the control now lives in
+            // where the caller expects the wrapper, so the refusal would not be a refusal. The control lives in
             // the witness as a route_readiness_of claim, so a regression reddens a test rather than
-            // merely failing to compile.)
+            // merely failing to compile.
             value: BindingRefused {
               refusal: RouteBindingUnresolvedRoute {
                 mechanism: mechanism,
@@ -1222,8 +1207,7 @@ fn bind_attribute_route(
 
 // THE PROCEDURE IS CONSUMED, NOT JUST CARRIED. `blocker_of` says which blocker an author wrote a
 // row to drive; `route_requires` says what executing that mechanism actually demands. They are
-// different facts (one is per-row authoring, one is per-arm physics), and the defect review 81802
-// found is precisely what happens when nobody checks the first against the second: a row keyed to
+// different facts (one is per-row authoring, one is per-arm physics), and the defect is precisely what happens when nobody checks the first against the second: a row keyed to
 // 'there is no network option' drove a redirect, which cannot run when there is nothing to point
 // at. So a row is admissible only if BOTH agree:
 //
@@ -1232,7 +1216,7 @@ fn bind_attribute_route(
 //     is the whole reason `RequiresExistingBootOption` exists as an arm rather than a sentence: a
 //     redirect credited to `NetworkBootOptionAbsent` is dropped rather than emitted, and the
 //     standing reports the modeling gap by name instead of handing an operator a plan that cannot
-//     succeed. RUNG, STATED HONESTLY (review 81884): this is RUNTIME VALIDATION over the catalog,
+//     succeed. RUNG, STATED HONESTLY: this is RUNTIME VALIDATION over the catalog,
 //     not a type guarantee -- a redirect is still a constructible value, and nothing stops someone
 //     writing `blocker_of(PointUefiBootNext{..}) = NetworkBootOptionAbsent`. What makes that safe to
 //     ship is that the edit is (a) one line in one total function, (b) neutralised here, where the
@@ -1245,13 +1229,13 @@ fn bind_attribute_route(
 // care, and the arm's demand would be unenforced decoration -- the same shape as the prose field
 // this replaced.
 // WHAT THE BLOCKER ITSELF ASSERTS ABOUT EXISTING OPTIONS -- a union, not a Bool, for the same
-// reason the classifier above is one (review 81853). The first version was
+// reason the classifier above is one. The first version was
 // `blocker_requires_existing_option(blocker) -> Bool`, which matched a coproduct and returned
 // true/false, so the fold's one consumer could not tell 'this blocker says an option exists' from
 // 'this blocker says nothing either way', and neither could a reader. Naming the arms also keeps the
 // function total: a new blocker must say which kind it is.
 //
-// HOW FAR THAT GOES, SAID EXACTLY (review 83033 called this borderline, and it is right). The two
+// HOW FAR THAT GOES, SAID EXACTLY. The two
 // arms DO collapse at the only consumer: `route_is_admissible_for` maps Needs -> true and
 // DeniesOrIgnores -> `!demands_existing_option(...)`, so no decision today distinguishes 'a route's
 // demand is FALSE' from 'a route's demand is UNEVIDENCED'. An earlier draft of this comment claimed
@@ -1329,13 +1313,13 @@ fn procedure_demands_existing_option(route: FirmwareNetworkBootPreparationRoute)
 // against this compiler): the earlier `route_eq`/`blocking_eq` were a hand-maintained second
 // definition of identity that had to be kept in step with the arms -- and `route_eq`'s job was
 // really 'is this free-floating route one of ours', which is a membership question the catalog
-// answers by lookup, not by comparison. Review 81760.
+// answers by lookup, not by comparison.
 
 // ---------------------------------------------------------------------------
 // THE SEAM.
 // ---------------------------------------------------------------------------
 
-// READY CARRIES ONE AXIS, NOT TWO (review 81689). An earlier cut of this type stored a
+// READY CARRIES ONE AXIS, NOT TWO. An earlier cut of this type stored a
 // ClientNetworkBootMode beside a second `NetworkBootProtocol` enum of mine. That enum was a
 // nickname: its two arms were extdeps.provisioning.network_boot's DhcpBootDirection.ProxyDhcp and
 // ClientNetworkBootMode.UefiHttpBoot wearing new names, and having an axis of my own beside the
@@ -1347,7 +1331,7 @@ fn procedure_demands_existing_option(route: FirmwareNetworkBootPreparationRoute)
 // edge receipts (S7) observe; it is not the unit's standing.
 
 // READY IS NOT AUTHORABLE, and it takes THREE seals to make that true, which is why they are named
-// here rather than left to be discovered one review at a time (merry's HOLD 1).
+// here rather than left to be discovered one at a time.
 //  1. THIS record seals the PROVENANCE: authority, moment, and the observation the verdict was
 //     computed from. Its only constructor takes all three, so "ready" without evidence is not a
 //     thing that can be written down, and the observation stays INSIDE the evidence rather than
@@ -1391,7 +1375,7 @@ fn ready_evidence(
 }
 
 // THE VERDICT IS NOT AUTHORABLE -- AND THE WALL THAT DOES THAT IS MEASURED, NOT ASSUMED
-// (merry-fox-82, blocker 2). Three mechanisms are in play here and they are NOT equally strong, so
+//. Three mechanisms are in play here and they are NOT equally strong, so
 // each is stated at the rung an executed probe established (DESIGN 4b: an inflated rung is worse than
 // sitting low):
 //
@@ -1401,7 +1385,7 @@ fn ready_evidence(
 //      by no_foreign_module_may_call_the_verdict_mint_directly, which pairs the hostile source with a
 //      lawful one over identical imports (refusal without a lawful pair proves nothing).
 //  (2) ENFORCED -- THE SEALED CONCLUSION RECORD, NOT THE ACT OF OBTAINING EVIDENCE. Being exact,
-//      because an earlier draft of this paragraph got it wrong (merry-fox-82, round 2): a caller CAN
+//      because an earlier draft of this paragraph got it wrong: a caller CAN
 //      obtain a lawful `ReadyEvidence` -- the public entry returns a `Ready` that carries one, and its
 //      fields are readable, so a caller can extract it and hold it. That is not the hole and sealing
 //      the act of obtaining was never the guarantee. What the caller CANNOT do is WRITE a sealed
@@ -1410,18 +1394,15 @@ fn ready_evidence(
 //      CONCLUSION, not through possession of the proof. Proven by
 //      no_foreign_module_may_write_a_verdict_by_hand and, for the rewrap specifically, by
 //      the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count.
-//  (3) NOT ENFORCED BY THIS COMPILER -- the `sole_constructor` annotation on THIS UNION. Measured, not
-//      believed: adding a hand-written `Ready {...}` around an already-forged evidence raised the
-//      SoleConstructorViolation count by ZERO, so the union-level annotation is not what refuses. Every
-//      corpus precedent seals a RECORD (test.fixture.sole_constructor_sealed / _variant_probe, whose own
-//      audit probe frames the coproduct case as the open question), and this is consistent with them.
-//      It is kept because it costs nothing and records the intent should the native compiler grow the
-//      check -- but a reader must not take it as the wall. If (1) and (2) are ever weakened, the probes
-//      go red; nothing protects the verdict by reading this annotation.
+//  (3) NO SEAL ON THIS UNION. Seals bind RECORDS, not union arms (test.fixture.sole_constructor_sealed
+//      / _variant_probe): adding a hand-written `Ready {...}` around forged evidence raised the
+//      SoleConstructorViolation count by ZERO, so a union-level annotation would be a decoration. The
+//      custody is the sealed payloads of (2) and the call walls of (1); if (1) or (2) are weakened, the
+//      probes go red.
 //
 // Arms stay public for MATCHING: a match is not a mint, so consumers can consume verdicts freely and
 // none can fabricate one.
-// THE CONCLUSION IS THE SEALED PAYLOAD (merry-fox-82 HOLD 1). The first version sealed only
+// THE CONCLUSION IS THE SEALED PAYLOAD. The first version sealed only
 // `ReadyEvidence` -- authority, timestamp, observation -- and left `firmware_mode`,
 // `network_interface` and `boot_target` as loose fields of the `Ready` ARM. That is a wall around the
 // PROOF and no wall around the CLAIM, which is the wrong way round: a caller holding a lawful evidence
@@ -1435,7 +1416,7 @@ fn ready_evidence(
 // evidence inside the conclusion -- but it cannot MINT a conclusion, because to write any of the four
 // fields you must write the record literal, and the record literal is the sealed thing. The guarantee
 // is therefore about authoring a pairing, not about possession: extract the evidence and you hold a
-// receipt; write a conclusion with it and you are refused. The witness proves this the way HOLD 1 asks:
+// receipt; write a conclusion with it and you are refused. The witness proves this the way the seal needs:
 // take a LAWFUL result and ALTER its conclusion (the rewrap), beside a PASS-THROUGH control over the
 // same imports -- a probe that merely writes a forbidden evidence literal on both sides is satisfied
 // by the old payload seal and would have stayed green through exactly this defect.
@@ -1447,7 +1428,7 @@ type AdmittedReadyConclusion sole_constructor {
   firmware_mode: ClientNetworkBootMode
   network_interface: NonEmptyStr
   // WHICH NETWORK TARGET THE UNIT WILL ACTUALLY BOOT, taken from the boot-order head.
-  // (review 81853) This field is the reason the classification is a union at all: the fold used
+  // This field is the reason the classification is a union at all: the fold used
   // to prove 'something network-shaped is present' via a Bool and discard the kinds, so a Ready
   // could not tell an operator whether the board was going to PXE or to UEFI-HTTP. It is NOT a
   // second name for `firmware_mode` -- that is the EDGE's claim about the client, this is the
@@ -1499,11 +1480,11 @@ fn admit_preparation(
   AdmittedPreparation { route: route, blocking: blocking }
 }
 
-type FirmwareNetworkBootStanding sole_constructor
+type FirmwareNetworkBootStanding
   = Ready { conclusion: AdmittedReadyConclusion }
   | NeedsPreparation { admitted: AdmittedPreparation }
   | Unobserved { unanswered: List<UnansweredAxis> }
-  // `gaps` is not decoration (review 81689): the earlier shape short-circuited at the FIRST
+  // `gaps` is not decoration: the earlier shape short-circuited at the FIRST
   // unanswered axis, so a unit missing both its boot order and its Secure Boot answer was
   // reported as missing only one, and an early refusal hid every later unknown. That is a lossy
   // report, and DESIGN.md 5 asks for every degradation typed, located and countable. A single
@@ -1515,7 +1496,7 @@ type FirmwareNetworkBootStanding sole_constructor
 // WHAT IS IN THE WAY, named. A NeedsPreparation that says only "not ready" sends someone to
 // re-read the observation themselves; the blocking axis says what to act on, and it is a
 // different question from the route (which is HOW to act).
-// THE BLOCKERS ARE SPLIT WHERE THE REMEDIES DIVERGE (review 81802). These two used to be ONE arm,
+// THE BLOCKERS ARE SPLIT WHERE THE REMEDIES DIVERGE. These two used to be ONE arm,
 // `NoNetworkBootOptionListed`, covering both 'the unit lists no network option' and 'a network
 // option exists and the boot order does not name it'. One arm meant one remedy set, and the remedy
 // set this fleet drives for the area is three REDIRECTS -- mechanisms that point the next boot at an
@@ -1575,7 +1556,7 @@ type FirmwareNetworkBootRefusal
   = FirmwareReadRefused { refusal: FirmwareReadRefusal }
   | FirmwareModeUnsupportedByEdge { why: NonEmptyStr }
   | RefusedByOperatorPolicy { policy: NonEmptyStr }
-  // THE UNIT HAS NO NETWORK INTERFACE AT ALL (review 81893). This used to be `NoSuchUnit`, which sent
+  // THE UNIT HAS NO NETWORK INTERFACE AT ALL. This used to be `NoSuchUnit`, which sent
   // an operator or an actuator to inventory for a unit that is present, answered every axis, and told
   // us it has no NIC -- a hardware fact whose remedy is the firmware setting that enables the port.
   // DESIGN 3: one name, two materially different meanings, and the material difference here is the
@@ -1585,12 +1566,11 @@ type FirmwareNetworkBootRefusal
   // which is the point: it turns 'someone added a blocker and a route by hand' into a visible
   // refusal instead of an attempt that cannot possibly boot.
   | NoRouteOwnsThisBlocking { why: NonEmptyStr }
-  // THE TWO FIRMWARE ENUMERATIONS DISAGREE (review 81802's split made this state reachable, and it
-  // deserves naming rather than an inference). BootOrder references a network-kind entry that the
+  // THE TWO FIRMWARE ENUMERATIONS DISAGREE (it deserves naming rather than an inference). BootOrder references a network-kind entry that the
   // BootOptions enumeration does not list. Choosing a side would be guessing which read is stale --
   // and the guess here carries a persistent firmware write -- so the seam stops and says which two
   // facts are in conflict.
-  // THE NAME STATES ONLY WHAT IS KNOWN (merry-fox-82 HOLD 4a). This arm used to be
+  // THE NAME STATES ONLY WHAT IS KNOWN. This arm used to be
   // `BootOrderNamesUnenumeratedNetworkOption`, and the word 'Network' there was a claim this model
   // cannot support: a BootOrderEntry carries an identity and nothing else -- that is exactly the
   // repair that made the old false Ready unwritable -- so at the moment of this refusal the head's
@@ -1599,14 +1579,14 @@ type FirmwareNetworkBootRefusal
   // actually established is narrower and is all the arm says: the order's head carries a reference
   // the enumeration does not contain. Whether that head would have been network-capable is
   // precisely the question the re-read has to answer.
-  // THE CONFLICT ARM (merry-fox-82 HOLD 2b). Carries the whole pair of readings rather than a count
+  // THE CONFLICT ARM. Carries the whole pair of readings rather than a count
   // or just the reference, because the actionable content of this finding is 'which reference, and
   // which two answers' -- without both readings an operator has nothing to show the BMC.
   | BootOptionReferencesConflict { conflict: ConflictingReferenceReadings }
 
   | BootOrderHeadReferenceNotEnumerated { why: NonEmptyStr }
 
-  // ONE REFERENCE, TWO ANSWERS, NO TIE-BREAK (merry-fox-82 HOLD 2b). A BootOptionReference is the
+  // ONE REFERENCE, TWO ANSWERS, NO TIE-BREAK. A BootOptionReference is the
   // IDENTITY a boot-order entry uses to name an enumerated option, so the reference's meaning is
   // 'exactly one option'. When a BMC enumerates `0001` twice -- once as PXE, once as HDD -- that
   // promise is broken BY THE FIRMWARE, and every judgement downstream of it becomes an artifact of
@@ -1621,7 +1601,7 @@ type FirmwareNetworkBootRefusal
   // which is why it needs its own name instead of reusing the not-enumerated refusal: 'the
   // enumeration lacks it' and 'the enumeration gives it twice, differently' prescribe opposite
   // re-reads (ask for more, ask for less).
-  // THE FLEET OWNS THE MECHANISM AND DOES NOT KNOW WHAT TO WRITE (merry-fox-82 blocker 3). Which
+  // THE FLEET OWNS THE MECHANISM AND DOES NOT KNOW WHAT TO WRITE. Which
   // BIOS attribute enables the network stack, which pins the boot port, which key sets Secure Boot:
   // those are per-firmware vendor names, and the catalog's Redfish schema citation does not name
   // them. Before this cause existed the seam emitted a route carrying a name nobody had read, and an
@@ -1655,7 +1635,7 @@ type FirmwareNetworkBootRefusal
 // DHCP the resulting boot produced.
 // ---------------------------------------------------------------------------
 
-// NOT AUTHORABLE EITHER (merry-fox-82, blocker 2). `firmware_network_boot_attempt_receipt` takes an
+// NOT AUTHORABLE EITHER. `firmware_network_boot_attempt_receipt` takes an
 // attempt and a verdict and pairs them as the record of what was done to a unit, so an ordinary
 // record here meant a caller could hand that receipt a `NetworkBootAttempt` with any route it liked
 // -- including one its own blocker never resolved to -- and an `Unobserved` verdict presented as the
@@ -1670,7 +1650,7 @@ type NetworkBootAttempt sole_constructor {
 }
 
 // CONSTRUCTION IS A VERDICT, NOT AN OPTIONAL, AND THE CALLER NEVER SUPPLIES A ROUTE
-// (review 81760). `NetworkBootAttempt` used to take a free route and check it against the catalog at
+//. `NetworkBootAttempt` used to take a free route and check it against the catalog at
 // runtime -- `if route_is_cataloged(...)`, backed by a hand-written `route_eq` -- which is the same
 // failure as the catalog rows being writable by hand, one level down: an unrepresentable state was
 // represented and then policed. The caller now names the BLOCKER it believes is in the way and the
@@ -1703,7 +1683,7 @@ fn network_boot_attempt(
   // WHICH EXISTENCE ANSWER A `RequiresExistingBootOption` ROW IS CHECKED AGAINST. Supplied
     // rather than recomputed so the attempt and the verdict are bound by the SAME read: an attempt
     // that re-derived existence could disagree with the standing that justified it, which is the
-    // attempt/verdict split the HOLD is about.
+    // attempt/verdict split.
   existence: NetworkOptionExistenceStanding,
   observed_bios_version: Optional<NonEmptyStr>,
   boot_control: BootControlReceiptStanding,
@@ -1711,62 +1691,50 @@ fn network_boot_attempt(
   resulting_dhcp: AttemptDhcpStanding,
   unit_label: NonEmptyStr
 ) -> NetworkBootAttemptConstruction {
-  // THE ROUTE IS DERIVED INSIDE THE MINT, NEVER SUPPLIED BY THE CALLER (merry-fox-82 blockers 2 and
-  // 3 together). The caller hands over the blocker and the two binding inputs; the mint walks the same
+  // THE ROUTE IS DERIVED INSIDE THE MINT, NEVER SUPPLIED BY THE CALLER. The caller hands over the blocker and the two binding inputs; the mint walks the same
   // two steps `prepare` walks, so an attempt cannot exist for a route the verdict would not have
   // declared -- and a caller cannot hand over a bound route of its own construction, which is how a
   // redirect pointing at a reference copied from another unit would otherwise reach the wire.
-  match admissible_readiness_for(
+  match select_admissible(readiness: admissible_readiness_for(
     blocker: blocker,
     redirect_to: redirect_target(join: join, available: available),
     existence: existence,
     observed_bios_version: observed_bios_version,
-  ) {
-    Empty => AttemptBlockerUncataloged { blocker: blocker }
-    readiness =>
-      match select_admissible(readiness: readiness) {
-        AdmissibleRouteSelection { executable: Present { value: bound }, first_refusal: _ } =>
-          AttemptConstructed {
-            attempt: NetworkBootAttempt {
-              route: bound,
-              boot_control: boot_control,
-              reset_observed_at: reset_observed_at,
-              resulting_dhcp: resulting_dhcp,
-              unit_label: unit_label,
-            },
-          }
-        // NOTHING WAS WRITTEN, because there was nothing correct to write. The blocker, the mechanism
-        // and the binding's own answer travel out together, so a reader can tell 'the fleet has no row
-        // for this' (AttemptBlockerUncataloged) from 'the fleet has a row and we have not read this
-        // unit's firmware' -- and the second one names the read that ends it.
-        AdmissibleRouteSelection { executable: Absent, first_refusal: first } =>
-          match first {
-            Present { value: RouteBindingStaleGrounding {
-              mechanism: mechanism,
-              grounded_for_bios_version: grounded,
-              observed_bios_version: seen,
-            } } =>
-              AttemptRouteUnbound {
-                blocker: blocker,
-                mechanism: mechanism,
-                refusal: RouteBindingStaleGrounding {
-                  mechanism: mechanism,
-                  grounded_for_bios_version: grounded,
-                  observed_bios_version: seen,
-                },
-              }
-            Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
-              AttemptRouteUnbound {
-                blocker: blocker,
-                mechanism: mechanism,
-                refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
-              }
-            // UNREACHABLE: the sweep above filled BOTH fields from one walk, so a non-empty admissible
-            // list cannot leave `first_refusal` empty while `executable` is also empty. It stays written
-            // out because the compiler requires the arm and because an empty answer here would mean the
-            // fold produced rows that belonged to neither state -- which is the one thing worth seeing.
-            Absent => AttemptBlockerUncataloged { blocker: blocker }
-          }
+  )) {
+    NoAdmissibleRows => AttemptBlockerUncataloged { blocker: blocker }
+    Executable { route: bound } =>
+      AttemptConstructed {
+        attempt: NetworkBootAttempt {
+          route: bound,
+          boot_control: boot_control,
+          reset_observed_at: reset_observed_at,
+          resulting_dhcp: resulting_dhcp,
+          unit_label: unit_label,
+        },
+      }
+    // NOTHING WAS WRITTEN, because there was nothing correct to write. The blocker, the mechanism
+    // and the binding's own answer travel out together, so a reader can tell 'the fleet has no row
+    // for this' (AttemptBlockerUncataloged) from 'the fleet has a row and we have not read this
+    // unit's firmware' -- and the second one names the read that ends it.
+    AllRefused { first: RouteBindingStaleGrounding {
+      mechanism: mechanism,
+      grounded_for_bios_version: grounded,
+      observed_bios_version: seen,
+    } } =>
+      AttemptRouteUnbound {
+        blocker: blocker,
+        mechanism: mechanism,
+        refusal: RouteBindingStaleGrounding {
+          mechanism: mechanism,
+          grounded_for_bios_version: grounded,
+          observed_bios_version: seen,
+        },
+      }
+    AllRefused { first: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
+      AttemptRouteUnbound {
+        blocker: blocker,
+        mechanism: mechanism,
+        refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
       }
   }
 }
@@ -1820,7 +1788,7 @@ fn firmware_network_boot_standing(
   match edge_serviceable_for_mode(boot_mode: boot_mode) {
     // The refusal's `why` is the arm's own data. There is no second match on ClientNetworkBootMode
     // anywhere in this module, so there is no arm left that could return a sentence about a case it
-    // was not asked about (review 81853); and a caller that dropped this arm could not construct a
+    // was not asked about; and a caller that dropped this arm could not construct a
     // FirmwareNetworkBootStanding at all.
     EdgeCannotServe { why: why } =>
       Refused {
@@ -1828,7 +1796,7 @@ fn firmware_network_boot_standing(
         gaps: axis_gaps(observation: observation),
       }
     EdgeCanServe => {
-    // TWO PHASES, NOT ONE SHORT-CIRCUITING MATCH (review 81689). Phase one asks every axis what
+    // TWO PHASES, NOT ONE SHORT-CIRCUITING MATCH. Phase one asks every axis what
     // it has; phase two decides. The earlier single nested match returned at the FIRST unanswered
     // axis, which lost information the type had promised to carry: a unit missing both Secure Boot
     // and BIOS version was reported as missing only Secure Boot, and any refusal made the later
@@ -1846,13 +1814,13 @@ fn firmware_network_boot_standing(
       // This used to be a second copy of the axis fan-out, matching boot_order, then
       // boot_options, then nics, then secure_boot, then bios_version again, and passing four
       // destructured lists to `decide` alongside the observation. That duplication was not
-      // cosmetic (merry-fox-82, blocker 2): the four lists were arguments a caller-controlled
+      // cosmetic: the four lists were arguments a caller-controlled
       // value could contradict, and the two copies of 'what does a refused BootOrder mean' could
       // drift. `decide` now takes the observation ALONE and does its own exhaustive match, so a
       // refused or unanswered axis has exactly one meaning in this module and the Ready below
       // reports on the same bytes its evidence quotes.
       //
-      // THE REFERENCE-CONFLICT GATE, AT THE ONE CHOKE POINT (merry-fox-82 HOLD 2b). Placed here --
+      // THE REFERENCE-CONFLICT GATE, AT THE ONE CHOKE POINT. Placed here --
       // after the axis-gap check, immediately before the single call to `decide` -- for three
       // reasons that each rule out an alternative placement.
       //
@@ -1957,7 +1925,7 @@ fn bios_gap(bios_version: BiosVersionObservation) -> List<UnansweredAxis> {
 // only function that reads an axis and says whether it refused, and filter_map-style selection over
 // its Optional is the same question asked a second time. The earlier shape ran gap_is_refusal to
 // pick a gap and then refusal_of_gap to extract from the gap it had just picked -- two readings of
-// one fact, which is DESIGN 3's rule restated (review 81780).
+// one fact, which is DESIGN 3's rule restated.
 fn first_refusal(gaps: List<UnansweredAxis>) -> Optional<FirmwareReadRefusal> {
   refusals_in_order(gaps: gaps) |> first
 }
@@ -2021,7 +1989,7 @@ fn prepare(
   // importer, and an importer could call prepare(blocker:) with any blocker/route pairing it liked and
   // present the result as this module's verdict. Each entry is a fold IN THIS FILE that has earned the
   // right to conclude -- adding a second file is an edit here, in the dependency that owns the verdict,
-  // which is a counted review event rather than an import someone writes in their own module.
+  // which is a counted edit rather than an import someone writes in their own module.
   admit_callers: [
     decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide"),
     decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide_from_joins"),
@@ -2053,64 +2021,40 @@ fn prepare(
   // is total per row, `executable` and `not_executable` cannot both be empty when rows exist: the
   // 'invent a refusal for the leftover case' arm that a two-fold design needs is absent, and there is
   // nothing here whose reachability has to be argued.
-  match admissible_readiness_for(
+  match select_admissible(readiness: admissible_readiness_for(
     blocker: blocker,
     redirect_to: redirect_target(join: join, available: available),
     existence: existence,
     observed_bios_version: observed_bios_version,
-  ) {
-    // NO ROW AT ALL FOR THIS BLOCKER -- a fleet-catalog gap. Distinguished from the next arm because
+  )) {
+    // NO ROW AT ALL FOR THIS BLOCKER -- a fleet-catalog gap. Distinguished from AllRefused because
     // the remedies differ in kind: this one is a catalog change affecting every unit, that one is one
     // GET against one unit.
-    Empty =>
+    NoAdmissibleRows =>
       Refused {
         cause: NoRouteOwnsThisBlocking { why: "no catalog row resolves this blocker" },
         gaps: [],
       }
-    readiness =>
-      match select_admissible(readiness: readiness) {
-        // THE MOST-PREFERRED DRIVABLE ROW WINS, and preference is still catalog order.
-        AdmissibleRouteSelection { executable: Present { value: bound }, first_refusal: _ } =>
-          // THE ROUTE TRAVELS INSIDE THE SEAL (HOLD 1). `bound` came out of bind_route_from, so it
-          // is a bound row rather than a catalog row; wrapping it here is the only way to put it in a
-          // verdict, and a caller that skipped this fold could not build the payload at all.
-          NeedsPreparation {
-            admitted: admit_preparation(route: bound, blocking: blocker),
-          }
-        // ROWS EXIST AND NOT ONE CAN BE NAMED. The sweep already settled both answers, so this reads
-        // the other field of the SAME result -- no second walk, no chance for the two to disagree.
-        AdmissibleRouteSelection { executable: Absent, first_refusal: first } =>
-          match first {
-            Present { value: RouteBindingStaleGrounding {
-              mechanism: mechanism,
-              grounded_for_bios_version: grounded,
-              observed_bios_version: seen,
-            } } =>
-              Refused {
-                cause: RouteBindingStaleForUnit {
-                  mechanism: mechanism,
-                  grounded_for_bios_version: grounded,
-                  observed_bios_version: seen,
-                },
-                gaps: [],
-              }
-            Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
-              Refused {
-                cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed },
-                gaps: [],
-              }
-            // UNREACHABLE: the list was non-empty and the fold is total per row, so a row landed in
-            // neither selector. Refusing with the disagreement named is the only honest thing left --
-            // and if a reader ever sees this cause, a selector has stopped matching an arm.
-            Absent =>
-              Refused {
-                cause: NoRouteOwnsThisBlocking {
-                  why: "admissible rows exist for this blocker yet the readiness fold reported none as executable and none as refused; the selectors disagree with the fold",
-                },
-                gaps: [],
-              }
-          }
+    // THE MOST-PREFERRED DRIVABLE ROW WINS, and preference is still catalog order. The route travels
+    // inside the seal: `bound` came out of bind_route_from, so it is a bound row rather than a catalog
+    // row, and wrapping it here is the only way to put it in a verdict.
+    Executable { route: bound } =>
+      NeedsPreparation { admitted: admit_preparation(route: bound, blocking: blocker) }
+    AllRefused { first: RouteBindingStaleGrounding {
+      mechanism: mechanism,
+      grounded_for_bios_version: grounded,
+      observed_bios_version: seen,
+    } } =>
+      Refused {
+        cause: RouteBindingStaleForUnit {
+          mechanism: mechanism,
+          grounded_for_bios_version: grounded,
+          observed_bios_version: seen,
+        },
+        gaps: [],
       }
+    AllRefused { first: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
+      Refused { cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed }, gaps: [] }
   }
 }
 
@@ -2118,15 +2062,15 @@ fn prepare(
 // firmware will try, a network option it can be pointed at, and exactly one interface to do it
 // on. Anything else is either preparation or a refusal — never a silent Ready.
 // THE DECISION, GIVEN ONE OBSERVATION. It takes the observation and nothing else that could
-// contradict it (merry-fox-82, blocker 2): the earlier signature carried `devices`, `options`,
+// contradict it: the earlier signature carried `devices`, `options`,
 // `nics` and `bios` ALONGSIDE `observation`, so a caller could hand in four lists that agreed with
 // each other and disagreed with the observation the evidence would later quote. Every fact now comes
 // out of `observation`, which means the Ready at the bottom and the evidence it carries are computed
 // from the same bytes -- there is no second copy to keep in sync, and no argument to forge.
 //
 // THE TWO ENUMERATIONS ANSWER DIFFERENT QUESTIONS, AND THE OLD FOLD ASKED THE WRONG ONE OF EACH.
-// BootOptions answers 'does an option EXIST, of what kind, enabled?' (review 81802); BootOrder
-// answers 'which one is SELECTED, in what position?' (review 81853, merry blocker 1). Each question
+// BootOptions answers 'does an option EXIST, of what kind, enabled?'; BootOrder
+// answers 'which one is SELECTED, in what position?'. Each question
 // goes to the mechanism that can answer it:
 //
 //   nothing exists             -> NetworkBootOptionAbsent      -> authoring (the stack attribute)
@@ -2210,7 +2154,7 @@ fn decide(
                       Refused { cause: FirmwareReadRefused { refusal: f }, gaps: axis_gaps(observation: observation) }
                     BiosVersionUnobserved { reason: r } =>
                       Unobserved { unanswered: [BiosAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
-                    // THE VERSION IS READ, NOT JUST CHECKED FOR PRESENCE (merry-fox-82 blocker 3).
+                    // THE VERSION IS READ, NOT JUST CHECKED FOR PRESENCE.
                     // An earlier draft matched `BiosVersionObserved { version: _ }` and threw the value
                     // away, so a transcription of a NIC-selection attribute name could travel with no
                     // version to check it against: the fold knew a BIOS had been read but never asked
@@ -2282,7 +2226,7 @@ fn decide_from_joins(
     //                             EXISTS, which is the OTHER join's answer -- hence decide_absent
     //                             rather than a hardcoded blocker.
     // The two BootOrder orderings [PXE, disk] and [disk, PXE] now take different paths through this
-    // arm, which is precisely merry-fox-82's blocker 1: the old fold filtered the order to network
+    // arm, which is the false-Ready case: the old fold filtered the order to network
     // kinds before taking the head, so both read Ready.
     HeadJoinsEnabledOption { head: head_option } =>
       match redfish_boot_target_network_standing(t: head_option.kind) {
@@ -2311,7 +2255,7 @@ fn decide_from_joins(
     // (the unit does not boot it), not a refusal (nothing is broken; this is a configuration the
     // fleet can change).
     //
-    // DISABLED IS NOT 'NOT SELECTED', AND THE KIND STILL HAS TO BE ASKED (merry-fox-82 HOLD 2a).
+    // DISABLED IS NOT 'NOT SELECTED', AND THE KIND STILL HAS TO BE ASKED.
     // This arm used to reach `prepare(NetworkBootOptionNotSelected)` for EVERY disabled head without
     // consulting its kind, on the reasoning that a disabled entry is what a one-shot exists to
     // bypass. That is true only of a disabled NETWORK entry. With the head being a disabled DISK --
@@ -2387,7 +2331,7 @@ fn decide_absent(
     decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide_from_joins"),
   ]
  {
-  // THE BLOCKER IS CHOSEN FROM EXISTENCE, NOT FROM USABILITY (merry-fox-82, round 2 item 1). The
+  // THE BLOCKER IS CHOSEN FROM EXISTENCE, NOT FROM USABILITY. The
   // first version matched only `available`, so an observation with an enabled disk head and a
   // DISABLED PXE option away from the head reached the NoAvailableNetworkOption arm and answered
   // `NetworkBootOptionAbsent` -- a blocker whose own definition says the enumeration contains no
@@ -2458,7 +2402,7 @@ fn ready_or_refuse_on_nics(
   // WHICH EXISTENCE ANSWER A `RequiresExistingBootOption` ROW IS CHECKED AGAINST. Supplied
     // rather than recomputed so the attempt and the verdict are bound by the SAME read: an attempt
     // that re-derived existence could disagree with the standing that justified it, which is the
-    // attempt/verdict split the HOLD is about.
+    // attempt/verdict split.
   existence: NetworkOptionExistenceStanding,
   observed_bios_version: Optional<NonEmptyStr>,
   nics: List<NonEmptyStr>,
@@ -2471,7 +2415,7 @@ fn ready_or_refuse_on_nics(
     decl_ref(module_path: "gunbc.firmware_network_boot_standing", decl_name: "decide_from_joins"),
   ]
  {
-  // ONE MATCH OVER THE THREE SHAPES, not a length ladder followed by `|> first` (review 81893). The
+  // ONE MATCH OVER THE THREE SHAPES, not a length ladder followed by `|> first`. The
   // ladder needed FOUR outcomes for three questions: zero, one, several -- and 'counted exactly one
   // but the head was Absent', a state that can only arise from the fold disagreeing with itself. Three
   // arms, three remedies, and no arm that has to guess what its own contradiction means.
@@ -2488,9 +2432,9 @@ fn ready_or_refuse_on_nics(
       }
     // Several candidates and no evidence which port carries PXE is a PREPARATION question. Taking the
     // first would be machine-name selection wearing a different hat: stable, reproducible, and wrong
-    // on the first unit whose ports differ from the guess. Review 81711: this branch used to get a
-    // Redfish one-shot override, which redirects among EXISTING entries and so cannot answer 'which
-    // port' -- the same defect review 81802 caught in the sibling branch.
+    // on the first unit whose ports differ from the guess. A Redfish one-shot
+    // override redirects among EXISTING entries and so cannot answer 'which
+    // port'.
     SeveralNicCandidates { count: _ } =>
       prepare(
         blocker: NoInterfaceCarriesPxe,
@@ -2501,13 +2445,12 @@ fn ready_or_refuse_on_nics(
       )
     // THE ONLY READY IN THE MODULE. The head option arrived here by reference join, so `boot_target`
     // is the kind the ENUMERATION says the boot-order head is -- not a target this fold selected from
-    // a filtered list, which is what made the old verdict wrong for [Hdd, Pxe] (merry blocker 1).
+    // a filtered list, which is what made the old verdict wrong for [Hdd, Pxe].
     // The label is never consulted: it is kept for a human reading a console, and a guess against
     // 'Network'/'HTTP'/'NIC1' is how a Ready boots nothing (DESIGN 4: a heuristic is never
     // necessary when the typed source exists).
     OneNicCandidate { nic: nic } =>
-      // NO gaps FIELD, AND NOT AN OMITTED ONE -- Ready has no such arm field (only Refused does,
-      // review 81689). This is the one place in the module that may mint a Ready, and it is
+      // NO gaps FIELD, AND NOT AN OMITTED ONE -- Ready has no such arm field (only Refused does). This is the one place in the module that may mint a Ready, and it is
       // reachable only after every axis has been matched as answered, so a gap list here could only
       // ever be empty: an always-empty list would invite a reader to believe gaps are sometimes
       // reported on a Ready. If a future change lets a Ready be reached with an unanswered axis, the
@@ -2518,7 +2461,7 @@ fn ready_or_refuse_on_nics(
         // knowledge of its own: no TFTP root, no URL, no board spelling.
         firmware_mode: boot_mode,
         network_interface: nic,
-        // WHAT WILL ACTUALLY BOOT, quoted from the joined option (review 81853). This is where the
+        // WHAT WILL ACTUALLY BOOT, quoted from the joined option. This is where the
         // brief's `protocol` lives. It is NOT a second name for `firmware_mode` -- that is the EDGE's
         // claim about the client, this is the UNIT's own answer about the device it will use, and the
         // two may disagree (an HTTP-serving edge in front of a unit whose head is PXE is exactly such
@@ -2535,7 +2478,7 @@ fn ready_or_refuse_on_nics(
 }
 
 // WHETHER A LIST OF FIRMWARE BOOT ENTRIES CONTAINS A NETWORK TARGET -- ANSWERED WITH THE KINDS, NOT
-// WITH A YES/NO (review 81853).
+// WITH A YES/NO.
 //
 // extdeps.bmc.types introduces RedfishBootTargetNetworkStanding by saying it answers 'with a union
 // rather than a Bool, because the arm IS the finding', and its own comment adds that 'a Bool cannot
@@ -2558,7 +2501,7 @@ fn ready_or_refuse_on_nics(
 // so this module adds no re-derivation of what counts as network -- no spelling list, no local
 // notion of network-ness, nothing to drift. It only collects, in one pass, what extdeps said.
 // THE SHAPES OF 'WHICH NETWORK OPTIONS DOES THIS LIST CONTAIN', ONE PER QUESTION THE FOLD ASKS.
-// (review 81893) Both of these replaced a `length(xs: ...) == 0 / > 1 / else` ladder followed by
+// Both of these replaced a `length(xs: ...) == 0 / > 1 / else` ladder followed by
 // `|> first`, and that ladder is what made three refusals necessary: a fold that COUNTS a list and
 // then takes its HEAD can represent states it should never be able to reach -- 'counted one, listed
 // none' -- and each unreachable state needs an arm, a cause, and a witness. Matching the shape once
@@ -2577,7 +2520,7 @@ type HeadJoinStanding
   //   HeadOrderEmpty              -> nothing is selected at all: preparation (author the option)
   //   HeadEnumerationEmpty        -> unconfigured board: preparation, NOT a conflict
   // The old shape collapsed these into "does some network entry exist" twice, once per list, which
-  // is what let [Hdd, Pxe] read as Ready/Pxe (merry-fox-82 blocker 1).
+  // is what let [Hdd, Pxe] read as Ready/Pxe.
   = HeadJoinsEnabledOption { head: BootOption }
   | HeadJoinsDisabledOption { head: BootOption }
   | HeadOptionNotEnumerated { order_head_reference: NonEmptyStr, enumerated_count: Int }
@@ -2599,8 +2542,8 @@ type HeadJoinStanding
 // The accumulator is a plain List and the shape decision is one match on Empty/Cons{head,tail}:
 // an Optional-of-record accumulator resolves to T under this compiler (see
 // gunbc.recurring_failure_mode.generic_identity_decided_by_spelling), and a length-ladder plus
-// `|> first` needed an arm for a contradiction between its own two measurements (review 81893).
-// DOES ANY REFERENCE IN THIS ENUMERATION MEAN TWO DIFFERENT THINGS? (merry-fox-82 HOLD 2b).
+// `|> first` needed an arm for a contradiction between its own two measurements.
+// DOES ANY REFERENCE IN THIS ENUMERATION MEAN TWO DIFFERENT THINGS?.
 //
 // WHAT IS A CONFLICT, AND WHAT IS MERELY A DUPLICATE. Two rows that agree on every field that
 // decides anything -- same target kind, same enabled flag -- are not a disagreement; they are the
@@ -2632,7 +2575,7 @@ fn enumerated_options_or_empty(observation: FirmwareBootObservation) -> List<Boo
   }
 }
 
-// ONE PASS OVER THE ENUMERATION, NOT ONE PER OPTION (merry-fox-82, round 2 item 4; DESIGN.md §6).
+// ONE PASS OVER THE ENUMERATION, NOT ONE PER OPTION.
 // The first version asked, for every option, 'does any other option carry your reference with a
 // different decision?' -- an inner `filter` per outer option, n^2 comparisons for a check that reads
 // each option once. Options are now BUCKETED BY REFERENCE with a map fold, and only the buckets with
@@ -2646,14 +2589,13 @@ fn enumerated_options_or_empty(observation: FirmwareBootObservation) -> List<Boo
 // `sorted_map_keys` is contracted `work: "n * log(n)"`. No option-by-option scan remains anywhere in
 // the fold.
 //
-// WHAT SORTING DOES AND DOES NOT STABILIZE, stated in three parts so no part is over-claimed (round 4
-// HOLD, merry-fox-82).
+// WHAT SORTING DOES AND DOES NOT STABILIZE, stated in three parts so no part is over-claimed .
 //  (1) WHICH BUCKET IS REPORTED is fixed by the SORTED KEY ORDER: the fold walks `sorted_map_keys` and
 //     the `Optional` accumulator short-circuits, so the first conflict in KEY order wins and nothing
 //     after it is examined -- independent of the order the BMC listed the enumeration. This is why the
 //     keys are visited rather than the values: `map_values` has no documented order, and a
 //     first-conflict taken from unordered values would make the witness flaky in exactly the way a
-//     reviewer is right to refuse.
+//     flaky witness is refused.
 //  (2) ORDER WITHIN THE PAIR IT RECEIVES is fixed by `ordered_reading_pair`, which ranks the two
 //     readings it is handed (and breaks a rank tie on the upstream wire spelling). So the SAME pair
 //     yields byte-identical receipts whichever way the BMC listed them -- the published control
@@ -2772,7 +2714,7 @@ fn ordered_reading_pair(a: ReferenceReading, b: ReferenceReading) -> OrderedRefe
 }
 
 fn tie_broken_by_name(a: ReferenceReading, b: ReferenceReading) -> OrderedReferenceReadings {
-  // THE TIEBREAK LABEL IS THE UPSTREAM WIRE SPELLING, not a local restatement of it (review 82728):
+  // THE TIEBREAK LABEL IS THE UPSTREAM WIRE SPELLING, not a local restatement of it:
   // extdeps.bmc.types owns how each target is spelled on the wire, and a second match here could
   // drift from it without changing any behaviour the fold performs -- exactly the kind of private
   // restatement DESIGN 3 refuses.
@@ -2916,8 +2858,7 @@ fn option_with_reference(
   // decides a generic parameter's identity by its SPELLING, and an Optional-of-record accumulator
   // collides with List's own element child: it resolves the accumulator to `T` and every field read
   // fails to resolve with 'no field head on type T'. That is a documented recurring failure mode
-  // (gunbc.recurring_failure_mode.generic_identity_decided_by_spelling), and it bit this module once
-  // already at 00a220793, where the whole file failed to resolve.
+  // (gunbc.recurring_failure_mode.generic_identity_decided_by_spelling).
   let matches: List<BootOption> = fold_list(
     xs: options,
     empty: [],
@@ -2933,7 +2874,7 @@ fn option_with_reference(
   }
 }
 
-// DOES A NETWORK BOOT OPTION EXIST ON THIS UNIT, WHETHER OR NOT IT IS ENABLED (merry-fox-82 HOLD 2a).
+// DOES A NETWORK BOOT OPTION EXIST ON THIS UNIT, WHETHER OR NOT IT IS ENABLED.
 //
 // WHY THIS IS A SEPARATE FOLD WITH ITS OWN TYPE RATHER THAN A FIELD ON `AvailableNetworkStanding`.
 // The availability fold filters on `enabled`, because a redirect embeds a BootOptionReference and
@@ -2983,7 +2924,7 @@ fn network_option_existence(options: List<BootOption>) -> NetworkOptionExistence
 }
 
 // WHICH ENUMERATED OPTIONS ARE USABLE NETWORK TARGETS RIGHT NOW, and which comes first. THIS ANSWERS
-// USABILITY, NOT EXISTENCE (merry-fox-82 HOLD 2a). The comment here used to call this the
+// USABILITY, NOT EXISTENCE. The comment here used to call this the
 // 'does an option EXIST' question and fold `enabled` into it as 'part of existence in the useful
 // sense'. That single sentence is the origin of a real defect: once existence and enablement share a
 // type, a caller cannot ask them separately, and the two one-shot rows -- whose entire purpose is to
@@ -3023,7 +2964,7 @@ fn available_network_options(options: List<BootOption>) -> AvailableNetworkStand
 // from it), or several with no evidence which carries PXE (a preparation: a firmware setting has to
 // change). The old code counted, then took `|> first`, and so needed a fourth state -- 'counted one,
 // enumerated none' -- which it reported as a refusal with no more meaning than 'my own two
-// measurements disagreed' (review 81893).
+// measurements disagreed'.
 type NicCandidateStanding
   = NoNicCandidate
   | OneNicCandidate { nic: NonEmptyStr }
@@ -3033,8 +2974,7 @@ fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
   // ONE MATCH, THREE SHAPES -- and the interfaces are already a List, so there is nothing to
   // accumulate and nothing to infer. No `|> first` anywhere: the single-interface arm binds the name
   // from the pattern, so 'counted exactly one but could not enumerate it' is not a state this
-  // function can return (review 81893: it used to be, and it surfaced as a refusal whose meaning was
-  // no more than 'my two measurements disagreed').
+  // function can return.
   match nics {
     Empty => NoNicCandidate
     // `rest` decides only WHICH non-empty arm this is; the name comes from the pattern.
@@ -3049,11 +2989,11 @@ fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
 
 // the refusal reason CARRIED BY THE ARM THAT DECIDES IT.
 //
-// (review 81789) The first version was `LegacyBiosPxe { .. } => true, _ => false`, and the `_ =>
+// The first version was `LegacyBiosPxe { .. } => true, _ => false`, and the `_ =>
 // false` was the bug: a fourth ClientNetworkBootMode added upstream would have counted as
 // serviceable with no compile error, walking straight toward a Ready.
 //
-// (review 81853) Fixing that introduced a second bug, which this block removes. There used to be a
+// Fixing that introduced a second bug, which this block removes. There used to be a
 // SIBLING function `edge_refusal_reason(boot_mode)` that matched this union a second time and, for
 // the `EdgeCanServe` arm, returned a constructed string: "edge can serve this mode, refusal is a
 // modeling bug: ...". Its comment asserted the arm was unreachable because the only caller refuses
@@ -3072,7 +3012,7 @@ fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
 // home for facts that belong to the edge (dnsmasq ProxyDHCP, the HTTP URI) -- the same category of
 // mistake as the `obligation` prose removed from the routes above. Whether the edge can serve a mode
 // is this seam's fact; HOW it serves it is not.
-// (review 81789) The first version of this fn was `LegacyBiosPxe { .. } => true, _ => false`, and
+// The first version of this fn was `LegacyBiosPxe { .. } => true, _ => false`, and
 // the `_ => false` was the bug: a fourth ClientNetworkBootMode added upstream would have counted as
 // serviceable with no compile error, walking straight toward a Ready -- the exact silent widen the
 // comment above `edge_serviceable_for_mode`'s own arms claim to prevent. Each mode now says WHY the edge can or
@@ -3080,7 +3020,7 @@ fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
 // ProxyDHCP edge boot this?' instead of an assumed answer.
 //
 // Legacy BIOS is refused rather than Unobserved because the finding is real and belongs in the
-// report: the unit's firmware is fine, OUR edge (gunbc.site_uefi_arm64_pxe_edge, cut 6) serves UEFI
+// report: the unit's firmware is fine, OUR edge (gunbc.site_pxe_edge, cut 6) serves UEFI
 // only, so the thing that has to change is not the unit. A future legacy-capable edge adds the arm
 // together with the evidence that it exists.
 type EdgeServiceableByMode
@@ -3108,15 +3048,14 @@ fn edge_serviceable_for_mode(boot_mode: ClientNetworkBootMode) -> EdgeServiceabl
 // as separate PRs: the probe that EMITS FirmwareBootObservation (gunbc.firmware_network_boot_probe,
 // #14275) and the actuation step that READS this standing to decide what to do with a unit
 // (gunbc.provisioning.network_boot_actuation::network_boot_arm_actuator_steps, cut 6/S9). Neither is
-// on main yet, so a reader -- or a reviewer, as happened -- cannot tell 'frontier' from 'dangling' by
+// on main yet, so a reader cannot tell 'frontier' from 'dangling' by
 // looking. Note the consumer is the ACTUATOR and not the arm DERIVATION: deriving an arm shape from a
 // strategy does not read this standing, and a frontier discharged by a non-reader is a lie that
-// reports success (review 81884). The repository already
+// reports success. The repository already
 // has the right carrier for exactly that distinction: a bound dissolution trigger over a
 // DeclarationRef, whose status is COMPUTED from a declaration population rather than asserted.
 //
-// THAT LAST WORD IS WHAT KEEPS THIS COMMENT FROM GOING STALE (review 81792 called an earlier draft
-// of it stale within a day, and it was right -- prose that describes who-has-landed is a snapshot).
+// THAT LAST WORD IS WHAT KEEPS THIS COMMENT FROM GOING STALE (prose that describes who-has-landed is a snapshot).
 // Nothing here says whether the probe exists; `frontier_status` answers that against the population
 // it is handed. On main today it is DissolutionPending. On a merge ref that contains #14275 it is
 // DissolutionFired, with no edit to this file, and the witness asserts both of those outcomes
@@ -3149,9 +3088,9 @@ fn firmware_network_boot_probe_producer_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe")
 }
 
-// THE NAME IS LOOKED UP AND CARRIED BY AN OWNED COMMITMENT, NOT INVENTED (review 81884). This ref
-// used to name `gunbc.provisioning.provisioning_arm::provisioning_arm_derive`, and that was wrong in
-// a way the witness could not see: the declaration is real (PR #14284) but it does not READ this
+// THE NAME IS LOOKED UP AND CARRIED BY AN OWNED COMMITMENT, NOT INVENTED. This ref
+// does not name `gunbc.provisioning.provisioning_arm::provisioning_arm_derive`: that declaration (PR #14284)
+// does not READ this
 // standing -- its derivation takes (strategy, evidence, attempt), so the frontier could have been
 // discharged by a module that never consumes the type it is a frontier FOR. A trigger satisfied by a
 // non-consumer is worse than no trigger, because it reports Fired and stops anyone asking.

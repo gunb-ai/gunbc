@@ -186,8 +186,8 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     },
   FrontierRow {
       subject: PathSubject { path: "dag/product/electrical/carrier_phase.dag::is_phase_classified" },
-      reason: nfr_reason_wildcard_landed_after_join_measurement,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/product/p4261_carrier_layout.dag::unread_projection_gap" },
@@ -235,11 +235,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_listener_admitted" },
-      reason: nfr_reason_variant_test_predicate,
-      dissolution: nfr_dissolve_derived_variant_test,
-    },
-  FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::listener_restart_refusal" },
       reason: nfr_reason_wildcard_landed_after_join_measurement,
       dissolution: nfr_dissolve_owning_fold,
@@ -271,21 +266,131 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::rejects_factory_default" },
-      reason: nfr_reason_wildcard_found_by_native_census,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::is_root_refused" },
-      reason: nfr_reason_wildcard_found_by_native_census,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::is_activation" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::is_root_answered" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/machine_intake/bmc_recovery_route.dag::recovery_write_reset_arm" },
       reason: nfr_reason_wildcard_found_by_native_census,
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::is_root_answered" },
+      subject: PathSubject { path: "dag/gunbc/target_binding.dag::native_serve_probe_if_entry" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/workflow/roster_import_sweep.dag::roster_scope_exit_refuses" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/boot_medium_served_readback.dag::boot_medium_served_context_refused" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/boot_medium_served_readback.dag::boot_medium_served_readback" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/namespace_cut/migration_kit.dag::reading_is_unbound" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/namespace_cut/migration_kit.dag::reading_is_bound_to" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/resolve.dag::lexical_binder_standing_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/resolve.dag::occurrence_binding_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_withdraw.dag::withdrawal_succeeded" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_withdraw.dag::restoration_succeeded" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_withdraw_record.dag::host_is_withdrawn" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_quant_matrix.dag::throughput_scoreable" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_experiment_identity.dag::serving_variant_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_image_capability_observation.dag::image_capability_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_maxq_fork_measurements.dag::fork_card_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_predictions.dag::prediction_id_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_quant_matrix.dag::weight_dtype_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_quant_matrix.dag::kv_dtype_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_topology.dag::card_budget_from_measured_cell" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/module_acquisition.dag::acquisition_holding" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/module_acquisition.dag::acquisition_decided_held" },
       reason: nfr_reason_wildcard_found_by_native_census,
       dissolution: nfr_dissolve_owning_fold,
     },

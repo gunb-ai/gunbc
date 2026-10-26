@@ -1,0 +1,158 @@
+module v2.test.claim.derived_roster_seed_agreement
+
+import std.types { Bool, List }
+import std.algebra { for_all, length, list_find_first, list_map, zip_map, collection_concat_shape }
+import std.optional { Absent, Present }
+import extdeps.filesystem.filesystem_io { FilesystemExactPathRead }
+import gunbc.source_root_read { source_root_read_file }
+import v2.compiler.module_acquisition {
+  AcquiredDerivedRoster,
+  AcquiredModule,
+  PopulationMemberRead,
+  PopulationMemberRefused,
+  CensusAcquisitionBlocked,
+  CensusAcquisitionClosed,
+  CensusAcquisitionRefused,
+  CensusBlock,
+  CensusEdgeBlock,
+  CensusEdgeLookupRefused,
+  CensusEdgeTreeUnbound,
+  CensusEdgeUnknownModule,
+  CensusMemberBlock,
+  SourceRootBinding,
+  acquire_census_closure_of,
+  population_member
+}
+import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import gunbc.rung_drop { RungDrop }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE INHABITANCE PAIRING FOR v2.test.claim.derived_roster, OVER THE REPOSITORY'S TWO REAL LEDGERS
+// (gunbc.source_layout layout_derived_rosters). It reads the live tree on purpose: the claim is that
+// the native derivation and the seed's agree on THIS corpus.
+//
+// THE ORACLE IS THE SEED. This file is evaluated by the seed, so `rung_drop_roster` and
+// `recurring_failure_mode_roster` below are the seed's own in-memory rosters
+// (v1_compiler.cli_run.derived_row_roster acquire_dir_files), while the text compared against them is
+// the v2 derivation's (v2.compiler.module_acquisition population_member, the route the native census
+// reads). The two meet at identity grain: the v2 roster's member at position i is a row file, and that
+// file must spell the identity of the seed roster's row at position i. A difference in membership or in
+// order -- one row more, one fewer, two swapped -- puts some position's identity in another file, so the
+// comparison is a join and not a count. The seed is a regression oracle, not the specification
+// (DESIGN section 7): a deliberate divergence would be recorded on the rule and this control amended.
+//
+// THE DEMAND ROUTE IS THE OTHER HALF: gunbc.rung_drop.standing imports gunbc.rung_drop.roster, and on
+// main a native compile of it refused with resolve_module_not_found (the native census run 40134096037,
+// `binding_refusal_cause gunbc.rung_drop.standing own resolve_module_not_found 15:1`).
+
+fn repository_bindings() -> List<SourceRootBinding> {
+  [
+    SourceRootBinding { tree: V2Tree, host_directory: repository_tree_directory(tree: V2Tree) },
+    SourceRootBinding { tree: DagTree, host_directory: repository_tree_directory(tree: DagTree) }
+  ]
+}
+
+// The members of a derived roster's text, in order: its list entries, one per line.
+fn roster_text_members(text: String) -> List<String> {
+  list_map(
+    xs: filter(split(s: text, delimiter: "\n"), line => line.starts_with(prefix: "  ") && line.ends_with(suffix: ",")),
+    f: fn(line) { substring(s: line, start: 2, end: string_length(s: line) - 1) }
+  )
+}
+
+fn row_file_spells(directory: String, stem: String, identity: String) -> Bool {
+  match source_root_read_file(path: concat(directory, "/", stem, ".dag")) {
+    FilesystemExactPathRead { path: _, content: content } => content.contains(substring: concat("\"", identity, "\""))
+    _ => false
+  }
+}
+
+fn native_members(name: String) -> List<String> {
+  match population_member(layout: repository_storage_layout(), bindings: repository_bindings(), name: name) {
+    PopulationMemberRefused { cause: _ } => []
+    PopulationMemberRead { member: member } => roster_text_members(text: member.content)
+  }
+}
+
+fn agrees_with_seed(name: String, directory: String, seed_identities: List<String>) -> Bool {
+  let members = native_members(name: name)
+  length(xs: members) > 0
+    && length(xs: members) == length(xs: seed_identities)
+    && for_all(xs: zip_map(a: members, b: seed_identities, f: fn(stem, identity) { row_file_spells(directory: directory, stem: stem, identity: identity) }), predicate: fn(ok) { ok })
+}
+
+fn rung_drop_identity(r: RungDrop) -> String {
+  r.identity as String
+}
+
+fn failure_mode_identity(r: RecurringFailureMode) -> String {
+  r.identity as String
+}
+
+test fn the_native_rung_drop_roster_agrees_with_the_seeds() -> Bool {
+  agrees_with_seed(
+    name: "gunbc.rung_drop.roster",
+    directory: "dag/gunbc/rung_drop",
+    seed_identities: list_map(xs: rung_drop_roster, f: rung_drop_identity)
+  )
+}
+
+test fn the_native_recurring_failure_mode_roster_agrees_with_the_seeds() -> Bool {
+  agrees_with_seed(
+    name: "gunbc.recurring_failure_mode.roster",
+    directory: "dag/gunbc/recurring_failure_mode",
+    seed_identities: list_map(xs: recurring_failure_mode_roster, f: failure_mode_identity)
+  )
+}
+
+// gunbc.rung_drop.standing's closure holds its derived roster, and nothing in the closure is blocked ON the
+// roster. This goes through the census door (acquire_census_closure_of) and not the compiler's exact door,
+// because standing's closure is blocked elsewhere, by a defect this lane does not own: std.removal_tombstone,
+// a dag module, makes a qualified reference to v2.lens.module_impact_query, and the cross-tree model denies
+// that edge. The census door records that block and goes on, so the claim can observe the roster positively
+// rather than inferring it from the absence of a refusal.
+// ITS COST IS STATED BECAUSE IT DECIDES WHERE IT RUNS: under the seed interpreter the census door
+// front-ends standing's whole closure (about 1,300 modules) at roughly two a minute, so this claim takes
+// hours there. The executed receipt for the same question is the emitted compiler's census-scoped verb
+// over //gunbc/rung_drop:standing, cited in gunbc#15078. Once gunbc#15080 admits the std.removal_tombstone
+// edge, this claim returns to the exact door (acquire_verified), which stops at no block.
+fn census_block_names_roster(block: CensusBlock) -> Bool {
+  match block {
+    CensusMemberBlock { module: module, refusal: _, content: _, host_directory: _, requesters: _ } => module == "gunbc.rung_drop.roster"
+    CensusEdgeBlock { refusal: refusal } =>
+      match refusal {
+        CensusEdgeUnknownModule { request: request } => request.spelling == "gunbc.rung_drop.roster"
+        CensusEdgeLookupRefused { request: request, lookup: _ } => request.spelling == "gunbc.rung_drop.roster"
+        CensusEdgeTreeUnbound { tree: _, request: request } => request.spelling == "gunbc.rung_drop.roster"
+      }
+  }
+}
+
+fn holds_derived_roster(modules: List<AcquiredModule>) -> Bool {
+  match list_find_first(xs: modules, predicate: fn(m) { m.name == "gunbc.rung_drop.roster" }) {
+    Absent => false
+    Present { value: roster } =>
+      match roster.origin {
+        AcquiredDerivedRoster { inputs: inputs } => length(xs: inputs) > 0
+        _ => false
+      }
+  }
+}
+
+test fn rung_drop_standing_acquires_with_its_derived_roster() -> Bool {
+  match acquire_census_closure_of(layout: repository_storage_layout(), bindings: repository_bindings(), entries: ["gunbc.rung_drop.standing"]) {
+    CensusAcquisitionRefused { refusal: _ } => false
+    CensusAcquisitionClosed { entries: _, modules: modules, reads: _ } => holds_derived_roster(modules: modules)
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      holds_derived_roster(modules: modules)
+        && !census_block_names_roster(block: first)
+        && for_all(xs: rest, predicate: fn(b) { !census_block_names_roster(block: b) })
+  }
+}

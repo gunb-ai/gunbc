@@ -2,7 +2,7 @@ module gunbc.host.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
-import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item, trim, fold_list, list_map, non_empty_append, non_empty_singleton, non_empty_to_list, string_concat_join }
+import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item, trim, skip, fold_list, list_map, non_empty_append, non_empty_singleton, non_empty_to_list, string_concat_join }
 import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_command, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -89,8 +89,8 @@ import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
-import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
-import gunbc.auth.approval_device_redemption { approval_device_store_directory }
+import gunbc.managed_directory { managed_directory_admit, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
+import gunbc.auth.approval_broker_state_directories { approval_broker_state_directories, broker_state_directory_install_argv }
 import gunbc.fleet.fleet_posix_accounts { GroundedPosixPrincipal, grounded_posix_principal_name, fleet_rm_binary_path, fleet_posix_nologin_shell_path }
 import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
@@ -100,24 +100,13 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
-  approval_broker_helper_snapshot_base,
-  approval_broker_helper_snapshot_locus,
+  HelperLocus,
   helper_locus_dir,
 }
 import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file,
   live_deploy_approval_broker_unit_file_on,
-  approval_broker_helper_sudoers_content,
-  approval_broker_helper_sudoers_mode,
-  approval_broker_helper_sudoers_path,
-  approval_broker_helper_sudoers_temp_path,
-  approval_broker_helper_sudoers_stage_name,
-  approval_broker_helper_sudoers_readback_stage_name,
-  approval_broker_helper_grant_admission,
-  approval_broker_helper_grant_refusal_text,
-  HelperGrantAdmitted,
-  HelperGrantWordRefused,
-  HelperGrantLocusWritableByGrantee,
+  helper_sudoers_grant_mode,
   path_ancestors_inclusive,
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
@@ -183,7 +172,6 @@ import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
-  retained_srvn,
 }
 import extdeps.ssh.session { ssh_session_exec_script }
 import gunbc.typed_argv_exec {
@@ -231,7 +219,6 @@ import extdeps.tools.websocat {
 }
 import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
 import gunbc.srv3.srv3_actuate_shell_paths {
-  srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
   srv3_bmcweb_token_path,
 }
@@ -277,6 +264,14 @@ import gunbc.live_deploy.retract_legs {
   DeployRetractLeg, DeployRetractPlan, RetractPlanReady, RetractPlanRefused, deploy_retract_plan_legs, deploy_retract_leg_step,
   RetractServeOff, RetractDisableIfLoaded, RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, RetractDaemonReload, RetractUnitGoneReadback,
 }
+import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe, ObjectSourceServeDecideAtApplyPwd, observe_object_source_serve, object_source_serve_refusal_text }
+import gunbc.live_deploy.apply_legs {
+  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
+  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegRootHelperSnapshot, HelperSnapshotAction, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
+  ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
+  credstore_copy_stage_command, credstore_copy_commands,
+}
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import extdeps.systemd.systemctl {
@@ -287,9 +282,9 @@ import extdeps.systemd.systemctl {
   systemctl_start_command,
 }
 import gunbc.live_deploy.emit {
-  live_deploy_apply_script_for_wet,
   deployment_serve_route_command,
 }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -340,12 +335,51 @@ import extdeps.cache.sccache {
   sccache_release_arch_token,
   sccache_release_digest,
   sccache_installed_binary_path,
-  sccache_install_script,
   sccache_misconfigured_log_fragments,
 }
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.build_cache.build_cache_unit { build_cache_unit_text }
+import gunbc.host.build_cache_daemon_ensure {
+  BuildCacheEnsureExecuted,
+  BuildCacheEnsureFold,
+  BuildCachePlanRefused,
+  EnsureOps,
+  LegPassed,
+  LegStopped,
+  BuildCacheEnsureOp,
+  BuildCacheHostRunObserved,
+  BuildCacheHostRunOutcome,
+  BuildCacheObserve,
+  CouldNotRun,
+  EnsureCompleted,
+  EnsureFailed,
+  EnsurePlanRefused,
+  EnsureDigestRefused,
+  EnsureSkipped,
+  EnsureTransportBlocked,
+  ReadDigest,
+  RefusedBeforeInstall,
+  Runs,
+  Ran,
+  build_cache_binary_presence_of,
+  build_cache_daemon_ensure_observation,
+  build_cache_daemon_ensure_plan,
+  build_cache_daemon_presence_command,
+  build_cache_daemon_stats_command,
+  build_cache_ensure_leg_verdict,
+  build_cache_ensure_fold_is_progressing,
+  build_cache_ensure_run,
+  build_cache_ensure_run_legs,
+  build_cache_ensure_is_needed,
+  build_cache_plan_remainder,
+  build_cache_matched_stats_fragment,
+  build_cache_observe_observed,
+  build_cache_read_back_observation,
+  build_cache_sccache_install_params,
+  build_cache_unit_bytes,
+  build_cache_unit_stage_discard_command,
+}
 import gunbc.build_cache.build_cache_provision_verdict {
   BuildCacheDaemonObservation,
   DaemonStatsOk,
@@ -515,11 +549,11 @@ import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
 }
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan, OwnedDirectoryEnsureOutcome,
-  owned_directory_ensure, owned_directory_observe,
+  owned_directory_ensure, owned_directory_observe, owned_directory_install_argv,
   owned_directory_outcome_converged, owned_directory_outcome_detail,
   ObserverRead, ObserverReadOut, ObserverReadFailed,
   ObserverTransportRefused, ObserverExited,
@@ -618,7 +652,7 @@ type ResolvedHostEffectCell =
   | ReceiptEmitOnHost { node: ComputeHost, lines: List<String> }
   | BootOnceReadBackSleepOnHost { node: ComputeHost }
   | SeededInstallMediaToolchainOnHost { node: ComputeHost }
-  | BmcwebSessionLoginOnHost { node: ComputeHost }
+  | BmcwebSessionLoginOnHost { node: ComputeHost, request_body_file: NonEmptyStr }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
@@ -687,8 +721,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
     Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
     Srv3SeededInstallMediaToolchainEnsure =>
       SeededInstallMediaToolchainOnHost { node: n }
-    Srv3BmcwebSessionLogin =>
-      BmcwebSessionLoginOnHost { node: n }
+    Srv3BmcwebSessionLogin { request_body_file: f } =>
+      BmcwebSessionLoginOnHost { node: n, request_body_file: f }
     Srv3BmcwebTokenExtract =>
       BmcwebTokenExtractOnHost { node: n }
     Srv3BootOnceReadBackSleep =>
@@ -771,7 +805,7 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     Srv3SeededInstallMediaToolchainEnsure =>
       IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-    Srv3BmcwebSessionLogin =>
+    Srv3BmcwebSessionLogin { request_body_file: _ } =>
       IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     Srv3BmcwebTokenExtract =>
       IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -852,7 +886,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3InstallMediaFetch => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3SeededInstallMediaRemaster => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3SeededInstallMediaToolchainEnsure => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        Srv3BmcwebSessionLogin => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BmcwebSessionLogin { request_body_file: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3BmcwebTokenExtract => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -894,8 +928,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BootOnceReadBackSleepOnHost { node: n }
         Srv3SeededInstallMediaToolchainEnsure =>
           SeededInstallMediaToolchainOnHost { node: n }
-        Srv3BmcwebSessionLogin =>
-          BmcwebSessionLoginOnHost { node: n }
+        Srv3BmcwebSessionLogin { request_body_file: f } =>
+          BmcwebSessionLoginOnHost { node: n, request_body_file: f }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
         LiveDeployApply { warrant: w } =>
@@ -960,7 +994,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3InstallMediaFetch => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3SeededInstallMediaRemaster => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3SeededInstallMediaToolchainEnsure => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        Srv3BmcwebSessionLogin => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BmcwebSessionLogin { request_body_file: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BmcwebTokenExtract => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1252,13 +1286,18 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
 // this site supplies only the paths its materialization bracket owns and runs the FLAGS through
 // srv3_run_tool_by_name, which resolves the program from the same cited curl_cli_tool row the
 // builder's identity carries.
+// THE BODY PATH ARRIVES ON THE EFFECT. It names the owner-only file the caller's
+// gunbc.auth.private_secret_file bracket created in a per-run private directory and removes when the
+// login returns. It used to be the fixed constant /tmp/srv3_bmcweb_login_body.json, written with
+// the ambient umask and never removed, so after a login the BMC password stayed in /tmp.
 fn realize_bmcweb_session_login_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  request_body_file: NonEmptyStr,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    request_body_file: request_body_file,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
   match srv3_run_tool_by_name(
@@ -1295,14 +1334,15 @@ fn realize_bmcweb_session_login_body(
 fn realize_bmcweb_session_login_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  request_body_file: NonEmptyStr,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     SshShell { ssh_host: _ } =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     FleetSsh { target: _, context: _ } =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebSessionLogin cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -1803,7 +1843,7 @@ fn realize_provision_codex_runtime(
     Srv3InstallMediaFetch => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaRemaster => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaToolchainEnsure => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    Srv3BmcwebSessionLogin => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin { request_body_file: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3BmcwebTokenExtract => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3270,9 +3310,13 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
-// The ensure arm installs sccache by calling the cited authority
-// extdeps.cache.sccache.sccache_install_script (pinned release, per-arch sha256 verified, landing
-// at sccache_installed_binary_path) — it does NOT hand-roll a package-manager install. Until
+// The ensure arm installs sccache by running the generic verified download-plus-install effect
+// (gunbc.host.verified_binary_install) with sccache's boundary values supplied by its adapter
+// gunbc.host.sccache_verified_install: pinned release url, per-arch sha256 verified BEFORE anything
+// is moved, landing at sccache_installed_binary_path — it does NOT hand-roll a package-manager
+// install. The declaration this arm used to call, extdeps.cache.sccache.sccache_install_script, is
+// deleted (its script body was a concat-built bash string; a digest mismatch aborted it via set -e,
+// which the typed admission now states instead of behaving). Until
 // 2026-07-24 this module ran `sudo -n apt-get install -y sccache` and wrote a unit with
 // ExecStart=/usr/bin/sccache, a §3 fork of the same concept: P1:runner-deploy-slot installs the
 // pinned tarball to /usr/local/bin and then P1b:build-cache-provision pointed its unit at a path
@@ -3297,169 +3341,166 @@ fn realize_os_install_actuator_toolchain_ensure(
 // already established in gunbc.live_deploy.emit and gunbc.host.host_axis_caps — a further §3 de-fork
 // consistent with why this swap exists.
 
-fn build_cache_unit_system_path(instance: BuildCacheInstance) -> String {
-  concat("/etc/systemd/system/", instance.intended_unit as String)
-}
-
-fn build_cache_observe_stats_body() -> String {
-  join([
-    "stats_out=\"\"",
-    "stats_rc=0",
-    join(["if [ -x '", sccache_installed_binary_path, "' ]; then"], ""),
-    join(["  stats_out=\"$('", sccache_installed_binary_path, "' --show-stats 2>&1)\" || stats_rc=$?"], ""),
-    "else",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=absent\"",
-    "  stats_rc=127",
-    "fi",
-    "if [ \"$stats_rc\" -eq 0 ]; then",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=ok\"",
-    "  printf '%s\\n' \"$stats_out\"",
-    "  exit 0",
-    "fi",
-    "",
-  ], "\n")
-}
-
-fn build_cache_fragment_word(fragment: String) -> String {
-  join(["'", fragment, "'"], "")
-}
-
-fn build_cache_fragment_words() -> String {
-  join(
-    map(sccache_misconfigured_log_fragments, f => build_cache_fragment_word(fragment: f)),
-    " ",
-  )
-}
-
 // The misconfigured-fragment classifier is a FOLD over the cited roster
 // extdeps.cache.sccache.sccache_misconfigured_log_fragments, not one emitted branch per fragment.
-// The roster is data the loop iterates: adding a fragment upstream changes the emitted word list
-// and nothing else. Fragments are single-quoted as shell words, which is total only while no
-// fragment contains a single quote — build_cache_fragment_words_are_shell_safe() is the
-// construction check that keeps it so.
+// The roster is data the loop iterates: adding a fragment upstream changes the classifier's coverage
+// and nothing else. THE ONE HAZARD THIS SCAN USED TO GUARD, AND NO LONGER CAN: a fragment that
+// matches every capture. `string_contains(s:, pattern: "")` is true of everything, so an EMPTY entry
+// would classify every unresponsive host as misconfigured -- and that hazard is now closed where it is
+// writable, at the declaration: the roster is `List<NonEmptyStr>` upstream, so `""` is a compile error
+// (extdeps.cache.sccache). A runtime check for it would be green-by-construction, so there is none here;
+// the claims assert what can actually fail, and the classifier's own negative controls (a capture that
+// is empty, or that omits every fragment) are what pin the scan. THE EMITTED SHELL WORD LIST IS GONE:
+// fragments used to be single-quoted into `for frag in ...`, so a quote in one was a syntax error on the
+// host -- nothing splices these into a command any more, and the old shell-safety predicate retired with
+// the script that needed it (review 82053: its name promised a shell check while its body had become an
+// emptiness check that no input could fail).
 
-fn build_cache_classify_failure_body() -> String {
-  join([
-    "observe_class=unresponsive",
-    "observe_fragment=\"\"",
-    join(["for frag in ", build_cache_fragment_words(), "; do"], ""),
-    "  if printf '%s' \"$stats_out\" | grep -Fq \"$frag\"; then",
-    "    observe_class=misconfigured",
-    "    observe_fragment=\"$frag\"",
-    "    break",
-    "  fi",
-    "done",
-    "if [ \"$observe_class\" = misconfigured ]; then",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=misconfigured fragment=$observe_fragment\"",
-    "else",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=unresponsive\"",
-    "fi",
-    "",
-  ], "\n")
+// THE READ-BACK FAILS CLOSED, ASSERTED ON THE TYPED ROUTE. What this predicate has always pinned is that a
+// post-ensure stats query which does NOT succeed cannot be reported as a converged daemon -- the property
+// the script got from `|| { printf read_back=FAILED; exit 1; }`. It is now asserted on the records rather
+// than on script text, which is the stronger form: the three cases a text scan could not tell apart (a
+// non-zero exit, a read that never ran, and a zero exit with no evidence) are three different arms here,
+// and all three must refuse. The old text scan asserted the FAILURE WORDS existed; it could not assert the
+// OUTCOME, which is what "fails closed" actually claims.
+fn build_cache_provision_read_back_fails_closed() -> Bool {
+  let owned = ServerManagedUnitOwned { unit: "sccache-server.service" as NonEmptyStr }
+  build_cache_read_back_refuses_capture(
+    stdout_: "stats table",
+    stderr_: "connection refused",
+    owned: owned,
+  ) && build_cache_read_back_refuses_unreadable(owned: owned)
+    && build_cache_read_back_reports_answered_table(owned: owned)
 }
 
-// THE HEREDOC TERMINATOR IS CONCATENATED ONTO THE UNIT TEXT, NOT JOINED AS A SIBLING LINE.
-//
-// build_cache_unit_text ends in its own terminating newline, because extdeps.systemd.unit_file
-// serializes a unit as a complete file. The heredoc supplies a newline of its own before the
-// terminator, so joining the two as adjacent list elements would emit BOTH and deliver a unit
-// carrying a trailing blank line. Concatenating spends the render's newline as the one the
-// terminator needs, which is what keeps the delivered bytes identical to the hand renderer this
-// replaced -- measured on both the CI and session instances rather than argued. The drift would
-// have been one byte in a file that convergence compares byte-for-byte against this same render.
-fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
-  join([
-    join(["if [ ! -x '", sccache_installed_binary_path, "' ]; then"], ""),
-    sccache_install_script(rel: sccache_release_0_15_0, arch: arch_token, digest: digest),
-    "fi",
-    "_gunbc_stage=\"$(mktemp -d)\"",
-    "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
-    join(["cat > \"$_gunbc_stage/", instance.intended_unit as String, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
-    concat(build_cache_unit_text(instance: instance), "__GUNBC_SCCACHE_UNIT__"),
-    join(["sudo -n install -m 0644 \"$_gunbc_stage/", instance.intended_unit as String, "\" ", build_cache_unit_system_path(instance: instance)], ""),
-    gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true),
-    systemctl_enable_command(unit: instance.intended_unit, privileged: true),
-    systemctl_restart_command(unit: instance.intended_unit, privileged: true),
-    "",
-  ], "\n")
-}
-
-fn build_cache_read_back_body(binary: String) -> String {
-  join([
-    join(["if stats_out=\"$('", binary, "' --show-stats 2>&1)\"; then"], ""),
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"",
-    "  printf '%s\\n' \"$stats_out\"",
-    "  exit 0",
-    "else",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=FAILED sccache unhealthy after ensure\"",
-    "  printf '%s\\n' \"$stats_out\"",
-    "  exit 1",
-    "fi",
-    "",
-  ], "\n")
-}
-
-fn build_cache_provision_script_body(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
-  join([
-    "set -euo pipefail",
-    build_cache_observe_stats_body(),
-    build_cache_classify_failure_body(),
-    "printf '%s\\n' \"BuildCacheProvisionReceipt: ensure=starting\"",
-    build_cache_ensure_daemon_body(instance: instance, arch_token: arch_token, digest: digest),
-    build_cache_read_back_body(binary: sccache_installed_binary_path),
-  ], "\n")
-}
-
-fn build_cache_provision_shell_script(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
-  shell_exec_via_bash(
-    body: build_cache_provision_script_body(instance: instance, arch_token: arch_token, digest: digest),
-  )
-}
-
-data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN host_effect_apply carries a typed operation that realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
-
-data build_cache_provision_shell_script_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect_realize",
-    decl_name: "build_cache_provision_shell_script_dissolution_trigger",
-    field: WholeDeclaration,
+// A NON-ZERO READ-BACK IS NEVER A CONVERGED DAEMON, and the host's bytes reach the reason (stderr is what
+// the operator needs, and it is preferred over stdout exactly as the retired read-back preferred it).
+fn build_cache_read_back_refuses_capture(stdout_: String, stderr_: String, owned: BuildCacheServerPlacement) -> Bool {
+  match build_cache_read_back_observation(
+    read_back: Ran {
+      observed: BuildCacheHostRunObserved { exit_code: 1, stdout: stdout_, stderr: stderr_ },
+    },
+    placement: owned,
+  ) {
+    DaemonUnresponsive { detail: d } => string_contains(s: d as String, pattern: stderr_)
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
   }
 }
 
-fn build_cache_provision_read_back_fails_closed() -> Bool {
-  let body = build_cache_read_back_body(binary: sccache_installed_binary_path)
-  string_contains(s: body, pattern: "read_back=FAILED")
-    && string_contains(s: body, pattern: "exit 1")
-    && !string_contains(s: body, pattern: "stats_rc")
+// A READ-BACK THAT COULD NOT RUN IS NEVER A CONVERGED DAEMON EITHER. This arm is the one the receipt
+// protocol could not express: the script's classifier saw only "no read_back=ok in the blob", and a blob
+// that was empty because the run was refused looks the same as one that was empty because the host was
+// silent. Here they are different inputs, and both refuse.
+fn build_cache_read_back_refuses_unreadable(owned: BuildCacheServerPlacement) -> Bool {
+  match build_cache_read_back_observation(
+    read_back: CouldNotRun { phase: "the read-back", reason: "the transport refused" },
+    placement: owned,
+  ) {
+    DaemonUnresponsive { detail: d } => string_contains(s: d as String, pattern: "the transport refused")
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
 }
 
-fn build_cache_fragment_words_are_shell_safe() -> Bool {
-  fold(
-    sccache_misconfigured_log_fragments,
-    init: true,
-    f: (acc, frag) => acc && !string_contains(s: frag, pattern: "'"),
-  )
+// AND A SUCCESSFUL READ-BACK REPORTS THE TABLE IT CAPTURED, rather than a marker it printed about itself:
+// the bytes the host produced are what reach placement_verdict as the evidence of a converged instance.
+fn build_cache_read_back_reports_answered_table(owned: BuildCacheServerPlacement) -> Bool {
+  match build_cache_read_back_observation(
+    read_back: Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: "CacheStats", stderr: "" } },
+    placement: owned,
+  ) {
+    DaemonStatsOk { stats_line: line, placement: _ } => line == "CacheStats"
+    DaemonUnresponsive { detail: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
 }
 
+// THE INSTALL BRANCH STILL CITES THE RELEASE AND STILL DOES NOT REACH FOR A PACKAGE MANAGER -- asserted on
+// the DERIVED OPS rather than on a script body. Same four assertions the script-era predicate made, and the
+// reason to keep all four is that the install legs are now argv built by gunbc.host.verified_binary_install
+// from a caller-supplied release row: if a future change pointed the plan at a distro package, or dropped
+// the version from the URL, or installed to the distro path, this is the production oracle that notices.
+// Rendering the argv is for the ASSERTION only -- the effect never runs a shell (see
+// gunbc.host.verified_binary_install for why a joined string is not an execution form).
 fn build_cache_install_is_cited_not_package_manager() -> Bool {
-  let body = build_cache_provision_script_body(
+  let rendered = build_cache_ensure_ops_rendered(
     instance: ci_cache_instance(host: srv1_host.identity),
     arch_token: "aarch64" as NonEmptyStr,
     digest: sccache_release_0_15_0.digest_aarch64,
+    install_needed: true,
   )
-  string_contains(s: body, pattern: "github.com/mozilla/sccache/releases/download/")
-    && string_contains(s: body, pattern: sccache_release_0_15_0.version as String)
-    && !string_contains(s: body, pattern: "apt-get install")
-    && !string_contains(s: body, pattern: "/usr/bin/sccache")
+  string_contains(s: rendered, pattern: "github.com/mozilla/sccache/releases/download/")
+    && string_contains(s: rendered, pattern: sccache_release_0_15_0.version as String)
+    && !string_contains(s: rendered, pattern: "apt-get install")
+    && !string_contains(s: rendered, pattern: "/usr/bin/sccache")
 }
 
+// THE PRESENCE RECORD FOR THE RENDERING ORACLES, which ask for the two legs directly rather than
+// reproducing a probe. Not the production route -- production derives this from the probe's own exit code
+// through build_cache_binary_presence_of, and an oracle that wants to see the install legs asks for them.
+fn build_cache_presence_for_render(install_needed: Bool) -> Optional<VerifiedBinaryInstallPresence> {
+  if install_needed {
+    Present { value: InstallNeeded { dest_path: sccache_installed_binary_path as String } }
+  } else {
+    Present { value: AlreadyInstalled { dest_path: sccache_installed_binary_path as String } }
+  }
+}
+
+// EVERY OP THE ENSURE DERIVES, RENDERED FOR COMPARISON. Used by the production oracles only. The join
+// separator is a newline so an assertion cannot accidentally match across two words of one argv (a space
+// would let "install -m" and a following "-m" read as one phrase).
+fn build_cache_ensure_ops_rendered(
+  instance: BuildCacheInstance,
+  arch_token: NonEmptyStr,
+  digest: Digest,
+  install_needed: Bool,
+) -> String {
+  match build_cache_daemon_ensure_plan(
+    instance: instance,
+    arch_token: arch_token,
+    digest: digest,
+    install: build_cache_presence_for_render(install_needed: install_needed),
+  ) {
+    BuildCachePlanRefused { reason: _ } => ""
+    EnsureOps { ops: ops } =>
+      fold(
+        ops,
+        init: "",
+        f: (acc, op) =>
+          join(
+            [acc, if acc == "" { "" } else { "\n" }, shell_command_text_of_argv(argv: argv_words(command: op.argv))],
+            "",
+          )
+      )
+  }
+}
+
+// THE SCAN SEES EVERY CITED FRAGMENT, ASSERTED ON THE SCAN ITSELF. The retired version grepped the emitted
+// classify BODY for each fragment -- an assertion that a string appeared somewhere in a script, which would
+// pass even if the loop could never have selected it (a fragment in a comment, or behind an earlier branch)
+// and would fail on a legitimate refactor. This asserts the behaviour instead: for every cited fragment, a
+// capture containing it yields THAT fragment, so the row and the scan cannot drift -- adding a fragment
+// upstream makes it observable here or makes this claim go red.
 fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
   fold(
     sccache_misconfigured_log_fragments,
     init: true,
     f: (acc, frag) =>
-      acc && string_contains(s: build_cache_classify_failure_body(), pattern: frag),
+      acc
+        && match build_cache_matched_stats_fragment(capture: join(["noise before ", frag, " noise after"], "")) {
+          Present { value: got } => got == frag
+          Absent => false
+        },
   )
 }
 
@@ -3624,7 +3665,7 @@ fn realize_provision_build_cache(
     Srv3InstallMediaFetch => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaRemaster => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaToolchainEnsure => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    Srv3BmcwebSessionLogin => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin { request_body_file: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3BmcwebTokenExtract => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -3879,6 +3920,331 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
 // bytes cross the transport as stdin to dd, never as script text and never as an argv element, so a
 // unit body carrying quotes, spaces or metacharacters cannot change the command's meaning whatever
 // it contains. Same arms, same refusal posture, same exit-status derivation.
+// THE CAPTURE OF ONE HOST COMMAND, AS A RECORD THE TYPED ENSURE CLASSIFIES. ONE runner for reads and
+// writes, because run_argv_over_host_effect_transport and run_argv_stdin_over_host_effect_transport both
+// preserve stdout AND stderr on a non-zero exit for LocalShell and SshShell -- which is the property this
+// effect needs, and the reason it is NOT routed through build_cache_host_read_observed: that helper's
+// LocalShell arm yields an EMPTY stdout on a refused command, which would have emptied the
+// misconfigured-fragment scan on exactly the hosts the scan exists for (a fragment appears in the output of
+// a query that then exits non-zero). Refusing to run at all is kept distinct from a non-zero exit: there was
+// no process, so there is no exit code to report, and the transport's own text is what the operator sees.
+fn build_cache_argv_read_outcome(command: ArgvCommand, transport: HostEffectTransport) -> BuildCacheHostRunOutcome {
+  match run_argv_over_host_effect_transport(command: command, transport: transport) {
+    RunArgvTransportRefused { reason: r } => CouldNotRun { phase: "argv read", reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      Ran {
+        observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
+      }
+  }
+}
+
+// THE ENSURE AS EFFECTS, WITH THE STAGED SIBLING DISCARDED IN EVERY ARM. The plan is DERIVED from the
+// observe record (so a dry witness can name every argv and the order they run in before anything runs),
+// then the ops run in order and the FIRST failure ends it -- what `set -e` did, now named. The discard runs
+// whichever arm returns: that is the counterpart of the script's `trap ... EXIT`, which cannot be entrusted
+// to the path a script happened to take, and it is an operation rather than a shell trap so a witness can
+// see the cleanup exists.
+//
+// Every arm says something true of a real sequence, and there is no "ran, and here is an invented exit
+// code": a transport that refused yields EnsureTransportBlocked with the transport's text, and a failed op
+// yields EnsureFailed with the op and its own capture.
+fn build_cache_ensure_executed(
+  instance: BuildCacheInstance,
+  arch_token: NonEmptyStr,
+  digest: Digest,
+  observe: BuildCacheObserve,
+  transport: HostEffectTransport,
+) -> BuildCacheEnsureExecuted {
+  if !build_cache_ensure_is_needed(observe: observe) {
+    EnsureSkipped
+  } else {
+    let unit_bytes = build_cache_unit_bytes(instance: instance)
+    let discard = build_cache_unit_stage_discard_command(instance: instance)
+    // The generic effect's parameters, built from the same release row the retired script read its URL
+    // and digest from: arch and digest arrive as parameters because which release is current is policy,
+    // and policy is not allowed to be baked into an argv.
+    let install_params = build_cache_sccache_install_params(arch_token: arch_token, digest: digest)
+    match build_cache_daemon_ensure_plan(
+      instance: instance,
+      arch_token: arch_token,
+      digest: digest,
+      install: build_cache_binary_presence_of(observe: observe, p: install_params),
+    ) {
+      BuildCachePlanRefused { reason: r } => EnsurePlanRefused { reason: r }
+      EnsureOps { ops: ops } => {
+        // PASS ONE RUNS WHAT MAY RUN BEFORE ANYTHING IS KNOWN ABOUT THE DIGEST: for a plan that installs,
+        // the fetch and the read and nothing past them; for a plan that does not (the binary is already at
+        // the destination), every leg, since there is no gate to wait behind. The fold's carrier comes
+        // back with the digest line the read produced, which is the only thing that can decide pass two.
+        let prefix = build_cache_ensure_run_legs(
+          run: build_cache_ensure_run(ops: ops, digest: digest, observed_digest_line: none),
+        )
+        let first = build_cache_run_ensure_ops(
+          state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+          ops: prefix,
+          unit_bytes: unit_bytes,
+          transport: transport,
+          plan: ops,
+          digest: digest,
+        )
+        // ONE DECISION SITE, NOT TWO. Pass two used to consult the gate here, over the line the fold carried
+        // back, and so said nothing new -- but a second site consulting the same authority is still a site, and
+        // the thing that keeps `build_cache_ensure_run` authoritative is that there is exactly one place a read
+        // line is turned into permission or refusal. That place is now the pure step, at the leg where the host
+        // answered, which both this loop and the witness fold call. What is left here is not a gate: it is
+        // "some prefix leg stopped the sequence, so pass two does not run", which is about the SEQUENCE and is
+        // read off the carrier rather than re-derived.
+        let outcome =
+          if !build_cache_ensure_fold_is_progressing(fold_state: first) {
+            // A leg of the prefix itself stopped the sequence — a fetch that could not download, a read that
+            // could not hash the file, or the read answering with a digest that is not the pinned one. The arm
+            // names the operation and carries the host's own capture or both digests, and pass two does not
+            // run, so there is no extraction, no move into /usr/local/bin and no chmod.
+            first.executed
+          } else {
+            // The count comes from the ONE list_length authority, named by module path rather than
+            // by bare name. A site-local `list_length` in gunbc.site.aligned_columns was an exact
+            // re-mint of std.types.list_length<T>; it broke the bare call here (the whole-corpus
+            // effect census refused it: no established callee identity) and was deleted at the root
+            // in the same commit, aligned_columns retargeted to this same authority. The
+            // qualification STAYS even with the fork gone: a bare name in the flat namespace is
+            // green only by ambient coverage that any later re-mint silently breaks — the callee
+            // identity is named, not assumed.
+            // Authority: dag/std/types.dag `list_length`. Recurring failure mode:
+            // bare_name_resolved_only_by_the_flat_namespace.
+            let rest = build_cache_plan_remainder(
+              all: ops,
+              already_run: std.types.list_length(items: prefix)
+            )
+            build_cache_run_ensure_ops(
+              state: first,
+              ops: rest,
+              unit_bytes: unit_bytes,
+              transport: transport,
+              plan: ops,
+              digest: digest,
+            ).executed
+          }
+        let _ = run_argv_over_host_effect_transport(command: discard, transport: transport)
+        outcome
+      }
+    }
+  }
+}
+
+// THE OPS, IN ORDER, STOPPING AT THE FIRST FAILURE, and reporting WHICH one it was. The unit write is the
+// only op whose payload crosses as stdin, which is what makes the retired heredoc's safety property
+// structural rather than a quoting discipline.
+//
+// THE CARRIER IS RETURNED, NOT JUST THE TERMINAL ARM. A caller cannot tell "nothing ran because the
+// sequence was skipped" from "nothing ran because the digest gate refused" without the line the read
+// produced, and that distinction is the entire content of the gate — so the fold hands it back rather than
+// dropping it at the end of the loop.
+//
+// THE DISCARD'S OWN OUTCOME IS DELIBERATELY NOT PROPAGATED. The staged sibling is a file this fold created
+// moments earlier in a directory it does not otherwise touch; if its removal fails, the operation the
+// operator needs to hear about is the one that failed first, and letting a cleanup failure overwrite that
+// report would be a worse diagnostic, not a better one. What is NOT done is the reverse: the cleanup is
+// never skipped, and never conditional on success.
+fn build_cache_run_ensure_ops(
+  state: BuildCacheEnsureFold,
+  ops: List<BuildCacheEnsureOp>,
+  unit_bytes: String,
+  transport: HostEffectTransport,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
+) -> BuildCacheEnsureFold {
+  fold(
+    ops,
+    init: state,
+    f: (acc, op) =>
+      // THE FOLD'S SHARE OF `set -e`: once a leg has stopped the sequence the legs after it are NOT run,
+      // and the terminal arm already carried is the receipt. Without this guard a refused digest would
+      // still be followed by the extraction and the move, and what the effect reported would be whichever
+      // leg happened to fail last rather than the one that stopped the host.
+      if !build_cache_ensure_fold_is_progressing(fold_state: acc) {
+        acc
+      } else if op.unit_bytes_on_stdin {
+        build_cache_fold_op_executed(
+          acc: acc,
+          op: op,
+          ran: run_argv_stdin_over_host_effect_transport(
+            command: op.argv,
+            stdin_payload: unit_bytes,
+            transport: transport,
+          ),
+          plan: plan,
+          digest: digest,
+        )
+      } else {
+        build_cache_fold_op_executed(
+          acc: acc,
+          op: op,
+          ran: run_argv_over_host_effect_transport(command: op.argv, transport: transport),
+          plan: plan,
+          digest: digest,
+        )
+      },
+  )
+}
+
+// ONE LEG, AS THE HOST ANSWERED IT: the operation the effect offered, and what came back. A record rather
+// than a tuple because this grammar has no tuple patterns, and a RECORD rather than two parallel lists
+// because a fold over two lists that might differ in length is exactly the kind of thing that goes quietly
+// wrong -- with this shape, a leg with no outcome is simply absent, and an absent leg never runs.
+type BuildCacheEnsureSuppliedOutcome {
+  op: BuildCacheEnsureOp
+  ran: RunArgvTransportOutcome
+}
+
+// THE SAME SEQUENCE, DECIDED WITHOUT A TRANSPORT -- the split realize_live_deploy_ensure_dependency_on_host
+// (#14174) landed for the same reason. `build_cache_run_ensure_ops` is the loop that ACTUATES: it asks a
+// transport for each leg. This is that sequence with the asking taken out; the outcomes are handed in and
+// every rule is the same pure step the loop calls, so the two cannot hold different rules about what stops
+// an ensure. It exists because the digest gate has to be testable at all: a fetch that succeeded and a read
+// that reported a digest which is not the pinned one is a host state a witness can describe perfectly well,
+// and there is no reason it should be reachable only by downloading something -- the mock arm of shell.Exec
+// was deleted by operator ruling 2026-08-23, so "supply the outcome" is the ONLY hermetic route to a leg
+// that ran and answered. It actuates nothing: no transport, no host, no file, and it is not a second path
+// beside the modeled route -- the loop above calls the very same `build_cache_fold_op_executed`.
+//
+// A SHORTER SUPPLIED LIST IS NOT A SUCCESS: the fold stops where outcomes run out, so a claim can supply the
+// two prefix legs and show that no install leg was reached. That asymmetry is the question the gate exists
+// to answer, and it is why "no outcome" is absent rather than zero-exit.
+fn build_cache_fold_ensure_ops_with_outcomes(
+  state: BuildCacheEnsureFold,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
+  supplied: List<BuildCacheEnsureSuppliedOutcome>,
+) -> BuildCacheEnsureFold {
+  fold(
+    supplied,
+    init: state,
+    f: (acc, given) =>
+      // THE CARRIER DECIDES, at every step -- the same predicate the transport loop asks before it starts a
+      // leg, so the two routes cannot disagree about whether a leg happens. Everything below that guard is
+      // delegation: `build_cache_fold_op_executed` is the very step the loop calls. This fold holds no rule of
+      // its own, which is the entire reason the witnesses over it are about the real route and not a copy.
+      if !build_cache_ensure_fold_is_progressing(fold_state: acc) {
+        acc
+      } else {
+        build_cache_fold_op_executed(
+          acc: acc,
+          op: given.op,
+          ran: given.ran,
+          plan: plan,
+          digest: digest,
+        )
+      },
+  )
+}
+
+// THE DIGEST GATE, AT THE POINT THE READ ANSWERED. The line the host printed is not itself permission: it is
+// handed to `build_cache_ensure_run`, the single authority in the module that owns this effect, and that
+// authority either admits the rest of the plan or refuses it carrying BOTH digests. Repeating its rule here
+// would be the DESIGN 3 defect this lane exists to remove -- a second copy could pass every witness while the
+// route that actually runs disagreed -- so this site asks, and acts on the answer.
+//
+// Keeping the ask HERE, at the leg where the host answered, rather than in the transport loop or in the
+// executor's pass boundary, is what makes the decision auditable without a host: a witness can hand the fold a
+// successful fetch, a read that answered with the wrong digest, and every install leg succeeding as well, and
+// still see that no install leg was reached.
+fn build_cache_read_leg_gate(
+  o: ShellExecObserved,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
+) -> BuildCacheEnsureFold {
+  // THE `Present` IS BUILT AT EACH SITE RATHER THAN BOUND ONCE ABOVE THE MATCH. That is not repetition for
+  // its own sake: a `let` here has no declared type to lean on, and the compiler infers the BINDING as
+  // `String` (the payload) rather than as the `Optional<String>` the parameter and the two carrier fields
+  // both want -- which surfaces as `type mismatch: expected 'Coproduct(Optional)', got 'Primitive(String)'`
+  // at the field, an error pointing away from the binding. Writing the constructor where the expected type
+  // IS known (the field position) is how the rest of this file does it, e.g. green `digest_line:
+  // Present { value: o.stdout }`, and there is no annotated-`let` form in this module to reach for.
+  match build_cache_ensure_run(ops: plan, digest: digest, observed_digest_line: Present { value: o.stdout }) {
+    Runs { legs: _ } =>
+      BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: Present { value: o.stdout } }
+    RefusedBeforeInstall { legs: _, op: gate, refusal: why } => BuildCacheEnsureFold {
+      executed: EnsureDigestRefused { op: gate, refusal: why },
+      digest_line: Present { value: o.stdout },
+    }
+  }
+}
+
+// ONE OP'S OUTCOME, FOLDED INTO THE CARRIER. The terminal arm on the failing path comes from
+// build_cache_ensure_leg_verdict, in the module that owns this effect -- it is the single place exit codes
+// become receipt arms, and this site only hands it its input and reports what came back. (An earlier revision
+// of this comment named a DIFFERENT fn as that source. It was wrong twice over: this fn never called it, and
+// that fn was never called by anything at all, so citing it as the authority pointed at dead code while the
+// live rule sat one call away. The dead fn is deleted with this correction, and its name is deliberately NOT
+// reproduced here -- a bare identifier in a comment that resolves to nothing in the tree reads as a citation
+// and is worse than no comment. Its history is in this PR's git blame, which is where history belongs.)
+// The carrier's digest_line is updated HERE, against the
+// leg's DECLARED kind, so the second pass is decided by a pure fn over a recorded observation rather than
+// by an if buried in the loop. A leg of any other kind leaves the line untouched — inventing a digest line
+// from a fetch or a chmod would be the same silent default this effect removes.
+fn build_cache_fold_op_executed(
+  acc: BuildCacheEnsureFold,
+  op: BuildCacheEnsureOp,
+  ran: RunArgvTransportOutcome,
+  plan: List<BuildCacheEnsureOp>,
+  digest: Digest,
+) -> BuildCacheEnsureFold {
+
+// NO GUARD HERE, DELIBERATELY. "A leg has stopped the sequence, so this leg does not happen" is a rule about
+  // the SEQUENCE, and it is asked once by each route that walks one -- by `build_cache_run_ensure_ops` before
+  // it starts a transport, and by `build_cache_fold_ensure_ops_with_outcomes` before it applies a supplied
+  // answer. Both ask the same predicate, `build_cache_ensure_fold_is_progressing`; a third copy inside the step
+  // would be redundancy of exactly the kind DESIGN 3 is about, and it would also make the routes untestable
+  // against each other, because mutating one route's guard would be silently covered by the step and no claim
+  // could tell. What lives HERE is only what a leg's own answer means, which is why the digest gate is below:
+  // it is a rule about an ANSWER, not about a sequence.
+  match ran {
+    RunArgvTransportRefused { reason: r } =>
+      BuildCacheEnsureFold {
+        executed: EnsureTransportBlocked { op: op, reason: r },
+        digest_line: acc.digest_line,
+      }
+    // THE `set -e` DECISION IS NOT MADE HERE. It is the cited build_cache_ensure_leg_verdict, in the module
+    // that owns the effect: this site turns the transport's outcome into that fn's input and reports what it
+    // returned. An `if o.exit_code != 0` written here instead would put the same rule in two places, where
+    // the digest gate already sits in one — and the two would be free to disagree, silently, about whether a
+    // given leg stops the sequence.
+    RunArgvTransportObserved { observed: o } =>
+      match build_cache_ensure_leg_verdict(
+        op: op,
+        observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
+      ) {
+        LegStopped { executed: stopped } =>
+          BuildCacheEnsureFold { executed: stopped, digest_line: acc.digest_line }
+        LegPassed =>
+          // THE DIGEST GATE, AT THE POINT THE READ ANSWERED, AND IN THE ONE PLACE BOTH ROUTES PASS THROUGH.
+          // The gate is a function of its own rather than an expression here, and not for tidiness: the
+          // decision needs to bind the line before it can ask the authority about it, and a binding in an
+          // arm's expression position is not something this grammar accepts (the compiler refuses it with
+          // `expected expression, found Eq`). As its own fn it is also the thing a witness can name.
+          //
+          // THE PARENTHESES ARE LOAD-BEARING, NOT DECORATIVE, AND THIS IS THE THIRD GRAMMAR TRAP IN THIS ONE
+          // ARM. With the condition written bare -- `if op.kind == ReadDigest {` -- the compiler reports
+          // `expected RParen, found Colon` and the whole module fails to load, pointing at the FIRST LABEL of
+          // the call inside the then-block rather than at the condition. The reason is the constructor brace:
+          // a condition whose right-hand side is a bare constructor name leaves `{` after it, which the parser
+          // takes for the start of a record literal, so the then-block is swallowed as that literal's body and
+          // the labelled call inside it is parsed where a record field was expected. Parenthesising ends the
+          // expression before the brace. Measured, not guessed: the identical call under `if o.stdout ==
+          // "yes" {` compiles, the identical call under a record-literal then-tail compiles, and this shape
+          // with the parentheses compiles -- the only variable is the bare `ReadDigest {`. So do not "tidy"
+          // the parentheses away; the failure looks nothing like its cause.
+          if (op.kind == ReadDigest) {
+            build_cache_read_leg_gate(o: o, plan: plan, digest: digest)
+          } else {
+            BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: acc.digest_line }
+          }
+      }
+  }
+}
+
+
 fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload: String, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => {
@@ -4491,23 +4857,23 @@ fn realize_nbd_proxy_session_on_host(
 // DISSOLVES WHEN a modeled source transfer establishes remote-tree identity, at which point this
 // arm carries the transferred candidate instead of refusing.
 
-fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> String {
+fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> Optional<String> {
   match transport {
-    LocalShell => ""
+    LocalShell => none
     SshShell { ssh_host: h } =>
-      join([
+      Present { value: join([
         "live_deploy apply refused over ssh host=", h,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
-      ], "")
+      ], "") }
     FleetSsh { target: t, context: _ } =>
-      join([
+      Present { value: join([
         "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
-      ], "")
+      ], "") }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      "live_deploy apply refused over EmitArtifactThenThinRun: the candidate release was observed in the local deploying checkout and no modeled source transfer proves the executing tree is that candidate."
+      Present { value: "live_deploy apply refused over EmitArtifactThenThinRun: the candidate release was observed in the local deploying checkout and no modeled source transfer proves the executing tree is that candidate." }
   }
 }
 
@@ -4605,8 +4971,8 @@ fn observe_slot_population_over_host_effect_transport(
 
 // THIS IS THE ONE PLACE THE CAP AUTHORIZATION IS SUPPLIED, AND IT IS NOW DERIVED FROM A LIVE READ.
 //
-// Everything below this function takes the decision as a parameter -- `live_deploy_apply_script_for`,
-// `apply_intent_from_effects`, `deploy_memory_cap_apply_steps` -- so this is the single visible point
+// Everything below this function takes the decision as a parameter -- `deploy_apply_plan_legs` and
+// `deploy_apply_memory_cap_plan` (gunbc.live_deploy.apply_legs) -- so this is the single visible point
 // at which a real one is provided. An earlier revision supplied a HARDCODED `CapConvergeWithheld`
 // here whose cause said no caller could obtain the evidence. That was safe and it was also wrong
 // about itself: this realize is the EFFECTFUL layer -- it holds the transport and already executes a
@@ -4640,10 +5006,9 @@ fn observe_slot_population_over_host_effect_transport(
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE SHARED DEPLOY PREAMBLE, as TYPED EFFECTS.
 //
-// This block SHADOWS the bash body emitted by gunbc.live_deploy.emit deploy_apply_preamble_steps until the apply route takes it (that function's dissolution row names the trigger),
-// which shipped through retained_srvn / realize_shell_on_host. The script it reproduces is
-// gunbc.ci.ci_deploy_sudoers deploy_sudoers_install_stmts followed by
-// gunbc.live_deploy.emit deploy_publication_principal_ensure_command, in that order:
+// Both the apply and the retract route open with this block; the bash preamble it replaced
+// (the deploy sudoers install, then the publication principal's ensure) is deleted. The script
+// lines it realizes, in order:
 //
 //   cat > "$_gunbc_stage/gunbc-deploy.sudoers" <<EOF …   -> PreambleStdin  (SudoersStage)
 //   sudo -n visudo -cf "$stage" || exit 1                -> PreambleArgv   (SudoersVisudoCheck)
@@ -5261,55 +5626,69 @@ fn realize_live_deploy_apply_on_host(
   intent: HostEffectIntent,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let locus_refusal = live_deploy_apply_candidate_locus_refusal(transport: transport)
-  if locus_refusal != "" {
-    NotConverged { reason: locus_refusal, applied: intent }
-  } else {
-    let host = spec.target.host.identity
-    let census = surplus_observation(
-      census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
-    )
-    let required_standing = transition_required_retiring(host: host)
-    let admission = runner_host_deploy_for(host: host)
-    let cap_authorization = match admission {
-      RunnerHostDeployRefused { host: rh, cause: rc } =>
-        CapConvergeWithheld {
-          cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
-        }
-      RunnerHostDeployUnmodeled { host: uh } =>
-        CapConvergeWithheld {
-          cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
-        }
-      RunnerHostDeployFound { deploy: _ } =>
-        match required_standing {
-          RetireesUnresolved { host: uh, cause: rc } =>
-            CapConvergeWithheld {
-              cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
-            }
-          RetireesKnown { units: required } =>
-            cap_converge_decision(
-              host: host,
-              required_retiring: required,
-              observation: surplus_observation_from_census_and_retirement(
-                census: census,
-                standings: observe_retirement_standings(transport: transport, units: required),
-              ),
-            )
-        }
-    }
-    realize_shell_on_host(
-      script: retained_srvn(
-        body: live_deploy_apply_script_for_wet(
-          spec: spec,
-          plan: plan,
-          access: access,
-          cap_authorization: cap_authorization,
-        ),
-        reason: "live_deploy apply (unit install + start)",
-      ),
-      transport: transport,
-      intent: intent,
-    )
+  live_deploy_apply_orchestrate(
+    locus_refusal: live_deploy_apply_candidate_locus_refusal(transport: transport),
+    prepare: fn() { live_deploy_apply_prepared_on_host(spec: spec, plan: plan, transport: transport, intent: intent, access: access) },
+    principal: spec.names.publication_principal,
+    preamble: fn(principal) { live_deploy_apply_preamble_on_host(access: access, principal: principal) },
+    host: spec.target.host.identity,
+    intent: intent,
+  )
+}
+
+// WHAT THE APPLY OBSERVES BEFORE IT CAN PLAN, DEFERRED BEHIND THE LOCUS GATE: the orchestration forces
+// it only after a local locus is admitted, so a refused locus observes no slot census, retirement
+// standing or checkout. The checkout this process runs in is read once, and is both the source root
+// the object-source leg observes and the one every install reads from.
+fn live_deploy_apply_prepared_on_host(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+  access: DeployAccess,
+) -> DeployApplyPrepared {
+  let host = spec.target.host.identity
+  let census = surplus_observation(
+    census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
+  )
+  let required_standing = transition_required_retiring(host: host)
+  let admission = runner_host_deploy_for(host: host)
+  let cap_authorization = match admission {
+    RunnerHostDeployRefused { host: rh, cause: rc } =>
+      CapConvergeWithheld {
+        cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
+      }
+    RunnerHostDeployUnmodeled { host: uh } =>
+      CapConvergeWithheld {
+        cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
+      }
+    RunnerHostDeployFound { deploy: _ } =>
+      match required_standing {
+        RetireesUnresolved { host: uh, cause: rc } =>
+          CapConvergeWithheld {
+            cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
+          }
+        RetireesKnown { units: required } =>
+          cap_converge_decision(
+            host: host,
+            required_retiring: required,
+            observation: surplus_observation_from_census_and_retirement(
+              census: census,
+              standings: observe_retirement_standings(transport: transport, units: required),
+            ),
+          )
+      }
+  }
+  let source_root = git.Inspect.Toplevel().path as String
+  DeployApplyPrepared {
+    plan: deploy_apply_plan_legs(
+      spec: spec,
+      plan: plan,
+      authorization: cap_authorization,
+      source_root: source_root,
+      oidc_now: tracker_web_oidc_deploy_now_epoch(),
+    ),
+    ports: deploy_apply_ports_on_host(spec: spec, principal: access.principal, source_root: source_root, transport: transport, intent: intent),
   }
 }
 
@@ -5622,6 +6001,402 @@ fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, ports: Deploy
       match ran.failure {
         Present { value: why } => RetractRunFailed { step: deploy_retract_leg_step(leg: leg), reason: why, legs_run: done, calls: seen }
         Absent => live_deploy_retract_run_legs_from(legs: rest, ports: ports, done: done + 1, calls: seen)
+      }
+    }
+  }
+}
+
+// ── THE APPLY FOLD'S RUNNER (gunbc.live_deploy.apply_legs) ───────────────────────────────────────
+//
+// THE PORTS ARE THE HOST-TOUCHING OPERATIONS AND NOTHING ELSE: one argv through the transport, and
+// C1, the directory provider. Production supplies deploy_apply_ports_on_host; a control supplies
+// outcomes. The runner is a pure fold over them, so a leg after a failed one is never dispatched.
+type DeployApplyPorts {
+  command: fn(ArgvCommand) -> RunArgvTransportOutcome
+  stdin: fn(ArgvCommand, String) -> RunArgvTransportOutcome
+  ensure_directory: fn(OwnedDirectoryTarget) -> OwnedDirectoryEnsureOutcome
+  state_directories: fn(ReleaseRevisionBinding) -> Optional<String>
+  root_helper_snapshot: fn(HelperLocus, List<String>, ReleaseRevisionBinding, HelperSnapshotAction) -> Optional<String>
+  broker_tree: fn(ReleaseRevisionBinding) -> Optional<String>
+  dependency: fn(DeploymentDependencyStep) -> Optional<String>
+  retract: DeployRetractPorts
+  object_source: fn() -> ObjectSourceServeAdmission
+}
+
+// THE PLAN AND THE PORTS THAT REALIZE IT, produced together because both read one checkout. The
+// orchestration takes them deferred, so a locus refusal is decided before either exists.
+type DeployApplyPrepared {
+  plan: DeployApplyPlan
+  ports: DeployApplyPorts
+}
+
+fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport, intent: HostEffectIntent) -> DeployApplyPorts {
+  DeployApplyPorts {
+    command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
+    stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
+    ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
+    state_directories: fn(r) { live_deploy_apply_state_directories_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
+    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
+    broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
+    dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
+    retract: deploy_retract_ports_on_host(transport: transport),
+    object_source: fn() { observe_object_source_serve(source: source_root) },
+  }
+}
+
+// C1: ONE OWNED DIRECTORY, ENSURED THROUGH THE ONE PROVIDER. The reads are the privileged list and stat
+// of the directory's parent chain (the same ones gunbc.live_deploy.member_observe makes), each keeping
+// its origin typed; the install is the provider's plan as the EnsureOwnedDirectory operation, so its
+// words are exactly the ones a job user's sudoers grant names (gunbc.executor_privileged_operation); the verdict is the provider's
+// independent second stat, never the install's exit status.
+fn deploy_apply_directory_read(op: ExecutorPrivilegedOperation, transport: HostEffectTransport) -> ObserverRead {
+  match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: transport) {
+    RunArgvTransportRefused { reason: r } => ObserverReadFailed { origin: ObserverTransportRefused { cause: r } }
+    RunArgvTransportObserved { observed: o } =>
+      if o.success {
+        ObserverReadOut { stdout: o.stdout }
+      } else {
+        ObserverReadFailed { origin: ObserverExited { exit_code: o.exit_code, stderr: o.stderr } }
+      }
+  }
+}
+
+fn deploy_apply_directory_observe(path: FilePath, transport: HostEffectTransport) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: path,
+    list: p => deploy_apply_directory_read(op: ListDirectoryEntries { path: p as String as NonEmptyStr }, transport: transport),
+    stat: p => deploy_apply_directory_read(op: ReadDirectoryIdentity { path: p as String as NonEmptyStr }, transport: transport),
+  )
+}
+
+fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, transport: HostEffectTransport) -> OwnedDirectoryEnsureOutcome {
+  owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: target,
+    observe: p => deploy_apply_directory_observe(path: p, transport: transport),
+    run: plan => match run_argv_over_host_effect_transport(
+      command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
+        path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode,
+      }),
+      transport: transport,
+    ) {
+      RunArgvTransportRefused { reason: _ } => false
+      RunArgvTransportObserved { observed: o } => o.success
+    },
+  )
+}
+
+type DeployApplyRun
+  = ApplyRunOk { legs_run: Int, reports: List<String> }
+  | ApplyRunFailed { step: String, reason: String, legs_run: Int }
+
+// THE BROKER'S STATE DIRECTORIES, through the stage the dark install runs; a DarkFailed becomes the leg's
+// refusal naming its step.
+fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match dark_state_directories_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+    DarkOk => Absent
+    DarkFailed { step: s, reason: r } => Present { value: join(["broker state directories refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+  }
+}
+
+// A ROOT-OWNED RELEASE SNAPSHOT, installed or retired through the same two stages the broker's helper
+// grant runs (dark_helper_snapshot_at, dark_helper_retire_at). The install and the retire are separate
+// legs because the units that name the snapshot are installed between them: the superseded snapshot is
+// retired only after the new units stand.
+fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match (match action {
+    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
+    HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
+  }) {
+    DarkOk => Absent
+    DarkFailed { step: s, reason: r } => Present { value: join(["root helper snapshot at ", locus.base, " refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+  }
+}
+
+// AN ENSURED DEPENDENCY, through the typed ensure-dependency route the deploy's own dependency effect
+// runs (probe, then install only on the probe's verdict).
+fn live_deploy_apply_dependency_on_host(dep: DeploymentDependencyStep, transport: HostEffectTransport, intent: HostEffectIntent) -> Optional<String> {
+  match realize_live_deploy_ensure_dependency_on_host(dep: dep, transport: transport, intent: intent) {
+    Converged { evidence: _, applied: _ } => Absent
+    NotConverged { reason: r, applied: _ } => Present { value: r }
+  }
+}
+
+// A DIGEST ENV FILE WRITTEN FROM THE INSTALLED BYTES: sha256sum of the binary as installed, read back over
+// the command port, becomes NAME=<hex> written root-installed through the stdin port. A refused read, a
+// failed one and a line carrying no digest each stop the leg before anything is written, so an empty or
+// fabricated NAME= never reaches the file.
+fn deploy_apply_digest_env_failure(binary: String, env_name: String, dest: String, owner: NonEmptyStr, ports: DeployApplyPorts) -> Optional<String> {
+  let command = ports.command
+  match command(sha256sum_file_command(path: binary)) {
+    RunArgvTransportRefused { reason: r } => Present { value: join(["sha256sum of ", binary, " was refused: ", r], "") }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        Present { value: join(["sha256sum could not read ", binary, ": exit ", to_string(o.exit_code), ": ", o.stderr], "") }
+      } else {
+        match sha256sum_line_digest(line: o.stdout) {
+          Absent => Present { value: join(["sha256sum printed no digest for ", binary], "") }
+          Present { value: d } => {
+            let hex: String = d.hex
+            deploy_retract_command_failure(outcome: ports.stdin(
+              sudo_elevate_command(command: coreutils_install_file_owned_argv(mode: install_file_shared_mode, owner: owner, group: owner, source: "/dev/stdin", dest: dest)),
+              join([env_name, "=", hex, "\n"], ""),
+            ))
+          }
+        }
+      }
+  }
+}
+
+// THE CREDSTORE COPY'S BRACKET, RUN ON THE HOST THROUGH THE COMMAND PORT (gunbc.live_deploy.apply_legs
+// ApplyLegCredstoreCopy says why it is the host-side realization of gunbc.auth.private_secret_file rather than a
+// call). The order is the bracket's: stage, owner-only copy, the one use (the root install), then the removal,
+// whose rmdir is the check. No cause carries a path or a command's stderr, because either may name the stage.
+fn credstore_copy_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
+  match outcome {
+    RunArgvTransportRefused { reason: _ } => false
+    RunArgvTransportObserved { observed: o } => o.exit_code == 0
+  }
+}
+
+fn credstore_copy_stage_path(outcome: RunArgvTransportOutcome) -> NonEmptyStr? {
+  match outcome {
+    RunArgvTransportRefused { reason: _ } => none
+    RunArgvTransportObserved { observed: o } => {
+      let path = trim(s: o.stdout)
+      if o.exit_code == 0 && starts_with(s: path, prefix: "/") && !string_contains(s: path, pattern: "\n") { Present { value: path as NonEmptyStr } } else { none }
+    }
+  }
+}
+
+fn credstore_copy_bracket(source: NonEmptyStr, dest: NonEmptyStr, file_name: NonEmptyStr, run: fn(ArgvCommand) -> RunArgvTransportOutcome) -> CredstoreCopyBracket {
+  let staged = run(credstore_copy_stage_command())
+  match credstore_copy_stage_path(outcome: staged) {
+    Absent =>
+      if credstore_copy_succeeded(outcome: staged) {
+        CredstoreCopyNotEnteredResidueRemains { cause: "mktemp -d answered but printed no single absolute path, so the stage it may have made cannot be removed" as NonEmptyStr }
+      } else {
+        CredstoreCopyNotEntered { cause: "no private stage directory could be created for the credential copy, so nothing was copied" as NonEmptyStr }
+      }
+    Present { value: stage } => {
+      let cmds = credstore_copy_commands(stage: stage, source: source, dest: dest, file_name: file_name)
+      if credstore_copy_succeeded(outcome: run(cmds.user_copy)) {
+        let installed = credstore_copy_succeeded(outcome: run(cmds.root_install))
+        let removed = credstore_copy_succeeded(outcome: run(cmds.remove_file)) && credstore_copy_succeeded(outcome: run(cmds.remove_dir))
+        if removed { CredstoreCopyCompleted { installed: installed } } else { CredstoreCopyCompletedResidueRemains { installed: installed } }
+      } else {
+        let removed = credstore_copy_succeeded(outcome: run(cmds.remove_file)) && credstore_copy_succeeded(outcome: run(cmds.remove_dir))
+        if removed {
+          CredstoreCopyNotEntered { cause: "the custody file could not be copied into the stage as the apply's principal; the stage was removed, so no copy is on disk" as NonEmptyStr }
+        } else {
+          CredstoreCopyNotEnteredResidueRemains { cause: "the custody file could not be copied into the stage AND the stage could not be removed, so material may remain and requires cleanup" as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+fn credstore_copy_failure(bracket: CredstoreCopyBracket) -> Optional<String> {
+  match bracket {
+    CredstoreCopyCompleted { installed: i } =>
+      if i { Absent } else { Present { value: "the root install of the worker credential into the credstore failed; the stage was removed" } }
+    CredstoreCopyCompletedResidueRemains { installed: i } =>
+      Present { value: if i { "the worker credential was installed, but its stage could not be removed, so a copy remains and requires cleanup" } else { "the root install of the worker credential failed AND its stage could not be removed, so a copy remains and requires cleanup" } }
+    CredstoreCopyNotEntered { cause: c } => Present { value: c as String }
+    CredstoreCopyNotEnteredResidueRemains { cause: c } => Present { value: c as String }
+  }
+}
+
+// ONE RETRACT LEG ON APPLY (a leftover timer's retirement), through the retract runner itself.
+fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractPorts) -> Optional<String> {
+  match live_deploy_retract_run_legs(legs: [leg], ports: ports) {
+    RetractRunOk { legs_run: _, calls: _ } => Absent
+    RetractRunFailed { step: s, reason: r, legs_run: _, calls: _ } => Present { value: join(["retract leg ", s, ": ", r], "") }
+  }
+}
+
+// THE BROKER'S RELEASE TREE, through the same per-file install the dark install's broker stage runs.
+fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match approval_broker_tree_install(
+    owner: spec.service.service_user,
+    base_root: spec.approval_broker.repo_root as String,
+    source_root: source_root,
+    revision: revision,
+    executables: approval_broker_release_locus_executables,
+    transport: transport,
+  ) {
+    TreeInstallConverged { installed_digest: _, files_installed: _ } => Absent
+    TreeInstallRefused { step: ts, reason: r } => Present { value: join(["broker tree refused at tree step ", tree_install_step_name(step: ts), ": ", r], "") }
+  }
+}
+
+// THE LAST LINES OF A FAILED CONTROL PROCESS'S STATUS, the diagnosis the restart's bare refusal never
+// carries. Bounded to the tail so a long journal cannot bury the cause.
+fn deploy_apply_status_tail(text: String) -> String {
+  let lines = split(s: text, delimiter: "\n")
+  let n = count(lines)
+  join(if n > 40 { skip(xs: lines, n: n - 40) } else { lines }, "\n")
+}
+
+// A COMMAND WHOSE FAILURE IS DIAGNOSED: the failure still fails the leg (a diagnosis, never an escape
+// hatch), and carries the status tail read through the diagnosis command. A diagnosis that itself
+// cannot run is named in the reason rather than dropped.
+fn deploy_apply_diagnosed_failure(why: String, diagnosis: RunArgvTransportOutcome) -> String {
+  match diagnosis {
+    RunArgvTransportRefused { reason: r } => join([why, " | diagnosis could not run: ", r], "")
+    RunArgvTransportObserved { observed: o } =>
+      join([why, "\n--- control-process diagnosis ---\n", deploy_apply_status_tail(text: concat(o.stdout, o.stderr))], "")
+  }
+}
+
+// THE DIGEST OF A FILE ON THE HOST AGAINST THE ONE THE PLAN DECLARED. An unreadable file, an unparseable
+// line and a different digest are each their own refusal; none reads as a match.
+fn deploy_apply_digest_failure(path: String, digest: Digest, outcome: RunArgvTransportOutcome) -> Optional<String> {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => Present { value: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        Present { value: join(["sha256sum could not read ", path, ": exit ", to_string(o.exit_code), ": ", o.stderr], "") }
+      } else {
+        match sha256sum_line_digest(line: o.stdout) {
+          Absent => Present { value: join(["sha256sum printed no digest for ", path], "") }
+          Present { value: d } => {
+            let seen: String = d.hex
+            let planned: String = digest.hex
+            if seen == planned {
+              Absent
+            } else {
+              Present { value: join([path, " digest ", seen, " is not the planned ", planned], "") }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optional<String> {
+  let command = ports.command
+  let ensure = ports.ensure_directory
+  match leg {
+    ApplyLegEnsureDirectory { target: t } => {
+      let outcome = ensure(t)
+      if owned_directory_outcome_converged(o: outcome) { Absent } else { Present { value: owned_directory_outcome_detail(o: outcome) } }
+    }
+    ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
+    ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
+    ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+    ApplyLegReport { step: _, line: _ } => Absent
+    ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
+      match deploy_retract_command_failure(outcome: command(c)) {
+        Absent => Absent
+        Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
+      }
+    ApplyLegBrokerStateDirectories { revision: r } => ports.state_directories(r)
+    ApplyLegRootHelperSnapshot { locus: l, spine: sp, revision: r, action: a } => ports.root_helper_snapshot(l, sp, r, a)
+    ApplyLegBrokerTree { revision: r } => ports.broker_tree(r)
+    ApplyLegRetract { step: _, leg: l } => deploy_apply_retract_leg_failure(leg: l, ports: ports.retract)
+    ApplyLegDependency { dep: d } => ports.dependency(d)
+    ApplyLegDigestEnvFile { step: _, binary: b, env_name: n, dest: d, owner: o } => deploy_apply_digest_env_failure(binary: b, env_name: n, dest: d, owner: o, ports: ports)
+    ApplyLegCredstoreCopy { step: _, source: s, dest: d, file_name: f } => credstore_copy_failure(bracket: credstore_copy_bracket(source: s, dest: d, file_name: f, run: command))
+    ApplyLegObjectSource => {
+      let observe = ports.object_source
+      match observe() {
+        ObjectSourceCanServe { source: _ } => Absent
+        ObjectSourceCannotServe { source: s, cause: c } =>
+          Present { value: object_source_serve_refusal_text(admission: ObjectSourceCannotServe { source: s, cause: c }) }
+        ObjectSourceServeDecideAtApplyPwd => Present { value: "object source standing was not observed (deferred to the host PWD): refusing rather than reading it as servable" }
+      }
+    }
+  }
+}
+
+fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
+  match leg {
+    ApplyLegReport { step: _, line: l } => [l]
+    ApplyLegEnsureDirectory { target: _ } => []
+    ApplyLegRepairDirectoryEntries { command: _ } => []
+    ApplyLegCommand { step: _, command: _ } => []
+    ApplyLegInstallFile { step: _, command: _, payload: _ } => []
+    ApplyLegBrokerStateDirectories { revision: _ } => []
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
+    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegRetract { step: _, leg: _ } => []
+    ApplyLegDependency { dep: _ } => []
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => []
+    ApplyLegObjectSource => []
+    ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []
+  }
+}
+
+fn deploy_apply_run_legs_from(legs: List<DeployApplyLeg>, ports: DeployApplyPorts, done: Int, reports: List<String>) -> DeployApplyRun {
+  match legs {
+    Empty => ApplyRunOk { legs_run: done, reports: reports }
+    Cons { head: leg, tail: rest } =>
+      match deploy_apply_run_leg(leg: leg, ports: ports) {
+        Present { value: why } => ApplyRunFailed { step: deploy_apply_leg_step(leg: leg), reason: why, legs_run: done }
+        Absent => deploy_apply_run_legs_from(legs: rest, ports: ports, done: done + 1, reports: list_append(left: reports, right: deploy_apply_leg_report(leg: leg)))
+      }
+  }
+}
+
+fn deploy_apply_run_legs(legs: List<DeployApplyLeg>, ports: DeployApplyPorts) -> DeployApplyRun {
+  deploy_apply_run_legs_from(legs: legs, ports: ports, done: 0, reports: [])
+}
+
+// THE APPLY VERDICT. A failed run is NotConverged naming the step and the legs already completed; a clean
+// run converges with the withheld reports and the receipt line, in that order.
+fn live_deploy_apply_verdict(
+  run: DeployApplyRun,
+  host: NonEmptyStr,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match run {
+    ApplyRunFailed { step: s, reason: r, legs_run: n } =>
+      NotConverged {
+        reason: join(["live_deploy apply refused at step ", s, " after ", to_string(n), " completed legs: ", r], ""),
+        applied: intent,
+      }
+    ApplyRunOk { legs_run: _, reports: rs } =>
+      Converged {
+        evidence: ShellEffectApplied {
+          exit_code: 0,
+          stdout: join(concat(list_map(xs: rs, f: l => join([l, "\n"], "")), [live_deploy_receipt_line(host: host, fold: "apply")]), ""),
+          stderr: "",
+        },
+        applied: intent,
+      }
+  }
+}
+
+// THE APPLY ORCHESTRATION, ONE PURE FUNCTION OVER PORTS (mirrors live_deploy_retract_orchestrate).
+fn live_deploy_apply_orchestrate(
+  locus_refusal: Optional<String>,
+  prepare: fn() -> DeployApplyPrepared,
+  principal: NonEmptyStr,
+  preamble: fn(NonEmptyStr) -> LiveDeployPreambleVerdict,
+  host: NonEmptyStr,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match locus_refusal {
+    Present { value: why } => NotConverged { reason: why, applied: intent }
+    Absent => {
+      let prepared = prepare()
+      match prepared.plan {
+        ApplyPlanRefused { step: s, reason: r } =>
+          NotConverged { reason: join(["live_deploy apply refused at step ", s, ": ", r], ""), applied: intent }
+        ApplyPlanReady { legs: legs } =>
+          match preamble(principal) {
+            PreambleRefused { step: ps, reason: pr, legs_consumed: _ } =>
+              NotConverged {
+                reason: join(["live_deploy apply refused at preamble step ", live_deploy_preamble_step_name(step: ps), ": ", pr], ""),
+                applied: intent,
+              }
+            PreambleConverged { principal: _, dropin: _, legs_consumed: _ } =>
+              live_deploy_apply_verdict(run: deploy_apply_run_legs(legs: legs, ports: prepared.ports), host: host, intent: intent)
+          }
       }
     }
   }
@@ -6023,39 +6798,23 @@ fn approval_broker_tree_receipt_write(
 }
 
 // ── THE APPROVAL BROKER DARK INSTALL, TYPED ───────────────────────────────────────────────────
-// Stage 1 of the cutover: the device store, this release's helper grant (a root-owned snapshot, then
-// the sudoers line that names it), the broker's tree, slice and unit, a daemon-reload, enable +
-// restart of ONLY the broker unit, and the slice-control caps. It touches gunbc-roadmap.service in no
+// Stage 1 of the cutover: the broker's state directories (device store, JWKS cache), the broker's
+// tree, slice and unit, a daemon-reload, enable + restart of ONLY the broker unit, and the
+// slice-control caps. It touches gunbc-roadmap.service in no
 // way: a daemon-reload does not restart running units, so the roadmap keeps its PID and incarnation.
 //
 // FAIL-FAST, ONE STEP AT A TIME. Each leg is an ArgvCommand run through
 // run_argv_over_host_effect_transport -- no shell, no quoting, no script body -- and the first leg
 // that refuses stops the line: DarkInstallRefused names the step and NO later leg runs. The retired
-// script's refusals are all preserved as typed steps: a non-owning spec, an uncovered device-store
-// writer, a refused helper grant, a snapshot that is not root-owned, a sudoers file that fails
-// visudo, a readback that differs, a slice-control plan the host cannot derive.
-//
-// THE SUDOERS FILE IS STAGED IN ONE SCRATCH DIRECTORY (mktemp -d, written unelevated) because visudo
-// -cf must read a file before it is installed and neither tee nor dd is a grantable root verb. The
-// directory is acquired after the earlier legs and removed on every path out of the sudoers stage; a
-// removal that fails is its own refusal. The installed file is read back and hashed against the
-// staged one: convergence is the independent readback, not the install's exit code.
+// script's refusals that survive the helper grant's removal (cb6548946213) are typed steps: a
+// non-owning spec, an uncovered state-directory writer, a slice-control plan the host cannot derive.
+// The root-owned snapshot steps (snapshot, readback, retire) are run by the apply's
+// root-helper-snapshot leg (live_deploy_apply_root_helper_snapshot_on_host).
 type DarkInstallStep
   = DarkStepOwner
   | DarkStepDeviceStore
-  | DarkStepGrantAdmission
   | DarkStepSnapshot
   | DarkStepSnapshotReadback
-  | DarkStepScratchAcquire
-  | DarkStepSudoersStage
-  | DarkStepSudoersCheck
-  | DarkStepSudoersInstall
-  | DarkStepSudoersPolicyTemp
-  | DarkStepSudoersRename
-  | DarkStepSudoersPolicyFinal
-  | DarkStepSudoersReadback
-  | DarkStepSudoersCompare
-  | DarkStepScratchCleanup
   | DarkStepRetire
   | DarkStepBrokerTree
   | DarkStepSidecarDigest
@@ -6080,7 +6839,6 @@ type DarkLeg
   = DarkLegArgv { step: DarkInstallStep, command: ArgvCommand }
   | DarkLegStdin { step: DarkInstallStep, command: ArgvCommand, payload: String }
   | DarkLegExpectEmpty { step: DarkInstallStep, command: ArgvCommand }
-  | DarkLegSameHash { step: DarkInstallStep, left: String, right: String }
 
 type DarkState
   = DarkOk
@@ -6093,9 +6851,6 @@ type DarkInstallInputs {
   source_root: String
   transport: HostEffectTransport
 }
-
-data dark_scratch_template: NonEmptyStr = "/tmp/gunbc-broker-dark-install.XXXXXX" as NonEmptyStr
-data dark_scratch_prefix: String = "/tmp/gunbc-broker-dark-install."
 
 fn dark_failed_of_outcome(step: DarkInstallStep, outcome: RunArgvTransportOutcome) -> DarkState {
   match outcome {
@@ -6117,13 +6872,6 @@ fn dark_expect_empty_state(step: DarkInstallStep, outcome: RunArgvTransportOutco
   }
 }
 
-fn dark_same_hash_state(step: DarkInstallStep, left: String, right: String, agreement: Sha256Agreement) -> DarkState {
-  match sha256_disagreement_text(agreement: agreement) {
-    Absent => DarkOk
-    Present { value: why } => DarkFailed { step: step, reason: join([left, " and ", right, " differ (", why, ")"], "") }
-  }
-}
-
 fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) -> DarkState {
   match state {
     DarkFailed { step: _, reason: _ } => state
@@ -6135,8 +6883,6 @@ fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) 
           dark_failed_of_outcome(step: s, outcome: run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport))
         DarkLegExpectEmpty { step: s, command: c } =>
           dark_expect_empty_state(step: s, outcome: run_argv_over_host_effect_transport(command: c, transport: transport))
-        DarkLegSameHash { step: s, left: l, right: r } =>
-          dark_same_hash_state(step: s, left: l, right: r, agreement: tree_binary_agreement(source_path: l, installed_path: r, transport: transport))
       }
   }
 }
@@ -6158,55 +6904,18 @@ fn tree_install_step_name(step: TreeInstallStep) -> String {
   }
 }
 
-// The helper snapshot's root-ownership readback: neither the base's ancestors nor anything in the
-// snapshot may be owned by another principal, writable by group/other, or be a symlink. Bare find (not
-// grantable); an unreadable entry is an observation failure and refuses.
-fn dark_snapshot_readback_legs(dir: String) -> List<DarkLeg> {
-  let root = approval_broker_helper_root_principal as String
+fn dark_snapshot_readback_legs_at(locus: HelperLocus, dir: String) -> List<DarkLeg> {
+  let root = locus.owner as String
   [
     DarkLegExpectEmpty {
       step: DarkStepSnapshotReadback,
-      command: find_untrusted_entries_command(roots: path_ancestors_inclusive(path: approval_broker_helper_snapshot_base), top_only: true, owner: root),
+      command: find_untrusted_entries_command(roots: path_ancestors_inclusive(path: locus.base), top_only: true, owner: root),
     },
     DarkLegExpectEmpty {
       step: DarkStepSnapshotReadback,
       command: find_untrusted_entries_command(roots: [dir], top_only: false, owner: root),
     },
   ]
-}
-
-// The sudoers file, staged -> visudo -cf -> installed beside the final name -> policy-checked ->
-// renamed over it -> policy-checked again -> read back through the applying principal and hashed
-// against the staged bytes. `scratch` is the directory the caller acquired and will remove.
-fn dark_sudoers_legs(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
-  let staged = join([scratch, "/", approval_broker_helper_sudoers_stage_name], "")
-  let readback = join([scratch, "/", approval_broker_helper_sudoers_readback_stage_name], "")
-  let temp_path = approval_broker_helper_sudoers_temp_path as String
-  let final_path = approval_broker_helper_sudoers_path as String
-  let root = approval_broker_helper_root_principal
-  let name = grounded_posix_principal_name(p: principal)
-  [
-    DarkLegStdin { step: DarkStepSudoersStage, command: dd_overwrite_path_command(path: staged), payload: approval_broker_helper_sudoers_content(revision: revision) },
-    DarkLegArgv { step: DarkStepSudoersCheck, command: visudo_check_command(file: staged) },
-    DarkLegArgv {
-      step: DarkStepSudoersInstall,
-      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-        mode: approval_broker_helper_sudoers_mode, owner: root, group: root, source: staged, dest: temp_path)),
-    },
-    DarkLegArgv { step: DarkStepSudoersPolicyTemp, command: visudo_policy_check_command(file: temp_path) },
-    DarkLegArgv { step: DarkStepSudoersRename, command: dark_elevated_of(c: mv_exact_destination_command(source: temp_path, destination: final_path)) },
-    DarkLegArgv { step: DarkStepSudoersPolicyFinal, command: visudo_policy_check_command(file: final_path) },
-    DarkLegArgv {
-      step: DarkStepSudoersReadback,
-      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-        mode: "0400" as NonEmptyStr, owner: name, group: name, source: final_path, dest: readback)),
-    },
-    DarkLegSameHash { step: DarkStepSudoersCompare, left: staged, right: readback },
-  ]
-}
-
-fn dark_elevated_of(c: ArgvCommand) -> ArgvCommand {
-  sudo_elevate_command(command: concat([c.program.invocation as String], c.arguments))
 }
 
 fn dark_unit_install_leg(step: DarkInstallStep, dest: String, text: String) -> DarkLeg {
@@ -6254,107 +6963,111 @@ fn approval_broker_dark_install(
       reason: join(["the dark install was reached with a deployment that does not own this host's broker unit; gunbc-approval-broker.service is a host singleton owned by the spec holding the prod role. instance=", spec.instance_id as String], ""),
     }
   } else {
-    dark_stage_device_store(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
+    match dark_state_directories_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+      DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+      DarkOk => dark_stage_broker_tree(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
+    }
   }
 }
 
-fn dark_stage_device_store(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match managed_directory_admit(d: approval_device_store_directory()) {
-    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
-      DarkInstallRefused { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
-    ManagedDirectoryAdmitted { dir: d } =>
-      match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
-        step: DarkStepDeviceStore,
-        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
-          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
-      }) {
-        DarkOk => dark_stage_grant_admission(i: i)
-        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-      }
+// ONE CENSUS ROW AS ITS CONVERGING LEG: `sudo install -d -m <derived> -o <owner> -g <group> <path>` —
+// the same single-step ownership install as before, spelled from the row's own declaration (mode derived
+// by gunbc.managed_directory managed_directory_permissions, never a literal). Pure, like dark_unit_legs:
+// the witness can name the emitted leg without running a transport, which is what makes the census's
+// contents a CLAIM rather than a hope.
+fn dark_state_directory_leg(d: ManagedDirectory) -> DarkLeg {
+  DarkLegArgv {
+    step: DarkStepDeviceStore,
+    command: sudo_elevate_command(command: broker_state_directory_install_argv(d: d)),
   }
 }
 
-fn dark_stage_grant_admission(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match approval_broker_helper_grant_admission(revision: i.revision) {
-    HelperGrantAdmitted => dark_stage_snapshot(i: i)
-    HelperGrantWordRefused { word: w } =>
-      DarkInstallRefused { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }) }
-    HelperGrantLocusWritableByGrantee { owner: o } =>
-      DarkInstallRefused { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }) }
+// THE EMITTED STATE-DIRECTORY LEGS FOR A SET OF CENSUS ROWS, in census order. THE POSITIVE CONTROL:
+// called with the census (dark_state_directory_legs below), this list carries the assertion-counter
+// root's argv — delete a row from gunbc.auth.approval_broker_state_directories
+// approval_broker_state_directories and the dark-install witness's claim over this list fails.
+fn dark_state_directory_legs_for(directories: List<ManagedDirectory>) -> List<DarkLeg> {
+  list_map(xs: directories, f: fn(d) { dark_state_directory_leg(d: d) })
+}
+
+// THE EMITTED STATE-DIRECTORY LEGS, at the census.
+fn dark_state_directory_legs() -> List<DarkLeg> {
+  dark_state_directory_legs_for(directories: approval_broker_state_directories())
+}
+
+// ONE ADMIT STEP: refuse on the first row whose dependents fail to cover their writes
+// (gunbc.managed_directory managed_directory_admit); carry any earlier refusal forward unchanged.
+fn dark_state_directory_admit_step(st: DarkState, d: ManagedDirectory) -> DarkState {
+  match st {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk => match managed_directory_admit(d: d) {
+      ManagedDirectoryRefused { member: m, path: p, writer: w } =>
+        DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
+      ManagedDirectoryAdmitted { dir: _ } => DarkOk
+    }
   }
 }
 
-fn dark_stage_snapshot(i: DarkInstallInputs) -> DarkInstallVerdict {
-  let dir = helper_locus_dir(locus: approval_broker_helper_snapshot_locus(), revision: i.revision)
-  match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+// THE GATE RUNS BEFORE ANY MUTATION: every census row must admit (no uncovered writer) BEFORE a single
+// install -d touches the host. The fold this replaces admitted lazily per row, so a malformed row FIVE
+// refused AFTER rows one through four had already mutated the host; fail-closed means nothing is written
+// when the plan is bad.
+fn dark_state_directories_admit(directories: List<ManagedDirectory>) -> DarkState {
+  fold(directories, init: DarkOk, f: (st, d) => dark_state_directory_admit_step(st: st, d: d))
+}
+
+// THE BROKER'S STATE DIRECTORIES: EVERY root the census (gunbc.auth.approval_broker_state_directories
+// approval_broker_state_directories) declares, each converged to its managed declaration (owner, group,
+// derived mode) before the broker's tree is staged. DESIGN 6b root generalization: this was a nested
+// match over the device store and the JWKS cache — two roots named by hand — and the assertion-counter
+// root 503'd on srv1 for exactly that reason: a new state root could only be provisioned by editing a
+// branch here, and nobody edited one. A root now joins by being a row of the census; the fold is the
+// only shape, and `install -d` Noops on a directory that already stands at its declaration (the srv1
+// counter root the operator created by hand converges as a no-op, not a fight).
+fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
+  let directories = approval_broker_state_directories()
+  match dark_state_directories_admit(directories: directories) {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk => dark_run_legs(legs: dark_state_directory_legs_for(directories: directories), transport: i.transport)
+  }
+}
+
+fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
+  let dir = helper_locus_dir(locus: locus, revision: revision)
+  match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepSnapshot,
     command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
   }) {
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
       match approval_broker_tree_install_at(
-        owner: approval_broker_helper_root_principal,
-        spine: [approval_broker_helper_snapshot_base],
+        owner: locus.owner,
+        spine: spine,
         locus: dir,
-        source_root: i.source_root,
-        revision: i.revision,
+        source_root: source_root,
+        revision: revision,
         executables: [gunbc_release_bin_name],
-        transport: i.transport,
+        transport: transport,
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
-          DarkInstallRefused { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
+          DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
         TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          match dark_run_legs(legs: dark_snapshot_readback_legs(dir: dir), transport: i.transport) {
-            DarkOk => dark_stage_sudoers(i: i)
-            DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-          }
+          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: dir), transport: transport)
       }
   }
 }
 
-fn dark_stage_sudoers(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: dark_scratch_template), transport: i.transport) {
-    RunArgvTransportRefused { reason: r } => DarkInstallRefused { step: DarkStepScratchAcquire, reason: r }
-    RunArgvTransportObserved { observed: o } =>
-      match (if o.success { admitted_scratch_path(prefix: dark_scratch_prefix, stdout: o.stdout) } else { none }) {
-        Absent => DarkInstallRefused { step: DarkStepScratchAcquire, reason: join(["mktemp -d did not yield an admitted scratch directory (exit ", to_string(o.exit_code), "): ", o.stdout, o.stderr], "") }
-        Present { value: scratch } => {
-          let state = dark_run_legs(legs: dark_sudoers_legs(revision: i.revision, principal: i.principal, scratch: scratch), transport: i.transport)
-          let cleanup = dark_failed_of_outcome(
-            step: DarkStepScratchCleanup,
-            outcome: run_argv_over_host_effect_transport(command: rm_recursive_force_command(path: scratch), transport: i.transport),
-          )
-          match state {
-            DarkFailed { step: s, reason: r } =>
-              match cleanup {
-                DarkOk => DarkInstallRefused { step: s, reason: r }
-                DarkFailed { step: _, reason: cr } => DarkInstallRefused { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], "") }
-              }
-            DarkOk =>
-              match cleanup {
-                DarkFailed { step: cs, reason: cr } => DarkInstallRefused { step: cs, reason: join(["removing scratch ", scratch, ": ", cr], "") }
-                DarkOk => dark_stage_retire(i: i)
-              }
-          }
-        }
-      }
-  }
-}
-
-// The previous release's snapshot is removed after the rename took its grant away: the sweep is
+// The previous release's snapshot is removed once the units that name the new one stand: the sweep is
 // confined to the root-owned base and keeps exactly this release's directory.
-fn dark_stage_retire(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+fn dark_helper_retire_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+  dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepRetire,
     command: find_other_children_exec_command(
-      root: approval_broker_helper_snapshot_base,
-      keep_name: release_revision_execstart_text(binding: i.revision),
+      root: locus.base,
+      keep_name: release_revision_execstart_text(binding: revision),
       exec_argv: sudo_elevate_argv(command: [fleet_rm_binary_path as String, coreutils_rm_force_recursive_flags as String, "--"]),
     ),
-  }) {
-    DarkOk => dark_stage_broker_tree(i: i)
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-  }
+  })
 }
 
 // THE SIDECAR IS STANDING BEFORE THE BROKER UNIT IS SWAPPED. The broker unit loads the sidecar's digest env file and is
@@ -6461,19 +7174,8 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
   match step {
     DarkStepOwner => "owner"
     DarkStepDeviceStore => "device-store"
-    DarkStepGrantAdmission => "helper-grant-admission"
     DarkStepSnapshot => "helper-snapshot"
     DarkStepSnapshotReadback => "helper-snapshot-readback"
-    DarkStepScratchAcquire => "scratch-acquire"
-    DarkStepSudoersStage => "sudoers-stage"
-    DarkStepSudoersCheck => "sudoers-visudo-check"
-    DarkStepSudoersInstall => "sudoers-install"
-    DarkStepSudoersPolicyTemp => "sudoers-policy-check-temp"
-    DarkStepSudoersRename => "sudoers-rename"
-    DarkStepSudoersPolicyFinal => "sudoers-policy-check-final"
-    DarkStepSudoersReadback => "sudoers-readback"
-    DarkStepSudoersCompare => "sudoers-compare"
-    DarkStepScratchCleanup => "scratch-cleanup"
     DarkStepRetire => "helper-snapshot-retire"
     DarkStepBrokerTree => "broker-tree"
     DarkStepSidecarDigest => "sidecar-digest"
@@ -7220,8 +7922,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
     SeededInstallMediaToolchainOnHost { node: _ } =>
       realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
-    BmcwebSessionLoginOnHost { node: _ } =>
-      realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+    BmcwebSessionLoginOnHost { node: _, request_body_file: f } =>
+      realize_bmcweb_session_login_on_host(transport: transport, intent: intent, request_body_file: f)
     BmcwebTokenExtractOnHost { node: _ } =>
       realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
     EffectivePrincipalReadOnHost { node: _, read: r } =>
@@ -7384,9 +8086,8 @@ fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
 }
 
 // WHAT A DEPLOY EFFECT MAY DEMAND BEFORE IT RUNS. Apply and retract both open with
-// gunbc.live_deploy.emit deploy_apply_preamble_steps, whose first step installs the deploy principal's
-// sudoers drop-in and then probes the whole roster against it, refusing on a miss before any other
-// mutation (gunbc.ci.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell). So before them
+// live_deploy_apply_preamble_on_host, whose first legs install the deploy principal's sudoers drop-in
+// and then probe the whole roster against it, refusing on a miss before any other mutation. So before them
 // the gate demands only what that install spends; demanding the rest would require the grant the
 // gated step exists to install. Every other effect installs nothing and is gated on the full roster.
 // It narrows the VERDICT only: the scripts are emitted from the full DeployAccess, so the preamble's
@@ -7409,7 +8110,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     Srv3InstallMediaFetch => access
     Srv3SeededInstallMediaRemaster => access
     Srv3SeededInstallMediaToolchainEnsure => access
-    Srv3BmcwebSessionLogin => access
+    Srv3BmcwebSessionLogin { request_body_file: _ } => access
     Srv3BmcwebTokenExtract => access
     Srv3NbdProxyServe { intent: _, lease_key: _ } => access
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
@@ -7480,8 +8181,8 @@ fn host_effect_apply_gated(
           realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
         SeededInstallMediaToolchainOnHost { node: _ } =>
           realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
-        BmcwebSessionLoginOnHost { node: _ } =>
-          realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+        BmcwebSessionLoginOnHost { node: _, request_body_file: f } =>
+          realize_bmcweb_session_login_on_host(transport: transport, intent: intent, request_body_file: f)
         BmcwebTokenExtractOnHost { node: _ } =>
           realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
         EffectivePrincipalReadOnHost { node: _, read: r } =>
@@ -7576,7 +8277,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            BmcwebSessionLoginOnHost { node: _, request_body_file: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SudoNopasswdExecuteProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -7634,12 +8335,13 @@ type BuildCacheReadResult
   | BuildCacheReadRefused { reason: String }
 
 // EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface
-// is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink
-// and must not grow, so an observation added as a concat-built bash body would have grown precisely
-// the surface build_cache_provision_shell_script_dissolution_trigger exists to retire. Routing the reads through the typed argv seam instead means
-// the observation lands in the direction the dissolve-on points, and the remaining concat-shell
-// body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect
-// does than it was.
+// is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink and
+// must not grow -- the reason none of these reads is a concat-built bash body, and no reason to add
+// one now that the surface has none. The whole ensure is typed operations in
+// gunbc.host.build_cache_daemon_ensure. Routing the reads through the typed argv seam is what made
+// that reachable rather than merely adjacent: an observation that arrives as a captured argv result
+// can be classified by a typed function, whereas one that arrives as printf receipts had to be
+// re-parsed by the shell that printed them.
 
 // IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason gunbc.bmc.bmc_netboot_serve's
 // executor does: a
@@ -8471,32 +9173,48 @@ fn build_cache_unlink_then_ensure(
 // an endpoint-readiness observation the ensure step can wait on, at which point the post-survey
 // runs after it rather than after systemctl returns.
 
-fn build_cache_daemon_observation_of_receipt(
-  observed: ShellExecObserved,
-  placement: BuildCacheServerPlacement,
-) -> BuildCacheDaemonObservation {
-  if string_contains(s: observed.stdout, pattern: "observe=misconfigured fragment=") {
-    DaemonMisconfigured {
-      matched_fragment: "observe=misconfigured",
-      detail: observed.stdout as NonEmptyStr,
-    }
-  } else if observed.success && string_contains(s: observed.stdout, pattern: "read_back=ok") {
-    DaemonStatsOk { stats_line: observed.stdout, placement: placement }
-  } else if observed.success == true {
-    DaemonUnresponsive {
-      detail: "the build-cache ensure exited zero without printing its read_back=ok receipt, so the daemon was never confirmed to answer after the ensure" as NonEmptyStr,
-    }
-  } else {
-    DaemonUnresponsive {
-      detail: join(
-        [
-          "the build-cache ensure exited ",
-          to_string(observed.exit_code),
-          ": ",
-          if observed.stderr == "" { observed.stdout } else { observed.stderr },
-        ],
-        "",
-      ) as NonEmptyStr,
+// THE TWO OPTIONAL READ OUTCOMES, each in a function whose RETURN TYPE is declared. A bare
+// `Present { value: x }` / `Absent` pair unifies only where an expected type is pushed into it; inside a
+// `let` (and inside a match arm) nothing is pushed, so each branch gets inferred on its own -- one as a
+// bare Coproduct over the outcome, the other as a bare Coproduct over Optional -- and the join is
+// refused. `Absent as Optional<T>` is not the answer either, being refused as a cast. Routing the two
+// arms through declared-return-type functions is how the corpus writes this (extdeps/uri_validation.dag,
+// gunbc/witness/witness_row_cost.dag), and it keeps the distinction the observer depends on: SKIPPED is
+// its own value, not an empty capture.
+fn build_cache_stats_read_present(
+  command: ArgvCommand,
+  transport: HostEffectTransport,
+) -> Optional<BuildCacheHostRunOutcome> {
+  Present { value: build_cache_argv_read_outcome(command: command, transport: transport) }
+}
+
+fn build_cache_stats_read_skipped() -> Optional<BuildCacheHostRunOutcome> {
+  Absent
+}
+
+// THE EVIDENCE CARRIER FOR A CONVERGED ENSURE THAT RAN NO SHELL. toolchain_ensure_reconcile needs a
+// ShellExecObserved to ground the reconciliation, and the honest one is the read-back the site ran: exit
+// code, stdout and stderr exactly as the host produced them, with the converged stats table as the
+// stdout the operator is shown. A read-back that could not run grounds NOTHING -- that arm cannot be
+// reached from a converged verdict (the classifier refuses before it), and the false keeps that true
+// rather than relying on the caller's discipline.
+fn read_back_observed_carrier(read_back: Optional<BuildCacheHostRunOutcome>, stats_line: String) -> ShellExecObserved {
+  match read_back {
+    Present { value: Ran { observed: o } } =>
+      ShellExecObserved {
+        exit_code: o.exit_code,
+        // DERIVED, not asserted. Nothing here claims success because the verdict arrived: success is what
+        // the recorded exit code says it is, so a carrier can never be greener than the capture it came
+        // from, and the fail-closed branch below stays reachable rather than being papered over.
+        success: o.exit_code == 0,
+        stdout: o.stdout,
+        stderr: o.stderr,
+      }
+    _ => ShellExecObserved {
+      exit_code: 1,
+      success: false,
+      stdout: stats_line,
+      stderr: "host_effect_apply: the build-cache read-back never ran, so there is no capture to ground the convergence on",
     }
   }
 }
@@ -8508,20 +9226,53 @@ fn build_cache_ensure_step(
   token: NonEmptyStr,
   digest: Digest,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let observed = run_shell_transport(
-    script: retained_srvn(
-      body: build_cache_provision_shell_script(instance: instance, arch_token: token, digest: digest),
-      reason: "srvN build-cache provisioning (sccache daemon ensure)",
-    ),
+  let install_params = build_cache_sccache_install_params(arch_token: token, digest: digest)
+  let presence = build_cache_daemon_presence_command(p: install_params)
+  let stats = build_cache_daemon_stats_command()
+  let presence_read = build_cache_argv_read_outcome(command: presence, transport: transport)
+  // The script tested `[ -x BIN ]` and only then ran `--show-stats`; when the test failed it fell through
+  // with rc 127 and the query never ran. Skipping it here keeps that, and keeps it a SKIP rather than a
+  // fabricated empty capture: an absent read is its own arm, so "no stats read happened" can never be read
+  // as "the daemon answered with nothing".
+  let stats_read =
+    match presence_read {
+      Ran { observed: p_obs } =>
+        if p_obs.exit_code == 0 {
+          build_cache_stats_read_present(command: stats, transport: transport)
+        } else {
+          build_cache_stats_read_skipped()
+        }
+      CouldNotRun { phase: _, reason: _ } => build_cache_stats_read_skipped()
+    }
+  let observe = build_cache_observe_observed(presence: presence_read, stats: stats_read)
+  let ensure_executed = build_cache_ensure_executed(
+    instance: instance,
+    arch_token: token,
+    digest: digest,
+    observe: observe,
     transport: transport,
   )
+  // The read-back runs on exactly the paths the script reached it -- every observe outcome except the
+  // observe=ok early exit -- and the site asks the SAME predicate the classifier asks, so the two can
+  // never disagree about whether the phase happened.
+  let read_back =
+    if build_cache_ensure_is_needed(observe: observe) {
+      build_cache_stats_read_present(command: stats, transport: transport)
+    } else {
+      build_cache_stats_read_skipped()
+    }
   let after = survey_build_cache_endpoint(
     instance: instance,
     reads: build_cache_endpoint_reads(instance: instance, transport: transport),
   )
   match provision_build_cache_verdict(
     catalog_id: instance.implementation,
-    observed: build_cache_daemon_observation_of_receipt(observed: observed, placement: after.placement),
+    observed: build_cache_daemon_ensure_observation(
+      observe: observe,
+      ensure: ensure_executed,
+      read_back: read_back,
+      placement: after.placement,
+    ),
   ) {
     BuildCacheProvisionRefused { cause: _, reason: why } =>
       NotConverged {
@@ -8531,8 +9282,17 @@ fn build_cache_ensure_step(
         ),
         applied: effect_intent,
       }
-    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } =>
-      provision_build_cache_reconcile(observed: observed, intent: effect_intent)
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: stats_line } =>
+      // No shell ran, so nothing hands back a ShellExecObserved and none is faked: the carrier is built
+      // from the captures the site ACTUALLY recorded -- the read-back exit code and the two streams the
+      // host produced. That is more truthful than the receipt it replaces, which reported a single blob
+      // the shell had assembled. This is the shape the shared reconcile already names ("synthesized
+      // receipt from typed per-tool ensure results; fail-closed"), and the stats_line the verdict
+      // converged on is the read-back table itself, so the evidence is the host's own bytes.
+      provision_build_cache_reconcile(
+        observed: read_back_observed_carrier(read_back: read_back, stats_line: stats_line),
+        intent: effect_intent,
+      )
   }
 }
 
@@ -9687,7 +10447,7 @@ fn microvm_controller_install_steps(
               microvm_controller_argv_step(
                 name: "dispatch grant install (pending)",
                 command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-                  mode: approval_broker_helper_sudoers_mode,
+                  mode: helper_sudoers_grant_mode,
                   owner: microvm_controller_owner,
                   group: microvm_controller_owner,
                   source: grant_stage,

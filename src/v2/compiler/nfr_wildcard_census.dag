@@ -8,6 +8,9 @@ import v2.std.node { Arrow, Edge, Atom, Authored, Conj, ComputationNode, Disj, I
 import v2.std.node_query { arrow_domain_named_param_bindings, find_arrow_body_child, find_binder_type, find_core_child, is_wildcard_pattern }
 import v2.compiler.decl_ref_census { ImportPair, field_target, pair_target, string_value, tag_path_text, last_segment }
 import v2.std.node_query { construct_field_edges }
+import v2.std.compilers.lexing {
+  TokenStream,
+}
 import v2.std.text { String }
 
 // THE NON-FOLD-RESIDUE WILDCARD CENSUS (a pure reader; the verb is v2.compiler.source_root_eval
@@ -18,6 +21,35 @@ import v2.std.text { String }
 // the wildcard stands where a variant arm was available (the closed-coproduct test lives in the verb,
 // which owns the cross-module lookup). The join key of a site is its fn name; the module path
 // prefix is the verb's.
+
+// THE CANDIDATE QUESTION, ANSWERED ON TOKENS (review 86129): does this stream contain the wildcard arm
+// shape -- an underscore token immediately followed by a fat-arrow token? The DAG lexer spells a pattern
+// underscore as an IDENT token whose lexeme is exactly "_", and the arrow is its own fat-arrow token
+// (the same shapes the parse claims construct: v2.test.claim.parse.variant_field_lowering). The fold
+// carries the previous token's verdict, so the pair is read in one pass. Near-misses stay false: a
+// string literal's lexeme carries its quotes, an identifier like "_b" is a different lexeme, and
+// comments/whitespace never appear in the stream. A text prefilter on the two characters "_ =>" misses
+// `_=>`, `_  =>` and a line break before the arrow; token adjacency is spelling-independent, so this
+// cannot. Lives here (the pure reader) so the claim file and the verb import the SAME decision.
+type NfrWildcardArmScan {
+  pending_underscore: Bool
+  found_arm: Bool
+}
+
+fn nfr_wildcard_arm_in_tokens(stream: TokenStream) -> Bool {
+  fold_list(
+    xs: stream.all,
+    empty: NfrWildcardArmScan { pending_underscore: false, found_arm: false },
+    cons: fn(acc, t) {
+      if acc.found_arm { acc }
+      else if acc.pending_underscore {
+        NfrWildcardArmScan { pending_underscore: false, found_arm: (t.class == ^dag_token_fat_arrow) }
+      } else {
+        NfrWildcardArmScan { pending_underscore: (t.class == ^dag_token_ident) && (t.lexeme == "_"), found_arm: false }
+      }
+    }
+  ).found_arm
+}
 
 // The head spelling of a parameter's declared type: an atom, or the head of an instantiation.
 // Anything else (a qualified Conj spine, an arrow) has no bare head and is Absent, which the verb counts.

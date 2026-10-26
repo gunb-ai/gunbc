@@ -323,7 +323,7 @@ test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool {
 // some other reason". THAT IS A REAL WEAKNESS AND IT IS NOT REPAIRED HERE, because it is not this
 // change's to repair: it belongs to the harness every one of the ten rows in this file shares, and the
 // seven that predate this change have it identically. The corpus already ships the stronger
-// instrument -- `gunbc.compile_diagnostic_census` with `census_blocking_count_for_class`, used by
+// instrument -- `gunbc.compile_census_probe` with `blocking_class_census`, used by
 // `test.claim.direct_call_argument_type_witness` -- so migrating this file is a known, available
 // move over a population of ten, not a gap needing a new mechanism. Naming it here rather than
 // silently inheriting it is the whole of what this paragraph does.

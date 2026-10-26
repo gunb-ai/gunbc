@@ -1,0 +1,123 @@
+module extdeps.firmware.ami_aptio_status_codes
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited,
+}
+import extdeps.uri { Uri, Https }
+
+// SUBJECT: AMI's "Aptio 5.x Status Codes" publication, the status-code (POST checkpoint) vocabulary
+// that AMI Aptio V firmware writes to the debug port (port 80h, which a BMC may snoop). AMI is the
+// sole owner of that publication; a platform vendor's reprint of it is a separate revisioned module
+// (extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide), and OEM-range meanings (the platform
+// vendor's) and silicon-vendor codes (AMD AGESA/ABL) are separately governed upstreams, never rows here.
+//
+// THIS MODULE CARRIES THE SHAPE AND THE DECODE, NOT A TABLE. A table is a fact of one revision of one
+// publication, so the rows live beside the document they were read from and are SUPPLIED to
+// ami_aptio_decode; a hub that enumerated revisions would carry product-version rows (DESIGN section 3).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ami.com"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.ami_aptio_status_codes",
+      decl_name: "ami_aptio_5x_status_codes_identity_standing",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The publication's own identity ("Aptio 5.x Status Codes", Revision 2.04, 2024-04-20) is stated by a
+// reprint, never read from AMI directly, so it is typed as a bet (DESIGN 4d).
+data ami_aptio_5x_status_codes_identity_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Revision 2.04 dated April 20, 2024 is as stated by Supermicro's reprint (AMI Aptio V BIOS POST Codes for Supermicro Motherboards, Rev 1.0b). Read AMI's own 'Aptio 5.x Status Codes' publication (ami.com) to confirm the revision and that the reprint's tables match it.",
+}
+
+// The ranges of the publication's "Checkpoint Ranges" table. The memory-detection split inside PEI
+// is part of the vocabulary, so it is two phases here and not a prose note.
+type StatusPhase
+  = SecPhase
+  | PeiUpToMemoryDetection
+  | PeiAfterMemoryDetection
+  | DxeUpToBds
+  | BdsPhase
+  | S3ResumePei
+  | RecoveryPei
+
+type StatusKind = ProgressCode | ErrorCode
+
+type CheckpointRange {
+  first: Int
+  last: Int
+  phase: StatusPhase
+  kind: StatusKind
+}
+
+// What the publication says a code means. OemDefined and ReservedForAmi and ReservedForAsl are the
+// publication SAYING it does not give a meaning, which is a typed unknown, not an absence and not a guess.
+type StatusMeaning
+  = Described { description: NonEmptyStr }
+  | OemDefined { label: NonEmptyStr }
+  | ReservedForAmi
+  | ReservedForAsl
+
+// A row covers first..last inclusive (a single code has first == last); page is the page number as
+// printed in the page header of the document the row was read from.
+type StatusRow {
+  first: Int
+  last: Int
+  meaning: StatusMeaning
+  page: Int
+}
+
+type StatusCodeTable {
+  document: DeclarationRef
+  ranges: List<CheckpointRange>
+  rows: List<StatusRow>
+  standing: CitedFigureStanding
+}
+
+type UnlistedCause
+  = NotAByte
+  | NoCheckpointRange
+  | NoRowInRange { range: CheckpointRange }
+
+type PostCodeDecode
+  = Decoded { code: Int, range: CheckpointRange, row: StatusRow, standing: CitedFigureStanding }
+  | Refused { code: Int, cause: UnlistedCause }
+
+fn status_range_covers(range: CheckpointRange, code: Int) -> Bool {
+  code >= range.first && code <= range.last
+}
+
+fn status_row_covers(row: StatusRow, code: Int) -> Bool {
+  code >= row.first && code <= row.last
+}
+
+// A code the table does not list refuses with the reason it is unlisted; the nearest listed row is
+// never substituted. A byte inside a range with no row is NoRowInRange: the range says what phase it
+// is in, and nothing says what it means.
+fn ami_aptio_decode(table: StatusCodeTable, code: Int) -> PostCodeDecode {
+  if code < 0 || code > 255 {
+    Refused { code: code, cause: NotAByte }
+  } else {
+    match first_where(table.ranges, r => status_range_covers(range: r, code: code)) {
+      Absent => Refused { code: code, cause: NoCheckpointRange }
+      Present { value: range } =>
+        match first_where(table.rows, r => status_row_covers(row: r, code: code)) {
+          Absent => Refused { code: code, cause: NoRowInRange { range: range } }
+          Present { value: row } => Decoded { code: code, range: range, row: row, standing: table.standing }
+        }
+    }
+  }
+}

@@ -1,16 +1,17 @@
 module extdeps.cpu.amd
 
-import extdeps.external_authority { ExternalAuthority, FactCitation }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited }
 import std.decl_ref { decl_field_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.cpu.types {
   ProcessorCoolingMount,
   SocketedPinGrid,
-  SocketedLandGrid, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray }
+  SocketedLandGrid, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray, SoCFamily }
+import std.algebra { FreeSemigroup }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.vendor.amd { amd }
 import std.measure { byte_size, hardware_thread_count, hertz, watt }
-import std.types { List }
+import std.types { List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -47,13 +48,6 @@ data amd_am4_cooling_mount: ProcessorCoolingMount = ProcessorCoolingMount {
   designation: "AM4",
 }
 
-data socket_am5_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "en.wikipedia.org/wiki/Socket_AM5"
-  }
-}
-
 data amd_ryzen_9_7950x3d_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -69,10 +63,16 @@ data amd_zen2_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   line_size: byte_size(64),
 }
 
+// The Zen 2 L1/L2 citations were a Ryzen product page that states no cache geometry; they now cite the
+// Family 17h Models 30h+ guide that does, in place, for every model sharing these rows (Ryzen and EPYC).
 data amd_zen2_l1_cache_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l1_cache_geometry", field_name: "data_capacity_per_core"),
-    authority: amd_ryzen_5_3600_authority,
+    authority: amd_family_17h_zen2_sog_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l1_cache_geometry", field_name: "instruction_capacity_per_core"),
+    authority: amd_family_17h_zen2_sog_authority,
   },
 ]
 
@@ -84,7 +84,7 @@ data amd_zen2_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
 data amd_zen2_l2_cache_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l2_cache_geometry", field_name: "capacity_per_core"),
-    authority: amd_ryzen_5_3600_authority,
+    authority: amd_family_17h_zen2_sog_authority,
   },
 ]
 
@@ -109,11 +109,20 @@ data amd_zen2_l3_cache_citations: List<FactCitation> = [
 // lists beside them could name no declaration — which is how a citation ends up keyed by a field
 // SPELLING ("package", a name CpuSocket has not carried since termination and attachment were
 // split) instead of by the declaration the containment tree already names.
+data amd_socket_am4_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read AM4's termination (PGA) and contact count (1331) from an AMD platform document or the AM4 socket vendor datasheet; en.wikipedia.org/wiki/Socket_AM4 is secondary." as NonEmptyStr
+}
+
+data amd_socket_am5_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read AM5's termination (LGA) and contact count (1718) from an AMD platform document or the AM5 socket vendor datasheet; en.wikipedia.org/wiki/Socket_AM5 is secondary." as NonEmptyStr
+}
+
 data amd_socket_am4: CpuSocket = CpuSocket {
   platform_owner: amd,
   termination: SocketedPinGrid,
   contact_count: 1331,
   cooling_mount: amd_am4_cooling_mount,
+  figure_standing: amd_socket_am4_standing,
 }
 
 data amd_socket_am5: CpuSocket = CpuSocket {
@@ -121,29 +130,8 @@ data amd_socket_am5: CpuSocket = CpuSocket {
   termination: SocketedLandGrid,
   contact_count: 1718,
   cooling_mount: amd_am4_cooling_mount,
+  figure_standing: amd_socket_am5_standing,
 }
-
-data socket_am4_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am4", field_name: "termination"),
-    authority: amd_ryzen_5_3600_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am4", field_name: "contact_count"),
-    authority: amd_ryzen_5_3600_authority,
-  },
-]
-
-data socket_am5_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am5", field_name: "termination"),
-    authority: socket_am5_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am5", field_name: "contact_count"),
-    authority: socket_am5_authority,
-  },
-]
 
 data amd_zen4_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   data_capacity_per_core: byte_size(32768),
@@ -191,7 +179,6 @@ data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(12),
   nominal_sustained_per_thread_hz: hertz(3600000000),
   socket: amd_socket_am4,
-  socket_citations: socket_am4_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen2_l1_cache_geometry,
   l1_cache_citations: amd_zen2_l1_cache_citations,
@@ -210,7 +197,6 @@ data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(16),
   nominal_sustained_per_thread_hz: hertz(3300000000),
   socket: amd_socket_am5,
-  socket_citations: socket_am5_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
@@ -229,7 +215,6 @@ data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(32),
   nominal_sustained_per_thread_hz: hertz(4200000000),
   socket: amd_socket_am5,
-  socket_citations: socket_am5_citations,
   tdp_watts: watt(120),
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
@@ -260,6 +245,183 @@ data ryzen_9_7950x3d_facts: CpuFacts = CpuFacts {
   },
 }
 
+// ---- EPYC (Naples, Rome) ------------------------------------------------------------------------
+// FETCHED 2026-10-21. The two AMD product pages below embed their spec table as page JSON; the
+// cores, threads, base clock, L3 capacity, default TDP and "Platform: SP3" read here are that
+// table's values for each model. The pages state NO L1/L2 geometry and NO socket contact count, so
+// those are cited to the figures' real homes below, not to the product page.
+data amd_epyc_7551p_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/cpu/amd-epyc-7551p"
+  }
+}
+
+data amd_epyc_7702p_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/cpu/amd-epyc-7702p"
+  }
+}
+
+// L1/L2 GEOMETRY IS A PROPERTY OF THE CORE MICROARCHITECTURE, NOT OF A SKU, so it is cited to AMD's
+// Software Optimization Guide for that core and the geometry rows are shared by every model of the
+// microarchitecture (Zen 2: amd_zen2_l1/l2_cache_geometry above, reused by Rome; Zen: below).
+// RETRIEVAL: AMD's own download URL answered 404/302 on 2026-10-21, so the guides were retrieved from
+// the kernel-documentation mirror kib.kiev.ua/x86docs/AMD/Optimization, and the cited documents are AMD
+// 56305 rev 3.00 'Software Optimization Guide for AMD Family 17h Models 30h and Greater Processors' and
+// AMD 55723 rev 3.01 'Software Optimization Guide for AMD Family 17h Processors'; ExternalAuthority
+// carries only a URI, so the title, number and revision live here and the locator is where it was retrieved. Held copies: 56305 rev 3.00 PDF sha256
+// 9ac888ea13f03e7491dd330dbef346b23a4865d7596ad8d32cc3f99b8aec7f28 (section 2.6: 32-Kbyte 8-way L1
+// instruction cache, 32-Kbyte 8-way L1 data cache, 512-Kbyte L2, 64-byte instruction cache line);
+// 55723 rev 3.01 zip sha256 d9c3a7daacab554e5ec8c1801301d7bccc9253488c4fad517886849a1c78de6e (key
+// features: 64-Kbyte L1 instruction cache, 32-Kbyte L1 data cache, 512-Kbyte unified L2 per core;
+// section 2.6.1: 64-byte line). The mirror is not AMD, so a corrected AMD-hosted URL replaces these
+// locators without changing any figure.
+data amd_family_17h_zen2_sog_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "kib.kiev.ua/x86docs/AMD/Optimization/56305_3.00_Software%20Optimization%20Guide%20for%20AMD%20Family%2017h%20Models%2030h%20and%20Greater%20Processors.pdf"
+  }
+}
+
+data amd_family_17h_zen1_sog_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "kib.kiev.ua/x86docs/AMD/Optimization/55723_3.01_Software%20Optimization%20Guide%20for%20AMD%20Family%2017h%20Processors.zip"
+  }
+}
+
+data amd_zen1_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
+  data_capacity_per_core: byte_size(32768),
+  instruction_capacity_per_core: byte_size(65536),
+  line_size: byte_size(64),
+}
+
+data amd_zen1_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
+  capacity_per_core: byte_size(524288),
+  line_size: byte_size(64),
+}
+
+data amd_zen1_l1_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen1_l1_cache_geometry", field_name: "data_capacity_per_core"),
+    authority: amd_family_17h_zen1_sog_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen1_l1_cache_geometry", field_name: "instruction_capacity_per_core"),
+    authority: amd_family_17h_zen1_sog_authority,
+  },
+]
+
+data amd_zen1_l2_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen1_l2_cache_geometry", field_name: "capacity_per_core"),
+    authority: amd_family_17h_zen1_sog_authority,
+  },
+]
+
+
+// SOCKET SP3 IS CARRIED UNCITED. No AMD or socket-vendor document stating the LGA termination or the 4094
+// contact count was retrievable on 2026-10-21 (the AMD EPYC 7002 data sheet and product brief state the
+// socket name only). en.wikipedia.org/wiki/Socket_SP3 reads "Type LGA - ZIF", "Contacts 4094" but a
+// secondary page is not an authority (DESIGN 4d), so no FactCitation is minted; the standing is the
+// read obligation below. The cooling-mount designation is the socket's own name, the identity the AMD
+// product pages carry as "Platform", and is likewise not cited.
+data socket_sp3_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the SP3 socket's termination (LGA) and contact count (4094) from an AMD platform document or the SP3 socket vendor datasheet (e.g. Lotes or Foxconn); en.wikipedia.org/wiki/Socket_SP3 was the transcription source on 2026-10-21." as NonEmptyStr
+}
+
+data amd_sp3_cooling_mount: ProcessorCoolingMount = ProcessorCoolingMount {
+  platform_owner: amd,
+  designation: "SP3",
+}
+
+data amd_socket_sp3: CpuSocket = CpuSocket {
+  platform_owner: amd,
+  termination: SocketedLandGrid,
+  contact_count: 4094,
+  cooling_mount: amd_sp3_cooling_mount,
+  figure_standing: socket_sp3_standing,
+}
+
+// L3 line size is not stated by the product pages, so only the capacity is cited, as the existing
+// Zen 2 row does.
+data amd_epyc_7551p_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: byte_size(67108864),
+  line_size: byte_size(64),
+}
+
+data amd_epyc_7551p_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_epyc_7551p_l3_cache_geometry", field_name: "capacity"),
+    authority: amd_epyc_7551p_authority,
+  },
+]
+
+data amd_epyc_7702p_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: byte_size(268435456),
+  line_size: byte_size(64),
+}
+
+data amd_epyc_7702p_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_epyc_7702p_l3_cache_geometry", field_name: "capacity"),
+    authority: amd_epyc_7702p_authority,
+  },
+]
+
+// 7551P: 32 cores, 64 threads, base 2.0 GHz, 64 MB L3, default TDP 180 W, platform SP3 (page JSON).
+data epyc_7551p_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "7551P",
+  oem_listing_id: none,
+  vendor: amd,
+  architecture: X86_64,
+  cores: 32,
+  threads: hardware_thread_count(64),
+  nominal_sustained_per_thread_hz: hertz(2000000000),
+  socket: amd_socket_sp3,
+  tdp_watts: watt(180),
+  l1_cache: amd_zen1_l1_cache_geometry,
+  l1_cache_citations: amd_zen1_l1_cache_citations,
+  l2_cache: amd_zen1_l2_cache_geometry,
+  l2_cache_citations: amd_zen1_l2_cache_citations,
+  l3_cache: amd_epyc_7551p_l3_cache_geometry,
+  l3_cache_citations: amd_epyc_7551p_l3_cache_citations,
+}
+
+// 7702P: 64 cores, 128 threads, base 2.0 GHz, 256 MB L3, default TDP 200 W, platform SP3 (page JSON).
+data epyc_7702p_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "7702P",
+  oem_listing_id: none,
+  vendor: amd,
+  architecture: X86_64,
+  cores: 64,
+  threads: hardware_thread_count(128),
+  nominal_sustained_per_thread_hz: hertz(2000000000),
+  socket: amd_socket_sp3,
+  tdp_watts: watt(200),
+  l1_cache: amd_zen2_l1_cache_geometry,
+  l1_cache_citations: amd_zen2_l1_cache_citations,
+  l2_cache: amd_zen2_l2_cache_geometry,
+  l2_cache_citations: amd_zen2_l2_cache_citations,
+  l3_cache: amd_epyc_7702p_l3_cache_geometry,
+  l3_cache_citations: amd_epyc_7702p_l3_cache_citations,
+}
+
+// THE EPYC SoC FAMILIES: the grouping a board admits. A family is its cited model rows, so each
+// family here holds exactly the one model this module cites; a further 7001/7002 model is a row added
+// to its family's tail, and soc_family_eq (identity over the model rows) then distinguishes it.
+data amd_epyc_7001_soc_family: SoCFamily = SoCFamily {
+  name: "EPYC 7001",
+  models: FreeSemigroup { head: epyc_7551p_catalog, tail: [] },
+}
+
+data amd_epyc_7002_soc_family: SoCFamily = SoCFamily {
+  name: "EPYC 7002",
+  models: FreeSemigroup { head: epyc_7702p_catalog, tail: [] },
+}
+
 // THE MODULE'S OWN ROSTER OF CATALOG ROWS, here rather than in a witness so a consumer asking
 // "every AMD processor this repository models" reads one authority, and an author adding a row
 // edits the roster in the same file. The roster is still hand-authored — a genuinely closed
@@ -269,4 +431,6 @@ data amd_cpu_catalog_rows: List<CpuModelCatalogRow> = [
   ryzen_5_3600_catalog,
   ryzen_7_pro_8700ge_catalog,
   ryzen_9_7950x3d_catalog,
+  epyc_7551p_catalog,
+  epyc_7702p_catalog,
 ]

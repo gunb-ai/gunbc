@@ -1,6 +1,8 @@
 module test.claim.fleet.fleet_converge_roster_token_prelude_witness
 
 import std.types { Bool, List, String }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
+import gunbc.auth.access_token_source { workload_identity_token_env }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_target, GunbcRunStepTarget }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
@@ -57,4 +59,47 @@ test fn a_converge_run_without_the_prelude_is_refused() -> Bool {
     t: gunbc_ci_runner_host_file_converge_target,
     runs: [concat("gunbc run ", concat(gunbc_ci_runner_host_file_converge_target.entry, concat(" ", gunbc_ci_runner_host_file_converge_target.function)))]
   )
+}
+
+// A STEP THAT CARRIES A SCRIPT READING THE WIF TOKEN BINDS IT.
+//
+// The prelude reads "$WIF_ACCESS_TOKEN" (the name is the declared workload_identity_token_env) from the step's own
+// environment; a step whose env does not bind it dies at run time with "unbound variable" (fleet-converge run
+// 39879022568). The check above saw only that the prelude was PRESENT. The reads are derived from the emitted run text
+// and the bindings from the emitted env, so no list of steps or names is repeated here.
+fn step_reads_wif_token(run: String) -> Bool {
+  string_contains(s: run, pattern: concat("$", workload_identity_token_env as String))
+}
+
+fn env_keys(env: List<YamlKeyValue>?) -> List<String> {
+  match env {
+    Present { value: kvs } => map(kvs, e => e.key)
+    Absent => []
+  }
+}
+
+fn every_wif_reader_binds_it(steps: List<Step>) -> Bool {
+  all(steps, s => match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      !step_reads_wif_token(run: r) || count(filter(env_keys(env: e), k => k == (workload_identity_token_env as String))) > 0
+    _ => true
+  })
+}
+
+test fn every_generated_step_reading_the_wif_token_binds_it() -> Bool {
+  every_wif_reader_binds_it(steps: fleet_converge_job().steps)
+}
+
+// DISCRIMINATING CONTROLS on the predicate: a reader with no env, or with an env binding something else, refuses; a
+// reader that binds it, and a step that never reads it, are accepted.
+fn reader_step(env: List<YamlKeyValue>?) -> Step {
+  RunStep { name: none, id: none, run: "x=\"$WIF_ACCESS_TOKEN\"", shell: none, env: env, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }
+}
+
+test fn a_wif_reader_with_no_binding_is_refused() -> Bool {
+  let no_env: List<YamlKeyValue>? = none
+  !every_wif_reader_binds_it(steps: [reader_step(env: no_env)])
+    && !every_wif_reader_binds_it(steps: [reader_step(env: Present { value: [kv(key: "OTHER", value: yaml_string(s: "v"))] })])
+    && every_wif_reader_binds_it(steps: [reader_step(env: Present { value: [kv(key: workload_identity_token_env as String, value: yaml_string(s: "v"))] })])
+    && every_wif_reader_binds_it(steps: [RunStep { name: none, id: none, run: "true", shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }])
 }

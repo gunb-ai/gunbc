@@ -404,8 +404,14 @@ fn attempt_unit_spool_answer_dir(instance_root: String) -> String {
   join([attempt_unit_spool_root(instance_root: instance_root), "/answers"], "")
 }
 
-fn attempt_unit_spool_drain_lock_path(instance_root: String) -> String {
-  join([attempt_unit_spool_root(instance_root: instance_root), "/drain.lock"], "")
+// `stalled` holds the attempt-unit drain's stall record, the same line stop as the exit spool's
+// (gunbc.roadmap.spool_stall): the drain service is skipped by ConditionDirectoryNotEmpty=!<stalled> while it exists.
+fn attempt_unit_spool_stalled_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/stalled"], "")
+}
+
+fn attempt_unit_spool_stall_record_path(instance_root: String) -> String {
+  join([attempt_unit_spool_stalled_dir(instance_root: instance_root), "/stall.json"], "")
 }
 
 // THE PUBLICATION SPOOL, HOMED HERE FOR THE REASON THE TWO ROWS ABOVE ARE: it has two consumers on

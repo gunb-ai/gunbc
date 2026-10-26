@@ -1,0 +1,98 @@
+module test.claim.print_request_witness
+import std.types { Bool, String, NonEmptyStr }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.content_hash { Sha256Digest }
+import extdeps.crypto.sha2 { sha256_computed_digest }
+import gunbc.fleet.printer_project_delivery { remote_name_for_attempt }
+import extdeps.crypto.hash { sha256_digest }
+import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
+import gunbc.fleet.printer_job_monitor { JobRunning, JobCompletedAwaitingInspection, JobPaused, JobFailed, JobUnresolved }
+import gunbc.fleet.print_request {
+  PrintRequest, PrintRequestRecord, print_attempt_id, record_matches, completion_text, completion_matches,
+  PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded,
+  print_standing, print_action, PrintAction, Prepare, RequestBedClearThenStart, RecordCompletion, ObserveOnly, Stop,
+}
+
+fn request(id: String, root: String) -> PrintRequest {
+  PrintRequest { request_id: id as NonEmptyStr, root: root as NonEmptyStr, recipe: "a1-mini-pla-prototype-v1", printer: printer_01 }
+}
+fn digest_of(s: String) -> Sha256Digest { sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: s))) }
+fn artifact() -> Sha256Digest { digest_of(s: "artifact") }
+
+fn starts(e: PrintEvidence) -> Bool { match print_action(s: print_standing(evidence: e)) { RequestBedClearThenStart => true _ => false } }
+fn stops(e: PrintEvidence) -> Bool { match print_action(s: print_standing(evidence: e)) { Stop => true _ => false } }
+
+// Exactly one evidence shape may lead to a start: recorded, unclaimed, and a printer freshly ready.
+test fn only_a_ready_unclaimed_request_may_start() -> Bool {
+  starts(e: RecordedNotClaimed { printer_ready: true }) &&
+  !starts(e: RecordedNotClaimed { printer_ready: false }) &&
+  !starts(e: NoRequestRecord) && !starts(e: CompletionRecorded) &&
+  !starts(e: ClaimedObserved { job: JobRunning }) && !starts(e: ClaimedObserved { job: JobCompletedAwaitingInspection }) &&
+  !starts(e: ClaimedObserved { job: JobPaused }) && !starts(e: ClaimedObserved { job: JobFailed }) &&
+  !starts(e: ClaimedObserved { job: JobUnresolved })
+}
+
+// A claimed attempt whose job cannot be identified on the printer stops; it is never resent.
+test fn an_ambiguous_start_stops_and_is_not_resent() -> Bool {
+  stops(e: ClaimedObserved { job: JobUnresolved }) && stops(e: ClaimedObserved { job: JobFailed }) && stops(e: ClaimedObserved { job: JobPaused })
+}
+
+// A completed request does nothing on a second pass; a finished job for this attempt is recorded once.
+test fn completion_is_recorded_once_then_observed() -> Bool {
+  (match print_action(s: print_standing(evidence: ClaimedObserved { job: JobCompletedAwaitingInspection })) { RecordCompletion => true _ => false }) &&
+  (match print_action(s: print_standing(evidence: CompletionRecorded)) { ObserveOnly => true _ => false })
+}
+
+// Two requests for the same part are two physical copies with two attempts; the attempt also
+// changes with the artifact and the printer, and is stable for equal inputs.
+test fn attempts_are_per_request_artifact_and_printer() -> Bool {
+  let a = print_attempt_id(request: request(id: "ring-1", root: "a16-plug-fit-ring"), artifact_sha256: artifact())
+  a == print_attempt_id(request: request(id: "ring-1", root: "a16-plug-fit-ring"), artifact_sha256: artifact()) &&
+  a != print_attempt_id(request: request(id: "ring-2", root: "a16-plug-fit-ring"), artifact_sha256: artifact()) &&
+  a != print_attempt_id(request: request(id: "ring-1", root: "a16-plug-fit-ring"), artifact_sha256: digest_of(s: "other")) &&
+  a != print_attempt_id(request: PrintRequest { request_id: "ring-1", root: "a16-plug-fit-ring", recipe: "a1-mini-pla-prototype-v1", printer: printer_02 }, artifact_sha256: artifact())
+}
+
+// A request id recorded for one root cannot be reused for another.
+test fn a_reused_request_id_for_another_part_does_not_match() -> Bool {
+  let r = request(id: "ring-1", root: "a16-plug-fit-ring")
+  let record = PrintRequestRecord { request: r, source_revision: "abc", artifact_sha256: artifact(), artifact_location: "/var/lib/gunbc/print-runs/x/plate.3mf", attempt_id: print_attempt_id(request: r, artifact_sha256: artifact()) }
+  record_matches(record: record, request: r) && !record_matches(record: record, request: request(id: "ring-1", root: "a16-sleeve-fit-ring"))
+}
+
+// Two physical copies of one prepared artifact are two printer-visible jobs: one copy's FINISH
+// carries a different file name than the other's, so it can never complete the other request.
+test fn two_copies_of_one_artifact_are_two_printer_jobs() -> Bool {
+  let a = print_attempt_id(request: request(id: "ring-1", root: "a16-plug-fit-ring"), artifact_sha256: artifact())
+  let b = print_attempt_id(request: request(id: "ring-2", root: "a16-plug-fit-ring"), artifact_sha256: artifact())
+  let content = sha256_digest(hex: artifact().hex as NonEmptyStr)
+  remote_name_for_attempt(content: content, attempt: a) != remote_name_for_attempt(content: content, attempt: b)
+}
+
+// A completion record that does not restate this request's attempt is not completion.
+test fn a_mismatched_completion_record_needs_attention() -> Bool {
+  stops(e: CompletionRecordMismatched) && !starts(e: CompletionRecordMismatched)
+}
+
+// The first pass of a request prepares and does nothing else.
+test fn an_unrecorded_request_only_prepares() -> Bool {
+  match print_action(s: print_standing(evidence: NoRequestRecord)) { Prepare => true _ => false }
+}
+
+fn ring_record() -> PrintRequestRecord {
+  let r = request(id: "ring-1", root: "a16-plug-fit-ring")
+  PrintRequestRecord { request: r, source_revision: "rev", artifact_sha256: artifact(), artifact_location: "/x/plate.3mf", attempt_id: print_attempt_id(request: r, artifact_sha256: artifact()) }
+}
+fn ring_remote() -> NonEmptyStr { remote_name_for_attempt(content: sha256_digest(hex: artifact().hex as NonEmptyStr), attempt: ring_record().attempt_id) }
+fn report(state: String, job: String) -> String { join(["{\"print\":{\"gcode_state\":\"", state, "\",\"print_error\":0,\"gcode_file\":\"\",\"subtask_name\":\"", job, "\"}}"], "") }
+
+// A completion record is accepted only while the report it retains still decodes as THIS job
+// finished: the same identity envelope around a RUNNING, IDLE or other-job report is a mismatch.
+test fn a_completion_record_must_retain_the_report_that_proved_it() -> Bool {
+  let rec = ring_record()
+  let remote = ring_remote()
+  completion_matches(text: completion_text(record: rec, remote: remote, run_id: "1", report: report(state: "FINISH", job: remote as String)), record: rec, remote: remote) &&
+  !completion_matches(text: completion_text(record: rec, remote: remote, run_id: "1", report: report(state: "RUNNING", job: remote as String)), record: rec, remote: remote) &&
+  !completion_matches(text: completion_text(record: rec, remote: remote, run_id: "1", report: report(state: "IDLE", job: remote as String)), record: rec, remote: remote) &&
+  !completion_matches(text: completion_text(record: rec, remote: remote, run_id: "1", report: report(state: "FINISH", job: "another-job.3mf")), record: rec, remote: remote)
+}

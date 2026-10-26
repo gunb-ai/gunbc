@@ -13,11 +13,14 @@ import extdeps.hardware { Hardware }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
-  CitedFigureStanding, TranscribedUncited,
+  CitedFigureStanding, TranscribedUncited, FactCitation,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.uri { Uri, Https }
+import std.algebra { FreeSemigroup }
+import extdeps.board_soc { BoardSocEdge }
+import extdeps.cpu.amd { amd_epyc_7001_soc_family, amd_epyc_7002_soc_family }
 
 // AUTHORITY. "H11SSL-I/C/NC USER'S MANUAL", Revision 1.1, released November 18, 2019, copyright
 // Super Micro Computer, Inc. (title page), 130 PDF pages. Held copy: sha256
@@ -93,8 +96,28 @@ data supermicro_h11ssl_cpu_support: List<H11sslCpuSupport> = [
   H11sslCpuSupport { family: Epyc7002, socket_label: "SP3", sockets: 1, revision_condition: BoardMajorRevisionAtLeast { major: 2 } },
 ]
 
+// THE BOARD -> SoC EDGE. The manual's CPU-support rows (p.15, supermicro_h11ssl_cpu_support) name
+// EPYC 7001 and EPYC 7002 on socket 'SP3', the latter conditioned on board revision 2.x. The edge
+// is a COMPATIBILITY roster, as BoardSocEdge says: it bounds what may be installed. The revision
+// condition is stated by supermicro_h11ssl_cpu_support and is not re-encoded here; an unrevised
+// board admitting a 7002 is the roster's upper bound, which is why smpro_facility_of_families
+// reads the families and not the installed part.
+data supermicro_h11ssl_board_soc_edge: BoardSocEdge = BoardSocEdge {
+  board: supermicro_h11ssl_board_authority,
+  soc_families: FreeSemigroup {
+    head: amd_epyc_7001_soc_family,
+    tail: [amd_epyc_7002_soc_family],
+  },
+  citations: [
+    FactCitation {
+      fact: decl_ref(module_path: "extdeps.boards.supermicro_h11ssl", decl_name: "supermicro_h11ssl_cpu_support"),
+      authority: extdeps_external_authority_anchor,
+    },
+  ],
+}
+
 data supermicro_h11ssl_socket_contact_count_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "The manual states the socket as 'SP3' and never its contact count or termination, so no CpuSocket is minted. Ground against AMD's SP3 socket documentation (4094-contact LGA is NOT read from this manual) before extdeps.cpu gains an SP3 row.",
+  read_obligation: "The manual states the socket as 'SP3' and never its contact count or termination, so nothing about the socket's figures is read from this manual. The SP3 CpuSocket lives in extdeps.cpu.amd (amd_socket_sp3) carrying socket_sp3_standing, TranscribedUncited until AMD's or the socket vendor's SP3 documentation grounds it.",
 }
 
 data supermicro_h11ssl_epyc_7702p_standing: CitedFigureStanding = TranscribedUncited {

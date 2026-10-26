@@ -8,7 +8,7 @@ import gunbc.site.web_fonts {
 import gunbc.site.document { site_document_over, site_styles, ApplicationShell, ApprovalShell, SiteShell }
 import gunbc.roadmap.roadmap_serve { roadmap_serve_route_table_build, WebFontStylesheetHandler, web_font_stylesheet_response }
 import extdeps.http.server {
-  WireHeaderCacheControl, serve_wire_response, serve_select_route,
+  serve_wire_response, serve_select_route,
   ServedRouteTableBuilt, ServedRouteTableBuildRefused, SelectedDynamic, SelectedStatic, MethodNotAllowed, NoRouteMatched,
 }
 import extdeps.ietf.http_semantics { GET }
@@ -78,7 +78,7 @@ test fn the_stylesheet_response_is_css_with_an_immutable_cache_header() -> Bool 
     && r.content_type_label == "text/css; charset=utf-8"
     && r.body == web_font_stylesheet()
     && count(r.headers) == 1
-    && all(r.headers, h => h.name == WireHeaderCacheControl && h.value == "public, max-age=31536000, immutable")
+    && all(r.headers, h => h.name == "Cache-Control" && h.value == "public, max-age=31536000, immutable")
 }
 
 fn head_children(page: Fragment) -> List<Fragment> {

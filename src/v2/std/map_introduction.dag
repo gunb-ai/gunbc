@@ -6,7 +6,7 @@ import std.types { List, Map, String }
 import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.integer { Int }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
-import v2.std.node { Authored, ComputationNode, Edge, MapLiteralEntriesEdge, Node, Positional, Symbol, Transform, node_with_occurrence_id }
+import v2.std.node { Authored, ComputationNode, Edge, MapLiteralEntriesEdge, Node, Positional, Symbol, Transform, node_with_occurrence_id, NotADeclaration }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, construct_node, core_child_lookup }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 
@@ -117,8 +117,8 @@ fn map_introduction_resolved_list(elements: List<Node>, source: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     children: fold(
       elements,
-      init: [Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: source.occurrence_id) }],
-      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element }) }
+      init: [Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: source.occurrence_id), declaration: NotADeclaration }],
+      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element, declaration: NotADeclaration }) }
     ),
     occurrence_id: source.occurrence_id
   )
@@ -133,8 +133,8 @@ fn lower_map_introduction(entries: List<MapIntroductionEntryNodes>, source: Node
       item: construct_node(
         reference: declaration_reference_node(qn: map_introduction_entry_path(), occurrence_id: e.source.occurrence_id),
         field_edges: [
-          Edge { label: Authored { name: ^key }, target: e.key },
-          Edge { label: Authored { name: ^value }, target: e.value }
+          Edge { label: Authored { name: ^key }, target: e.key, declaration: NotADeclaration },
+          Edge { label: Authored { name: ^value }, target: e.value, declaration: NotADeclaration }
         ],
         source: e.source
       )
@@ -143,8 +143,8 @@ fn lower_map_introduction(entries: List<MapIntroductionEntryNodes>, source: Node
   node_with_occurrence_id(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: map_introduction_head_path(), occurrence_id: source.occurrence_id) },
-      Edge { label: Authored { name: ^entries }, target: map_introduction_resolved_list(elements: entry_nodes, source: source) }
+      Edge { label: Positional, target: declaration_reference_node(qn: map_introduction_head_path(), occurrence_id: source.occurrence_id), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^entries }, target: map_introduction_resolved_list(elements: entry_nodes, source: source), declaration: NotADeclaration }
     ],
     occurrence_id: source.occurrence_id
   )

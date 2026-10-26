@@ -1,7 +1,8 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
-import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
-import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider }
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
+import gunbc.managed_directory { declared_directory_mode, DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import std.optional { Present }
@@ -35,6 +36,7 @@ import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved, alignment_refusal_reason,
   alignment_chain_fingerprint,
 }
+import gunbc.roadmap.dispatch_worker_handed_set { dispatch_worker_source_root_words }
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
@@ -48,7 +50,12 @@ import gunbc.session_lease {
   Start,
   classify_process_port_upsert,
 }
-import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, git_non_bare_git_dir_name }
+import extdeps.git {
+  shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, git_non_bare_git_dir_name,
+  git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
+  git_maintenance_auto_disabled_config_command,
+}
+import extdeps.tools.findutils { find_subtree_mode_readback_command, find_subtree_group_writable_command, find_subtree_ungranted_entry_refusal_command }
 import std.measure { ByteSize, byte_size_count, Kibibyte }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
@@ -75,7 +82,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, gunbc_user_work_transient_command }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -144,6 +151,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateKindUnrecognized, filesystem_create_new,
 }
 import std.filesystem { path_parent_directory }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import extdeps.shell
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile }
@@ -169,7 +177,6 @@ import gunbc.dispatch_selection {
   resolved_model_selection,
   dispatch_claude_process_fingerprint,
   dispatch_cursor_process_fingerprint,
-  srv1_live_dashboard_instance,
 }
 import extdeps.llm.cursor_cli {
   cursor_cli_program,
@@ -199,15 +206,14 @@ import gunbc.worker_lifecycle {
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
-  srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_provider_executable_refusal_detail,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
+  dashboard_git_worker_subtree_walk_depth,
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
@@ -290,7 +296,6 @@ data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposit
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
 
-data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
 data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 // NAMED FINDING (U4 live drive, macOS, 2026-07-25): pane_current_command is the kernel process name
@@ -302,30 +307,6 @@ data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 // tmux list-panes on srv1 beside a live dispatch session; if it reports claude this row stands; if
 // it reports a version-or-node name, this row becomes the observed value (or an accepted set) — a
 // data edit, never a code change.
-
-// THE EXECUTOR AXIS, AND WHY THE HARNESS ARM BELONGS HERE AND NOT IN ProviderKind.
-//
-// ProviderKind lives in extdeps.llm.cli_lifecycle and enumerates three EXTERNAL vendor CLIs. The
-// gunbc harness is not one, and DESIGN's external-upstream decomposition is explicit that a generic
-// hub may not enumerate concrete products -- adding a fourth arm there would widen a vendor
-// enumeration with a thing that has no vendor, no account, no entitlement and no rate limit.
-//
-// It would also multiply. "Which vendor" is currently forked across SIX parallel coproducts --
-// ProviderOffer, ResolvedProviderSelection, DispatchCredentialBindingIdentity,
-// DispatchModelIdentity, DispatchProviderControl and this one -- so a fourth vendor is not one arm
-// but six, plus every match site. The arity is the tell that those axes are realization facts
-// fused into a selection interface.
-//
-// This type is already the right layer: it is gunbc's own "who executes this attempt", and each of
-// its variants owns argv, preflight and pane fingerprint together at the spawn call site. So the
-// harness is one arm HERE, the vendor machinery below is untouched and keeps serving the three
-// vendor arms, and DCH-4's deletion collapses this type toward a single arm rather than unpicking a
-// fourth copy of a fork.
-type DispatchCliProvider
-  = ClaudeCodeProvider
-  | CodexDispatchProvider
-  | CursorDispatchProvider
-  | GunbcHarnessProvider
 
 // Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a
 // host-wide constant. dispatch_actuator_selection projects the srv1-live Automatic selection for
@@ -515,9 +496,12 @@ fn dispatch_actuator_selection(sizing_expectation: SizingProfileExpectation) -> 
   dispatch_harness_selection()
 }
 
-fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
+fn dispatch_actuator_vendor_selection(
+  instance: HostDashboardInstance,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: instance,
     request: default_provider_selection_request(),
     sizing_expectation: sizing_expectation,
   ) {
@@ -538,20 +522,10 @@ fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectati
 // facts it reads. Routing the harness through it would require inventing an account and a quota to
 // get a verdict, so the executor without a vendor kind refuses here and is selected by its own
 // path instead.
-fn dispatch_actuator_selection_for_provider(
-  provider: DispatchCliProvider,
-  sizing_expectation: SizingProfileExpectation,
-) -> DispatchActuatorSelection {
-  dispatch_actuator_selection_for_provider_on(
-    instance: srv1_live_dashboard_instance(),
-    provider: provider,
-    sizing_expectation: sizing_expectation,
-  )
-}
-
-// THE SELECTION IS JUDGED ON THE INSTANCE BEING DISPATCHED ON (side-chat finding, 2026-10-05). The
-// srv1-pinned form above survives only for callers that carry no instance; a dispatch that has one
-// passes it here, so a srv2 request sees srv2's offers rather than refusing against srv1's.
+//
+// THE SELECTION IS JUDGED ON THE INSTANCE BEING DISPATCHED ON (side-chat finding, 2026-10-05). There
+// is no form that names an instance for its caller: a dispatch passes the one it carries, so a srv2
+// request sees srv2's offers rather than refusing against srv1's.
 fn dispatch_actuator_selection_for_provider_on(
   instance: HostDashboardInstance,
   provider: DispatchCliProvider,
@@ -966,7 +940,6 @@ data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermiss
 data dispatch_claude_start_prompt: String = "Begin working on the assigned node."
 data dispatch_claude_permission_args: List<String> = ["--dangerously-skip-permissions"]
 data dispatch_codex_start_prompt: String = "Begin working on the assigned node."
-data dispatch_codex_home: String = srv1_roadmap_codex_home as String
 data dispatch_codex_exec_spec: CodexExecSpec = CodexExecSpec {
   sandbox: CodexWorkspaceWrite,
   approval: CodexApprovalNever,
@@ -1205,17 +1178,6 @@ fn dispatch_applied_effort() -> ReasoningEffort? {
   }
 }
 
-fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr? {
-  match dispatch_actuator_selection_for_provider(
-    provider: provider,
-    sizing_expectation: NoDerivedSizingExpectation,
-  ) {
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
-      Present { value: process_fingerprint }
-    DispatchActuatorSelectionRefused { reason: _ } => none
-  }
-}
-
 fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
   concat(dispatch_tmux_session_prefix, node_id)
 }
@@ -1280,24 +1242,6 @@ fn dispatch_attempt_identity_claim(instance: HostDashboardInstance, node_id: Roa
   }
 }
 
-fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_worktree_root, "/", node_id as String, "-a", attempt_key], "")
-}
-
-fn dispatch_worktree_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dashboard_instance_dispatch_worktree_root(instance: instance) as String,
-    "/",
-    node_id as String,
-    "-a",
-    attempt_key,
-  ], "")
-}
-
 // Verification validates the committed head in a DETACHED checkout, never the mutable
 // implementation worktree the agent may still be editing. The path is head-addressed beside the
 // attempt worktree so multiple heads per attempt each retain their own immutable tree without
@@ -1317,52 +1261,6 @@ fn dispatch_verification_checkout_path_for_instance(
     attempt_key,
     "-verify-",
     head_sha,
-  ], "")
-}
-
-fn dispatch_attempt_state_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
-    "/",
-    node_id as String,
-    "-a",
-    attempt_key,
-  ], "")
-}
-
-// THE WORKER'S OWN STDOUT IS A LOG, NOT AN EVENT STREAM, and separating them is the repair for a
-// conflation this lane shipped. provider-events.jsonl is not "where the attempt's output goes": it
-// carries a DECLARED SCHEMA -- turn.started, item.*, turn.completed, turn.failed, error -- that
-// gunbc.roadmap.roadmap_provider_events reads through jq with fromjson. Pointing the worker's progress
-// output at it (`[file] write ...`, `✓ ... done in 48 seconds`) made jq exit 5 on the first line
-// and the whole attempt's agent evidence refuse as unreadable.
-//
-// The refusal was correct and is why this was cheap to find: it named the file, the line and the
-// column rather than fabricating an activity state. What was wrong was the producer, and the fix is
-// not to loosen the reader but to stop writing the wrong content into a typed stream. The worker's
-// stdout keeps its own sibling file, and provider-events.jsonl is written only by something that
-// speaks the schema.
-// THE WORKER-OWNED CHILD OF THE ATTEMPT DIRECTORY. Owner-side records (request-binding.json,
-// launch-identity.json, attempt-key, admission) stay in dispatch_attempt_state_path_for_instance
-// itself, which is read-only to the unit. The log path is the single producer of that child:
-// ReadWritePaths scratch is path_parent_directory of stdout, and events/request scratch follow
-// this same parent. Do not add a parallel worker-dir function.
-fn dispatch_attempt_worker_log_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/worker/worker-stdout.log",
   ], "")
 }
 
@@ -1863,19 +1761,6 @@ fn dispatch_review_unit_properties(
     NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
     NamedUnitSetting { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
   ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }])))
-}
-
-// THE PRIVILEGE CONFINEMENT EVERY UNIT RUNNING MODEL-DRIVEN CODE CARRIES, spelled once: no setuid or
-// setgid escalation, no setuid/setgid file creation, and an empty capability bounding set. Worker,
-// reviewer, auditor and supervisor units share it (WORKER-ROOT-EQUIVALENT-2, item 4). The review roles
-// launch through the user manager, which cannot switch uid, so they keep the owner's identity and this
-// is their whole privilege reduction; the dedicated identity needs the system-manager launcher.
-fn dispatch_model_driven_privilege_confinement_properties() -> List<SystemdRunProperty> {
-  [
-    NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
-    NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
-    EmptyCapabilityBoundingSet,
-  ]
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
@@ -2414,13 +2299,6 @@ fn dispatch_brief_fields_for_environment(
   }
 }
 
-fn dispatch_brief_fields(node: RoadmapNode) -> DispatchBriefFields {
-  dispatch_brief_fields_for_environment(
-    node: node,
-    environment: srv1_live_dashboard_instance().execution_environment,
-  )
-}
-
 fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String {
   template
     .replace(from: "<node_id>", to: fields.node_id)
@@ -2436,10 +2314,10 @@ fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String 
     .replace(from: "<what comes back even if the fix does not land>", to: fields.expected_artifact)
 }
 
-fn filled_dispatch_brief_for_node(node: RoadmapNode) -> String {
+fn filled_dispatch_brief_for_node(instance: HostDashboardInstance, node: RoadmapNode) -> String {
   dispatch_brief_with_centering(
     node: node,
-    fields: dispatch_brief_fields(node: node),
+    fields: dispatch_brief_fields_for_environment(node: node, environment: instance.execution_environment),
   )
 }
 
@@ -2561,13 +2439,14 @@ fn claude_spawn_argv(
 }
 
 fn codex_spawn_argv(
+  instance: HostDashboardInstance,
   effort: ReasoningEffort,
   model: ProviderModelSelection,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
   shape_codex_exec_argv(
-    codex_home: dispatch_codex_home,
+    codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
     cwd: worktree_path,
     prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
     reasoning_effort: effort,
@@ -2575,8 +2454,6 @@ fn codex_spawn_argv(
     spec: dispatch_codex_exec_spec,
   )
 }
-
-
 
 type DispatchProviderInnerArgv
   = DispatchProviderInnerArgvReady { argv: List<String> }
@@ -2650,23 +2527,25 @@ fn gunbc_harness_spawn_argv(
   attempt_identity: String,
   alignment_chain_fingerprint: String,
 ) -> List<String> {
-  [
-    gunbc_program,
-    "run",
-    "--source-root", join([repo_root, "/dag"], ""),
-    "--source-root", join([repo_root, "/src/v2"], ""),
-    "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
-    "--function", gunbc_harness_worker_function,
-    "--arg", join(["worktree=", worktree_path], ""),
-    "--arg", join(["brief=", brief], ""),
-    "--arg", join(["timeout_program=", timeout_program], ""),
-    "--arg", join(["request_scratch_path=", request_scratch_path], ""),
-    "--arg", join(["events_path=", events_path], ""),
-    "--arg", join(["repo_root=", repo_root], ""),
-    "--arg", join(["gunbc_program=", gunbc_program], ""),
-    "--arg", join(["attempt_identity=", attempt_identity], ""),
-    "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
-  ]
+  concat(
+    [gunbc_program, "run"],
+    concat(
+      dispatch_worker_source_root_words(repo_root: repo_root),
+      [
+        "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
+        "--function", gunbc_harness_worker_function,
+        "--arg", join(["worktree=", worktree_path], ""),
+        "--arg", join(["brief=", brief], ""),
+        "--arg", join(["timeout_program=", timeout_program], ""),
+        "--arg", join(["request_scratch_path=", request_scratch_path], ""),
+        "--arg", join(["events_path=", events_path], ""),
+        "--arg", join(["repo_root=", repo_root], ""),
+        "--arg", join(["gunbc_program=", gunbc_program], ""),
+        "--arg", join(["attempt_identity=", attempt_identity], ""),
+        "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
+      ],
+    ),
+  )
 }
 
 data gunbc_harness_worker_entry: String = "dag/gunbc/harness/harness_cli.dag"
@@ -2891,58 +2770,125 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 // existence together, and publication_receipt_directory_is_named_once_note's requirement that a
 // reader be able to LIST the directory holds from attempt birth instead of from first publish.
 // The worker/ child (path_parent_directory of dispatch_attempt_worker_log_path_for_instance) is
-// in this same list: the belt runs attempt_state_prepare_argv_for_instance as step
+// in this same list: the belt runs attempt_state_prepare_argvs_for_instance as step
 // attempt-state-prepare, then belt_attempt_state_initialize_for_instance writes
 // launch-identity.json, then the unit starts. ReadWritePaths has no '-' prefix, so a missing
 // worker/ is NAMESPACE 226 rather than a silent drop of the write grant (Manager B).
-fn attempt_state_prepare_argv_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> HostExecArgv {
+//
+// THE MODES FOLLOW WHO ENTERS EACH DIRECTORY, keyed on the instance's worker identity. Under
+// WorkerIsServiceUser the worker IS the owner, so every directory is owner-only and the command is the
+// one install -d it always was. Under WorkerDedicatedAccount the worker is a foreign uid in the shared
+// attempt group, and its handed set (dispatch_worker_handed_set) enters exactly three of these: it
+// traverses the attempt directory, writes worker/ (its scratch directory and stdout parent), and writes
+// the wire log directory inside worker/, where the harness persists each round's request and response
+// bytes (dispatch_attempt_wire_dir_for_instance). An owner-only attempt directory was refused at the
+// worker-traversal step on the srv1 lab, 2026-10-24 (1000:1003 0700, no execute bit for the worker);
+// the wire directory was first filed with the stages below as owner-only, which the same lab refused
+// at the worker's first round. So the attempt directory is group-traversable and setgid, which keeps
+// the group the attempt-state root hands down for the children made inside it; worker/ and the wire
+// directory are group-writable setgid; the publication, verification, review and audit stages, which
+// the worker never enters, stay owner-only. The attempt directory is never group-writable: the worker
+// must not replace launch-identity.json or a stage directory beside it. One install -d per mode,
+// attempt directory first, so each child is made inside a parent that already carries its group.
+fn attempt_state_install_argv(instance: HostDashboardInstance, mode: DeclaredDirectoryMode, paths: List<String>) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
       environment: instance.execution_environment,
       cap: AttemptStateDirectoryCapability,
     ),
-    args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: DirectoryOwnerOnly), paths: [
-      dispatch_attempt_state_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      )),
-      dispatch_attempt_publication_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_attempt_verification_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_attempt_review_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_attempt_audit_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_attempt_wire_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-    ]),
+    args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: mode), paths: paths),
   )
+}
+
+fn attempt_state_prepare_argvs_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> List<HostExecArgv> {
+  let attempt_directory = dispatch_attempt_state_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+  let worker_scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  ))
+  let stages = [
+    dispatch_attempt_publication_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    dispatch_attempt_review_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    dispatch_attempt_audit_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+  ]
+  let wire = dispatch_attempt_wire_dir_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+  match instance.worker {
+    WorkerIsServiceUser => [
+      attempt_state_install_argv(instance: instance, mode: DirectoryOwnerOnly, paths: concat(concat([attempt_directory, worker_scratch], stages), [wire])),
+    ]
+    WorkerDedicatedAccount => [
+      attempt_state_install_argv(instance: instance, mode: DirectoryOwnerAllGroupTraverseSetgid, paths: [attempt_directory]),
+      attempt_state_install_argv(instance: instance, mode: DirectoryOwnerGroupWritableSetgid, paths: [worker_scratch, wire]),
+      attempt_state_install_argv(instance: instance, mode: DirectoryOwnerOnly, paths: stages),
+    ]
+  }
+}
+
+// THE EMPTY EVENT STREAM IS CREATED FOR ITS WRITER. The belt creates provider-events.jsonl empty before
+// launch (belt_attempt_state_initialize_for_instance), so a readable empty file proves event capture was
+// initialized; the harness worker then appends every round's events to it. Under WorkerIsServiceUser the
+// writer is the file's owner and the create is the plain write it always was. Under WorkerDedicatedAccount
+// the writer is a foreign uid in the attempt group, and the plain write left the file owner-writable only
+// (the srv1 lab refused the worker's first append, 2026-10-24, Permission denied), so the file is created
+// group-writable AT CREATION -- the mode set on the new inode, never widened afterwards -- and create-only,
+// because a fresh attempt has no event stream yet.
+data dispatch_attempt_events_group_writable_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: false },
+  group: PermissionBits { read: true, write: true, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false, setgid: false, sticky: false,
+}
+
+type DispatchAttemptEventsInitialization
+  = DispatchAttemptEventsInitialized
+  | DispatchAttemptEventsInitializationFailed { detail: String }
+
+fn dispatch_attempt_events_initialize_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> DispatchAttemptEventsInitialization {
+  let path = dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match instance.worker {
+    WorkerIsServiceUser => {
+      let written = Filesystem.Write(path: path, content: "")
+      if written.success { DispatchAttemptEventsInitialized } else { DispatchAttemptEventsInitializationFailed { detail: written.error } }
+    }
+    WorkerDedicatedAccount => {
+      let created = Filesystem.WriteCreateNewWithMode(path: path, content: "", mode: file_mode_bits(mode: dispatch_attempt_events_group_writable_mode))
+      if created.success { DispatchAttemptEventsInitialized } else { DispatchAttemptEventsInitializationFailed { detail: created.error } }
+    }
+  }
 }
 
 fn attempt_current_pointer_argv_for_instance(
@@ -2969,32 +2915,6 @@ fn attempt_current_pointer_argv_for_instance(
       ),
     ],
   )
-}
-
-// WHICH DIRECTORY THE ATTEMPT PANE STANDS IN, and it is a PROVIDER fact rather than an attempt
-// fact. A vendor CLI is handed the attempt as its WORKING DIRECTORY -- that is how claude and codex
-// are told which tree to edit, so for them the pane cwd IS the subject and must stay the worktree.
-//
-// The gunbc harness is told the same thing as an ARGUMENT (--arg worktree=), because
-// gunbc_harness_spawn_argv resolves the worker's own modules from absolute source roots under the
-// controller's repo_root -- the separation that function's annotation draws between the TOOL and
-// the SUBJECT. Standing that process in the worktree contradicts it: `gunbc run` takes its process
-// workspace root from the cwd, and repo_relative_path_normalized PANICS on any module path outside
-// it, so the controller's own dag/ is rejected by the worker that was pointed at it on purpose.
-//
-// Found by execution, not by reading: the first wet dispatch on srv2-deploy spawned, the pane
-// exited 101, and provider-events.jsonl carried
-// "path /home/briansrls/gunbc-srv2-deploy/dag is not under process workspace root
-// .../attempts/shell-typed-invocation-<key>". The attempt worktree, the branch, the state directory
-// and the current-pointer were all correct -- only the directory the process stood in was wrong,
-// which is why every receipt looked right while nothing ran.
-// THE ATTEMPT'S UNIT NAME. Per attempt, not per node: the attempt key is a content hash, so two
-// attempts on one node get distinct units and the collision the tmux path reports as
-// `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
-// `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
-// explicit act rather than a side effect of starting the next attempt.
-fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
-  join(["gunbc-attempt-", node_id, "-", attempt_key], "")
 }
 
 fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> SystemdUnitNameAdmission {
@@ -3040,34 +2960,6 @@ fn dispatch_worker_unit_properties(
   )
 }
 
-fn dispatch_worker_unit_stream_properties(
-  instance: HostDashboardInstance,
-  working_directory: String,
-  attempt_worktree: String,
-  stdout_path: String,
-  stderr_path: String,
-  granted: Kibibyte,
-  process_bounds: UnitProcessBounds,
-  exit_hook: NonEmptyStr,
-) -> List<SystemdRunProperty> {
-  concat(
-    concat(
-      compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
-      dispatch_model_driven_privilege_confinement_properties(),
-    ),
-    [
-      NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
-      NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
-      NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
-      NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
-      NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-      NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
-      NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_git_pointer_readonly_paths(instance: instance, attempt_worktree: attempt_worktree) as NonEmptyStr },
-      NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
-    ],
-  )
-}
-
 // THE UNIT NO LONGER OUTLIVES ITS PROCESS; THE EXIT RECORD DOES (reversal of the 2026-09-05 choice,
 // bold-bee-114 ruling 2026-10-06 on dogfood intervention #4). A transient unit whose main process
 // exits 0 is collected by the manager and reads LoadState=not-found a moment later. On 2026-09-05 the
@@ -3084,75 +2976,226 @@ fn dispatch_worker_unit_stream_properties(
 // not (attempt_worker_unit_observation), and a unit that is gone with NO record is reported as
 // exactly that -- never as a worker that did not run.
 
-// THE WORKER'S WRITABLE SET IS THIS ATTEMPT'S PATHS, NOT THE INSTANCE ROOT AND NOT THE WHOLE
-// DISPATCH STATE. ProtectSystem=strict makes /usr /boot /etc /opt read-only except ReadWritePaths.
-// Spelling instance_root as that carve-out on srv1_live (instance_root=/opt/gunbc) reopened
-// /opt/gunbc/bin and the deployed checkout (smart-gull-336 item c). Carving the whole common
-// git dir would reopen the same class: the worker plants .git/hooks or .git/config, then
-// belt_commit_staged runs git from the belt process and the hook executes as the controller
-// (bright-moth-475 on 13942). Choice (1): keep objects/refs/logs/packed-refs and THIS attempt's
-// .git/worktrees/<entry> writable; do not carve .git itself, so hooks, config, and info cannot be
-// created or written, and never the .git/worktrees parent: its sibling entries hold other attempts'
-// commondir and gitdir, and a worker that could rewrite them would redirect the controller's git in
-// that sibling's worktree (review 81064). Choice (2)
-// (never run git with authority in a worker-writable repo) is the publication-transport
-// precedent and is not this cut; belt_commit_git still prefixes git_command_config_inert_args
-// so a planted hook would not be the hooksPath the controller uses. /tmp is PrivateTmp=yes.
+// THE PER-ATTEMPT PRIVATE GIT ENTRY, AS A GRANTED SUBTREE (WORKER-ROOT-EQUIVALENT-3). This is where
+// a linked worktree's OWN git state lives -- HEAD, index(+.lock), logs/HEAD, ORIG_HEAD,
+// COMMIT_EDITMSG -- so a worker that can write the three shared subtrees and not this one still
+// cannot commit (measured: `index.lock`: Permission denied on the first commit, in
+// .git/worktrees/<key>). It joins the three at the ONE place both the attempt key and the spawn are
+// known, which is also why it is not in dashboard_git_worker_directory_children: no apply of an
+// instance knows the attempts in advance.
 //
-// THE SHARED REF STORE IS A DECLARED RESIDUAL, NOT CONFINED. refs/, logs/ and packed-refs stay
-// writable as wholes because git updates a ref through a <ref>.lock created beside it, so the ref's
-// directory must be writable, and refs/heads/dispatch/ holds every attempt's branch. A worker can
-// therefore move any ref in the shared repository, including another attempt's branch and the
-// controller's base refs; it still cannot reach hooks or config, and the controller's own git runs
-// with git_command_config_inert_args. Removal: a per-attempt git directory (the worker commits into a
-// repository of its own whose objects borrow the shared store as an alternate, and the controller
-// fetches the attempt branch from it), recorded on
-// gunbc.recurring_failure_mode.protect_carve_out_reopens_the_protected_subject.
-fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance, attempt_worktree: String) -> List<String> {
-  let git = join([instance.repo_root as String, "/.git"], "")
-  [
-    join([git, "/objects"], ""),
-    join([git, "/refs"], ""),
-    join([git, "/logs"], ""),
-    dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
-    join([git, "/packed-refs"], ""),
-  ]
-}
-
-fn dispatch_worktree_entry_name(attempt_worktree: String) -> String {
-  fold(split(s: attempt_worktree, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
-}
-
-fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_worktree: String) -> String {
-  join([instance.repo_root as String, "/.git/worktrees/", dispatch_worktree_entry_name(attempt_worktree: attempt_worktree)], "")
-}
-
-// THE GITFILE AND WORKTREE POINTER FILES REDIRECT THE CONTROLLER'S GIT. They sit inside the
-// writable carve-outs (the worktree and .git/worktrees/<n>/), and ReadOnlyPaths= on those exact
-// files wins over the parent ReadWritePaths. systemd can only bind a path that exists, so the
-// entries carry NO '-' prefix (systemd.exec(5): '-' ignores a missing path): the belt's staged
-// spawn runs worktree-add before it starts the unit (gunbc.roadmap.roadmap_belt_actuate), so all
-// three exist at start, and a missing one fails the unit start instead of leaving the file open.
-// Index, HEAD, refs and logs under the private dir stay writable.
+// TWO MEASURED FACTS SHAPE IT.
 //
-// config.worktree IS NOT ONE OF THEM and is not claimed read-only. git worktree add does not create
-// it, so no mount can hold it, and the worker can create it under the writable .git/worktrees/<n>/.
-// It is inert rather than protected: git reads $GIT_DIR/config.worktree only when
-// extensions.worktreeConfig is set (git-worktree(1), CONFIGURATION FILE), and that key lives in the
-// common config, dispatch_worker_common_git_config, which no writable root covers (review 81053).
-type DispatchWorkerGitPointerFiles {
-  gitfile: String
-  commondir: String
-  gitdir_file: String
-}
-
-fn dispatch_worker_git_pointer_files(instance: HostDashboardInstance, attempt_worktree: String) -> DispatchWorkerGitPointerFiles {
-  let private_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree)
-  DispatchWorkerGitPointerFiles {
-    gitfile: join([attempt_worktree, "/", git_non_bare_git_dir_name], ""),
-    commondir: join([private_dir, "/commondir"], ""),
-    gitdir_file: join([private_dir, "/gitdir"], ""),
+// ONE: THE ENTRY IS OWNED BY THE INSTANCE'S PRINCIPAL, so the re-group must be performed by that same
+// account -- by `git worktree add`, which on the lab is a spawn command of the serve and runs as
+// instance.directory_owner.user (measured on srv1, 2026-10-17: the serve is a system unit running as
+// that account, all 185 .git/worktrees/<key> entries are owned by it, and `getent group gunbc-attempt`
+// shows it as a member). An earlier cut of this comment said the entry was root-owned and that only a
+// root step could re-group it; that was read off a BuildBuddy runner whose uid is 0, not off the lab
+// (DESIGN 4d: name where a figure or a principal was measured), and it implied a privilege the lab
+// deploy does not use. WHAT THE FACT STILL REQUIRES is unchanged and still load-bearing: the re-group
+// has to be done by the ENTRY'S OWNER, and it cannot be left to the worker -- chgrp to a group the
+// caller is not a member of is restricted, and the worker is not the entry's owner. Hence the step is
+// part of THIS actuator's spawn sequence, run between the worktree add and the unit start, under the
+// same principal that just created the entry. Asserting it is still the only thing that makes the
+// worker's first commit possible.
+//
+// TWO: the grant must be RECURSIVE over the entry, because the commit writes an existing file (its
+// index, its HEAD) and creates new subdirectories (logs/, and the reflog file inside logs/) that have
+// to inherit the group; the mode this demands -- the declared arm at 02770 on directories, 0664 on the
+// files the sweep walks -- is exactly what core.sharedRepository=group
+// makes git ask for. It also says the entry must NOT be pre-created by hand: git silently renames an entry that
+// already exists (probe becomes probe1) and the grant plus the unit's ReadWritePaths= would then point
+// at a directory git is not using.
+fn dispatch_attempt_worker_git_entry_directories(instance: HostDashboardInstance, attempt_worktree: String) -> List<OwnedDirectoryTarget> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      OwnedDirectoryDeclared {
+        member: join(
+          [
+            "git-worker-entry-",
+            dispatch_worktree_entry_name(attempt_worktree: attempt_worktree) as NonEmptyStr,
+          ],
+          "",
+        ) as NonEmptyStr,
+        path: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree) as String as FilePath,
+        owner: dashboard_instance_worker_writable_owner(instance: instance),
+        mode: DirectoryOwnerGroupWritableSetgid,
+        group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
+      },
+    ]
   }
+}
+
+// THE ROOT-OWNED MIGRATION OF THAT ENTRY, beside the spawn that creates it: same bounded walk, same
+// group, run as the step right after `git worktree add` and before the unit starts. Without it the
+// entry is root:root 0700 and the confined unit cannot write a single file inside it.
+// THE PROJECTION THE SPAWN RUNS UNDER. The actuator's host steps are (program, args) pairs executed by
+// the belt under the principal that runs the actuator itself -- on the lab, the account the serve runs
+// as, which is the account `git worktree add` runs as and the owner of the entry just created. That
+// identity is why this needs no privilege the deploy does not already have; an earlier cut of this
+// comment called it root, read off a BuildBuddy runner whose uid is 0 rather than off the lab (DESIGN
+// 4d). argv_words, not this module, decides that argv[0] is the program.
+fn dispatch_git_owned_host_step_argv(command: ArgvCommand) -> HostExecArgv {
+  let words = argv_words(command: command)
+  match words.first() {
+    Absent => HostExecArgv { program: "", args: [] }
+    Present { value: program } => HostExecArgv { program: program, args: words.skip(n: 1) }
+  }
+}
+
+// THE PROOF THE ENTRY WAS GRANTED: the same bounded walk the apply runs over the repository's subtrees,
+// over this attempt's private git entry. The spawn decides on it with
+// gunbc.roadmap.roadmap_dashboard_instance dashboard_git_subtree_readback_is_granted_under -- one
+// figure, so the actuator, the apply and the claims cannot disagree -- and REFUSES to start the unit on
+// an empty, unreadable, or wrong-moded receipt rather than starting a worker that would fail its first
+// commit with a permission error nobody named.
+fn dispatch_attempt_worker_git_entry_readback_command(
+  instance: HostDashboardInstance,
+  attempt_worktree: String,
+) -> ArgvCommand {
+  find_subtree_mode_readback_command(
+    target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+    pruned: [],
+    depth: dashboard_git_worker_subtree_walk_depth,
+  )
+}
+
+// THE WORKTREE IS THE DEDICATED WORKER'S TO EDIT. `git worktree add` checks the attempt's worktree out as the service
+// user under its umask, so every directory under the top is 2755 and every file 0644: the worker (a member of the
+// attempt group, not the owner) can read the checkout and edit nothing in it. The srv1 lab's first full session
+// found exactly that -- 851 of 852 directories and all 10362 files without group write -- and its model wrote its
+// change beside the tree instead. So the spawn grants group write over the whole checkout (directories setgid, so a
+// file the worker creates keeps the attempt group) and then proves it, refusing to start the unit while any entry
+// lacks the grant. The checkout's `.git` file is pruned: it names the attempt's git directory, and the worker must
+// never be able to repoint it. Unlike the shared object store, granting write on FILES here is right: this checkout
+// is the attempt's alone, so a file the worker rewrites in place is its own work, never another attempt's base. A
+// service-user worker owns the checkout and gets no step. The group is the caller's parameter, as below.
+fn dispatch_attempt_worker_worktree_grant(
+  instance: HostDashboardInstance,
+  attempt_worktree: String,
+  group: NonEmptyStr,
+) -> List<ArgvCommand> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      find_subtree_group_writable_command(
+        target: attempt_worktree,
+        pruned: [git_non_bare_git_dir_name],
+        sticky: false,
+        files_group_writable: true,
+        depth: dashboard_git_worker_subtree_walk_depth,
+      ),
+      find_subtree_ungranted_entry_refusal_command(
+        target: attempt_worktree,
+        pruned: [git_non_bare_git_dir_name],
+        group: group as String,
+        depth: dashboard_git_worker_subtree_walk_depth,
+      ),
+    ]
+  }
+}
+
+// THE SPAWN'S OWN GRANT OF THE PER-ATTEMPT ENTRY. THE GROUP IS A PARAMETER LIKE EVERY OTHER GRANT IN
+// THIS SLICE: the token is a host fact the caller owns, the production caller below binds the row
+// fleet_posix_accounts declares, and a witness on a host without that account supplies the token it can
+// resolve. NO DEFAULT -- and the dry pairing claim
+// the_production_route_names_the_declared_group_in_every_grant_command asserts the PRODUCTION route names
+// the declared group, so the substituted spelling is never the only route that runs.
+fn dispatch_attempt_worker_git_entry_migration(
+  instance: HostDashboardInstance,
+  attempt_worktree: String,
+  group: NonEmptyStr,
+) -> List<ArgvCommand> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      // THE ENTRY'S TOP IS INSTALLED, NOT MERELY SWEPT, and the distinction is the round-3 finding the
+      // wet witness used to hide: `git worktree add` CREATES .git/worktrees/<key> under the instance
+      // principal's umask (~0755, group briansrls), and a sweep only ADDS bits -- chgrp + g+w + g+s on a
+      // 0755 top lands it at a mode the readback's exact top leg refuses, never at the declared one.
+      // install -d -o -g -m is the one primitive that states all three ownership fields absolutely
+      // (measured on this host: an EXISTING node:node 0755 dir was restated to node:<group> at the -m
+      // mode given it, file
+      // contents and children untouched), so the spawn converges the entry to the same declared arm the
+      // deploy converges the three shared tops to, and the grant is IDEMPOTENT: re-spawning an attempt
+      // re-states the mode instead of refusing. The arm is the shared authority's non-sticky directory --
+      // a sticky entry top would EPERM the instance principal's own checkout entries against the worker
+      // (the argument at the sweep below) -- and the group is the caller's parameter like every other
+      // grant in this slice, NO DEFAULT, with the production pairing claim asserting the declared group.
+      // The admitted builder is the SAME word builder the deploy route's owned_directory_install_argv
+      // uses (coreutils_install_directory_owned_arguments), so a witness that execs this step execs the
+      // deploy's install.
+      install_directory_owned_argv_command(
+        mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid),
+        owner: instance.directory_owner.user,
+        group: group,
+        path: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+      ),
+      dashboard_git_worker_subtree_chgrp_command(
+        target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+        group: group,
+        // NOTHING UNDER THE ENTRY IS CONFINED: a worktree private gitdir holds commondir, gitdir,
+        // index, HEAD, ORIG_HEAD, COMMIT_EDITMSG and logs/. It has no pack, no info, no hooks, so the
+        // prune group is empty -- and the builder then emits NO prune words at all rather than an
+        // empty OR-group, which find would refuse as a syntax error.
+        pruned: [],
+      ),
+      dashboard_git_worker_subtree_chmod_command(
+        target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+        pruned: [],
+        // ITS FILES DO GET g+w, and only its files: the entry holds a reflog of its own (logs/HEAD),
+        // which the worker's commit OPENS IN APPEND MODE, and a reflog left at git's own read-only mode
+        // dies with "unable to append: Permission denied" (measured, git 2.47.3). Its index and HEAD are
+        // replaced by rename and would need only the directory's write -- so this is the whole of the
+        // extra, one subtree's files, and not a sweep that makes a base object group-writable.
+        files_group_writable: dashboard_git_worker_entry_writes_files_in_place(),
+        // NO STICKY BIT HERE, and it is the one granted subtree where getting it wrong would BREAK the
+        // feature rather than weaken it: the instance principal's `git worktree add` checks the entry
+        // out, so its index and HEAD are entries OWNED BY THAT ACCOUNT inside a directory the attempt
+        // group writes, and the worker's first `git add` renames index.lock OVER index -- a rename of an
+        // entry whose owner is somebody else, which +t refuses with EPERM. The objects/ argument does
+        // not transfer: nothing under this entry is confined, and no maintenance step writes or deletes
+        // through it.
+        sticky: false,
+      ),
+    ]
+  }
+}
+
+// THE SHARED-REPOSITORY POSTURE, WRITTEN BEFORE THE WORKTREE IS ADDED, by the instance's own
+// principal step
+// and in this order, both measured:
+//   core.sharedRepository=group  git creates the fan-out directory, the ref file and the reflog with
+//                                the group bits set (0444/0664/2775). Set AFTER `git worktree add` and
+//                                it is already too late for that entry: the private entry's files
+//                                were created at 0644 and 0755 under the umask and the group write
+//                                dies on the worker's first index.lock.
+//   gc.auto=0, maintenance.auto=false  hand the automatic repack to the named maintenance job
+//                                (dashboard_git_maintenance_exec_commands). `git commit` spawns
+//                                `git maintenance run --auto`, whose sweep reaches for
+//                                packed-refs.lock IN .git ITSELF -- confined. The commit survives it
+//                                (exit 0, stderr noise) and that noise is what these two keys buy
+//                                out, not a grant to the confined path.
+fn dispatch_repository_shared_posture_commands(instance: HostDashboardInstance) -> List<ArgvCommand> {
+  dashboard_ensure_git_shared_repository_posture(instance: instance)
+}
+
+// THE ONE MIGRATION THAT IS NOT IDEMPOTENT-AS-USUAL, and why that is fine: the walk re-groups and
+// re-modes whatever exists, so re-running it after an attempt has committed only re-asserts what git
+// already created under the shared posture. Its readback is dispatch_worker_git_subtree_readback.
+// THE READBACK, PER GRANTED SUBTREE, as the argv that produces the receipt: one `stat` of the
+// directory and one walk of the files under it. The model does not claim a migration worked because
+// it was issued; the claim compares THESE readings against
+// dashboard_git_worker_directory_mode_is_granted / dashboard_git_worker_file_mode_is_granted, and the
+// state srv1 measured (0775, no setgid) fails them.
+fn dispatch_worker_git_subtree_readback_command(target: String, pruned: List<String>) -> ArgvCommand {
+  find_subtree_mode_readback_command(
+    target: target,
+    pruned: pruned,
+    depth: dashboard_git_worker_subtree_walk_depth
+  )
 }
 
 fn dispatch_worker_worktree_config(instance: HostDashboardInstance, attempt_worktree: String) -> String {
@@ -3161,26 +3204,6 @@ fn dispatch_worker_worktree_config(instance: HostDashboardInstance, attempt_work
 
 fn dispatch_worker_common_git_config(instance: HostDashboardInstance) -> String {
   join([instance.repo_root as String, "/.git/config"], "")
-}
-
-fn dispatch_worker_git_pointer_readonly_list(instance: HostDashboardInstance, attempt_worktree: String) -> List<String> {
-  let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: attempt_worktree)
-  [pointers.gitfile, pointers.commondir, pointers.gitdir_file]
-}
-
-fn dispatch_worker_git_pointer_readonly_paths(instance: HostDashboardInstance, attempt_worktree: String) -> String {
-  join(dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree), separator: " ")
-}
-
-fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> List<String> {
-  concat(
-    [attempt_worktree, scratch_directory],
-    dispatch_worker_git_writable_paths(instance: instance, attempt_worktree: attempt_worktree),
-  )
-}
-
-fn dispatch_worker_writable_paths(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> String {
-  join(dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory), separator: " ")
 }
 
 fn dispatch_worker_path_is_readonly(instance: HostDashboardInstance, attempt_worktree: String, path: String) -> Bool {
@@ -3199,38 +3222,6 @@ fn dispatch_worker_path_is_writable(instance: HostDashboardInstance, attempt_wor
       root => path == root || starts_with(s: path, prefix: join([root, "/"], "")),
     )
   }
-}
-
-// THE WORKER UNIT IS PLANNED WITHOUT ITS BOUNDS AND STARTED WITH THEM. Everything about the unit
-// that the spawn plan knows -- program, name, directories, the provider's argv -- is fixed here; the
-// memory bound is the placement grant, which exists only once the belt has acquired it immediately
-// before spawn. So there is no argv to run until a grant is supplied: dispatch_worker_unit_run takes
-// the granted amount as an argument, and a plan cannot be started at the instance ceiling by
-// omission.
-type DispatchWorkerUnitPlan {
-  systemd_run_program: FilePath
-  unit: NonEmptyStr
-  node_id: String
-  attempt_key: String
-  working_directory: String
-  attempt_worktree: String
-  stdout_path: String
-  stderr_path: String
-  inner_argv: List<String>
-  exit_hook: NonEmptyStr
-}
-
-fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<SystemdRunProperty> {
-  dispatch_worker_unit_stream_properties(
-    instance: instance,
-    working_directory: plan.working_directory,
-    attempt_worktree: plan.attempt_worktree,
-    stdout_path: plan.stdout_path,
-    stderr_path: plan.stderr_path,
-    granted: granted,
-    process_bounds: process_bounds,
-    exit_hook: plan.exit_hook,
-  )
 }
 
 type DispatchSessionContainerPlan
@@ -3286,7 +3277,7 @@ fn dispatch_systemd_unit_container_plan(
             detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
           }
         SystemdUnitNameAdmitted { name } =>
-          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole, record_owner: instance.directory_owner) {
             AttemptExitHookRefused { reason } =>
               DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
             AttemptExitHookRendered { exec_line } =>
@@ -3433,19 +3424,6 @@ fn dispatch_tmux_container(
       session_name: session_name,
       inner_argv: provider_inner,
     ),
-  }
-}
-
-fn dispatch_pane_working_directory(
-  provider: DispatchCliProvider,
-  instance: HostDashboardInstance,
-  worktree_path: String,
-) -> String {
-  match provider {
-    GunbcHarnessProvider => instance.repo_root as String
-    ClaudeCodeProvider => worktree_path
-    CodexDispatchProvider => worktree_path
-    CursorDispatchProvider => worktree_path
   }
 }
 
@@ -3640,7 +3618,16 @@ type DispatchSessionContainer
 
 type DispatchSpawnCommands {
   worktree_add: HostExecArgv
-  attempt_state_prepare: HostExecArgv
+  // THE PER-ATTEMPT GRANT OF THE WORKTREE'S PRIVATE GIT ENTRY, and the walk that proves it. They ride
+  // in the same bundle as worktree_add so the spawn that creates the entry is the only spawn that can
+  // grant it, and the actuator sequences them: add, grant, read back, and only then the unit start.
+  // See dispatch_attempt_worker_git_entry_migration for what each command does and why the sticky bit
+  // is deliberately absent here.
+  worker_git_entry_grant: List<HostExecArgv>
+  worker_git_entry_readback: HostExecArgv
+  // THE CHECKOUT'S GRANT AND ITS PROOF (dispatch_attempt_worker_worktree_grant): empty for a service-user worker.
+  worker_worktree_grant: List<HostExecArgv>
+  attempt_state_prepare: List<HostExecArgv>
   attempt_current_pointer: HostExecArgv
   session_container: DispatchSessionContainer
 }
@@ -3742,7 +3729,7 @@ fn dispatch_spawn_commands_for_launch(
     branch_name: branch_name,
     remote_ref: attempt_origin_base_ref(origin: origin, instance_base_ref: instance.dispatch_base_ref as String),
   )
-  let state_prepare = attempt_state_prepare_argv_for_instance(
+  let state_prepare = attempt_state_prepare_argvs_for_instance(
     instance: instance,
     node_id: node.node,
     attempt_key: attempt_key,
@@ -3778,6 +3765,27 @@ fn dispatch_spawn_commands_for_launch(
       DispatchSpawnReady {
         commands: DispatchSpawnCommands {
           worktree_add: worktree,
+          worker_git_entry_grant: map(
+            dispatch_attempt_worker_git_entry_migration(
+              instance: instance,
+              attempt_worktree: worktree_path,
+              // THE PRODUCTION BINDING, AT THE SPAWN THAT RUNS THE GRANT: the declared group, the same
+              // row the belt's readback gate compares the walk against below -- one declaration, both
+              // halves of the grant-and-prove pair.
+              group: fleet_posix_worker_shared_group_name,
+            ),
+            command => dispatch_git_owned_host_step_argv(command: command),
+          ),
+          worker_git_entry_readback: dispatch_git_owned_host_step_argv(
+            command: dispatch_attempt_worker_git_entry_readback_command(
+              instance: instance,
+              attempt_worktree: worktree_path,
+            ),
+          ),
+          worker_worktree_grant: map(
+            dispatch_attempt_worker_worktree_grant(instance: instance, attempt_worktree: worktree_path, group: fleet_posix_worker_shared_group_name),
+            command => dispatch_git_owned_host_step_argv(command: command),
+          ),
           attempt_state_prepare: state_prepare,
           attempt_current_pointer: attempt_current_pointer_argv_for_instance(
             instance: instance,
@@ -3893,6 +3901,7 @@ fn node_in_ready(node_id: RoadmapNodeId, ready: List<RoadmapNode>) -> Bool {
 }
 
 fn dispatch_permitted_from_selection(
+  instance: HostDashboardInstance,
   node: RoadmapNode,
   attempt_key: String,
   effort: ReasoningEffort,
@@ -3900,15 +3909,16 @@ fn dispatch_permitted_from_selection(
 ) -> DispatchRequestGate {
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),
-    worktree_path: dispatch_worktree_path(node_id: node.node, attempt_key: attempt_key),
+    worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node.node, attempt_key: attempt_key),
     branch_name: dispatch_branch_name(node_id: node.node, attempt_key: attempt_key),
-    brief: filled_dispatch_brief_for_node(node: node),
+    brief: filled_dispatch_brief_for_node(instance: instance, node: node),
     reasoning_effort: effort,
     model: model,
   }
 }
 
 fn classify_dispatch_lease_after_destination(
+  instance: HostDashboardInstance,
   node: RoadmapNode,
   tmux_entries: List<TmuxLsEntry>,
   attempt_key: String,
@@ -3928,6 +3938,7 @@ fn classify_dispatch_lease_after_destination(
       DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
     UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
       dispatch_permitted_from_selection(
+        instance: instance,
         node: node,
         attempt_key: attempt_key,
         effort: effort,
@@ -3952,6 +3963,7 @@ fn classify_dispatch_destination_gate(node: RoadmapNode) -> DispatchRequestGate?
 }
 
 fn classify_dispatch_request_for_process_fingerprint(
+  instance: HostDashboardInstance,
   node: RoadmapNode,
   ready: List<RoadmapNode>,
   tmux_entries: List<TmuxLsEntry>,
@@ -3967,6 +3979,7 @@ fn classify_dispatch_request_for_process_fingerprint(
       Present { value: refused } => refused
       Absent =>
         classify_dispatch_lease_after_destination(
+          instance: instance,
           node: node,
           tmux_entries: tmux_entries,
           attempt_key: attempt_key,
@@ -3995,6 +4008,7 @@ fn classify_dispatch_request_for_process_fingerprint(
 // under the floor from "cannot run" to "runs and refuses", a corpus-wide change of meaning that this
 // witness's repair has no business making.
 fn classify_dispatch_request(
+  instance: HostDashboardInstance,
   node: RoadmapNode,
   ready: List<RoadmapNode>,
   tmux_entries: List<TmuxLsEntry>,
@@ -4012,6 +4026,7 @@ fn classify_dispatch_request(
             DispatchRefused { reason: reason }
           DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
             classify_dispatch_lease_after_destination(
+              instance: instance,
               node: node,
               tmux_entries: tmux_entries,
               attempt_key: attempt_key,
@@ -4854,8 +4869,8 @@ fn argv_contains_token(argv: List<String>, token: String) -> Bool {
   any(argv, a => a == token)
 }
 
-fn hostile_node_id_stays_single_argv_token(node_id: String) -> Bool {
-  let worktree_path = dispatch_worktree_path(node_id: node_id, attempt_key: "feedfacefeedface")
+fn hostile_node_id_stays_single_argv_token(instance: HostDashboardInstance, node_id: String) -> Bool {
+  let worktree_path = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: "feedfacefeedface")
   let branch_name = dispatch_branch_name(node_id: node_id, attempt_key: "feedfacefeedface")
   let worktree = git_worktree_add_argv(
     worktree_path: worktree_path,
