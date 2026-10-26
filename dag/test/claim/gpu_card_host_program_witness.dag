@@ -16,10 +16,17 @@ import gunbc.plans.gpu_card_host_program {
   GpuCardNodeHome,
   GcExtends,
   GcCreates,
+  GcOwnedElsewhere,
   GcOperatorDecides,
   GcUnstarted,
+  GpuCardBoundMembership,
+  InstalledInFleetHost,
+  CommittedToFleetHost,
+  OutsideBound,
+  gpu_card_in_bound,
+  gpu_card_working_census,
   GcD0,
-  GcN0,
+  GcN0a,
   GcN1,
   GcGoal,
   gc_node_label
@@ -86,6 +93,7 @@ fn extends_symbol(h: GpuCardNodeHome) -> List<String> {
   match h {
     GcExtends { symbol } => [symbol]
     GcCreates { module: _ } => []
+    GcOwnedElsewhere { owner, obligation: _ } => [owner]
     GcOperatorDecides => []
   }
 }
@@ -117,7 +125,7 @@ test fn every_node_is_carried_once_and_every_edge_names_a_node() -> Bool {
     && any(rows, r => r.needs.length() >= 1)
     && all(rows, r => filter(rows, q => same_node(a: q.id, b: r.id)).length() == 1)
     && all(rows, r => all(r.needs, d => carries(rows: rows, id: d)))
-    && !carries(rows: [fixture_row(id: GcN0, needs: [])], id: GcN1)
+    && !carries(rows: [fixture_row(id: GcN0a, needs: [])], id: GcN1)
 }
 
 // Row prose names no node, so every relation is a typed edge and the graph claims see all of them.
@@ -136,7 +144,7 @@ test fn row_prose_names_no_node_so_every_relation_is_typed() -> Bool {
   rows.length() >= 1
     && all(rows, r => row_prose_names_no_node(rows: rows, r: r))
     && !row_prose_names_no_node(rows: rows, r: GpuCardGraphRow {
-      id: GcN0, what: "w", home: GcOperatorDecides, done: "after D0 lands.", needs: [], standing: GcUnstarted
+      id: GcN0a, what: "w", home: GcOperatorDecides, done: "after D0 lands.", needs: [], standing: GcUnstarted
     })
 }
 
@@ -152,8 +160,8 @@ fn dependency_graph_is_acyclic(rows: List<GpuCardGraphRow>) -> Bool {
 
 test fn the_dependency_graph_is_acyclic() -> Bool {
   rows_ok(rows: gpu_card_graph_rows)
-    && dependency_graph_is_acyclic(rows: [fixture_row(id: GcN0, needs: [GcN1]), fixture_row(id: GcN1, needs: [])])
-    && !dependency_graph_is_acyclic(rows: [fixture_row(id: GcN0, needs: [GcN1]), fixture_row(id: GcN1, needs: [GcN0])])
+    && dependency_graph_is_acyclic(rows: [fixture_row(id: GcN0a, needs: [GcN1]), fixture_row(id: GcN1, needs: [])])
+    && !dependency_graph_is_acyclic(rows: [fixture_row(id: GcN0a, needs: [GcN1]), fixture_row(id: GcN1, needs: [GcN0a])])
 }
 
 fn rows_ok(rows: List<GpuCardGraphRow>) -> Bool {
@@ -178,6 +186,23 @@ fn every_node_serves(rows: List<GpuCardGraphRow>, goal: GpuCardNodeId) -> Bool {
 test fn every_node_is_an_ancestor_of_the_goal() -> Bool {
   carries(rows: gpu_card_graph_rows, id: GcGoal)
     && every_node_serves(rows: gpu_card_graph_rows, goal: GcGoal)
-    && every_node_serves(rows: [fixture_row(id: GcGoal, needs: [GcN0]), fixture_row(id: GcN0, needs: [GcD0])], goal: GcGoal)
-    && !every_node_serves(rows: [fixture_row(id: GcGoal, needs: [GcN0]), fixture_row(id: GcN0, needs: []), fixture_row(id: GcN1, needs: [])], goal: GcGoal)
+    && every_node_serves(rows: [fixture_row(id: GcGoal, needs: [GcN0a]), fixture_row(id: GcN0a, needs: [GcD0])], goal: GcGoal)
+    && !every_node_serves(rows: [fixture_row(id: GcGoal, needs: [GcN0a]), fixture_row(id: GcN0a, needs: []), fixture_row(id: GcN1, needs: [])], goal: GcGoal)
+}
+
+// ── THE BOUND PREDICATE. Installed and committed cards are in bound, and a card outside names why;
+// the fixtures pin each arm, and section 0 must cite the predicate it is derived from.
+test fn the_bound_is_one_predicate_over_the_census() -> Bool {
+  let census = gpu_card_working_census
+  any(census, r => gpu_card_in_bound(m: r.membership))
+    && any(census, r => !gpu_card_in_bound(m: r.membership))
+    && gpu_card_in_bound(m: InstalledInFleetHost)
+    && gpu_card_in_bound(m: CommittedToFleetHost)
+    && !gpu_card_in_bound(m: OutsideBound { because: "rented" })
+    && all(census, r => match r.membership {
+      OutsideBound { because } => because != ""
+      InstalledInFleetHost => r.host != ""
+      CommittedToFleetHost => r.host != ""
+    })
+    && string_contains(s: carrier_text(), pattern: "gunbc.plans.gpu_card_host_program::gpu_card_in_bound")
 }
