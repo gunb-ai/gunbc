@@ -20,6 +20,7 @@ import gunbc.guarantee_stall.emit_returns_medium_not_contribution_stall { emit_r
 import gunbc.guarantee_stall.emission_apply_generic_r_uninstantiated_stall { emission_apply_generic_r_uninstantiated_stall }
 import gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall { pre_resolve_entry_closure_module_identity_stall }
 import gunbc.guarantee_stall.merge_admission_terminal_verdict_stall { merge_admission_terminal_verdict_stall }
+import gunbc.guarantee_stall.nginx_token_validator_not_constructor { nginx_token_validator_not_constructor_stall }
 import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { generated_artifact_registry_membership_stall }
 import gunbc.guarantee_stall.authority_target_same_expression_equivalence_stall { authority_target_same_expression_equivalence_stall }
 import gunbc.guarantee_stall.import_eligibility_resolution_stall { import_eligibility_resolution_stall }
@@ -201,6 +202,7 @@ import gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_sta
 data all_guarantee_stalls: List<GuaranteeStall> = [
   pre_resolve_entry_closure_module_identity_stall,
   merge_admission_terminal_verdict_stall,
+  nginx_token_validator_not_constructor_stall,
   generated_artifact_registry_membership_stall,
   authority_target_same_expression_equivalence_stall,
   import_eligibility_resolution_stall,
