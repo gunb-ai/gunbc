@@ -14,6 +14,7 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, Srv1RootMutationApproval,
 }
 import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row }
+import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job,
 }
@@ -102,4 +103,16 @@ test fn every_srv1_root_mutation_job_runs_the_gate_before_its_root_step() -> Boo
   gated_before(j: fleet_converge_dashboard_deploy_job(), root_step: "dashboard_deploy")
     && gated_before(j: fleet_converge_approval_broker_dark_install_job(), root_step: "approval_broker_dark_install")
     && gated_before(j: fleet_converge_microvm_controller_install_job(), root_step: "microvm_controller_install")
+}
+
+// THE STEP'S SHELL IS RENDERED FROM bash_build NODES: a rejected tree renders the refusal poison, so
+// the claim reads the rendered text for the key export and the gate's entry, and refuses the poison.
+test fn the_gate_step_renders_from_nodes_and_exports_only_the_submission_key() -> Bool {
+  let text = gunbc_ci_srv1_root_mutation_approval_invoke()
+  string_contains(s: text, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE=")
+    && string_contains(s: text, pattern: "srv1_root_mutation_approval_wet")
+    && string_contains(s: text, pattern: "'trap'")
+    && !string_contains(s: text, pattern: "GUNBC_ORG_ADMIN_TOKEN")
+    && !string_contains(s: text, pattern: "dissolve-on")
+    && !string_contains(s: text, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
 }
