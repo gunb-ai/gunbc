@@ -891,9 +891,7 @@ pub fn is_host_optional_carrier_type(
             _ => false,
         },
         std::option::Option::None => {
-            let is_declaration_structure = (((n.module_item_kind.clone()
-                == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-                || (n.connective.clone() == Connective::Disj))
+            let is_declaration_structure = (type_node_is_declaration_structure(n.clone())
                 && (n.ident_span.clone() != std::option::Option::None));
             let declared = if is_declaration_structure.clone() {
                 crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
@@ -3906,6 +3904,62 @@ pub fn type_leaf_is_unbound_in_closure_scope(
     }
 }
 
+pub fn type_node_is_declaration_structure(n: Rc<Node>) -> bool {
+    match n.module_item_kind.clone() {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
+        _ => (n.connective.clone() == Connective::Disj),
+    }
+}
+
+pub fn type_node_is_declaration_item(n: Rc<Node>) -> bool {
+    match n.module_item_kind.clone() {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
+        _ => false,
+    }
+}
+
+pub fn type_node_applied_or_formal_has_closure_unbound_generic_atom(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::v1_std_core::find_property(
+        n.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(applied) => {
+            let mut __found = false;
+            for c in applied.children.clone().iter().cloned() {
+                if type_node_has_closure_unbound_generic_atom(
+                    c.clone(),
+                    generic_param_names.clone(),
+                    env.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        std::option::Option::None => {
+            let mut __found = false;
+            for p in n.params.clone().iter().cloned() {
+                if !type_var_in_fn_generic_scope(
+                    crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone()),
+                    generic_param_names.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
 pub fn type_node_has_closure_unbound_generic_atom(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -3913,6 +3967,23 @@ pub fn type_node_has_closure_unbound_generic_atom(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if type_node_is_declaration_structure(n.clone()) {
+            {
+                let spelled_by_itself = ((crate::v1_std_core::find_property(
+                    n.properties.clone(),
+                    "__applied_type_args".to_string(),
+                    source_indices.clone(),
+                ) != std::option::Option::None)
+                    || type_node_is_declaration_item(n.clone()));
+                return (spelled_by_itself.clone()
+                    && type_node_applied_or_formal_has_closure_unbound_generic_atom(
+                        n.clone(),
+                        generic_param_names.clone(),
+                        env.clone(),
+                        source_indices.clone(),
+                    ));
+            }
+        }
         let leaf_name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         if (((n.children.clone().len() as i64) == 0) && (leaf_name.clone() != "".to_string())) {
             if type_leaf_is_unbound_in_closure_scope(
@@ -3931,19 +4002,21 @@ pub fn type_node_has_closure_unbound_generic_atom(
                     }
                 }
                 InferredNode::Resolved { node: rt, .. } => {
-                    if type_node_has_closure_unbound_generic_atom(
-                        rt.clone(),
-                        generic_param_names.clone(),
-                        env.clone(),
-                        source_indices.clone(),
-                    ) {
+                    if (!type_node_is_declaration_structure(rt.clone())
+                        && type_node_has_closure_unbound_generic_atom(
+                            rt.clone(),
+                            generic_param_names.clone(),
+                            env.clone(),
+                            source_indices.clone(),
+                        ))
+                    {
                         return true;
                     }
                 }
                 _ => (),
             }
         }
-        if {
+        ({
             let mut __found = false;
             for c in n.children.clone().iter().cloned() {
                 if type_node_has_closure_unbound_generic_atom(
@@ -3957,48 +4030,41 @@ pub fn type_node_has_closure_unbound_generic_atom(
                 }
             }
             __found
-        } {
-            true
-        } else {
-            match crate::v1_std_core::find_property(
-                n.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(applied) => {
-                    let mut __found = false;
-                    for c in applied.children.clone().iter().cloned() {
-                        if type_node_has_closure_unbound_generic_atom(
-                            c.clone(),
-                            generic_param_names.clone(),
-                            env.clone(),
-                            source_indices.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }
-                std::option::Option::None => {
-                    let mut __found = false;
-                    for p in n.params.clone().iter().cloned() {
-                        if !type_var_in_fn_generic_scope(
-                            crate::v1_std_core::generic_param_name_at(
-                                p.clone(),
-                                source_indices.clone(),
-                            ),
-                            generic_param_names.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
+        } || type_node_applied_or_formal_has_closure_unbound_generic_atom(
+            n.clone(),
+            generic_param_names.clone(),
+            env.clone(),
+            source_indices.clone(),
+        ))
+    })
+}
+
+pub fn type_node_applied_has_unbound_type_variable(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::v1_std_core::find_property(
+        n.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(applied) => {
+            let mut __found = false;
+            for c in applied.children.clone().iter().cloned() {
+                if type_node_has_unbound_type_variable(
+                    c.clone(),
+                    generic_param_names.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
                 }
             }
+            __found
         }
-    })
+        std::option::Option::None => false,
+    }
 }
 
 pub fn type_node_has_unbound_type_variable(
@@ -4007,6 +4073,13 @@ pub fn type_node_has_unbound_type_variable(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if type_node_is_declaration_structure(n.clone()) {
+            return type_node_applied_has_unbound_type_variable(
+                n.clone(),
+                generic_param_names.clone(),
+                source_indices.clone(),
+            );
+        }
         if (n.inferred.clone() != std::option::Option::None) {
             match (*n.inferred.clone().clone().unwrap()).clone() {
                 InferredNode::TypeVariable { id: tv, .. } => {
@@ -4015,18 +4088,20 @@ pub fn type_node_has_unbound_type_variable(
                     }
                 }
                 InferredNode::Resolved { node: rt, .. } => {
-                    if type_node_has_unbound_type_variable(
-                        rt.clone(),
-                        generic_param_names.clone(),
-                        source_indices.clone(),
-                    ) {
+                    if (!type_node_is_declaration_structure(rt.clone())
+                        && type_node_has_unbound_type_variable(
+                            rt.clone(),
+                            generic_param_names.clone(),
+                            source_indices.clone(),
+                        ))
+                    {
                         return true;
                     }
                 }
                 _ => (),
             }
         }
-        if {
+        ({
             let mut __found = false;
             for c in n.children.clone().iter().cloned() {
                 if type_node_has_unbound_type_variable(
@@ -4039,31 +4114,11 @@ pub fn type_node_has_unbound_type_variable(
                 }
             }
             __found
-        } {
-            true
-        } else {
-            match crate::v1_std_core::find_property(
-                n.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(applied) => {
-                    let mut __found = false;
-                    for c in applied.children.clone().iter().cloned() {
-                        if type_node_has_unbound_type_variable(
-                            c.clone(),
-                            generic_param_names.clone(),
-                            source_indices.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }
-                std::option::Option::None => false,
-            }
-        }
+        } || type_node_applied_has_unbound_type_variable(
+            n.clone(),
+            generic_param_names.clone(),
+            source_indices.clone(),
+        ))
     })
 }
 
@@ -25893,29 +25948,31 @@ pub fn type_node_carries_applicationless_parametric_head(
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let mut __found = false;
-        for c in n.children.clone().iter().cloned() {
-            if {
-                let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
-                (((n.connective.clone() != Connective::Disj)
-                    && rust_type_renders_bare_parametric_head(
-                        t.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                        emit_info.clone(),
-                    ))
-                    || type_node_carries_applicationless_parametric_head(
-                        t.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                        emit_info.clone(),
-                    ))
-            } {
-                __found = true;
-                break;
+        (!type_node_is_declaration_structure(n.clone()) && {
+            let mut __found = false;
+            for c in n.children.clone().iter().cloned() {
+                if {
+                    let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
+                    (((n.connective.clone() != Connective::Disj)
+                        && rust_type_renders_bare_parametric_head(
+                            t.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            emit_info.clone(),
+                        ))
+                        || type_node_carries_applicationless_parametric_head(
+                            t.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            emit_info.clone(),
+                        ))
+                } {
+                    __found = true;
+                    break;
+                }
             }
-        }
-        __found
+            __found
+        })
     })
 }
 
@@ -27699,11 +27756,12 @@ pub fn rust_call_arg_function_value_adapt(
     idx: i64,
 ) -> String {
     {
-        let is_call_result = match (*arg.expr_data.clone()).clone() {
+        let is_rc_carried = match (*arg.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => true,
+            ExprData::ExprFieldAccess { summary: _, .. } => true,
             _ => false,
         };
-        if !is_call_result.clone() {
+        if !is_rc_carried.clone() {
             return arg_str.clone();
         }
         match callee.clone() {

@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.a_list_literal_without_an_expected_element_type_joins_nothing
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_list_literal_without_an_expected_element_type_joins_nothing: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_list_literal_without_an_expected_element_type_joins_nothing" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "v1.compiler.infer's list-literal arm joining every element's type through the one type-identity relation (v1.compiler.infer_types type_identity_verdict) when no element type is expected, and refusing with a typed, located diagnostic naming the two elements whose types are Different. Sufficient for: no accepted list literal holds elements of two different declarations, whether or not an element type is expected." } },
+
+  receipts: [
+    "**a list literal without an expected element type joins nothing** (a missing judgment). When a list literal has no expected element type (`let xs = [a, b]`, with nothing declared for xs), v1.compiler.infer types the literal as a list of its FIRST element's type and never compares the other elements against it. A list holding one module's `Box` beside another module's same-named `Box` is accepted, and a later read of the second element treats it as the first's type.",
+
+    "INVALID STATE: a list whose element type is one declaration while one of its elements inhabits a different declaration. The judgment that would refuse it does not exist on this path: with an expected element type, every element is held to it (PositionListElement in declared_type_obligation_diags); without one, the arm checks only optional-member cardinality (list_literal_optional_member_diags).",
+
+    "SPECIMEN, measured 2026-10-25 with local claim_batch on the PR B branch (sunny-deer-180/type-identity-flip), fixture source in the style of test.claim.same_head_cross_module_identity_witness. Modules sh.a and sh.b each declare `type Box { v: Int }`; sh.mk and sh.amk produce one each. `fn sh_use() -> Int { let xs = [make_box(), make_a_box()]; 1 }` is ACCEPTED (sh_same_named_record_across_list_elements_is_refused FAILS). The if-branch and match-arm forms of the same pair are refused once PR B routes their join seats through the identity verdict; the list form is not a seat of that verdict, so it is dropped from PR B and filed here.",
+
+    "WHY IT IS A MISSING JUDGMENT, NOT A SPELLING SEAT: if and match joins compare two produced types (v1.compiler.infer match_arm_types_are_disjoint_coproducts and its siblings), so routing them through the identity verdict closes their homonym case. The list arm compares nothing to route: the literal's type is resolved_type of the first element, and the rest are typed and discarded. A fix adds a comparison where none exists.",
+
+    "RUNG: below the ladder. The wrong program is accepted silently with no diagnostic, so there is no rung it was found at (DESIGN section 4b: silent wrongness is not a rung).",
+
+    "CEILING: structurally guaranteed. Whether all elements of a literal settle to one type is decidable from the elements' resolved types, so the compiler can refuse the invalid state on every accepted program. It is not structurally impossible, because the source can still write the literal.",
+
+    "REVIEW TELL: a list literal whose element types are read only from its first element, or a join seat that types a collection without comparing its members. Ask whether the literal had an expected element type before trusting that its members agree.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "infer_list_literal_element", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "list_literal_optional_member_diags", field: WholeDeclaration },
+  ],
+}

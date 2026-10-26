@@ -20,6 +20,7 @@ import gunbc.guarantee_stall.emit_returns_medium_not_contribution_stall { emit_r
 import gunbc.guarantee_stall.emission_apply_generic_r_uninstantiated_stall { emission_apply_generic_r_uninstantiated_stall }
 import gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall { pre_resolve_entry_closure_module_identity_stall }
 import gunbc.guarantee_stall.merge_admission_terminal_verdict_stall { merge_admission_terminal_verdict_stall }
+import gunbc.guarantee_stall.nginx_token_validator_not_constructor { nginx_token_validator_not_constructor_stall }
 import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { generated_artifact_registry_membership_stall }
 import gunbc.guarantee_stall.authority_target_same_expression_equivalence_stall { authority_target_same_expression_equivalence_stall }
 import gunbc.guarantee_stall.import_eligibility_resolution_stall { import_eligibility_resolution_stall }
@@ -87,6 +88,7 @@ import gunbc.guarantee_stall.member_kind_door_binding_executed_by_no_claim_stall
 import gunbc.guarantee_stall.filesystem_read_outcome_node_grain_census_stall { filesystem_read_outcome_node_grain_census_stall }
 import gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall { authored_record_field_list_standing_for_type_population_stall }
 import gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall { native_step_trip_awaits_fleet_job_cgroup_stall }
+import gunbc.guarantee_stall.decl_ref_host_resolver_awaits_native_claim_evaluation_stall { decl_ref_host_resolver_awaits_native_claim_evaluation_stall }
 import gunbc.guarantee_stall.census_live_routes_interpreted_only_stall { census_live_routes_interpreted_only_stall }
 import gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall { compute_cold_reserve_durable_commit_stall }
 import gunbc.guarantee_stall.swift_source_to_text_door_walk_stall { swift_source_to_text_door_walk_stall }
@@ -200,6 +202,7 @@ import gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_sta
 data all_guarantee_stalls: List<GuaranteeStall> = [
   pre_resolve_entry_closure_module_identity_stall,
   merge_admission_terminal_verdict_stall,
+  nginx_token_validator_not_constructor_stall,
   generated_artifact_registry_membership_stall,
   authority_target_same_expression_equivalence_stall,
   import_eligibility_resolution_stall,
@@ -277,6 +280,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   approve_ios_swift_join_live_off_the_merge_path_stall,
   infer_checking_mode_expected_red_pair_stall,
   rust_primitive_rows_hand_spelled_from_the_seed_stall,
+  decl_ref_host_resolver_awaits_native_claim_evaluation_stall,
   per_file_emission_owner_unmodeled_stall,
   local_repo_wet_lane_per_row_wall_budget_unarmed_stall,
 ]
