@@ -157,6 +157,7 @@ fn serving_provision_from_vllm(recipe: ServingRecipe, build: VllmEngineRelease) 
       ServingProvisionRefusedStartSource { cause: "the recipe starts from placed weights but names none" as NonEmptyStr }
     StartSourceUnread =>
       ServingProvisionRefusedStartSource { cause: "the recipe's start route is unread" as NonEmptyStr }
+    }
   }
 }
 
