@@ -13264,7 +13264,9 @@ pub fn infer_call_arguments_generic_pass(
                 let __islam = is_lambda_expr(crate::v1_std_core::arg_value(a.clone()));
                 let __lam = if __islam { lambda_callable_type(crate::v1_std_core::arg_value(a.clone())) } else { type_variable_node("<n/a>".to_string()) };
                 let __lam_lbl = type_node_label(__lam, scope.type_env.source_indices.clone());
-                eprintln!("DIAGFOLD i={} arg={:?} has_formal={} is_lambda={} formal={} expected={} actual={} lambda_ty={} subst_keys={:?}", pair.0, __aname, has_formal, __islam, __lbl_f, __lbl_e, __lbl_a, __lam_lbl, st.subst.keys().cloned().collect::<Vec<_>>());
+                let __ac = format!("{:?}", __lbl_a);
+                let __child_lbls: Vec<String> = { let ch = crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()).children.clone(); ch.iter().map(|c| type_node_label(c.clone(), scope.type_env.source_indices.clone())).collect() };
+                eprintln!("DIAGFOLD mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} expected={} actual={:?} children={:?} lambda_ty={} subst_keys={:?}", scope.module_name, scope.caller_decl_name, pair.0, __aname, __islam, __lbl_f, __lbl_e, __ac, __child_lbls, __lam_lbl, st.subst.keys().cloned().collect::<Vec<_>>());
             }
             let next_subst = if !has_formal.clone() {
                 st.subst.clone()
