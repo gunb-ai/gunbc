@@ -84,6 +84,27 @@ fn lil_serve_environment_wire(e: LilServeEnvironmentEntry) -> String {
   join([e.key as String, e.value as String], "=")
 }
 
+// One environment row as the TWO argv tokens the wrapper's command carries for it: the flag and the
+// KEY=VALUE wire. A named fn rather than an inline annotated lambda: inline lambda-parameter
+// annotations are unwritable in this dialect (the parser builds lambda parameters as bare name
+// leaves — std/emission_provenance.dag, gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall).
+fn lil_serve_environment_argv(e: LilServeEnvironmentEntry) -> List<String> {
+  ["--env" as String, lil_serve_environment_wire(e: e)]
+}
+
+// The API-key element of the pass-through tail, spelled the way srv1's wrapper spells it. THE MEDIUM IS
+// STATED, NOT IMPLIED: this whole render is the token sequence of the COMMAND STRING the container's
+// `bash -lc` parses at exec time — it is NOT an exec-argv, and nothing execs it directly (no host
+// execution route is modeled; gunbc.serving.srv1_serving_launch carries that as a frontier row). Within
+// that string, bash performs this substitution when the container starts, which is why the KEY VALUE
+// never enters the model: only the file path it is read from does. A future direct-exec consumer must
+// pass the file's contents read at start, and must not reuse this wire — the witness
+// test.claim.serving.srv1_serving_launch_witness pins the render to the inspected Cmd tail so the
+// medium cannot silently change under a caller.
+fn lil_serve_api_key_read_wire(file: NonEmptyStr) -> String {
+  join(["\x24(cat ", file as String, ")"], "")
+}
+
 // ── the pass-through engine flags a serving row may pin ──────────────────────────────────────
 // Deliberately NOT a copy of extdeps.vllm.engine_args.VllmEngineArgs: that record is the argument
 // set the pair/canary routes carry. A serving deployment row states WHICH of these it pins, and
@@ -173,7 +194,7 @@ fn lil_serve_launch_argv(launch: LilServeLaunch) -> List<String> {
     "--ssl-certfile" as String,
     launch.ssl_certfile as String,
     "--api-key" as String,
-    join(["\x24(cat ", launch.api_key_file as String, ")"], "") as String,
+    lil_serve_api_key_read_wire(file: launch.api_key_file),
   ]
   let served = match launch.engine.served_model_name {
     Absent => []
