@@ -5,6 +5,7 @@ import std.optional { Absent, Present }
 import std.list { first_where }
 import std.algebra { length, string_contains }
 import std.dissolution { dissolution_is_bound }
+import std.roster_frontier { DeclSubject }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
 import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, QWEN3_8_FLASH_NEXT_REVISION }
@@ -151,6 +152,7 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--ssl-certfile", "/root/serve/tls.crt",
       "--api-key", "$(cat /root/.pool_key)",
     ])
+    && (length(xs: at.environment) == length(xs: srv1_serving_launch.environment))
 }
 
 fn srv1_serving_render_with_port(port: Port) -> List<String> {
