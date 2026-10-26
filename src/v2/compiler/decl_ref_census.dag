@@ -672,6 +672,41 @@ fn span_target_module(span: String, namespaces: List<String>, known: Map<String,
   }
 }
 
+// The declaration name a span cites under its module: the segment after the longest declared module.
+fn span_target_name(span: String, namespaces: List<String>, known: Map<String, Bool>) -> Optional<String> {
+  match span_target_module(span: span, namespaces: namespaces, known: known) {
+    Absent => optional_absent()
+    Present { value: m } =>
+      match list_head(xs: drop_segments(segs: span.split(delimiter: "."), k: length(xs: m.split(delimiter: ".")))) {
+        Present { value: n } => optional_present(value: n)
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn prose_target_names(tokens: List<Token>, namespaces: List<String>, known: Map<String, Bool>) -> List<String> {
+  fold_list(
+    xs: tokens,
+    empty: [],
+    cons: fn(acc, t) {
+      match token_string_body(t: t) {
+        Absent => acc
+        Present { value: body } =>
+          fold_list(
+            xs: backtick_spans(body: body),
+            empty: acc,
+            cons: fn(inner, span) {
+              match span_target_name(span: span, namespaces: namespaces, known: known) {
+                Present { value: n } => list_snoc_item(xs: inner, item: n)
+                Absent => inner
+              }
+            }
+          )
+      }
+    }
+  )
+}
+
 fn prose_target_modules(tokens: List<Token>, namespaces: List<String>, known: Map<String, Bool>) -> List<String> {
   fold_list(
     xs: tokens,
