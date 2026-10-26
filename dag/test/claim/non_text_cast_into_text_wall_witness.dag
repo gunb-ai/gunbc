@@ -63,6 +63,10 @@ data nat_as_string_source: String = "module probe_non_text_cast_nat_string\nimpo
 
 data declared_route_source: String = "module probe_int_to_text_declared_route\nimport std.types { Int, String }\nimport std.integer { int_to_decimal_string }\nfn label(n: Int) -> String { int_to_decimal_string(value: n) }\n"
 
+data bool_as_nat_source: String = "module probe_bool_as_nat_refused\nimport std.types { Bool }\nimport std.nat { Nat }\nfn count_of(b: Bool) -> Nat { b as Nat }\n"
+
+data bool_as_record_source: String = "module probe_bool_as_record_refused\nimport std.types { Bool }\ntype Flag { on: Bool }\nfn flag_of(b: Bool) -> Flag { b as Flag }\n"
+
 data bool_as_int_source: String = "module probe_bool_as_int_still_refused\nimport std.types { Bool, Int }\nfn indicator(b: Bool) -> Int { b as Int }\n"
 
 data non_empty_text_as_string_source: String = "module probe_non_empty_text_as_string\nimport std.types { String, NonEmptyStr }\nfn widen(s: NonEmptyStr) -> String { s as String }\n"
@@ -130,3 +134,10 @@ test fn w_non_empty_text_as_string_is_accepted() -> Bool { blocking_count(source
 // `true as Int` still refuses: the Bool row was withdrawn from dag_cast_rules and this change adds
 // no route (DESIGN section 4).
 test fn w_bool_as_int_is_still_refused() -> Bool { blocking_count(source: bool_as_int_source) >= 1 }
+
+// Bool is the declared coproduct True | False: a cast from it onto a target outside the cast table
+// refuses as for every nominal, rather than abstaining because Bool sits in the table's domain
+// (review 86355).
+test fn w_bool_as_nat_is_refused() -> Bool { blocking_count(source: bool_as_nat_source) >= 1 }
+
+test fn w_bool_as_record_is_refused() -> Bool { blocking_count(source: bool_as_record_source) >= 1 }
