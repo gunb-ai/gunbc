@@ -112,6 +112,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     };
     let sp = no_span();
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -120,6 +121,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
         span: sp.clone(),
         ident_span: default_ident_span(kind_name, sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(
                 v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
             ),
@@ -140,7 +142,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
             declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -157,7 +159,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -171,6 +173,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         .expect("kernel Map should resolve V from PartialFunction profile");
     let sp = no_span();
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Map".to_string(),
         ident: None,
@@ -178,6 +181,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         ident_span: Some(sp.clone()),
         children: Rc::new(vec![
             Rc::new(Node {
+            application_role: std::option::Option::None,
                 occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: key_name,
                 ident: None,
@@ -196,9 +200,10 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
+                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
             }),
             Rc::new(Node {
+            application_role: std::option::Option::None,
                 occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: val_name,
                 ident: None,
@@ -217,7 +222,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
+                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
             }),
         ]),
         connective: Connective::NoConnective,
@@ -232,7 +237,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
     })
 }
 
@@ -292,6 +297,7 @@ fn empty_infer_scope() -> Rc<InferScope> {
 fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc<Node> {
     let sp = no_span();
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -312,7 +318,7 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -760,6 +766,7 @@ fn optional_pattern_lookup_resolves_present_variant() {
 fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant() {
     let sp = no_span();
     let inner_present = Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -768,6 +775,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         span: sp.clone(),
         ident_span: default_ident_span("Present".to_string(), sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(
                 v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
             ),
@@ -790,7 +798,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
             declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -807,12 +815,13 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let optional_inner_sum = Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -833,7 +842,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -907,6 +916,7 @@ fn optional_present_absent_patterns_keep_canonical_names() {
 
 fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -927,7 +937,7 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -1218,6 +1228,7 @@ fn coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible() 
 
 fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -1242,7 +1253,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -1940,6 +1951,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
 
     let t_param = leaf_node("T".to_string());
     let value_field = Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -1962,12 +1974,13 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_decl = Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -1988,7 +2001,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),

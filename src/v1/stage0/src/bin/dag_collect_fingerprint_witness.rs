@@ -48,6 +48,7 @@ fn shell_node(
     params: Vec<Rc<Node>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -68,7 +69,7 @@ fn shell_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        application_role: None, module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),

@@ -284,11 +284,10 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         has_non_tail_self_call,
         match_pattern,
         module_item_kind,
-        application_role,
         declaration_marker,
         declaration,
         expr_data,
-    } = &**n;
+    , application_role} = &**n;
     let refuse = |what: &str| {
         Err(format!(
             "heads projection refused: node '{name}' carries {what}, which the heads parser does \
@@ -408,6 +407,7 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         }
     };
     Ok(Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity,
         name: name.clone(),
         ident,
@@ -427,7 +427,6 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         has_non_tail_self_call: *has_non_tail_self_call,
         match_pattern,
         module_item_kind: module_item_kind.clone(),
-        application_role: application_role.clone(),
         declaration_marker: declaration_marker.clone(),
         declaration: None,
         expr_data: expr_data.clone(),
