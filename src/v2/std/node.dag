@@ -18,7 +18,6 @@ import std.occurrence_identity {
   occurrence_identity_in_image_of,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.operator_realization { EqualityRouteRow }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.content_hash {
   ContentHash,
@@ -675,25 +674,24 @@ fn node_occurrence_eq(a: NodeOccurrence, b: NodeOccurrence) -> Bool {
   node_same_occurrence(a: a.node, b: b.node)
 }
 
-// THE EQUALITY ROUTES: a composite whose members reach one of these compares that member through the
-// named function (std.operator_realization EqualityRouted), member by member down to it. The seed
-// checker (v1.compiler.infer equality_route_declarations) carries a retained duplicate of these rows,
-// because v1 imports no v2 module; trigger: the v2 checker computes the equality plan and reads this
-// declaration.
-data equality_routes: List<EqualityRouteRow> = [
-  EqualityRouteRow {
-    carrier: DeclarationRef { module_path: "v2.std.node", decl_name: "Node", field: WholeDeclaration },
-    function: DeclarationRef { module_path: "v2.std.node", decl_name: "node_equal_ignoring_provenance", field: WholeDeclaration }
-  },
-  EqualityRouteRow {
-    carrier: DeclarationRef { module_path: "v2.std.node", decl_name: "Edge", field: WholeDeclaration },
-    function: DeclarationRef { module_path: "v2.std.node", decl_name: "node_edge_equal_ignoring_provenance", field: WholeDeclaration }
-  },
-  EqualityRouteRow {
-    carrier: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeOccurrence", field: WholeDeclaration },
-    function: DeclarationRef { module_path: "v2.std.node", decl_name: "node_occurrence_eq", field: WholeDeclaration }
-  }
-]
+// THE EQUALITY ROUTES FOR THESE CARRIERS LIVE IN ONE TABLE: v1.compiler.infer
+// equality_route_declarations, which the seed checker folds into every equality plan. They are NOT
+// copied here. A row is (the carrier, the function that compares it, whether a bare operand of that
+// type may be compared at all); these three carriers -- Node, Edge, NodeOccurrence -- are its rows,
+// and node_equal_ignoring_provenance / node_edge_equal_ignoring_provenance / node_occurrence_eq above
+// are the functions it names.
+//
+// WHY THE TABLE SITS IN THE SEED AND NOT BESIDE ITS CARRIERS. The only consumer that reads it is the
+// seed checker, which computes the equality plan (v1.compiler.infer equality_plan_for_operand,
+// equality_route_for_identity, equality_root_refused_leaf_names); DESIGN section 3 will not admit a
+// second copy here next to a table with one reader, and DESIGN section 3c will not admit a declaration
+// with no consumer at all. The seed cannot import a v2 module (section 6b keeps the seed below v2), so
+// until the consumer moves the table sits with the consumer. TRIGGER: the v2 checker computes the
+// equality plan; at that point this region gains the data declaration beside the carriers it routes and
+// v1.compiler.infer deletes its, in one change -- the table never exists in both trees. The gap that
+// keeps the v2 checker from computing a plan today is gunbc.rung_drop
+// native_equality_operand_judgment, and its guard (v2.test.claim.derived_equality_routes
+// v2_eval_constructs_no_record_value_frontier_holds) goes red on the day it closes.
 
 
 

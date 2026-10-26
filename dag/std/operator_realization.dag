@@ -109,13 +109,6 @@ type EqualityPlan {
   declarations: List<DeclarationEqualityPlan>
 }
 
-// A DECLARATION WHOSE `==` IS A NAMED FUNCTION rather than member-wise derivation. The row lives
-// beside the carrier it routes (v2.std.node equality_routes); `function` takes two carriers and
-// answers Bool.
-type EqualityRouteRow {
-  carrier: DeclarationRef
-  function: DeclarationRef
-}
 
 type OperandRealization
   = HostNumericOperand

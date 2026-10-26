@@ -3559,8 +3559,14 @@ data equality_extensional_container_rows: Map<String, Bool> = carrier_container_
 // (node_equal_ignoring_provenance), and a position naming one authored node is typed NodeOccurrence,
 // which answers node_same_occurrence. At the operand ROOT a Node or Edge still refuses, because a caller
 // comparing Nodes directly names its question.
-// RETAINED DUPLICATE of v2.std.node equality_routes: v1 imports no v2 module. Trigger: the v2 checker
-// computes the equality plan and reads that declaration.
+// THE ONE TABLE, held here because the only consumer that reads it is this checker (the folds below:
+// equality_route_for_identity, equality_root_refused_leaf_names). It is NOT copied beside its carriers
+// in v2.std.node: a second copy with no reader would be a fork (DESIGN section 3, "Minimization holds
+// only if each fact lives in exactly one place") and a declaration with no consumer at all (section 3c).
+// v2.std.node states the same thing in a comment pointing here. TRIGGER: the v2 checker computes the
+// equality plan; the table then moves to v2.std.node beside the carriers it routes and this declaration
+// is deleted, in one change, so it is never in both trees. What blocks that is gunbc.rung_drop
+// native_equality_operand_judgment.
 // SEED PATH ONLY: the native v2 infer has no == operand judgment; the capability that retires that
 // gap is a native v2 == operand judgment (gunbc.rung_drop native_equality_operand_judgment).
 type EqualityRouteDeclaration {
