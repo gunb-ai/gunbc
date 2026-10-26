@@ -139,6 +139,7 @@ fn dev_upstreams() -> List<NginxDirective> {
     // the row it sees first and a new session binds to f1. f2 is the engine a LOST binding would
     // silently escape to -- which is what the at-cap case forbids.
     fixture_server(port: 19107 as Port, locations: fixture_location(path: "/", exact: false, lines: echo_lines(name: "f2")))
+  ))
 }
 
 fn fixture_directives() -> List<NginxDirective> {
@@ -573,7 +574,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // An engine-local session at its cap is refused on the engine it is bound to: 429 with Retry-After,
     // and no other engine is ever contacted. If binding fell through to the pick loop the refusal count
     // would be 2 and this would go red.
-    case_of(identity: "dev_bound_engine_local_session_at_cap_answers_429_and_never_re_routes", held: contains(s: cap_contended, p: "HTTP/1.1 429") && contains(s: cap_contended, p: "Retry-After") && contains(s: cap_contended, p: "bound engine-local upstream is at its active-turn cap") && contains(s: cap_contended, p: "upstream=f1") && !contains(s: cap_contended, p: "upstream=f2"), observed: one_line(s: cap_contended)),
+    case_of(identity: "dev_bound_engine_local_session_at_cap_answers_429_and_never_re_routes", held: contains(s: cap_contended, p: "HTTP/1.1 429") && contains(s: cap_contended, p: "Retry-After") && contains(s: cap_contended, p: "at its active-turn cap") && contains(s: cap_contended, p: "upstream=f1") && !contains(s: cap_contended, p: "upstream=f2"), observed: one_line(s: cap_contended)),
     // The refused turn is not lost: it retries the SAME engine and is served there once capacity frees.
     // The refusal did not cost the session its engine: with the rival idle and roomier, the next turn
     // The refusal did not cost the session its engine: it is served by the same one it was refused on.

@@ -304,10 +304,20 @@ fn router_dev_access_lines() -> List<String> {
     "end",
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
     "if bound and available(bound) then",
-    "  if hard_locality(bound) and not bound.overflow and bound.cap ~= 0 and active(bound) >= bound.cap then",
+    // A bound engine-local session is served by ITS engine or refused: no path from here reaches the pick
+    // loop. Falling through would migrate the very session this rule exists to keep in place, and would do
+    // it at the worst moment -- capacity just taken by another turn. begin_turn is the one capacity
+    // reservation, shared with the pick path; when it refuses, the answer is 429 + Retry-After so the
+    // client retries the SAME engine rather than paying a 50-115k context re-read on another one.
+    // A soft (shared-cache) bound session keeps the old behaviour: it tries to reserve, and when the
+    // engine is full it falls through to the pick below, because its prefix cache is the engine's own to
+    // dedupe. A cap of 0 is the uncapped sentinel the pick loop already treats as unlimited.
+    "  local hard = hard_locality(bound) and not bound.overflow",
+    "  if hard and bound.cap ~= 0 and not begin_turn(bound) then",
     "    ngx.header['Retry-After'] = '2'",
     "    return refuse(429, 'rate_limit_error', 'bound engine-local upstream is at its active-turn cap')",
     "  end",
+    "  if hard then return serve(bound, session) end",
     "  if begin_turn(bound) then return serve(bound, session) end",
     "end",
     "local pick, priority, spare = nil, nil, -1",
