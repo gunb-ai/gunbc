@@ -57,7 +57,7 @@ import gunbc.host.host_layout {
   attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
 }
-import gunbc.roadmap.spool_stall { spool_stall_read_at, SpoolStallHeld, SpoolStallNone, SpoolStallUnreadable }
+import gunbc.roadmap.spool_stall { SpoolStallClaim, SpoolStallListRequests, spool_stall_read_at, SpoolStallHeld, SpoolStallNone, SpoolStallUnreadable }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 import test.claim.roadmap.sandbox_touch_reading {
   SandboxTouch, SandboxTouchRan, SandboxTouchUnrunnable, SandboxTouchReading, SandboxTouchNeverRan,
@@ -157,13 +157,88 @@ fn sandbox_touch_read(instance: HostDashboardInstance, unit: NonEmptyStr, path: 
   )
 }
 
+// The paired control: the SAME route as the sandboxed touch (a user-manager transient, same principal,
+// same supplementary groups), with no sandbox properties, writes a sibling of the target in its
+// directory and removes it. Running it from the claim process instead would differ in credentials (an
+// ssh session carries groups the long-running user manager lacks), so a target writable only through
+// such a group would refuse the sandboxed touch by permission while the control wrote, and the
+// refusal would be credited to the sandbox. The pair differs in exactly one variable. quick-bee-65
+fn unsandboxed_sibling_write_ok(unit: NonEmptyStr, path: String) -> Bool {
+  match systemd_run_user_wait_command(
+    unit: unit,
+    properties: [],
+    setenv_bindings: [],
+    command_argv: [
+      "/bin/sh", "-c", "touch -- \"$1\" && rm -f -- \"$1\"", "sh",
+      join([path, ".unsandboxed-control"], ""),
+    ],
+  ) {
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: wait } =>
+      shell.Exec.RunArgv(
+        program: "systemd-run",
+        arguments: systemd_run_command_argument_words(command: wait.command),
+      ).exit_code == 0
+  }
+}
+
+fn refusal_reading_after_control(control_wrote: Bool, reading: SandboxTouchReading) -> SandboxTouchReading {
+  match reading {
+    SandboxTouchRefusedReading => if control_wrote { SandboxTouchRefusedReading } else { SandboxTouchInconclusive }
+    SandboxTouchNeverRan => SandboxTouchNeverRan
+    SandboxTouchWroteReading => SandboxTouchWroteReading
+    SandboxTouchInconclusive => SandboxTouchInconclusive
+  }
+}
+
 fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> Bool {
-  match sandbox_touch_read(instance: instance, unit: unit, path: path) {
+  match refusal_reading_after_control(
+    control_wrote: unsandboxed_sibling_write_ok(
+      unit: join([unit as String, "-control"], "") as NonEmptyStr,
+      path: path,
+    ),
+    reading: sandbox_touch_read(instance: instance, unit: unit, path: path),
+  ) {
     SandboxTouchRefusedReading => true
     SandboxTouchNeverRan => false
     SandboxTouchWroteReading => false
     SandboxTouchInconclusive => false
   }
+}
+
+fn reading_is_inconclusive(reading: SandboxTouchReading) -> Bool {
+  match reading {
+    SandboxTouchInconclusive => true
+    SandboxTouchRefusedReading => false
+    SandboxTouchNeverRan => false
+    SandboxTouchWroteReading => false
+  }
+}
+
+fn reading_is_refused(reading: SandboxTouchReading) -> Bool {
+  match reading {
+    SandboxTouchRefusedReading => true
+    SandboxTouchInconclusive => false
+    SandboxTouchNeverRan => false
+    SandboxTouchWroteReading => false
+  }
+}
+
+// RED for the control, on supplied values: a refused touch whose control could not write reads
+// inconclusive, never refused; the same refusal with a writing control stands.
+test fn a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_inconclusive() -> Bool {
+  reading_is_inconclusive(reading: refusal_reading_after_control(control_wrote: false, reading: SandboxTouchRefusedReading))
+    && reading_is_refused(reading: refusal_reading_after_control(control_wrote: true, reading: SandboxTouchRefusedReading))
+}
+
+// Inhabitance of the real control route (needs a user manager, like the sibling cells): ENOENT and
+// EACCES directories read false, a writable one true. The EACCES half is unobservable as root, so the
+// claim requires a non-root principal and is false on a root runner rather than passing without it.
+test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
+  shell.Exec.RunArgv(program: "sh", arguments: ["-c", "test \"$(id -u)\" -ne 0"]).exit_code == 0
+    && !unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-enoent.service" as NonEmptyStr, path: "/proc/gunbc-no-such-dir/target")
+    && !unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-eacces.service" as NonEmptyStr, path: "/usr/gunbc-control-target")
+    && unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-ok.service" as NonEmptyStr, path: "/tmp/gunbc-control-inhabitance-target")
 }
 
 fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> Bool {
@@ -187,7 +262,7 @@ fn worker_shape_runs_an_allowed_touch(instance: HostDashboardInstance) -> Bool {
 }
 
 test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() -> Bool {
-  let inst = srv1_live_dashboard_instance()
+  let inst = srv1_lab_dashboard_instance()
   let attempt = probe_attempt_dir(instance: inst)
   prepare_probe_attempt(instance: inst)
     && worker_shape_runs_an_allowed_touch(instance: inst)
@@ -219,7 +294,7 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
 }
 
 test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
-  let inst = srv1_live_dashboard_instance()
+  let inst = srv1_lab_dashboard_instance()
   let wt = probe_attempt_worktree(instance: inst)
   let scratch = probe_worker_dir(instance: inst)
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
@@ -1046,7 +1121,7 @@ test fn a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record() -
         ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "unmovable at claim")
       }
       claim_is_unmovable && verdict && exited && pass.retired == 0 && match spool_stall_read_at(record_path: attempt_unit_spool_stall_record_path(instance_root: root)) {
-        SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.step)) == ["claim"]
+        SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.step)) == [SpoolStallClaim]
         SpoolStallNone => false
         SpoolStallUnreadable { reason: _ } => false
       }
@@ -1062,7 +1137,7 @@ test fn an_unlistable_request_directory_stalls_the_drain() -> Bool {
     let root = tmp.path as String
     let pass = attempt_system_unit_drain_pass(instance_root: root)
     match attempt_unit_stall_verdict(pass: pass) {
-      AttemptUnitStalled { unmovable } => (unmovable |> map(e => e.step)) == ["list-requests"]
+      AttemptUnitStalled { unmovable } => (unmovable |> map(e => e.step)) == [SpoolStallListRequests]
       AttemptUnitNotStalled => false
     }
   }
