@@ -8,7 +8,12 @@ import extdeps.bmc.supermicro_oem_fan {
   supermicro_fan_mode_answer,
   supermicro_fan_mode_name,
   supermicro_zone_duty_answer,
-  supermicro_duty_argument
+  supermicro_duty_argument,
+  supermicro_duty_argument_wire,
+  supermicro_fan_zone,
+  supermicro_fan_zone_wire,
+  supermicro_fan_mode_argument,
+  supermicro_fan_mode_argument_wire
 }
 
 // CAPTURED, NOT AUTHORED: stdout of `ipmitool raw 0x30 0x45 0x00` and `ipmitool raw 0x30 0x70 0x66
@@ -48,11 +53,23 @@ test fn malformed_answers_are_no_reading() -> Bool {
     }
 }
 
-// The set argument round-trips through the get parse: what is written is what a readback reads.
-test fn the_duty_argument_is_the_byte_a_readback_reads() -> Bool {
+// What a set writes is built only through the checked constructors, and it round-trips through the
+// get parse: what is written is what a readback reads. A duty above 100 and a zone or mode above one
+// byte have no argument at all.
+test fn the_set_arguments_are_constructed_and_read_back() -> Bool {
   match supermicro_duty_argument(duty: percent(count: 29)) {
     Absent => false
-    Present { value: a } => (a as String) == "0x1d" && duty_of(stdout: concat(" ", substring(s: a as String, start: 2, end: 4))) == 29
+    Present { value: a } => {
+      let w = supermicro_duty_argument_wire(a: a) as String
+      w == "0x1d" && duty_of(stdout: concat(" ", substring(s: w, start: 2, end: 4))) == 29
+    }
   }
-    && match supermicro_duty_argument(duty: percent(count: 100)) { Present { value: a } => (a as String) == "0x64"  Absent => false }
+    && match supermicro_duty_argument(duty: percent(count: 100)) { Present { value: a } => (supermicro_duty_argument_wire(a: a) as String) == "0x64"  Absent => false }
+    && match supermicro_duty_argument(duty: percent(count: 255)) { Absent => true  Present { value: _ } => false }
+    && match supermicro_fan_zone(index: 1) { Present { value: z } => (supermicro_fan_zone_wire(z: z) as String) == "0x01"  Absent => false }
+    && match supermicro_fan_zone(index: 256) { Absent => true  Present { value: _ } => false }
+    && match supermicro_fan_mode_answer(stdout: h11_get_fan_mode_capture) {
+      Absent => false
+      Present { value: m } => match supermicro_fan_mode_argument(mode: m) { Present { value: a } => (supermicro_fan_mode_argument_wire(a: a) as String) == "0x01"  Absent => false }
+    }
 }
