@@ -1,7 +1,7 @@
 set -e
 cd /root/workspace/repo-root
 cargo build --release -p v1-compiler --bin gunbc 2>&1 | tail -1
-for c in a_fold_accumulator b_declared_alias_param c_fold_field_read d_fold_list_map; do
+for c in f_carrier_param g_alias_param h_fold_returned_directly i_fold_nested_in_hof; do
   echo "########## CASE $c ##########"
   rm -rf /tmp/out_case
   ./target/release/gunbc compile --source-root dag --source-root tmp_probe \

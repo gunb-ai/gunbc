@@ -1,0 +1,9 @@
+module tprobe.f_carrier_param
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key }
+import std.algebra { list_push, list_map, FreeMonoid }
+
+fn probe_case(xs: FreeMonoid<NonEmptyStr>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: xs, key: fn(k) { k as String })
+}

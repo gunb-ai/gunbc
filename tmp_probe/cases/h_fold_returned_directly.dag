@@ -1,0 +1,9 @@
+module tprobe.h_fold_returned_directly
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key }
+import std.algebra { list_push, list_map, FreeMonoid }
+
+fn probe_case(names: List<String>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: fold(names, init: [], f: (acc, n) => acc |> list_push(n as NonEmptyStr)), key: fn(k) { k as String })
+}
