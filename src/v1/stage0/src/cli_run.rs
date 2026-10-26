@@ -3955,6 +3955,24 @@ pub(crate) fn resolve_virtual_source_with_imports(
     Ok(sources)
 }
 
+/// The rendered `(expected, got)` pair of a census group, projected from the host fold.
+/// The pair-bearing population is closed by construction:
+/// `compile_clean_diagnostic_rendered_pair` is a TOTAL match over `CompilerDiagnostic` (the
+/// same shape and home as `compile_clean_diagnostic_histogram_key` / the fold already consults),
+/// so a class outside its pair arms yields `None` (the model's `Absent`) — never a pair-shaped
+/// stand-in for "the pair was equal": an equal pair is `Uniform` with `expected == got`
+/// (DESIGN §5, fail-open). `Uniform` is the group's single rendered pair; `Varied` counts the
+/// distinct pairs the group folded (`distinct_pair_count > 1`; a count below two never reaches
+/// this arm — the fold only opens `Varied` once a second distinct pair exists, so it is
+/// unreachable by construction rather than refused). The pair TEXT is the producer
+/// node_type_shape's output (authority src/v1/04_types.dag) as already carried by the diagnostic
+/// — a witness names the producer, it never transcribes its output (§6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RenderedPair {
+    Uniform { expected: String, got: String },
+    Varied { distinct_pair_count: i64 },
+}
+
 /// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`
 /// key and how many times the compile produced it. `diagnostic_class` and `subject_name` are
 /// exactly the two halves of [`compile_clean_diagnostic_histogram_key`], whose total match over
@@ -3966,6 +3984,9 @@ pub struct CompileDiagnosticCensusRow {
     pub subject_name: String,
     pub blocking: bool,
     pub count: i64,
+    /// The rendered pair the group folded to; `None` (model `Absent`) exactly when the
+    /// diagnostic class carries none (the extractor's total match decides).
+    pub rendered_pair: Option<RenderedPair>,
 }
 
 /// Result of [`compile_dag_diagnostic_census`]. `NotRunnable` is a distinct arm rather than an
@@ -4305,25 +4326,50 @@ fn multi_module_fixture_source_digest(sources: &[MultiModuleFixtureSource], entr
 fn compile_diagnostic_census_rows(
     diagnostics: &im::Vector<Rc<ErrorNode>>,
 ) -> Vec<CompileDiagnosticCensusRow> {
+    // Per-group distinct rendered pairs, first-seen order preserved. Whether a group carries a
+    // pair at all is a property of the diagnostic CLASS (the extractor's total match), so one
+    // group is never mixed: pairless and pair-carrying observations cannot share a key.
     let mut order: Vec<(String, String, bool)> = Vec::new();
     let mut counts: HashMap<(String, String, bool), i64> = HashMap::new();
+    let mut pairs: HashMap<(String, String, bool), Vec<(String, String)>> = HashMap::new();
     for d in diagnostics.iter() {
         let (class, name) = compile_clean_diagnostic_histogram_key(d);
         let blocking = compile_clean_diagnostic_is_hard(d);
         let key = (class, name, blocking);
         let entry = counts.entry(key.clone()).or_insert(0);
         if *entry == 0 {
-            order.push(key);
+            order.push(key.clone());
         }
         *entry += 1;
+        if let Some(pair) = compile_clean_diagnostic_rendered_pair(d) {
+            let seen = pairs.entry(key).or_default();
+            if !seen.contains(&pair) {
+                seen.push(pair);
+            }
+        }
     }
     order
         .into_iter()
-        .map(|key| CompileDiagnosticCensusRow {
-            diagnostic_class: key.0.clone(),
-            subject_name: key.1.clone(),
-            blocking: key.2,
-            count: counts.get(&key).copied().unwrap_or(0),
+        .map(|key| {
+            let rendered_pair = match pairs.get(&key) {
+                None => None,
+                Some(seen) => match seen.as_slice() {
+                    [only] => Some(RenderedPair::Uniform {
+                        expected: only.0.clone(),
+                        got: only.1.clone(),
+                    }),
+                    many => Some(RenderedPair::Varied {
+                        distinct_pair_count: many.len() as i64,
+                    }),
+                },
+            };
+            CompileDiagnosticCensusRow {
+                diagnostic_class: key.0.clone(),
+                subject_name: key.1.clone(),
+                blocking: key.2,
+                count: counts.get(&key).copied().unwrap_or(0),
+                rendered_pair,
+            }
         })
         .collect()
 }

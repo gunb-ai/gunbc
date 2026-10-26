@@ -16203,7 +16203,38 @@ fn compile_diagnostic_census_row_value(
     subject_name: String,
     blocking: bool,
     count: i64,
+    rendered_pair: Option<crate::cli_run::RenderedPair>,
 ) -> Value {
+    // The model's Optional<RenderedPair>: `None` here is the optional's OWN absence (a class the
+    // extractor's total match says carries no pair) projected to the model's Absent — never a
+    // stand-in for "the pair was equal", which is Uniform { expected, got } with expected == got.
+    let rendered_pair_value = match rendered_pair {
+        None => optional_absent(ctx),
+        Some(crate::cli_run::RenderedPair::Uniform { expected, got }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Uniform"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("expected"), str_value(expected)),
+                    (ctx.sym("got"), str_value(got)),
+                ])),
+            },
+            ctx,
+        ),
+        Some(crate::cli_run::RenderedPair::Varied {
+            distinct_pair_count,
+        }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Varied"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("distinct_pair_count"),
+                    Value::Int(distinct_pair_count),
+                )])),
+            },
+            ctx,
+        ),
+    };
     Value::Record {
         type_name: ctx.sym("CompileDiagnosticCensusRow"),
         fields: Rc::new(sorted_fields(vec![
@@ -16211,10 +16242,10 @@ fn compile_diagnostic_census_row_value(
             (ctx.sym("subject_name"), str_value(subject_name)),
             (ctx.sym("blocking"), Value::Bool(blocking)),
             (ctx.sym("count"), Value::Int(count)),
+            (ctx.sym("rendered_pair"), rendered_pair_value),
         ])),
     }
 }
-
 fn reference_derived_candidate_disposition_value(
     disposition: &crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition,
     ctx: &InterpContext,
@@ -16294,6 +16325,7 @@ fn compile_diagnostic_census_value(
                                 r.subject_name,
                                 r.blocking,
                                 r.count,
+                                r.rendered_pair,
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -16351,6 +16383,7 @@ fn claim_scope_fixture_value(
                             row.subject_name.clone(),
                             row.blocking,
                             row.count,
+                            row.rendered_pair.clone(),
                         )
                     })
                     .collect::<Vec<_>>(),
@@ -16396,6 +16429,7 @@ fn multi_module_compile_fixture_value(
                         r.subject_name,
                         r.blocking,
                         r.count,
+                        r.rendered_pair,
                     )
                 })
                 .collect::<Vec<_>>(),
