@@ -14,6 +14,7 @@ import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.tools.coreutils_stat
@@ -2745,6 +2746,147 @@ fn build_reading_receipt_line(r: MtCollins1BuildReading) -> String {
       MegaRacReleaseEstablishedByRead { firmware: f } => join(["machine-read APP ", f.raw_version as String, " from ", p as String, " (uncommitted; commit it to ground the current build)"], "")
       MegaRacReleaseEstablishedByAttestation { firmware: f } => join(["attested ", f.raw_version as String, " from ", p as String], "")
       MegaRacReleaseEstablishmentRefused { standing: _, cause: c } => join(["retained at ", p as String, " but establishes no release: ", megarac_version_refusal_text(cause: c)], "")
+    }
+  })
+}
+
+// ── THE PRE-POWER READ-ONLY RETENTIONS: mc info AND fru print 0 ──────────────────────────────────
+// The same retention the hpm check got (#14982's shape), extended to the two other READ-ONLY controller
+// questions the boot asks before it touches power: `ipmitool mc info` (what BMC the endpoint says it is,
+// the channel's own account) and `ipmitool fru print 0` (the board/chassis inventory the identity claims
+// are made from). Both are declared `readonly` on extdeps.bmc.ipmi, both run in the pre-power phase
+// beside the hpm check BEFORE any write, and both are kept VERBATIM per run id -- the same
+// GITHUB_RUN_ID keying that makes a retained hpm check unforgeable across runs applies here: a run can
+// only ever overwrite its own files, and the run uploads them (they sit inside the mtcollins1-boot-* glob).
+// The reads answer no question the boot decides on -- the boot still resolves its build, admits, and
+// actuates exactly as before; these two artifacts exist so the run's OWN words about who it talked to
+// survive it, byte-for-byte, in the receipt and the uploaded bundle.
+fn mtcollins1_boot_mc_info_path(run_attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["artifacts/mtcollins1-boot-mc-info-", run_attempt as String, ".txt"], "") as NonEmptyStr
+}
+
+fn mtcollins1_boot_fru_print_path(run_attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["artifacts/mtcollins1-boot-fru-print-0-", run_attempt as String, ".txt"], "") as NonEmptyStr
+}
+
+type MtCollins1PrePowerRetention
+  = PrePowerRetained { path: NonEmptyStr, bytes: ByteSize }
+  | PrePowerNotRetained { reason: NonEmptyStr }
+
+// THE FOLD BOTH WAYS OF ASKING PASS THROUGH. The pre-power phase writes the bytes the tool answered; the
+// conclusion reads the file back by the run's own identity. Either way the SAME fold decides what counts
+// as retained: the answer must have come, the bytes must be more than nothing, and what is kept carries
+// the size of the VERBATIM content -- a ByteSize derived from the bytes themselves through this file's
+// ONE size authority (std.measure, the same ByteSize the console bounds use; review 86396), so a
+// retention whose number does not match its content cannot be written here. The failure arms carry the
+// cause WITH THE STAGE VERB THE CALLER NAMES (review 86381 finding 1: "could not be written: <write
+// error>" and "could not be read back: <file error>" are DIFFERENT failures and must not share a
+// message); an empty answer is not a retention (a zero-byte file would be kept and say nothing).
+fn mtcollins1_pre_power_retention_of(path: NonEmptyStr, read_ok: Bool, content: String, stage: NonEmptyStr, error: String) -> MtCollins1PrePowerRetention {
+  if !read_ok {
+    PrePowerNotRetained { reason: concat("could not be ", stage as String, ": ", error) as NonEmptyStr }
+  } else if content == "" {
+    PrePowerNotRetained { reason: concat(stage as String, " answered with no bytes at all, and an empty file is not a retention") as NonEmptyStr }
+  } else {
+    PrePowerRetained { path: path, bytes: byte_size(count: count(bytes_octets(b: utf8_encode_bytes(s: content)))) }
+  }
+}
+
+// WHY A PRE-POWER READ DID NOT ANSWER, in the transport's OWN words. exit_code and stderr are
+// exactly what the tool reported, run through the SAME typed-cause builder the firmware check and
+// every other BMC read use — so a failed read names its failure (the exit status, and the tool's
+// first stderr line) instead of a fixed shrug that could only ever mean "not read" (manager HOLD
+// on review 86433 round). Pure: it composes the cause from what the caller observed and WHEN it
+// was observed; the caller is the only thing that talks to the BMC or the clock.
+fn pre_power_read_failure_reason(capture: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> NonEmptyStr {
+  let cause = bmc_ipmitool_read_cause(
+    endpoint: mtcollins1_ipmi_endpoint(),
+    at: at,
+    exit_code: exit_code,
+    stderr: stderr,
+  )
+  concat(capture as String, " failed: ", bmc_read_cause_text(cause: cause)) as NonEmptyStr
+}
+
+// THE PRE-POWER WRITE OF `mc info`. Read-only by its operation declaration. A failed read keeps
+// the tool's OWN cause (exit status + stderr through the shared BMC typed-cause builder), never a
+// stand-in; the receipt line then reports that executed cause first and re-reads the file from
+// disk as a second, independent witness.
+fn mtcollins1_boot_mc_info_retain(username: NonEmptyStr, password_file: NonEmptyStr, run_attempt: NonEmptyStr) -> MtCollins1PrePowerRetention {
+  let r = diagnostic.ipmi.Tool.McInfo(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  if r.success {
+    let path = mtcollins1_boot_mc_info_path(run_attempt: run_attempt)
+    let retained = Filesystem.Write(path: path, content: r.stdout)
+    mtcollins1_pre_power_retention_of(path: path, read_ok: retained.success, content: r.stdout, stage: "written", error: retained.error)
+  } else {
+    PrePowerNotRetained { reason: pre_power_read_failure_reason(capture: "mc info", at: clock_now_probed_at_or_unknown(), exit_code: r.exit_code, stderr: r.transport_stderr) }
+  }
+}
+
+// THE PRE-POWER WRITE OF `fru print 0`. The id is fixed to 0 -- the board FRU the identity rows are read
+// from, the same board whose fields the current-build identity takes (gunbc.machine_intake
+// .mtcollins1_access_observation mtcollins1_current_build_identity): the boot keeps the controller's own
+// inventory answer for every run, so a later identity claim can be checked against the run's capture
+// rather than against a re-ask the controller may answer differently after a reflash.
+fn mtcollins1_boot_fru_print_retain(username: NonEmptyStr, password_file: NonEmptyStr, run_attempt: NonEmptyStr) -> MtCollins1PrePowerRetention {
+  let r = diagnostic.ipmi.Tool.FruPrint(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    fru_id: "0",
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  if r.success {
+    let path = mtcollins1_boot_fru_print_path(run_attempt: run_attempt)
+    let retained = Filesystem.Write(path: path, content: r.stdout)
+    mtcollins1_pre_power_retention_of(path: path, read_ok: retained.success, content: r.stdout, stage: "written", error: retained.error)
+  } else {
+    PrePowerNotRetained { reason: pre_power_read_failure_reason(capture: "fru print 0", at: clock_now_probed_at_or_unknown(), exit_code: r.exit_code, stderr: r.transport_stderr) }
+  }
+}
+
+// THE READ-BACK, BY THE RUN'S OWN IDENTITY -- the file this run wrote or nothing. Same keying as the
+// retained hpm check: without a run identity no file belongs to this attempt, so no file is read at all.
+// ONE fn for both artifacts (review 86381 finding 2): the artifact is a parameter -- its path is built
+// from the run id by the caller's own path function -- and the identity gate runs BEFORE any path is
+// chosen, so neither artifact can grow a fixed-path fallback that the other would have to forget.
+fn mtcollins1_boot_pre_power_retained(attempt: AttemptIdentityReading, path_of: fn(NonEmptyStr) -> NonEmptyStr) -> MtCollins1PrePowerRetention {
+  match attempt {
+    AttemptIdentityUnavailable { variable: v, detail: _ } => PrePowerNotRetained { reason: concat("the run identity is unavailable, so no retained file is this run's: ", v as String) as NonEmptyStr }
+    AttemptRunId { run_id: id } => {
+      let path = path_of(id)
+      let r = Filesystem.Read(path: path as String)
+      mtcollins1_pre_power_retention_of(path: path, read_ok: r.success, content: r.content, stage: "read back", error: r.error)
+    }
+  }
+}
+
+// THE RECEIPT LINE FOR ONE PRE-POWER CAPTURE -- the ORIGINAL cause, then the disk's own verdict
+// (review 86381 finding 1). The line leads with what the WRITE side reported, carried in the attempt
+// record from the pre-power phase that executed it: an ipmitool that refused says "not read: <cause>",
+// a write that failed says "could not be written: <write error>", and neither is laundered into the
+// read-back's file-not-found message. Only when the write side retained does the conclusion read the
+// file back -- a retained-then-lost file (emptied, shrunk, removed between write and conclusion) is
+// named as that, not reported as if nothing had been written. The Absent arm is the attempt that ENDED
+// BEFORE the pre-power phase ran: honest silence about a phase that never happened, never a read of
+// someone else's file. One fn for both artifacts; `prefix` (mc-info= / fru=) is the only difference,
+// so the pairs of this PR's first cut collapse to this (review 86381 finding 2).
+fn pre_power_retention_receipt_line(prefix: NonEmptyStr, executed: MtCollins1PrePowerRetention?, run: AttemptIdentityReading, path_of: fn(NonEmptyStr) -> NonEmptyStr) -> String {
+  concat(prefix, "=", match executed {
+    Absent => "not retained: the attempt ended before the pre-power phase ran"
+    Present { value: r } => match r {
+      PrePowerNotRetained { reason: why } => concat("not retained: ", why as String)
+      PrePowerRetained { path: p, bytes: n } => match mtcollins1_boot_pre_power_retained(attempt: run, path_of: path_of) {
+        PrePowerRetained { path: _, bytes: m } => join(["retained verbatim ", to_string(byte_size_count(b: n)), " bytes at ", p as String, ", read back at conclusion with ", to_string(byte_size_count(b: m)), " bytes"], "")
+        PrePowerNotRetained { reason: why } => join(["written at ", p as String, " but not on disk at conclusion: ", why as String], "")
+      }
     }
   })
 }

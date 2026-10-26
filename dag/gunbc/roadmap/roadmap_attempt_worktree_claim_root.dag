@@ -1,8 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_worktree_claim_root
 
 import std.types { String, NonEmptyStr, FilePath }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
@@ -49,12 +48,9 @@ type WorktreeClaimStoreReading
   | WorktreeClaimStoreUnready { detail: String }
 
 fn worktree_claim_store(instance: HostDashboardInstance) -> WorktreeClaimStoreReading {
-  let root = worktree_claim_slots_path(instance: instance)
-  let listing = Filesystem.List(path: root as String)
-  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => WorktreeClaimStoreUnready { detail: join(["the worktree claim store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => WorktreeClaimStoreUnready { detail: join(["the worktree claim store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => WorktreeClaimStoreReady { store: WorktreeClaimStore { instance: instance.instance_id, slots: file_slot_store(root: root) } }
+  match listed_slot_store(member: worktree_claim_slots.member as String, root: worktree_claim_slots_path(instance: instance)) {
+    SlotStoreRefused { detail: d } => WorktreeClaimStoreUnready { detail: d }
+    SlotStoreListed { root: r } => WorktreeClaimStoreReady { store: WorktreeClaimStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
   }
 }
 

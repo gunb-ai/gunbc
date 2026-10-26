@@ -108,6 +108,7 @@ pub enum Scale {
     Milli,
     One,
     Sixty,
+    ThirtySixHundred,
     RackUnitHeight,
     SquareFootArea,
     ArcsecondAngle,
@@ -138,6 +139,7 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
         Scale::DegreeAngle => std::option::Option::None,
         Scale::TurnAngle => std::option::Option::None,
         Scale::Sixty => std::option::Option::None,
+        Scale::ThirtySixHundred => std::option::Option::None,
         Scale::RackUnitHeight => std::option::Option::None,
         Scale::SquareFootArea => std::option::Option::None,
         Scale::Kilo => Some(3),
@@ -213,6 +215,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
         Scale::DegreeAngle => std::option::Option::None,
         Scale::TurnAngle => std::option::Option::None,
         Scale::Sixty => Some(seconds_per_minute()),
+        Scale::ThirtySixHundred => Some(v1_rt::int_mul(minutes_per_hour(), seconds_per_minute())),
         Scale::RackUnitHeight => std::option::Option::None,
         Scale::SquareFootArea => std::option::Option::None,
         Scale::Atto => std::option::Option::None,
@@ -251,6 +254,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::DegreeAngle => std::option::Option::None,
         Scale::TurnAngle => std::option::Option::None,
         Scale::Sixty => std::option::Option::None,
+        Scale::ThirtySixHundred => std::option::Option::None,
         Scale::RackUnitHeight => std::option::Option::None,
         Scale::SquareFootArea => std::option::Option::None,
         Scale::Kilo => std::option::Option::None,
@@ -499,6 +503,11 @@ pub type HardwareThreadMinute =
 pub type PhysicalCoreCount = Rc<Measure<Count, One, Nat>>;
 
 pub type CharacterCount = Rc<Measure<Count, One, Nat>>;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DisplayPixelCount {
+    pub pixels: i64,
+}
 
 pub type TokenCount = Rc<Measure<Count, One, Nat>>;
 
@@ -756,6 +765,19 @@ pub fn events_per_minute(count: Nat) -> EventsPerMinute {
 }
 
 pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+    measure_count(r)
+}
+
+pub type EventsPerHour = Rc<Measure<Frequency, ThirtySixHundred, Nat>>;
+
+pub fn events_per_hour(count: Nat) -> EventsPerHour {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn events_per_hour_count(r: EventsPerHour) -> Nat {
     measure_count(r)
 }
 
@@ -1737,7 +1759,7 @@ pub fn giga_tensor_operations_per_second(count: Nat) -> GigaTensorOperationsPerS
 }
 
 pub fn giga_tensor_operations_per_second_count(r: GigaTensorOperationsPerSecond) -> Nat {
-    measure_count(r.clone())
+    measure_count(r)
 }
 
 pub type MilliRequestsPerSecond = Rc<Measure<Frequency, Milli, Nat>>;
@@ -2073,7 +2095,7 @@ pub fn permille(count: Nat) -> Permille {
 }
 
 pub fn permille_count(p: Permille) -> Nat {
-    measure_count(p.clone())
+    measure_count(p)
 }
 
 pub type ConcurrentRequestThousandths = Rc<Measure<Dimensionless, Milli, Nat>>;
@@ -2086,7 +2108,7 @@ pub fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandth
 }
 
 pub fn concurrent_request_thousandths_count(c: ConcurrentRequestThousandths) -> Nat {
-    measure_count(c.clone())
+    measure_count(c)
 }
 
 pub type AmortizationMonths = Rc<Measure<Count, One, Nat>>;
@@ -2595,6 +2617,8 @@ pub struct Milli;
 pub struct One;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Sixty;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ThirtySixHundred;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RackUnitHeight;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

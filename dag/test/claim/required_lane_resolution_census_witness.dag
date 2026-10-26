@@ -9,6 +9,7 @@ import gunbc.required_lane_resolution_census {
   RosterRowStanding, RosterRowResolvedByRequiredLane, RosterRowUnreachedByRequiredLane, RosterRowUnresolvable,
   resolution_census, resolution_census_standing, census_receipt_lines,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.required_lane_resolution_census_live {
   LivePopulations, LivePopulationsObserved, LivePopulationsRefused, live_populations,
 }
@@ -44,6 +45,13 @@ fn same_list(a: List<String>, b: List<String>) -> Bool {
   a == b
 }
 
+// How many receipt lines carry this kind+module pair. A line is
+// {"kind":"K","module":"M"} in that field order by construction (census_receipt_lines).
+fn lines_with(lines: List<String>, k: String, m: String) -> Int {
+  let needle = concat(concat("{\"kind\":\"", k), concat("\",\"module\":", concat("\"", concat(m, "\""))))
+  lines |> filter(fn(l) { contains(l, needle) }) |> count
+}
+
 // An identity resolved by any lane is reached; the rest are unreached, in admitted order.
 test fn unreached_is_the_admitted_complement_of_the_lane_union() -> Bool {
   let c = census_of(admitted: ["a", "b", "c", "d"], resolved: [floor_lane(modules: ["a", "b"]), gate_lane(modules: ["b", "c"]), cargo_lane()])
@@ -77,16 +85,46 @@ test fn a_resolved_identity_outside_the_admitted_population_is_not_counted() -> 
   same_list(a: c.reached, b: ["a"]) && count(c.unreached) == 0
 }
 
-// One summary line, one line per lane row, one line per unreached identity -- so the receipt
-// carries the population, not only its size.
+// One summary line, one line per lane row, one line per ADMITTED identity, one line per
+// unreached identity -- so the receipt carries both populations, not only their sizes.
 test fn the_receipt_prints_one_line_per_unreached_identity() -> Bool {
   let c = census_of(admitted: ["a", "b", "c"], resolved: [floor_lane(modules: ["a"]), cargo_lane()])
   let lines = census_receipt_lines(c: c)
-  count(lines) == 1 + 2 + 2
+  count(lines) == 1 + 2 + 3 + 2
     && (lines |> filter(fn(l) { contains(l, "\"kind\":\"unreached\",\"module\":\"b\"") }) |> count) == 1
     && (lines |> filter(fn(l) { contains(l, "\"kind\":\"unreached\",\"module\":\"c\"") }) |> count) == 1
     && (lines |> filter(fn(l) { contains(l, "\"kind\":\"unreached\",\"module\":\"a\"") }) |> count) == 0
     && (lines |> filter(fn(l) { contains(l, "\"kind\":\"summary\"") && contains(l, "\"unreached\":2") }) |> count) == 1
+}
+
+// THE TWO ABSENCES COME APART. Three identities reach the receipt in three different kinds:
+// "a" is admitted AND reached (an admitted line, no unreached line), "b" is admitted and
+// UNREACHED (both lines), and "ghost" is not admitted at all (neither line -- it never entered
+// the universe). Before the admitted lines existed, "a" and "ghost" were the same observation:
+// absence from the unreached list. A green census and a typo were indistinguishable.
+test fn the_receipt_separates_reached_unreached_and_never_admitted() -> Bool {
+  let c = census_of(admitted: ["a", "b"], resolved: [floor_lane(modules: ["a", "ghost"])])
+  let lines = census_receipt_lines(c: c)
+  lines_with(lines: lines, k: "admitted", m: "a") == 1
+    && lines_with(lines: lines, k: "admitted", m: "b") == 1
+    && lines_with(lines: lines, k: "admitted", m: "ghost") == 0
+    && lines_with(lines: lines, k: "unreached", m: "a") == 0
+    && lines_with(lines: lines, k: "unreached", m: "b") == 1
+    && lines_with(lines: lines, k: "unreached", m: "ghost") == 0
+}
+
+// The admitted lines are the denominator's population, in admitted order, and their count is
+// what the summary's `"admitted":` field claims -- a reader can check the count against the
+// lines rather than trust it.
+test fn the_receipt_prints_one_admitted_line_per_admitted_identity() -> Bool {
+  let c = census_of(admitted: ["x", "y", "z"], resolved: [floor_lane(modules: ["y"])])
+  let lines = census_receipt_lines(c: c)
+  let admitted = lines |> filter(fn(l) { contains(l, "\"kind\":\"admitted\"") })
+  count(admitted) == 3
+    && (admitted |> filter(fn(l) { contains(l, "\"module\":\"x\"") }) |> count) == 1
+    && (admitted |> filter(fn(l) { contains(l, "\"module\":\"y\"") }) |> count) == 1
+    && (admitted |> filter(fn(l) { contains(l, "\"module\":\"z\"") }) |> count) == 1
+    && (lines |> filter(fn(l) { contains(l, "\"kind\":\"summary\"") && contains(l, "\"admitted\":3") }) |> count) == 1
 }
 
 // THE AUTHORED ROSTER IS ENUMERATED AT IDENTITY GRAIN. A supplied roster of admitted modules over
@@ -221,4 +259,74 @@ test fn w_source_root_ingest_query_admits_the_fixture_modules() -> Bool {
     ModuleIdentityPopulationObserved { modules: ms } =>
       same_list(a: ms, b: ["test.fixture.primitive_egress_decoy.decoy", "test.fixture.primitive_egress_decoy.importer"])
   }
+}
+
+// THE CITED PRODUCER IS NOT A DEAD REFERENCE. The census headers (this module's Rust twin and
+// the live entry) name `claim_executor --required-ci` as the command that prints
+// `admitted-module-identities`. Since 1f6b4107a046 (#13932, 2026-10-14) deleted the flag while
+// 48 files kept citing it, that command exited 2 on an unknown argument, and every reader who
+// trusted the header held a lie -- caught only because a head-built census run reached for it.
+// This claim pins the pairing at the source: the exact flag the headers cite must be an arm of
+// the bin's argument parser, and the bin must print the token the headers promise. A comment
+// can rot; this claim makes the rot fail closed.
+test fn the_headers_cited_producer_is_parsed_by_the_bin_it_names() -> Bool {
+  let bin = filesystem_read(path: "src/v1/stage0/src/bin/claim_executor.rs").content
+  bin.contains("claim_executor --required-ci")
+    && bin.contains("\"--required-ci\"")
+    && bin.contains("admitted-module-identities:")
+}
+
+// THE PRODUCER PARSES THE QUERY FORM TOO. The header of `gunbc.required_lane_resolution_census`
+// tells a reader to settle a single identity with `claim_executor --required-ci --query-module
+// <identity>`; a citation to a flag the binary does not parse is the dead-reference defect this
+// PR exists to close (review 84624), so the flag the doc names must exist as a parser arm.
+test fn the_query_flag_the_header_names_is_parsed_by_the_bin_it_names() -> Bool {
+  let bin = filesystem_read(path: "src/v1/stage0/src/bin/claim_executor.rs").content
+  bin.contains("\"--query-module\"") && bin.contains("module-admission:")
+}
+
+// THE TYPED STATE EXISTS, WITH ITS EVIDENCE FIELDS. "never admitted" is an arm of
+// `ModuleAdmission` carrying the run's SHA and an OPTIONAL deleting commit -- not silence, and
+// not an absence a reader derives from two missing lines (DESIGN section 5). `index-refused` is
+// the third arm: an identity whose state was never observed is not reported as an absent one.
+test fn never_admitted_is_a_typed_arm_carrying_its_evidence() -> Bool {
+  let census_rs = filesystem_read(path: "src/v1/stage0/src/cli_run/required_lane_resolution_census.rs").content
+  census_rs.contains("pub enum ModuleAdmission")
+    && census_rs.contains("NeverAdmitted")
+    && census_rs.contains("run_sha")
+    && census_rs.contains("deleting_commit")
+    && census_rs.contains("IndexRefused")
+}
+
+// THE DELETING COMMIT IS DERIVED, NEVER HAND-WRITTEN (the manager's condition). A hard-coded
+// 40-hex SHA inside the query would be a hand-written attribution -- the defect class DESIGN
+// section 4b calls out (a written-down value posing as an observation). The attribution comes
+// from a git pickaxe over the module header plus a parent-contains check, and the instrument
+// carries no literal SHA.
+test fn the_deleting_commit_is_a_derivation_not_a_written_value() -> Bool {
+  let census_rs = filesystem_read(path: "src/v1/stage0/src/cli_run/required_lane_resolution_census.rs").content
+  census_rs.contains("\"-S\"")
+    && census_rs.contains("\"log\"")
+    && census_rs.contains("\"grep\"")
+    && census_rs.contains("and_then")
+}
+
+// THE RECEIPT AND THE QUERY ARE PAIRED. The census header cannot keep pointing at the typed arm
+// if the arm disappears, and the arm cannot drift from what the census calls "admitted": both
+// names live in sources that must mention each other.
+test fn the_census_header_points_at_the_typed_query_arm() -> Bool {
+  let census_dag = filesystem_read(path: "dag/gunbc/required_lane_resolution_census.dag").content
+  census_dag.contains("--query-module") && census_dag.contains("never-admitted")
+}
+
+// And the pairing the other way, on the printer: the live entry must still import the receipt
+// printer it is claimed to run, so a rename that moves the printer away from the entry (leaving
+// the header pointing at a function nothing calls) fails here rather than in a head-built run
+// nobody schedules.
+test fn the_live_entry_still_imports_the_receipt_printer() -> Bool {
+  let census_rs = filesystem_read(path: "src/v1/stage0/src/cli_run/required_lane_resolution_census.rs").content
+  let live = filesystem_read(path: "dag/gunbc/required_lane_resolution_census_live.dag").content
+  census_rs.contains("claim_executor --required-ci")
+    && census_rs.contains("admitted-module-identities")
+    && live.contains("census_receipt_lines")
 }

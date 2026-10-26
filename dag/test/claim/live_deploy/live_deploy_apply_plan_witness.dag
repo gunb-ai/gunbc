@@ -180,6 +180,7 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegRetract { step: _, leg: _ } => true
     ApplyLegDependency { dep: _ } => true
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => true
   }
 }
 
@@ -307,6 +308,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
     Cons { head: h, tail: rest } =>
       match h {
         ApplyLegDigestEnvFile { step: _, binary: b, env_name: _, dest: _, owner: _ } => b
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => env_binary(legs: rest)
         ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
         ApplyLegInstallFile { step: _, command: _, payload: _ } => env_binary(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
@@ -600,6 +602,7 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => []
   }
 }
 
@@ -619,6 +622,7 @@ fn leg_payload(leg: DeployApplyLeg) -> String {
     ApplyLegRetract { step: _, leg: _ } => ""
     ApplyLegDependency { dep: _ } => ""
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => ""
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => ""
   }
 }
 
@@ -689,8 +693,11 @@ test fn the_tree_publication_converges_through_the_owner_entry_and_reads_back_se
 }
 
 // THE CONVERGENCE UNIT IS BOUND TO THE PLAN'S REVISION AND ITS INSTANCE, AND THE READBACK READS THAT INSTANCE'S
-// RECEIPT (the part of apply_script_stays_within_ci_runner_grants no typed claim carried; its grant half is
-// every_elevated_leg_stays_within_the_ci_runner_grants).
+// RECEIPT BOUND TO THE SAME REVISION (the part of apply_script_stays_within_ci_runner_grants no typed claim
+// carried; its grant half is every_elevated_leg_stays_within_the_ci_runner_grants). The readback leg must carry
+// the SAME candidate identity the unit's ExecStart was written with -- that pairing is what stops a prior run's
+// receipt exiting 0 for this plan (S83469995): the unit answers for a candidate and the readback asks about
+// that candidate, from the same plan field rendered through the same row.
 test fn the_tree_plan_binds_the_plans_revision_and_reads_back_its_receipt() -> Bool {
   let spec = deployment_spec_srv1()
   let legs = full_legs(spec: spec)
@@ -698,6 +705,7 @@ test fn the_tree_plan_binds_the_plans_revision_and_reads_back_its_receipt() -> B
   string_contains(s: unit, pattern: join(["--arg candidate=", deploy_witness_release_revision as String], ""))
     && string_contains(s: unit, pattern: join(["--arg instance_id=", spec.instance_id as String], ""))
     && string_contains(s: join(words_at(legs: legs, step: "convergence-readback"), " "), pattern: "/opt/gunbc/receipts/repository-convergence.json")
+    && string_contains(s: join(words_at(legs: legs, step: "convergence-readback"), " "), pattern: join(["--arg candidate=", deploy_witness_release_revision as String], ""))
 }
 
 // THE TWIN WRITES NEITHER PRODUCTION'S TREE-SYNC ENVIRONMENT NOR PRODUCTION'S SERVE UNIT (was
@@ -850,6 +858,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
         ApplyLegRetract { step: _, leg: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDependency { dep: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => launcher_snapshot_owner(legs: rest)
       }
   }
 }
