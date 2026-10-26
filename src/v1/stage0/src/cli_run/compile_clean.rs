@@ -1700,6 +1700,14 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         }
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => None,
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => None,
+        // INTERIM hand-Rust scaffold, same marker as the pair above
+        // (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7): the
+        // measure-vs-production disagreement carries a type-reference NAME and the
+        // production ROUTE that resolved it (its authority src/v1/00_core.dag
+        // render_diagnostic); neither is a rendered expected/got type shape, so the
+        // pairless reading is the honest one — the sibling reading `UnresolvedType`
+        // already gets. A pair is gained only by this arm being rewritten.
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { .. } => None,
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => None,
         CompilerDiagnostic::UnlistedImportUse { .. } => None,
         CompilerDiagnostic::UnlistedVariantValueUse { .. } => None,
