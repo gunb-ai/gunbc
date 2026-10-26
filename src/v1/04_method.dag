@@ -362,7 +362,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "get": derived_signature_in(profile: FreeMonoidCollectionProfile, names: ["xs", "index"], method: "get", returns: with_optional_cardinality(n: type_variable_node(id: "collection_element"))),
   "reverse": derived_signature(names: ["xs"], method: "reverse", returns: list_of_type_variable(id: "collection_element")),
   "list_push": derived_signature(names: ["xs", "item"], method: "list_push", returns: list_of_type_variable(id: "collection_element")),
-  "hash_combine": BuiltinSignature { params: [BuiltinParam { name: "a", ty: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") }, BuiltinParam { name: "b", ty: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") }], returns: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") },
+  "hash_combine": BuiltinSignature { params: [BuiltinParam { name: "a", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "b", ty: NamedTemplate { name: "String" } }], returns: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") },
   "atom_identity_hash": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") },
   "trace_mark": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: unit_type },
   "observed_peak_resident_bytes": BuiltinSignature { params: [], returns: int_type },
