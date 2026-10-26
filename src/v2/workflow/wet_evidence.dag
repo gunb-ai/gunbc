@@ -505,10 +505,13 @@ fn wet_string_eq(a: String, b: String) -> Bool {
 }
 
 // The second pass accumulates causes AND the keys already emitted, so one dangling (entry, function)
-// pair is named exactly once and in first-occurrence order.
+// pair is named exactly once and in first-occurrence order. `emitted` is a key SET, not a log: the
+// only question ever asked of it is "have I reported this key", which is a membership question, and
+// DESIGN §6 admits no copied-accumulator list scan where a map lookup does the same job (a
+// quadratic fold is fixed regardless of realized n).
 type WetScheduledDeclarationSweep {
   causes: List<WetEvidenceRefusal>
-  emitted: List<String>
+  emitted: Map<String, Int>
 }
 
 // THE SCHEDULE'S OTHER DANGLE: A ROW WHOSE ENTRY NEVER DECLARES ITS FUNCTION.
@@ -528,9 +531,12 @@ type WetScheduledDeclarationSweep {
 // The real-schedule control claim reads it ONCE and binds it (the fleet precedent,
 // test.claim.fleet.runtime_identity_match_witness.test_axis_table_citations_resolve_against_the_declaration_census:
 // an unbound per-row census read cost ~3.6s each and looked like a hang; one bound read is the
-// measured shape). Roots are the ones the schedule's entries actually resolve under: every row of
-// `local_repo_wet_schedule` names a file under `dag/test/claim`, so the control passes that root --
-// NOT `src` (CensusNotRunnable poison, keen-owl-704) and NOT a wider pool paid for per probe.
+// measured shape). WHICH roots the control passes is decided there, at the call site, by the fleet's
+// own authority gunbc.ci.ci_layer_roots.witness_layer_roots -- the same roots the fleet itself is
+// invoked with, so the census can never be narrower than the entry population. This comment names
+// that authority rather than restating its contents (§4c); what it does fix is the boundary the
+// choice must never cross: NOT `src` (CensusNotRunnable poison, keen-owl-704) and NOT a wider pool
+// paid for per probe.
 //
 // WHY MEMBERSHIP IS (rel_path, name) AND NOT A KIND FILTER. The executor's seed filters
 // `item_kind == FnItem`, and `item_kind` (src/v1/stage0/src/v1_compiler_infer_items.rs) classifies a
@@ -559,11 +565,11 @@ fn wet_scheduled_function_declared_causes(
   )
   let swept = fold_list(
     xs: scheduled,
-    empty: WetScheduledDeclarationSweep { causes: [], emitted: [] },
+    empty: WetScheduledDeclarationSweep { causes: [], emitted: empty_map() },
     cons: fn(acc, s) {
       let key = concat(concat(s.entry, "#"), s.function)
       if !map_contains_key(m: membership, key: key)
-        && !contains(xs: acc.emitted, item: key, eq: wet_string_eq) {
+        && !map_contains_key(m: acc.emitted, key: key) {
         WetScheduledDeclarationSweep {
           causes: list_append(
             left: acc.causes,
@@ -573,7 +579,7 @@ fn wet_scheduled_function_declared_causes(
               function: s.function
             }]
           ),
-          emitted: list_append(left: acc.emitted, right: [key])
+          emitted: map_insert(m: acc.emitted, key: key, value: 1)
         }
       } else {
         acc
