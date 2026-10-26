@@ -3876,11 +3876,6 @@ impl ModuleIndexRefusal {
     }
 }
 
-/// The exit arm for the INFALLIBLE index consumers (floor, `claim_batch`, `claim_executor`,
-/// census, compile): a refusal set stops the line with exit 1, counted and located, exactly as the
-/// unparseable arm always did; the header-less and unreadable causes join it. The exit class is
-/// those consumers' standing contract and is not changed here. A caller that answers "what did
-/// this observe" (`gunbc test`) takes the typed set from `try_with_module_path_index` instead.
 /// THE ONE RENDER ARM FOR A CORPUS READER THAT CANNOT READ A SOURCE (DESIGN section 5, Stop
 /// visibly). Every walker over the source roots that needs a file's parse prints through here —
 /// `refuse_module_index` and the declaration-fact walk alike — so two readers over the same roots
