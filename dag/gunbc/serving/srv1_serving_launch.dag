@@ -2,10 +2,9 @@ module gunbc.serving.srv1_serving_launch
 
 import std.types { String, NonEmptyStr, Port, List }
 import std.optional { Absent }
-import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.dissolution { unbound_dissolution }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
@@ -13,7 +12,7 @@ import extdeps.external_authority { CitedFigureStanding }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.huggingface.hub { HubCheckpointManifest }
-import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApiKeySource, LilServeApiKeyFromFile, lil_serve_launch_argv, lil_serve_profile_qwen38_flash_next, lil_serve_hardware_rtx_pro_6000_pcie, lil_serve_environment_entry }
+import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApiKeyFromFile, lil_serve_launch_argv, lil_serve_profile_qwen38_flash_next, lil_serve_hardware_rtx_pro_6000_pcie, lil_serve_environment_entry }
 import extdeps.vllm.local_inference_lab_build { VllmServingImage, local_inference_lab_vllm_image }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, srv1_serving_startup_ground }
@@ -112,39 +111,22 @@ fn srv1_serving_launch_for_port(port: Port) -> LilServeLaunch {
   }
 }
 
-// THE BASH REALIZATION OF THE KEY READ, spelled HERE because this is where the medium is a fact: the
-// container's entrypoint is a `bash -lc` COMMAND STRING (the retained wrapper), and bash performs this
-// substitution at container start, so the key's VALUE never enters the model — only the path it is read
-// from does. extdeps.vllm.lil_serve, the launcher INTERFACE, carries no shell spelling by design
-// (DESIGN 3: an operation forked per transport must not fuse into the interface); a direct-exec
-// realization passes the file's contents read at start instead, through the same interface row. The
-// witness pins the full rendered token sequence to `docker inspect`'s Cmd, so this medium cannot
-// silently change under a caller.
-fn srv1_serving_api_key_substitution(source: LilServeApiKeySource) -> String {
-  match source {
-    LilServeApiKeyFromFile { path: p } => join(["\x24(cat ", p as String, ")"], "")
-  }
-}
-
-// THE SCAFFOLD MARKER for the fragment above (ctrl HAND-SHELL policy; the repo form is
-// gunbc.githooks.githooks_pre_push_fmt_transport_scaffold): a Scaffold disposition bound to the fn,
-// dissolving toward RealizationDispatch, with the restored capability named in the trigger —
-// grammar-EMITTED command substitution from the bash grammar, not this hand-spelled join. DESIGN 6's
-// scaffold tell is "raw shell implementing semantics expressible in .dag": a command substitution IS
-// expressible, so the fragment is transient, marked, and has a named trigger — not silent shell.
-data srv1_serving_api_key_substitution_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.serving.srv1_serving_launch",
-    decl_name: "srv1_serving_api_key_substitution",
-    field: WholeDeclaration,
-  },
-}
-
-data srv1_serving_api_key_substitution_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the bash grammar (extdeps.languages.bash — today invocation only: bash_program_command, bash_script_argv) gains a command-substitution node plus an emit route, so the key-read token becomes a grammar-emitted node consumed by that realization. The capability restored is SHELL GRAMMAR EMIT for command substitution; when it lands, delete this fn, this trigger and the scaffold row together, and re-pin the witness token against docker inspect. Until grammar rows exist there is no .dag emission to consume — which is why the fragment could not land emitted from the start.")
-
-fn srv1_serving_launch_argv() -> List<String> {
-  lil_serve_launch_argv(launch: srv1_serving_launch, api_key_wire: srv1_serving_api_key_substitution(source: srv1_serving_launch.api_key))
+// THE RENDERED ARGV, derived from the typed launch row through the launcher interface — with the
+// KEY-READ TOKEN supplied by the CALLER, never constructed here (ctrl HAND-SHELL policy; review 86807;
+// DESIGN 5: "A dissolution condition describes how admitted debt ends; it does not authorize creating
+// it"). On srv1 the exec-time key read is spelled in exactly ONE place: the retained wrapper body
+// above (srv1_serving_wrapper, whose home gunbc.retained_shell_script exists precisely to sanction
+// retained scripts) — where it belongs, because it is part of the container's actual `bash -lc` command
+// string, read back from `docker inspect`. No fn in this module builds shell syntax out of string
+// literals and passes it to something named argv: that is medium-as-string, and a Scaffold disposition
+// on such a fragment makes the debt honest without authorizing it (a temporary deviation needs
+// operator approval outside the diff, not a marker inside it). A BASH realization — srv1's — passes the
+// wrapper's own substitution token, which the witness pins token-for-token to `docker inspect`'s Cmd; a
+// direct-exec realization reads LilServeApiKeyFromFile.path at start and passes the file's contents
+// instead. The typed source on srv1_serving_launch — the path, carrying no dollar sign — is the interface
+// fact either way (DESIGN 3: the interface carries no shell).
+fn srv1_serving_launch_argv(api_key_wire: NonEmptyStr) -> List<String> {
+  lil_serve_launch_argv(launch: srv1_serving_launch, api_key_wire: api_key_wire)
 }
 
 // The image and the pinned checkpoint the launch runs, exported so the provision derivation and the
@@ -262,8 +244,8 @@ data srv1_serving_unmodeled_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "a secret-reference row (the vault/secret vocabulary gunbc uses for deploy-time secrets) models an idempotently generated key file at a path, which is also the row LilServeApiKeyFromFile's path should point at. SUFFICIENT for retiring this trigger row and narrowing the wrapper to nothing but the docker run."),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_api_key_substitution"),
-    reason: "the key READ at exec time is a hand-spelled bash command substitution — transient, marked scaffold (see srv1_serving_api_key_substitution_scaffold); its trigger row is srv1_serving_api_key_substitution_dissolve_trigger and is not duplicated here.",
-    dissolution: unbound_dissolution(description: "see srv1_serving_api_key_substitution_dissolve_trigger: grammar-emitted command substitution from extdeps.languages.bash. SUFFICIENT for retiring this row together with the scaffold rows."),
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
+    reason: "the key READ at exec time is the bash command substitution inside the retained wrapper body (the cat-substitution on --api-key in the docker run argument) — shell inside the sanctioned retained script, the ONLY place this repository spells it; the model carries the typed file source only (no shell in the interface, no shell-building fn).",
+    dissolution: unbound_dissolution(description: "the bash grammar (extdeps.languages.bash — today invocation only: bash_program_command, bash_script_argv) gains a command-substitution node plus an emit route, so the wrapper's --api-key argument becomes a grammar-emitted node realized from LilServeApiKeyFromFile. The capability restored is SHELL GRAMMAR EMIT for command substitution; when it lands the wrapper's substitution token retires with the docker-run half per srv1_serving_wrapper's dissolves_to. SUFFICIENT for retiring this trigger row."),
   ),
 ]

@@ -69,7 +69,11 @@ type Srv1ServingStartupReading {
   // tokens (num_speculative_tokens=3), and the average acceptance length the engine logged as
   // spec_decode_acceptance_length=2.778 — kept exactly as the log spelled it (a decimal String).
   speculative_method: NonEmptyStr
-  speculative_num_draft_tokens: Int
+  // DRAFT TOKENS proposed per step (log: num_speculative_tokens=3). A token count cannot be negative,
+  // and this record already types its token quantities as TokenCount above; Nat matches the interface
+  // (extdeps.vllm.lil_serve LilServeEngineFlags types its count fields Nat?) so the receipt cannot hold
+  // a value the interface cannot (review 86807, DESIGN 5: unwritable, not validated).
+  speculative_num_draft_tokens: Nat
   speculative_acceptance_length: NonEmptyStr
   // ── the host the engine saw ──────────────────────────────────────────────────────────────────
   nvidia_driver: NonEmptyStr

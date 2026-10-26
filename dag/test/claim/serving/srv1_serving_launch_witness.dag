@@ -9,12 +9,12 @@ import std.algebra { length, string_contains }
 import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
-import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeySource, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
+import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, QWEN3_8_FLASH_NEXT_REVISION }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import gunbc.serving.srv1_serving_launch {
-  srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv, srv1_serving_api_key_substitution,
+  srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
   srv1_serving_image, srv1_serving_pinned_checkpoint, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
 }
@@ -38,11 +38,18 @@ data observed_cmd_tail: List<String> = [
   "--api-key", "$(cat /root/.pool_key)",
 ]
 
+// THE BASH REALIZATION supplies its own key-read token to the render: the wrapper's command
+// substitution, verbatim as `docker inspect` showed it. This is the ONLY place a witness spells the
+// shell, and it spells it as an OBSERVATION (the token read off the container), never as something the
+// model builds — srv1_serving_launch_argv takes it as a parameter (review 86807: no fn constructs
+// shell syntax out of string literals into an argv; the substitution lives in the retained wrapper).
+data bash_realization_key_read: NonEmptyStr = "\x24(cat /root/.pool_key)"
+
 // THE RENDER EQUALS WHAT THE RUNNING CONTAINER SHOWED, element for element — including the key's file
 // read spelled as a shell substitution and no secret value anywhere. This is the check that makes the
 // argv a DERIVATION verified against an OBSERVATION, not a restatement of it.
 test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
-  srv1_serving_launch_argv() == observed_cmd_tail
+  srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == observed_cmd_tail
 }
 
 // NO INVENTED FLAGS: every nvfp4/context/tier value the engine reports comes from lil-serve's own
@@ -160,20 +167,20 @@ test fn a_port_override_changes_only_the_port() -> Bool {
 fn srv1_serving_render_with_port(port: Port) -> List<String> {
   lil_serve_launch_argv(
     launch: srv1_serving_launch_for_port(port: port),
-    api_key_wire: srv1_serving_api_key_substitution(source: srv1_serving_launch_for_port(port: port).api_key),
+    api_key_wire: bash_realization_key_read,
   )
 }
 
-// THE INTERFACE CARRIES NO SHELL, THE REALIZATION SPELLS IT: the key source is a typed file reference
-// in the interface row (no `$` anywhere in it), and the ONLY place the bash substitution is spelled is
-// srv1's realization fn. A caller through a different transport supplies its own wire instead.
+// THE INTERFACE CARRIES NO SHELL, THE CALLING REALIZATION SPELLS IT: the key source is a typed file
+// reference in the interface row (no dollar sign anywhere in it), and the bash substitution exists only
+// in the retained wrapper body — the witness above renders with it as an observed token, and a
+// direct-exec transport would supply the file's contents in its place through the same parameter.
 test fn the_key_is_a_typed_source_in_the_interface_and_shell_only_in_the_realization() -> Bool {
   match srv1_serving_launch.api_key {
     LilServeApiKeyFromFile { path: p } =>
       (p as String) == "/root/.pool_key"
         && !string_contains(s: p as String, pattern: "$")
         && !string_contains(s: p as String, pattern: "cat")
-        && srv1_serving_api_key_substitution(source: srv1_serving_launch.api_key) == "$(cat /root/.pool_key)"
   }
 }
 
@@ -215,7 +222,7 @@ test fn each_retained_wrapper_effect_has_its_own_trigger_row() -> Bool {
   has_row_naming(needle: "TLS self-mint", capability: "openssl")
     && has_row_naming(needle: "events.log", capability: "host-event")
     && has_row_naming(needle: "pool-key generation", capability: "secret-reference")
-    && has_row_naming(needle: "command substitution", capability: "srv1_serving_api_key_substitution_dissolve_trigger")
+    && has_row_naming(needle: "command substitution", capability: "SHELL GRAMMAR EMIT")
 }
 
 fn has_row_naming(needle: String, capability: String) -> Bool {
