@@ -1,7 +1,8 @@
 module extdeps.nvidia.persistence_daemon
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.algebra { trim, string_contains }
+import std.algebra { trim }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -19,7 +20,9 @@ import extdeps.uri { Uri, Https }
 // NOT THIS MODULE'S FACT: what a distribution's packaged unit passes. Ubuntu's
 // nvidia-compute-utils-595-server ships a static unit whose ExecStart carries --no-persistence-mode;
 // that is Canonical's packaging and an observation of one host, so it belongs to the observing layer
-// (the GPU-card converge leg reads the unit it finds), not to NVIDIA's interface here.
+// (the GPU-card converge leg reads the unit it finds), not to NVIDIA's interface here. So is turning a
+// unit's ExecStart line into argv words: that is systemd's command-line syntax, owned by
+// extdeps.systemd.service_exec, and this module takes argv already split.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -59,10 +62,9 @@ fn persistence_daemon_startup_mode(argv: List<String>) -> PersistenceDaemonStart
   }
 }
 
-// An ExecStart command line split into argv words. Unit-file quoting is not modelled here; a line
-// carrying a quote is not split, so it cannot be misread as a set of flags.
-fn persistence_daemon_exec_argv(command_line: String) -> List<String>? {
-  if string_contains(s: command_line, pattern: "\"") || string_contains(s: command_line, pattern: "'") { none } else {
-    Present { value: filter(split(s: command_line, delimiter: " "), w => trim(s: w) != "") }
-  }
-}
+// DESIGN section 3c declared frontier. TRIGGER: a host converge leg imports
+// persistence_daemon_startup_mode to judge the ExecStart it observes, reading that line through
+// extdeps.systemd.service_exec, and refuses a host whose daemon would start with persistence off.
+data persistence_daemon_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a host converge leg imports persistence_daemon_startup_mode to judge the nvidia-persistenced ExecStart it observes (read into argv through extdeps.systemd.service_exec) and refuses a host whose daemon would start with persistence off. SUFFICIENT FOR: the startup mode has a production consumer. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness reads the argv captured from the H11's packaged unit, but no enrolled claim reads a live unit; that read runs host-side in the converge leg." as NonEmptyStr
+)
