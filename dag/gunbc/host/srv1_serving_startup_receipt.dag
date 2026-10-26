@@ -1,8 +1,9 @@
 module gunbc.host.srv1_serving_startup_receipt
 
-import std.types { String, NonEmptyStr, Int, Bool, List, Port }
+import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.optional { Present, Absent }
 import std.measure { TokenCount, token_count }
+import std.nat { Nat }
 import std.decl_ref { decl_ref }
 import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, observed_receipt }
 
@@ -45,9 +46,15 @@ type Srv1ServingStartupReading {
   // ── the context and the cache, as the engine reported them ───────────────────────────────────
   max_model_len: TokenCount
   max_num_batched_tokens: TokenCount
-  max_num_seqs: Int
+  // Sequenced-request count: the SAME carrier the interface row uses (extdeps.vllm.lil_serve
+  // LilServeEngineFlags.max_num_seqs: Nat?) — a count cannot be negative, and the receipt must not
+  // hold values the interface cannot (DESIGN 5: invalid states unwritable).
+  max_num_seqs: Nat
+  // Dimensionless ratio reported by the engine as a percent — no std.measure unit to carry.
   gpu_memory_utilization_percent: Int
-  block_size: Int
+  // TOKENS per KV-cache block (vLLM's unit) — std.measure owns token quantities; a bare Int here
+  // would be a second, unitless representation of what TokenCount already carries above.
+  block_size: TokenCount
   kv_cache_dtype_reported: NonEmptyStr
   // The engine's KV-cache dtype line reads "fp8" (log spelling kv_cache_dtype=fp8); the e4m3 subtype
   // is the engine's default for that spelling and was NOT separately reported — recorded as
@@ -98,11 +105,11 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   weight_load_format: "nvfp4" as NonEmptyStr,
   weight_quantization: "nvfp4_csf" as NonEmptyStr,
   served_model_name: "Qwen3.8-Flash-Next" as NonEmptyStr,
-  max_model_len: token_count(n: 262144),
-  max_num_batched_tokens: token_count(n: 6019),
+  max_model_len: token_count(count: 262144),
+  max_num_batched_tokens: token_count(count: 6019),
   max_num_seqs: 16,
   gpu_memory_utilization_percent: 96,
-  block_size: 64,
+  block_size: token_count(count: 64),
   kv_cache_dtype_reported: "fp8" as NonEmptyStr,
   kv_cache_fp8_subtype_confirmed: false,
   attention_backend: "FLASH_ATTN" as NonEmptyStr,
