@@ -120,6 +120,8 @@ test fn withheld_is_not_zero_and_malformed_is_not_skipped() -> Bool {
     && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P0, 45.6x, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0x24\n"))
     && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P0, 45.62\n"))
     && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P99, 45.62, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0x24\n"))
+    && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P0, 45.62, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0xzz\n"))
+    && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P0, 45.62, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0x\n"))
     && match parse_watts_as_milliwatt(raw: "48.7512") { Absent => true  Present { value: _ } => false }
 }
 

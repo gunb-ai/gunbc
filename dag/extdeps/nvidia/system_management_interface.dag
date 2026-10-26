@@ -8,6 +8,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.numeric.base16 { base16_is_digit_code_point }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -380,10 +382,12 @@ fn parse_celsius(raw: String) -> Celsius? {
   }
 }
 
-// The mask is kept as the device's hex text: it is decoded nowhere yet, and parsing hex here would
-// be another local copy of a digit parser the tree already holds several of.
+// The mask is kept as the device's hex text, because nothing decodes it yet. Its alphabet is still
+// checked against the shared base-16 rows, so "0xzz" is no reading rather than a reported mask.
+// base16_word_value is not the check: it caps at fifteen digits, and this mask prints sixteen.
 fn parse_clock_event_reasons(raw: String) -> NvidiaClockEventReasons? {
-  if starts_with(s: raw, prefix: "0x") && length(raw) > 2 {
+  let digits = raw |> chars |> skip(n: 2)
+  if starts_with(s: raw, prefix: "0x") && length(digits) >= 1 && all(digits, cp => base16_is_digit_code_point(cp: cp)) {
     Present { value: NvidiaClockEventReasons { mask: raw as NonEmptyStr } }
   } else {
     none
