@@ -11,8 +11,8 @@ import gunbc.auth.mtjade1_arrival_federation {
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
-import std.scoped_authorization { AuthorizationScope, AuthorizedAction }
-import std.effect_grant { Write, Execute, filesystem_position }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes }
+import std.scoped_authorization { AuthorizationScope }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
   DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
@@ -97,8 +97,8 @@ import gunbc.auth.authorization_pattern_selection {
 //     realizing it is red unless it states why and what retires the reason.
 //   RealizedUnderApprovedConvergence -- the site performs the effect inside the attempt that claimed
 //     the operator's approval of its lineage root, and only after std.scoped_authorization authorize
-//     admits the effect's own scopes against that grant. No site realizes it yet; the first is the
-//     srv1 host-root adapter registered against gunbc.auth.approval_broker redeem_capability.
+//     admits the effect's own scopes against that grant. No site realizes it yet; the first is a
+//     srv1 host-root write performed under the grant gunbc.fleet.srv1_root_mutation_approval_run admits.
 type OperatorSessionArm
   = GcloudInteractive
   | OperatorTokenFile
@@ -988,7 +988,7 @@ fn ruling_discharge_for(scope: OperatorScopeRuling, site_ref: DeclarationRef) ->
 // transition retires them all.
 data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
   statement: "the effect runs under the CI job user's path-only whole-binary sudo grant, which is root-equivalent and held by the account every srv1 job runs as, so the effect is authorized by no credential that names it (rung drop the_job_user_holds_a_path_unrestricted_root_grant)" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy's host-root effects run inside the attempt that claimed the operator's approval of the srv1 root-mutation job, through an authority adapter registered against gunbc.auth.approval_broker redeem_capability that admits each effect's scopes with std.scoped_authorization authorize before writing and reads it back (operator ruling 2026-10-25, gunbc.design_ruling the_initial_convergence_is_the_only_approval), and the whole-binary rows are deleted from ci_runner_sudo_binaries. SUFFICIENT FOR overlaying the host-root rows as RealizedUnderApprovedConvergence and the argv-pinned per-unit rows as RealizedFederatedGrant. For the host-root rows it is sufficient ONLY once their lineage root, fleet_converge_srv1_root_mutation_environment, itself realizes RealizedApprovalCapability (its github_environment_gate_is_not_the_approval_route reason retired): until then the approval they would inherit is a GitHub environment click, not a broker approval" as NonEmptyStr),
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy's host-root effects run inside the attempt that claimed the operator's approval of the srv1 root-mutation job, under the grant gunbc.fleet.srv1_root_mutation_approval_run admits for that job, each effect's scopes admitted with std.scoped_authorization authorize before writing and reads it back (operator ruling 2026-10-25, gunbc.design_ruling the_initial_convergence_is_the_only_approval), and the whole-binary rows are deleted from ci_runner_sudo_binaries. SUFFICIENT FOR overlaying the host-root rows as RealizedUnderApprovedConvergence and the argv-pinned per-unit rows as RealizedFederatedGrant. Their lineage root, srv1_root_mutation_approval_row, realizes RealizedApprovalCapability (operator ruling 2026-10-26, gunbc.design_ruling srv1_root_mutation_approval_is_filed_by_the_job), so what remains is the per-effect authorize inside the job and the deletion of the whole-binary rows" as NonEmptyStr),
 }
 
 // THE CONTROLLER INSTALL HAS NO GRANT AT ALL, which is not the whole-binary case: dd and install into
@@ -997,23 +997,27 @@ data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
 // run 39284886844). Granting it to the job user would make that account root-equivalent.
 data controller_install_holds_no_grant: DivergenceReason = DivergenceReason {
   statement: "the effect's root writes (dd/install into /etc/systemd/system and /usr/local) are authorized by no grant, so the apply is refused at its first privileged line; the only realization that exists is the operator running it locally" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the controller install's host-root writes run inside the attempt that claimed the operator's approval of the srv1 root-mutation job, through an authority adapter registered against gunbc.auth.approval_broker redeem_capability that admits the install's scopes and bundle identity with std.scoped_authorization authorize before writing and reads the installed release back (operator ruling 2026-10-25, gunbc.design_ruling the_initial_convergence_is_the_only_approval). Sufficient only when no job-user sudoers line names those writes AND the lineage root, fleet_converge_srv1_root_mutation_environment, itself realizes RealizedApprovalCapability (its github_environment_gate_is_not_the_approval_route reason retired): until then the approval the install would inherit is a GitHub environment click, not a broker approval. NOT satisfied by a grant to the job user, nor by the administrator edge" as NonEmptyStr),
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the controller install's host-root writes run inside the attempt that claimed the operator's approval of the srv1 root-mutation job, under the grant gunbc.fleet.srv1_root_mutation_approval_run admits for that job, the install's scopes admitted and bundle identity with std.scoped_authorization authorize before writing and reads the installed release back (operator ruling 2026-10-25, gunbc.design_ruling the_initial_convergence_is_the_only_approval). Sufficient only when no job-user sudoers line names those writes (the lineage root, srv1_root_mutation_approval_row, already realizes RealizedApprovalCapability under operator ruling 2026-10-26, gunbc.design_ruling srv1_root_mutation_approval_is_filed_by_the_job). NOT satisfied by a grant to the job user, nor by the administrator edge" as NonEmptyStr),
 }
 
 // THE srv1 ROOT WRITES ARE ENTAILED BY THE ROOT-MUTATION JOB THE OPERATOR APPROVES. They recur on every
 // provision, so they cannot each ask for a tap, and before the 2026-10-25 ruling that left only the
 // administrator edge. Under the ruling the operator approves the job's convergence once and each of these
 // writes inherits that approval when it is sufficient, so the lineage root is the per-dispatch approval
-// row, fleet_converge_srv1_root_mutation_environment, which selects OperatorApprovedCapability.
+// row, which selects OperatorApprovedCapability.
 //
-// The per-dispatch gate: each fleet-converge dispatch of a srv1 root-mutation job waits on a reviewer
-// click in the srv1-production environment. A human attends it, so it recurs per operator request. The
-// row is ONE value, rostered in the census and carried as the root, so the root's characteristics are
-// the row's by construction rather than by a comparison.
+// The per-dispatch gate (operator ruling 2026-10-26, gunbc.design_ruling
+// srv1_root_mutation_approval_is_filed_by_the_job): the first step of each srv1 root-mutation job files
+// one access request with the broker and the job proceeds only on the operator's device-redeemed
+// approval of it (gunbc.fleet.srv1_root_mutation_approval_run). The scopes it requests are the root's
+// approved_scopes below, one value. The srv1-production environment's required reviewer is a separate
+// row (gunbc.auth.github_deployment_environment srv1_production_protection_standing) that keeps its own
+// divergence until the operator removes the reviewer. The row is ONE value, rostered in the census and
+// carried as the root, so the root's characteristics are the row's by construction.
 data srv1_root_mutation_approval_row: PrivilegedEffectSite = PrivilegedEffectSite {
-  site: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_srv1_root_mutation_environment"),
+  site: decl_ref(module_path: "gunbc.fleet.srv1_root_mutation_approval_run", decl_name: "srv1_root_mutation_after_gate"),
   effect: PrivilegedEffect {
-    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), a required reviewer approves the whole job in the srv1-production GitHub environment" as NonEmptyStr,
+    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), the job files one access request with the approval broker and proceeds only on the operator's device-redeemed approval" as NonEmptyStr,
     frequency: EveryOperatorRequest,
     reversibility: ReversibleByReapply,
     surface: ApiSurface,
@@ -1022,29 +1026,14 @@ data srv1_root_mutation_approval_row: PrivilegedEffectSite = PrivilegedEffectSit
     billing: NoBillingConsequence,
     witness_discharge: NoWitnessDischarge,
   },
-  realized: RealizedHumanStep,
-  divergence_reason: Present { value: github_environment_gate_is_not_the_approval_route },
-}
-
-// WHAT THE ROOT-MUTATION APPROVAL GRANTS, as the scopes its access request asks for: writes under /etc and
-// /usr/local (units, slices, release files, sudoers drop-ins) and the apt-get package install. Each
-// inheriting write states the narrower scopes it exercises, and admission refuses one this set does not
-// cover, so a write outside these trees cannot inherit the approval by declaring the root.
-data srv1_root_install_action: AuthorizedAction = "install" as AuthorizedAction
-data srv1_root_package_action: AuthorizedAction = "install-package" as AuthorizedAction
-
-fn srv1_root_write_scope(path: List<String>) -> AuthorizationScope {
-  AuthorizationScope { verb: Write, resource: filesystem_position(path: path), action: srv1_root_install_action }
-}
-
-data srv1_root_apt_get_scope: AuthorizationScope = AuthorizationScope {
-  verb: Execute, resource: filesystem_position(path: ["usr", "bin", "apt-get"]), action: srv1_root_package_action,
+  realized: RealizedApprovalCapability,
+  divergence_reason: none,
 }
 
 data srv1_root_mutation_approval_root: ConvergenceRoot = ConvergenceRoot {
   site: srv1_root_mutation_approval_row.site,
   effect: srv1_root_mutation_approval_row.effect,
-  approved_scopes: [srv1_root_write_scope(path: ["etc"]), srv1_root_write_scope(path: ["usr", "local"]), srv1_root_apt_get_scope],
+  approved_scopes: srv1_root_mutation_approved_scopes,
 }
 
 fn srv1_host_root_effect(subject: NonEmptyStr, required: List<AuthorizationScope>) -> PrivilegedEffect {
