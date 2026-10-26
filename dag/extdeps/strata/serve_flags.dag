@@ -1,0 +1,92 @@
+module extdeps.strata.serve_flags
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { TokenCount, Mebibyte, PositiveSlotCount }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+
+// THE STRATA ENGINE'S SERVING FLAGS, as the upstream documents them at commit
+// 8183c6b67162340c09b67360860177c577a65f2e of https://github.com/Niko1221/Strata (README.md "Good to
+// know", docs/BATCHING.md option table, docs/DETAILS.md KV cache, expert-mapping and CPU worker
+// sections). Only the flags a serving cell pins are modeled; the rest of the CLI is not, and a flag
+// added here is added with its citation. The ARM forward-port this repository builds from is an
+// observation of ours and lives in gunbc.serving.strata_arm_port, never here (DESIGN section 3,
+// external upstream decomposition).
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/Niko1221/Strata/tree/8183c6b67162340c09b67360860177c577a65f2e/docs" as NonEmptyStr
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.strata.serve_flags",
+      decl_name: "StrataServeFlags",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// `--kv` (docs/DETAILS.md): 4-bit q4_0 (engine 0.1.8), 8-bit int8, and the hybrid k8v4 (engine
+// 0.1.25, PR #120). Leaving the flag off keeps the engine's default format, which these docs do not
+// name, so it has no arm here rather than a guessed one.
+type StrataKvFormat
+  = StrataKvQ4_0
+  | StrataKvInt8
+  | StrataKvK8v4
+
+// `--kv-resident N` (docs/DETAILS.md, docs/BATCHING.md): only the attention's last N tokens of KV
+// stay in VRAM and the rest streams from a pinned host copy. Without the flag the whole KV cache is
+// resident.
+type StrataKvResidency
+  = StrataKvResidentWindow { tokens: TokenCount }
+  | StrataKvFullyResident
+
+// `--batch-groups` (docs/BATCHING.md option table): with a layer split, the slots flow through the
+// GPU stages in G pipelined groups, G dividing the slot count; `auto` is one group per stage.
+type StrataBatchGroups
+  = StrataBatchGroupsAuto
+  | StrataBatchGroupsCount { groups: PositiveSlotCount }
+
+// `--layer-split` (docs/BATCHING.md): `auto`, or explicit stage boundaries such as `12,24,36`, one
+// boundary fewer than the GPU count. `--trim-stage-weights` needs the explicit form.
+type StrataLayerSplit
+  = StrataLayerSplitAuto
+  | StrataLayerSplitAt { boundaries: List<Nat> }
+
+// `--trim-stage-weights` (docs/BATCHING.md): every GPU loads only the dense weights of its own layers;
+// it applies only with an explicit `--layer-split`, so it is an arm of the explicit split rather than
+// a free Bool beside a split it cannot follow.
+type StrataStagePlacement
+  = StrataSingleStage
+  | StrataSplitStages { split: StrataLayerSplit, trim_stage_weights: Bool }
+
+// `--mmap-experts` (docs/DETAILS.md): the experts are mapped from one file and shared by every engine
+// on the host; otherwise each engine holds its own copy.
+type StrataExpertResidency
+  = StrataExpertsPrivate
+  | StrataExpertsMapped
+
+type StrataServeFlags {
+  kv_format: StrataKvFormat
+  kv_residency: StrataKvResidency
+  // `--max-context N`
+  max_context: TokenCount
+  // `--parallel N` (README.md): slots answered at once; one by default.
+  parallel: PositiveSlotCount
+  batch_groups: StrataBatchGroups?
+  // `--pool-workers N` (docs/DETAILS.md): CPU expert-pool worker threads, used as given; absent lets
+  // the engine pick.
+  pool_workers: Nat?
+  stages: StrataStagePlacement
+  experts: StrataExpertResidency
+  // `--vram-reserve-mib N` (docs/DETAILS.md)
+  vram_reserve: Mebibyte?
+}
