@@ -528,11 +528,11 @@ type WetScheduledDeclarationSweep {
 // WHY THE POPULATION IS A PARAMETER AND NOT A READ. This fold is pure over `declared`, the same
 // way `execution` is handed to `local_repo_wet_finalize`: fixtures stay fixtures. The population is
 // v2.std.decl_index's declaration census -- the EXISTING index, not a grep and not a second parser.
-// The real-schedule control claim reads it ONCE and binds it (the fleet precedent,
-// test.claim.fleet.runtime_identity_match_witness.test_axis_table_citations_resolve_against_the_declaration_census:
-// an unbound per-row census read cost ~3.6s each and looked like a hang; one bound read is the
-// measured shape). WHICH roots the control passes is decided there, at the call site, by the fleet's
-// own authority gunbc.ci.ci_layer_roots.witness_layer_roots -- the same roots the fleet itself is
+// The real-schedule control claim reads it ONCE and binds it -- the fleet precedent,
+// test.claim.fleet.runtime_identity_match_witness.test_axis_table_citations_resolve_against_the_declaration_census,
+// which carries the measured cost shape of per-row unbound census reads (its own receipt, not
+// restated here); one bound read is the shape this control copies. WHICH roots the control passes
+// is decided there, at the call site, by the fleet's own authority gunbc.ci.ci_layer_roots.witness_layer_roots -- the same roots the fleet itself is
 // invoked with, so the census can never be narrower than the entry population. This comment names
 // that authority rather than restating its contents (§4c); what it does fix is the boundary the
 // choice must never cross: NOT `src` (CensusNotRunnable poison, keen-owl-704) and NOT a wider pool
