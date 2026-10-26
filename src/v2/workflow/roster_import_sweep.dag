@@ -1079,11 +1079,22 @@ type RosterApplied
 
 // THE PURE SPLICE the apply step performs, separate from its filesystem effects so the controls run it on text.
 fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
+  // THE GUARD'S ONE PARSE (tidy-ant-251, 2026-10-26): the splice guard asks the parser what the import declarations
+  // and the module header ARE -- never what the text looks like. Parsed once from the bytes the write starts from;
+  // every edit in the fold is checked against it (the fold mutates only text BELOW a still-checked offset, and label
+  // edits land strictly below every import edit, so a checked extent's bytes are exactly the bytes this parse saw).
+  match roster_splice_facts(path: "roster_applied", before: before) {
+    Absent => RosterApplyRefused { reason: RefusalParseRefused }
+    Present { value: facts } => roster_applied_with_facts(before: before, outcome: outcome, facts: facts)
+  }
+}
+
+fn roster_applied_with_facts(before: String, outcome: RosterOutcome, facts: RosterSpliceFacts) -> RosterApplied {
   match outcome {
     RosterClean => RosterApplyWritten { content: before }
     RosterRefused { reason: reason } => RosterApplyRefused { reason: reason }
     RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
-      roster_splice(before: before, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
+      roster_splice(before: before, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line), facts: facts)
     RosterLabelEdits { edits: edits } => roster_label_splices(before: before, edits: edits)
     // LABELS FIRST (they sit below every import edit, so the edit offsets stay valid), then the import edits LAST-FIRST
     // by start, which keeps earlier edits' offsets valid across later ones' length changes. Every edit re-verifies its
@@ -1099,7 +1110,7 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
               cons: fn(acc, e) {
                 match acc {
                   RosterApplyRefused { reason: r } => RosterApplyRefused { reason: r }
-                  RosterApplyWritten { content: c } => roster_splice(before: c, start: e.start, end: e.end, replacement: roster_edit_replacement(text: e.text, own_line: e.own_line))
+                  RosterApplyWritten { content: c } => roster_splice(before: c, start: e.start, end: e.end, replacement: roster_edit_replacement(text: e.text, own_line: e.own_line), facts: facts)
                 }
               }
             )
@@ -1118,7 +1129,7 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
             Present { value: r } => RosterApplyRefused { reason: r }
             Absent =>
               if roster_labels_below(labels: labels, at: end) {
-                roster_splice(before: relabelled, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
+                roster_splice(before: relabelled, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line), facts: facts)
               } else {
                 RosterApplyRefused { reason: RefusalExtentMismatch }
               }
@@ -1208,13 +1219,13 @@ fn roster_label_splices_admitted(before: String, edits: List<RosterLabelEdit>) -
   )
 }
 
-fn roster_splice(before: String, start: Int, end: Int, replacement: String) -> RosterApplied {
+fn roster_splice(before: String, start: Int, end: Int, replacement: String, facts: RosterSpliceFacts) -> RosterApplied {
   let octets = bytes_octets(b: utf8_encode_bytes(s: before))
   let from = roster_scalar_boundary(octets: octets, byte: start)
   let to = roster_scalar_boundary(octets: octets, byte: end)
   if from < 0 || to < from {
     RosterApplyRefused { reason: RefusalExtentNotOnCharBoundary }
-  } else if !roster_extent_holds(before: before, start: from, end: to) {
+  } else if !roster_extent_holds(start: from, end: to, facts: facts, octets: octets) {
     RosterApplyRefused { reason: RefusalExtentMismatch }
   } else if length(xs: split(s: substring(s: before, start: from, end: to), delimiter: "//")) > 1 {
     RosterApplyRefused { reason: RefusalExtentHasAnnotation }
@@ -1272,28 +1283,75 @@ fn roster_is_continuation(octet: Int) -> Bool {
 // its closing brace (roster_apply_edit also refuses an extent carrying a `//` annotation, which the replacement would erase); an insertion point is the end of an import block. Offsets here are scalar offsets.
 // An insertion holds where the parse put it: after an import block's closing brace, or (a module with no import yet) at the
 // end of the module header's line.
-fn roster_ends_module_header_line(before: String, at: Int) -> Bool {
-  let line = fold_list(xs: split(s: substring(s: before, start: 0, end: at), delimiter: "\n"), empty: "", cons: fn(_last, l) { l })
-  substring(s: line, start: 0, end: 7) == "module " && substring(s: before, start: at, end: at + 1) == "\n"
+// THE SPLICE GUARD ASKS THE PARSER, NEVER THE TEXT (tidy-ant-251's ruling 2026-10-26, DESIGN section 3 single authority,
+// section 6b fix at the earliest unjustified boundary). The import edit is either a ZERO-WIDTH INSERT at the end of the
+// last import declaration (or, with no imports, at the end of the module header) or a REPLACEMENT of one import
+// declaration -- and those are exactly the parser's own import-decl and module-header extents. So the guard accepts a
+// zero-width anchor iff it equals a parsed import-decl end (or the parsed header end) and a replacement iff its extent
+// equals a parsed import-decl range, both converted from the parser's UTF-8 bytes to scalars by the same boundary rule
+// the splice itself uses. The three text leaves this replaces (a '}'-preceded anchor, a column-0 "module " header line,
+// a column-0 "import " line) were a SECOND authority beside the parser: the '}' leaf refused the wave's own plan on the
+// six wave files whose LAST import is braceless (measured: single-leg applies over dag/extdeps/crypto/seeded_filler.dag
+// refuse at extent-mismatch, rc=1, int-only and nat-only alike), and the column-0 leaves would miss an indented or
+// multi-line import the parser accepts. The plan already anchors on these same parsed extents (roster_last_decl_end,
+// roster_module_header_end), so plan and guard agree by identity: the guard re-reads `before` with the module's ONE
+// tokenize/parse route, and the parsed facts travel with the splice.
+type RosterSpliceFacts {
+  imports: List<ImportDeclFact>
+  header_end: Int?
 }
 
-// THE BARE-IMPORT ANCHOR (the wave's measured defect, 2026-10-26): roster_import_names_edit zero-width-inserts at the
-// end of the LAST import declaration, and a BRACELESS top-level import (import extdeps.tools.openssl) ends at a letter,
-// not a brace -- the old guard refused the wave's own plan at extent-mismatch (measured: a single-leg apply over
-// dag/extdeps/crypto/seeded_filler.dag; 6 of the wave's 908 files have a braceless LAST import). The insertion is still
-// sound and stays its own line: the line AT the anchor is a top-level import line (column 0, where only top-level items
-// sit) and the anchor is that line's end, so the rendered import cannot join any construct. The guard learns the shape
-// the parser itself produces -- a hand anchor is not allowed -- and the REPLACEMENT arm is untouched.
-fn roster_ends_bare_import_line(before: String, at: Int) -> Bool {
-  let line = fold_list(xs: split(s: substring(s: before, start: 0, end: at), delimiter: "\n"), empty: "", cons: fn(_last, l) { l })
-  substring(s: line, start: 0, end: 7) == "import " && substring(s: before, start: at, end: at + 1) == "\n"
+// The parse the guard reads, over the exact bytes being spliced: the module's one tokenize/parse route (no normalization
+// -- the import-decl facts are read off the parse tree, as the plan reads them). A text that will not parse here cannot
+// have come from the plan, so the caller refuses it.
+fn roster_splice_facts(path: String, before: String) -> Optional<RosterSpliceFacts> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: before, file: symbol_intern_lexeme(lexeme: path), prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: artifact, diagnostics: _ } =>
+              Present {
+                value: RosterSpliceFacts {
+                  imports: roster_import_decl_facts(parse_root: artifact.tree, spans: artifact.span_index),
+                  header_end: roster_module_header_end(parse_root: artifact.tree, spans: artifact.span_index)
+                }
+              }
+          }
+      }
+  }
 }
 
-fn roster_extent_holds(before: String, start: Int, end: Int) -> Bool {
+fn roster_scalar_in(octets: List<Int>, byte: Int) -> Int {
+  roster_scalar_boundary(octets: octets, byte: byte)
+}
+
+fn roster_int_list_has(xs: List<Int>, target: Int) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { if acc { true } else { x == target } })
+}
+
+fn roster_byte_range_list_has(xs: List<RosterByteRange>, start: Int, end: Int) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, r) { if acc { true } else { r.start == start && r.end == end } }
+  )
+}
+
+fn roster_extent_holds(start: Int, end: Int, facts: RosterSpliceFacts, octets: List<Int>) -> Bool {
+  let import_ends = list_map(xs: facts.imports, f: fn(d) { roster_scalar_in(octets: octets, byte: d.end) })
+  let import_ranges = list_map(xs: facts.imports, f: fn(d) { RosterByteRange { start: roster_scalar_in(octets: octets, byte: d.start), end: roster_scalar_in(octets: octets, byte: d.end) } })
   if start == end {
-    substring(s: before, start: start - 1, end: start) == "}" || roster_ends_module_header_line(before: before, at: start) || roster_ends_bare_import_line(before: before, at: start)
+    let at_header_end = match facts.header_end {
+      Present { value: h } => roster_scalar_in(octets: octets, byte: h) == start
+      Absent => false
+    }
+    roster_int_list_has(xs: import_ends, target: start) || at_header_end
   } else {
-    substring(s: before, start: start, end: start + 7) == "import " && substring(s: before, start: end - 1, end: end) == "}"
+    roster_byte_range_list_has(xs: import_ranges, start: start, end: end)
   }
 }
 
@@ -3415,6 +3473,7 @@ fn roster_rename_control_names() -> List<String> {
     "wave-wrong-binding",
     "wave-candidate-wrong-binding",
     "wave-prefix-home",
+    "wave-bare-import",
     "wave-applies-text",
     "wave-applies-half-imported",
     "wave-imported-labels"
@@ -3474,6 +3533,15 @@ fn roster_wave_control_named() -> String {
 // rename the int row's keyed head (its name resolves; leaving it spelled to_string strands the wave's census).
 fn roster_wave_control_int_imported() -> String {
   "module c.wave\n\nimport std.integer { int_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { to_string(v) + to_string(n) }\n"
+}
+
+// Authored with a BRACELESS (bare) last import AND a multi-byte comment BEFORE it: the wave's measured defect
+// (2026-10-26, and wise-moth-707's byte/scalar question). The combined import edit inserts at the bare line's parsed
+// end (109, a byte offset past the 😀 é 日本 comment -- so the guard's byte->scalar conversion is what is pinned),
+// which the text-guard refused as extent-mismatch. Keys at 7:34 / 7:49; the label plane renames each keyed head and
+// inserts ' value: ' after each '('.
+fn roster_wave_control_bare_import() -> String {
+  "module c.wave\n\nimport std.types { String }\n// 😀 é 日本 between the imports\nimport extdeps.tools.openssl\n\nfn f(v: Int, n: Nat) -> String { to_string(v) + to_string(n) }\n"
 }
 
 // Both imports visible: the label plane renames both keyed heads and the write lands no import edit.
@@ -3598,6 +3666,7 @@ fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules
   roster_control_verdict(name: "wave-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-wrong-binding", fixture: roster_wave_control_wrong_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=int_to_decimal_string expected-home=std.integer bound-home=std.types.int_to_decimal_string", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-candidate-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-candidate-wrong-binding", fixture: roster_wave_control_double_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.types.nat_to_decimal_string", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-prefix-home", fail: roster_wave_control_expect_refusal(name: "wave-prefix-home", fixture: roster_wave_control_prefix_home(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.nat.compat.nat_to_decimal_string", prepared: prepared, lex: lex)),
+  roster_control_verdict(name: "wave-bare-import", fail: roster_wave_control_expect(name: "wave-bare-import", fixture: roster_wave_control_bare_import(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:7:34"], nk: ["control/wave.dag:7:49"]), want: "EDIT control/wave.dag 109 109 \\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-text", fail: roster_wave_control_expect_applied(name: "wave-applies-text", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat, b: Bool) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) + to_string(b) }\n", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-half-imported", fail: roster_wave_control_expect_applied(name: "wave-applies-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex))]
   let imported_labels = roster_control_verdict(name: "wave-imported-labels", fail: roster_wave_control_expect(name: "wave-imported-labels", fixture: imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:43"], nk: ["control/wave.dag:6:58"]), want: "LABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex))
