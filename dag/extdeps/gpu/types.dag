@@ -3,7 +3,7 @@ module extdeps.gpu.types
 import std.types { Int, NonEmptyStr, String, List, Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count, Micrometer, GigaTensorOperationsPerSecond }
+import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, watt_count, Bandwidth, bandwidth_count, Micrometer, GigaTensorOperationsPerSecond }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
@@ -243,14 +243,54 @@ type GpuBoardPower {
 
 type GpuNamedPowerPoint { name: NonEmptyStr, power: Watt }
 
-type GpuBoardCatalogRow {
+// Whether the vendor states the board can be put in a zero-power state, which a sleep or park policy
+// must read before it can select one. NVIDIA's briefs print it as a row ("Zero Power").
+type GpuZeroPowerSupport = ZeroPowerSupported | ZeroPowerNotSupported
+
+// WHAT A BRIEF STATES, AS AUTHORED. The citations point at these fields.
+type GpuBoardCatalogFacts {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
   gpu: GpuModelCatalogRow
   gpu_count: Nat
   board_power: GpuBoardPower
+  zero_power: GpuZeroPowerSupport
   thermal: GpuThermalSolution
   host_link: PcieLink
   pci_device_id: PciDeviceId
   figure_citations: List<FactCitation>
+}
+
+// THE ROW A CONSUMER READS, AND THE ONLY WAY IN REFUSES (the std.allocation_roster pattern). A board
+// with no GPU, a power range whose minimum is above its maximum, or a default or named point outside
+// the range has no GpuBoardCatalogRow, so no consumer can be handed one. The authored facts record is
+// still writable with any figures; it is admit_gpu_board that refuses them, so the invalid state is
+// unconstructible in the row and refused at one fallible ingress, not impossible to author.
+type GpuBoardCatalogRow sole_constructor { facts: GpuBoardCatalogFacts }
+
+type GpuBoardRefusal
+  = BoardCarriesNoGpu
+  | BoardPowerRangeInverted
+  | BoardPowerDefaultOutsideRange
+  | BoardNamedPointOutsideRange { name: NonEmptyStr }
+
+type GpuBoardAdmission
+  = GpuBoardAdmitted { row: GpuBoardCatalogRow }
+  | GpuBoardRefused { refusal: GpuBoardRefusal }
+
+fn gpu_board_power_within(p: GpuBoardPower, w: Watt) -> Bool {
+  watt_count(w) >= watt_count(p.minimum) && watt_count(w) <= watt_count(p.maximum)
+}
+
+fn admit_gpu_board(facts: GpuBoardCatalogFacts) -> GpuBoardAdmission {
+  let p = facts.board_power
+  if facts.gpu_count == 0 { GpuBoardRefused { refusal: BoardCarriesNoGpu } }
+  else if watt_count(p.minimum) > watt_count(p.maximum) { GpuBoardRefused { refusal: BoardPowerRangeInverted } }
+  else if !gpu_board_power_within(p: p, w: p.default) { GpuBoardRefused { refusal: BoardPowerDefaultOutsideRange } }
+  else {
+    match first(filter(p.named_points, n => !gpu_board_power_within(p: p, w: n.power))) {
+      Present { value: n } => GpuBoardRefused { refusal: BoardNamedPointOutsideRange { name: n.name } }
+      Absent => GpuBoardAdmitted { row: GpuBoardCatalogRow { facts: facts } }
+    }
+  }
 }
