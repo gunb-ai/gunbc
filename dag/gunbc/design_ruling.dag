@@ -367,6 +367,20 @@ data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRul
   provenance: "Operator ruling with the v1 withdrawal (gunbc#13658, second round: the required job \"requires fresh emission/build of both retained products\"): the subjects of gunbc.emitted_subject_build_gate emitted_subject_build_rows are the two retained compiler products, //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, and a third subject row is a growth the operator vetoed. Until 2026-10-24 the veto lived only as a comment on test.claim.compiler_gate_emit_build_lane_witness the_job_runs_both_retained_emit_build_subjects, which quotes the roster as remaining the two compiler products; that comment landed in gunbc#13641 and its quotation has no other source in the repository. Re-raised and confirmed on 2026-10-24 by merry-fox-82 when gunbc#14984 built a native control over gunbc.fleet.fleet_convergence_verdict: it stays run by name, and enrolling it would reverse this ruling and goes to the operator.",
 }
 
+data pattern_atom_naming_a_visible_value_is_never_a_binder: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pattern_atom_naming_a_visible_value_is_never_a_binder"),
+  decided: "2026-10-25",
+  section: "5",
+  provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): a bare atom in pattern position is a binder unless it names something the arm can already see, and then it never silently shadows it. A pattern atom naming a frame value refuses with one cause covering both readings (rename to bind, or compare with an equality guard), replacing binder_hides_visible_value for pattern atoms at either pattern position; a pattern atom naming a module-level value refuses only for a `data` constant, since a module function stays admitted exactly as root shadowing always allowed. It is decided at v2.compiler.resolve resolve_pattern_atom_naming_a_frame_value, with the module-level half in resolve_pattern_atom_names_module_value.",
+}
+
+data unread_catch_all_binder_refuses: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "unread_catch_all_binder_refuses"),
+  decided: "2026-10-25",
+  section: "5",
+  provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): with a bare arm atom now binding its arm, an arm that never reads its own catch-all binder is a mistake the author should hear about, not a binding that silently exists — it refuses at resolve, and the remedy the refusal names is to write `_`. Decided at v2.compiler.resolve resolve_catch_all_binder_read_gate; the widening-over-a-nullary companion refusal lives at v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     emit_build_subjects_are_the_two_compiler_products,
@@ -415,6 +429,8 @@ fn design_rulings() -> List<DesignRuling> {
     instrument_measurement_queues_run_in_parallel,
     approval_enrolment_is_google_sign_in,
     drain_wait_bound_is_derived_from_declared_job_timeouts,
+    pattern_atom_naming_a_visible_value_is_never_a_binder,
+    unread_catch_all_binder_refuses,
   ]
 }
 

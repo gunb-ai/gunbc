@@ -4124,8 +4124,9 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
 // parameter and lambda binders. Frame values and module-level names alike are decided here: a frame value
 // refuses directly, and a root name goes to resolve_pattern_atom_names_module_value, which refuses only a
 // `data` constant — a module function stays admitted, as root shadowing always allowed (the symbol index
-// tells the two apart through v2.std.symbol_index type_decl_member_shape). Decided by tidy-ant-251
-// (Manager 1), 2026-10-25. The first such atom, in the pre-order resolution binds them.
+// tells the two apart through v2.std.symbol_index type_decl_member_shape). Ruling:
+// gunbc.design_ruling pattern_atom_naming_a_visible_value_is_never_a_binder.
+// The first such atom, in the pre-order resolution binds them.
 fn resolve_pattern_atom_naming_a_frame_value(ctx: ResolveContext, pat: Node) -> Optional<Node> {
   fold(pattern_binders(ctx: ctx, pat: pat), init: Absent, f: fn(found, c) {
     match found {
@@ -4190,7 +4191,7 @@ fn resolve_candidate_is_value(ctx: ResolveContext, candidate: LexicalBindingCand
 // record: an occurrence in the arm answered by this binder's site, other than the pattern itself.
 // A misspelling whose own arm READS it (`Absnet => Absnet`) is judged in infer, against the alternatives
 // the earlier arms leave it (v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary).
-// Decided by tidy-ant-251 (Manager 1), 2026-10-25, message to jolly-cat-271 on #15125.
+// Ruling: gunbc.design_ruling unread_catch_all_binder_refuses.
 fn resolve_catch_all_binder_read_gate(ctx: ResolveContext, pat: Node, walk: ResolveNodeWalk) -> ResolveNodeWalk {
   match walk {
     // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
