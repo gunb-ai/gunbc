@@ -12,7 +12,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 // Each row below is one debt, bound to the declaration that carries it, with the trigger that retires it.
 
 // 1. ROUTER POLICY IN THE PROXY, bound to router_dev_config, which renders every Lua carrier (init, access,
-// models, stats, response headers, log lines). gunbc.serving.router_dev_policy decides in OpenResty Lua what the S3
+// models, stats, response headers, observed usage, log lines). gunbc.serving.router_dev_policy decides in OpenResty Lua what the S3
 // callout service is to decide. Against gunbc.serving.router_realization's forbidden list it is:
 //   - its own load score: owned-first priority, then spare active turns per upstream, counted in a lua_shared_dict;
 //   - direct host choice: the upstream is chosen in the proxy from upstreams.json, not taken from a grant;
@@ -115,7 +115,7 @@ data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
 data router_dev_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
-    reason: "Router policy in the proxy (row 1): key check, stickiness, active-turn caps, model routing and tallies decided in OpenResty Lua (router_dev_init_lines, router_dev_access_lines, router_dev_models_lines, router_dev_stats_lines, router_dev_header_lines, router_dev_log_lines, all rendered by router_dev_config).",
+    reason: "Router policy in the proxy (row 1): key check, stickiness, active-turn caps, model routing and tallies decided in OpenResty Lua (router_dev_init_lines, router_dev_access_lines, router_dev_models_lines, router_dev_stats_lines, router_dev_header_lines, router_dev_body_lines, router_dev_log_lines, all rendered by router_dev_config).",
     dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.serving_router", decl_name: "serving_router_authz_callout"))
   ),
   frontier_row_decl(

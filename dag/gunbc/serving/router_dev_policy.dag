@@ -2,7 +2,7 @@ module gunbc.serving.router_dev_policy
 
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
-import std.measure { second }
+import std.measure { second, byte_size }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -12,7 +12,7 @@ import extdeps.proxy.openresty {
   PrefixMatch, ListenTlsOn, SslCertificate, SslCertificateKey, SetEmptyVariable, SetLiteral, ProxyHttpVersion11, ProxyBufferingDirective,
   ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxyReadTimeout, ProxySetHeader, HeaderFromVariable,
   HeaderPrefixedVariable, ProxySslServerNameOn, ProxySslName, ProxySslVerifyOn, ProxySslVerifyDepth, ProxySslTrustedCertificate,
-  ProxyPassSchemeAndHostVariables, LuaPhaseBlock, InitPhase, AccessPhase, ContentPhase, HeaderFilterPhase, LogPhase, LuaSharedDict, ProxyBufferingOff,
+  ProxyPassSchemeAndHostVariables, LuaPhaseBlock, InitPhase, AccessPhase, ContentPhase, HeaderFilterPhase, BodyFilterPhase, LogPhase, LuaSharedDict, ProxyBufferingOff,
   ProxyRequestBufferingOff, ProxyNextUpstreamOff, ClientMaxBodySize, ClientBodyBufferSize, nginx_token, nginx_variable, render_nginx_directives,
 }
 
@@ -54,6 +54,7 @@ fn router_dev_init_lines(state_dir: String, alias: String) -> List<String> {
     "for line in (slurp(dir .. '/client_keys') or ''):gmatch('[^\\r\\n]+') do ROUTER_KEYS[line] = true end",
     "ROUTER_UPSTREAMS = cjson.decode(slurp(dir .. '/upstreams.json') or '[]') or \{}",
     "ROUTER_ALIAS = '" + alias + "'",
+    "ngx.shared.router_state:add('meter:epoch', tostring(ngx.now()))",
     "function router_comparison(model)",
     "  local quant = model == 'qwen3.8-flash-next-iq3_s' and 'iq3_s' or (model == 'Qwen3.8-Flash-Next' and 'nvfp4' or (model == ROUTER_ALIAS and 'mixed' or nil))",
     "  if not quant then return nil end",
@@ -117,6 +118,7 @@ fn router_dev_access_lines() -> List<String> {
     "for _, u in ipairs(ROUTER_UPSTREAMS) do if body.model == ROUTER_ALIAS or body.model == u.model then candidates[u.name] = u end end",
     "if next(candidates) == nil then return refuse(404, 'invalid_request_error', 'unknown model') end",
     "local stuck = state:get('session:' .. session)",
+    "if stuck and not candidates[stuck] then for _, u in pairs(candidates) do for _, old in ipairs(u.retiring_names or \{}) do if stuck == old then stuck=u.name end end end end",
     "if stuck and not candidates[stuck] and body.model ~= ROUTER_ALIAS then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
     "local pick, priority, spare = nil, nil, -1",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
@@ -169,10 +171,49 @@ fn router_dev_header_lines() -> List<String> {
   ]
 }
 
+// Observe reported usage without changing response bytes. Supported carriers are ordinary
+// completion JSON and OpenAI single-data-line SSE. Memory is bounded at 2 MiB per
+// JSON document/SSE line; missing or oversized usage is reported as unmetered work.
+fn router_dev_body_lines() -> List<String> {
+  [
+    "if not ngx.ctx.route or ngx.ctx.route.overflow or ngx.status ~= 200 then return end",
+    "if ngx.arg[2] then ngx.ctx.usage_complete=true end",
+    "if ngx.ctx.usage_error then return end",
+    "local cjson = require('cjson.safe')",
+    "local function observe(raw)",
+    "  local v=cjson.decode(raw) local u=type(v)=='table' and v.usage",
+    "  if type(u)~='table' then return end",
+    "  local a,b=u.prompt_tokens,u.completion_tokens",
+    "  local function count(n) return type(n)=='number' and n>=0 and n<9007199254740992 and n%1==0 end",
+    "  if count(a) and count(b) then ngx.ctx.usage=\{prompt=a,generated=b} else ngx.ctx.usage_error='invalid token counters' end",
+    "end",
+    "local chunk=ngx.arg[1] or '' local buf=(ngx.ctx.usage_buffer or '') .. chunk",
+    "if #buf>2097152 then ngx.ctx.usage_error='usage frame exceeded 2 MiB' ngx.ctx.usage_buffer=nil return end",
+    "local content=ngx.var.upstream_http_content_type or ''",
+    "if content:find('text/event-stream',1,true) then",
+    "  local pos=1 while true do local stop=buf:find('\\n',pos,true) if not stop then break end local line=buf:sub(pos,stop-1) local data=line:match('^data:%s*(.-)%s*$') if data and data~='[DONE]' then observe(data) end pos=stop+1 end",
+    "  buf=buf:sub(pos)",
+    "  if ngx.arg[2] and buf~='' then local data=buf:match('^data:%s*(.-)%s*$') if data and data~='[DONE]' then observe(data) end end",
+    "elseif ngx.arg[2] then observe(buf) end",
+    "if ngx.arg[2] then ngx.ctx.usage_buffer=nil else ngx.ctx.usage_buffer=buf end",
+  ]
+}
+
 fn router_dev_log_lines() -> List<String> {
   [
     "local state = ngx.shared.router_state",
     "state:incr('status:' .. tostring(ngx.status), 1, 0)",
+    "local u=ngx.ctx.route",
+    "if u and not u.overflow then",
+    "  local k='meter:owned:' .. u.model .. ':' local usage=ngx.ctx.usage",
+    "  state:incr(k .. 'requests',1,0)",
+    "  if ngx.status~=200 or not ngx.ctx.usage_complete then state:incr(k .. 'failed',1,0)",
+    "  elseif usage and not ngx.ctx.usage_error then",
+    "    local p=router_comparison(u.model)",
+    "    state:incr(k .. 'measured',1,0) state:incr(k .. 'prompt',usage.prompt,0) state:incr(k .. 'generated',usage.generated,0)",
+    "    if p then state:incr(k .. 'value',(usage.prompt*p.input+usage.generated*p.output)/1000000,0) else state:incr(k .. 'unpriced',1,0) end",
+    "  else state:incr(k .. 'unmeasured',1,0) end",
+    "end",
     "if ngx.ctx.counted then state:incr('active:' .. ngx.ctx.counted, -1, 0) state:incr('upstream:' .. ngx.ctx.counted .. ':' .. tostring(ngx.status), 1, 0) if ngx.status >= 500 or ngx.status == 401 or ngx.status == 403 then state:set('unavailable:' .. ngx.ctx.counted, true, 30) end end",
   ]
 }
@@ -185,6 +226,14 @@ fn router_dev_stats_lines() -> List<String> {
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
     "local state = ngx.shared.router_state",
     "local out = \{}",
+    "local meter=\{version=1,epoch=state:get('meter:epoch'),models=\{}} local seen=\{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  if not u.overflow and not seen[u.model] then",
+    "    seen[u.model]=true local k='meter:owned:' .. u.model .. ':' local p=router_comparison(u.model)",
+    "    meter.models[#meter.models+1]=\{model=u.model,billing='owned',actual_spend_usd=0,comparison_pricing=p,requests=state:get(k .. 'requests') or 0,measured_requests=state:get(k .. 'measured') or 0,unmeasured_requests=state:get(k .. 'unmeasured') or 0,failed_requests=state:get(k .. 'failed') or 0,unpriced_requests=state:get(k .. 'unpriced') or 0,prompt_tokens=state:get(k .. 'prompt') or 0,completion_tokens=state:get(k .. 'generated') or 0,comparison_value_usd=state:get(k .. 'value') or 0}",
+    "  end",
+    "end",
+    "out.usage=meter",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",
     "if ngx.var.arg_sessions == '1' then",
@@ -227,6 +276,7 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
     ProxySslTrustedCertificate { path: ca },
     ProxyPassSchemeAndHostVariables { scheme: scheme, host: up },
     LuaPhaseBlock { phase: HeaderFilterPhase, lines: router_dev_header_lines() },
+    LuaPhaseBlock { phase: BodyFilterPhase, lines: router_dev_body_lines() },
     LuaPhaseBlock { phase: LogPhase, lines: router_dev_log_lines() },
   ] }
 }
@@ -239,7 +289,6 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: site.state_dir + "/tls/key.pem") { Absent => RouterDevConfigRefused { token: "certkey" } Present { value: certkey } =>
   match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => RouterDevConfigRefused { token: "ca" } Present { value: ca } =>
   match tok(text: "router_state") { Absent => RouterDevConfigRefused { token: "dict" } Present { value: dict } =>
-  match tok(text: "10m") { Absent => RouterDevConfigRefused { token: "dict_size" } Present { value: dict_size } =>
   match tok(text: "/router/stats") { Absent => RouterDevConfigRefused { token: "stats" } Present { value: stats } =>
   match tok(text: "/v1/models") { Absent => RouterDevConfigRefused { token: "models" } Present { value: models } =>
   match tok(text: "/v1/") { Absent => RouterDevConfigRefused { token: "v1" } Present { value: v1 } =>
@@ -258,7 +307,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         AccessLogOff,
         ClientMaxBodySize { size: router_request_body_limit() },
         ClientBodyBufferSize { size: router_request_body_buffer() },
-        LuaSharedDict { name: dict, size: dict_size },
+        LuaSharedDict { name: dict, size: byte_size(count: 10485760) },
         LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, alias: site.alias) },
         ServerBlock { body: [
           ListenTlsOn { address: addr, port: site.listen_port },
@@ -270,7 +319,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         ] },
       ] },
     ]) }
-  } } } } } } } } } } } } } } } } } } }
+  } } } } } } } } } } } } } } } } } }
 }
 
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
@@ -348,7 +397,7 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card", retiring_names: [] }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [] },
+    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [] },
     RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     // h11-a16 (x86): one engine per GPU, named by its PCI bus (indices renumber when a card is added). Buses
     // 05-08 and 85-88 are the two A16 boards; c1 is an RTX 2000 Ada. A single 16 GB engine serves ~10-13 warm
@@ -365,7 +414,7 @@ fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
     RouterDevUpstream { name: "h11-c1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18089, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router.
     // cap is unused for overflow: the pool's engines admit work and expose their own queue to the bidder.
-    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net", retiring_names: [] }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [] },
+    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [] },
   ]
 }
 
