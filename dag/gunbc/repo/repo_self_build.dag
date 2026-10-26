@@ -190,6 +190,108 @@ fn repo_self_build_partition_crate_packages() -> List<String> {
   generated_partition_crate_rows |> map(row => row.package_name)
 }
 
+// THE BUILD ENVIRONMENT EVERY SEED BINARY IS BUILT IN. One commit must give one sha256, and before
+// this preamble was consumed by the seed-build steps it did not: the same commit built DIFFERENT
+// bytes on runners whose absolute checkout path, CARGO_TARGET_DIR, CARGO_HOME or rustc sysroot
+// differed, because each of those absolute paths is baked into the binary's .rodata (panic Location
+// strings and file literals) with nothing normalizing them, and because a runner-local untracked
+// file flipped build.rs's `-dirty` identity suffix. The measured experiment, the classification,
+// and the interim citation rule live in gunbc.recurring_failure_mode.seed_sha256_is_runner_relative;
+// the discriminating control that keeps this honest is the ignored seed_build_reproducibility_falsifier
+// (its green arm builds one commit twice from two clones with the preamble and requires cmp-equal
+// sha256; its red arm disables the remap and requires the hashes to differ). This is NOT a second
+// cargo authority: it is the environment half of the same build operation repo_self_build_command
+// owns the argv for, and a seed-build step that spells its own RUSTFLAGS has taken both halves back.
+//
+// THE FOUR PREFIXES ARE NOT INDIVIDUALLY NEGOTIABLE. Each names an input rustc fuses into string
+// literals reachable from the produced binary -- checkout, target directory, registry home, sysroot
+// -- and the control's red arm goes red if any one is absent, so a future author dropping one meets
+// a red test rather than silent receipt drift. The target prefix is not paranoia: two runners with
+// the same checkout at different depths proved the build directory reaches the binary too.
+//
+// THE WARNING DENIAL IS CARRIED AS A SETTING OF THE SAME TABLE KEY, NOT AS A RIVAL TO IT, AND THE
+// DISTINCTION IS LOAD-BEARING: .cargo/config.toml carries `[build] rustflags = ["-D", "warnings"]`,
+// and an ambient RUSTFLAGS OVERRIDES that table key entirely rather than extending it. So the denial
+// is asserted here as the same fact that file states (its comment names
+// gunbc.repo.repo_self_warning_policy as its source), and a seed build must reach the same floor with
+// or without this preamble. That is what makes the falsifier's red arm -- remap disabled, denial still
+// applied, still -D warnings -- the meaningful comparison: if dropping the denial were the difference,
+// the reproducibility claim would be resting on a silent floor inversion.
+//
+// THE IDENTITY PIN IS THE CONTENT IDENTITY. GUNBC_MATERIALIZED_TREE_IDENTITY is pinned to
+// tree:<object-format>:<HEAD^{tree}> -- the value shape the fleet release-bins key already computes
+// as its SOURCE_CLOSURE axis, so both name the same commit content -- but only when the TRACKED tree
+// is clean, checked with --untracked-files=no. Untracked files are excluded from that test because
+// they reach neither rustc nor the identity: a tracked module graph reaching an untracked file would
+// mean HEAD itself does not build, so an untracked runner scratch file changing the seed's bytes was
+// the bug being repaired, not a fact to preserve (that is the same rule src/v1/stage0/build.rs
+// applies to its `-dirty` suffix, and the two must agree or the suffix reappears as variance).
+// A TRACKED-DIRTY TREE IS NOT REFUSED, IT IS LEFT UNPINNED: build.rs then bakes `<head>-dirty`,
+// which names the build honestly as "this commit plus an edit that is in no commit". Refusing
+// instead would be a new CI behavior for a case the suffix already describes, and a seed-build step
+// is not where an uncommitted edit gets adjudicated. Producers that consume this preamble get the
+// content identity automatically; a producer that does not falls back to git HEAD plus the
+// tracked-dirty suffix, which is why every seed-build site consumes this and none re-spells it.
+//
+// WHY THE REMAP IS NOT A KEY INPUT the fleet release-bins key must name. Each prefix names a
+// LOCATION -- checkout, target directory, registry home, sysroot -- and the key already excludes the
+// location-naming environment variables (CARGO_HOME, RUSTUP_HOME, CARGO_BIN in
+// gunbc.fleet.fleet_release_bins_key release_bins_unkeyed_environment_pattern) for exactly this
+// reason. The prefixes differ per runner, so keying them would re-fragment the cache per checkout
+// depth and defeat the repair's purpose; what makes that sound is not an assertion but the falsifier
+// below, which goes red if any one prefix is dropped. The key step also runs in its own process
+// before the build step, so the RUSTFLAGS exported here never reaches its `env -0` probe: the
+// ambient value it keys is the toolchain step's, unchanged.
+//
+// AN EMPTY READ FAILS THE STEP, AND WHY THAT MATTERS MORE THAN IT LOOKS: `git rev-parse
+// --show-toplevel` fails -- printing nothing -- when run OUTSIDE a work tree, which is the ordinary
+// state of a checkout handed to a tool, a `git worktree add` mid-flight, or a runner that cloned into a
+// path since unmounted. `--show-toplevel` fails where `--git-dir` would not, and it is the right probe
+// because the remap must name the WORK tree: the work tree, not a bare git directory, is the prefix rustc
+// bakes into those panic Location and file literals (measured 2026-10-25: a build whose checkout prefix
+// was left unremapped carried `/tmp/rr2/g1/src/v1/stage0/src/cli_run/pre_entry_phase.rs` into .rodata). An
+// unanchored remap would be worse than no remap at all: `--remap-path-prefix==/build/checkout` matches
+// nothing, the absolute path stays fused into the binary, and the step still reports success -- a silently
+// falsified receipt, which is the failure mode this whole preamble exists to close. Same reason the
+// sysroot read is guarded: `rustc --print sysroot` on a shim that answers nothing would leave the
+// toolchain half of the variance unaddressed while looking applied.
+fn repo_self_build_env_preamble() -> String {
+  let denial = repo_self_warning_denial_rustflags()
+  join(
+    [
+      "GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')",
+      "'[' -n \"$GUNBC_SEED_CHECKOUT\" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)",
+      "GUNBC_SEED_TARGET=${CARGO_TARGET_DIR:-$GUNBC_SEED_CHECKOUT'/target'}",
+      "GUNBC_SEED_CARGO_HOME=${CARGO_HOME:-$HOME'/.cargo'}",
+      "GUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')",
+      "'[' -n \"$GUNBC_SEED_SYSROOT\" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)",
+      "RUSTFLAGS=\"" + denial + " --remap-path-prefix=$GUNBC_SEED_CHECKOUT=/build/checkout --remap-path-prefix=$GUNBC_SEED_TARGET=/build/target --remap-path-prefix=$GUNBC_SEED_CARGO_HOME=/build/cargo-home --remap-path-prefix=$GUNBC_SEED_SYSROOT=/build/rust\"",
+      "export RUSTFLAGS",
+      "if '[' -z \"${GUNBC_MATERIALIZED_TREE_IDENTITY:-}\" ']' && '[' -z \"$('git' 'status' '--porcelain=1' '--untracked-files=no')\" ']'; then",
+      "GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format')",
+      "'[' -n \"$GUNBC_SEED_OBJECT_FORMAT\" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1)",
+      "GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'\"$GUNBC_SEED_OBJECT_FORMAT\"':'\"$('git' 'rev-parse' 'HEAD^{tree}')\"",
+      "export GUNBC_MATERIALIZED_TREE_IDENTITY",
+      "fi",
+    ],
+    "\n"
+  )
+}
+
+// THE ONE WRAPPER FOR A SEED-BINARY BUILD COMMAND. A step's `run:` text is this preamble followed
+// by the cargo line the repo_self_build_* authority owns; a step that spells a bare cargo line gets
+// a runner-relative sha256 that looks like a commit hash, which is how the variance survived. The
+// preamble goes FIRST so its refusal guards abort the step before cargo starts, and it is emitted
+// per step rather than at job level only because the anchors are knowable inside a working
+// directory, which is a step property. repo_self_build_env_preamble states what each prefix and
+// guard is for; the census of seed-binary build steps and their producers is in
+// gunbc.recurring_failure_mode.seed_sha256_is_runner_relative. Floor-wrapped build steps get the
+// same treatment from gunbc.witness.witness_floor_workflow witness_floor_build_step, which puts the
+// preamble OUTSIDE the receipt wrapper.
+fn repo_self_seed_build_step_run(command: String) -> String {
+  join([repo_self_build_env_preamble(), command, ""], "\n")
+}
+
 fn repo_self_build_packages_command(packages: List<String>) -> String {
   join(
     ["cargo build", repo_self_build_profile_flag]

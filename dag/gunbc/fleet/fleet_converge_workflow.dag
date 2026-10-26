@@ -67,7 +67,7 @@ import extdeps.github.actions {
   RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
-import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_seed_build_step_run }
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
   checkout_action, download_artifact_action, upload_artifact_action, google_auth_action,
@@ -1364,7 +1364,7 @@ fn fleet_converge_plan_revision_pair_build_step() -> Step {
   RunStep {
     name: Present { value: "Build the compiler pair that resolves the plan's revision (claim_executor + gunbc)" },
     id: Present { value: "pair_build" },
-    run: concat(compiler_pair_release_product().build_line, "\n"),
+    run: repo_self_seed_build_step_run(command: compiler_pair_release_product().build_line),
     shell: none,
     env: none,
     working_directory: none,
@@ -4701,7 +4701,7 @@ fn fleet_converge_in_job_compiler_pair_build_step(name: String) -> Step {
   RunStep {
     name: Present { value: name },
     id: Present { value: "pair_build" },
-    run: concat(compiler_pair_release_product().build_line, "\n"),
+    run: repo_self_seed_build_step_run(command: compiler_pair_release_product().build_line),
     shell: none,
     env: none,
     working_directory: none,
@@ -5437,7 +5437,7 @@ fn fleet_converge_hosted_gunbc_build_step(purpose: String) -> Step {
   RunStep {
     name: Present { value: join(["Build the gunbc binary ", purpose, " runs"], "") },
     id: none,
-    run: concat(repo_self_build_command(bins: ["gunbc"]), "\n"),
+    run: repo_self_seed_build_step_run(command: repo_self_build_command(bins: ["gunbc"])),
     shell: none,
     env: none,
     working_directory: none,

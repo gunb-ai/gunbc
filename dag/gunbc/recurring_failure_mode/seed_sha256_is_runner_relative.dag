@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.seed_sha256_is_runner_relative
+
+import std.types { NonEmptyStr, String, List, Int }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+data seed_sha256_is_runner_relative: RecurringFailureMode = RecurringFailureMode {
+  identity: "seed_sha256_is_runner_relative" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "A seed sha256 names a (commit, runner) pair, not a commit, until the seed build pins its path and identity environment: two builds of ONE commit on runners whose absolute checkout path, CARGO_TARGET_DIR, CARGO_HOME, or rustc sysroot differ produce DIFFERENT sha256 values, while one build system with all four pinned is reproducible. Until the seed-build preamble declares the remap prefixes and the tree identity once and every seed-binary build step consumes it, every receipt, verdict, or cache key that cites seed sha256 alone as THE identity of a seed build is falsified by the runner it ran on. The sound interim citation for a seed build is commit + sha256 + host (the runner's identity), never commit + sha256.",
+
+    "MEASURED 2026-10-25 on the ctrl-build runner (linux/amd64, rustc 1.95.0-nightly e943f00), all from commit a430c878e5cfa56f06ce1b461cccac20f415d468, each build cold from a fresh target directory: (1) same checkout path twice, clean tree: IDENTICAL sha256 b8c24b3d — codegen/LTO/cgo contribute no variance on this toolchain. (2) same checkout path plus ONE untracked file: DIFFER (eedf8e3c) — src/v1/stage0/build.rs bakes GUNBC_BUILD_IDENTITY=<git-HEAD> with a '-dirty' suffix whenever git status --porcelain is non-empty, so any runner-local untracked file changes the binary. (3) two independent clones at different absolute paths, both clean: DIFFER (b8c24b3d vs ec03f8ac); objcopy shows the variance lives entirely in .rodata, and strings shows the checkout path baked into the binary (…/g1/src/v1/stage0/src/cli_run/pre_entry_phase.rs in one, …/g2/… in the other) — path literals from the compilation environment with no --remap-path-prefix set anywhere. (4) the fix, measured: two independent clones, each built with RUSTFLAGS='--remap-path-prefix=<its checkout>=/build/checkout --remap-path-prefix=<its target>=/build/target --remap-path-prefix=<its CARGO_HOME>=/build/cargo-home --remap-path-prefix=<its sysroot>=/build/rust' and GUNBC_MATERIALIZED_TREE_IDENTITY pinned to a tree:sha256 value: cmp reports gunbc AND claim_executor byte-IDENTICAL across the two clones. (5) a single runner's own cross-run receipt failure: seed 3dbf6b88 at main a430c878e5cf hashed differently on three runners. Related but distinct: gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path is about the same path inputs poisoning a CACHE KEY; this row is about them poisoning the seed's IDENTITY DIGEST.",
+
+    "SCOPE OF THE CLAIM: the second axis is the build identity, not the paths. A producer that leaves GUNBC_MATERIALIZED_TREE_IDENTITY unset makes build.rs fall back to git HEAD plus the dirty flag, so the same commit builds different bytes on a dirty runner. A producer that pins the tree identity but not the remap prefixes still gets path-dependent bytes. BOTH must be declared for one commit to give one sha256, which is what the seed-build preamble (remap prefixes + tree identity, declared once in the .dag and consumed by every emitted seed-build step) exists to guarantee. Until that lands and its control (build twice from two clones, assert sha256 equality, with the remap disabled as the red arm) is green, treat every historical seed sha256 as runner-relative evidence, admissible only alongside its host."
+  ],
+
+  evidence: []
+}
