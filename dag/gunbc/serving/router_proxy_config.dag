@@ -2,13 +2,14 @@ module gunbc.serving.router_proxy_config
 
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Milliseconds, Port, HttpStatus }
+import std.measure { ByteSize, byte_size }
 import extdeps.proxy.openresty {
   OpenRestyVersion, openresty_1_27_1_1, NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff,
   ServerBlock, ListenOn, LocationBlock, PrefixMatch, ExactMatch, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
   ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxySetHeader, HeaderFromVariable, ProxyPassDirective,
   ProxyTargetFromUpstreamVariable, ProxyPassToHost, InternalLocationOnly, ProxyMethodPost,
   LuaPhaseBlock, LuaPhase, AccessPhase, LogPhase,
-  ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, nginx_token, nginx_variable, render_nginx_directives,
+  ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, ClientMaxBodySize, ClientBodyBufferSize, nginx_token, nginx_variable, render_nginx_directives,
 }
 
 // The router's byte-carrying proxy configuration (plan gunbc.plans.fabric_serving_router, S1), as
@@ -26,6 +27,23 @@ import extdeps.proxy.openresty {
 // carries the bytes itself (plan section 3, named later realization).
 
 fn router_proxy_pinned_version() -> OpenRestyVersion { openresty_1_27_1_1 }
+
+// THE REQUEST-BODY POLICY. limit is the largest body the router admits (16 MiB holds a full long-context
+// chat request; nginx's default 1 MiB would refuse one with 413 before authz). buffer is how much of it is
+// held in memory; a larger body is spooled to a temporary file, and every reader of the body must take it
+// from either (the authz subrequest forwards the file-backed body as it is; a Lua reader that finds no
+// in-memory data reads ngx.req.get_body_file). The two are separate facts, so a body above the buffer is
+// an ordinary path, not a cliff.
+type RouterBodyPolicy {
+  limit: ByteSize
+  buffer: ByteSize
+}
+
+fn router_body_policy() -> RouterBodyPolicy { RouterBodyPolicy { limit: byte_size(count: 16777216), buffer: byte_size(count: 1048576) } }
+
+fn router_request_body_limit() -> ByteSize { router_body_policy().limit }
+
+fn router_request_body_buffer() -> ByteSize { router_body_policy().buffer }
 
 // Serving-router policy over the OpenResty model: the header carrying the seat permit, the header the authz
 // answer names the upstream in, and the authz and stream-end routes are gunbc facts, not OpenResty's.
@@ -86,9 +104,15 @@ fn router_proxy_vocabulary() -> Optional<RouterProxyVocabulary> {
 // stream-end notice (fire-and-forget from the log phase, only when a permit was issued). The loopback host,
 // the HTTP framing and the reading of 200 as admitted are router decisions, so they live here and reach
 // OpenResty only as the lines of a phase block.
-// What a copied answer header must hold: any non-empty text, or a host:port upstream address.
+// What a copied answer header must hold: a host:port upstream address, or a value in the model's admitted
+// token class. A copied value is interpolated VERBATIM into hand-written output — the permit reaches the
+// stream-end notice as 'header: ' .. value — so "any non-empty text" is not a shape: a value carrying CR/LF
+// would split that request into extra headers or a second request against the stream-end service. The
+// admitted class is the one nginx_token admits (alphanumerics and - . / : _), which a seat permit (a JWT
+// compact serialization) lives in and which excludes every character that could break HTTP or Lua framing.
+// The '+' quantifier also makes the value non-empty, which is what the shape used to be the only check for.
 type HeaderShape
-  = NonEmptyHeader
+  = AdmittedTokenHeader
   | HostPortHeader
 
 type HeaderCopy {
@@ -97,10 +121,13 @@ type HeaderCopy {
   shape: HeaderShape
 }
 
+// The character class is the one class the model admits (extdeps.proxy.openresty nginx_token: alphanumerics
+// and code points - . / : _), written as the Lua pattern its emitted check needs. Same class, not a second
+// rule about which characters are safe.
 fn header_shape_check(shape: HeaderShape) -> String {
   match shape {
-    NonEmptyHeader => "v ~= ''"
-    HostPortHeader => "string.match(v, '^[%w%.%-]+:%d+$') ~= nil"
+    AdmittedTokenHeader => "string.match(v, '^[A-Za-z0-9._:/%-]+$') ~= nil"
+    HostPortHeader => "string.match(v, '^[%w%.%-]+:%d+$') ~= nil and tonumber(string.match(v, ':(%d+)$')) >= 1 and tonumber(string.match(v, ':(%d+)$')) <= 65535"
   }
 }
 
@@ -153,7 +180,7 @@ fn router_authz_hook(v: RouterProxyVocabulary) -> RouterCalloutHook {
     failure_status: 503 as HttpStatus,
     copies: [
       HeaderCopy { header: v.upstream_answer_header, variable: v.upstream_variable, shape: HostPortHeader },
-      HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable, shape: NonEmptyHeader },
+      HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable, shape: AdmittedTokenHeader },
     ],
   } }
 }
@@ -171,6 +198,8 @@ fn router_proxy_directives(v: RouterProxyVocabulary, listen_port: Port, authz_po
     EventsBlock,
     HttpBlock { body: [
       AccessLogOff,
+      ClientMaxBodySize { size: router_request_body_limit() },
+      ClientBodyBufferSize { size: router_request_body_buffer() },
       ServerBlock { body: [
         ListenOn { address: v.loopback_host, port: listen_port },
         LocationBlock { matching: PrefixMatch { path: v.v1_prefix }, body: [
