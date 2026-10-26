@@ -17419,7 +17419,7 @@ pub fn parse_match_arm_stmts(
                     err: std::option::Option::None,
                 });
             } else {
-                if looks_like_arm_start(tokens.clone()) {
+                if looks_like_arm_start(tokens.clone(), ctx.clone()) {
                     break Rc::new(StmtsResult {
                         stmts: acc.clone(),
                         tokens: tokens.clone(),
@@ -17451,116 +17451,26 @@ pub fn parse_match_arm_stmts(
     }
 }
 
-pub fn arm_start_after_qualified_path(
-    mut __tco_loop_tokens: Rc<TokenStream>,
-    mut __tco_loop_offset: i64,
-) -> bool {
+pub fn looks_like_arm_start(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> bool {
     {
-        loop {
-            #[allow(unused_mut)]
-            let mut tokens = __tco_loop_tokens;
-            #[allow(unused_mut)]
-            let mut offset = __tco_loop_offset;
-            if !peek_is_expected_at(
-                tokens.clone(),
-                offset.clone(),
-                Rc::new(ExpectedToken::ExpectDot),
-            ) {
-                break false;
+        let pattern = parse_pattern(tokens.clone(), ctx);
+        if has_err(pattern.err.clone()) {
+            false
+        } else {
+            if (token_stream_position(pattern.tokens.clone())
+                == token_stream_position(tokens.clone()))
+            {
+                false
             } else {
-                match token_stream_first(token_stream_advance(
-                    tokens.clone(),
-                    v1_rt::int_add(offset.clone(), 1),
-                )) {
-                    Some(seg) => {
-                        if !is_ident_shape(seg.shape.clone()) {
-                            break false;
-                        } else {
-                            if is_uppercase_start(seg.text.clone()) {
-                                if peek_is_fat_arrow_at(
-                                    tokens.clone(),
-                                    v1_rt::int_add(offset.clone(), 2),
-                                ) {
-                                    break true;
-                                } else {
-                                    if peek_is_expected_at(
-                                        tokens.clone(),
-                                        v1_rt::int_add(offset.clone(), 2),
-                                        Rc::new(ExpectedToken::ExpectLBrace),
-                                    ) {
-                                        break scan_for_fat_arrow_after_braces(
-                                            token_stream_advance(
-                                                tokens.clone(),
-                                                v1_rt::int_add(offset.clone(), 3),
-                                            ),
-                                            1,
-                                        );
-                                    } else {
-                                        {
-                                            let __tco_0 = tokens;
-                                            let __tco_1 = v1_rt::int_add(offset, 2);
-                                            __tco_loop_tokens = __tco_0;
-                                            __tco_loop_offset = __tco_1;
-                                            continue;
-                                        }
-                                    }
-                                }
-                            } else {
-                                {
-                                    let __tco_0 = tokens;
-                                    let __tco_1 = v1_rt::int_add(offset, 2);
-                                    __tco_loop_tokens = __tco_0;
-                                    __tco_loop_offset = __tco_1;
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                    std::option::Option::None => {
-                        break false;
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
-    {
-        let tok = token_stream_first(tokens.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        match sh.clone() {
-            Some(TokenShape::ShIdent) => {
-                let n = tok.clone().unwrap().text.clone();
-                if (n.clone() == "_".to_string()) {
-                    peek_is_fat_arrow_at(tokens.clone(), 1)
-                } else {
-                    if !is_uppercase_start(n.clone()) {
-                        arm_start_after_qualified_path(tokens.clone(), 1)
+                {
+                    let guard = parse_optional_guard(pattern.tokens.clone(), pattern.ctx.clone());
+                    if has_err(guard.err.clone()) {
+                        false
                     } else {
-                        if peek_is_fat_arrow_at(tokens.clone(), 1) {
-                            true
-                        } else {
-                            if peek_is_expected_at(
-                                tokens.clone(),
-                                1,
-                                Rc::new(ExpectedToken::ExpectLBrace),
-                            ) {
-                                scan_for_fat_arrow_after_braces(
-                                    token_stream_advance(tokens.clone(), 2),
-                                    1,
-                                )
-                            } else {
-                                false
-                            }
-                        }
+                        peek_is_fat_arrow_at(guard.tokens.clone(), 0)
                     }
                 }
             }
-            _ => false,
         }
     }
 }
@@ -17569,76 +17479,6 @@ pub fn peek_is_fat_arrow_at(tokens: Rc<TokenStream>, offset: i64) -> bool {
     match token_stream_first(token_stream_advance(tokens, offset)) {
         Some(t) => is_fat_arrow_shape(t.shape.clone()),
         std::option::Option::None => false,
-    }
-}
-
-pub fn peek_is_expected_at(
-    tokens: Rc<TokenStream>,
-    offset: i64,
-    expected: Rc<ExpectedToken>,
-) -> bool {
-    match token_stream_first(token_stream_advance(tokens, offset)) {
-        Some(t) => token_matches_expected(t.clone(), expected),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn scan_for_fat_arrow_after_braces(
-    mut __tco_loop_remaining: Rc<TokenStream>,
-    mut __tco_loop_depth: i64,
-) -> bool {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut remaining = __tco_loop_remaining;
-            #[allow(unused_mut)]
-            let mut depth = __tco_loop_depth;
-            if (depth.clone() <= 0) {
-                match token_stream_first(remaining.clone()) {
-                    Some(t) => {
-                        break is_fat_arrow_shape(t.shape.clone());
-                    }
-                    std::option::Option::None => {
-                        break false;
-                    }
-                }
-            } else {
-                match token_stream_first(remaining.clone()) {
-                    Some(t) => {
-                        if is_lbrace_shape(t.shape.clone()) {
-                            {
-                                let __tco_0 = token_stream_advance(remaining, 1);
-                                let __tco_1 = v1_rt::int_add(depth, 1);
-                                __tco_loop_remaining = __tco_0;
-                                __tco_loop_depth = __tco_1;
-                                continue;
-                            }
-                        } else {
-                            if is_rbrace_shape(t.shape.clone()) {
-                                {
-                                    let __tco_0 = token_stream_advance(remaining, 1);
-                                    let __tco_1 = v1_rt::int_sub(depth, 1);
-                                    __tco_loop_remaining = __tco_0;
-                                    __tco_loop_depth = __tco_1;
-                                    continue;
-                                }
-                            } else {
-                                {
-                                    let __tco_0 = token_stream_advance(remaining, 1);
-                                    let __tco_1 = depth;
-                                    __tco_loop_remaining = __tco_0;
-                                    __tco_loop_depth = __tco_1;
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                    std::option::Option::None => {
-                        break false;
-                    }
-                }
-            }
-        }
     }
 }
 
