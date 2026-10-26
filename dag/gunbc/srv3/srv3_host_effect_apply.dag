@@ -91,8 +91,10 @@ fn srv3_seeded_install_media_remaster_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3SeededInstallMediaRemaster)
 }
 
-fn srv3_bmcweb_session_login_apply() -> Srv3ApplyDisposition {
-  srv3_host_effect_apply(effect: Srv3BmcwebSessionLogin)
+// The body file is the caller's private, owner-only one (gunbc.srv3.srv3_os_install_actuate), so the
+// effect carries its path rather than reading a fixed name.
+fn srv3_bmcweb_session_login_apply(request_body_file: NonEmptyStr) -> Srv3ApplyDisposition {
+  srv3_host_effect_apply(effect: Srv3BmcwebSessionLogin { request_body_file: request_body_file })
 }
 
 fn srv3_bmcweb_token_extract_apply() -> Srv3ApplyDisposition {

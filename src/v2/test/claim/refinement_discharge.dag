@@ -11,7 +11,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.roster_frontier { FrontierRow, frontier_row_path }
 import std.dissolution { unbound_dissolution }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
+import v2.std.node { node_same_occurrence, ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
 import std.algebra { Cons, Empty }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node_query { binder_edge }
@@ -175,7 +175,7 @@ test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       match discharge_refinement_obligations(t: t) {
-        Accepted { value: d, diagnostics: _ } => d.root == t.root
+        Accepted { value: d, diagnostics: _ } => node_same_occurrence(a: d.root, b: t.root)
         Rejected { diagnostics: _ } => false
       }
   }

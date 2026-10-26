@@ -1,6 +1,6 @@
 module gunbc.runner.runner_host_deploy
 
-import std.types { NonEmptyStr, String, Int, List }
+import std.types { NonEmptyStr, String, Int, List, Bool }
 import extdeps.exec.command { ArgvCommand, shell_command_render, env_prefixed_command }
 import extdeps.sudo.elevation { sudo_preserve_environment_command }
 import extdeps.languages.bash.invocation { bash_script_argv }
@@ -163,7 +163,8 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 // COULD ACT ON IT -- the number was real and there was no provisioning target to hand it to.
 //
 // THE ADDRESSES ARE MEASURED, NOT ASSUMED. Both were read over SSH on 2026-08-23 by connecting and
-// asking the host its own name: srv1 answers at 192.168.1.185 and srv2 at 192.168.1.188. That
+// asking the host its own name: srv1 answers at 192.168.1.185 and srv2 at 192.168.1.188 (both moved
+// by hand to their 1G I210 NICs on 2026-10-24: srv1 now .203, srv2 now .201, DHCP). That
 // matters because this lane started the night with 192.168.1.183 and .184 for these two, which are
 // their BMC addresses rather than their host addresses, and an ssh_target pointing at a management
 // controller would fail in a way that looks like an unreachable host rather than a wrong row.
@@ -188,7 +189,7 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 
 data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv1",
-  ssh_target: "briansrls@192.168.1.185",
+  ssh_target: "briansrls@192.168.1.203",
   runner_user: "briansrls",
   unit_user: "root",
   job_user: "ghrunner",
@@ -270,7 +271,7 @@ fn admitted_deploy_or_refusal(host: HostIdentity, spec: RunnerHostSpec) -> Runne
 
 data srv2_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv2",
-  ssh_target: "briansrls@192.168.1.188",
+  ssh_target: "briansrls@192.168.1.201",
   runner_user: "briansrls",
   unit_user: "root",
   job_user: "ghrunner",
@@ -366,6 +367,19 @@ data runner_host_spec_rows: List<RunnerHostSpecRow> = [
   RunnerHostSpecRow { host: operator_host_srv3, spec: srv3_runner_host_spec },
   RunnerHostSpecRow { host: operator_host_srv4, spec: srv4_runner_host_spec },
 ]
+
+// WHICH HOSTS' JOB ACCOUNTS HOLD A USER SYSTEMD MANAGER (loginctl linger). gunbc.runner.runner_user_session
+// converges it: enable-linger for the host's job_user, then a readback that logind records Linger=yes AND the
+// manager answers over /run/user/<uid>/bus. srv4 only (operator decision relayed on gunbc#14972, 2026-10-25); a
+// host joins by joining this list. Declared frontier (DESIGN 3c), in order: once this converge's readback has held
+// on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels);
+// then gunbc#14972's systemd credential rows select on that label. The label is not derived here yet because it
+// would claim a user manager srv4 is known not to have.
+data runner_job_user_session_hosts: List<HostIdentity> = [operator_host_srv4]
+
+fn runner_job_user_session_on(host: HostIdentity) -> Bool {
+  any(runner_job_user_session_hosts, h => (h as String) == (host as String))
+}
 
 fn runner_host_spec_for(host: HostIdentity) -> RunnerHostSpecLookup {
   match filter(runner_host_spec_rows, r => (r.host as String) == (host as String)).first() {

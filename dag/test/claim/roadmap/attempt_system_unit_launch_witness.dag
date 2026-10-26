@@ -1,5 +1,6 @@
 module test.claim.roadmap.attempt_system_unit_launch_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_pane_working_directory, dispatch_worktree_path_for_instance }
 import std.types { Bool, NonEmptyStr, List, String, FilePath, Int }
 import std.optional { Present, Absent }
 import std.algebra { skip }
@@ -33,7 +34,9 @@ import gunbc.live_deploy.emit {
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, ApplyLegCommand, ApplyLegInstallFile, ApplyLegRetract,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, apply_staged_leg, deploy_apply_plan_legs, deploy_apply_leg_step,
+  ApplyLegCredstoreCopy, credstore_copy_stage_command, credstore_copy_commands,
 }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
 import gunbc.live_deploy.retract_legs { RetractRemoveForce }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
 import std.algebra { non_empty_to_list }
@@ -71,8 +74,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
   AttemptSystemUnitStartEncoded, AttemptSystemUnitStartUnencodable,
   AttemptSystemUnitStartUnencodableCause, AttemptSystemUnitNonceUnsafe,
-  AttemptSystemUnitArgvEmpty, AttemptSystemUnitArgvWordContainsUnitSeparator,
-  AttemptSystemUnitArgvWordContainsNewline,
+  AttemptSystemUnitArgvEmpty,
   AttemptSystemUnitStartRequestDecoded, AttemptSystemUnitStartRequestMalformed,
   AttemptSystemUnitStartVerbUnknown,
   attempt_system_unit_start_verb_wire,
@@ -87,10 +89,6 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitLaunchArgv, AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused, attempt_system_unit_launch_argv_refused_detail,
 }
 import extdeps.systemd.service_exec { exec_full_privileges_prefix }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
-  dispatch_attempt_unit_stem, dispatch_pane_working_directory, GunbcHarnessProvider,
-}
 import gunbc.host.host_layout { attempt_unit_spool_request_dir }
 import gunbc.cli_invoke {
   NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
@@ -557,34 +555,46 @@ test fn each_unencodable_argv_refuses_at_encode() -> Bool {
   match encode_refuses_cause(request: request_with_argv(argv: [])) {
     Absent => false
     Present { value: AttemptSystemUnitArgvEmpty } => true
-    Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
-    Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
     Present { value: AttemptSystemUnitNonceUnsafe } => false
   }
-    && match encode_refuses_cause(request: request_with_argv(argv: ["a\u{1f}b"])) {
-      Absent => false
-      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => true
-      Present { value: AttemptSystemUnitArgvEmpty } => false
-      Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
-      Present { value: AttemptSystemUnitNonceUnsafe } => false
-    }
-    && match encode_refuses_cause(request: request_with_argv(argv: ["a\nb"])) {
-      Absent => false
-      Present { value: AttemptSystemUnitArgvWordContainsNewline } => true
-      Present { value: AttemptSystemUnitArgvEmpty } => false
-      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
-      Present { value: AttemptSystemUnitNonceUnsafe } => false
-    }
 }
 
+// A MULTI-LINE WORD IS LEGITIMATE (the node brief is passed inline). Each hostile character survives
+// encode then decode exactly, and the encoded body stays one field per line.
 test fn every_encodable_request_round_trips_exactly() -> Bool {
   let argv = ["/opt/gunbc/bin/gunbc", "run", "--arg", "k=v", "path with spaces", join(["quote", "\"", "here"], ""), "dollar$ID"]
   start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: argv))
     && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: argv))
 }
 
+test fn a_word_carrying_a_newline_or_unit_separator_round_trips_exactly() -> Bool {
+  let hostile = ["/bin/true", "brief=line one\nline two\n\nline four", "sep\u{1f}arator", "rs\u{1e}sep", "q\"uote", "back\\slash", "caf\u{e9} \u{2603}", "tab\there"]
+  start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: hostile))
+    && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: hostile))
+    && match attempt_system_unit_encode_start(verb: StartDetached, request: request_with_argv(argv: hostile)) {
+      AttemptSystemUnitStartUnencodable { cause: _ } => false
+      AttemptSystemUnitStartEncoded { body } => count(split(s: body, delimiter: "\n")) == 6
+    }
+}
+
+test fn a_malformed_argv_field_is_a_typed_malformed_refusal() -> Bool {
+  decode_with_argv_field(field: "not json")
+    && decode_with_argv_field(field: "[\"a\", 3]")
+    && decode_with_argv_field(field: "{\"a\": \"b\"}")
+    && decode_with_argv_field(field: "[]")
+    && decode_with_argv_field(field: "[\"a\"] trailing")
+}
+
+fn decode_with_argv_field(field: String) -> Bool {
+  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", field, "n"]) {
+    AttemptSystemUnitStartRequestMalformed { reason: _ } => true
+    AttemptSystemUnitStartVerbUnknown { tag: _ } => false
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
+  }
+}
+
 test fn an_unknown_verb_on_the_wire_is_a_typed_refusal() -> Bool {
-  match attempt_system_unit_start_request_decode(lines: ["stop", "n1", "k1", "1", "/bin/true"]) {
+  match attempt_system_unit_start_request_decode(lines: ["stop", "n1", "k1", "1", "[\"/bin/true\"]"]) {
     AttemptSystemUnitStartVerbUnknown { tag } => tag == "stop"
     AttemptSystemUnitStartRequestMalformed { reason: _ } => false
     AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
@@ -1115,3 +1125,109 @@ fn exit_is_success(e: ProcessExit) -> Bool {
     ExitFailure { code: _, reason: _ } => false
   }
 }
+
+// ── THE DEDICATED WORKER'S START: its git trust and its credential ─────────────────────────────────────
+
+// The request names THIS instance's binary: claim_request names the lab's, which the live instance's admission
+// refuses (ExecStart program is not the instance gunbc binary), and a refused start has no words to judge.
+fn instance_request(instance: HostDashboardInstance) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: "n1",
+    attempt_key: "k1",
+    granted: kibibyte(count: 1),
+    inner_argv: [instance.serve_binary as String, "run"],
+    nonce: "n",
+  }
+}
+
+fn worker_start_words(instance: HostDashboardInstance) -> List<String> {
+  match attempt_system_unit_start_facts_for_request(instance: instance, request: instance_request(instance: instance)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => []
+    AttemptSystemUnitStartDerived { facts } =>
+      match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
+        AttemptSystemUnitRefused { reason: _ } => []
+        AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
+          match attempt_system_unit_systemd_run_command(instance: instance, plan: attempt_system_unit_plan_from_facts(facts: admitted, unit: unit), granted: admitted.granted, user: admitted.user) {
+            SystemdRunCommandRefused { cause: _ } => []
+            SystemdRunCommandReady { command } => argv_words(command: command)
+          }
+      }
+  }
+}
+
+// THE DEDICATED WORKER TRUSTS EXACTLY ITS OWN WORKTREE, AND NOTHING ELSE. The service user owns the worktree, so
+// every git call by a dedicated worker account was refused with "detected dubious ownership" (srv1 lab,
+// 2026-10-24); the unit is started with git's safe.directory grant naming that one worktree, in the environment so
+// the tools' git inherits it. A service-user worker owns its worktree and is started with no grant. RED on a lab
+// start without the grant, and on any grant wider than the one worktree (the wildcard, or a second path).
+test fn the_dedicated_worker_starts_trusting_only_its_own_worktree() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_words = worker_start_words(instance: lab)
+  let live_words = worker_start_words(instance: srv1_live_dashboard_instance())
+  let worktree = dispatch_worktree_path_for_instance(instance: lab, node_id: "n1" as RoadmapNodeId, attempt_key: "k1")
+  count(lab_words) > 0 && count(live_words) > 0
+    && any(lab_words, w => w == "--setenv=GIT_CONFIG_COUNT=1")
+    && any(lab_words, w => w == "--setenv=GIT_CONFIG_KEY_0=safe.directory")
+    && any(lab_words, w => w == join(["--setenv=GIT_CONFIG_VALUE_0=", worktree], ""))
+    && count(filter(lab_words, w => starts_with(s: w, prefix: "--setenv=GIT_CONFIG_"))) == 3
+    && !any(lab_words, w => w == "--setenv=GIT_CONFIG_VALUE_0=*")
+    && !any(live_words, w => starts_with(s: w, prefix: "--setenv=GIT_CONFIG_"))
+}
+
+fn credstore_copy_legs_of(legs: List<DeployApplyLeg>) -> List<DeployApplyLeg> {
+  filter(legs, l => match l {
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => true
+    _ => false
+  })
+}
+
+// THE DEPLOY INSTALLS THE FILE THE LAUNCHER LOADS, AND ONE FUNCTION SPELLS ITS PATH. The lab apply carries one
+// credstore copy per credential, after the credstore directory; its destination and name are exactly the source
+// and identifier of the LoadCredential= word in the lab worker's start, and its source is the service user's
+// custody, which no start word names. Production's service-user worker gets no copy and loads nothing. RED on a
+// deploy or a launcher that spells the credstore path on its own (the two would differ), on a deploy that installs
+// nothing for the file the launcher names, and on a start that loads the custody path itself.
+test fn the_lab_apply_installs_exactly_the_credstore_file_the_worker_start_loads() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let legs = full_install_legs(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()))
+  let copies = credstore_copy_legs_of(legs: legs)
+  let creds = dispatch_worker_credentials(instance: lab)
+  let words = worker_start_words(instance: lab)
+  let loads = filter(words, w => starts_with(s: w, prefix: "LoadCredential="))
+  count(creds) == 1 && count(copies) == count(creds) && count(loads) == count(creds)
+    && leg_index(legs: legs, step: "worker-credstore-dir") >= 0
+    && leg_index(legs: legs, step: "worker-credstore-dir") < leg_index(legs: legs, step: "worker-credstore-copy")
+    && all(copies, l => match l {
+      ApplyLegCredstoreCopy { step: _, source: s, dest: d, file_name: f } =>
+        any(loads, w => w == join(["LoadCredential=", f as String, ":", d as String], ""))
+          && !any(words, w => string_contains(s: w, pattern: s as String))
+      _ => false
+    })
+    && count(credstore_copy_legs_of(legs: full_install_legs(spec: deployment_spec_srv1()))) == 0
+    && !any(worker_start_words(instance: srv1_live_dashboard_instance()), w => starts_with(s: w, prefix: "LoadCredential="))
+}
+
+// THE COPY IS THE PRIVATE-SECRET BRACKET'S ORDER, AND ROOT NEVER NAMES THE CUSTODY PATH. Rendered at one stage:
+// the stage is a fresh mktemp -d; the principal's own copy (no sudo) reads the custody into the stage owner-only;
+// the root install (sudo, 0400, root:root) reads the STAGE file, never the custody; then rm -f of the file and
+// rmdir of the stage. RED on a root install that reads the custody path, a user copy that elevates, a copy wider
+// than 0600, or a removal that is recursive (rmdir is the check that the stage ended empty).
+test fn the_credstore_copy_stages_copies_as_the_user_installs_as_root_and_removes_the_stage() -> Bool {
+  let stage = "/tmp/gunbc-credstore.abc123" as NonEmptyStr
+  let source = "/home/svc/.config/gunbc-gpu-pod/api-key" as NonEmptyStr
+  let dest = "/etc/credstore/gunbc-gpu-pod-api-key-lab" as NonEmptyStr
+  let cmds = credstore_copy_commands(stage: stage, source: source, dest: dest, file_name: "gunbc-gpu-pod-api-key" as NonEmptyStr)
+  let staged = join([stage as String, "/gunbc-gpu-pod-api-key"], "")
+  let mk = argv_words(command: credstore_copy_stage_command())
+  let user = argv_words(command: cmds.user_copy)
+  let root = argv_words(command: cmds.root_install)
+  let rmf = argv_words(command: cmds.remove_file)
+  let rmd = argv_words(command: cmds.remove_dir)
+  (match mk.first() { Present { value: p } => p == "mktemp"  Absent => false }) && any(mk, w => w == "-d")
+    && (match user.first() { Present { value: p } => p == "install"  Absent => false })
+    && !any(user, w => ends_with(s: w, suffix: "sudo")) && any(user, w => w == (source as String)) && any(user, w => w == staged) && any(user, w => w == "0600")
+    && (match root.first() { Present { value: p } => ends_with(s: p, suffix: "/sudo")  Absent => false }) && any(root, w => w == staged) && any(root, w => w == (dest as String)) && any(root, w => w == "0400")
+    && !any(root, w => string_contains(s: w, pattern: source as String))
+    && rmf == ["rm", "-f", staged] && rmd == ["rmdir", stage as String]
+}
+

@@ -82,7 +82,7 @@ module test.claim.compute.output_capture_absence_wet_witness
 //      producing floor_route_gap_expectation_mismatch.
 
 import std.types { Bool, Int, NonEmptyStr, String }
-import std.algebra { length, string_contains, trim }
+import std.algebra { string_contains, trim }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -458,10 +458,9 @@ fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptu
     let verdict_text = match verdict {
       OutputsMismatch { detail: d } => d
       OutputsReturned { outputs: outs } =>
-        if length(xs: outs) == 0 {
-          "<empty return>"
-        } else {
-          join([outs[0].declared, "=", outs[0].blob], "|")
+        match outs |> first {
+          Present { value: o } => join([o.declared, "=", o.blob], "|")
+          Absent => "<empty return>"
         }
     }
     if !written {

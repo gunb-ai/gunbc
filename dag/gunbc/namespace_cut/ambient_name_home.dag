@@ -6,13 +6,14 @@ import std.optional { Optional, optional_present }
 // THE ONE ROSTER OF AMBIENT NAMES AND THEIR DECLARED HOMES (NAMESPACE-XL waves; operator ruling
 // 2026-10-15: every name the corpus uses, the seed's "built-ins" included, is an ordinary declaration
 // in a module that reaches its users by import through the one binding kernel). One row per name a
-// wave moves: the name, the declaration that is its one home, the stopgap table the name leaves, and
-// whether that home already existed or was minted (and why).
+// wave moves: the name, the MODULE that declares its one home, the stopgap table the name leaves, and
+// whether that home already existed or was minted (and why). The declaration identity is DERIVED,
+// ambient_name_declaration (module + "." + name), never stored beside the module: one grain for every consumer.
 //
 // Two consumers read it. The generated import sweep (owned by the #14017 generator's owner) inserts the
 // home's import into every module the ambient-name census lists for the name; and the namespace-wave
 // binding diff (gunbc.instruments.namespace_wave_binding_diff) admits exactly the re-bindings a row
-// names -- an occurrence of `name` that was ambient on base and binds `home` on head -- and refuses
+// names -- an occurrence of `name` that was ambient on base and binds the row's declaration on head -- and refuses
 // every other one. A row is added by the wave that moves its name, in that wave's own PR.
 //
 // The table arms name the v2 tables the waves delete (v2.compiler.resolve AmbientBindingTable). A
@@ -33,8 +34,8 @@ type AmbientNameHomeOrigin
 // declaration it means (`home` + `name`), so the fixture's imports are DERIVED from the references and never listed
 // beside them. SUPPLIED BY THE WAVE with its row, because a call shape is a fact of the name's signature; it RESTATES
 // that signature, a second authority named in gunbc.rung_drop kit_call_shape_restates_the_home_signature and retired
-// when a signature reader callable before the census run exists. REQUIRED, not optional: a row without a call shape
-// would never observe the name, and one such row would turn the whole label into no-observation for every wave.
+// when a signature reader callable before the census run exists. REQUIRED, not optional: a row without a probe
+// (AmbientNameKitProbe below) would never observe the name, and one such row would turn the whole label into no-observation for every wave.
 type AmbientNameKitType {
   home: NonEmptyStr
   name: NonEmptyStr
@@ -51,6 +52,15 @@ type AmbientNameKitCall {
   result: AmbientNameKitType
 }
 
+// THE PROBE THE KIT'S FIXTURE PAIR WRITES, by what kind of name the row moves (tidy-ant-251's ruling for the Map wave,
+// 2026-10-24: a type gets a type-reference probe, never a no-kit exemption). A callable is CALLED, through the call
+// shape above; a type is MENTIONED, as the annotation of the probe's one parameter, `fn probe(m: <name><arguments>) -> Int`.
+// Either way the fixture carries exactly one occurrence of the row's spelling, so checks 1, 2 and 6 read its binding
+// record the same way. `arguments` restates the type's arity, under the same rung drop as the call shape.
+type AmbientNameKitProbe
+  = KitCallProbe { call: AmbientNameKitCall }
+  | KitTypeUseProbe { arguments: List<AmbientNameKitType> }
+
 type AmbientNameHome {
   name: NonEmptyStr
   home: NonEmptyStr
@@ -59,20 +69,55 @@ type AmbientNameHome {
   // The ambient *_contract row (std.primitives) this move retires, when the name had one; Absent for a name
   // that left a table with no contract row. Read by the namespace-migration acceptance kit's contract-absent check.
   retired_contract: Optional<NonEmptyStr>
-  kit_call: AmbientNameKitCall
+  kit_probe: AmbientNameKitProbe
 }
 
-// One row per wave. Wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars, answered by the std.primitives authority
-// row where it binds at all, has its one declared home in std.host_text.
+// The row's declaration identity: the binding a migrated occurrence records as its target.
+fn ambient_name_declaration(row: AmbientNameHome) -> String {
+  (row.home as String) + "." + (row.name as String)
+}
+
+// One row per landed wave. Wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars, answered by the std.primitives
+// authority row where it binds at all, has its one declared home in std.host_text. list_push (#14751): its one declared
+// home is std.algebra `fn list_push<T>(xs: FreeMonoid<T>, item: T)`, and its std.primitives list_push_contract row is
+// retired. sha256_hex_of_text: its one declared home is std.content_hash `fn sha256_hex_of_text(text: String) -> String`
+// (UTF-8 encode, SHA-256, lowercase hex; root-coordinator decision, sleek-owl-397), and its std.primitives
+// sha256_hex_of_text_contract row is retired. A kit_call restates its home's signature (gunbc.rung_drop.kit_call_shape_restates_the_home_signature); the
+// declaration is the authority, so the row follows it.
 fn ambient_name_homes() -> List<AmbientNameHome> {
   [
     AmbientNameHome {
       name: "chars",
-      home: "std.host_text.chars",
+      home: "std.host_text",
       table: PrimitiveAuthorityTable,
       origin: ExistingDeclaration,
       retired_contract: optional_present(value: "chars_contract" as NonEmptyStr),
-      kit_call: chars_kit_call()
+      kit_probe: KitCallProbe { call: chars_kit_call() }
+    },
+    AmbientNameHome {
+      name: "list_push" as NonEmptyStr,
+      home: "std.algebra" as NonEmptyStr,
+      table: PrimitiveAuthorityTable,
+      origin: ExistingDeclaration,
+      retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr),
+      kit_probe: KitCallProbe { call: AmbientNameKitCall {
+        params: [
+          AmbientNameKitParam { name: "xs" as NonEmptyStr, type_ref: kit_list_of_int() },
+          AmbientNameKitParam { name: "item" as NonEmptyStr, type_ref: kit_int() }
+        ],
+        result: kit_list_of_int()
+      } }
+    },
+    AmbientNameHome {
+      name: "sha256_hex_of_text" as NonEmptyStr,
+      home: "std.content_hash" as NonEmptyStr,
+      table: PrimitiveAuthorityTable,
+      origin: ExistingDeclaration,
+      retired_contract: optional_present(value: "sha256_hex_of_text_contract" as NonEmptyStr),
+      kit_probe: KitCallProbe { call: AmbientNameKitCall {
+        params: [AmbientNameKitParam { name: "text" as NonEmptyStr, type_ref: kit_string() }],
+        result: kit_string()
+      } }
     }
   ]
 }
@@ -82,20 +127,7 @@ fn ambient_name_homes() -> List<AmbientNameHome> {
 // ambiently) and flip when the wave moves it. The wave that lands a candidate adds the row to ambient_name_homes()
 // and DELETES it here: a name present in both is read once, as the landed row.
 fn ambient_name_candidates() -> List<AmbientNameHome> {
-  [AmbientNameHome {
-    name: "list_push" as NonEmptyStr,
-    home: "std.algebra" as NonEmptyStr,
-    table: PrimitiveAuthorityTable,
-    origin: ExistingDeclaration,
-    retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr),
-    kit_call: AmbientNameKitCall {
-      params: [
-        AmbientNameKitParam { name: "xs" as NonEmptyStr, type_ref: kit_list_of_int() },
-        AmbientNameKitParam { name: "x" as NonEmptyStr, type_ref: kit_int() }
-      ],
-      result: kit_list_of_int()
-    }
-  }]
+  []
 }
 
 // chars's one declared home is std.host_text `fn chars(text: HostText) -> List<Char>`; the kit fixture calls it so.
@@ -108,6 +140,10 @@ fn chars_kit_call() -> AmbientNameKitCall {
 
 fn kit_int() -> AmbientNameKitType {
   AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "Int" as NonEmptyStr, arguments: [] }
+}
+
+fn kit_string() -> AmbientNameKitType {
+  AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "String" as NonEmptyStr, arguments: [] }
 }
 
 fn kit_list_of_int() -> AmbientNameKitType {

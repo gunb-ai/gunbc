@@ -9,6 +9,7 @@ import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex 
 import extdeps.tailscale.identity { tailnet_identity_of }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied }
+import gunbc.auth.approval_apns_publish { DevicePushTargetsListed, ApnsSenderUnavailable }
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id, sign_submission, submit_parsed_submission, submission_outcome_reason,
   PublisherTokenUnavailable, SubmissionFiledPublisherTokenUnavailable, SubmissionAlreadyFiled, SubmissionRefused, SubmissionNotEnrolled,
@@ -192,13 +193,15 @@ fn probe_submit(root: NonEmptyStr, signer: MacKey, request: StoredApprovalReques
         submission_keyring: ApprovalKeyLoaded { key: probe_submission_key() },
         capability_keyring: ApprovalKeyLoaded { key: probe_key() },
         publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "probe fixture: no message leaves this probe" },
+        devices: DevicePushTargetsListed { targets: [], unregistered: [], unreadable: [] },
+        sender: ApnsSenderUnavailable { detail: "probe fixture: no push leaves this probe" },
         tag_hex: t.hex,
         request: request,
         broker: approval_broker_serving_base_url(),
       )
       match outcome {
         SubmissionRefused { refusal: SubmissionNotEnrolled { detail: _ } } => ProbeNotEnrolled
-        SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => ProbeFiledTokenUnavailable
+        SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _, devices: _ } => ProbeFiledTokenUnavailable
         SubmissionAlreadyFiled { escalation_id: _ } => ProbeAlreadyFiled
         other => ProbeOther { reason: submission_outcome_reason(o: other) }
       }

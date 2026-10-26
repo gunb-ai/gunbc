@@ -152,6 +152,7 @@ type MegaRacAttachOutcome
   | MegaRacListingUnparseableAfterDetach { detail: String, detach: MegaRacDetachEvidence }
   | MegaRacOfferedAmbiguouslyAfterDetach { image_name: NonEmptyStr, image_indices: List<String>, detach: MegaRacDetachEvidence }
   | MegaRacNotEnumeratedAfterRefresh { image_name: NonEmptyStr, detach: MegaRacDetachEvidence, standing: RemoteMediaMountStanding }
+  | MegaRacOwnSessionEnded { end: OwnSessionEnd }
 
 // THREE INDICES, THREE CONCEPTS, NEVER JOINED. image_list_index is the image's position in
 // /remote/images at the look that resolved it (absent on the already-presented route, where no
@@ -243,6 +244,18 @@ type MegaRacDetachAdmission
 type MegaRacSessionTask
   = MegaRacConverge { policy: MegaRacReplacementPolicy }
   | MegaRacObserve { share: MegaRacShareBinding }
+  | MegaRacReleaseOwn { policy: MegaRacOwnReleasePolicy }
+
+// THE THIRD TASK ENDS THIS ATTEMPT'S OWN SESSION. Boot run 39868779331 ended with its census row still
+// Started (its end-of-attempt look read status 1) and the host powered off, and every later attempt met
+// that row reading 19: an attempt that leaves its session behind hands the next one a row it may not be
+// able to read. The admission is the caller's, for the reason the replacement's is (a stop withdraws what
+// a running host reads); the stems only classify what else is presented, and nothing they recognise is
+// stopped here.
+type MegaRacOwnReleasePolicy {
+  replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>
+  detach: MegaRacDetachAdmission
+}
 
 type MegaRacReplacementPolicy {
   replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>
@@ -643,6 +656,7 @@ fn megarac_attach_remote_image(
     decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
     decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_observe_boot_presentation"),
     decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_stale_power_off"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_release_boot_session"),
   ]
 {
   session = megarac.Media.OpenSession(
@@ -735,11 +749,21 @@ fn megarac_attach_then_release(
         firmware: firmware,
         share: share,
       ) }
+    MegaRacReleaseOwn { policy: policy } =>
+      MegaRacConvergence { baseline: MegaRacMediaBaseline { general_read: false, general: "", configurations_read: false, configurations: "" }, outcome: megarac_release_own_with_token(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        csrf_token: csrf_token,
+        image_name: image_name,
+        firmware: firmware,
+        policy: policy,
+      ) }
   }
 
   let baseline = match task {
     MegaRacConverge { policy: _ } => Present { value: converged.baseline }
     MegaRacObserve { share: _ } => none
+    MegaRacReleaseOwn { policy: _ } => none
   }
   return MegaRacAttachResult {
     outcome: converged.outcome,
@@ -1010,29 +1034,7 @@ fn megarac_detach_then_attach(
       reason: "the presenting row carries no media_index, so no stop-media body can name its device; nothing was written",
     }
   }
-  let stopped = megarac.Media.StopMedia(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
-    json_body: stop_media_body(image_name: stale.image_name, media_index: media_index),
-    max_time: megarac_media_read_max_time_operand(),
-  )
-  let after = megarac.Media.GetRemoteConfigurations(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
-    max_time: megarac_media_read_max_time_operand(),
-  )
-  let general_after = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
-  let evidence = MegaRacDetachEvidence {
-    stale_image: stale.image_name,
-    media_index: media_index,
-    command: megarac_write_answer(exit_code: stopped.exit_code, body: stopped.body, stderr: stopped.stderr),
-    readback_read: after.success,
-    readback: after.body,
-    cd_after_stop: cd_error_of_raw(r: general_after, firmware: firmware),
-    general_after_stop: general_after,
-  }
+  let evidence = megarac_stop_row_and_read_back(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token, firmware: firmware, image_name: stale.image_name, media_index: media_index)
   return match detach_verdict(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stems: policy.replaceable_seeded_stems) {
     DetachNotEstablished { reason: why } => MegaRacStaleDetachUnconfirmed { detach: evidence, reason: why }
     DetachEstablished =>
@@ -1045,6 +1047,140 @@ fn megarac_detach_then_attach(
         detach: evidence,
         cd_before: cd_before,
       )
+  }
+}
+
+// ONE STOP, ONE READ-BACK, for both writers of stop-media: the stale replacement above and the end of an
+// attempt's own session (megarac_release_own_with_token). The answer and the read-back are both kept and
+// neither is judged here; detach_verdict judges the read-back. `stale_image` names the image the stop
+// named, which on the end-of-attempt route is the attempt's own.
+fn megarac_stop_row_and_read_back(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  image_name: String,
+  media_index: String,
+) -> MegaRacDetachEvidence
+{
+  let stopped = megarac.Media.StopMedia(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    json_body: stop_media_body(image_name: image_name, media_index: media_index),
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  let after = megarac.Media.GetRemoteConfigurations(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  let general_after = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
+  return MegaRacDetachEvidence {
+    stale_image: image_name,
+    media_index: media_index,
+    command: megarac_write_answer(exit_code: stopped.exit_code, body: stopped.body, stderr: stopped.stderr),
+    readback_read: after.success,
+    readback: after.body,
+    cd_after_stop: cd_error_of_raw(r: general_after, firmware: firmware),
+    general_after_stop: general_after,
+  }
+}
+
+// WHAT THE END OF AN ATTEMPT DID WITH ITS OWN SESSION. Only OwnSessionStopped and OwnSessionNothingPresented
+// leave nothing of this attempt behind; the other two are residue the next attempt meets, and the caller
+// reports them as such.
+type OwnSessionEnd
+  = OwnSessionNothingPresented { configurations: String }
+  | OwnSessionStopped { detach: MegaRacDetachEvidence }
+  | OwnSessionStopUnconfirmed { detach: MegaRacDetachEvidence, reason: NonEmptyStr }
+  | OwnSessionNotStopped { reason: NonEmptyStr, configurations: String }
+
+type OwnReleaseStep
+  = OwnReleaseStop { row: PresentingRow }
+  | OwnReleaseEnd { end: OwnSessionEnd }
+
+// PURE, over the configurations as read with NO stop exception (presented_media's `replaceable` absent),
+// so a row whose status is not catalogued as Started or Connecting never reaches the stop: the one row
+// stopped is this attempt's own image, presenting on a catalogued status, alone, under the caller's
+// admission. Everything else is named and left: another image of this lane is not this attempt's to end,
+// a foreign one is nobody's here, and an unread or unreadable document licenses no write.
+fn own_release_left(reason: String, configurations: String) -> OwnReleaseStep {
+  OwnReleaseEnd { end: OwnSessionNotStopped { reason: reason as NonEmptyStr, configurations: configurations } }
+}
+
+fn own_session_release_step(
+  convergence: PresentedConvergence,
+  detach: MegaRacDetachAdmission,
+  configurations: String,
+) -> OwnReleaseStep {
+  match convergence {
+    ConvergeDesiredPresented { row: r } =>
+      match detach {
+        MegaRacDetachAdmitted => OwnReleaseStop { row: r }
+        MegaRacDetachNotAdmitted { reason: why } => own_release_left(reason: concat("this attempt's own session is presenting and the stop was not admitted: ", why as String), configurations: configurations)
+      }
+    ConvergeNothingPresented => OwnReleaseEnd { end: OwnSessionNothingPresented { configurations: configurations } }
+    ConvergeUnreadable { detail: d } => own_release_left(reason: concat("the configurations document could not be read, so no row is known to be this attempt's: ", d), configurations: configurations)
+    ConvergeUncatalogued { image_name: n, unread: u, refusal: _ } =>
+      own_release_left(reason: join(["the row naming '", n, "' reports ", redirection_unread_text(unread: u), "; the end of an attempt stops only its own row on a status catalogued as started or connecting"], ""), configurations: configurations)
+    ConvergeStalePresented { row: r } => own_release_left(reason: join(["another image of this lane, '", r.image_name, "', is presented instead of this attempt's; the end of an attempt stops only its own"], ""), configurations: configurations)
+    ConvergeForeignPresented { image_name: n } => own_release_left(reason: join(["'", n, "' is presented and is not an image this lane publishes; it is never stopped"], ""), configurations: configurations)
+    ConvergeSeveralPresented => own_release_left(reason: "more than one image is presented, a state never observed on this single-CD unit; nothing is stopped", configurations: configurations)
+  }
+}
+
+fn megarac_release_own_with_token(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  policy: MegaRacOwnReleasePolicy,
+) -> MegaRacAttachOutcome
+{
+  let presented = megarac.Media.GetRemoteConfigurations(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  if presented.success == false {
+    return MegaRacOwnSessionEnded { end: OwnSessionNotStopped { reason: "the configurations read did not answer, so no row is known to be this attempt's; nothing was written", configurations: presented.body } }
+  }
+  let step = own_session_release_step(
+    convergence: presented_convergence(
+      presented: presented_media(body: presented.body, image_name: image_name, firmware: firmware, replaceable: none),
+      image_name: image_name,
+      replaceable_seeded_stems: policy.replaceable_seeded_stems,
+    ),
+    detach: policy.detach,
+    configurations: presented.body,
+  )
+  return match step {
+    OwnReleaseEnd { end: e } => MegaRacOwnSessionEnded { end: e }
+    OwnReleaseStop { row: r } =>
+      match r.media_index {
+        Absent => MegaRacOwnSessionEnded { end: OwnSessionNotStopped { reason: "this attempt's own row carries no media_index, so no stop-media body can name its device; nothing was written", configurations: presented.body } }
+        Present { value: idx } => {
+          let evidence = megarac_stop_row_and_read_back(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token, firmware: firmware, image_name: r.image_name, media_index: idx)
+          MegaRacOwnSessionEnded { end: own_session_end_of_detach(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stems: policy.replaceable_seeded_stems) }
+        }
+      }
+  }
+}
+
+// PURE: the stop is established by its read-back alone (detach_verdict), never by stop-media's answer.
+fn own_session_end_of_detach(
+  evidence: MegaRacDetachEvidence,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>,
+) -> OwnSessionEnd {
+  match detach_verdict(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stems: replaceable_seeded_stems) {
+    DetachEstablished => OwnSessionStopped { detach: evidence }
+    DetachNotEstablished { reason: why } => OwnSessionStopUnconfirmed { detach: evidence, reason: why }
   }
 }
 
@@ -2170,6 +2306,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacListingUnparseableAfterDetach { detail: _, detach: _ } => presentation_unobserved_before_presentation()
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: _, image_indices: _, detach: _ } => presentation_unobserved_before_presentation()
     MegaRacNotEnumeratedAfterRefresh { image_name: _, detach: _, standing: _ } => presentation_unobserved_before_presentation()
+    MegaRacOwnSessionEnded { end: _ } => PresentationUnobserved { reason: "the end-of-attempt release is not a look at the presentation" }
   }
 }
 

@@ -1,7 +1,7 @@
 module v2.test.claim.manual.structured_body_subsumption_set
 
 import v2.std.arrow_signature { declared_signature }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Edge,
   Node,
@@ -41,7 +41,7 @@ fn subsumes(structured_body: Node, table_target: Node) -> Bool {
     signature: int_pair_arrow_signature(),
     structured_body: structured_body
   ) {
-    Accepted { value: arrow_with_body, diagnostics: _ } => arrow_with_body == table_target
+    Accepted { value: arrow_with_body, diagnostics: _ } => node_same_occurrence(a: arrow_with_body, b: table_target)
     Rejected { diagnostics: _ } => false
   }
 }

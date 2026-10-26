@@ -280,7 +280,7 @@ pub fn resolve_modules(
             }
             __result
         }),
-        source_indices.clone(),
+        source_indices,
         Rc::new(OccurrenceTransport {
             index: Rc::new(OccurrenceIndex {
                 entries: Rc::new(vec![]),
@@ -390,10 +390,7 @@ pub fn module_type_declaration_names(
             let mut __result = Vec::new();
             for item in Rc::new({
                 let mut __result = Vec::new();
-                for item in crate::v1_std_core::module_items(module.clone())
-                    .iter()
-                    .cloned()
-                {
+                for item in crate::v1_std_core::module_items(module).iter().cloned() {
                     if (item.module_item_kind.clone()
                         == ParsedModuleItemKind::ModuleItemTypeDeclaration)
                     {
@@ -467,17 +464,17 @@ pub fn kernel_named_import_child_diags(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone());
+        let name = crate::v1_std_core::authored_name_at(source_indices, child.clone());
         kernel_named_import_diags(
             crate::std_literal_elaboration::kernel_named_import_standing(
                 name.clone(),
                 import_path.clone(),
-                map_has(type_decl_names.clone(), name.clone()),
+                map_has(type_decl_names, name.clone()),
                 kernel_mint_declaration_rows(),
             ),
             name.clone(),
             import_path.clone(),
-            importing_module.clone(),
+            importing_module,
             child.span.clone(),
         )
     }
@@ -525,7 +522,7 @@ pub fn resolve_import(
     {
         let import_path =
             crate::v1_std_core::authored_name_at(source_indices.clone(), import.clone());
-        let target = find_module(module_index.clone(), import_path.clone());
+        let target = find_module(module_index, import_path.clone());
         match target.clone() {
             std::option::Option::None => {
                 let diag = crate::v1_std_core::make_error_node(
@@ -761,7 +758,7 @@ pub fn get_item_name(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
+    crate::v1_std_core::authored_name_at(source_indices, item)
 }
 
 pub fn get_variant_names(
@@ -1046,10 +1043,10 @@ pub fn topological_sort(
         });
         let module_count = (modules.clone().len() as i64);
         let result = kahn_drain(
-            initial_queue.clone(),
+            initial_queue,
             Rc::new(vec![]),
             in_degree_map.clone(),
-            adjacency.clone(),
+            adjacency,
             module_count.clone(),
         );
         if ((result.sorted.clone().len() as i64) == module_count.clone()) {
@@ -1103,118 +1100,120 @@ pub fn kahn_drain(
     mut __tco_loop_adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<KahnDrainState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut queue = __tco_loop_queue;
-        #[allow(unused_mut)]
-        let mut sorted = __tco_loop_sorted;
-        #[allow(unused_mut)]
-        let mut in_degree_map = __tco_loop_in_degree_map;
-        #[allow(unused_mut)]
-        let mut adjacency = __tco_loop_adjacency;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if ((queue.clone().len() as i64) == 0) {
-            return Rc::new(KahnDrainState {
-                sorted: sorted.clone(),
-                in_degree_map: in_degree_map.clone(),
-            });
-        }
-        let batch_result = queue.iter().cloned().fold(
-            Rc::new(KahnDrainState {
-                sorted: sorted.clone(),
-                in_degree_map: in_degree_map.clone(),
-            }),
-            |state: Rc<KahnDrainState>, node: String| {
-                let state = v1_rt::take_owned(state);
-                {
-                    let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
-                    let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
-                        Some(ns) => ns.clone(),
-                        std::option::Option::None => Rc::new(vec![]),
-                    };
-                    let new_degrees = neighbors.iter().cloned().fold(
-                        state.in_degree_map,
-                        |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
-                            let current = match v1_rt::map_get(&deg_map, neighbor.clone()) {
-                                Some(d) => d.clone(),
-                                std::option::Option::None => 0,
-                            };
-                            v1_rt::rc_map_insert(
-                                deg_map.clone(),
-                                neighbor.clone(),
-                                v1_rt::int_sub(current.clone(), 1),
-                            )
-                        },
-                    );
-                    Rc::new(KahnDrainState {
-                        sorted: new_sorted.clone(),
-                        in_degree_map: new_degrees.clone(),
-                    })
-                }
-            },
-        );
-        let new_zero_seed = v1_rt::rc_empty_map::<String, bool>();
-        let new_zero_set = Rc::new({
-            let mut __result = Vec::new();
-            for neighbor in Rc::new({
-                let mut __result = Vec::new();
-                for node in queue.iter().cloned() {
-                    __result.extend(
-                        (*match v1_rt::map_get(&adjacency, node.clone()) {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut queue = __tco_loop_queue;
+            #[allow(unused_mut)]
+            let mut sorted = __tco_loop_sorted;
+            #[allow(unused_mut)]
+            let mut in_degree_map = __tco_loop_in_degree_map;
+            #[allow(unused_mut)]
+            let mut adjacency = __tco_loop_adjacency;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if ((queue.clone().len() as i64) == 0) {
+                return Rc::new(KahnDrainState {
+                    sorted: sorted.clone(),
+                    in_degree_map: in_degree_map.clone(),
+                });
+            }
+            let batch_result = queue.iter().cloned().fold(
+                Rc::new(KahnDrainState {
+                    sorted: sorted.clone(),
+                    in_degree_map: in_degree_map.clone(),
+                }),
+                |state: Rc<KahnDrainState>, node: String| {
+                    let state = v1_rt::take_owned(state);
+                    {
+                        let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
+                        let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                             Some(ns) => ns.clone(),
                             std::option::Option::None => Rc::new(vec![]),
+                        };
+                        let new_degrees = neighbors.iter().cloned().fold(
+                            state.in_degree_map,
+                            |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
+                                let current = match v1_rt::map_get(&deg_map, neighbor.clone()) {
+                                    Some(d) => d.clone(),
+                                    std::option::Option::None => 0,
+                                };
+                                v1_rt::rc_map_insert(
+                                    deg_map.clone(),
+                                    neighbor.clone(),
+                                    v1_rt::int_sub(current.clone(), 1),
+                                )
+                            },
+                        );
+                        Rc::new(KahnDrainState {
+                            sorted: new_sorted.clone(),
+                            in_degree_map: new_degrees.clone(),
                         })
-                        .iter()
-                        .cloned(),
-                    );
+                    }
+                },
+            );
+            let new_zero_seed = v1_rt::rc_empty_map::<String, bool>();
+            let new_zero_set = Rc::new({
+                let mut __result = Vec::new();
+                for neighbor in Rc::new({
+                    let mut __result = Vec::new();
+                    for node in queue.iter().cloned() {
+                        __result.extend(
+                            (*match v1_rt::map_get(&adjacency, node.clone()) {
+                                Some(ns) => ns.clone(),
+                                std::option::Option::None => Rc::new(vec![]),
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    if match v1_rt::map_get(&batch_result.in_degree_map.clone(), neighbor.clone()) {
+                        Some(0) => true,
+                        _ => false,
+                    } {
+                        __result.push(neighbor);
+                    }
                 }
                 __result
             })
             .iter()
             .cloned()
+            .fold(
+                new_zero_seed.clone(),
+                |acc: Rc<HashMap<String, bool>>, name: String| {
+                    v1_rt::rc_map_insert(acc, name.clone(), true)
+                },
+            );
+            let new_zero = Rc::new({
+                let mut __keyed: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
+                    .iter()
+                    .cloned()
+                    .map(|__e: String| {
+                        let __k = (|name: String| name.clone())(__e.clone());
+                        (__k, __e)
+                    })
+                    .collect();
+                __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
+            });
             {
-                if match v1_rt::map_get(&batch_result.in_degree_map.clone(), neighbor.clone()) {
-                    Some(0) => true,
-                    _ => false,
-                } {
-                    __result.push(neighbor);
-                }
+                let __tco_0 = new_zero;
+                let __tco_1 = batch_result.sorted.clone();
+                let __tco_2 = batch_result.in_degree_map.clone();
+                let __tco_3 = adjacency;
+                let __tco_4 = v1_rt::int_sub(fuel, 1);
+                __tco_loop_queue = __tco_0;
+                __tco_loop_sorted = __tco_1;
+                __tco_loop_in_degree_map = __tco_2;
+                __tco_loop_adjacency = __tco_3;
+                __tco_loop_fuel = __tco_4;
+                continue;
             }
-            __result
-        })
-        .iter()
-        .cloned()
-        .fold(
-            new_zero_seed.clone(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
-                v1_rt::rc_map_insert(acc, name.clone(), true)
-            },
-        );
-        let new_zero = Rc::new({
-            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
-                .iter()
-                .cloned()
-                .map(|__e: String| {
-                    let __k = (|name: String| name.clone())(__e.clone());
-                    (__k, __e)
-                })
-                .collect();
-            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
-            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
-        });
-        {
-            let __tco_0 = new_zero.clone();
-            let __tco_1 = batch_result.sorted.clone();
-            let __tco_2 = batch_result.in_degree_map.clone();
-            let __tco_3 = adjacency;
-            let __tco_4 = v1_rt::int_sub(fuel, 1);
-            __tco_loop_queue = __tco_0;
-            __tco_loop_sorted = __tco_1;
-            __tco_loop_in_degree_map = __tco_2;
-            __tco_loop_adjacency = __tco_3;
-            __tco_loop_fuel = __tco_4;
-            continue;
         }
     }
 }

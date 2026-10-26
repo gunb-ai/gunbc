@@ -7,7 +7,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.managed_directory { declared_directory_mode }
 import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_mode }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap.roadmap_dispatch_actuator { DispatchWorkerUnitPlan, dispatch_worker_handed_set }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, dispatch_worker_handed_set }
 import gunbc.roadmap.dispatch_worker_handed_set { dispatch_worker_set_exit_root, dispatch_worker_set_stream_path }
 
 // A PATH THE SYSTEM MANAGER CREATES ON THE WORKER'S BEHALF MUST BE USABLE BY ITS CONSUMER. WRE-1 moved

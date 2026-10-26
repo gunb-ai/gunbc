@@ -978,6 +978,22 @@ fn type_node_is_callable(n: Node) -> Bool {
   n.connective == Arrow || n.params |> count > 0
 }
 
+// THE TYPE AN APPLICATION OF A FIELD PRODUCES: a callable field type's codomain (an Arrow stores it
+// in `inferred`), and any other field type itself -- a kernel nullary template is minted as a value
+// field (`algebra_value_field`), so its type already is the application's. One read for every
+// field-as-operation site (method call, binary-operator algebra field), so arity cannot stand in for
+// callability at one of them while another asks the connective. Absent when the type is callable but
+// records no codomain; each site keeps its own answer for that case. No Arrow reaches it, since
+// `make_callable_type` and `parse_callable_type_expr` always record one.
+fn applied_field_type(field_type: Node) -> Node? {
+  if type_node_is_callable(n: field_type) {
+    match field_type.inferred {
+      Present { value: Resolved { node: codomain } } => Present { value: codomain }
+      _ => none
+    }
+  } else { Present { value: field_type } }
+}
+
 fn node_declaration_file(n: Node) -> String {
   match n.ident_span {
     Present { value: sp } => sp.file
@@ -1708,12 +1724,10 @@ fn infer_arithmetic_binop_type_node(op: BinOp, left_type: Node, source_indices: 
           Present { value: m } =>
             match m.field_node.inferred {
               Present { value: Resolved { node: rt } } =>
-                if rt.params |> count > 0 {
-                  match rt.inferred {
-                    Present { value: Resolved { node: return_type } } => BinOpInferred { result_type: return_type, algebra_field: Present { value: m.field_kind } }
-                    _ => BinOpInferred { result_type: left_type, algebra_field: Present { value: m.field_kind } }
-                  }
-                } else { BinOpInferred { result_type: rt, algebra_field: Present { value: m.field_kind } } }
+                match applied_field_type(field_type: rt) {
+                  Present { value: applied } => BinOpInferred { result_type: applied, algebra_field: Present { value: m.field_kind } }
+                  Absent => BinOpInferred { result_type: left_type, algebra_field: Present { value: m.field_kind } }
+                }
               _ => BinOpInferred { result_type: left_type, algebra_field: none }
             }
           Absent => BinOpInferred { result_type: left_type, algebra_field: none }

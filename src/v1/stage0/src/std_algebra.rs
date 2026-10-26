@@ -258,7 +258,7 @@ pub fn list_append<T: Clone>(
 }
 
 pub fn list_push<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
-    v1_rt::rc_list_push(xs.clone(), item.clone())
+    v1_rt::rc_list_push(xs, item)
 }
 
 pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
@@ -319,7 +319,7 @@ pub struct MapIntroductionEntry<K: Clone, V: Clone> {
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
-pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: Clone + 'static>(
     entries: Rc<FreeMonoid<Rc<MapIntroductionEntry<K, V>>>>,
 ) -> Rc<HashMap<K, V>> {
     {
@@ -331,11 +331,11 @@ pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     }
 }
 
-pub fn map_entry_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+pub fn map_entry_insert<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: Clone + 'static>(
     acc: Rc<HashMap<K, V>>,
     entry: Rc<MapIntroductionEntry<K, V>>,
 ) -> Rc<HashMap<K, V>> {
-    v1_rt::rc_map_insert(acc.clone(), entry.key.clone(), entry.value.clone())
+    v1_rt::rc_map_insert(acc, entry.key.clone(), entry.value.clone())
 }
 
 #[derive(Clone)]
@@ -378,7 +378,7 @@ pub fn ordering_fold<R: Clone>(o: Ordering, fold: Rc<OrderingFold<R>>) -> R {
 
 pub fn ordering_is_less(o: Ordering) -> bool {
     ordering_fold(
-        o.clone(),
+        o,
         Rc::new(OrderingFold {
             less: true,
             equal: false,
@@ -740,7 +740,7 @@ pub fn template_param_position(
 }
 
 pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
-    template_param_position(t.clone(), |p| match (*p.clone()).clone() {
+    template_param_position(t, |p| match (*p.clone()).clone() {
         AlgebraTypeTemplate::CallableOf { .. } => true,
         AlgebraTypeTemplate::ReceiverSelf => false,
         AlgebraTypeTemplate::ReceiverElement => false,
@@ -756,7 +756,7 @@ pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
 }
 
 pub fn template_receiver_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
-    template_param_position(t.clone(), |p| {
+    template_param_position(t, |p| {
         (p.clone() == Rc::new(AlgebraTypeTemplate::ReceiverSelf))
     })
 }
@@ -1083,15 +1083,17 @@ pub fn carrier_spelling_row_present(m: Rc<CarrierRowMembership>) -> bool {
     }
 }
 
-pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
+pub fn kernel_algebra_profile_value() -> Rc<FinitelySupportedFunction<String, AlgebraProfile>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<HashMap<String, AlgebraProfile>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<FinitelySupportedFunction<String, AlgebraProfile>>,
+             carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<FinitelySupportedFunction<String, AlgebraProfile>>,
+                     spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.method_surface.clone()) {
                             v1_rt::rc_map_insert(
                                 inner,
@@ -1108,15 +1110,16 @@ pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
     }
 }
 
-pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
+pub fn carrier_container_algebra_rows() -> Rc<FinitelySupportedFunction<String, String>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<FinitelySupportedFunction<String, String>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<FinitelySupportedFunction<String, String>>,
+                     spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
                             v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
                         } else {
@@ -1129,15 +1132,16 @@ pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
     }
 }
 
-pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
+pub fn carrier_container_alias_rows() -> Rc<FinitelySupportedFunction<String, String>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<FinitelySupportedFunction<String, String>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<FinitelySupportedFunction<String, String>>,
+                     spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
                             v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
                         } else {
@@ -1150,15 +1154,16 @@ pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
     }
 }
 
-pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
+pub fn carrier_container_roster_map() -> Rc<FinitelySupportedFunction<String, bool>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<FinitelySupportedFunction<String, bool>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<FinitelySupportedFunction<String, bool>>,
+                     spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
                             v1_rt::rc_map_insert(inner, spelling.text.clone(), true)
                         } else {
@@ -1171,15 +1176,16 @@ pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
     }
 }
 
-pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
+pub fn carrier_container_arity_rows() -> Rc<FinitelySupportedFunction<String, i64>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<HashMap<String, i64>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<FinitelySupportedFunction<String, i64>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<FinitelySupportedFunction<String, i64>>,
+                     spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
                             v1_rt::rc_map_insert(
                                 inner,
@@ -1262,21 +1268,22 @@ pub fn kernel_carrier_admits_numeral(name: String) -> bool {
 }
 
 pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
-    match algebra_profile_support(profile.clone()) {
+    match algebra_profile_support(profile) {
         AlgebraSupportAxis::FiniteSupport => true,
         AlgebraSupportAxis::OpenSupport => false,
     }
 }
 
-pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
+pub fn carrier_container_equality_rows() -> Rc<FinitelySupportedFunction<String, bool>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<FinitelySupportedFunction<String, bool>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<FinitelySupportedFunction<String, bool>>,
+                     spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
                             v1_rt::rc_map_insert(
                                 inner,
@@ -1293,13 +1300,13 @@ pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
     }
 }
 
-pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
+pub fn kernel_algebra_profile() -> Rc<FinitelySupportedFunction<String, AlgebraProfile>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
+        static CACHED: Rc<FinitelySupportedFunction<String, AlgebraProfile>> = {
             kernel_algebra_profile_value()
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, AlgebraProfile>>| c.clone())
+    CACHED.with(|c: &Rc<FinitelySupportedFunction<String, AlgebraProfile>>| c.clone())
 }
 
 pub fn total_order_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
@@ -2388,31 +2395,36 @@ pub fn fold_list<T: Clone, A: Clone>(
 ) -> A {
     {
         let mut __tco_cursor_xs: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut empty = __tco_loop_empty;
-            #[allow(unused_mut)]
-            let mut cons = __tco_loop_cons;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor_xs) == 0 {
-                    break empty.clone();
-                } else {
-                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
-                    {
-                        let __tco_0 = __tco_cursor_xs + 1;
-                        let __tco_1 = cons(empty, h.clone());
-                        let __tco_2 = cons;
-                        __tco_cursor_xs = __tco_0;
-                        __tco_loop_empty = __tco_1;
-                        __tco_loop_cons = __tco_2;
-                        continue;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut empty = __tco_loop_empty;
+                #[allow(unused_mut)]
+                let mut cons = __tco_loop_cons;
+                {
+                    let __fm = __tco_base_xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break empty.clone();
+                    } else {
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        {
+                            let __tco_0 = __tco_cursor_xs + 1;
+                            let __tco_1 = cons(empty, h.clone());
+                            let __tco_2 = cons;
+                            __tco_cursor_xs = __tco_0;
+                            __tco_loop_empty = __tco_1;
+                            __tco_loop_cons = __tco_2;
+                            continue;
+                        }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
@@ -2421,7 +2433,7 @@ pub fn fold_non_empty<T: Clone>(
     tail: Rc<FreeMonoid<T>>,
     cons: impl Fn(T, T) -> T + Clone,
 ) -> T {
-    fold_list(tail.clone(), head.clone(), cons.clone())
+    fold_list(tail, head, cons)
 }
 
 pub fn join_separated<T: Clone>(
@@ -2438,7 +2450,7 @@ pub fn join_separated<T: Clone>(
             let first = (*__fm)[0].clone();
             let rest: Rc<Vec<_>> = Rc::new(__fm.skip(1));
             fold_list(rest.clone(), first.clone(), |acc, field| {
-                combine(combine(acc.clone(), separator.clone()), field.clone())
+                combine(combine(acc, separator.clone()), field)
             })
         }
     }
@@ -2446,8 +2458,8 @@ pub fn join_separated<T: Clone>(
 
 pub fn string_concat_join(fields: Rc<Vec<String>>, separator: String) -> String {
     join_separated(
-        fields.clone(),
-        separator.clone(),
+        fields,
+        separator,
         |acc, field| v1_rt::concat(acc.clone(), field.clone()),
         "".to_string(),
     )
@@ -2474,7 +2486,7 @@ pub fn fold_list_right<T: Clone, A: Clone>(
 }
 
 pub fn list_reverse<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
-    fold_list(xs.clone(), Rc::new(vec![]), |acc, item| {
+    fold_list(xs, Rc::new(vec![]), |acc, item| {
         Rc::new({
             let mut __cons_v = (*acc.clone()).clone();
             __cons_v.insert(0, item.clone());
@@ -2487,12 +2499,8 @@ pub fn list_map<T: Clone, U: Clone>(
     xs: Rc<FreeMonoid<T>>,
     f: impl Fn(T) -> U + Clone,
 ) -> Rc<FreeMonoid<U>> {
-    fold_list_right(xs.clone(), Rc::new(vec![]), |acc, item| {
-        Rc::new({
-            let mut __cons_v = (*acc.clone()).clone();
-            __cons_v.insert(0, f(item.clone()));
-            __cons_v
-        })
+    fold_list(xs, Rc::new(vec![]), |acc, item| {
+        v1_rt::rc_list_push(acc, f(item))
     })
 }
 
@@ -2500,13 +2508,9 @@ pub fn list_flat_map<T: Clone, U: Clone>(
     xs: Rc<FreeMonoid<T>>,
     f: impl Fn(T) -> Rc<FreeMonoid<U>> + Clone,
 ) -> Rc<FreeMonoid<U>> {
-    fold_list_right(xs.clone(), Rc::new(vec![]), |acc, item| {
-        fold_list_right(f(item.clone()), acc.clone(), |inner, produced| {
-            Rc::new({
-                let mut __cons_v = (*inner.clone()).clone();
-                __cons_v.insert(0, produced.clone());
-                __cons_v
-            })
+    fold_list(xs, Rc::new(vec![]), |acc, item| {
+        fold_list(f(item), acc, |inner, produced| {
+            v1_rt::rc_list_push(inner, produced)
         })
     })
 }
@@ -2539,55 +2543,81 @@ pub fn skip<T: Clone>(
     mut __tco_loop_xs: Rc<FreeMonoid<T>>,
     mut __tco_loop_n: i64,
 ) -> Rc<FreeMonoid<T>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut xs = __tco_loop_xs;
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        if (n.clone() <= 0) {
-            break xs.clone();
-        } else {
-            {
-                let __fm = xs.clone();
-                if __fm.is_empty() {
-                    break Rc::new(vec![]);
+    {
+        let mut __tco_cursor_xs: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut n = __tco_loop_n;
+                if (n.clone() <= 0) {
+                    break Rc::new(__tco_base_xs.skip(__tco_cursor_xs));
                 } else {
-                    let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
                     {
-                        let __tco_0 = t.clone();
-                        let __tco_1 = v1_rt::int_sub(n, 1);
-                        __tco_loop_xs = __tco_0;
-                        __tco_loop_n = __tco_1;
-                        continue;
+                        let __fm = __tco_base_xs.clone();
+                        if (__fm.len() - __tco_cursor_xs) == 0 {
+                            break Rc::new(vec![]);
+                        } else {
+                            {
+                                let __tco_0 = __tco_cursor_xs + 1;
+                                let __tco_1 = v1_rt::int_sub(n, 1);
+                                __tco_cursor_xs = __tco_0;
+                                __tco_loop_n = __tco_1;
+                                continue;
+                            }
+                        }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
-pub fn take_prefix<T: Clone>(xs: Rc<FreeMonoid<T>>, n: i64) -> Rc<FreeMonoid<T>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (n.clone() <= 0) {
-            Rc::new(vec![])
-        } else {
-            {
-                let __fm = xs.clone();
-                if __fm.is_empty() {
-                    Rc::new(vec![])
+pub fn take_prefix<T: Clone>(
+    mut __tco_loop_xs: Rc<FreeMonoid<T>>,
+    mut __tco_loop_n: i64,
+) -> Rc<FreeMonoid<T>> {
+    {
+        let mut __trmc_out = Rc::new(vec![]);
+        let mut __tco_cursor_xs: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut n = __tco_loop_n;
+                if (n.clone() <= 0) {
+                    break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
                 } else {
-                    let h = (*__fm)[0].clone();
-                    let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    Rc::new({
-                        let mut __cons_v =
-                            (*take_prefix(t.clone(), v1_rt::int_sub(n.clone(), 1))).clone();
-                        __cons_v.insert(0, h.clone());
-                        __cons_v
-                    })
+                    {
+                        let __fm = __tco_base_xs.clone();
+                        if (__fm.len() - __tco_cursor_xs) == 0 {
+                            break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
+                        } else {
+                            let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                            {
+                                __trmc_out = v1_rt::rc_list_push(__trmc_out, h.clone());
+                                {
+                                    let __tco_0 = __tco_cursor_xs + 1;
+                                    let __tco_1 = v1_rt::int_sub(n, 1);
+                                    __tco_cursor_xs = __tco_0;
+                                    __tco_loop_n = __tco_1;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-        }
-    })
+            };
+        };
+        __tco_result
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2602,46 +2632,86 @@ pub fn sort_merge_runs<T: Clone, K: Clone>(
     right: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
     order: Rc<TotalOrder<K>>,
 ) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = left.clone();
-        if __fm.is_empty() {
-            right.clone()
-        } else {
-            let l = (*__fm)[0].clone();
-            let lt: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = right.clone();
-                if __fm.is_empty() {
-                    left.clone()
-                } else {
-                    let r = (*__fm)[0].clone();
-                    let rt: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    match (order.compare)(l.key.clone(), r.key.clone()) {
-                        Ordering::Greater => Rc::new({
-                            let mut __cons_v =
-                                (*sort_merge_runs(left.clone(), rt.clone(), order.clone())).clone();
-                            __cons_v.insert(0, r.clone());
-                            __cons_v
-                        }),
-                        Ordering::Less => Rc::new({
-                            let mut __cons_v =
-                                (*sort_merge_runs(lt.clone(), right.clone(), order.clone()))
-                                    .clone();
-                            __cons_v.insert(0, l.clone());
-                            __cons_v
-                        }),
-                        Ordering::Equal => Rc::new({
-                            let mut __cons_v =
-                                (*sort_merge_runs(lt.clone(), right.clone(), order.clone()))
-                                    .clone();
-                            __cons_v.insert(0, l.clone());
-                            __cons_v
-                        }),
+    sort_merge_into(left, right, order, Rc::new(vec![]))
+}
+
+pub fn sort_merge_into<T: Clone, K: Clone>(
+    mut __tco_loop_left: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    mut __tco_loop_right: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+    mut __tco_loop_order: Rc<TotalOrder<K>>,
+    mut __tco_loop_acc: Rc<FreeMonoid<Rc<SortKeyed<T, K>>>>,
+) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
+    {
+        let mut __tco_cursor_left: usize = 0;
+        let mut __tco_cursor_right: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_left = __tco_loop_left.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_left = __tco_base_left.focus();
+            let __tco_base_right = __tco_loop_right.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_right = __tco_base_right.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut order = __tco_loop_order;
+                #[allow(unused_mut)]
+                let mut acc = __tco_loop_acc;
+                {
+                    let __fm = __tco_base_left.clone();
+                    if (__fm.len() - __tco_cursor_left) == 0 {
+                        break list_append(
+                            acc.clone(),
+                            Rc::new(__tco_base_right.skip(__tco_cursor_right)),
+                        );
+                    } else {
+                        let l = __tco_focus_left.index(__tco_cursor_left + 0).clone();
+                        {
+                            let __fm = __tco_base_right.clone();
+                            if (__fm.len() - __tco_cursor_right) == 0 {
+                                break list_append(
+                                    acc.clone(),
+                                    Rc::new(__tco_base_left.skip(__tco_cursor_left)),
+                                );
+                            } else {
+                                let r = __tco_focus_right.index(__tco_cursor_right + 0).clone();
+                                match (order.compare)(l.key.clone(), r.key.clone()) {
+                                    Ordering::Greater => {
+                                        let __tco_0 = __tco_cursor_right + 1;
+                                        let __tco_1 = order;
+                                        let __tco_2 = v1_rt::rc_list_push(acc, r.clone());
+                                        __tco_cursor_right = __tco_0;
+                                        __tco_loop_order = __tco_1;
+                                        __tco_loop_acc = __tco_2;
+                                        continue;
+                                    }
+                                    Ordering::Less => {
+                                        let __tco_0 = __tco_cursor_left + 1;
+                                        let __tco_1 = order;
+                                        let __tco_2 = v1_rt::rc_list_push(acc, l.clone());
+                                        __tco_cursor_left = __tco_0;
+                                        __tco_loop_order = __tco_1;
+                                        __tco_loop_acc = __tco_2;
+                                        continue;
+                                    }
+                                    Ordering::Equal => {
+                                        let __tco_0 = __tco_cursor_left + 1;
+                                        let __tco_1 = order;
+                                        let __tco_2 = v1_rt::rc_list_push(acc, l.clone());
+                                        __tco_cursor_left = __tco_0;
+                                        __tco_loop_order = __tco_1;
+                                        __tco_loop_acc = __tco_2;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        }
-    })
+            };
+        };
+        __tco_result
+    }
 }
 
 pub fn sort_keyed_runs<T: Clone, K: Clone>(
@@ -2704,66 +2774,73 @@ pub fn list_sort_by_key<T: Clone, K: Clone>(
                 })
             }),
             length(xs.clone()),
-            order.clone(),
+            order,
         ),
         |k| k.item.clone(),
     )
 }
 
-pub fn empty_map_primitive_delegate<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+pub fn empty_map_primitive_delegate<
+    K: Clone + std::cmp::Eq + std::hash::Hash + 'static,
+    V: Clone + 'static,
+>() -> Rc<HashMap<K, V>> {
     v1_rt::rc_empty_map()
 }
 
-pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+pub fn empty_map<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: Clone + 'static>(
+) -> Rc<HashMap<K, V>> {
     v1_rt::rc_empty_map()
 }
 
-pub fn map_insert_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+pub fn map_insert_primitive_delegate<
+    K: Clone + std::cmp::Eq + std::hash::Hash + 'static,
+    V: Clone + 'static,
+>(
     m: Rc<HashMap<K, V>>,
     key: K,
     value: V,
 ) -> Rc<HashMap<K, V>> {
-    v1_rt::rc_map_insert(m.clone(), key.clone(), value.clone())
+    v1_rt::rc_map_insert(m, key, value)
 }
 
-pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: Clone + 'static>(
     m: Rc<HashMap<K, V>>,
     key: K,
     value: V,
 ) -> Rc<HashMap<K, V>> {
-    v1_rt::rc_map_insert(m.clone(), key.clone(), value.clone())
+    v1_rt::rc_map_insert(m, key, value)
 }
 
 pub fn map_lookup_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
 ) -> Option<V> {
-    v1_rt::lookup(&m, key.clone())
+    v1_rt::lookup(&m, key)
 }
 
 pub fn map_lookup<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
 ) -> Option<V> {
-    v1_rt::lookup(&m, key.clone())
+    v1_rt::lookup(&m, key)
 }
 
 pub fn map_contains_key<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
 ) -> bool {
-    match v1_rt::lookup(&m, key.clone()) {
+    match v1_rt::lookup(&m, key) {
         Some(_) => true,
         std::option::Option::None => false,
     }
 }
 
 pub fn list_at_primitive_delegate<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
-    v1_rt::list_get_optional(&xs, index.clone())
+    v1_rt::list_get_optional(&xs, index)
 }
 
 pub fn list_at_optional<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
-    v1_rt::list_get_optional(&xs, index.clone())
+    v1_rt::list_get_optional(&xs, index)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2775,7 +2852,7 @@ pub enum ListAtLookup<T> {
 
 pub fn list_at_reference<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
     match (*fold_list(
-        xs.clone(),
+        xs,
         Rc::new(ListAtLookup::ListAtMissing {
             remaining: index.clone(),
         }),
@@ -2821,7 +2898,7 @@ pub fn is_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
 }
 
 pub fn non_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
-    match is_empty(xs.clone()) {
+    match is_empty(xs) {
         true => false,
         false => true,
     }
@@ -2832,8 +2909,8 @@ pub fn length<T: Clone>(xs: Rc<FreeMonoid<T>>) -> i64 {
 }
 
 pub fn for_all<T: Clone>(xs: Rc<FreeMonoid<T>>, predicate: impl Fn(T) -> bool + Clone) -> bool {
-    fold_list(xs.clone(), true, |acc, item| match acc.clone() {
-        true => predicate(item.clone()),
+    fold_list(xs, true, |acc, item| match acc.clone() {
+        true => predicate(item),
         false => false,
     })
 }
@@ -2856,7 +2933,7 @@ pub fn contains<T: Clone>(
 }
 
 pub fn count_where<T: Clone>(xs: Rc<FreeMonoid<T>>, predicate: impl Fn(T) -> bool + Clone) -> i64 {
-    fold_list(xs.clone(), 0, |count, item| match predicate(item.clone()) {
+    fold_list(xs, 0, |count, item| match predicate(item) {
         true => v1_rt::int_add(count.clone(), 1),
         false => count.clone(),
     })
@@ -2867,13 +2944,13 @@ pub fn count_equal<T: Clone>(
     item: T,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> i64 {
-    count_where(xs.clone(), |candidate| eq(candidate.clone(), item.clone()))
+    count_where(xs, |candidate| eq(candidate, item.clone()))
 }
 
 pub fn unique<T: Clone>(xs: Rc<FreeMonoid<T>>, eq: impl Fn(T, T) -> bool + Clone) -> bool {
     {
         let state = fold_list(
-            xs.clone(),
+            xs,
             Rc::new(FreeMonoidUniqueState {
                 seen: Rc::new(vec![]),
                 unique: true,
@@ -2909,31 +2986,36 @@ pub fn list_find_first<T: Clone>(
 ) -> Option<T> {
     {
         let mut __tco_cursor_xs: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut predicate = __tco_loop_predicate;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor_xs) == 0 {
-                    break crate::std_optional::optional_absent();
-                } else {
-                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
-                    if predicate(h.clone()) {
-                        break crate::std_optional::optional_present(h.clone());
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut predicate = __tco_loop_predicate;
+                {
+                    let __fm = __tco_base_xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break crate::std_optional::optional_absent();
                     } else {
-                        {
-                            let __tco_0 = __tco_cursor_xs + 1;
-                            let __tco_1 = predicate;
-                            __tco_cursor_xs = __tco_0;
-                            __tco_loop_predicate = __tco_1;
-                            continue;
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        if predicate(h.clone()) {
+                            break crate::std_optional::optional_present(h.clone());
+                        } else {
+                            {
+                                let __tco_0 = __tco_cursor_xs + 1;
+                                let __tco_1 = predicate;
+                                __tco_cursor_xs = __tco_0;
+                                __tco_loop_predicate = __tco_1;
+                                continue;
+                            }
                         }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
@@ -2970,7 +3052,7 @@ pub fn list_starts_with<T: Clone>(
 ) -> bool {
     {
         let state = fold_list(
-            prefix.clone(),
+            prefix,
             Rc::new(ListPrefixState {
                 rest: xs.clone(),
                 matched: true,
@@ -2991,7 +3073,7 @@ pub fn list_starts_with<T: Clone>(
                         let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
                         Rc::new(ListPrefixState {
                             rest: t.clone(),
-                            matched: eq(h.clone(), item.clone()),
+                            matched: eq(h.clone(), item),
                             _phantom: std::marker::PhantomData,
                         })
                     }
@@ -3032,23 +3114,38 @@ pub fn non_empty_to_list<T: Clone>(xs: Rc<FreeSemigroup<T>>) -> Rc<FreeMonoid<T>
     })
 }
 
-pub fn list_init<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = xs.clone();
-        if __fm.is_empty() {
-            Rc::new(vec![])
-        } else if __fm.len() == 1 {
-            Rc::new(vec![])
-        } else {
-            let h = (*__fm)[0].clone();
-            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            Rc::new({
-                let mut __cons_v = (*list_init(t.clone())).clone();
-                __cons_v.insert(0, h.clone());
-                __cons_v
-            })
-        }
-    })
+pub fn list_init<T: Clone>(mut __tco_loop_xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
+    {
+        let mut __trmc_out = Rc::new(vec![]);
+        let mut __tco_cursor_xs: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                {
+                    let __fm = __tco_base_xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
+                    } else if (__fm.len() - __tco_cursor_xs) == 1 {
+                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
+                    } else {
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        {
+                            __trmc_out = v1_rt::rc_list_push(__trmc_out, h.clone());
+                            {
+                                let __tco_0 = __tco_cursor_xs + 1;
+                                __tco_cursor_xs = __tco_0;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            };
+        };
+        __tco_result
+    }
 }
 
 pub fn bag_eq<T: Clone>(
@@ -3100,33 +3197,58 @@ pub fn zip_eq<T: Clone>(
 }
 
 pub fn zip_map<A: Clone, B: Clone, C: Clone>(
-    a: Rc<FreeMonoid<A>>,
-    b: Rc<FreeMonoid<B>>,
-    f: impl Fn(A, B) -> C + Clone,
+    mut __tco_loop_a: Rc<FreeMonoid<A>>,
+    mut __tco_loop_b: Rc<FreeMonoid<B>>,
+    mut __tco_loop_f: impl Fn(A, B) -> C + Clone,
 ) -> Rc<FreeMonoid<C>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = a.clone();
-        if __fm.is_empty() {
-            Rc::new(vec![])
-        } else {
-            let ha = (*__fm)[0].clone();
-            let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = b.clone();
-                if __fm.is_empty() {
-                    Rc::new(vec![])
-                } else {
-                    let hb = (*__fm)[0].clone();
-                    let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    Rc::new({
-                        let mut __cons_v = (*zip_map(ta.clone(), tb.clone(), f.clone())).clone();
-                        __cons_v.insert(0, f(ha.clone(), hb.clone()));
-                        __cons_v
-                    })
+    {
+        let mut __trmc_out = Rc::new(vec![]);
+        let mut __tco_cursor_a: usize = 0;
+        let mut __tco_cursor_b: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_a = __tco_loop_a.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_a = __tco_base_a.focus();
+            let __tco_base_b = __tco_loop_b.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_b = __tco_base_b.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut f = __tco_loop_f;
+                {
+                    let __fm = __tco_base_a.clone();
+                    if (__fm.len() - __tco_cursor_a) == 0 {
+                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
+                    } else {
+                        let ha = __tco_focus_a.index(__tco_cursor_a + 0).clone();
+                        {
+                            let __fm = __tco_base_b.clone();
+                            if (__fm.len() - __tco_cursor_b) == 0 {
+                                break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
+                            } else {
+                                let hb = __tco_focus_b.index(__tco_cursor_b + 0).clone();
+                                {
+                                    __trmc_out =
+                                        v1_rt::rc_list_push(__trmc_out, f(ha.clone(), hb.clone()));
+                                    {
+                                        let __tco_0 = __tco_cursor_a + 1;
+                                        let __tco_1 = __tco_cursor_b + 1;
+                                        let __tco_2 = f;
+                                        __tco_cursor_a = __tco_0;
+                                        __tco_cursor_b = __tco_1;
+                                        __tco_loop_f = __tco_2;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-        }
-    })
+            };
+        };
+        __tco_result
+    }
 }
 
 pub fn reduce_or<T: Clone>(
@@ -3141,7 +3263,7 @@ pub fn reduce_or<T: Clone>(
         } else {
             let h = (*__fm)[0].clone();
             let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            fold_non_empty(h.clone(), t.clone(), combine.clone())
+            fold_non_empty(h.clone(), t.clone(), combine)
         }
     }
 }

@@ -5,16 +5,19 @@ import std.algebra { Cons, Empty, empty_map, map_insert, list_snoc_item }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitCall, ExistingDeclaration, KernelTypeSpellingTable, kit_int, ambient_name_homes }
-import gunbc.instruments.ambient_name_census_reading { ambient_census_base_ref, census_observation_text, binding_lines, field_at, ambient_census_kit_rows }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitCall, AmbientNameKitParam, KitCallProbe, KitTypeUseProbe, ExistingDeclaration, KernelTypeSpellingTable, kit_int, ambient_name_homes, ambient_name_declaration }
+import gunbc.instruments.ambient_name_census_reading { ambient_census_base_ref, census_observation_text, binding_lines, field_at, ambient_census_kit_rows, ambient_census_kit_module, ambient_census_kit_source }
 import gunbc.namespace_cut.migration_kit { KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitNotRunnable, kit_binding_finding, kit_ambient_route_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.parse { PreparedGrammar }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { PreparedLexRules }
 import v2.std.diagnostic { Accepted, Rejected }
-import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_proof_scope, rows_by_module, module_rows, rows_multiset_equal, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
+import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_proof_scopes, rows_by_module, module_rows, rows_multiset_equal, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure, wave_roster_closures }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.workflow.roster_import_sweep { OneHome, OnlyCall, RosterHomeClosure, RosterHomeScope }
 import gunbc.instruments.namespace_wave_binding_shard { ShardFull, ShardBase, ShardOf, ShardMerge, ShardMalformed, ModuleResult, ShardRun, BaseKey, Merged, MergeRefused, HeadMerged, HeadMergeRefused, parse_shard_mode, shard_modules, evidence_identity, evidence_at_ranks, shard_receipt_text, shard_receipt_file, verdict_file, verdict_text, verdict_admission, base_receipt_file, base_receipt_id, base_selection_refusal, uncovered_by_base, base_census_contract, indices_below, base_receipt_text, base_receipt_refusal, base_receipt_rows, base_receipt_status, merge_head_rows, merge_results, rewritten_names, shard_owned_rewritten, wave_runs_base_worktree, wave_runs_base_census, wave_runs_head_census }
+import std.content_hash { sha256_hex_of_text }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -114,12 +117,12 @@ fn row_admits(row: AmbientNameHome, key: BindingKey, before: BindingTarget, afte
   (leaf == (row.name as String))
     && starts_with(s: before.source, prefix: "ambient:")
     && (after.source == "declared")
-    && (after.target == (row.home as String))
+    && (after.target == ambient_name_declaration(row: row))
 }
 
 fn classify_change(rows: List<AmbientNameHome>, key: BindingKey, before: BindingTarget, after: BindingTarget) -> BindingDelta {
   match first(rows |> filter(r => row_admits(row: r, key: key, before: before, after: after))) {
-    Present { value: r } => AmbientToDeclaredHome { key: key, home: r.home as String }
+    Present { value: r } => AmbientToDeclaredHome { key: key, home: ambient_name_declaration(row: r) }
     Absent => TargetChanged { key: key, before: before, after: after }
   }
 }
@@ -274,7 +277,7 @@ fn rebind_red_failure(base_stdout: String, head_stdout: String) -> Optional<Stri
 }
 
 fn home_control_rows() -> List<AmbientNameHome> {
-  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "examples.home.Int" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration, retired_contract: optional_absent(), kit_call: AmbientNameKitCall { params: [], result: kit_int() } }]
+  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "examples.home" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration, retired_contract: optional_absent(), kit_probe: KitCallProbe { call: AmbientNameKitCall { params: [], result: kit_int() } } }]
 }
 
 fn home_control_failure() -> Optional<String> {
@@ -338,27 +341,52 @@ fn wave_base_text() -> String {
     + "\nfn same_line() -> Int {\n  pair(a: chars(s: \"a\"), b: chars(s: \"b\"))\n}\n"
 }
 
-fn wave_home() -> String {
-  "std.host_text"
+fn wave_scopes() -> List<RosterHomeScope> {
+  [OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text"), rows: OnlyCall { call: "chars" } }]
 }
 
-fn wave_derived_head_with(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  recompute_wave_text(path: "examples/wave.dag", base_text: wave_base_text(), prepared: prepared, lex: lex, home: wave_home()).text
+fn wave_derived_head_with(prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> String {
+  recompute_wave_text(path: "examples/wave.dag", base_text: wave_base_text(), prepared: prepared, lex: lex, scopes: wave_scopes(), closures: closures).text
 }
 
-fn wave_derived_head() -> String {
+fn wave_derived_head(closures: List<RosterHomeClosure>) -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => ""
-    Accepted { value: prepared, diagnostics: _ } => wave_derived_head_with(prepared: prepared, lex: dag_prepared_lex())
+    Accepted { value: prepared, diagnostics: _ } => wave_derived_head_with(prepared: prepared, lex: dag_prepared_lex(), closures: closures)
   }
 }
 
-fn wave_moved_head() -> String {
-  replace(wave_derived_head(), "\nfn second()", "\n\nfn second()")
+fn wave_moved_head(closures: List<RosterHomeClosure>) -> String {
+  replace(wave_derived_head(closures: closures), "\nfn second()", "\n\nfn second()")
 }
 
-fn wave_wrong_home_head() -> String {
-  replace(wave_derived_head(), "import std.host_text { chars }", "import examples.other { chars }")
+fn wave_wrong_home_head(closures: List<RosterHomeClosure>) -> String {
+  replace(wave_derived_head(closures: closures), "import std.host_text { chars }", "import examples.other { chars }")
+}
+
+// THE HOST CALLS THIS ONCE PER RUN and threads the returned value to every wave entry point (the three head-file
+// providers and the standing), so the acquisition door opens once instead of once per proof. Returns the filled
+// home closures of every row's proof scope (rows_proof_scopes over ambient_name_homes(), which covers wave_scopes()'s
+// chars row too); identical to every mint the carried value replaces.
+fn wave_run_closures() -> List<RosterHomeClosure> {
+  wave_roster_closures(scopes: rows_proof_scopes(rows: ambient_name_homes()))
+}
+
+// THE CARRY CONTROL: one carried closure serves TWO recomputations, and both must agree — the recompute no longer
+// opens the acquisition door at all (no mint call site remains in it; the single mint is wave_run_closures, called
+// once by the host), so a drift in the carried value shows up here as disagreement or an empty closure instead of
+// quietly changing the standing. The fleet half of the acceptance (the substrate read once per run, not once per
+// proof) is measured by the Filesystem.Read count in the instrument log.
+fn wave_carry_control_failure(prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> Optional<String> {
+  let first = recompute_wave_text(path: "examples/wave.dag", base_text: wave_base_text(), prepared: prepared, lex: lex, scopes: wave_scopes(), closures: closures)
+  let second = recompute_wave_text(path: "examples/wave.dag", base_text: wave_base_text(), prepared: prepared, lex: lex, scopes: wave_scopes(), closures: closures)
+  if count(closures) == 0 {
+    optional_present(value: "the carried home closure is empty; every proof would resolve against nothing")
+  } else if first.text != second.text || count(first.rounds) != count(second.rounds) {
+    optional_present(value: "two recomputations on the ONE carried home closure disagree")
+  } else {
+    optional_absent()
+  }
 }
 
 fn wave_files(head: String) -> List<BindingDiffFixtureFile> {
@@ -369,16 +397,16 @@ fn binding_diff_wave_base_files() -> List<BindingDiffFixtureFile> {
   wave_files(head: wave_base_text())
 }
 
-fn binding_diff_wave_head_files() -> List<BindingDiffFixtureFile> {
-  wave_files(head: wave_derived_head())
+fn binding_diff_wave_head_files(closures: List<RosterHomeClosure>) -> List<BindingDiffFixtureFile> {
+  wave_files(head: wave_derived_head(closures: closures))
 }
 
-fn binding_diff_wave_moved_head_files() -> List<BindingDiffFixtureFile> {
-  wave_files(head: wave_moved_head())
+fn binding_diff_wave_moved_head_files(closures: List<RosterHomeClosure>) -> List<BindingDiffFixtureFile> {
+  wave_files(head: wave_moved_head(closures: closures))
 }
 
-fn binding_diff_wave_wrong_home_head_files() -> List<BindingDiffFixtureFile> {
-  wave_files(head: wave_wrong_home_head())
+fn binding_diff_wave_wrong_home_head_files(closures: List<RosterHomeClosure>) -> List<BindingDiffFixtureFile> {
+  wave_files(head: wave_wrong_home_head(closures: closures))
 }
 
 fn verdict_code(r: CliWireResponse) -> Int {
@@ -397,11 +425,15 @@ type WaveProof {
   evidence: Map<String, ModuleEvidence>
   prepared: PreparedGrammar
   lex: PreparedLexRules
-  home: String
+  scopes: List<RosterHomeScope>
+  // THE RUN'S ONE FILLED HOME CLOSURE, computed a single time and carried here so every proof-taking
+  // join/verdict reuses it instead of re-opening the acquisition door (v2.compiler.module_acquisition
+  // re-mints its empty memos per start; the fleet probe measured 21 starts x 10 substrate files per run).
+  closures: List<RosterHomeClosure>
 }
 
-fn wave_proof(prepared: PreparedGrammar, lex: PreparedLexRules, head: String) -> WaveProof {
-  WaveProof { evidence: map_insert(empty_map(), "examples.wave", ModuleEvidence { module: "examples.wave", base_text: wave_base_text(), head_text: head, readable: true }), prepared: prepared, lex: lex, home: wave_home() }
+fn wave_proof(prepared: PreparedGrammar, lex: PreparedLexRules, head: String, closures: List<RosterHomeClosure>) -> WaveProof {
+  WaveProof { evidence: map_insert(empty_map(), "examples.wave", ModuleEvidence { module: "examples.wave", base_text: wave_base_text(), head_text: head, readable: true }), prepared: prepared, lex: lex, scopes: wave_scopes(), closures: closures }
 }
 
 // What the ambient census prints beside the infer rows for a rewritten module refused at resolve, and the status 2 it answers.
@@ -422,22 +454,22 @@ fn wave_join_case(name: String, base: String, head: String, want: Int, proof: Wa
 }
 
 // The route must actually have observed the fixture: four unbound sites on base, and the partial-module row the join requires.
-fn wave_join_route_failure(base: String, admit: String, moved: String, wrong_home: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<String> {
+fn wave_join_route_failure(base: String, admit: String, moved: String, wrong_home: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> Optional<String> {
   let sites = count(rows_with_prefix(stdout: base, prefix: "binding_unbound\texamples.wave\tchars\t"))
   let report = (if sites == 4 { "" } else { "wave-1 join base fixture: " + to_string(sites) + " unbound chars sites, want 4 (the census route did not print the loci)\n" })
-    + wave_join_case(name: "admit (positive control)", base: base, head: admit, want: 0, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex)))
-    + wave_join_case(name: "equal-count moved site (RED)", base: base, head: moved, want: 1, proof: wave_proof(prepared: prepared, lex: lex, head: wave_moved_head()))
-    + wave_join_case(name: "wrong home (RED)", base: base, head: wrong_home, want: 1, proof: wave_proof(prepared: prepared, lex: lex, head: wave_wrong_home_head()))
+    + wave_join_case(name: "admit (positive control)", base: base, head: admit, want: 0, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex, closures: closures), closures: closures))
+    + wave_join_case(name: "equal-count moved site (RED)", base: base, head: moved, want: 1, proof: wave_proof(prepared: prepared, lex: lex, head: wave_moved_head(closures: closures), closures: closures))
+    + wave_join_case(name: "wrong home (RED)", base: base, head: wrong_home, want: 1, proof: wave_proof(prepared: prepared, lex: lex, head: wave_wrong_home_head(closures: closures), closures: closures))
   if report == "" { optional_absent() } else { optional_present(value: report) }
 }
 
 // UNOBSERVED IS 2, ON THE FULL VERDICT: a head that names a rewritten module its census could not read, over otherwise
 // admitted rows, must not answer success or 1.
-fn wave_unobserved_control_failure(prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<String> {
+fn wave_unobserved_control_failure(prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> Optional<String> {
   let observed = "binding_module\texamples.uses\t1\t0\t0\t0\n"
   let base = observed + "binding\texamples.uses\tInt\t0\tdeclared\texamples.home.Int\n"
   let head = base + "unobserved_rewritten\texamples.wave\n"
-  let got = verdict_code(r: binding_diff_verdict(base_stdout: base, head_stdout: head, base_status: 0, head_status: 0, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))))
+  let got = verdict_code(r: binding_diff_verdict(base_stdout: base, head_stdout: head, base_status: 0, head_status: 0, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex, closures: closures), closures: closures)))
   if got == 2 { optional_absent() } else { optional_present(value: "an unobserved rewritten module answered " + to_string(got) + ", not 2") }
 }
 
@@ -454,9 +486,9 @@ fn with_unreadable_partial(stdout: String) -> String {
 // THE JOIN'S OWN OBSERVATION GUARDS, on the full verdict over the admitted wave: a base with no partial-module row (a census
 // older than the partial rows), a head whose partial observation recorded an unreadable spelling, and an unreadable text
 // each answer 2 -- never 1 (an invented refusal) and never 0.
-fn unobserved_guards_control_failure(base: String, admit: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<String> {
-  let proof = wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))
-  let unreadable_text = WaveProof { evidence: map_insert(empty_map(), "examples.wave", ModuleEvidence { module: "examples.wave", base_text: "", head_text: "", readable: false }), prepared: prepared, lex: lex, home: wave_home() }
+fn unobserved_guards_control_failure(base: String, admit: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> Optional<String> {
+  let proof = wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex, closures: closures), closures: closures)
+  let unreadable_text = WaveProof { evidence: map_insert(empty_map(), "examples.wave", ModuleEvidence { module: "examples.wave", base_text: "", head_text: "", readable: false }), prepared: prepared, lex: lex, scopes: wave_scopes(), closures: closures }
   let report = wave_guard_case(name: "base without a partial-module row", base: drop_prefixed(stdout: base, prefix: "binding_partial_module\t"), head: admit, proof: proof)
     + wave_guard_case(name: "head with an unreadable spelling", base: base, head: with_unreadable_partial(stdout: admit), proof: proof)
     + wave_guard_case(name: "unreadable base/head text", base: base, head: admit, proof: unreadable_text)
@@ -746,6 +778,43 @@ fn kit_fixtures_unreached(head_stdout: String) -> Bool {
   count(ambient_census_kit_rows() |> filter(r => match kit_binding_finding(unimported_stdout: kit_fixture_lines(stdout: head_stdout), imported_stdout: kit_fixture_lines(stdout: head_stdout), row: r) { KitNotRunnable { cause: _ } => true  _ => false })) > 0
 }
 
+// AN UNREACHED KIT ROW IS NO OBSERVATION, NEVER A SKIP (tidy-ant-251's ruling, 2026-10-24): over supplied lines, a head
+// census that printed population rows but no kit_fixture row for the roster's rows must read unreached, which the
+// standing turns into exit 2; and a head carrying a row's fixture records must not. The RED is the first case: a reader
+// that treated a missing kit row as clean would answer false there.
+fn kit_unreached_control_failure() -> Optional<String> {
+  let population_only = "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t6:15\n"
+  let reached = ambient_census_kit_rows() |> map(r => "kit_fixture\tbinding_unbound\t" + ambient_census_kit_module(row: r, imported: false) + "\t" + (r.name as String) + "\t1:1\nkit_fixture\tbinding\t" + ambient_census_kit_module(row: r, imported: true) + "\t" + (r.name as String) + "\t0\tdeclared\t" + ambient_name_declaration(row: r) + "\t1:1\n") |> join(separator: "")
+  if !kit_fixtures_unreached(head_stdout: population_only) {
+    optional_present(value: "kit-unreached: a head census with no kit_fixture rows read as reached")
+  } else if kit_fixtures_unreached(head_stdout: population_only + reached) {
+    optional_present(value: "kit-unreached: a head census carrying every kit row's fixture records read as unreached")
+  } else {
+    optional_absent()
+  }
+}
+
+// THE KIT'S TWO PROBE SHAPES WRITE THE FIXTURE THEIR ROW NEEDS (tidy-ant-251's ruling for type names, 2026-10-24),
+// over supplied rows: a callable is called with its parameters forwarded; a type is mentioned once, as the annotation of
+// the probe's one parameter, with its arguments' imports derived and its own import only on the imported side. The
+// unimported type-use fixture is the type wave's check-1 RED: its one occurrence of the name has no import to bind it.
+fn kit_probe_text_control_failure() -> Optional<String> {
+  let type_row = AmbientNameHome { name: "Pair" as NonEmptyStr, home: "examples.home" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration, retired_contract: optional_absent(), kit_probe: KitTypeUseProbe { arguments: [kit_int(), kit_int()] } }
+  let call_row = AmbientNameHome { name: "count_of" as NonEmptyStr, home: "examples.home" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration, retired_contract: optional_absent(), kit_probe: KitCallProbe { call: AmbientNameKitCall { params: [AmbientNameKitParam { name: "x" as NonEmptyStr, type_ref: kit_int() }], result: kit_int() } } }
+  let type_unimported = "module examples.kit_Pair_unimported\nimport std.types { Int }\nfn probe(m: Pair<Int, Int>) -> Int { 0 }\n"
+  let type_imported = "module examples.kit_Pair_imported\nimport std.types { Int }\nimport examples.home { Pair }\nfn probe(m: Pair<Int, Int>) -> Int { 0 }\n"
+  let call_imported = "module examples.kit_count_of_imported\nimport std.types { Int }\nimport examples.home { count_of }\nfn probe(x: Int) -> Int { count_of(x) }\n"
+  if ambient_census_kit_source(row: type_row, imported: false) != type_unimported {
+    optional_present(value: "kit-probe: the unimported type-use fixture is " + ambient_census_kit_source(row: type_row, imported: false))
+  } else if ambient_census_kit_source(row: type_row, imported: true) != type_imported {
+    optional_present(value: "kit-probe: the imported type-use fixture is " + ambient_census_kit_source(row: type_row, imported: true))
+  } else if ambient_census_kit_source(row: call_row, imported: true) != call_imported {
+    optional_present(value: "kit-probe: the imported call fixture is " + ambient_census_kit_source(row: call_row, imported: true))
+  } else {
+    optional_absent()
+  }
+}
+
 fn kit_fixture_control_failure(head_stdout: String) -> Optional<String> {
   if count(binding_lines(stdout: head_stdout)) == 0 {
     optional_absent()
@@ -794,7 +863,7 @@ fn side_status_after_join(status: Int, stdout: String, joined_ok: List<String>) 
 fn join_one_module(m: String, base_stdout: String, head_stdout: String, base_grouped: Map<String, List<String>>, head_grouped: Map<String, List<String>>, proof: WaveProof) -> JoinedModule {
   JoinedModule {
     module: m,
-    deltas: occurrence_join_module(rows: ambient_name_homes(), module: m, base_rows: module_rows(grouped: base_grouped, module: m), head_rows: module_rows(grouped: head_grouped, module: m), evidence: map_get(proof.evidence, m), prepared: proof.prepared, lex: proof.lex, home: proof.home),
+    deltas: occurrence_join_module(rows: ambient_name_homes(), module: m, base_rows: module_rows(grouped: base_grouped, module: m), head_rows: module_rows(grouped: head_grouped, module: m), evidence: map_get(proof.evidence, m), prepared: proof.prepared, lex: proof.lex, scopes: proof.scopes, closures: proof.closures),
     conflicting: partial_conflicting(module: m, base_stdout: base_stdout, head_stdout: head_stdout),
     unusable: partial_unusable(module: m, base_stdout: base_stdout, head_stdout: head_stdout)
   }
@@ -882,9 +951,9 @@ fn wave_name(rewritten: String) -> String {
 }
 
 // THE EDIT PROOF AND JOIN over `modules` (the whole evidence set, or one shard's), wherever the rows came from.
-fn proved_results(base_stdout: String, head_stdout: String, modules: List<String>, base_root: String, head_root: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<ModuleResult> {
+fn proved_results(base_stdout: String, head_stdout: String, modules: List<String>, base_root: String, head_root: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> List<ModuleResult> {
   join_modules(base_stdout: base_stdout, head_stdout: head_stdout,
-    proof: read_proof(modules: modules, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex),
+    proof: read_proof(modules: modules, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex, closures: closures),
     modules: modules)
 }
 
@@ -913,7 +982,7 @@ fn sides_unobserved(base_stdout: String, head_stdout: String, base_status: Int, 
 //            `verdict-<wave>.txt` is written, the only admission token (verdict_admission).
 // Any base file but the one this run's key names, a foreign shard, a rewritten module the base has no row for, a missing or
 // duplicate shard, a stray file, or a differing row outside the rewritten set is exit 2, named.
-fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int, base_root: String, head_root: String, head_sha: String, base_sha: String, instr_rev: String, rewritten_text: String, shard_mode: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> CliWireResponse {
+fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int, base_root: String, head_root: String, head_sha: String, base_sha: String, instr_rev: String, rewritten_text: String, shard_mode: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> CliWireResponse {
   let names = rewritten_names(text: rewritten_text)
   let rewritten = evidence_identity(evidence: names)
   let key = BaseKey { base_rev: base_sha, instr_rev: instr_rev }
@@ -929,7 +998,7 @@ fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: I
           let evidence = evidence_at_ranks(evidence: evidence_modules(base_stdout: base_stdout, head_stdout: head_stdout), rank: 0, total: count(evidence_modules(base_stdout: base_stdout, head_stdout: head_stdout)))
           verdict_from_results(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, diff: diff,
             results: join_modules(base_stdout: base_stdout, head_stdout: head_stdout,
-              proof: read_proof(modules: evidence, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex), modules: diff.unobserved_both_sides))
+              proof: read_proof(modules: evidence, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex, closures: closures), modules: diff.unobserved_both_sides))
       }
     ShardBase =>
       match sides_unobserved(base_stdout: base_stdout, head_stdout: base_stdout, base_status: base_status, head_status: 0) {
@@ -961,7 +1030,7 @@ fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: I
                 Present { value: r } => r
                 Absent =>
                   let mine = evidence_modules(base_stdout: base_rows, head_stdout: head_stdout) |> filter(m => count(owned |> filter(o => o == m)) != 0)
-                  let results = proved_results(base_stdout: base_rows, head_stdout: head_stdout, modules: mine, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex)
+                  let results = proved_results(base_stdout: base_rows, head_stdout: head_stdout, modules: mine, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex, closures: closures)
                   let text = shard_receipt_text(run: run, index: i, head_status: head_status, head_stdout: head_stdout, results: results)
                   let written = Filesystem.Write(path: dir + "/" + shard_receipt_file(wave: run.wave, index: i, shards: k), content: text)
                   if written.success { CliWirePrintable { bytes: text, exit: ExitSuccess } } else { shard_refusal(why: "the receipt could not be written under " + dir) }
@@ -988,7 +1057,7 @@ fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: I
                   Merged { results: proved } =>
                     let diff = binding_diff(base_stdout: base_rows, head_stdout: merged_head, rows: ambient_name_homes())
                     let verdict = verdict_from_results(base_stdout: base_rows, head_stdout: merged_head, base_status: base_code, head_status: merged_status, diff: diff,
-                      results: proved + join_modules(base_stdout: base_rows, head_stdout: merged_head, proof: read_proof(modules: [], base_root: base_root, head_root: head_root, prepared: prepared, lex: lex),
+                      results: proved + join_modules(base_stdout: base_rows, head_stdout: merged_head, proof: read_proof(modules: [], base_root: base_root, head_root: head_root, prepared: prepared, lex: lex, closures: closures),
                         modules: diff.unobserved_both_sides |> filter(m => count(evidence |> filter(e => e == m)) == 0)))
                     let code = verdict_code(r: verdict)
                     let written = Filesystem.Write(path: dir + "/" + verdict_file(wave: run.wave), content: verdict_text(run: run, texts: texts, exit_code: code))
@@ -1089,12 +1158,13 @@ fn evidence_modules(base_stdout: String, head_stdout: String) -> List<String> {
     |> filter(m => !rows_multiset_equal(base_rows: module_rows(grouped: base_grouped, module: m), head_rows: module_rows(grouped: head_grouped, module: m)))
 }
 
-fn read_proof(modules: List<String>, base_root: String, head_root: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> WaveProof {
+fn read_proof(modules: List<String>, base_root: String, head_root: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> WaveProof {
   WaveProof {
     evidence: fold(modules, init: empty_map(), f: fn(m, name) { map_insert(m, name, read_module_evidence(base_root: base_root, head_root: head_root, module: name)) }),
     prepared: prepared,
     lex: lex,
-    home: rows_proof_scope(rows: ambient_name_homes())
+    scopes: rows_proof_scopes(rows: ambient_name_homes()),
+    closures: closures
   }
 }
 
@@ -1115,11 +1185,12 @@ fn binding_diff_standing(
   base_sha: String,
   instr_rev: String,
   rewritten: String,
-  shard_mode: String
+  shard_mode: String,
+  closures: List<RosterHomeClosure>
 ) -> CliWireResponse {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 2, reason: "the dag grammar could not be prepared, so no edit proof can be computed: not observed" } }
-    Accepted { value: prepared, diagnostics: _ } => binding_diff_standing_prepared(rebind_base_stdout: rebind_base_stdout, rebind_head_stdout: rebind_head_stdout, base_stdout: base_stdout, base_status: base_status, head_stdout: head_stdout, head_status: head_status, wave_base_stdout: wave_base_stdout, wave_admit_stdout: wave_admit_stdout, wave_moved_stdout: wave_moved_stdout, wave_wrong_home_stdout: wave_wrong_home_stdout, base_root: base_root, head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten: rewritten, shard_mode: shard_mode, prepared: prepared, lex: dag_prepared_lex())
+    Accepted { value: prepared, diagnostics: _ } => binding_diff_standing_prepared(rebind_base_stdout: rebind_base_stdout, rebind_head_stdout: rebind_head_stdout, base_stdout: base_stdout, base_status: base_status, head_stdout: head_stdout, head_status: head_status, wave_base_stdout: wave_base_stdout, wave_admit_stdout: wave_admit_stdout, wave_moved_stdout: wave_moved_stdout, wave_wrong_home_stdout: wave_wrong_home_stdout, base_root: base_root, head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten: rewritten, shard_mode: shard_mode, prepared: prepared, lex: dag_prepared_lex(), closures: closures)
   }
 }
 
@@ -1142,12 +1213,13 @@ fn binding_diff_standing_prepared(
   rewritten: String,
   shard_mode: String,
   prepared: PreparedGrammar,
-  lex: PreparedLexRules
+  lex: PreparedLexRules,
+  closures: List<RosterHomeClosure>
 ) -> CliWireResponse {
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), declaration_row_control_failure(), incomplete_side_control_failure(), kit_fixture_control_failure(head_stdout: head_stdout), shard_merge_control_failure(), occurrence_join_controls_failure(prepared: prepared, lex: lex), wave_unobserved_control_failure(prepared: prepared, lex: lex), unobserved_guards_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, prepared: prepared, lex: lex), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout, prepared: prepared, lex: lex)]) {
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), declaration_row_control_failure(), incomplete_side_control_failure(), kit_fixture_control_failure(head_stdout: head_stdout), kit_unreached_control_failure(), kit_probe_text_control_failure(), shard_merge_control_failure(), wave_carry_control_failure(prepared: prepared, lex: lex, closures: closures), occurrence_join_controls_failure(prepared: prepared, lex: lex, closures: closures), wave_unobserved_control_failure(prepared: prepared, lex: lex, closures: closures), unobserved_guards_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, prepared: prepared, lex: lex, closures: closures), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex, closures: closures), closures: closures)), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout, prepared: prepared, lex: lex, closures: closures)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           // The kit fixtures ride the head census; a mode that ran no head census (no binding rows) is judged by the
@@ -1155,7 +1227,7 @@ fn binding_diff_standing_prepared(
           if (count(binding_lines(stdout: head_stdout)) > 0) && kit_fixtures_unreached(head_stdout: head_stdout) {
             CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the census printed no kit_fixture binding row for a kit row, so the kit fixtures were not observed" } }
           } else {
-          binding_diff_sharded(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, base_root: base_root, head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten_text: rewritten, shard_mode: shard_mode, prepared: prepared, lex: lex)
+          binding_diff_sharded(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, base_root: base_root, head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten_text: rewritten, shard_mode: shard_mode, prepared: prepared, lex: lex, closures: closures)
           }
       }
   }

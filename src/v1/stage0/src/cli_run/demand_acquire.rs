@@ -450,6 +450,7 @@ fn module_graph_facts_from_acquired(
         &nodes,
     ));
     ModuleGraphFactsLive {
+        build_id: crate::cli_run::next_facts_build_id(),
         nodes,
         adjacency,
         declared_paths,

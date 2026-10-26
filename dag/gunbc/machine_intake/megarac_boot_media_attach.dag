@@ -36,6 +36,8 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacReplacementPolicy,
   MegaRacConverge,
   MegaRacObserve,
+  MegaRacReleaseOwn,
+  MegaRacOwnReleasePolicy,
   MegaRacAttachResult,
   MegaRacSessionRefused,
   SessionReleaseNotAttempted,
@@ -451,6 +453,47 @@ fn megarac_observe_boot_presentation(
           image_name: image_name,
           firmware: host.firmware,
           task: MegaRacObserve { share: share },
+        )
+      }
+      }
+  }
+}
+
+// THE END OF AN ATTEMPT RELEASES ITS OWN SESSION, under the same hold, when the caller's last power
+// reading is OFF: an attempt that ends with the host off leaves nothing on the controller for the next
+// one to meet (boot run 39868779331 left its census row Started; the next two attempts read it at
+// redirection_status 19). The admission is this layer's (megarac_detach_admission over the reading the
+// caller took), so a reading that is on or unread admits no stop; the caller does not open this session
+// for a host it observed on, because a diskless host that stays up keeps its medium.
+fn megarac_release_boot_session(
+  proof: UnitHoldProof,
+  image_name: NonEmptyStr,
+  replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>,
+  power: ChassisPowerObservation,
+  password_file: String,
+  attempt: String,
+) -> MegaRacAttachResult
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
+  match megarac_boot_media_host(proof: proof) {
+    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media release: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none }
+    MegaRacHostAdmitted { host: host } =>
+      match bmc_control_route_account(route: host.route) {
+        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        Present { value: account } =>
+      if password_file == "" || attempt == "" {
+        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+      } else {
+        megarac_attach_remote_image(
+          bmc_host: bmc_control_route_endpoint(route: host.route).host,
+          username: account,
+          password_file: password_file as NonEmptyStr,
+          cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: join([attempt, "-end-release"], "") as NonEmptyStr),
+          image_name: image_name,
+          firmware: host.firmware,
+          task: MegaRacReleaseOwn { policy: MegaRacOwnReleasePolicy { replaceable_seeded_stems: replaceable_seeded_stems, detach: megarac_detach_admission(power: power) } },
         )
       }
       }

@@ -359,12 +359,9 @@ pub fn emitted_workspace_edge_is_irredundant(
     {
         let others = Rc::new({
             let mut __result = Vec::new();
-            for d in crate::gunbc_crate_partition::unit_direct_deps(
-                unit_edges.clone(),
-                from_unit.clone(),
-            )
-            .iter()
-            .cloned()
+            for d in crate::gunbc_crate_partition::unit_direct_deps(unit_edges.clone(), from_unit)
+                .iter()
+                .cloned()
             {
                 if (d.clone() != to_unit.clone()) {
                     __result.push(d);
@@ -376,7 +373,7 @@ pub fn emitted_workspace_edge_is_irredundant(
             let mut __found = false;
             for u in crate::gunbc_crate_partition::unit_dep_closure(
                 unit_edges.clone(),
-                others.clone(),
+                others,
                 v1_rt::int_add((unit_edges.clone().len() as i64), 1),
             )
             .iter()
@@ -545,9 +542,9 @@ pub fn emitted_workspace_plan_from_emission(
     target_crate_count: i64,
 ) -> Rc<EmittedWorkspaceOutcome> {
     emitted_workspace_plan_over_graph(
-        emitted_workspace_emission_graph(emitted_basenames.clone()),
-        edges.clone(),
-        target_crate_count.clone(),
+        emitted_workspace_emission_graph(emitted_basenames),
+        edges,
+        target_crate_count,
     )
 }
 
@@ -603,12 +600,8 @@ pub fn emitted_workspace_build_from_emission(
     crate_name: String,
     bin_name: String,
 ) -> Rc<EmittedWorkspaceBuildOutcome> {
-    match (*emitted_workspace_plan_from_emission(
-        emitted_basenames.clone(),
-        edges.clone(),
-        target_crate_count.clone(),
-    ))
-    .clone()
+    match (*emitted_workspace_plan_from_emission(emitted_basenames, edges, target_crate_count))
+        .clone()
     {
         EmittedWorkspaceOutcome::EmittedWorkspaceRefused { cause: c, .. } => {
             Rc::new(EmittedWorkspaceBuildOutcome::EmittedWorkspaceBuildRefused { cause: c.clone() })
@@ -728,7 +721,7 @@ pub fn emitted_workspace_plan_over_graph(
                         emitted_workspace_unit_rows(
                             closure.modules.clone(),
                             assignment.clone(),
-                            unit_ids.clone(),
+                            unit_ids,
                         ),
                         unit_edges.clone(),
                     ))
@@ -769,11 +762,11 @@ pub fn emitted_workspace_build(
     bin_name: String,
 ) -> Rc<EmittedWorkspaceBuildOutcome> {
     emitted_workspace_build_from_emission(
-        emitted_basenames.clone(),
-        edges.clone(),
+        emitted_basenames,
+        edges,
         crate_partition_declared_core_target(),
-        crate_name.clone(),
-        bin_name.clone(),
+        crate_name,
+        bin_name,
     )
 }
 

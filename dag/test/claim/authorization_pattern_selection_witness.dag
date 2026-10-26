@@ -39,7 +39,7 @@ import std.human_intervention {
 }
 import gunbc.auth.privileged_effect_census {
   manual_api_effect_beside_unlanded_approval_adapter, srv1_root_step_by_hand_beside_the_broker_route,
-  github_environment_gate_is_not_the_approval_route,
+  github_environment_gate_is_not_the_approval_route, fleet_host_file_converge_edge_beside_the_broker_route,
 }
 import gunbc.cloudflare.r2_origin { cloudflare_account_allocation_intervention }
 import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
@@ -675,6 +675,22 @@ fn selected_approved_capability(s: AuthorizationPatternSelection) -> Bool {
 // THE RULING ITSELF, over every frequency a human can attend; EveryProvision keeps the edge (control above).
 test fn an_attendable_host_root_effect_selects_the_approval_capability_never_the_edge() -> Bool {
   all([FleetOnce, DeviceOnce, EveryOperatorRequest, BreakGlassOnly], f => selected_approved_capability(s: select_authorization_pattern(e: host_root_effect_at(f: f))))
+}
+
+// THE FLEET HOST FILE CONVERGE, run through the real fold. Both of its entries realize the administrator
+// edge; because the operator names the host on every dispatch the selection names the approval capability,
+// so each row diverges under the stated reason. Filing the effect as EveryProvision would select the edge
+// and make the row conform, which this claim refuses, as it refuses a changed realization or a dropped row.
+fn row_realizes_the_edge(key: String) -> Bool {
+  let rows = filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key)
+  (rows |> count) == 1 && all(rows, row => match row.realized { RealizedAdministratorEdge => true _ => false })
+}
+
+test fn the_fleet_host_file_converge_realizes_the_edge_and_selects_the_approval_route() -> Bool {
+  row_realizes_the_edge(key: "gunbc.runner.runner_host_file_converge::runner_host_file_converge_ci_wet")
+    && row_realizes_the_edge(key: "gunbc.runner.runner_host_file_converge::runner_host_cap_release_ci_wet")
+    && row_diverges_for_exactly(key: "gunbc.runner.runner_host_file_converge::runner_host_file_converge_ci_wet", expected: fleet_host_file_converge_edge_beside_the_broker_route, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.runner.runner_host_file_converge::runner_host_cap_release_ci_wet", expected: fleet_host_file_converge_edge_beside_the_broker_route, selects_approved: true)
 }
 
 fn frequency_name(f: HumanInterventionFrequency) -> String {
