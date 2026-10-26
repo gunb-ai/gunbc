@@ -1,0 +1,67 @@
+module test.claim.print_pass_route_witness
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { string_contains }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.content_hash { Sha256Digest }
+import extdeps.crypto.sha2 { sha256_computed_digest }
+import gunbc.fleet.fleet_asset_identity { printer_01 }
+import gunbc.fleet.print_request { PrintRequest, PrintRequestRecord, print_attempt_id }
+import gunbc.fleet.print_converge {
+  print_pass_ref, print_pass_route, print_pass_refusal_text, PrintPassRef, ReviewedMainRef, OffReviewedMainRef,
+  PrintPassPrepare, PrintPassStartRecorded, PrinterStartRefusedOffReviewedMain, PrintPassRecordRefused,
+  RecordAbsent, RecordPresent, RecordRefused,
+}
+
+// DESIGN A (operator ruling 2026-10-25): a branch run prepares and records; only reviewed main's code
+// takes the approval-and-start pass. The route is decided from the run's ref and the durable record
+// before converge_print reads any credential, observes the printer or starts.
+
+fn digest_of(s: String) -> Sha256Digest { sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: s))) }
+
+fn branch_designed_record() -> PrintRequestRecord {
+  let r = PrintRequest { request_id: "ring-1", root: "a16-plug-fit-ring", recipe: "a1-mini-pla-prototype-v1", printer: printer_01 }
+  PrintRequestRecord { request: r, source_revision: "branchsha", artifact_sha256: digest_of(s: "branch plate"), artifact_location: "/var/lib/gunbc/print-runs/ring-1-77.3mf", attempt_id: print_attempt_id(request: r, artifact_sha256: digest_of(s: "branch plate")) }
+}
+
+fn branch_ref() -> PrintPassRef { print_pass_ref(github_ref: "refs/heads/fierce-badger-431/printer-branch-run") }
+
+// RED: a branch run that reaches a recorded request (the start pass) refuses with the typed cause,
+// carrying the ref and no record, so the pass has nothing to approve or start. A route that let the
+// branch through to the start pass, or that refused untyped, turns this red.
+test fn a_branch_run_over_a_recorded_request_refuses_before_any_credential_or_start() -> Bool {
+  let route = print_pass_route(pass_ref: branch_ref(), record: RecordPresent { record: branch_designed_record() })
+  (match route {
+    PrinterStartRefusedOffReviewedMain { ref: x } => x == "refs/heads/fierce-badger-431/printer-branch-run"
+    PrintPassStartRecorded { record: _ } => false
+    PrintPassPrepare => false
+    PrintPassRecordRefused { cause: _ } => false
+  }) && string_contains(s: print_pass_refusal_text(route: route), pattern: "PrinterStartRefusedOffReviewedMain")
+}
+
+// Fail-closed ref reading: an absent ref, a tag named main, or a main-prefixed branch is not reviewed main.
+test fn only_the_exact_default_branch_ref_is_reviewed_main() -> Bool {
+  (match print_pass_ref(github_ref: "refs/heads/main") { ReviewedMainRef => true OffReviewedMainRef { ref: _ } => false }) &&
+  (match print_pass_ref(github_ref: "") { ReviewedMainRef => false OffReviewedMainRef { ref: _ } => true }) &&
+  (match print_pass_ref(github_ref: "refs/tags/main") { ReviewedMainRef => false OffReviewedMainRef { ref: _ } => true }) &&
+  (match print_pass_ref(github_ref: "refs/heads/main-x") { ReviewedMainRef => false OffReviewedMainRef { ref: _ } => true })
+}
+
+// POSITIVE: a branch run over an unrecorded request prepares and records.
+test fn a_branch_run_over_an_unrecorded_request_prepares() -> Bool {
+  match print_pass_route(pass_ref: branch_ref(), record: RecordAbsent) { PrintPassPrepare => true _ => false }
+}
+
+// POSITIVE: reviewed main over the branch's record proceeds to the start pass with the RECORDED
+// artifact (location, digest, attempt, source revision), not one re-derived from main's source.
+test fn main_over_a_recorded_request_starts_the_recorded_artifact() -> Bool {
+  let rec = branch_designed_record()
+  match print_pass_route(pass_ref: print_pass_ref(github_ref: "refs/heads/main"), record: RecordPresent { record: rec }) {
+    PrintPassStartRecorded { record: r } => (r.artifact_location as String) == (rec.artifact_location as String) && (r.artifact_sha256.hex as String) == (rec.artifact_sha256.hex as String) && (r.attempt_id as String) == (rec.attempt_id as String) && (r.source_revision as String) == "branchsha"
+    _ => false
+  }
+}
+
+// An unreadable record refuses at every ref, main included.
+test fn an_unreadable_record_refuses_at_main_too() -> Bool {
+  match print_pass_route(pass_ref: ReviewedMainRef, record: RecordRefused { cause: "x" }) { PrintPassRecordRefused { cause: c } => c == "x" _ => false }
+}

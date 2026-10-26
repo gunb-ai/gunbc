@@ -159,9 +159,9 @@ fn store_path_cases() -> List<StoreClosureCase> {
 // structural fingerprints has no address, and the refusal names every refused component.
 //
 // NOT YET EXECUTED AS EMITTED CODE. This instrument's closure does not build: on main the emitted
-// std.list fails to typecheck, and with this module's provider import the closure holds two types
-// spelled Word64 (std.bit and std.machine_word), whose derives the emitter picks by spelling
-// (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). The
+// std.list fails to typecheck (the std.bit / std.machine_word Word64 leaf collision it also met is
+// gone with std.bit's unused Word8..Word128; gunbc.recurring_failure_mode
+// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). The
 // first identity case is executed today on the interpreter route by
 // test.claim.materialization_provider_witness; these cases become evidence when the closure builds.
 fn identity_fixture_sha256(hex: String) -> ContentHash {

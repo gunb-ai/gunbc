@@ -213,13 +213,20 @@ test fn w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_
   })
 }
 
-// THE COMMITTED EVIDENCE THROUGH THE SHADOW GATE, as the staged cut-over will see it today: mtcollins1's
-// only build reading is the 2026-09-05 0.32 observation and the 2026-10-02 reflash is recorded after it,
-// so every operation refuses as not current -- which is why production is not cut over yet.
+// THE COMMITTED EVIDENCE THROUGH THE SHADOW GATE, as the staged cut-over sees it AFTER the re-key: the
+// bound observation is still the 2026-08-31 PROBE at 0.32, and the CURRENT build is now what boot run
+// 40082618814's retained hpm check READ on 2026-10-24 -- the controller reports APP "0.45 03000000", so
+// the derived identity is raw "0.45". Every operation still refuses as not current, which is exactly what
+// the PR says out loud: THE NEXT BOOT STILL REFUSES AT ATTACH until the operator cuts the bound
+// observation over. Two discriminations: the current build is the DERIVED "0.45", never the vendor page's
+// "0.45.3" (nothing machine-reads the page label any more), and the observed side is still the stale "0.32"
+// probe -- a "fix" that updated the bound observation here would silently cut the machine over inside a
+// witness module and go red on this arm.
 test fn w_the_committed_mtcollins1_evidence_is_refused_by_the_shadow_gate_as_not_current() -> Bool {
   managed_hosts() |> all(h => megarac_operations |> all(op =>
     match admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: h, operation: op) {
-      MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: _, current: c } } => (c.raw_version as String) == "0.45.3"
+      MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: o, current: c } } =>
+        (c.raw_version as String) == "0.45" && (o.raw_version as String) == "0.32"
       _ => false
     }))
     && count(managed_hosts()) == 1

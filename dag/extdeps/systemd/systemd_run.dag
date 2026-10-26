@@ -18,15 +18,23 @@ import extdeps.systemd {
 // with the existing parser rather than a second one (DESIGN section 3: no fork of one concept).
 import extdeps.systemd.systemctl { systemd_major_version }
 import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
+import extdeps.systemd.unit_file { LoadCredential, systemd_service_directive_line }
 
 // EmptyCapabilityBoundingSet is the empty capability-set carrier: systemd.exec(5)
 // CapabilityBoundingSet= with no names drops every capability. It is its own arm, not a
 // SystemdUnitProperty under NamedUnitSetting: SystemdUnitProperty is the show surface
 // (gunbc.systemd_property_directive_overlap), and a capability set is not a free-text value, so a
 // non-empty or misspelled set has no constructor here rather than a refusal at run time.
+//
+// LoadCredentialSetting is systemd.exec(5) LoadCredential=ID:PATH on a transient unit: the MANAGER reads PATH
+// when the unit starts and places its bytes, as ID, in the invocation's private credentials directory
+// ($CREDENTIALS_DIRECTORY), owned by the unit's User= and removed when the unit stops. It is its own arm for
+// the capability-set reason: an (identifier, source) pair is not a free-text value, and the directive's text
+// is the unit-file authority's one spelling (extdeps.systemd.unit_file LoadCredential), not a second one.
 type SystemdRunProperty
   = NamedUnitSetting { property: SystemdUnitProperty, value: NonEmptyStr }
   | EmptyCapabilityBoundingSet
+  | LoadCredentialSetting { identifier: NonEmptyStr, source: NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -118,6 +126,8 @@ type SystemdRunOptionWordsRefusedCause
   | SetenvNameContainsEquals
   | SetenvNameMultiline
   | SetenvValueMultiline
+  | CredentialIdentifierInvalid
+  | CredentialSourceNotOneAbsolutePath
 
 type SystemdRunPropertyAssignmentReading
   = SystemdRunPropertyAssignmentReady { assignment: String }
@@ -154,6 +164,8 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
     SetenvNameContainsEquals => "--setenv= takes NAME=VALUE, so the NAME side carries no = of its own"
     SetenvNameMultiline => "--setenv= takes NAME=VALUE, so the NAME side is one line"
     SetenvValueMultiline => "--setenv= takes NAME=VALUE, so the VALUE side is one line"
+    CredentialIdentifierInvalid => "a credential ID is one file name with no : (systemd.exec(5) LoadCredential=ID:PATH)"
+    CredentialSourceNotOneAbsolutePath => "a LoadCredential= source is one line naming an absolute path, which the manager reads"
   }
 }
 
@@ -176,11 +188,32 @@ fn systemd_run_named_setting_assignment(property: SystemdUnitProperty, value: No
 // systemd.exec(5) spells the empty bounding set as the directive with no names.
 data systemd_run_empty_capability_bounding_set_assignment: String = "CapabilityBoundingSet="
 
+// THE CREDENTIAL ID IS A FILE NAME IN THE CREDENTIALS DIRECTORY (systemd.exec(5)): not "." or "..", no "/",
+// and no ":" because the directive splits ID from PATH at the first one. The source is the path the manager
+// opens, so it is absolute and one line.
+fn systemd_run_credential_identifier_is_valid(identifier: NonEmptyStr) -> Bool {
+  let id = identifier as String
+  id != "." && id != ".." && !string_contains(s: id, pattern: "/") && !string_contains(s: id, pattern: ":") && !systemd_run_option_word_has_newline(s: id)
+}
+
+fn systemd_run_load_credential_assignment(identifier: NonEmptyStr, source: NonEmptyStr) -> SystemdRunPropertyAssignmentReading {
+  if !systemd_run_credential_identifier_is_valid(identifier: identifier) {
+    SystemdRunPropertyAssignmentRefused { cause: CredentialIdentifierInvalid }
+  } else if !starts_with(s: source as String, prefix: "/") || systemd_run_option_word_has_newline(s: source as String) {
+    SystemdRunPropertyAssignmentRefused { cause: CredentialSourceNotOneAbsolutePath }
+  } else {
+    SystemdRunPropertyAssignmentReady {
+      assignment: systemd_service_directive_line(directive: LoadCredential { identifier: identifier, source: source }),
+    }
+  }
+}
+
 fn systemd_run_property_assignment(property: SystemdRunProperty) -> SystemdRunPropertyAssignmentReading {
   match property {
     EmptyCapabilityBoundingSet =>
       SystemdRunPropertyAssignmentReady { assignment: systemd_run_empty_capability_bounding_set_assignment }
     NamedUnitSetting { property: p, value: v } => systemd_run_named_setting_assignment(property: p, value: v)
+    LoadCredentialSetting { identifier: id, source: source } => systemd_run_load_credential_assignment(identifier: id, source: source)
   }
 }
 
