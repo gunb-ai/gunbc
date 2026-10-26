@@ -12,13 +12,11 @@ data floor_cut_regen_second_generation_agreement: RungDrop = RungDrop {
 
   declared: "2026-09-03",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: OutsideTheLadder,
     reason: DeletedWithoutReplacement,
     population: population_from_list(xs: regenerating_phase_names(phases: required_ci_phases)),
     restoration_trigger: "An operator ruling that re-requires v1 emit determinism, at which point the original trigger stated below applies unchanged. ORIGINAL TRIGGER, A CAPABILITY AND DELIBERATELY NOT A LIST OF PHASES: a required lane producing a second generation from the same authority transaction and REFUSING a byte difference against the referenced first generation, FOR EVERY PHASE THAT REGENERATES A COMMITTED POPULATION -- stated as the property so that adding a sixth such phase and skipping it does not satisfy this row, which enumerating today's two would have allowed. SUFFICIENT FOR a merge whose emitter disagrees with itself across two generations being refused, demonstrated by a red on a fixture that produces generation_1 != generation_2 UNDER THE EXACT EXECUTION MODEL THE RESTORED PHASE USES -- a fixture that is unstable only under some other harness establishes nothing about this phase. THE BOUND ON WHAT THAT RED ESTABLISHES, stated so the row is not later cited past it: one two-generation experiment shows the phase catches the generation-instability class it deliberately exercises. It does NOT show that every nondeterministic emitter is rejected, and this row must not be read as claiming it. Restoring the flag's invocation without that red does not discharge it: the flag already exists and its existence is what this row records as insufficient."
-  }
+  } }
 }

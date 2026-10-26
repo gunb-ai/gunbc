@@ -88,7 +88,6 @@ import gunbc.live_deploy.tailnet_door_cutover {
   tailnet_door_cutover_run,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.live_deploy.emit { fabric_storage_admitted_mutate_steps }
 import gunbc.live_deploy.spec { deployment_fabric_storage_unit_name }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import extdeps.systemd { Active }
@@ -149,6 +148,10 @@ fn desired_for(m: ConvergedMember) -> MemberIdentity {
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_executable()
     OidcConfigFile => desired_executable()
+    // WORKER-ROOT-EQUIVALENT-3: dedicated-worker members, never in this witness's release roster --
+    // total-and-unreached, beside the DirectoryRoot/OidcConfigFile rows.
+    GitWorkerSubtree { path: _, child: _ } => desired_executable()
+    RepositorySharedPosture { path: _ } => desired_executable()
   }
 }
 
@@ -165,6 +168,8 @@ fn incident_observed(m: ConvergedMember) -> ObservedMember {
     ServiceProcess => unhealthy_process_observed()
     DirectoryRoot { path: _ } => MemberObserved { identity: desired_for(m: m) }
     OidcConfigFile => MemberObserved { identity: desired_for(m: m) }
+    GitWorkerSubtree { path: _, child: _ } => MemberObserved { identity: desired_for(m: m) }
+    RepositorySharedPosture { path: _ } => MemberObserved { identity: desired_for(m: m) }
   }
 }
 
@@ -679,25 +684,6 @@ test fn the_journal_refusal_appends_to_a_refused_plan_and_stands_alone_otherwise
           && string_contains(s: only, pattern: "interrupted cutover cannot be ruled out")
       Converged { evidence: _, applied: _ } => false
     }
-}
-
-// THE ORDERING THAT BREAKS THE CYCLE, witnessed rather than asserted: the fold's admitted mutate
-// steps WRITE AND RESTART THE FABRIC-STORAGE UNIT UNCONDITIONALLY, and the gate that reads the
-// journal runs AFTER the fold (apply.dag: plan, then the fold's script, then
-// live_deploy_tailnet_door_cutover_gate). So once the service-process arm stops starving the fold
-// -- facet (a) -- the store is repaired before its journal is read, and the store's health stops
-// being a precondition of repairing the store. No reordering was needed, and the refusal claims
-// above are the proof nothing was weakened.
-test fn the_fold_restarts_the_journal_store_before_the_gate_reads_the_journal() -> Bool {
-  let spec = deployment_spec_srv1()
-  let steps = fabric_storage_admitted_mutate_steps(
-    spec: spec,
-    revision: RevisionBoundAtEmission { revision: rev_b() },
-    door_socket: "unix:/srv/fixture/tailnet-door.sock" as NonEmptyStr,
-  )
-  let script = join(map(steps, s => match s { Do { run } => run.command  _ => "" }), "\n")
-  string_contains(s: script, pattern: deployment_fabric_storage_unit_name(names: spec.names) as String)
-    && string_contains(s: script, pattern: "restart")
 }
 
 // AND THE GATE JUDGES A RUN, NEVER A PLAN THAT WAS NEVER DERIVED: an unanswered door refuses too,

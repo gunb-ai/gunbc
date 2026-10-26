@@ -44,9 +44,7 @@ data mtcollins1_boot_matrix_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   declared: "2026-09-28",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -54,5 +52,5 @@ data mtcollins1_boot_matrix_new_witness_eval_step_cost: RungDrop = RungDrop {
     },
     population: population_from_list(xs: mtcollins1_boot_matrix_new_witness_eval_step_cost_population),
     restoration_trigger: concat(concat("THE CAPABILITY: ", mtcollins1_boot_matrix_native_witness_capability), "; WHAT THAT MUST BE SUFFICIENT FOR: each of these identities measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, with its route and outcome assertions unchanged. Hoisting the shared world construction or the route prefix lowers the bill and retires nothing on its own; supplying a decided value in place of the entry, or deleting the identities, satisfies neither."),
-  }
+  } }
 }

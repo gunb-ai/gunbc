@@ -268,7 +268,7 @@ test fn the_cgroup_row_ignores_a_sibling_near_match_and_reads_the_escaped_path()
   }
 }
 
-fn ran_with(rl: RunnerHostManagerReload, slots: List<SlotCapOutcome>) -> RunnerHostCapPhase { CapPhaseRan { files: [], reload: rl, slots: slots } }
+fn ran_with(rl: RunnerHostManagerReload, slots: List<SlotCapOutcome>) -> RunnerHostCapPhase { CapPhaseRan { files: [], reload: rl, slots: slots, certified: [] } }
 
 // RED (review 5567170735, 1a): a cap-file plan that could not be made is Unreadable, never a difference:
 // it withholds (no drain, no write) and says so, where it used to reduce to `true` and drain and write.

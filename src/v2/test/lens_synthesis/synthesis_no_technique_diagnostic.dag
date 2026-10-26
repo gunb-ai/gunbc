@@ -12,6 +12,7 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 
 data synthesis_no_tech_leaf: Node = Node {
@@ -23,7 +24,7 @@ data synthesis_no_tech_leaf: Node = Node {
 data synthesis_no_tech_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: synthesis_no_tech_leaf }
+    Edge { label: Positional, target: synthesis_no_tech_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -31,7 +32,7 @@ data synthesis_no_tech_body: Node = Node {
 data synthesis_no_tech_inner: Node = Node {
   kind: TypeNode { connective: Instantiation },
   children: [
-    Edge { label: Positional, target: synthesis_no_tech_body }
+    Edge { label: Positional, target: synthesis_no_tech_body, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -39,7 +40,7 @@ data synthesis_no_tech_inner: Node = Node {
 data synthesis_no_tech_input: Node = Node {
   kind: TypeNode { connective: Instantiation },
   children: [
-    Edge { label: Positional, target: synthesis_no_tech_inner }
+    Edge { label: Positional, target: synthesis_no_tech_inner, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

@@ -1,6 +1,5 @@
 module v2.test.claim.manual.typescript_pr3_typed_fn_translate
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
@@ -50,7 +49,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.node { Conj, Node, Symbol, TypeNode, content_hash }
+import v2.std.node { node_same_occurrence, Conj, Node, Symbol, TypeNode, content_hash }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -88,19 +87,19 @@ fn typescript_pr3_canonical_grounding(node: Node, algebra: Node) -> CanonicalGro
 }
 
 fn typescript_pr3_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == typescript_pr3_emitted_root {
+  if node_same_occurrence(a: node, b: typescript_pr3_emitted_root) {
     Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_token_ty_number) {
+  } else if node_same_occurrence(a: node, b: ts_inhabitant_atom(id: ^ts_token_ty_number)) {
     Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_binding_pr3_identity) {
+  } else if node_same_occurrence(a: node, b: ts_inhabitant_atom(id: ^ts_binding_pr3_identity)) {
     Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_binding_param_x) {
+  } else if node_same_occurrence(a: node, b: ts_inhabitant_atom(id: ^ts_binding_param_x)) {
     Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
     }
@@ -140,8 +139,7 @@ fn typescript_pr3_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data typescript_pr3_inferred_tree: InferredTree = InferredTree {
   root: typescript_pr3_emitted_root,
-  facts: PartialFunction { lookup: typescript_pr3_facts_lookup },
-  arm_resolutions: constructed_root_arm_resolutions()
+  facts: PartialFunction { lookup: typescript_pr3_facts_lookup }
 }
 
 fn anchor_typescript_pr3_emit_accepts() -> Outcome<Medium<String>> {

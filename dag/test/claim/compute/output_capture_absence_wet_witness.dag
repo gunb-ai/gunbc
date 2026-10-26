@@ -76,13 +76,13 @@ module test.claim.compute.output_capture_absence_wet_witness
 //   3. v2.workflow.floor_route_gap (floor_route_gap_expectation_chunk_45) -- one expectation per
 //      identity, operation DirWithTemplate, ground NoMockResponse: what the hermetic route refuses
 //      on, read from THESE identities by the hermetic claim run itself
-//      (`gunbc run --claim-run --dry-run --function <row>` reports HermeticHostEffectRefused {
+//      (`gunbc run --claim-run --dry-run --function <row>` reports HostEffectRefused {
 //      operation: "DirWithTemplate", ground: NoMockResponse }), which is the operation the case root
 //      is created through. Not copied from a sibling: copying is what chunk_21's header records as
 //      producing floor_route_gap_expectation_mismatch.
 
 import std.types { Bool, Int, NonEmptyStr, String }
-import std.algebra { length, string_contains, trim }
+import std.algebra { string_contains, trim }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -458,10 +458,9 @@ fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptu
     let verdict_text = match verdict {
       OutputsMismatch { detail: d } => d
       OutputsReturned { outputs: outs } =>
-        if length(xs: outs) == 0 {
-          "<empty return>"
-        } else {
-          join([outs[0].declared, "=", outs[0].blob], "|")
+        match outs |> first {
+          Present { value: o } => join([o.declared, "=", o.blob], "|")
+          Absent => "<empty return>"
         }
     }
     if !written {

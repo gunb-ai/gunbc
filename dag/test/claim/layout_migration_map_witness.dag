@@ -33,7 +33,8 @@ data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.Su
 fn layout() -> SourceStorageLayout {
   SourceStorageLayout {
     namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree {}, elides_namespace: true }],
-    default_tree: DagTree {}
+    default_tree: DagTree {},
+    derived_rosters: []
   }
 }
 

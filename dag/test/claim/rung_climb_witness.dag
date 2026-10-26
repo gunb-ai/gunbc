@@ -1,7 +1,8 @@
 module test.claim.rung_climb_witness
 
-import std.types { Bool, String }
-import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import std.types { String }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, total_blocking_census, census_verdict, census_delta_verdict, census_exit }
 
 // A CLASS BELOW ITS CEILING CANNOT BE HANDED "CANNOT CLIMB FURTHER", AND THE COMPILER, NOT A CENSUS, IS
 // WHAT SAYS SO. gunbc.rung_climb ClimbBlocker has only the two can-climb arms, so a BelowCeiling
@@ -21,15 +22,14 @@ data duplicate_prose_grounding_source: String = "module probe_duplicate_prose_gr
 
 data closure_baseline_source: String = "module probe_climb_closure_baseline\nimport gunbc.guarantee_rung { Mitigatable }\nimport gunbc.rung_climb { AwaitsOneGrounding }\nimport gunbc.recurring_failure_mode { RungStanding, BelowCeiling, FoundOnRung }\n"
 
-test fn a_cannot_climb_further_standing_below_its_ceiling_is_refused_at_compile() -> Bool {
-  blocking_class_count_for(source: cannot_climb_below_ceiling_source, wanted_class: "MissingExport") == 1
+test fn a_cannot_climb_further_standing_below_its_ceiling_is_refused_at_compile() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: blocking_class_census(source: cannot_climb_below_ceiling_source, wanted_class: "MissingExport"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_can_climb_standing_below_its_ceiling_adds_no_refusal() -> Bool {
-  let baseline = total_blocking_count_for(source: closure_baseline_source)
-  baseline >= 0 && total_blocking_count_for(source: can_climb_below_ceiling_source) == baseline
+test fn a_can_climb_standing_below_its_ceiling_adds_no_refusal() -> ProcessExit {
+  census_exit(verdict: census_delta_verdict(red: total_blocking_census(source: can_climb_below_ceiling_source), control: total_blocking_census(source: closure_baseline_source), holds: fn(d) { d == 0 }))
 }
 
-test fn a_prose_grounding_beside_the_trigger_capability_is_unwritable() -> Bool {
-  total_blocking_count_for(source: duplicate_prose_grounding_source) > total_blocking_count_for(source: closure_baseline_source)
+test fn a_prose_grounding_beside_the_trigger_capability_is_unwritable() -> ProcessExit {
+  census_exit(verdict: census_delta_verdict(red: total_blocking_census(source: duplicate_prose_grounding_source), control: total_blocking_census(source: closure_baseline_source), holds: fn(d) { d > 0 }))
 }

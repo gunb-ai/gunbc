@@ -527,23 +527,12 @@ data review_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs
 data review_endpoint_method: HttpMethod = POST
 data review_endpoint_success_status: HttpStatus = 204
 
-// THE LITERAL ANCHORS OF THE PATH ABOVE, as rows transcribed from the pinned template. THE GATE IS
-// WITNESSED AT THE BUILDER, NOT AT ITS CONSUMERS: the builder's own witness pins its exact output against
-// these literals, so a builder that drifted — dropped the final segment, put the run id in the wrong
-// place — goes red there. There is deliberately NO built_path_carries_every_pinned_anchor predicate for
-// consumers to call. It was deleted on review (side chat, R1) as an unreachable re-validation of a
-// construction: the only producer of a built path IS the builder, so re-testing these anchors at the mint
-// asserted a state forbidden nowhere it runs — DESIGN §4b, "a check whose forbidden state is
-// expressible nowhere it runs is a decoration, green by construction and later cited as coverage".
-data review_endpoint_prefix: NonEmptyStr = "/repos/"
-data review_endpoint_runs_anchor: NonEmptyStr = "/actions/runs/"
-data review_endpoint_suffix: NonEmptyStr = "/deployment_protection_rule"
-
-// WHICH PART OF THE PATH IS WHAT. The template carries three caller-supplied values; only two of them
-// are free text, and both arrive from configuration rather than from GitHub.
-type ReviewPathSegment
+// WHICH PART OF THE PATH IS WHAT, for every route this module builds (review, installation read, enabled-rule
+// read, environment read). A template carries up to four caller-supplied values; three are free text.
+type RoutePathSegment
   = OwnerSegment { value: NonEmptyStr }
   | RepoSegment { value: NonEmptyStr }
+  | EnvironmentSegment { value: NonEmptyStr }
   // The run id lives in the route too, so a refusal that can name the run axis needs to carry one.
   | RunIdSegment { value: GitHubWorkflowRunId }
 
@@ -557,76 +546,135 @@ type ReviewPathSegment
 // WHICH PART OF THE ROUTE REFUSED TO BE BUILT. The refusal used to carry only a `hostile_segment`,
 // which forced a non-positive run id to be blamed on the OWNER — a perfectly valid owner was reported
 // as the thing that was wrong. The refusal names the axis, and the segment names the value.
-type ReviewPathBuildRefusal
+type RoutePathBuildRefusal
   = HostileSegment
   // A run id that is not a positive number is not a run GitHub has ever had; a route built with it
   // would be a route to nothing, and "nothing" answers 404 in a way a caller could mistake for
   // "the run is gone".
   | RunIdIsNotPositive
 
-fn review_path_build_refusal_name(refusal: ReviewPathBuildRefusal) -> NonEmptyStr {
+fn route_path_build_refusal_name(refusal: RoutePathBuildRefusal) -> NonEmptyStr {
   match refusal {
     HostileSegment {  } => "the route carried a segment that is not a route segment"
     RunIdIsNotPositive {  } => "the run id is not a positive number"
   }
 }
 
-type BuiltReviewPath =
-  BuiltReviewPathOk { path: NonEmptyStr }
-  | BuiltReviewPathRefused {
+type BuiltRoutePath =
+  BuiltRoutePathOk { path: NonEmptyStr }
+  | BuiltRoutePathRefused {
     // NOT DEFAULTED, on purpose. A default here looked like a convenience ("the ordinary hostile-segment
     // case reads as it did") and was measured to be a landmine: an omitted field arrives at runtime as
     // null, and the consumer's match over the axis then dies with "non-exhaustive pattern match on:
     // null" — a defect the type system could not see and the red did not catch until a witness matched
     // on it. Every refusal names its axis.
-    refusal: ReviewPathBuildRefusal,
-    hostile_segment: ReviewPathSegment,
+    refusal: RoutePathBuildRefusal,
+    hostile_segment: RoutePathSegment,
   }
+
+// ONE SEGMENT CHECK for every route: route-safe by path_segment_is_safe, and free of braces, because a
+// value is substituted INTO a template and a brace in it would be ambiguous with a placeholder (it would be
+// filled a second time). A segment that fails is refused by name, never encoded into some other route.
+fn route_segment_is_safe(raw: String) -> Bool {
+  path_segment_is_safe(raw: raw) && !string_contains(s: raw, pattern: "\{") && !string_contains(s: raw, pattern: "\}")
+}
+
+data route_owner_placeholder: NonEmptyStr = "\{owner\}"
+data route_repo_placeholder: NonEmptyStr = "\{repo\}"
+data route_environment_placeholder: NonEmptyStr = "\{environment_name\}"
+data route_run_id_placeholder: NonEmptyStr = "\{run_id\}"
+
+// THE ONE SUBSTITUTION, over a template row's placeholders.
+fn route_template_filled(template: String, placeholder: NonEmptyStr, value: String) -> String {
+  replace(template, placeholder as String, value)
+}
+
+fn route_environment_filled(text: String, environment: NonEmptyStr?) -> String {
+  match environment {
+    Present { value: e } => route_template_filled(template: text, placeholder: route_environment_placeholder, value: e as String)
+    Absent => text
+  }
+}
+
+fn route_run_id_filled(text: String, run_id: GitHubWorkflowRunId?) -> String {
+  match run_id {
+    Present { value: r } => route_template_filled(template: text, placeholder: route_run_id_placeholder, value: github_workflow_run_id_wire_text(id: r))
+    Absent => text
+  }
+}
+
+// WHICH SEGMENT, IF ANY, REFUSES: owner, repo, environment, run id, in route order.
+fn route_segment_refusal(
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  environment: NonEmptyStr?,
+  run_id: GitHubWorkflowRunId?
+) -> BuiltRoutePath? {
+  if !route_segment_is_safe(raw: owner as String) {
+    Present { value: BuiltRoutePathRefused { refusal: HostileSegment, hostile_segment: OwnerSegment { value: owner } } }
+  } else if !route_segment_is_safe(raw: repo as String) {
+    Present { value: BuiltRoutePathRefused { refusal: HostileSegment, hostile_segment: RepoSegment { value: repo } } }
+  } else {
+    match environment {
+      Present { value: e } =>
+        if !route_segment_is_safe(raw: e as String) {
+          Present { value: BuiltRoutePathRefused { refusal: HostileSegment, hostile_segment: EnvironmentSegment { value: e } } }
+        } else {
+          route_run_id_refusal(run_id: run_id)
+        }
+      Absent => route_run_id_refusal(run_id: run_id)
+    }
+  }
+}
+
+fn route_run_id_refusal(run_id: GitHubWorkflowRunId?) -> BuiltRoutePath? {
+  match run_id {
+    // The run id blames ITSELF: a non-positive run id is a route to nothing, and the owner that was fine
+    // is not the thing that was wrong.
+    Present { value: r } =>
+      if !github_workflow_run_id_is_positive(id: r) {
+        Present { value: BuiltRoutePathRefused { refusal: RunIdIsNotPositive, hostile_segment: RunIdSegment { value: r } } }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+// THE PATH, BUILT FROM ITS TEMPLATE ROW: the template with its placeholders filled, after the one segment
+// check. Every route is this fn with a template row and the segments that route has.
+fn route_path_built_for(
+  template: NonEmptyStr,
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  environment: NonEmptyStr?,
+  run_id: GitHubWorkflowRunId?
+) -> BuiltRoutePath {
+  match route_segment_refusal(owner: owner, repo: repo, environment: environment, run_id: run_id) {
+    Present { value: refused } => refused
+    Absent =>
+      BuiltRoutePathOk {
+        path: route_run_id_filled(
+          text: route_environment_filled(
+            text: route_template_filled(
+              template: route_template_filled(template: template as String, placeholder: route_owner_placeholder, value: owner as String),
+              placeholder: route_repo_placeholder,
+              value: repo as String
+            ),
+            environment: environment
+          ),
+          run_id: run_id
+        ) as NonEmptyStr,
+      }
+  }
+}
 
 fn review_endpoint_path_built_for(
   owner: NonEmptyStr,
   repo: NonEmptyStr,
   run_id: GitHubWorkflowRunId
-) -> BuiltReviewPath {
-  let owner_text = owner as String
-  let repo_text = repo as String
-  if !path_segment_is_safe(raw: owner_text) {
-    BuiltReviewPathRefused {
-      refusal: HostileSegment,
-      hostile_segment: OwnerSegment { value: owner },
-    }
-  } else if !path_segment_is_safe(raw: repo_text) {
-    BuiltReviewPathRefused {
-      refusal: HostileSegment,
-      hostile_segment: RepoSegment { value: repo },
-    }
-  } else if !github_workflow_run_id_is_positive(id: run_id) {
-    // The run id blames ITSELF: the axis is RunIdIsNotPositive and the value is the run id, not the
-    // owner that was fine.
-    BuiltReviewPathRefused {
-      refusal: RunIdIsNotPositive,
-      hostile_segment: RunIdSegment { value: run_id },
-    }
-  } else {
-    BuiltReviewPathOk {
-      path: concat(
-        review_endpoint_prefix as String,
-        concat(
-          owner_text,
-          concat(
-            "/",
-            concat(
-              repo_text,
-              concat(
-                review_endpoint_runs_anchor as String,
-                concat(github_workflow_run_id_wire_text(id: run_id), review_endpoint_suffix as String)
-              )
-            )
-          )
-        )
-      ) as NonEmptyStr,
-    }
-  }
+) -> BuiltRoutePath {
+  route_path_built_for(template: review_endpoint_path, owner: owner, repo: repo, environment: none, run_id: Present { value: run_id })
 }
 
 // The body, from components/schemas in the OpenAPI description. It is an anyOf of two shapes, and
@@ -1282,6 +1330,51 @@ data review_call: RestCall = RestCall {
   path: review_endpoint_path,
   method: review_endpoint_method,
   success_status: review_endpoint_success_status,
+}
+
+// THE ENABLED-RULE READ, as a RestCall beside the other three, so the route binds every call it makes to
+// one triple. The read answers 200 with {total_count, custom_deployment_protection_rules[]}.
+data enabled_rule_readback_success_status: HttpStatus = 200
+
+data enabled_rule_readback_call: RestCall = RestCall {
+  path: enabled_rule_readback_endpoint_path,
+  method: enabled_rule_readback_endpoint_method,
+  success_status: enabled_rule_readback_success_status,
+}
+
+// THE THREE READ PATHS, each its template row through route_path_built_for. The installation read is made
+// with an App JWT, not an installation token.
+fn installation_readback_path_built_for(owner: NonEmptyStr, repo: NonEmptyStr) -> BuiltRoutePath {
+  route_path_built_for(template: installation_readback_endpoint_path, owner: owner, repo: repo, environment: none, run_id: none)
+}
+
+fn enabled_rule_readback_path_built_for(
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  environment_name: NonEmptyStr
+) -> BuiltRoutePath {
+  route_path_built_for(template: enabled_rule_readback_endpoint_path, owner: owner, repo: repo, environment: Present { value: environment_name }, run_id: none)
+}
+
+// THE ENVIRONMENT READ: GET /repos/{owner}/{repo}/environments/{environment_name} answers 200 with the
+// environment's name and protection_rules, which observe_environment_protection judges. Its own row, so the
+// route binds this read to its exact route like the other two.
+data environment_protection_readback_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/environments/\{environment_name\}"
+data environment_protection_readback_endpoint_method: HttpMethod = GET
+data environment_protection_readback_success_status: HttpStatus = 200
+
+data environment_protection_readback_call: RestCall = RestCall {
+  path: environment_protection_readback_endpoint_path,
+  method: environment_protection_readback_endpoint_method,
+  success_status: environment_protection_readback_success_status,
+}
+
+fn environment_protection_readback_path_built_for(
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  environment_name: NonEmptyStr
+) -> BuiltRoutePath {
+  route_path_built_for(template: environment_protection_readback_endpoint_path, owner: owner, repo: repo, environment: Present { value: environment_name }, run_id: none)
 }
 
 data pending_deployments_poll_call: RestCall = RestCall {

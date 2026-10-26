@@ -60,8 +60,7 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
   identity: "variant_fields_unlowered_on_the_native_route" as NonEmptyStr,
   subject: "native route lowers variant fields, named and positional, into declared field identities and binds pattern binders from them, the way the seed does",
   declared: "2026-09-21",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -69,5 +68,5 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
     },
     population: Enumerated { members: variant_fields_unlowered_on_the_native_route_population },
     restoration_trigger: "the emitted compiler builds, and on that native route the specimen is observed: the binder `node` in v2.std.symbol_index symbol_index_candidates_at binds its arm and a positional `A(x)` construction and match round-trip field \"0\". A declaration-kind classifier alone (gunbc#12082) does NOT satisfy this: it changes how the interpreted stages decide, not whether the native route is observed."
-  }
+  } }
 }

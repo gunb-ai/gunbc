@@ -1,7 +1,7 @@
 module gunbc.rung_drop.fixture_closure_union_unmodeled_stderr_capture
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, Enumerated, ReplacementStaged, PopulationDeleted }
+import gunbc.rung_drop { RungDrop, Retired, Enumerated, ReplacementStaged, RetiredTypedDeclaration, NotYetCounted, MembersNeverEnumeratedBeforeRetirement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // RETIRED — TRIGGER FIRED. gunbc#13472 realized rust shell WitnessStderrCapturePolicy
@@ -18,18 +18,17 @@ data fixture_closure_union_unmodeled_stderr_capture: RungDrop = RungDrop {
   declared: "2026-10-06",
 
   standing: Retired {
-    trigger_fired: "2026-10-08 -- gunbc#13472. THE CAPABILITY, EXECUTED: v1.compiler.emit shell_channel_realized_by_target returns true for ShellChanStderrTruncated, ShellChanStderrTotalBytes and ShellChanStderrRetainedBytes on rust because emit_shell_call implements the declared WitnessStderrCapturePolicy. WitnessBin.Run emits without TransportEmissionNotModeled; the union strip of that service is deleted; this exclusion population is empty. DISCRIMINATING CONTROL, ENROLLED: v1_compiler.cli_run fixture_closure_union_controls admits a fixture whose closure reaches extdeps.gunbc, and a real emit error beside that reach still refuses as FixtureClosureUnionEmitRefused at module=efr_member. Answering the channels as untruncated whole-stream lengths did not discharge this. Deleting the channels from the interface did not discharge this." as NonEmptyStr
-  },
-
-  declaration: TypedDeclaration {
+    trigger_fired: "2026-10-08 -- gunbc#13472. THE CAPABILITY, EXECUTED: v1.compiler.emit shell_channel_realized_by_target returns true for ShellChanStderrTruncated, ShellChanStderrTotalBytes and ShellChanStderrRetainedBytes on rust because emit_shell_call implements the declared WitnessStderrCapturePolicy. WitnessBin.Run emits without TransportEmissionNotModeled; the union strip of that service is deleted; this exclusion population is empty. DISCRIMINATING CONTROL, ENROLLED: v1_compiler.cli_run fixture_closure_union_controls admits a fixture whose closure reaches extdeps.gunbc, and a real emit error beside that reach still refuses as FixtureClosureUnionEmitRefused at module=efr_member. Answering the channels as untruncated whole-stream lengths did not discharge this. Deleting the channels from the interface did not discharge this." as NonEmptyStr,
+    declaration: RetiredTypedDeclaration {
     previous: MechanicallyPreventable,
 
     temporary: Mitigatable,
 
     reason: ReplacementStaged { replacement: "the rust emitted realization implementing the declared WitnessStderrCapturePolicy, the same next-rung trigger v1.compiler.emit shell_channel_realized_by_target already names" },
 
-    population: PopulationDeleted,
+    population_at_retirement: NotYetCounted { cause: MembersNeverEnumeratedBeforeRetirement },
 
     restoration_trigger: "THE CAPABILITY: the rust emitted shell realization implements the operation's declared WitnessStderrCapturePolicy, sufficient for v1.compiler.emit shell_channel_realized_by_target to return true for ShellChanStderrTruncated, ShellChanStderrTotalBytes and ShellChanStderrRetainedBytes. WHAT THAT MUST BE SUFFICIENT FOR: those operations emit for rust without TransportEmissionNotModeled, this exclusion has an empty population and this row and the union's strip of those services delete together. Answering the channels as untruncated whole-stream lengths does NOT discharge it. Deleting the channels from the interface does NOT discharge it. Silently omitting the module from the union without naming this cause does NOT discharge it.",
+  }
   }
 }

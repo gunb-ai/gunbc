@@ -43,14 +43,13 @@ data unimported_bare_provider_gate_admits_kernel_method_names_untyped: RungDrop 
   standing: Superseded {
     ruling: "the plan gunbc.plans.source_layout_authority, section 5 epoch C2 (operator-approved rulings R1-R11): delete the inert debt roster, its gate and the seed's unimported_bare_provider_gate once the required native steps enforce R1. The restoration trigger did NOT fire -- the gate had no executing route and was deleted. Superseding authority: the v2 resolver's refusal of an unbound name on every cut-over compile route, reached through the acquirer's request-only reading; the per-subject coverage is in the annotation above" as NonEmptyStr,
     decision_record: "the operator's answer of 2026-10-11 to session still-dove-186 (name the cutover's own required steps as the superseding authority, and send only a subject none of them covers to the standing holder), carried by the change that lands gunbc.plans.source_layout_authority" as NonEmptyStr,
-    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr
-  },
-
-  declaration: TypedDeclaration {
+    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr,
+    declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "receiver-typed judgment of kernel-method calls: either the gate judges post-typecheck call semantics for typed files, or method resolution is receiver-typed before typecheck" },
     population: Enumerated { members: FreeSemigroup { head: "every (file, name) pair the gate suppresses as kernel-method-only, counted per run as suppressed_kernel_method_only on the unimported-bare-provider-frontier phase line", tail: [] } },
     restoration_trigger: "the unimported-bare-provider gate decides a kernel-method name by the RECEIVER's type and not by spelling, for every file it judges: either it judges post-typecheck call semantics for typed files and the untyped judged population is empty, or method resolution is receiver-typed before typecheck. Observed at retirement: the frontier phase line reports suppressed_kernel_method_only=0 on a required run while a fixture calling filter on a non-profiled receiver outside its closure is reported, and this row retires in the same change."
+  }
   }
 }

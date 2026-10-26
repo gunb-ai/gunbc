@@ -12,7 +12,7 @@ import gunbc.host.managed_host {
 import gunbc.host.bmc_control_binding { BmcControlBinding, BmcControlStanding, BmcControlBound }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.fleet.fleet_host_backing {
-  OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest,
+  OwnedMachine, OwnedProvisioning, Bmc, NoOutOfBand, ProviderGuest,
   ProviderResourceAwaited, ProviderResourceAcquired,
 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
@@ -74,21 +74,21 @@ fn bmc_controlled_host(host: HostIdentity, standing: BmcControlStanding) -> Host
   }
 }
 
-// AN ENROLLED HOST'S ROUTE, decided by its backing. A board installed over BMC virtual media is
-// controlled only once gunbc.host.managed_host binds it; an appliance that provisions itself through first
-// boot has no out-of-band route at all, and says so; a provider guest is controlled through the
+// AN ENROLLED HOST'S ROUTE, decided by its backing's control route alone, never its OS delivery. A board
+// with a BMC is controlled only once gunbc.host.managed_host binds it, however its OS arrives; a host with
+// no out-of-band route says so; a provider guest is controlled through the
 // account its acquisition is held under, and only on a provider read that answered about exactly
 // that resource -- an unrecorded acquisition, no read, or a refused one each refuse with its cause.
 fn enrolled_host_control(intent: HostEnrollmentIntent, provider_reads: List<AcquiredServerRead>) -> HostControlStanding {
   match intent.backing {
-    OwnedMachine { provisioning: p } => match p {
-      BmcVirtualMediaInstall => match managed_host_binding_for(host: intent.host as NonEmptyStr) {
+    OwnedMachine { provisioning: OwnedProvisioning { control: ctl, delivery: dlv }, unit: _ } => match ctl {
+      Bmc => match managed_host_binding_for(host: intent.host as NonEmptyStr) {
         ManagedHostNotManaged { host: _ } => HostControlRefused { refusal: BmcHostNotManaged { host: intent.host } }
         ManagedHostFound { control: c } => bmc_controlled_host(host: intent.host, standing: c)
         ManagedHostFoundUnderDeclaredDrop { control: c, drop: _, standing_subject: _, current_subject: _ } =>
           bmc_controlled_host(host: intent.host, standing: c)
       }
-      ApplianceFirstBoot => HostControlRefused { refusal: NoOutOfBandRoute { host: intent.host } }
+      NoOutOfBand => HostControlRefused { refusal: NoOutOfBandRoute { host: intent.host } }
     }
     ProviderGuest { route: r, entitlement: _, resource: res } => match res {
       ProviderResourceAwaited { read_obligation: o } =>

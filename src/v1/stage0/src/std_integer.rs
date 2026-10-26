@@ -166,23 +166,25 @@ pub fn uint8_octets_of_ints(values: Rc<Vec<i64>>) -> Rc<QualifiedOctetsResult> {
 }
 
 pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Option<i64> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break std::option::Option::None;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+                Some(head) => match (*uint8_of_int(head.clone())).clone() {
+                    UInt8Result::UInt8OutOfRange { observed: o, .. } => {
+                        break Some(o.clone());
+                    }
+                    UInt8Result::UInt8Ready { value: _, .. } => {
+                        let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                        __tco_loop_remaining = __tco_0;
+                        continue;
+                    }
+                },
             }
-            Some(head) => match (*uint8_of_int(head.clone())).clone() {
-                UInt8Result::UInt8OutOfRange { observed: o, .. } => {
-                    break Some(o.clone());
-                }
-                UInt8Result::UInt8Ready { value: _, .. } => {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
-                    __tco_loop_remaining = __tco_0;
-                    continue;
-                }
-            },
         }
     }
 }
@@ -272,7 +274,7 @@ pub fn decimal_digit_of_units(value: i64) -> DecimalDigit {
 }
 
 pub fn decimal_digit_advance(d: DecimalDigit) -> DecimalDigit {
-    match (*crate::std_nat::decimal_digit_successor(d.clone())).clone() {
+    match (*crate::std_nat::decimal_digit_successor(d)).clone() {
         DecimalDigitSuccessor::DecimalDigitNext { digit: next, .. } => next.clone(),
         DecimalDigitSuccessor::DecimalDigitCarry => DecimalDigit::D0,
     }
@@ -342,7 +344,7 @@ pub fn int_compare(a: i64, b: i64) -> Ordering {
 }
 
 pub fn int_eq(a: i64, b: i64) -> bool {
-    match int_compare(a.clone(), b.clone()) {
+    match int_compare(a, b) {
         Ordering::Less => false,
         Ordering::Equal => true,
         Ordering::Greater => false,
@@ -350,7 +352,7 @@ pub fn int_eq(a: i64, b: i64) -> bool {
 }
 
 pub fn int_ne(a: i64, b: i64) -> bool {
-    match int_compare(a.clone(), b.clone()) {
+    match int_compare(a, b) {
         Ordering::Less => true,
         Ordering::Equal => false,
         Ordering::Greater => true,

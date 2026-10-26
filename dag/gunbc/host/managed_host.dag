@@ -13,9 +13,10 @@ import gunbc.machine_intake.subject {
   SubjectStale,
   compare_qualification_subject,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
-import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations, allocated_canonical_hostname }
-import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, dissolved_is_admissible }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
+import gunbc.rung_drop { RungDrop, Standing, Retired }
+import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
@@ -70,26 +71,21 @@ type ManagedHost sole_constructor {
   host: HostIdentity
   access: BmcAccessObservationStanding
   secure: BmcSecureStanding
-  unit_hold: ResetUnitHold
+  // NO unit hold here: whether driving this host must take its maintenance hold first is maintenance
+  // policy, decided in gunbc.host.host_maintenance_hold_reason unit_hold_decision and read only by
+  // gunbc.host.managed_host_unit_hold admit_unit_hold_subject.
   // The platform verdict carries the site only where the platform has the interface, so a machine whose
   // silicon does not carry SMpro is a well-formed row without inventing an Ampere observation.
   smpro: SmproPlatformStanding
 }
 
-// WHETHER DRIVING THIS HOST MUST TAKE ITS MAINTENANCE HOLD FIRST, and on which host the hold store
-// lives. Mt. Collins unit 1 is serviced by hand, so a power cycle of it is gated by the same slot the
-// boot takes; a write may only run where that store is, or it would acquire a hold in an empty store
-// the operator never sees. This decision is the row's; gunbc.host.managed_host_unit_hold admits a host to
-// the hold procedure from it and is the only reader that turns it into a slot.
-type ResetUnitHold
-  = ResetUnitHoldRequired { key: NonEmptyStr, store_host: NonEmptyStr }
-  | ResetNoUnitHold
-
 // ── MANAGED-HOST ADMISSION (cut O1c-3 PR a) ────────────────────────────────────────────────────
 //
 // One committed record per unit, authored from that unit's arrival observations. The plan's fields:
-// HostIdentity ↔ MachineIntakeSubject; access and capability standing; BmcSecureStanding; unit-hold
-// decision; receipt identity. smpro is on the record because cut 1 put it on ManagedHost: every
+// HostIdentity ↔ MachineIntakeSubject; access and capability standing; BmcSecureStanding; receipt
+// identity. The unit-hold decision is not on the record: it is maintenance policy
+// (gunbc.host.host_maintenance_hold_reason unit_hold_decision), and a host with none is refused by the
+// hold admission, not by membership. smpro is on the record because cut 1 put it on ManagedHost: every
 // Ampere SMpro pass reads through managed_host_smpro_subject, and omitting it here would default a
 // site in the projection and fork that join. Currency is NOT receipt.subject == record.subject;
 // that would quietly call a superseded standing current. Currency is compare_qualification_subject
@@ -122,7 +118,6 @@ fn managed_host_admission_receipt(host: HostIdentity, access_host: NonEmptyStr, 
       decl_name: "w_an_admissibly_dissolved_covering_drop_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness",
       decl_name: "w_a_matching_drop_whose_population_does_not_name_the_host_still_admits_mtcollins1"),
-    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_hold_decision_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_host_allocation_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_receipt_for_another_host_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
@@ -130,10 +125,6 @@ fn managed_host_admission_receipt(host: HostIdentity, access_host: NonEmptyStr, 
 {
   ManagedHostAdmissionReceipt { host: host, access_host: access_host, secure_attempt: secure_attempt }
 }
-
-type ManagedHostAdmissionHold
-  = AdmissionHoldDecided { hold: ResetUnitHold }
-  | AdmissionHoldMissing
 
 type ManagedHostAdmission sole_constructor {
   host: HostIdentity
@@ -149,7 +140,6 @@ type ManagedHostAdmission sole_constructor {
   // controller REPORTED (gunbc.host.host_capability_row) -- a second, hand-supplied path to it was a
   // dead input and an attractor beside the catalog, able to disagree with the observation it described.
   secure: BmcSecureStanding
-  hold: ManagedHostAdmissionHold
   // The machine's SMpro FACT AS A PLATFORM QUESTION, not an always-present site: only a platform that
   // carries the interface owes a site and an endpoint join, so an x86 machine is representable at all.
   smpro: SmproPlatformStanding
@@ -163,7 +153,6 @@ fn managed_host_admission(
   binding: gunbc.host.physical_machine_binding.PhysicalMachineBinding,
   access: BmcAccessObservationStanding,
   secure: BmcSecureStanding,
-  hold: ManagedHostAdmissionHold,
   smpro: SmproPlatformStanding,
   receipt: ManagedHostAdmissionReceipt,
   current_subject: MachineIntakeSubject?,
@@ -185,7 +174,6 @@ fn managed_host_admission(
       decl_name: "w_an_admissibly_dissolved_covering_drop_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness",
       decl_name: "w_a_matching_drop_whose_population_does_not_name_the_host_still_admits_mtcollins1"),
-    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_hold_decision_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_host_allocation_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_receipt_for_another_host_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
@@ -208,7 +196,6 @@ fn managed_host_admission(
     binding: binding,
     access: access,
     secure: secure,
-    hold: hold,
     smpro: smpro,
     receipt: receipt,
     current_subject: current_subject,
@@ -233,24 +220,17 @@ type ManagedHostMembership sole_constructor
 // admit any host whose name happens to appear in a sentence.
 fn covering_drop_is_standing(drop: RungDrop) -> Bool {
   match drop.standing {
-    Retired { trigger_fired: _ } => false
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
-    // main's #14181 Dissolved law, adopted into the value classifier: an ADMISSIBLE dissolution
-    // erases the drop from live accounting, so it cannot qualify a subject; an INADMISSIBLE one
-    // (non-empty typed population, or AuthoredProse) FAILS CLOSED -- the row is still standing,
-    // counted live and outstanding, and still covers. Same law as drop_is_standing_citation had;
-    // no identity comparison here -- coverage is the record's cited fact, not a lookup.
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: drop) == false
-    Standing => true
+    Retired { trigger_fired: _, declaration: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+    // A dissolution erases the drop from live accounting, so it cannot qualify a subject; coverage is
+    // the record's cited fact, not a lookup, so a standing drop covers with no identity comparison.
+    Dissolved { removal: _, declaration: _ } => false
+    Standing { declaration: _ } => true
   }
 }
 
 fn host_is_allocated(allocations: List<HostnameAllocation>, host: HostIdentity) -> Bool {
   any(allocations, a => (a.fleet_slot as String) == (host as String))
-}
-
-fn store_host_is_allocated(allocations: List<HostnameAllocation>, store_host: NonEmptyStr) -> Bool {
-  any(allocations, a => (a.fleet_slot as String) == (store_host as String) || (allocated_canonical_hostname(allocation: a) as String) == (store_host as String))
 }
 
 fn access_controller_host(access: BmcAccessObservationStanding) -> NonEmptyStr? {
@@ -324,28 +304,11 @@ fn standings_bound_to_record_subject(record: ManagedHostAdmission) -> Bool {
     }
 }
 
-fn decided_hold(record: ManagedHostAdmission, allocations: List<HostnameAllocation>) -> ResetUnitHold? {
-  match record.hold {
-    AdmissionHoldMissing => none
-    AdmissionHoldDecided { hold: h } =>
-      match h {
-        ResetNoUnitHold => Present { value: h }
-        ResetUnitHoldRequired { key: _, store_host: store } =>
-          if store_host_is_allocated(allocations: allocations, store_host: store) {
-            Present { value: h }
-          } else {
-            none
-          }
-      }
-  }
-}
-
-fn row_from_admission(record: ManagedHostAdmission, hold: ResetUnitHold) -> ManagedHost {
+fn row_from_admission(record: ManagedHostAdmission) -> ManagedHost {
   ManagedHost {
     host: record.host,
     access: record.access,
     secure: record.secure,
-    unit_hold: hold,
     smpro: record.smpro,
   }
 }
@@ -377,8 +340,8 @@ fn member_under_declared_drop(
 }
 
 // THE PUBLIC ENTRY. Every parameter is consumed: a hard-coded current subject, drop list, or
-// allocation list changes the arm. Incomplete records, unbound standings, a missing hold, a missing
-// allocation, a mismatched receipt, or an unreadable current subject are Absent, never defaulted.
+// allocation list changes the arm. Incomplete records, unbound standings, a missing allocation, a
+// mismatched receipt, or an unreadable current subject are Absent, never defaulted.
 fn project_managed_host_admission(
   record: ManagedHostAdmission,
   current_subject: MachineIntakeSubject?,
@@ -391,35 +354,31 @@ fn project_managed_host_admission(
   } else if standings_bound_to_record_subject(record: record) == false {
     none
   } else {
-    match decided_hold(record: record, allocations: allocations) {
+    match current_subject {
       Absent => none
-      Present { value: hold } =>
-        match current_subject {
-          Absent => none
-          Present { value: current } => {
-            let row = row_from_admission(record: record, hold: hold)
-            match compare_qualification_subject(admitted: record.binding.subject.subject, observed: current.subject) {
-              SubjectCurrent => Present { value: ordinary_member(host: row) }
-              SubjectStale { axes: _ } =>
-                match record.covering_drop {
-                  Absent => none
-                  Present { value: drop } =>
-                    if covering_drop_is_standing(drop: drop) == false {
-                      none
-                    } else {
-                      Present {
-                        value: member_under_declared_drop(
-                          drop: drop,
-                          standing_subject: record.binding.subject,
-                          current_subject: current,
-                          host: row,
-                        ),
-                      }
-                    }
+      Present { value: current } => {
+        let row = row_from_admission(record: record)
+        match compare_qualification_subject(admitted: record.binding.subject.subject, observed: current.subject) {
+          SubjectCurrent => Present { value: ordinary_member(host: row) }
+          SubjectStale { axes: _ } =>
+            match record.covering_drop {
+              Absent => none
+              Present { value: drop } =>
+                if covering_drop_is_standing(drop: drop) == false {
+                  none
+                } else {
+                  Present {
+                    value: member_under_declared_drop(
+                      drop: drop,
+                      standing_subject: record.binding.subject,
+                      current_subject: current,
+                      host: row,
+                    ),
+                  }
                 }
             }
-          }
         }
+      }
     }
   }
 }
@@ -436,10 +395,6 @@ fn membership_is_host(membership: ManagedHostMembership, host: HostIdentity) -> 
     OrdinaryMember { host: h } => (h.host as String) == (host as String)
     MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } => (h.host as String) == (host as String)
   }
-}
-
-fn mtcollins1_unit_hold() -> ResetUnitHold {
-  ResetUnitHoldRequired { key: operator_host_mtcollins1 as NonEmptyStr, store_host: operator_host_srv1 as NonEmptyStr }
 }
 
 fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
@@ -470,7 +425,6 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
                       binding: binding,
                       access: mtcollins1_access_standing,
                       secure: secure,
-                      hold: AdmissionHoldDecided { hold: mtcollins1_unit_hold() },
                       smpro: smpro_platform_standing(access: mtcollins1_access_standing, site: mtcollins1_smpro_site()),
                       receipt: managed_host_admission_receipt(
                         host: operator_host_mtcollins1,
@@ -546,7 +500,7 @@ fn managed_membership_for(host: HostIdentity) -> ManagedHostMembership? {
 
 // A UNIT IS A MEMBER ONLY THROUGH A COMMITTED ManagedHostAdmission, projected here. Membership is
 // evidence, never a source roster: the record lives in the unit's observations; this module joins
-// completeness, the one-subject bind, allocation, hold, receipt identity, and currency against the
+// completeness, the one-subject bind, allocation, receipt identity, and currency against the
 // CURRENT subject (docs/plans/managed-host-untangle.md, cut O1c-3 PR a). mtjade1 has no record.
 // managed_hosts() is the host-row view of managed_host_memberships(); callers that read secure
 // standing, binding, reset, hold, boot, or MegaRAC admission walk the memberships and match
@@ -637,7 +591,6 @@ fn managed_host_fixture(
   host: HostIdentity,
   access: BmcAccessObservationStanding,
   secure: BmcSecureStanding,
-  unit_hold: ResetUnitHold,
   smpro: SmproPlatformStanding,
 ) -> ManagedHost
   admit_callers: [
@@ -645,7 +598,8 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster"),
     decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store"),
     decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_held_host_with_no_reason_variable_is_refused_for_maintenance"),
-    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
+    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_managed_host_with_no_hold_decision_is_undecided_and_refused"),
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_bound_selectable_host_with_no_hold_decision_is_not_a_reset_subject"),
     decl_ref(module_path: "test.claim.auth.managed_host_boot_federation_witness", decl_name: "w_a_bound_host_with_no_boot_policy_is_unprovisioned"),
     decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject"),
     decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_refused_smpro_site_on_a_bound_route_reports_a_refused_site_not_a_missing_controller"),
@@ -659,9 +613,9 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_handoff_admission_discriminates_on_every_managed_hosts_rows"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_second_machine_with_the_same_profile_gets_the_same_selection"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit"),
-    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admits"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_observed_reflash_resolves_the_machine_read_builds_row_and_still_admits"),
     // The 0.45.3 attestation claim rebuilds the host fixture at that release, so it is an admitted caller too.
-    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_0_45_3_row_is_attested_and_never_rendered_as_machine_read"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_0_45_row_is_machine_read_and_the_page_label_is_never_its_key"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation"),
@@ -675,7 +629,7 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "variant_subject"),
   ]
 {
-  ManagedHost { host: host, access: access, secure: secure, unit_hold: unit_hold, smpro: smpro }
+  ManagedHost { host: host, access: access, secure: secure, smpro: smpro }
 }
 
 // THE SILICON STANDING OF A BOUND HOST: its SMpro site joined to the controller its bound route drives,

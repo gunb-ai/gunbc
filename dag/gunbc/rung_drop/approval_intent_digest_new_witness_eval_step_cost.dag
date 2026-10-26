@@ -33,9 +33,7 @@ data approval_intent_digest_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   declared: "2026-10-02",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -43,5 +41,5 @@ data approval_intent_digest_new_witness_eval_step_cost: RungDrop = RungDrop {
     },
     population: population_from_list(xs: approval_intent_digest_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY: SHA-256 EXECUTING AS NATIVELY EMITTED CODE ON THE MERGE PATH, i.e. a required-floor claim frame that evaluates extdeps.crypto.sha2 sha256_hex over a real approval intent reaches the digest without an interpreted Word32 fold. WHAT THAT MUST BE SUFFICIENT FOR: both member identities, still building their real request through the real digest and still asserting the gate admits only that revision, measure under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. A native SHA-256 row that runs by name off the acceptance path retires nothing. Supplying the digest as a fixture, deleting the identities, or relocating them to a home that does not execute them satisfies none of it.",
-  }
+  } }
 }

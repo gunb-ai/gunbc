@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_step_carries_a_script_that_reads_env_the_step_never_binds
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_step_carries_a_script_that_reads_env_the_step_never_binds: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_step_carries_a_script_that_reads_env_the_step_never_binds" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the token-mint prelude declares the environment variables its script reads and a generated step derives its env bindings from that declaration, so a step carrying the prelude cannot omit a binding it reads" } },
+
+  receipts: [
+    "**a generated workflow step carries a script that reads an environment variable the step's own env never binds, so the step dies at run time with an unbound-variable error** (INVALID STATE: a RunStep whose run text reads $VAR while its env omits VAR; HARM: the step refuses before doing any work, found only by running the workflow). The script and the env are two facts of one step with no join between them.",
+
+    "WHY IT SURVIVES REVIEW AND TESTING. A witness that checks the script is PRESENT in the emitted step (DESIGN section 3 pairing gap: the supplied side without the route) is green while the script's inputs are unbound; the prelude is spliced in from a shared helper, so the step's author sees neither the read nor the missing binding.",
+
+    "SPECIMEN, 2026-10-23 (#14772 -> fleet-converge run 39879022568, srv3). The Runner host files step carried the org-admin token prelude, which reads $WIF_ACCESS_TOKEN, while its env bound only the expected-host and cap-budget names. The step died at prelude line 10; no host argv had issued.",
+
+    "RECOGNITION RULE: for every emitted RunStep, derive the variables its run text reads and join them to the names its env binds; a read with no binding is the defect. RUNG FOUND AT: mitigatable -- found in production. RUNG NOW: mitigatable. The witness test.claim.fleet.fleet_converge_roster_token_prelude_witness every_generated_step_reading_the_wif_token_binds_it exists, with a discriminating RED control and a binding-drop mutation, but no required lane evaluates it (DESIGN Building and checks; gunbc.rung_drop v1_required_lanes_withdrawn), so dropping the binding again would still merge green. Restoration is the native compiler judging that witness population, or enrolling the witness as a row of emitted_subject_build_rows. NEXT TRIGGER: generalize from the one declared name (workload_identity_token_env) to every variable a prelude declares it reads, once AppInstallationTokenMint carries that declaration."
+  ],
+
+  evidence: [],
+}

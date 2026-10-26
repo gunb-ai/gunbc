@@ -13,6 +13,7 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -25,7 +26,7 @@ data map_linear_body_leaf: Node = Node {
 data map_linear_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: map_linear_body_leaf }
+    Edge { label: Positional, target: map_linear_body_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -39,8 +40,8 @@ data map_linear_measure: Node = Node {
 data map_linear_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: map_linear_body },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: map_linear_measure }
+    Edge { label: Positional, target: map_linear_body, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: map_linear_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

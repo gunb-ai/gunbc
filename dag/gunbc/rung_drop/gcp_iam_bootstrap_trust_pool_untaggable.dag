@@ -17,12 +17,11 @@ data gcp_iam_bootstrap_trust_pool_untaggable: RungDrop = RungDrop {
   identity: "gcp_iam_bootstrap_trust_pool_untaggable" as NonEmptyStr,
   subject: "iam-bootstrap writing the policy of a trust pool (the converge job's or its own)",
   declared: "2026-10-18",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: FreeSemigroup { head: "pool github-gcp-iam-converge", tail: ["pool github-gcp-iam-bootstrap"] } },
     restoration_trigger: "workload identity pools accept resource tags (a cited GCP tag-support row) so the trust-root deny can name them, or iam-bootstrap's role no longer holds workloadIdentityPools.setIamPolicy; observed by a denied probe on each pool"
-  }
+  } }
 }

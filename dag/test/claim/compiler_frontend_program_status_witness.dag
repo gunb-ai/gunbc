@@ -60,7 +60,7 @@ import gunbc.namespace_cut.namespace_cut_subject_roster {
   probe_render,
 }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
-import gunbc.rung_drop { RungDrop, Standing, Retired, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.rung_drop { RungDrop, Standing, Retired, TypedDeclaration, RetiredTypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
 import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_admission_wall_removed }
@@ -367,21 +367,30 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
     identity: "fixture_native_route_drop" as NonEmptyStr,
     subject: "fixture",
     declared: "2026-09-12",
-    standing: Retired { trigger_fired: "fixture" as NonEmptyStr },
-    declaration: TypedDeclaration {
-      previous: MechanicallyPreventable,
-      temporary: Mitigatable,
-      reason: DeletedWithoutReplacement,
-      population: Enumerated { members: FreeSemigroup { head: "fixture", tail: [] } },
-      restoration_trigger: "fixture",
+    standing: Retired {
+      trigger_fired: "fixture" as NonEmptyStr,
+      declaration: RetiredTypedDeclaration {
+        previous: MechanicallyPreventable,
+        temporary: Mitigatable,
+        reason: DeletedWithoutReplacement,
+        population_at_retirement: Enumerated { members: FreeSemigroup { head: "fixture", tail: [] } },
+        restoration_trigger: "fixture",
+      },
     },
   }
   let standing = RungDrop {
     identity: retired.identity,
     subject: retired.subject,
     declared: retired.declared,
-    standing: Standing,
-    declaration: retired.declaration,
+    standing: Standing {
+      declaration: TypedDeclaration {
+        previous: MechanicallyPreventable,
+        temporary: Mitigatable,
+        reason: DeletedWithoutReplacement,
+        population: Enumerated { members: FreeSemigroup { head: "fixture", tail: [] } },
+        restoration_trigger: "fixture",
+      },
+    },
   }
   let open = standing_rung_drop_outstanding(drop: standing)
   count(standing_rung_drop_outstanding(drop: retired)) == 0

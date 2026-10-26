@@ -72,9 +72,10 @@ module gunbc.design_ledgers
 import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
+import std.algebra { non_empty_to_list }
 import gunbc.recurring_failure_mode { authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
-import gunbc.rung_drop { RungDrop, dissolved_is_admissible, rung_drop_declaration_message, RungDropStanding, Standing, Retired, Superseded, Dissolved }
+import gunbc.rung_drop { RungDrop, rung_drop_declaration_message, RungDropStanding, Standing, Retired, Superseded, Dissolved }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop_amendment { rung_drop_amendment_message }
 import gunbc.rung_drop_amendment.roster { amendments_for_drop }
@@ -126,8 +127,8 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
         p(text: "Each row declares a safety guarantee that was lowered: what stood before, what stands now, why, over what population, and the trigger that restores it. A drop is retired by its trigger and by nothing else."),
       ],
       flat_map(rung_drop_roster, d => concat(concat([
-        h3(text: concat(concat(concat(d.subject, " — declared "), d.declared), rung_drop_standing_suffix(standing: d.standing, admissible: dissolved_is_admissible(drop: d)))),
-      ], rung_drop_standing_blocks(standing: d.standing, admissible: dissolved_is_admissible(drop: d))), concat(concat([
+        h3(text: concat(concat(concat(d.subject, " — declared "), d.declared), rung_drop_standing_suffix(standing: d.standing))),
+      ], rung_drop_standing_blocks(standing: d.standing)), concat(concat([
         p(text: rung_drop_declaration_message(d: d)),
       ], rung_drop_amendment_blocks(d: d)), if (d.identity as String) == "measurement_bankruptcy" {
         compile_phase_frontier_blocks()
@@ -143,7 +144,7 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
 // by the next regeneration, which is the whole reason the carrier exists; rendering it here is what
 // makes the carrier consumed rather than declared.
 fn rung_drop_amendment_blocks(d: RungDrop) -> List<MarkdownBlock> {
-  map(amendments_for_drop(identity: d.identity), a => p(text: rung_drop_amendment_message(a: a, standing: d.standing, admissible: dissolved_is_admissible(drop: d))))
+  map(amendments_for_drop(identity: d.identity), a => p(text: rung_drop_amendment_message(a: a, standing: d.standing)))
 }
 
 // THE LEDGER RENDERED A RETIRED DROP AND A STANDING ONE IDENTICALLY, which made it unable to
@@ -158,21 +159,21 @@ fn rung_drop_amendment_blocks(d: RungDrop) -> List<MarkdownBlock> {
 // the projection stops discarding the field that decides it. The retirement's own trigger_fired
 // text is rendered too, because a retirement asserting no reason is the shape that lets a row be
 // retired quietly.
-fn rung_drop_standing_suffix(standing: RungDropStanding, admissible: Bool) -> String {
+fn rung_drop_standing_suffix(standing: RungDropStanding) -> String {
   match standing {
-    Standing => ""
-    Retired { trigger_fired: _ } => " · RETIRED"
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => " · SUPERSEDED"
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => if admissible { " · DISSOLVED" } else { " · INVALID DISSOLVED" }
+    Standing { declaration: _ } => ""
+    Retired { trigger_fired: _, declaration: _ } => " · RETIRED"
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => " · SUPERSEDED"
+    Dissolved { removal: _, declaration: _ } => " · DISSOLVED"
   }
 }
 
-fn rung_drop_standing_blocks(standing: RungDropStanding, admissible: Bool) -> List<MarkdownBlock> {
+fn rung_drop_standing_blocks(standing: RungDropStanding) -> List<MarkdownBlock> {
   match standing {
-    Standing => []
-    Retired { trigger_fired } => [p(text: concat("**RETIRED — TRIGGER FIRED.** ", (trigger_fired as String)))]
-    Superseded { ruling: r, decision_record: d, loss_holder: h } => [p(text: join(["**SUPERSEDED — THE TRIGGER DID NOT FIRE.** Ruling: ", r as String, " Decision record: ", d as String, " Loss now held by: ", h as String], ""))]
-    Dissolved { ruling: r, decision_record: d, population_gone: g } => if admissible { [p(text: join(["**DISSOLVED — THE TRIGGER DID NOT FIRE; THE POPULATION NO LONGER EXISTS.** Ruling: ", r as String, " Decision record: ", d as String, " Population gone: ", g as String], ""))] } else { [p(text: join(["**INVALID DISSOLVED: THE POPULATION IS STILL NON-EMPTY; COUNTED AS STANDING.** Ruling: ", r as String, " Decision record: ", d as String, " Claimed gone: ", g as String], ""))] }
+    Standing { declaration: _ } => []
+    Retired { trigger_fired, declaration: _ } => [p(text: concat("**RETIRED — TRIGGER FIRED.** ", (trigger_fired as String)))]
+    Superseded { ruling: r, decision_record: d, loss_holder: h, declaration: _ } => [p(text: join(["**SUPERSEDED — THE TRIGGER DID NOT FIRE.** Ruling: ", r as String, " Decision record: ", d as String, " Loss now held by: ", h as String], ""))]
+    Dissolved { removal: t, declaration: _ } => [p(text: join(["**DISSOLVED — THE TRIGGER DID NOT FIRE; THE POPULATION NO LONGER EXISTS.** Ruling: ", t.ruling as String, " Decision record: ", t.decision_record as String, " Modules removed: ", join(map(non_empty_to_list(xs: t.removed_modules), m => m.name), ", "), " Removed at: ", t.removed_at as String], ""))]
   }
 }
 

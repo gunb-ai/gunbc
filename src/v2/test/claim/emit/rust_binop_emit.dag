@@ -1,6 +1,5 @@
 module v2.test.claim.emit.rust_binop_emit
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -86,8 +85,7 @@ fn rust_binop_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_binop_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: rust_binop_facts_miss },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: rust_binop_facts_miss }
   }
 }
 

@@ -5,7 +5,8 @@ import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.std.node {
   Node, Edge, EdgeLabel, Positional,
   NodeKind, TypeNode, Connective, Atom, Conj,
-  Symbol, node_synthetic
+  Symbol, node_synthetic,
+  NotADeclaration
 }
 import v2.std.anti_unification {
   ChainGeneralization, anti_unify_chain, hole_node, fillings_all_leaves, template_has_hole
@@ -23,8 +24,8 @@ fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: a },
-      Edge { label: Positional, target: b }
+      Edge { label: Positional, target: a, declaration: NotADeclaration },
+      Edge { label: Positional, target: b, declaration: NotADeclaration }
     ]
   )
 }
@@ -32,9 +33,9 @@ fn conj3(a: Node, b: Node, c: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: a },
-      Edge { label: Positional, target: b },
-      Edge { label: Positional, target: c }
+      Edge { label: Positional, target: a, declaration: NotADeclaration },
+      Edge { label: Positional, target: b, declaration: NotADeclaration },
+      Edge { label: Positional, target: c, declaration: NotADeclaration }
     ]
   )
 }

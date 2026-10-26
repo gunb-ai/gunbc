@@ -1048,7 +1048,7 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
 fn assessment_wire<P>(a: RunnerThroughputAssessment<P>) -> NonEmptyStr {
   if a.refusals.length() == 0 {
     join([
-      "offer delivers on ", a.host as String, " from runs ", join(map(a.runs, r => r as String), ","), ": ",
+      "offer delivers on ", a.host as String, " from runs ", join(map(a.runs, r => run_key(r: r)), ","), ": ",
       throughput_standing_wire(s: a.throughput) as String, "; ", memory_standing_wire(s: a.memory) as String,
       "; ", slot_width_wire(s: a.slot_width) as String,
     ], "") as NonEmptyStr

@@ -4,6 +4,7 @@ import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.algebra { trim }
+import extdeps.firmware.types { firmware_semantic_version_text }
 
 import extdeps.bmc.capability {
   CurrentEvidenceUnclaimed,
@@ -1452,7 +1453,7 @@ fn bmc_fan_observe_with_credential(
               reason: concat(
                 concat(
                   "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
-                  identity.firmware.version as String,
+                  firmware_semantic_version_text(version: identity.firmware.version),
                 ),
                 concat(
                   "; fleet valid state requires ",
@@ -1472,7 +1473,7 @@ fn bmc_fan_observe_with_credential(
                   reason: concat(
                     concat(
                       "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
-                      identity.firmware.version as String,
+                      firmware_semantic_version_text(version: identity.firmware.version),
                     ),
                     concat(
                       "; fleet valid state requires ",
@@ -1488,7 +1489,7 @@ fn bmc_fan_observe_with_credential(
                     BmcFanLiveObservationRefused {
                       reason: concat(
                         "BMC fan convergence has no exact board-and-firmware projection for observed OpenBMC ",
-                        identity.firmware.version as String,
+                        firmware_semantic_version_text(version: identity.firmware.version),
                       ),
                     }
                   Present { value: projection } =>
@@ -1497,11 +1498,11 @@ fn bmc_fan_observe_with_credential(
                         reason: concat(
                           concat(
                             "BMC fan convergence has no exact config projection for observed OpenBMC ",
-                            identity.firmware.version as String,
+                            firmware_semantic_version_text(version: identity.firmware.version),
                           ),
                           concat(
                             "; available projection is ",
-                            projection.firmware.version as String,
+                            firmware_semantic_version_text(version: projection.firmware.version),
                           ),
                         ),
                       }

@@ -27,9 +27,7 @@ data dag_text_round_trip_nested_bind_new_witness_eval_step_cost: RungDrop = Rung
 
   declared: "2026-10-04",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -37,5 +35,5 @@ data dag_text_round_trip_nested_bind_new_witness_eval_step_cost: RungDrop = Rung
     },
     population: population_from_list(xs: dag_text_round_trip_nested_bind_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY: a precedence-climbing tree contract (one node per operator application, not one per level), or parse claims evaluated on the native route. WHAT IT MUST BE SUFFICIENT FOR: both identities, still rendering, lexing and parsing their two-Bind text once on the real route, measuring under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Deleting an identity, shrinking its text below two lets, supplying its parse, or re-bundling it into a shared producer does not satisfy this trigger.",
-  }
+  } }
 }

@@ -1,6 +1,5 @@
 module v2.test.claim.emit.rust_fold_call_closure_emit
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -47,8 +46,7 @@ fn rust_fold_call_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_fold_call_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: rust_fold_call_emit_facts_miss },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: rust_fold_call_emit_facts_miss }
   }
 }
 

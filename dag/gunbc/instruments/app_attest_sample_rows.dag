@@ -14,6 +14,10 @@ import extdeps.apple.app_attest {
   AssertionValidationCategoryRefused, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
   AssertionVerification, AssertionAuthentic, AssertionRefused,
 }
+import gunbc.instruments.app_attest_operator_device_ios_26_6_2 {
+  operator_device_attestation_octets, operator_device_key_id_b64, operator_device_client_data,
+  operator_device_team_identifier, operator_device_bundle_identifier, operator_device_observed_at,
+}
 import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
   sample_team_identifier, sample_bundle_identifier, sample_assertion_counter,
@@ -30,16 +34,13 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 // 2021 sample, a success for a capture carrying the extension steps. Every case identity is
 // prefixed with the row's name, so the roster join names which object a failure is about.
 //
-// PLANNED ROW, NOT YET AUTHORABLE: "operator_device_ios_26_6_2" -- an attestation and assertions
-// produced by apps/approve-ios on the operator's iPhone (iOS 26.6.2) once gunbc#12000 lands,
-// recorded as an OBSERVED ARTIFACT in its own extdeps.apple module with its provenance (device,
-// OS version, app bundle, capture date), never transcribed from a message. Its expected verdicts are
-// AttestationVerified and AssertionAuthentic; it is the whole-fold positive control the 14.4 row
-// cannot be.
+// THE OPERATOR'S PHONE IS ROW TWO: a real iPhone attestation (gunbc.instruments.app_attest_operator_device_ios_26_6_2)
+// carries no extensions map, and so does Apple's 2021 sample, so BOTH rows owe the success arm. A row with
+// no assertion capture owes none: `assertion` is Absent and its assertion cases are not rostered.
 type AppAttestSample {
   name: String
   attestation: List<Int>
-  assertion: List<Int>
+  assertion: List<Int>?
   expectation: AttestationExpectation
   owed_attestation: OwedAttestationVerdict
   owed_assertion: OwedAssertionVerdict
@@ -62,11 +63,41 @@ fn ios_14_4_sample() -> AppAttestSample {
   AppAttestSample {
     name: "ios_14_4",
     attestation: sample_attestation_octets,
-    assertion: sample_assertion_octets,
+    assertion: assertion_present(octets: sample_assertion_octets),
     expectation: sample_expectation(),
-    owed_attestation: OwesAttestationRefusedWith { refusal: AttestationValidationCategoryAbsent },
-    owed_assertion: OwesAssertionRefusedWith { refusal: AssertionValidationCategoryAbsent },
+    owed_attestation: OwesAttestationVerified,
+    owed_assertion: OwesAssertionAuthentic,
     published_assertion_counter: sample_assertion_counter,
+  }
+}
+
+fn assertion_present(octets: List<Int>) -> List<Int>? {
+  Present { value: octets }
+}
+
+fn no_assertion() -> List<Int>? {
+  Absent
+}
+
+// The operator's iPhone (iOS 26.6.2): one attestation, no assertion capture. Its expectation is what the
+// broker sent the verifier for it, so the positive control is the request that was refused in production.
+fn operator_device_ios_26_6_2_sample() -> AppAttestSample {
+  AppAttestSample {
+    name: "operator_device_ios_26_6_2",
+    attestation: operator_device_attestation_octets,
+    assertion: no_assertion(),
+    expectation: AttestationExpectation {
+      key_id: operator_device_key_id_b64 as AttestKeyId,
+      client_data: operator_device_client_data,
+      app_id: app_attest_app_id(prefix: operator_device_team_identifier as AppIdPrefix, bundle_id: operator_device_bundle_identifier),
+      environment: AppAttestDevelopment,
+      observed_at: operator_device_observed_at as String,
+      admitted_validation_categories: [2, 3, 4],
+      expected_bundle_version: "1" as NonEmptyStr,
+    },
+    owed_attestation: OwesAttestationVerified,
+    owed_assertion: OwesAssertionAuthentic,
+    published_assertion_counter: 0,
   }
 }
 

@@ -2,6 +2,9 @@ module gunbc.roadmap.roadmap_attempt_exit_spool
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import extdeps.shell
+import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.tools.gnu_coreutils { install_directory_owned_argv_command }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
 import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import gunbc.durable_handoff_host {
   HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
@@ -102,11 +105,20 @@ fn attempt_exit_entry_parts(inbox: String, node_id: String, attempt_key: String,
   ]
 }
 
-fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole) -> AttemptExitHook {
+// THE RECORD IS CREATED OWNED BY ITS CONSUMER. The hook runs as the system manager (root) for a unit with
+// a foreign User=, so a bare mkdir leaves a root:root record that the drain -- the service user -- cannot
+// rename from inbox to queued (renaming a directory needs write permission on the directory itself).
+// record_owner is the drain's principal (HostDashboardInstance directory_owner), never a literal, and
+// gunbc.roadmap.dispatch_unit_created_paths judges the same creation the hook is built from.
+// install -d is idempotent where mkdir was create-only; the invocation id in the name keeps each record
+// unique, so a repeated hook still names one record.
+data attempt_exit_record_mode: DeclaredDirectoryMode = DirectoryOwnerAllEveryoneTraverse
+
+fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole, record_owner: PosixOwnerNames) -> AttemptExitHook {
   match exec_word_render(parts: attempt_exit_entry_parts(inbox: attempt_exit_inbox_dir(instance_root: instance_root), node_id: node_id, attempt_key: attempt_key, role: role)) {
     ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
     ExecWordRendered { word } =>
-      match exec_command_line_full_privileges(command: host_spool_create_only_command(path: word as String)) {
+      match exec_command_line_full_privileges(command: install_directory_owned_argv_command(mode: declared_directory_mode(m: attempt_exit_record_mode), owner: record_owner.user, group: record_owner.group, path: word as String)) {
         ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
         ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
       }

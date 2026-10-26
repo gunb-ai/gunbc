@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.v1_accepts_a_container_at_a_coproduct_annotation_and_a_split_derived_element_untyped
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data v1_accepts_a_container_at_a_coproduct_annotation_and_a_split_derived_element_untyped: RecurringFailureMode = RecurringFailureMode {
+  identity: "v1_accepts_a_container_at_a_coproduct_annotation_and_a_split_derived_element_untyped" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the native v2 compiler judges the corpus (the seed retires as the compiler), re-running the native probes against the real std.algebra rather than the stub; sufficient when the three REDs below refuse natively on the real std.algebra and the controls pass. Not satisfied by a v1 patch at the split row, which the PURPOSE test does not justify." } },
+
+  receipts: [
+    "INVALID STATE: the v1 seed accepts (a) a List<String> at a Bool or a user-enum annotation (`let n: Bool = xs`, `let n: Color = xs`), (b) the element of a split-derived list at Int (`let fields = split(s: line, delimiter: \"|\")`, `list_at_optional(xs: fields, index: 1)`, `Present { value: user }`, `let z: Int = user`), on the free-call AND the method form (`line.split(delimiter: \"|\")`), and (c) `join(List<Int>, sep)` / `xs.join(sep)` where the parameter is ReceiverSelf under a constructor. A typed List<String> parameter's element is refused at Int (`e_elem_as_int`) and Int-as-Bool is refused, so the loss is specific to the split return and the Container-vs-Coproduct judgment, not to list_at_optional.",
+
+    "HARM: silent wrong typing at the compiler floor (DESIGN 4b: values inhabit declared types) while the seed is the compiler. Below the ladder, not a rung. The specimen is gunbc.owned_directory PosixOwnerNames, which imports only std.algebra { trim, list_at_optional } and never imports split, yet split resolves and types. Neighbours: field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter and arithmetic_accepts_an_unconstrained_type_variable_operand (an open type variable accepted at a judged position).",
+
+    "DISTINGUISHING FACTS: the split row in the std.algebra operation-template table returns ContainerOf { List, ReceiverSelf }; exactly 2 of 77 template rows nest ReceiverSelf under a constructor (split return, join param). The method form leaks identically to the free-call form, so the loss is not free-call-specific. v1 resolves an unimported template name (split has no free fn); that is not widened here. The v1 instantiation site was NOT located: following it is open-ended seed investment the PURPOSE test does not justify (ruling by the manager of this lane).",
+
+    "RECEIPTS (v1, remote amd64, single-file probes each with a same-file control after the probe that REFUSED, so accepted is distinguishable from never-reached): main 644069c197591c09215c8e0122a495036421df8c bin 984038fecd4c119e: List<String> at Bool and at Color accepted, join(List<Int>) accepted; Int-as-Bool, typed-param element at Bool/Int, join result as Int refused. A4 measurement branch bd3f51469c55 bin 3dce3ac2c6667db9: identical verdicts. origin/main 374326d848c32ddd588ce783526a214fae2550fd bin 7f76e36570bd9cd2: zz_h/zz_i (split then list_at_optional, element at Bool and Int), zz_j/zz_k (split at Bool), zz_l (List<String> at Bool) all accepted, controls refused; zz_ei in ONE file: e refused, i accepted; zz_3w: free and method split and join, all six accepted, control refused. The probe sources were scratch files and are not committed; they are reproducible from the shapes above.",
+
+    "RECEIPTS (native, `gunbc run` of a probe through assemble_program_from_ingest and v2.compiler.infer, bin 1ef4e24b7cc23365, source 374326d8 plus a worktree diff): Int-as-Bool, FreeMonoid<String> at Bool, FreeMonoid<String> at a user enum, and a List<T> = FreeMonoid<T> alias at Bool are all INFER_REJECTED; an unimported split is RESOLVE_REFUSED resolve_reason_unbound_symbol. STUB CAVEAT: std.algebra in that probe is a mini-stub (FreeMonoid and list_at_optional only); the real std.algebra is not yet natively compilable, which is the trigger to re-run them unstubbed. So native is rung-asserted only on the stub, and these are seed defects v2 does not carry forward (DESIGN 7).",
+
+    "RUNG FOUND AT: below the ladder on v1 (silent wrongness). CEILING: structurally guaranteed -- the declared-type judgment and the instantiated container are decidable and native already refuses them on the stub. NEXT-RUNG TRIGGER: seed retirement or native judging the corpus, with the unstubbed re-run above.",
+  ],
+
+  evidence: [],
+}

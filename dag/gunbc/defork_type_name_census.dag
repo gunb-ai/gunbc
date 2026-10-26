@@ -19,11 +19,11 @@ import v2.std.decl_ref_resolution_host { resolve_declaration_ref_live, declarati
 // authored half cannot drift from the derived half without the plan's generation refusing, and
 // with it the required generated-artifact drift gate.
 //
-// "Declares a type" is the seed's item kind: `TypeItem` (a record or coproduct) or `OtherItem` (a
-// declaration with no connective, transport or body -- on these two roots, exactly the `type`
-// aliases). The node kind cannot be used instead: a function's declaration node is its signature,
-// a TypeNode. Any over-inclusion by `OtherItem` fails CLOSED: a non-type declaration entering the
-// population is a name no disposition row carries, and that refuses.
+// "Declares a type" is the seed's item kind: `TypeItem` alone (a record, a coproduct, or a `type`
+// alias, which decl_index item_kind reads from the declaration's own kind). `OtherItem` is the
+// host's cannot-classify answer, so a declaration it could not classify as a type is not counted
+// as one; the node kind cannot be used instead, because a function's declaration node is its
+// signature, a TypeNode.
 data defork_census_dag_root: String = "dag/std"
 data defork_census_v2_root: String = "src/v2/std"
 
@@ -36,7 +36,7 @@ type SharedTypeName {
 fn census_declares_type(f: DeclFact) -> Bool {
   match f.kind {
     TypeItem => true
-    OtherItem => true
+    OtherItem => false
     FnItem => false
     DataItem => false
     ServiceItem => false

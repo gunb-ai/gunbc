@@ -1,0 +1,7 @@
+module v2.fx.ledger
+
+import std.types { Int }
+
+type FxRow {
+  weight: Int
+}

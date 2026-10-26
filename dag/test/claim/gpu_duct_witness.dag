@@ -1,116 +1,404 @@
 module test.claim.gpu_duct_witness
 
-import std.types { Bool, Int }
-import std.measure { micrometer, micrometer_count }
-import std.affine_space { signed_frame_component_count }
-import extdeps.gpu.nvidia_a100_pcie { a100_pcie_side_outline }
-import product.printed_chassis.assembly_geometry { Block, RoundPrism }
+import std.types { Bool, Int, List }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import product.printed_chassis.assembly_geometry { AssemblyPart, Primitive, MechanicalInterface, LocatingSleeveNoRetention, FrictionFitSleeve }
+import product.printed_chassis.printable_assembly { fastener_display }
+import product.printed_chassis.assembly_review_checks { Bounds, primitive_bounds, review_model_checks }
 import product.printed_chassis.gpu_duct {
-  GpuDuctAdmission, GpuDuctAdmitted, GpuDuctOutlineRefused, GpuDuctFacePixelsOutOfOrder, GpuDuctFanMountRefused,
-  GpuDuctWindowTallerThanFan, GpuDuctPlugPassageClosed, EndFacePhotoReading,
-  admit_gpu_duct, a16_duct, a16_card_outline, a16_end_face_photo, a16_duct_design, infer_card_outline,
+  GpuDuctAdmission, GpuDuctAdmitted, GpuDuctInsertReadingsDisagree, GpuDuctFinsAtTheWindowFace, GpuDuctFanMountRefused,
+  GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, EndFaceMeasurement, DuctCardMount, DuctExtent,
+  PlugAndFlange, SleeveOverCardEnd, FullDuct, CardFitRing, admit_gpu_duct, a16_end_face, a16_duct_design,
+  BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard,
+  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, OutletOnLengthEdge, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,
 }
+import extdeps.fans.types { RadialBlowerEnvelope }
 
-fn admitted(a: GpuDuctAdmission) -> Bool {
+fn parts_of(a: GpuDuctAdmission) -> List<AssemblyPart>? {
   match a {
-    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => true
-    GpuDuctOutlineRefused { inference: _ } => false
-    GpuDuctFacePixelsOutOfOrder => false
-    GpuDuctFanMountRefused { mount: _ } => false
-    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
-    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+    GpuDuctAdmitted { parts: parts, interfaces: _ } => Present { value: parts }
+    GpuDuctInsertReadingsDisagree { implied_face_length: _, face_length: _ } => none
+    GpuDuctFinsAtTheWindowFace { fin_setback: _, fin_margin: _ } => none
+    GpuDuctFanMountRefused { mount: _ } => none
+    GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => none
+    GpuDuctPlugPassageClosed { plug_depth: _, wall: _ } => none
   }
 }
 
-fn photo_with_window(top: Int, bottom: Int) -> EndFacePhotoReading {
-  EndFacePhotoReading {
+fn admitted_with_checks(mount: DuctCardMount, extent: DuctExtent, count: Int) -> Bool {
+  match admit_gpu_duct(f: a16_end_face, d: a16_duct_design, mount: mount, extent: extent) {
+    GpuDuctAdmitted { parts: parts, interfaces: joints } => length(list: parts) == count && review_model_checks(parts: parts, interfaces: joints)
+    GpuDuctInsertReadingsDisagree { implied_face_length: _, face_length: _ } => false
+    GpuDuctFinsAtTheWindowFace { fin_setback: _, fin_margin: _ } => false
+    GpuDuctFanMountRefused { mount: _ } => false
+    GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => false
+    GpuDuctPlugPassageClosed { plug_depth: _, wall: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: all four A16 roots admit from the measured face and pass the source-model
+// review checks, which include every flange screw hole finding its card insert on one line.
+test fn w_the_four_a16_ducts_admit_and_pass_review_checks() -> Bool {
+  admitted_with_checks(mount: PlugAndFlange, extent: FullDuct, count: 4)
+    && admitted_with_checks(mount: SleeveOverCardEnd, extent: FullDuct, count: 4)
+    && admitted_with_checks(mount: PlugAndFlange, extent: CardFitRing, count: 3)
+    && admitted_with_checks(mount: SleeveOverCardEnd, extent: CardFitRing, count: 3)
+}
+
+// Bounds are in doubled micrometres (assembly_review_checks). Closed boxes: a shared face counts as
+// contact, which the CAD check refuses as occupied clearance.
+fn touches(a: Bounds, b: Bounds) -> Bool {
+  a.lo_x <= b.hi_x && b.lo_x <= a.hi_x && a.lo_y <= b.hi_y && b.lo_y <= a.hi_y && a.lo_z <= b.hi_z && b.lo_z <= a.hi_z
+}
+fn larger(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+fn smaller(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+fn meet(a: Bounds, b: Bounds) -> Bounds {
+  Bounds { lo_x: larger(a: a.lo_x, b: b.lo_x), lo_y: larger(a: a.lo_y, b: b.lo_y), lo_z: larger(a: a.lo_z, b: b.lo_z),
+    hi_x: smaller(a: a.hi_x, b: b.hi_x), hi_y: smaller(a: a.hi_y, b: b.hi_y), hi_z: smaller(a: a.hi_z, b: b.hi_z) }
+}
+// The cut must remove the contact region with room to spare on every side it does not leave through.
+fn strictly_covers(c: Bounds, r: Bounds) -> Bool {
+  c.lo_x < r.lo_x && r.hi_x < c.hi_x && c.lo_y < r.lo_y && r.hi_y < c.hi_y && c.lo_z < r.lo_z && r.hi_z < c.hi_z
+}
+
+// THE CONNECTOR CLEARANCE IS CONSTRUCTION: every printed primitive that would reach the 8-pin
+// keep-out is removed there by a cut of the same part (the sleeve's notch); the plug's flange never
+// reaches it at all.
+fn keepout_clear(parts: List<AssemblyPart>) -> Bool {
+  let keepouts = flat_map(filter(parts, p => p.id == "POWER-KEEPOUT"), p => p.adds)
+  length(list: keepouts) == 1 && all(keepouts, k => {
+    let kb = primitive_bounds(p: k)
+    all(filter(parts, p => p.id == "DUCT" || p.id == "FIT-RING"), p => all(p.adds, q => {
+      let qb = primitive_bounds(p: q)
+      !touches(a: qb, b: kb) || any(p.cuts, c => strictly_covers(c: primitive_bounds(p: c), r: meet(a: qb, b: kb)))
+    }))
+  })
+}
+
+fn clear_for(mount: DuctCardMount, extent: DuctExtent) -> Bool {
+  match parts_of(a: admit_gpu_duct(f: a16_end_face, d: a16_duct_design, mount: mount, extent: extent)) {
+    Present { value: parts } => keepout_clear(parts: parts)
+    Absent => false
+  }
+}
+
+test fn w_no_duct_material_remains_in_the_power_keepout() -> Bool {
+  clear_for(mount: PlugAndFlange, extent: FullDuct) && clear_for(mount: SleeveOverCardEnd, extent: FullDuct)
+    && clear_for(mount: PlugAndFlange, extent: CardFitRing) && clear_for(mount: SleeveOverCardEnd, extent: CardFitRing)
+}
+
+// RED for the keep-out check itself: the sleeve without its notch puts its end wall on the
+// connector, and the check must see it. The notch is the one cut that leaves the sleeve's outer top
+// face (bounds in doubled micrometres).
+test fn w_an_unnotched_sleeve_is_seen_in_the_keepout() -> Bool {
+  let outer_top = micrometer_count(m: a16_end_face.face_length) as Int + 2 * (micrometer_count(m: a16_duct_design.sleeve_clearance) as Int + micrometer_count(m: a16_duct_design.wall) as Int)
+  match parts_of(a: admit_gpu_duct(f: a16_end_face, d: a16_duct_design, mount: SleeveOverCardEnd, extent: CardFitRing)) {
+    Present { value: parts } => keepout_clear(parts: parts) && !keepout_clear(parts: map(parts, p => if p.id == "FIT-RING" {
+      AssemblyPart { id: p.id, name: p.name, kind: p.kind, scope: p.scope, adds: p.adds, cuts: filter(p.cuts, c => primitive_bounds(p: c).hi_x <= outer_top), at: p.at, explode: p.explode, print_plane: p.print_plane, notes: p.notes }
+    } else { p }))
+    Absent => false
+  }
+}
+
+fn face_with(lower_edge: Micrometer, setback: Micrometer, depth: Micrometer) -> EndFaceMeasurement {
+  face_with_connector(lower_edge: lower_edge, setback: setback, depth: depth, connector: a16_end_face.connector_from_top)
+}
+fn face_with_connector(lower_edge: Micrometer, setback: Micrometer, depth: Micrometer, connector: Micrometer) -> EndFaceMeasurement {
+  EndFaceMeasurement {
     source: "fixture",
-    card_left_px: a16_end_face_photo.card_left_px,
-    card_right_px: a16_end_face_photo.card_right_px,
-    cap_top_px: a16_end_face_photo.cap_top_px,
-    window_left_px: a16_end_face_photo.window_left_px,
-    window_right_px: a16_end_face_photo.window_right_px,
-    window_top_px: top,
-    window_bottom_px: bottom,
-    card_bottom_px: bottom,
+    face_length: a16_end_face.face_length,
+    face_thickness: a16_end_face.face_thickness,
+    window_length: a16_end_face.window_length,
+    window_depth: depth,
+    window_from_top: a16_end_face.window_from_top,
+    window_from_back: a16_end_face.window_from_back,
+    fin_setback: setback,
+    insert_spacing: a16_end_face.insert_spacing,
+    insert_near_edge_from_back: a16_end_face.insert_near_edge_from_back,
+    upper_insert_near_edge_from_top: a16_end_face.upper_insert_near_edge_from_top,
+    lower_insert_near_edge_from_bottom: lower_edge,
+    connector_from_top: connector,
   }
 }
 
-// POSITIVE CONTROL: the declared A16 duct admits and carries duct, fan, card and keep-out.
-test fn w_the_declared_a16_duct_is_admitted() -> Bool {
-  match a16_duct {
-    GpuDuctAdmitted { parts: parts, interfaces: _, face: _ } => length(list: parts) == 4
-    GpuDuctOutlineRefused { inference: _ } => false
-    GpuDuctFacePixelsOutOfOrder => false
+fn refusal(f: EndFaceMeasurement) -> GpuDuctAdmission {
+  admit_gpu_duct(f: f, d: a16_duct_design, mount: PlugAndFlange, extent: CardFitRing)
+}
+
+// RED: insert readings taken as centres instead of edges no longer close on the face length.
+test fn w_insert_readings_that_do_not_close_refuse() -> Bool {
+  match refusal(f: face_with(lower_edge: micrometer(count: 9040), setback: a16_end_face.fin_setback, depth: a16_end_face.window_depth)) {
+    GpuDuctInsertReadingsDisagree { implied_face_length: _, face_length: _ } => true
+    GpuDuctAdmitted { parts: _, interfaces: _ } => false
+    GpuDuctFinsAtTheWindowFace { fin_setback: _, fin_margin: _ } => false
     GpuDuctFanMountRefused { mount: _ } => false
-    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
-    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+    GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => false
+    GpuDuctPlugPassageClosed { plug_depth: _, wall: _ } => false
   }
 }
 
-// THE CONNECTOR CLEARANCE IS CONSTRUCTION: no positive primitive of the printed duct reaches above
-// the window's band-side edge (Y = 0), and none touches it: a face shared with the keep-out is
-// occupied clearance to the CAD check, which refused the flush plenum on 2026-10-21. Bounds are
-// compared doubled to stay in integer micrometres.
-test fn w_no_duct_material_enters_the_power_band() -> Bool {
-  match a16_duct {
-    GpuDuctAdmitted { parts: parts, interfaces: _, face: _ } =>
-      all(filter(parts, p => p.id == "DUCT"), p => all(p.adds, q => match q {
-        Block { size: s, center: c } => 2 * signed_frame_component_count(c: c.y) + micrometer_count(m: s.size_y) < 0
-        RoundPrism { diameter: _, length: _, axis: _, center: _ } => false
-      }))
-    GpuDuctOutlineRefused { inference: _ } => false
-    GpuDuctFacePixelsOutOfOrder => false
+// RED: fins at the window face leave no room for a lip.
+test fn w_fins_at_the_face_refuse() -> Bool {
+  match refusal(f: face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: micrometer(count: 400), depth: a16_end_face.window_depth)) {
+    GpuDuctFinsAtTheWindowFace { fin_setback: _, fin_margin: _ } => true
+    GpuDuctAdmitted { parts: _, interfaces: _ } => false
+    GpuDuctInsertReadingsDisagree { implied_face_length: _, face_length: _ } => false
     GpuDuctFanMountRefused { mount: _ } => false
-    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
-    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+    GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => false
+    GpuDuctPlugPassageClosed { plug_depth: _, wall: _ } => false
   }
 }
 
-// RED: an A16 stated length far from both drawn A100 lengths contradicts the outline inference.
-test fn w_a_contradicted_outline_refuses() -> Bool {
-  match admit_gpu_duct(outline: infer_card_outline(stated_length: micrometer(count: 300000), drawn: a100_pcie_side_outline), photo: a16_end_face_photo, d: a16_duct_design) {
-    GpuDuctOutlineRefused { inference: _ } => true
-    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => false
-    GpuDuctFacePixelsOutOfOrder => false
+// RED: a window deeper than the 92 mm fan frame cannot open into the plenum.
+test fn w_a_window_deeper_than_the_fan_refuses() -> Bool {
+  match admit_gpu_duct(f: face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: micrometer(count: 95000)), d: a16_duct_design, mount: PlugAndFlange, extent: FullDuct) {
+    GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => true
+    GpuDuctAdmitted { parts: _, interfaces: _ } => false
+    GpuDuctInsertReadingsDisagree { implied_face_length: _, face_length: _ } => false
+    GpuDuctFinsAtTheWindowFace { fin_setback: _, fin_margin: _ } => false
     GpuDuctFanMountRefused { mount: _ } => false
-    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
-    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
-  }
-}
-
-// RED: a window taller than the 92 mm fan frame cannot open into the plenum.
-test fn w_a_window_taller_than_the_fan_refuses() -> Bool {
-  match admit_gpu_duct(outline: a16_card_outline, photo: photo_with_window(top: 325, bottom: 1500), d: a16_duct_design) {
-    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => true
-    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => false
-    GpuDuctOutlineRefused { inference: _ } => false
-    GpuDuctFacePixelsOutOfOrder => false
-    GpuDuctFanMountRefused { mount: _ } => false
-    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+    GpuDuctPlugPassageClosed { plug_depth: _, wall: _ } => false
   }
 }
 
 // RED: a window so shallow that the plug's own walls close the passage.
 test fn w_a_window_too_shallow_for_the_plug_walls_refuses() -> Bool {
-  match admit_gpu_duct(outline: a16_card_outline, photo: photo_with_window(top: 325, bottom: 425), d: a16_duct_design) {
-    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => true
-    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => false
-    GpuDuctOutlineRefused { inference: _ } => false
-    GpuDuctFacePixelsOutOfOrder => false
+  match refusal(f: face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: micrometer(count: 8000))) {
+    GpuDuctPlugPassageClosed { plug_depth: _, wall: _ } => true
+    GpuDuctAdmitted { parts: _, interfaces: _ } => false
+    GpuDuctInsertReadingsDisagree { implied_face_length: _, face_length: _ } => false
+    GpuDuctFinsAtTheWindowFace { fin_setback: _, fin_margin: _ } => false
     GpuDuctFanMountRefused { mount: _ } => false
-    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
+    GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => false
   }
 }
 
-// RED: pixel picks out of order (window bottom above its top) refuse rather than scale negatively.
-test fn w_out_of_order_pixels_refuse() -> Bool {
-  match admit_gpu_duct(outline: a16_card_outline, photo: photo_with_window(top: 600, bottom: 400), d: a16_duct_design) {
-    GpuDuctFacePixelsOutOfOrder => true
-    GpuDuctAdmitted { parts: _, interfaces: _, face: _ } => false
-    GpuDuctOutlineRefused { inference: _ } => false
-    GpuDuctFanMountRefused { mount: _ } => false
-    GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => false
-    GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => false
+fn admitted(a: GpuDuctAdmission) -> Bool { match parts_of(a: a) { Present { value: _ } => true Absent => false } }
+
+// A plug-only refusal binds the plug and not the sleeve, which has no lip in the fins.
+test fn w_a_sleeve_survives_a_plug_only_refusal() -> Bool {
+  let f = face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: micrometer(count: 400), depth: a16_end_face.window_depth)
+  !admitted(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: PlugAndFlange, extent: CardFitRing)) &&
+  admitted(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: SleeveOverCardEnd, extent: CardFitRing))
+}
+
+// A fan-stage refusal binds the full duct and not the fit ring, which is the card interface alone.
+test fn w_a_fit_ring_survives_a_full_duct_refusal() -> Bool {
+  let f = face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: micrometer(count: 95000))
+  !admitted(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: SleeveOverCardEnd, extent: FullDuct)) &&
+  admitted(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: SleeveOverCardEnd, extent: CardFitRing))
+}
+
+fn keepout_length(f: EndFaceMeasurement) -> Int {
+  match parts_of(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: PlugAndFlange, extent: CardFitRing)) {
+    Present { value: parts } => match flat_map(filter(parts, p => p.id == "POWER-KEEPOUT"), p => p.adds).first() {
+      Present { value: k } => {
+        let b = primitive_bounds(p: k)
+        b.hi_x - b.lo_x
+      }
+      Absent => 0
+    }
+    Absent => 0
   }
+}
+
+// The keep-out is derived from the measured connector: moving the outer pin 3 mm further from the
+// top lengthens it by 3 mm (bounds are doubled micrometres).
+test fn w_the_keepout_follows_the_measured_connector() -> Bool {
+  let base = keepout_length(f: a16_end_face)
+  let moved = keepout_length(f: face_with_connector(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: a16_end_face.window_depth, connector: micrometer(count: 5560)))
+  base > 0 && moved - base == 6000
+}
+
+// ═══ THE BLOWER VARIANT ═══
+
+fn blower_parts_of(a: BlowerDuctAdmission) -> List<AssemblyPart>? {
+  match a {
+    BlowerDuctAdmitted { parts: parts, interfaces: _ } => Present { value: parts }
+    BlowerDuctCardInterfaceRefused { refusal: _ } => none
+    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => none
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => none
+    BlowerInsertNotReachable { insert_x: _, insert_y: _, passage_low: _, passage_high: _, tool_radius: _ } => none
+    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => none
+  }
+}
+
+fn blower_with(thickness: Int, count: Int) -> BlowerDuctDesign {
+  let e = a16_blower_duct_design.blower
+  BlowerDuctDesign {
+    blower: RadialBlowerEnvelope {
+      vendor: e.vendor, model: e.model, housing_length: e.housing_length, housing_depth: e.housing_depth,
+      thickness: micrometer(count: thickness), thickness_tolerance: e.thickness_tolerance,
+      mounting_hole_count: e.mounting_hole_count, mounting_hole_diameter: e.mounting_hole_diameter,
+    },
+    outlet_edge: a16_blower_duct_design.outlet_edge,
+    socket_clearance: a16_blower_duct_design.socket_clearance,
+    socket_depth: a16_blower_duct_design.socket_depth,
+    screw_tool_clearance_radius: a16_blower_duct_design.screw_tool_clearance_radius,
+    card_count: count,
+    slot_pitch: a16_blower_duct_design.slot_pitch,
+  }
+}
+
+fn um_of(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
+
+fn blower_bounds(parts: List<AssemblyPart>, id: String) -> Bounds? {
+  match flat_map(filter(parts, p => p.id == id), p => p.adds).first() {
+    Present { value: q } => Present { value: primitive_bounds(p: q) }
+    Absent => none
+  }
+}
+
+fn fan_within_card(parts: List<AssemblyPart>) -> Bool {
+  match blower_bounds(parts: parts, id: "FAN") {
+    Present { value: fan } => match blower_bounds(parts: parts, id: "CARD") {
+      Present { value: card } => card.lo_y <= fan.lo_y && fan.hi_y <= card.hi_y
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// POSITIVE CONTROL: the blower duct admits from the measured face and the cited housing, carries the
+// duct, the blower, the card and the keep-out, passes the source-model review checks, and leaves the
+// keep-out clear although its passage runs up to the keep-out boundary.
+test fn w_the_blower_duct_admits_passes_review_checks_and_clears_the_keepout() -> Bool {
+  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design) {
+    BlowerDuctAdmitted { parts: parts, interfaces: joints } => length(list: parts) == 4 && review_model_checks(parts: parts, interfaces: joints) && keepout_clear(parts: parts)
+    BlowerDuctCardInterfaceRefused { refusal: _ } => false
+    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => false
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => false
+    BlowerInsertNotReachable { insert_x: _, insert_y: _, passage_low: _, passage_high: _, tool_radius: _ } => false
+    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => false
+  }
+}
+
+// THE HOUSING STAYS INSIDE THE CARD'S THICKNESS, read off the emitted solids: the blower envelope's
+// span across the card lies within the card envelope's, so an adjacent slot's card is not reached.
+test fn w_the_blower_housing_lies_within_the_card_thickness() -> Bool {
+  match blower_parts_of(a: admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design)) {
+    Present { value: parts } => fan_within_card(parts: parts)
+    Absent => false
+  }
+}
+
+// RED: a 40 mm housing cannot keep its socket inside the card's 38.6 mm thickness.
+test fn w_a_blower_thicker_than_the_card_refuses() -> Bool {
+  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: blower_with(thickness: 40000, count: 1)) {
+    BlowerThickerThanCard { socket_thickness: s, face_thickness: t } => um_of(m: s) > um_of(m: t)
+    BlowerDuctAdmitted { parts: _, interfaces: _ } => false
+    BlowerDuctCardInterfaceRefused { refusal: _ } => false
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => false
+    BlowerInsertNotReachable { insert_x: _, insert_y: _, passage_low: _, passage_high: _, tool_radius: _ } => false
+    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => false
+  }
+}
+
+// RED: a connector measured far enough down the face that its keep-out covers the housing's whole end
+// leaves no open passage, and the duct refuses rather than sealing the blower.
+test fn w_a_keepout_over_the_whole_housing_end_refuses() -> Bool {
+  match admit_blower_duct(f: face_with_connector(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: a16_end_face.window_depth, connector: micrometer(count: 74000)), d: a16_duct_design, b: a16_blower_duct_design) {
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => true
+    BlowerInsertNotReachable { insert_x: _, insert_y: _, passage_low: _, passage_high: _, tool_radius: _ } => false
+    BlowerDuctAdmitted { parts: _, interfaces: _ } => false
+    BlowerDuctCardInterfaceRefused { refusal: _ } => false
+    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => false
+    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => false
+  }
+}
+
+// RED: two stacked cards refuse with the intake gap their facing housings would leave (pitch minus
+// thickness), the stated limitation rather than a silently starved middle blower.
+test fn w_two_stacked_blowers_refuse_with_the_intake_gap() -> Bool {
+  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: blower_with(thickness: 33000, count: 2)) {
+    BlowerCardCountUnsupported { card_count: n, intake_gap: g } => n == 2 && um_of(m: g) == 7640
+    BlowerDuctAdmitted { parts: _, interfaces: _ } => false
+    BlowerDuctCardInterfaceRefused { refusal: _ } => false
+    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => false
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => false
+    BlowerInsertNotReachable { insert_x: _, insert_y: _, passage_low: _, passage_high: _, tool_radius: _ } => false
+  }
+}
+
+fn connector_at(connector: Int) -> EndFaceMeasurement {
+  face_with_connector(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: a16_end_face.window_depth, connector: micrometer(count: connector))
+}
+
+fn unreachable_insert_x(a: BlowerDuctAdmission) -> Int? {
+  match a {
+    BlowerInsertNotReachable { insert_x: x, insert_y: _, passage_low: _, passage_high: _, tool_radius: _ } => Present { value: um_of(m: x) }
+    BlowerDuctAdmitted { parts: _, interfaces: _ } => none
+    BlowerDuctCardInterfaceRefused { refusal: _ } => none
+    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => none
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => none
+    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => none
+  }
+}
+
+fn passage_of(a: BlowerDuctAdmission) -> Int {
+  match a {
+    BlowerInsertNotReachable { insert_x: _, insert_y: _, passage_low: lo, passage_high: hi, tool_radius: _ } => um_of(m: hi) - um_of(m: lo)
+    BlowerDuctAdmitted { parts: _, interfaces: _ } => 0
+    BlowerDuctCardInterfaceRefused { refusal: _ } => 0
+    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => 0
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => 0
+    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => 0
+  }
+}
+
+// GREEN: at the measured connector both inserts, with the tool radius, lie inside the open passage, so
+// the duct admits (and the positive control above passes the review checks on it).
+test fn w_both_inserts_are_reachable_at_the_measured_connector() -> Bool {
+  match unreachable_insert_x(a: admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design)) {
+    Absent => match blower_parts_of(a: admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design)) { Present { value: _ } => true Absent => false }
+    Present { value: _ } => false
+  }
+}
+
+// RED, PASSAGE WIDE BUT A SCREW OUTSIDE IT: a connector 35 mm down the face leaves a passage over 30 mm
+// wide that still ends short of the upper insert's tool circle, and the upper insert is the refusal.
+test fn w_a_wide_passage_that_excludes_the_upper_insert_refuses() -> Bool {
+  let a = admit_blower_duct(f: connector_at(connector: 35000), d: a16_duct_design, b: a16_blower_duct_design)
+  passage_of(a: a) > 30000 && match unreachable_insert_x(a: a) {
+    Present { value: x } => x == micrometer_count(m: a16_end_face.face_length) as Int / 2 - micrometer_count(m: a16_end_face.upper_insert_near_edge_from_top) as Int - 1500
+    Absent => false
+  }
+}
+
+// RED, PASSAGE OPEN BUT TOO NARROW FOR EITHER SCREW: at 66.5 mm the passage clears the minimum width
+// (so the passage-closed refusal does not fire) yet neither insert is reachable.
+test fn w_a_narrow_open_passage_with_no_reachable_insert_refuses() -> Bool {
+  let a = admit_blower_duct(f: connector_at(connector: 66500), d: a16_duct_design, b: a16_blower_duct_design)
+  passage_of(a: a) >= 4000 && match unreachable_insert_x(a: a) { Present { value: _ } => true Absent => false }
+}
+
+// THE FIT ALONG THE FACE IS DERIVED PER ORIENTATION: with the outlet edge unread the cavity takes the
+// 97.2 mm edge and a 94.4 mm edge sits 1.9 mm loose per side; read as the 97.2 mm edge it is the 0.5 mm
+// sleeve clearance. The envelope behind the socket bounds both orientations at the longer edge.
+test fn w_the_face_fit_is_derived_per_outlet_edge() -> Bool {
+  let read = BlowerDuctDesign {
+    blower: a16_blower_duct_design.blower,
+    outlet_edge: OutletOnLengthEdge,
+    socket_clearance: a16_blower_duct_design.socket_clearance,
+    socket_depth: a16_blower_duct_design.socket_depth,
+    screw_tool_clearance_radius: a16_blower_duct_design.screw_tool_clearance_radius,
+    card_count: 1,
+    slot_pitch: a16_blower_duct_design.slot_pitch,
+  }
+  blower_face_clearance_loosest(b: a16_blower_duct_design) == 1900 && blower_face_clearance_loosest(b: read) == 500
+    && match blower_parts_of(a: admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design)) {
+      Present { value: parts } => match blower_bounds(parts: parts, id: "FAN") { Present { value: fan } => fan.hi_z - fan.lo_z == 2 * 97200 Absent => false }
+      Absent => false
+    }
+}
+
+// The blower's face-axis fit is loose by design, so its interface must not claim friction retention:
+// the blower-to-duct joint is a locating sleeve, and its printed label says it is not retained, while
+// the card sleeve keeps its friction-fit label (RED arm: the two kinds rendering alike).
+test fn w_the_blower_interface_is_a_locating_sleeve_not_a_friction_fit() -> Bool {
+  let blower_is_locating = match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design) {
+    BlowerDuctAdmitted { parts: _, interfaces: joints } => fold(joints, init: false, f: (seen, j) => seen || (j.id == "blower-to-duct" && match j.fastener { LocatingSleeveNoRetention => true _ => false }))
+    _ => false
+  }
+  blower_is_locating && fastener_display(f: LocatingSleeveNoRetention) != fastener_display(f: FrictionFitSleeve)
 }

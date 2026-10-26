@@ -48,3 +48,32 @@ fn chown_argv(owner: ChownOwner, path: String) -> List<String> {
   [chown_binary_path as String, chown_owner_text(owner: owner), path]
 }
 
+
+// chgrp(1) IS ITS OWN PROGRAM, WITH chown's owner semantics and none of its powers: it changes the
+// group of an entry and cannot touch its owner. A repository migration re-groups an existing object
+// store to the attempt group and must NOT reach through to ownership, so it runs chgrp and not
+// `chown :group`: a typo in the operand of chown can change an owner, and the confinement this
+// migration establishes is stated in terms of ownership staying put.
+// THE PATH-RESOLVED NAME, not "/usr/bin/chgrp". An absolute path is a claim about an OBSERVED
+// filesystem, and the walk that uses this runs on a target the model has not necessarily observed --
+// the same honest not-knowing extdeps.tools.chmod declares as chmod_path_resolved_program, for the
+// same tool family, and for the same reason: asserting the absolute path would fabricate the host
+// fact, and a host where chgrp lives elsewhere would fail an argv that is otherwise correct. A
+// caller that has OBSERVED the path passes it explicitly.
+data chgrp_path_resolved_program: NonEmptyStr = "chgrp"
+
+// THE PROGRAM WORD AND ITS ONE GUARD, as words a caller can place. chmod has the same pair for the
+// same reason (see extdeps.tools.chmod chmod_mode_words): a caller with a path builds a command, a
+// caller inside `find -exec` -- where the path is a `{}` placeholder and the program word is find's
+// own -- composes these. Both readings carry the SAME guard flag.
+//
+//   --no-dereference: change the link itself, never the file it points at. THIS IS NOT OPTIONAL
+//   HARDENING, IT IS THE DIFFERENCE BETWEEN A GRANT AND AN ESCAPE: the tree being walked is an
+//   object store that other principals can plant entries in, and without this flag chgrp follows a
+//   symlink out of the repository and re-groups a file the worker does not own, possibly outside the
+//   repository entirely. A walk that re-groups by following links is a write-anything primitive.
+data chgrp_no_dereference_flag: String = "--no-dereference"
+
+fn chgrp_words(group: String) -> List<String> {
+  [chgrp_path_resolved_program as String, chgrp_no_dereference_flag, group]
+}

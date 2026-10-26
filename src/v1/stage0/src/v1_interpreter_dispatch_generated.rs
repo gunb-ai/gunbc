@@ -82,7 +82,6 @@ pub enum EvalBuiltinArm {
     FreeCallExportSignatureFacts,
     FreeCallDeclFacts,
     FreeCallDeclFactsAt,
-    FreeCallTypeDeclarerQualifiedNames,
     FreeCallModuleDeclarationFacts,
     FreeCallModuleDeclarationFactsAt,
     FreeCallFactCardinalityDeclFacts,
@@ -134,6 +133,7 @@ pub enum EvalBuiltinArm {
     FreeCallTestMigrationBehaviorDiscoveryHolds,
     FreeCallInertCarrierNamesLive,
     FreeCallInertCarrierDeclaredCount,
+    FreeCallWitnessDeferralFreezePopulationCensus,
     FreeCallCommitWitnessClaimRosterUnresolvableCount,
     FreeCallCommitWitnessClaimPairResolvable,
     FreeCallComplexityLinearitySyntacticFindingCount,
@@ -230,7 +230,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
         "decl_facts" => Some(EvalBuiltinArm::FreeCallDeclFacts),
         "decl_facts_at" => Some(EvalBuiltinArm::FreeCallDeclFactsAt),
-        "type_declarer_qualified_names" => Some(EvalBuiltinArm::FreeCallTypeDeclarerQualifiedNames),
         "module_declaration_facts" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFacts),
         "module_declaration_facts_at" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFactsAt),
         "fact_cardinality_decl_facts" => Some(EvalBuiltinArm::FreeCallFactCardinalityDeclFacts),
@@ -282,6 +281,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "test_migration_behavior_discovery_holds" => Some(EvalBuiltinArm::FreeCallTestMigrationBehaviorDiscoveryHolds),
         "inert_carrier_names_live" => Some(EvalBuiltinArm::FreeCallInertCarrierNamesLive),
         "inert_carrier_declared_count" => Some(EvalBuiltinArm::FreeCallInertCarrierDeclaredCount),
+        "witness_deferral_freeze_population_census" => Some(EvalBuiltinArm::FreeCallWitnessDeferralFreezePopulationCensus),
         "commit_witness_claim_roster_unresolvable_count" => Some(EvalBuiltinArm::FreeCallCommitWitnessClaimRosterUnresolvableCount),
         "commit_witness_claim_pair_resolvable" => Some(EvalBuiltinArm::FreeCallCommitWitnessClaimPairResolvable),
         "complexity_linearity_syntactic_finding_count" => Some(EvalBuiltinArm::FreeCallComplexityLinearitySyntacticFindingCount),
@@ -376,7 +376,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
     ("free_call.decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFacts };
     ("free_call.decl_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFactsAt };
-    ("free_call.type_declarer_qualified_names") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTypeDeclarerQualifiedNames };
     ("free_call.module_declaration_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFacts };
     ("free_call.module_declaration_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFactsAt };
     ("free_call.fact_cardinality_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFactCardinalityDeclFacts };
@@ -428,6 +427,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.test_migration_behavior_discovery_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationBehaviorDiscoveryHolds };
     ("free_call.inert_carrier_names_live") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallInertCarrierNamesLive };
     ("free_call.inert_carrier_declared_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallInertCarrierDeclaredCount };
+    ("free_call.witness_deferral_freeze_population_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessDeferralFreezePopulationCensus };
     ("free_call.commit_witness_claim_roster_unresolvable_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCommitWitnessClaimRosterUnresolvableCount };
     ("free_call.commit_witness_claim_pair_resolvable") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCommitWitnessClaimPairResolvable };
     ("free_call.complexity_linearity_syntactic_finding_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallComplexityLinearitySyntacticFindingCount };

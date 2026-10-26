@@ -1,0 +1,15 @@
+{
+  "placements": [
+    {
+      "id": "FIT-RING",
+      "rx": 0,
+      "ry": 0,
+      "rz": 0,
+      "x_um": 38000,
+      "y_um": 68000
+    }
+  ],
+  "support_free": [
+    "FIT-RING"
+  ]
+}

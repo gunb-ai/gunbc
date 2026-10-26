@@ -32,8 +32,7 @@ data retention_census_counts_one_retention_per_refused_module: RungDrop = RungDr
   identity: "retention_census_counts_one_retention_per_refused_module" as NonEmptyStr,
   subject: "the boundary-4 retention census counts every wrapper retention of every refused module",
   declared: "2026-09-24",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: LostAsPassenger {
@@ -41,5 +40,5 @@ data retention_census_counts_one_retention_per_refused_module: RungDrop = RungDr
     },
     population: Enumerated { members: retention_census_counts_one_retention_per_refused_module_population },
     restoration_trigger: "the refused closure compile delivers each refused module's typed WrapperRetention population to the census's consumer -- a refusal carrier with a typed payload beside its NonEmptyDiagnostics, threaded from normalize through program_assembly and the closure-emit driver -- SUFFICIENT FOR v2.workflow.body_lowering_retention_census to fold every retention of every refused module, so that a module with two retentions counts two. Re-encoding the extra retentions as pending diagnostics does not retire this row; that is the defect MQ-4 removed. Owner: gentle-koi-724 MQ lane, as a later MQ item (the typed refusal payload)."
-  }
+  } }
 }

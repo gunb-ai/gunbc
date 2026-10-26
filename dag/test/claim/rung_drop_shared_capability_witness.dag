@@ -4,7 +4,7 @@ import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { FreeSemigroup }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 import gunbc.rung_drop {
-  RungDrop, RungDropStanding, TypedDeclaration, Enumerated, AuthoredProse, FloorCutFalsifierCadence,
+  RungDrop, RetiredTypedDeclaration, TypedDeclaration, Enumerated, AuthoredProse, FloorCutFalsifierCadence,
   DeletedWithoutReplacement, Standing, Retired,
 }
 import gunbc.rung_drop.roster { rung_drop_roster }
@@ -16,18 +16,32 @@ import gunbc.rung_drop.shared_capability {
   WaiterDuplicatedOnRoster,
 }
 
-fn fixture_drop(id: String, standing: RungDropStanding, trigger: String) -> RungDrop {
+fn fixture_drop(id: String, retired: Bool, trigger: String) -> RungDrop {
   RungDrop {
     identity: id as NonEmptyStr,
     subject: id,
     declared: "2026-01-01",
-    standing: standing,
-    declaration: TypedDeclaration {
-      previous: Mitigatable,
-      temporary: OutsideTheLadder,
-      reason: DeletedWithoutReplacement,
-      population: Enumerated { members: FreeSemigroup { head: "fixture.population", tail: [] } },
-      restoration_trigger: trigger
+    standing: if retired {
+      Retired {
+        trigger_fired: "fixture fired" as NonEmptyStr,
+        declaration: RetiredTypedDeclaration {
+          previous: Mitigatable,
+          temporary: OutsideTheLadder,
+          reason: DeletedWithoutReplacement,
+          population_at_retirement: Enumerated { members: FreeSemigroup { head: "fixture.population", tail: [] } },
+          restoration_trigger: trigger
+        }
+      }
+    } else {
+      Standing {
+        declaration: TypedDeclaration {
+          previous: Mitigatable,
+          temporary: OutsideTheLadder,
+          reason: DeletedWithoutReplacement,
+          population: Enumerated { members: FreeSemigroup { head: "fixture.population", tail: [] } },
+          restoration_trigger: trigger
+        }
+      }
     }
   }
 }
@@ -43,28 +57,28 @@ fn fixture_cap(waiters: List<String>) -> SharedCapability {
 data fixture_shared_trigger: String = "fixture.shared remainder"
 
 data split_roster: List<RungDrop> = [
-  fixture_drop(id: "w.standing", standing: Standing, trigger: fixture_shared_trigger),
+  fixture_drop(id: "w.standing", retired: false, trigger: fixture_shared_trigger),
   fixture_drop(
     id: "w.retired",
-    standing: Retired { trigger_fired: "fixture fired" as NonEmptyStr },
+    retired: true,
     trigger: fixture_shared_trigger
   ),
 ]
 
 data uniform_standing_roster: List<RungDrop> = [
-  fixture_drop(id: "w.a", standing: Standing, trigger: fixture_shared_trigger),
-  fixture_drop(id: "w.b", standing: Standing, trigger: fixture_shared_trigger),
+  fixture_drop(id: "w.a", retired: false, trigger: fixture_shared_trigger),
+  fixture_drop(id: "w.b", retired: false, trigger: fixture_shared_trigger),
 ]
 
 data uniform_retired_roster: List<RungDrop> = [
   fixture_drop(
     id: "w.a",
-    standing: Retired { trigger_fired: "fixture fired" as NonEmptyStr },
+    retired: true,
     trigger: fixture_shared_trigger
   ),
   fixture_drop(
     id: "w.b",
-    standing: Retired { trigger_fired: "fixture fired" as NonEmptyStr },
+    retired: true,
     trigger: fixture_shared_trigger
   ),
 ]
@@ -155,12 +169,12 @@ test fn empty_waiters_and_duplicate_waiters_refuse() -> Bool {
 test fn typed_citation_is_not_vacuous() -> Bool {
   let cap = fixture_cap(waiters: ["w.a", "w.b"])
   let citing = [
-    fixture_drop(id: "w.a", standing: Standing, trigger: "uses fixture.shared"),
-    fixture_drop(id: "w.b", standing: Standing, trigger: "uses fixture.shared"),
+    fixture_drop(id: "w.a", retired: false, trigger: "uses fixture.shared"),
+    fixture_drop(id: "w.b", retired: false, trigger: "uses fixture.shared"),
   ]
   let silent = [
-    fixture_drop(id: "w.a", standing: Standing, trigger: "private trigger only"),
-    fixture_drop(id: "w.b", standing: Standing, trigger: "uses fixture.shared"),
+    fixture_drop(id: "w.a", retired: false, trigger: "private trigger only"),
+    fixture_drop(id: "w.b", retired: false, trigger: "uses fixture.shared"),
   ]
   typed_waiters_cite_capability(cap: cap, ds: citing)
     && !typed_waiters_cite_capability(cap: cap, ds: silent)
@@ -171,8 +185,7 @@ fn fixture_prose_drop(id: String, authored: String) -> RungDrop {
     identity: id as NonEmptyStr,
     subject: id,
     declared: "2026-01-01",
-    standing: Standing,
-    declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, authored: authored }
+    standing: Standing { declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, authored: authored } }
   }
 }
 

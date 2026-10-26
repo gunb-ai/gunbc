@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.an_expected_census_key_authored_from_a_reading_and_never_executed
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data an_expected_census_key_authored_from_a_reading_and_never_executed: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_expected_census_key_authored_from_a_reading_and_never_executed" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a construction or check requiring that an expected (class, subject) census key was produced by the fixture it characterizes -- the RED fixture's own executed census contains the key, SUFFICIENT FOR a claim whose target key no compile emits to be refused at authoring time instead of failing at run time." } },
+
+  receipts: [
+    "AN EXPECTED CENSUS KEY WRITTEN FROM A READING OF THE COMPILER AND NEVER OBSERVED, so the discriminating RED asserts a (class, subject) row no compile produces and is red from the day it lands. INVALID STATE: a claim whose target key is absent from every census it ranges over; it fails for a reason that is about its own oracle, not its subject.",
+    "THE INSTANCE, found 2026-10-22: test.claim.a_payload_surplus_variant_wall (gunbc#13875) asserted subject Coproduct(CgroupNotQuiet), the declared type of the field. The compiler's histogram subject for the refused value CgroupSubtreeEmpty is the coproduct that VALUE inhabits, Coproduct(CgroupSubtreeReadback). The file's own comment argued the opposite from the same premise. Measured by printing the census inside compile_dag_diagnostic_census_uncached: RED source 571 rows, GREEN 570, the single extra row TypeMismatch / Coproduct(CgroupSubtreeReadback) / blocking.",
+    "THE HYPOTHESIS THAT WAS KILLED, recorded so the next reader does not rerun it: a census memo collision (both fixtures declare module probe_a_payload_surplus_variant). compile_dag_diagnostic_census is uncached on main (its memo was deleted with run_required_floor), and two distinct sources (341 and 384 bytes) reached two separate compiles. A key-completeness repair was not available because there was no key.",
+    "WHY IT STAYED RED UNSEEN: no required lane evaluates claim witnesses (gunbc.rung_drop v1_required_lanes_withdrawn), so a claim authored wrong is indistinguishable from one never run. The positive control stayed green throughout, which made the file read as partly working.",
+    "RECOGNITION RULE: a census-key claim lands with the executed census of its RED fixture quoted (the row, not the prediction), and the subject is the compiler's output grain, read from a run.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.a_payload_surplus_variant_wall", decl_name: "target_subject", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.a_payload_surplus_variant_wall", decl_name: "an_empty_subtree_cannot_inhabit_cgroup_still_holding", field: WholeDeclaration },
+  ],
+}

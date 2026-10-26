@@ -33,9 +33,7 @@ data persisted_resolved_graph_disk_probe_unqualified_format: RungDrop = RungDrop
 
   declared: "2026-09-16",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -43,5 +41,5 @@ data persisted_resolved_graph_disk_probe_unqualified_format: RungDrop = RungDrop
     },
     population: Enumerated { members: persisted_resolved_graph_disk_probe_unqualified_format_population },
     restoration_trigger: persisted_resolved_graph_disk_probe_restoration(),
-  }
+  } }
 }

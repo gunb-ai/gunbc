@@ -26,13 +26,11 @@ data the_deploy_principal_holds_the_operator_group_by_hand: RungDrop = RungDrop 
 
   declared: "2026-10-10",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: FreeSemigroup { head: "the CI job user ghrunner on srv1, VERIFIED by smart-gull-336 2026-10-10 as groups ghrunner,kvm BEFORE the hand step; the hand step `usermod -aG <operator> ghrunner` is operator-planned for the night of 2026-10-10 and is NOT observed by this row, so whether it ran is unstated here", tail: ["every file group-readable by the operator group on that host: at least the 0640 root:<operator> custody rows ClaudeCodeOauthHarnessToken (srv1 only). The fabric state key stops being one once the converge lands, which is the point", "NOT in the population: srv2, srv3, srv4 -- no hand step is recorded for them"] } },
     restoration_trigger: "THE CAPABILITY: a readback of the host's group database shows the job user is NOT a member of the operator account's group, observed AFTER the fabric state key's reader group has been converged and the dashboard deploy's readback has been observed to open the key as the job user. Both halves are required: removing the membership first breaks the deploy that the hand step exists to unblock. WHAT DOES NOT RETIRE THIS ROW: the custody receipt's `readers=` line reading AS-DECLARED, which observes the reader group's members and says nothing about the operator group's; and a hand `gpasswd -d`, which removes the membership without a readback and leaves the next hand step unrecorded. The removal belongs in the converge as a declared, read-back operation once the operator group's member set is a modeled fact.",
-  },
+  } }
 }

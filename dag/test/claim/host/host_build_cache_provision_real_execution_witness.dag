@@ -7,16 +7,27 @@ import gunbc.retained_shell_script { retained_runtime }
 import extdeps.filesystem.filesystem_io
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.host.host_effect_realize {
-  build_cache_read_back_body,
-  provision_build_cache_reconcile_shell_observed,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
   ShellExecObserved,
+  provision_build_cache_reconcile_shell_observed,
+  run_argv_over_host_effect_transport,
+}
+import gunbc.host.host_effect { LocalShell }
+import extdeps.cache.sccache { sccache_stats_query_command }
+import std.types { Int, NonEmptyStr }
+import gunbc.build_cache.build_cache_instance { ServerManagedUnitOwned }
+import gunbc.host.build_cache_daemon_ensure {
+  BuildCacheHostRunObserved,
+  Ran,
+  build_cache_read_back_observation,
 }
 import std.realization_reconcile { NotConverged, Converged }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "Wet execution witness for EnsureBuildCacheInstance fail-closed behaviour: it runs a real bash body against a real fake-sccache on disk. read-back — the modeled binary answers non-zero, so the reconcile must be NotConverged, never Converged/ExitSuccess; the fake lives at an explicit OFF-PATH path passed as the read-back body's `binary` argument, so this witness exercises the read-back arm on the binary this lane provisioned. The earlier PATH-shadow shell witnesses were withdrawn 2026-07-24 (review 42343): the PATH-shadow judgement is proven at the MODEL grain (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed) and its live observation is staged on the typed-argv dissolve-on (gunbc.host.host_effect_realize build_cache_provision_shell_script_dissolution_trigger), not emitted as hand-shell. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. Transport scripts mint through the counted retained_runtime bridge (shell-to-dag section 5.E construction wall, #7184), never the deleted free-minter."
+data real_execution_home_doc: String = "Wet execution witness for EnsureBuildCacheInstance fail-closed behaviour: it runs a real bash body against a real fake-sccache on disk. read-back — the modeled binary answers non-zero, so the reconcile must be NotConverged, never Converged/ExitSuccess; the fake lives at an explicit OFF-PATH path passed as the read-back body's `binary` argument, so this witness exercises the read-back arm on the binary this lane provisioned. The earlier PATH-shadow shell witnesses were withdrawn 2026-07-24 (review 42343): the PATH-shadow judgement is proven at the MODEL grain (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed) and its live observation was staged on the typed-argv dissolve-on, which has now landed (W7: the build-cache read-back is the typed extdeps.cache.sccache.sccache_stats_query_command, so this lane runs argv and no longer emits hand-shell). Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. Transport scripts mint through the counted retained_runtime bridge (shell-to-dag section 5.E construction wall, #7184), never the deleted free-minter."
 
 fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
   let path = concat(dir_path, "/sccache")
@@ -51,27 +62,106 @@ fn run_body(prelude: String, body: String) -> ShellExecObserved {
   }
 }
 
+// THE WITNESS THAT WAS STAGED FOR THIS MOMENT. This lane's own staged note
+// (path_authority_observation_staged_note, below) records that the withdrawn live observations were to
+// RETURN "when the observation is a typed op ... not hand-shell". This is that return: the read-back is now
+// the cited typed stats op (extdeps.cache.sccache.sccache_stats_query_command) executed as argv over
+// LocalShell, so the claim still runs a REAL process against a REAL failing sccache on disk -- which is the
+// whole reason a wet lane exists -- and no longer asks a shell to synthesise a receipt for it.
+//
+// What the old claim pinned and what this one pins are the same two things, and the second is now the
+// stronger of the pair:
+//   1. the host command really fails (real exit code from a real file on disk, not a modeled outcome); and
+//   2. the reconcile refuses -- NotConverged, never Converged -- AND the typed classifier refuses it too.
+// The old claim could only assert (2) at the reconcile layer, because the classifier read the script's own
+// printf'd `read_back=FAILED` marker; with the receipt protocol gone there is no marker to look for, and
+// what is asserted instead is the OUTCOME the marker stood for: a non-zero read-back is DaemonUnresponsive,
+// never DaemonStatsOk. Asserting the marker's text would have pinned a string that no longer exists.
+//
+// The fake lives at an explicit OFF-PATH path passed as the stats op's `binary` parameter, so the claim
+// exercises the read-back on the binary THIS lane provisioned and cannot accidentally answer from a real
+// sccache on the runner's PATH.
 test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let fake_sccache_path = concat(dir.path as String, "/sccache")
   let seeded = write_fake_sccache(dir_path: dir.path as String, exit_code: "1")
-  let observed = run_body(
-    prelude: "",
-    body: build_cache_read_back_body(binary: fake_sccache_path),
+  let ran = run_argv_over_host_effect_transport(
+    command: sccache_stats_query_command(binary: fake_sccache_path as NonEmptyStr),
+    transport: LocalShell,
   )
-  let reconciled = provision_build_cache_reconcile_shell_observed(observed: observed)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success
-    && seeded
-    && !observed.success
-    && string_contains(s: observed.stdout, pattern: "read_back=FAILED")
-    && cleaned.success
-    && match reconciled {
-      NotConverged { reason: why, applied: _ } =>
-        string_contains(s: why, pattern: "fail-closed")
-          && string_contains(s: why, pattern: "EnsureBuildCacheInstance")
-      Converged { evidence: _, applied: _ } => false
-    }
+  match ran {
+    RunArgvTransportRefused { reason: _ } => false
+    RunArgvTransportObserved { observed: o } =>
+      dir.success
+        && seeded
+        && cleaned.success
+        && o.exit_code != 0
+        && match provision_build_cache_reconcile_shell_observed(observed: o) {
+          NotConverged { reason: why, applied: _ } =>
+            string_contains(s: why, pattern: "fail-closed")
+              && string_contains(s: why, pattern: "EnsureBuildCacheInstance")
+          Converged { evidence: _, applied: _ } => false
+        }
+        && build_cache_read_back_refuses_the_failing_host(capture: o)
+  }
 }
 
-data path_authority_observation_staged_note: String = "The two live PATH-shadow shell witnesses that lived here (refuses-healthy-shadowing / passes-when-no-sccache) were removed 2026-07-24 (review 42343): the shell observation they exercised grew the A5 census scaffold's emitted surface, so it was withdrawn and the PATH-shadow judgement is now proven at the MODEL grain only (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed, a synthetic DaemonPathShadowed -> RefusalPathShadowed fold). The live observation is staged on the typed-argv dissolve-on (gunbc.host.host_effect_realize build_cache_provision_shell_script_dissolution_trigger); its real-execution witness returns when the observation is a typed op (shell.PosixCommandV.Check -- shell.Which.Check was deleted, crisp-wren-896, PR #8590), not hand-shell."
+// THE TYPED CLASSIFIER REFUSES THE SAME CAPTURE THE REAL HOST PRODUCED. Split out so the wet claim reads as
+// three things it proves -- the process ran, the reconcile refused, the classifier refused -- rather than one
+// long conjunction. The host's own bytes must survive into the reason: a refusal that drops them leaves the
+// operator with no way to tell a refused connection from a missing binary.
+fn build_cache_read_back_refuses_the_failing_host(capture: ShellExecObserved) -> Bool {
+  match build_cache_read_back_observation(
+    read_back: Ran {
+      observed: BuildCacheHostRunObserved {
+        exit_code: capture.exit_code,
+        stdout: capture.stdout,
+        stderr: capture.stderr,
+      },
+    },
+    placement: ServerManagedUnitOwned { unit: "sccache-server.service" as NonEmptyStr },
+  ) {
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    DaemonUnresponsive { detail: d } => build_cache_detail_names_the_failed_read_back(
+      detail: d as String,
+      exit_code: capture.exit_code,
+    )
+    // The three arms this observation can also produce, each false for a reason worth naming rather than
+    // a wildcard that would let a misclassification pass as a refusal: this host DID answer, with a non-zero
+    // exit, so neither absence, a shadowed binary, nor an unsupervised unit is what the read-back said.
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
+}
+
+// WHAT THE REFUSAL MUST SAY ABOUT A HOST THAT ANSWERED NON-ZERO -- two things, both of which can fail:
+//
+//  1. that an ensure ran and what it exited with, INCLUDING the code itself. A refusal that said only
+//     "not confirmed" would leave an operator unable to tell a refused connection from a missing binary,
+//     which is the difference between restarting a unit and installing one.
+//  2. the recorded exit code, carried through from the host rather than paraphrased.
+//
+// A THIRD CONJUNCT USED TO LIVE HERE -- asserting the absence of the short-circuit sentence "without
+// printing its read_back=ok receipt", to keep that refusal text distinguishable from this one. It is
+// DELETED, not because the distinction stopped mattering but because the check stopped being able to fail:
+// its only producer was `data build_cache_observe_short_circuit_detail`, which this PR deletes together
+// with the classifier arm that handed it to DaemonUnresponsive, so the forbidden state is expressible
+// nowhere it runs (DESIGN: a check whose forbidden state is expressible nowhere is a decoration, green by
+// construction and later cited as coverage). The distinction it was standing in for is now structural, and
+// proven by claims that CAN fail: the sentence has no producer left (verified by grep at this head -- the
+// only producer of the operator-visible "the build-cache ensure exited " prefix is build_cache_exit_detail,
+// whose two callers both require a recorded BuildCacheHostRunObserved, reachable only under
+// Present ensure AND Present read-back), and
+// test.claim.host.host_build_cache_daemon_ensure_contract_witness's
+// binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges carries the same ObserveStatsOk
+// value through the skip decision AND the post-ensure classification, so restoring the deleted arm reddens
+// that claim instead of quietly re-adding a second refusal text.
+fn build_cache_detail_names_the_failed_read_back(detail: String, exit_code: Int) -> Bool {
+  string_contains(s: detail, pattern: "the build-cache ensure exited ")
+    && string_contains(s: detail, pattern: to_string(exit_code))
+}
+
+data path_authority_observation_staged_note: String = "The two live PATH-shadow shell witnesses that lived here (refuses-healthy-shadowing / passes-when-no-sccache) were removed 2026-07-24 (review 42343): the shell observation they exercised grew the A5 census scaffold's emitted surface, so it was withdrawn and the PATH-shadow judgement is now proven at the MODEL grain only (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed, a synthetic DaemonPathShadowed -> RefusalPathShadowed fold). The live observation was staged on that dissolve-on and its real-execution witness HAS returned with the typed read-back op (provision_read_back_failure_not_converged_by_real_execution, above): the observation is now extdeps.cache.sccache.sccache_stats_query_command, executed as argv, so no hand-shell remains on this path. What still has no witness is the PATH-shadow observation itself (shell.PosixCommandV.Check -- shell.Which.Check was deleted, crisp-wren-896, PR #8590); that stays staged on its own dissolve-on and is not claimed here."

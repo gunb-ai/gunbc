@@ -26,10 +26,11 @@ use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
     fields_get, sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
 };
+use crate::v1_std_core::Cardinality;
 use crate::v1_std_core::{
-    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    param_node_type_expr, source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex,
-    Node, VarBindingKind,
+    authored_name_at, expr_var_name_at, field_node_cardinality, field_node_default_value,
+    field_node_type_expr, inferred_to_node, param_node_name_at, param_node_type_expr,
+    source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -276,8 +277,149 @@ fn marshal_variant_arm_target(
             .as_ref()
             .and_then(|inf| inferred_to_node(inf.clone()))
             .unwrap_or_else(|| field_node_type_expr(field.clone()));
-        let target = marshal_type_expr_ref(ctx, si, &type_expr)?;
+        let target = marshal_field_binder(ctx, si, field, &field_name, &type_expr)?;
         edges.push(edge_named(ctx, &field_name, target));
+    }
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    ))
+}
+
+fn core_edge_value(ctx: &InterpContext, marker: &str, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("StructuralLabel"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("label"),
+                        Value::Variant {
+                            type_name: ctx.sym("StructuralEdgeLabel"),
+                            variant_name: ctx.sym("CoreMarker"),
+                            fields: Rc::new(vec![(
+                                ctx.sym("marker"),
+                                Value::Variant {
+                                    type_name: ctx.sym("CoreEdgeLabel"),
+                                    variant_name: ctx.sym(marker),
+                                    fields: Rc::new(vec![]),
+                                },
+                            )]),
+                        },
+                    )]),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+// ONE std.optional LAYER over a payload: an Instantiation whose head is the declaration reference
+// std.optional.Optional and whose second child is the payload, the node v2.std.optional_layers
+// wrap_type_node_occupancy builds at depth one (differential claim:
+// test.claim.decl_facts_field_binder_witness). The reference is the marked carrier of
+// v2.std.qualified_name declaration_reference_node: a Conj whose one DeclarationReferenceEdge targets
+// the segment spine v2.std.node fold_list_node builds over synthetic atoms.
+fn optional_layer_node(ctx: &InterpContext, payload: Value) -> Value {
+    let mut spine = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![],
+    );
+    for segment in ["Optional", "optional", "std"] {
+        spine = node_record(
+            ctx,
+            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+            vec![
+                edge_named(ctx, "fold_list_node_head", atom_identity_node(ctx, segment)),
+                edge_named(ctx, "fold_list_node_tail", spine),
+            ],
+        );
+    }
+    let reference = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![core_edge_value(ctx, "DeclarationReferenceEdge", spine)],
+    );
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Instantiation")),
+        vec![
+            edge_positional(ctx, reference),
+            edge_positional(ctx, payload),
+        ],
+    )
+}
+
+// A DECLARED FIELD IS A BINDER NODE, the one shape v2.std.node_query binder_node builds and
+// declared_field_list reads: a Conj of a BinderTypeEdge to the field's type and, when the field
+// declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets one std.optional layer over its
+// type (optional_layer_node), as declared_field_cardinality_of_target decodes. A literal default is a
+// ComputationNode { Value } over the atom of its own spelling. Every non-literal default REFUSES
+// (TypeError): the host cannot elaborate it, and none comes out as no default, which would be a
+// silent loss of a declared fact.
+fn marshal_field_binder(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field: &Rc<Node>,
+    field_name: &str,
+    type_expr: &Rc<Node>,
+) -> InterpResult<Value> {
+    let mut type_target = marshal_type_expr_ref(ctx, si, type_expr)?;
+    if matches!(
+        field_node_cardinality(field.clone()),
+        Cardinality::CardOptional
+    ) {
+        type_target = optional_layer_node(ctx, type_target);
+    }
+    let mut edges = vec![core_edge_value(ctx, "BinderTypeEdge", type_target)];
+    // A parsed field keeps its default in `body`; a normalized one (make_field_node) as child 1.
+    if let Some(default) = field
+        .body
+        .clone()
+        .or_else(|| field_node_default_value(field.clone()))
+    {
+        // A literal is an elaborated value: ComputationNode { Value } over the atom of its own
+        // spelling (a string keeps its quotes, so "false" is not false). Anything else refuses.
+        let spelling = literal_source_lexeme(&default, si);
+        let target = match default.expr_data.as_ref() {
+            ExprData::ExprLiteral { value, .. } => {
+                let lexeme = spelling.or_else(|| match value.as_ref() {
+                    crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                        Some(format!("\"{s}\""))
+                    }
+                    crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
+                    crate::std_syntax::LiteralValue::LitBool { value: b, .. } => {
+                        Some(b.to_string())
+                    }
+                    crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
+                    _ => None,
+                });
+                lexeme.map(|l| {
+                    node_record(
+                        ctx,
+                        node_kind_computation_node(ctx, nullary_behavior_variant(ctx, "Value")),
+                        vec![edge_positional(ctx, atom_identity_node(ctx, &l))],
+                    )
+                })
+            }
+            // binder_node carries an ELABORATED default. The host cannot elaborate a non-literal
+            // expression, and reflecting its source text as the same BinderDefaultEdge would give
+            // that edge two meanings by producer, so every non-literal default refuses below.
+            _ => None,
+        };
+        let Some(target) = target else {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "marshal_field_binder: field `{field_name}` declares a default that is not a literal; the host cannot express it as binder_node's elaborated default, so it refuses rather than reflecting it as source text or as no default"
+                ),
+            });
+        };
+        edges.push(core_edge_value(ctx, "BinderDefaultEdge", target));
     }
     Ok(node_record(
         ctx,
@@ -307,16 +449,6 @@ pub fn marshal_disj_type_item(
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Disj")),
         edges,
     ))
-}
-
-fn logical_qualified_name(module_name: &str, name: &str) -> String {
-    // Concept-index reflection keeps the authored module path (including `v2.`).
-    // Decl-index uses `decl_logical_qualified_name` instead (strips `v2.`).
-    if module_name.is_empty() {
-        name.to_string()
-    } else {
-        format!("{module_name}.{name}")
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -350,7 +482,9 @@ thread_local! {
     /// runner with the census at 138ms of that, were all BUDGET-REFUSED at 503–512ms on the CI
     /// host. The walk is a function of the roots and the prepared tree, not of the witness, so
     /// it is the floor's shared-build attribution defect at memo grain — the same class
-    /// `compile_dag_diagnostic_census` closes with its memo — and it is closed the same way:
+    /// `compile_dag_diagnostic_census` used to close with its own memo (that memo is deleted;
+    /// the census now avoids the recomputation by reading through process-level shared state --
+    /// see its entry point's deletion story) — and it is closed the same way here:
     /// the miss is bracketed as shared-artifact fill on both clocks, which `budgeted_cpu_nanos`
     /// nets from the deadline and `run_claim_measured` reports, never drops. Same roots, same
     /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
@@ -394,12 +528,13 @@ thread_local! {
 /// `claim_batch` registered it too would be a §3 nickname: one concept answering to a name that
 /// says it belongs to one of its callers.
 ///
-/// WHY A SECOND REGISTRANT EXISTS AT ALL. Keyed reads (`decl_facts_at`) ask about one qualified
-/// name, so a fold over N citations makes N demands of one census. Under a registration those are
-/// one walk and N lookups; with the cell closed, `decl_facts_for_roots_shared` returns early and
-/// each demand walks the corpus again — the keyed read would then be strictly worse than the
-/// population read it replaces, which hoisted its one walk into a `data` row by hand. The provider
-/// has to reach the ancestor or the keyed read is not a repair.
+/// WHY A SECOND REGISTRANT EXISTS AT ALL. A keyed read (`decl_facts_at`) is one demand of one
+/// census, and a fold that holds N keys asks them in ONE read (its keys are a set), so within an
+/// evaluation the demands are shared at their ancestor by construction, not by this cell. What the
+/// cell serves is ISOLATED demands: the claims of one `claim_batch` invocation are separate frames,
+/// each reading the same roots once, and their least common ancestor is the invocation itself. With
+/// the cell closed (`gunbc run` registers none) `decl_facts_for_roots_shared` returns early and each
+/// such demand walks once — which is the cost of one undeclared pure demand, not a re-walk per key.
 pub fn register_decl_census_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
@@ -624,7 +759,7 @@ fn concept_decl_record(
     name: &str,
     item: &Rc<Node>,
 ) -> InterpResult<Value> {
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     let node = concept_decl_node(ctx, si, item)?;
     Ok(Value::Record {
         type_name: ctx.sym("ConceptDecl"),
@@ -662,7 +797,7 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
     let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
     for decl in type_decls {
-        let qualified_name = logical_qualified_name(&decl.module_path, &decl.name);
+        let qualified_name = decl_qualified_name(&decl.module_path, &decl.name);
         let row = concept_decl_record(
             ctx,
             &decl.source_indices,
@@ -1314,7 +1449,7 @@ fn fn_arrow_decl_record(
         .iter()
         .map(|pn| fn_arrow_param_record(ctx, pn))
         .collect();
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     Some(Value::Record {
         type_name: ctx.sym("FnArrowDecl"),
         fields: Rc::new(sorted_fields(vec![
@@ -1453,7 +1588,7 @@ fn data_init_decl_record(
 ) -> Option<Value> {
     let body = item.body.as_ref()?;
     let literal_fp = data_init_literal_fingerprint(body, si)?;
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     Some(Value::Record {
         type_name: ctx.sym("DataInitDecl"),
         fields: Rc::new(sorted_fields(vec![
@@ -1504,15 +1639,14 @@ pub struct DeclFactRaw {
     pub source_indices: SourceIndices,
 }
 
-/// Qualified name for `decl_facts` / `decl_index` — strips the `v2.` layer prefix to match
-/// `v2.std.decl_index.logical_qualified_name_from_module` (concept reflection keeps the
-/// full module path including `v2.` for `concept_index` consumers).
-fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
-    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
-    if logical.is_empty() {
+/// Qualified name for `decl_facts` / `decl_index`: the module's OWN qualified name, `v2.` included,
+/// matching `v2.std.decl_index.qualified_name_from_module`. Stripping the layer prefix made
+/// `v2.std.integer.Int` and `std.integer.Int` share one key (two declarations, one identity).
+pub(crate) fn decl_qualified_name(module_name: &str, name: &str) -> String {
+    if module_name.is_empty() {
         name.to_string()
     } else {
-        format!("{logical}.{name}")
+        format!("{module_name}.{name}")
     }
 }
 
@@ -1733,7 +1867,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             }
             let kind = item_kind(item.clone());
             out.push(DeclFactRaw {
-                qualified_name: decl_logical_qualified_name(&module_path, &name),
+                qualified_name: decl_qualified_name(&module_path, &name),
                 name,
                 kind,
                 node: item.clone(),
@@ -1748,7 +1882,8 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             ItemKind::TypeItem => 1,
             ItemKind::DataItem => 2,
             ItemKind::ServiceItem => 3,
-            ItemKind::OtherItem => 4,
+            ItemKind::ResourceItem => 4,
+            ItemKind::OtherItem => 5,
         };
         (a.rel_path.as_str(), a.name.as_str(), kind_ord(a.kind)).cmp(&(
             b.rel_path.as_str(),
@@ -1774,6 +1909,9 @@ fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
         ItemKind::TypeItem => "TypeItem",
         ItemKind::DataItem => "DataItem",
         ItemKind::ServiceItem => "ServiceItem",
+        // v2.std.decl_index ItemKind has no resource arm, and its consumers read OtherItem as the
+        // census's own cannot-classify answer, which is what a resource was before v1 named it.
+        ItemKind::ResourceItem => "OtherItem",
         ItemKind::OtherItem => "OtherItem",
     };
     Value::Variant {
@@ -1926,27 +2064,39 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     eval_decl_facts_rows(ctx, &facts)
 }
 
-/// The KEYED read of the same declaration census `decl_facts` publishes: the rows whose
-/// `qualified_name` is exactly `qualified_name`, and nothing else.
+/// The KEYED read of the same declaration census `decl_facts` publishes: the rows a caller names by
+/// key, and nothing else. A row is returned when its `qualified_name` is one of `qualified_names`,
+/// or when it is a type declaration whose bare `name` is one of `type_names`; each row at most once,
+/// in the census's own canonical order.
 ///
-/// One law, two directions — this is `decl_facts` composed with the exact-equality filter the
-/// substrate already authored (`v2.std.decl_facts_skeleton` `decl_facts_matching_qualified_name`),
-/// moved to the side of the seam where the population still exists as raw rows. It is not a second
-/// census: both reads answer from `decl_facts_for_roots_shared`, so a row this returns is the row
-/// `decl_facts` would have returned, byte for byte.
+/// One law, two directions — this is `decl_facts` composed with membership filters the substrate
+/// already authored (`v2.std.decl_facts_skeleton` `decl_facts_matching_qualified_name`, and the
+/// type-declarer join in `v2.std.decl_index`), moved to the side of the seam where the population
+/// still exists as raw rows. It is not a second census: both reads answer from
+/// `decl_facts_for_roots_shared`, so a row this returns is the row `decl_facts` would have
+/// returned, byte for byte.
 ///
-/// WHY IT EXISTS. A keyed question — does this citation name a declaration — had to mint the whole
-/// population to ask it: every row's `node` marshalled into interpreter `Value`s, then folded away
-/// in the interpreter. The marshal is the cost, and it is paid per ASK, so N citations cost N
-/// corpus marshals. Filtering before the marshal makes the keyed question cost one.
+/// WHY THE KEYS ARE SETS. A keyed question — does this citation name a declaration — had to mint
+/// the whole population to ask it, so the read was keyed; but a keyed read that takes ONE key is
+/// asked once per element by every fold over citations, and with no census provider registered
+/// (`gunbc run` registers none) each ask re-walked and re-parsed the whole pool. Measured on
+/// BuildBuddy 2026-10-25: one lookup 91s, six lookups 506s. The demands share their least common
+/// ancestor — the fold already holds every key — so the fold reads once with all of them and joins
+/// each key against the returned rows in the substrate (DESIGN section 2, the materialization
+/// ladder's first question: carry the value at the ancestor, never cache the later asks). The
+/// bare-name read that used to be its own seam (`type_declarer_qualified_names`) was the same rule
+/// at a sibling leaf and is this read's `type_names` arm, so a reflection that needs a type by bare
+/// spelling and then its node reads the pool once rather than twice.
 ///
-/// Multiplicity is PRESERVED, not collapsed to a first hit: two rows under one logical qualified
-/// name is what `DeclarationRefAmbiguous` is derived from, and a keyed read that returned the first
-/// would silently resolve an ambiguous citation.
+/// Multiplicity is PRESERVED per key, not collapsed to a first hit: two rows under one logical
+/// qualified name is what `DeclarationRefAmbiguous` is derived from, and a keyed read that returned
+/// the first would silently resolve an ambiguous citation. Widening the key from equality to
+/// membership changes which keys are asked in one read, never how many rows answer one key.
 pub fn eval_decl_facts_at(
     ctx: &InterpContext,
     pool_roots: &[String],
-    qualified_name: &str,
+    qualified_names: &[String],
+    type_names: &[String],
 ) -> InterpResult<Value> {
     // Same line-stop as `eval_decl_facts`, and for the same reason: a root that contributes
     // nothing is invisible in a keyed answer too — an empty result is exactly what a genuine miss
@@ -1961,58 +2111,19 @@ pub fn eval_decl_facts_at(
             },
         );
     }
+    let qualified: std::collections::HashSet<&str> =
+        qualified_names.iter().map(String::as_str).collect();
+    let typed: std::collections::HashSet<&str> = type_names.iter().map(String::as_str).collect();
     let facts = decl_facts_for_roots_shared(pool_roots);
     let matching: Vec<DeclFactRaw> = facts
         .iter()
-        .filter(|f| f.qualified_name == qualified_name)
+        .filter(|f| {
+            qualified.contains(f.qualified_name.as_str())
+                || (f.kind == ItemKind::TypeItem && typed.contains(f.name.as_str()))
+        })
         .cloned()
         .collect();
     eval_decl_facts_rows(ctx, &matching)
-}
-
-/// THE KEYED BARE-NAME READ BEHIND `v2.std.decl_index` `type_declarer_qualified_names`.
-///
-/// It exists because the question it answers cannot be asked of `decl_facts_at`: that one is keyed
-/// by QUALIFIED name, and a bare spelling has no module. The substrate-only alternative was to fold
-/// the whole corpus, measured at ~3.6s per call against ~1ms for a keyed read and sharing at no
-/// grain, which put the guard that makes reflection sound above the floor's per-claim ceiling.
-///
-/// TWO PROPERTIES ARE LOAD-BEARING AND ARE WHY THIS ARM WAS ADMITTED.
-///
-/// It reads the SAME memoized pool `eval_decl_facts_at` reads, via `decl_facts_for_roots_shared` —
-/// no second parse, no second memo, nothing for the two to disagree about.
-///
-/// It NEVER PICKS A MATCH. It returns every qualified name declaring this bare spelling as a type,
-/// so multiplicity and candidate identity both go back to the substrate and the refusal is decided
-/// and located there. The moment this function chose among them it would be the bare-name identity
-/// defect it was written to remove, one layer down. It also marshals no declaration nodes, which is
-/// where the whole-pool cost actually lived.
-pub fn eval_type_declarer_qualified_names(
-    _ctx: &InterpContext,
-    pool_roots: &[String],
-    bare_name: &str,
-) -> InterpResult<Value> {
-    // Same line-stop as `eval_decl_facts_at`, and for the same reason: a root that contributes
-    // nothing is invisible in a keyed answer, because an empty result is what a genuine miss looks
-    // like — so the refusal fires against the DECLARED roots, before the read.
-    let pool_root_defects_found = pool_root_defects(pool_roots);
-    if !pool_root_defects_found.is_empty() {
-        return Err(
-            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
-                caller: "type_declarer_qualified_names",
-                declared: pool_roots.len(),
-                defects: pool_root_defects_found,
-            },
-        );
-    }
-    let facts = decl_facts_for_roots_shared(pool_roots);
-    let mut names: Vec<Value> = Vec::new();
-    for fact in facts.iter() {
-        if fact.name == bare_name && fact.kind == ItemKind::TypeItem {
-            names.push(str_value(fact.qualified_name.clone()));
-        }
-    }
-    Ok(crate::v1_interpreter::list_value(names))
 }
 
 fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {
@@ -2548,5 +2659,123 @@ mod parse_only_uppercase_variant_regression_tests {
             production.contains("should_emit_nullary_variant_value_atom"),
             "parse-only skeleton must gate on infer-stamped VariantValueBinding only"
         );
+    }
+}
+
+#[cfg(test)]
+mod field_binder_default_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+    use crate::std_syntax::LiteralValue;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, InterpError};
+    use crate::v1_std_core::{
+        build_newline_index, empty_node_list, make_field_node, make_named_expr_node, Cardinality,
+        ExprData, Node, SourceSpan,
+    };
+
+    use super::{literal_source_lexeme, marshal_field_binder};
+
+    // The fixture's one source file. Every expression's span covers its own spelling in it, so
+    // `literal_source_lexeme` READS that spelling: the source-text acceptance path the refusal must
+    // not take is reachable, not starved by an empty index.
+    const SOURCE: &str = "default_computed false";
+
+    fn span_of(start: i64, end: i64) -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start,
+            end,
+        })
+    }
+
+    fn span() -> Rc<SourceSpan> {
+        span_of(0, SOURCE.len() as i64)
+    }
+
+    fn expr_at(name: &str, data: ExprData, at: Rc<SourceSpan>) -> Rc<Node> {
+        make_named_expr_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(data),
+            empty_node_list(),
+            None,
+            at.clone(),
+            at,
+        )
+    }
+
+    fn expr(name: &str, data: ExprData) -> Rc<Node> {
+        expr_at(name, data, span_of(0, 1))
+    }
+
+    fn source_indices() -> Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>> {
+        let mut m = HashMap::new();
+        m.insert(
+            "test.dag".to_string(),
+            build_newline_index("test.dag".to_string(), SOURCE.to_string()),
+        );
+        Rc::new(m)
+    }
+
+    fn marshal_with_default(default: Rc<Node>) -> Result<(), InterpError> {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, source_indices(), ExecutionMode::Hermetic);
+        let si = ctx.source_indices();
+        let type_expr = expr("Int", ExprData::NoExprData);
+        let field = make_field_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "f".to_string(),
+            type_expr.clone(),
+            Cardinality::Required,
+            Some(default),
+            Rc::new(im_vec![]),
+            span(),
+            span(),
+        );
+        marshal_field_binder(&ctx, &si, &field, "f", &type_expr).map(|_| ())
+    }
+
+    // RED: a default the host cannot elaborate (a reference to a name) refuses; it is not reflected
+    // as its source text under BinderDefaultEdge (review 83500).
+    #[test]
+    fn a_non_literal_default_refuses() {
+        let reference = expr_at(
+            "default_computed",
+            ExprData::ExprVar { binding_kind: None },
+            span_of(0, 16),
+        );
+        // Precondition that makes this a discriminator: the source IS readable at the default's span,
+        // so restoring a source-text acceptance arm would marshal it and fail the refusal below.
+        assert_eq!(
+            literal_source_lexeme(&reference, &source_indices()).as_deref(),
+            Some("default_computed")
+        );
+        match marshal_with_default(reference) {
+            Err(InterpError::TypeError { msg }) => assert!(msg.contains("not a literal"), "{msg}"),
+            other => panic!("expected a typed refusal, got {other:?}"),
+        }
+    }
+
+    // CONTROL: the same field with a literal default marshals, so the refusal above is the default's
+    // shape and not the field.
+    #[test]
+    fn a_literal_default_marshals() {
+        let literal = expr_at(
+            "false",
+            ExprData::ExprLiteral {
+                value: Rc::new(LiteralValue::LitBool { value: false }),
+            },
+            span_of(17, 22),
+        );
+        marshal_with_default(literal).expect("a literal default marshals");
     }
 }
