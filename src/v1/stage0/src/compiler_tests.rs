@@ -932,6 +932,32 @@ mod compiler_tests {
     }
 
     #[test]
+    fn global_bare_ambiguous_name_refusal_lists_every_candidate() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let fa = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "fa.dag".to_string(), content: "module fa\ntype Pin { v: Int }\n".to_string() });
+                let fx = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "fx.dag".to_string(), content: "module fx\ntype Pin { w: Int }\n".to_string() });
+                let user = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "fa/b/c.dag".to_string(), content: "module fa.b.c\nfn use_pin(p: Pin) -> Int { p.v }\n".to_string() });
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![fa, fx, user]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let lists: Vec<Vec<String>> = result.diagnostics.iter().filter_map(|e| match &*e.diagnostic {
+                    crate::v1_std_core::CompilerDiagnostic::AmbiguousReference { name, candidates, .. } if name == "Pin" => { let mut c: Vec<String> = candidates.iter().cloned().collect(); c.sort(); Some(c) }
+                    _ => None,
+                }).collect();
+                let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(!lists.is_empty(), "an unimported Pin declared in fa and fx must refuse as AmbiguousReference; got {:?}", rendered);
+                assert!(
+                    lists.iter().all(|c| c == &vec!["fa.Pin".to_string(), "fx.Pin".to_string()]),
+                    "the refusal lists EVERY candidate, not the ancestor chain's: an ambiguous bare name binds none, so the author picks the import (gunbc.recurring_failure_mode bare_name_resolved_only_by_the_flat_namespace); got {:?}",
+                    lists
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("global_bare_ambiguous_name_refusal_lists_every_candidate panicked");
+    }
+
+    #[test]
     fn optional_nested_list_stamps_the_collection_and_present_list_elements() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
