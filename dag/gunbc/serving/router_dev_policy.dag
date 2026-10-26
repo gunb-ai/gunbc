@@ -87,7 +87,7 @@ fn router_dev_comparison_row_line(q: RouterDevComparisonQuote) -> String {
     + "', input_micro=" + money_micro_text(a: q.input_per_million)
     + ", cached_micro=" + money_micro_text(a: q.cached_per_million)
     + ", output_micro=" + money_micro_text(a: q.output_per_million)
-    + "', currency='" + currency_alphabetic_code(c: q.currency)
+    + ", currency='" + currency_alphabetic_code(c: q.currency)
     + "', unit='" + comparison_token_unit
     + "', source='" + (uri_wire(uri: q.authority.uri) as String)
     + "', read_on='" + (q.read_on as String)
@@ -808,19 +808,19 @@ fn router_dev_first_party_json() -> String {
 // A drained row's name is not live: retiring a session off an engine taken out of service is exactly
 // what the list is for (the srv3-strata rows carry the buses they replaced).
 fn upstream_name_is_live(name: String, rows: List<RouterDevUpstream>) -> Bool {
-  fold(rows, init: false, f: (any: Bool, u: RouterDevUpstream) => any || (u.in_service && u.name == name))
+  fold(rows, init: false, f: (found, u) => found || (u.in_service && u.name == name))
 }
 
 fn upstream_retiring_holders(name: String, rows: List<RouterDevUpstream>) -> Int {
-  fold(rows, init: 0, f: (n: Int, u: RouterDevUpstream) =>
-    fold(u.retiring_names, init: n, f: (m: Int, old: String) => if old == name { m + 1 } else { m }))
+  fold(rows, init: 0, f: (n, u) =>
+    fold(u.retiring_names, init: n, f: (m, old) => if old == name { m + 1 } else { m }))
 }
 
 fn router_dev_retiring_name_conflict(rows: List<RouterDevUpstream>) -> String? {
-  fold(rows, init: Absent, f: (acc: String?, u: RouterDevUpstream) =>
+  fold(rows, init: Absent, f: (acc, u) =>
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => fold(u.retiring_names, init: Absent, f: (inner: String?, old: String) =>
+      Absent => fold(u.retiring_names, init: Absent, f: (inner, old) =>
         match inner {
           Present { value: v } => Present { value: v }
           Absent => if upstream_name_is_live(name: old, rows: rows) {
