@@ -670,6 +670,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("credential-acquisition-systemd-rows"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/test/claim/dispatch_credential_acquisition_witness.dag",
+                function: "credential_acquisition_systemd_rows_wire",
+            },
+        ),
+        (
             instrument_label("append-chain-ladder"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/append_chain_ladder_native.dag",

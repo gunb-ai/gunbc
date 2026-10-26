@@ -27699,11 +27699,12 @@ pub fn rust_call_arg_function_value_adapt(
     idx: i64,
 ) -> String {
     {
-        let is_call_result = match (*arg.expr_data.clone()).clone() {
+        let is_rc_carried = match (*arg.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => true,
+            ExprData::ExprFieldAccess { summary: _, .. } => true,
             _ => false,
         };
-        if !is_call_result.clone() {
+        if !is_rc_carried.clone() {
             return arg_str.clone();
         }
         match callee.clone() {
