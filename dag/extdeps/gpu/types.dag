@@ -10,6 +10,7 @@ import extdeps.memory.types { MemoryFacts }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.storage.types { PcieLink }
+import extdeps.pci.identity { PciDeviceId }
 
 import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority }
 import std.decl_ref { NamedField, decl_field_eq }
@@ -250,6 +251,6 @@ type GpuBoardCatalogRow {
   board_power: GpuBoardPower
   thermal: GpuThermalSolution
   host_link: PcieLink
-  pci_device_id: NonEmptyStr
+  pci_device_id: PciDeviceId
   figure_citations: List<FactCitation>
 }

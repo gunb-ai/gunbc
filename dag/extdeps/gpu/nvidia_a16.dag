@@ -11,6 +11,7 @@ import extdeps.gpu.types {
 }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { PcieLink, Gen4 }
+import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.external_authority { FactCitation }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -29,7 +30,7 @@ import extdeps.uri { Uri, Https }
 // 832cb47e79bdf23fd4ba49407d18504666869d19e7bfa97412918291da7bbeff:
 //   Total board power: 250 W default, 250 W maximum, 235 W MaxQ (maximum performance per watt),
 //     195 W minimum. Thermal solution: Passive. GPU SKU: GA107-890 (quantity four).
-//   Board PCI Device ID 0x25B6. GPU clocks: base 1312 MHz, boost 1755 MHz.
+//   Board PCI Device ID 0x25B6 (recorded in extdeps.pci.identity's spelling, "25b6"). GPU clocks: base 1312 MHz, boost 1755 MHz.
 //   PCI Express interface: physical x16, PCIe Gen4 x16 or Gen3 x16 supported.
 //   Memory: GDDR6, 64 GB (16 GB per GPU), 6.25 GHz, 128-bit bus, peak bandwidth "up to 4x 200 GB/sec".
 // The bandwidth is an "up to" ceiling, so `memory_bandwidth` stays absent (extdeps.gpu.types rule).
@@ -97,7 +98,7 @@ data nvidia_a16_board_catalog: GpuBoardCatalogRow = GpuBoardCatalogRow {
   },
   thermal: PassiveThermalSolution,
   host_link: PcieLink { generation: Gen4, lane_count: 16 },
-  pci_device_id: "0x25B6",
+  pci_device_id: "25b6" as PciDeviceId,
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_catalog", field_name: "gpu_count"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_catalog", field_name: "board_power"), authority: extdeps_external_authority_anchor },
