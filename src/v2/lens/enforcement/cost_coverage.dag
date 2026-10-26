@@ -6,6 +6,8 @@ import v2.lens.cost { ClassConstant, ClassExponential, ClassFactorial, ClassLine
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.lens.cost { asymptotic_class_of_cost }
+import v2.lens.enforcement.receipts { judge_subject_node }
 
 type CostCoverageIngestVerdict
   = IngestParsedClean
