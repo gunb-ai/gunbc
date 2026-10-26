@@ -1,0 +1,12 @@
+module test.probe.kci_foreign
+
+import std.nat { Nat }
+import std.integer { int_to_decimal_string }
+
+type Int {
+  v: Nat
+}
+
+fn foreign_into_structural() -> String {
+  int_to_decimal_string(value: Int { v: 3 })
+}

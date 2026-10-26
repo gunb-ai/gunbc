@@ -1,0 +1,11 @@
+module test.probe.kci_structural
+
+import std.integer { Int, NonNegative, int_to_decimal_string }
+
+fn takes_structural(i: Int) -> String {
+  int_to_decimal_string(value: i)
+}
+
+fn give_structural() -> Int {
+  NonNegative { n: 3 }
+}

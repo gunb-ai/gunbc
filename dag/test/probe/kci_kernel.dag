@@ -1,0 +1,16 @@
+module test.probe.kci_kernel
+
+import std.types { Int, String }
+import test.probe.kci_structural { takes_structural, give_structural }
+
+fn kernel_value() -> Int {
+  40 + 2
+}
+
+fn kernel_into_structural() -> String {
+  takes_structural(i: kernel_value())
+}
+
+fn structural_into_kernel() -> Int {
+  give_structural()
+}
