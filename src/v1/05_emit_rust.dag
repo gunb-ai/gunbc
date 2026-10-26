@@ -13208,12 +13208,24 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
 // value params -- then_outcome<A, B, C>(f, g) is exactly this shape.
 // function_value_params is the existing filter (used by emit_fn_def) that
 // recovers the value-param-only list idx is indexed against.
+//
+// A RECORD FIELD IS THE SECOND Rc<dyn Fn> PRODUCER, AND THE SENTENCE ABOVE THAT EXCLUDED "a
+// field/method-call reference" WAS WRONG ABOUT IT. A field's type renders through the value carrier,
+// so an arrow-typed field is stored as Rc<dyn Fn(..) -> ..> whatever produced it, and reading it
+// yields that carrier, not an `impl Fn`. gunbc.host_convergence_protocol
+// inspect_via_host_effect_projection passes `projection.observe` and `projection.assess` (fields of
+// HostEffectDomainProjection) into std.goal_assessment inspect_goal's `fn(..)` parameters and
+// failed rustc E0277, expected `Fn(Subject, Request)`, found `Rc<dyn Fn(Subject, Request) -> ..>`
+// (class 5 of stern-bat-401's emitter-debt list). A field access at an arrow-typed parameter
+// crosses the same seam as a call result and takes the same forwarding closure. A bare
+// identifier and a literal closure stay unwrapped, for the reasons above.
 fn rust_call_arg_function_value_adapt(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int) -> String {
-  let is_call_result = match arg.expr_data {
+  let is_rc_carried = match arg.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } => true
+    ExprFieldAccess { summary: _ } => true
     _ => false
   }
-  if !is_call_result {
+  if !is_rc_carried {
     return arg_str
   }
   match callee {
