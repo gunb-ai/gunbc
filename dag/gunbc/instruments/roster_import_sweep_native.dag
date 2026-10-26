@@ -28,31 +28,33 @@ import v2.workflow.roster_import_sweep { roster_import_sweep_for_paths }
 // AllocationCounter. The sweep's git.Inspect shell operations sit only in the apply path
 // (roster_target_refusal, reached from roster_import_sweep_apply_exit), which the applied edits
 // never enter from here: nothing below calls an apply exit, so the entry's admission stays
-// Filesystem-only and the emitted closure carries no git transport. The MEASURED run refuses for
-// a different reason, and the refusal is recorded here as the run names it (DESIGN section 5:
-// done means executed -- and an unexecuted claim says so):
+// Filesystem-only and the emitted closure carries no git transport. What the MEASURED run refused,
+// as the run named it (DESIGN section 5: done means executed -- and an unexecuted claim says so):
+// when this entry was first executed (#15138, before #14815 and before the emitter fix #15197),
+// its first emitted-build refusal was the std.bit/std.machine_word Word64 E0204 collision:
 //   V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed
 //   first_error=error[E0204]: the trait `Copy` cannot be implemented for this type
 //   @ src/v1/v2-emitted-policy-unit-0/src/../../stage0/src/std_bit.rs:40:12
-// The emitted std_bit.rs line 40 is `pub struct Word64` -- dag/std/bit.dag's
+// The emitted std_bit.rs line 40 was `pub struct Word64` -- dag/std/bit.dag's
 // `type Word64 { bytes: List<Byte> }`, emitted with
 // `#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]` over an
-// `Rc<Vec<Rc<Byte>>>` field. It is the documented leaf collision (docs/governance RFM
-// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer: shared_types is still leaf-keyed,
-// last-write-wins): Word64 is declared in BOTH dag/std/bit.dag and dag/std/machine_word.dag, both
-// are in this closure (std.bit through v2.compiler.program_assembly <- v2.std.integer's
+// `Rc<Vec<Rc<Byte>>>` field. The mechanism then was the documented leaf collision (docs/governance
+// RFM emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer: shared_types keyed by spelling,
+// last declarer wins): Word64 was declared in BOTH dag/std/bit.dag and dag/std/machine_word.dag --
+// both in this closure (std.bit through v2.compiler.program_assembly <- v2.std.integer's
 // `import std.bit { Word64 }` -- a name v2.std.integer's body never uses, the very dead shape
-// this sweep flags; std.machine_word through std.filesystem <- std.encoding), and the second
-// declarer poisons the leaf's shared mark, so the emitter takes its non-shared derive arm and
-// rustc refuses. The discriminating evidence: the emitted crate for this entry AND for
-// gunbc.instruments.native_materialization_store_closure (already red on main at the same line,
-// "run by name, not a merge gate") renders BOTH std_bit.rs and std_machine_word.rs Word64 with
-// the Copy arm, while gunbc.instruments.value_position_block_nests -- whose closure has std.bit
-// but no std.machine_word -- renders Word64 WITHOUT Copy and its instrument is green (exit 0).
-// This is a front-end/emitter gap, not a refusal of this entry's effect closure: the route
-// itself is wired (the seed rendered the crate and cargo ran), and it is reported, not papered
-// over. The gap routes to the emitter authority that owns the still-leaf-keyed EmitGraphInfo
-// indexes; this entry needs no special case.
+// this sweep flags; std.machine_word through std.filesystem <- std.encoding) -- and the second
+// declarer poisoned the leaf's shared mark, so the emitter took its non-shared derive arm and
+// rustc refused. That wall is CLOSED, twice over: #14815 deletes the unused std.bit Word carriers,
+// so this closure no longer carries two declarations of the Word64 leaf, and #15197 keyed the
+// derive roster on the declaration rather than the spelling. What the entry now reaches is the
+// INDEPENDENT wall -- E0425 `start_detached`/`reap` missing from the emitted
+// extdeps.posix.process (extdeps_posix_process.rs:151, plus the pre-existing E0282 fold
+// accumulator in std_list.rs) -- recorded verbatim, with its discriminating controls, in the
+// executed refusal-progression matrix in docs/measurements/roster_import_sweep_native/README.md.
+// The route itself is wired (the seed renders the crate and cargo runs it); child_wall_ms rows
+// print only once that emission gap closes, and until then the native cost instrument remains the
+// refusal line -- reported, not papered over.
 //
 // THE SUBJECT CHANNEL. The native claim child is spawned with no arguments and no environment of
 // its own (cli_run/native_lane_runner spawn site), so the work list arrives as ONE committed
