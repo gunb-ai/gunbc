@@ -7295,7 +7295,16 @@ mod heal_round_one_base_mirror_tests {
             "a refusal still moved bytes"
         );
         // A name that DOES exist is still refused: existing does not make it the authority.
-        git(&["branch", "stale-base", "main"]);
+        let named = Command::new("git")
+            .args(["branch", "stale-base", "main"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        assert!(
+            named.status.success(),
+            "fixture branch: {}",
+            String::from_utf8_lossy(&named.stderr)
+        );
         let error =
             bootstrap_round_one_from_base_mirror(&root, &stage0, Some("stale-base"), &subject)
                 .expect_err("a name is never the authority, stale or not");
@@ -7371,9 +7380,9 @@ mod heal_round_one_base_mirror_tests {
             );
         };
         git(&["checkout", "-q", "pr"]);
-        git(&["branch", "-D", "main"]);
+        // No NAME for the base anywhere: neither a local branch nor a remote-tracking ref.
+        git(&["update-ref", "-d", "refs/heads/main"]);
         git(&["update-ref", "-d", "refs/remotes/origin/main"]);
-        git(&["update-ref", "-d", "refs/remotes/origin/base-ref"]);
         let cloned_stage0 = clone.join(STAGE0_SRC_REL);
         assert!(
             read(&cloned_stage0.join("fixture_emitted.rs")).contains("refused for 'Nat'"),
