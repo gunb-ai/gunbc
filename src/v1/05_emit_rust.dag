@@ -3436,6 +3436,27 @@ fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recu
   )
 }
 
+// THE ROSTER ARM ASKS THE DECLARATION, NOT THE SPELLING. shared_types above is keyed by spelling
+// and must stay so: every REFERENCE to a spelling must render the same way, so a leaf two
+// declarations own gets one answer for all readers (shared_by_every_declarer). But a struct's own
+// derive roster is not a spelling question -- a declaration's fields are what they are. Two
+// declarations of one leaf with different field shapes take ONE roster from the spelling answer,
+// and the non-constant one derives Copy over Rc fields: the E0204 refusal at emitted
+// std_bit.rs:40 (std.bit's `Word64 { bytes: List<Byte> }` inheriting Copy from
+// std.machine_word's constant `Word64 { hi: Int, lo: Int }`), the case
+// gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer still
+// names. So the roster arm reads THIS declaration's summary by the identity key TypeSummaryIndex
+// already mints (type_decl_identity, no second key type), and calls it shared exactly when the one
+// existing marking rule (maybe_mark_shared_type) would mark it. A spelling this module does not
+// declare keeps the leaf answer, so single-declarer types are unaffected.
+fn shared_type_declaration_is_marked_shared(module_path: String, name: String, emit_info: EmitGraphInfo) -> Bool {
+  set_contains(emit_info.shared_types, name) || match type_summary_decided(index: emit_info.type_summaries, key: type_decl_identity(owner_module: module_path, decl_name: name)) {
+    Present { value: summary } =>
+      set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: emit_info.recursive_type_set, target_needs_sharing: sharing_for_target(target: Rust).needs_sharing), summary.name)
+    Absent => false
+  }
+}
+
 fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
 
   let sharing = sharing_for_target(target: target)
@@ -8405,7 +8426,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     module_path: env.module_path,
     name: name,
     children: children,
-    shared_types: shared_types,
+    declared_shared: shared_type_declaration_is_marked_shared(module_path: env.module_path, name: name, emit_info: emit_info),
     has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
@@ -13187,12 +13208,24 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
 // value params -- then_outcome<A, B, C>(f, g) is exactly this shape.
 // function_value_params is the existing filter (used by emit_fn_def) that
 // recovers the value-param-only list idx is indexed against.
+//
+// A RECORD FIELD IS THE SECOND Rc<dyn Fn> PRODUCER, AND THE SENTENCE ABOVE THAT EXCLUDED "a
+// field/method-call reference" WAS WRONG ABOUT IT. A field's type renders through the value carrier,
+// so an arrow-typed field is stored as Rc<dyn Fn(..) -> ..> whatever produced it, and reading it
+// yields that carrier, not an `impl Fn`. gunbc.host_convergence_protocol
+// inspect_via_host_effect_projection passes `projection.observe` and `projection.assess` (fields of
+// HostEffectDomainProjection) into std.goal_assessment inspect_goal's `fn(..)` parameters and
+// failed rustc E0277, expected `Fn(Subject, Request)`, found `Rc<dyn Fn(Subject, Request) -> ..>`
+// (class 5 of stern-bat-401's emitter-debt list). A field access at an arrow-typed parameter
+// crosses the same seam as a call result and takes the same forwarding closure. A bare
+// identifier and a literal closure stay unwrapped, for the reasons above.
 fn rust_call_arg_function_value_adapt(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int) -> String {
-  let is_call_result = match arg.expr_data {
+  let is_rc_carried = match arg.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } => true
+    ExprFieldAccess { summary: _ } => true
     _ => false
   }
-  if !is_call_result {
+  if !is_rc_carried {
     return arg_str
   }
   match callee {
