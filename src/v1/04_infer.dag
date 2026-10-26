@@ -7957,17 +7957,23 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
       else {
+        // Bool is read as a kernel for its host-text reason (non_text_kernel_text_route), but it is the
+        // declared coproduct True | False, so a cast from it to any other type has no declared
+        // conversion, exactly as for every nominal: only its text reason differs, never whether it refuses.
         match source_reading {
-          HostTextRouteAbsentNominal =>
-            let msg = concat("invalid cast: ", source_name, " as ", target_name, ": a nominal value has no declared conversion")
-            let diag = InternalError { message: msg, span: span }
-            Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+          HostTextRouteAbsentNominal => nominal_cast_refusal(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
+          HostTextRouteAbsentKernel { kernel: NonTextKernelBool } => nominal_cast_refusal(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
           HostTextRouteAbsentKernel { kernel: _ } => validate_cast_in_table_domain(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
           HostTextSourceAdmissible => validate_cast_in_table_domain(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
         }
       }
     _ => none
   }
+}
+
+fn nominal_cast_refusal(source_name: String, target_name: String, span: SourceSpan, module_name: String) -> ErrorNode? {
+  let msg = concat("invalid cast: ", source_name, " as ", target_name, ": a nominal value has no declared conversion")
+  Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
 }
 
 fn validate_cast_in_table_domain(source_name: String, target_name: String, span: SourceSpan, module_name: String) -> ErrorNode? {
