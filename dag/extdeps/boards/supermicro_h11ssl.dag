@@ -2,6 +2,7 @@ module extdeps.boards.supermicro_h11ssl
 
 import std.types { List, NonEmptyStr }
 import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
   Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
@@ -251,6 +252,21 @@ data supermicro_h11ssl_pcie_slots: List<PcieSlot> = [
   PcieSlot { designator: "SLOT6", lanes: 16 },
 ]
 
+// PHYSICAL ORDER AND PITCH ARE NOT IN THE TEXT. The manual's text gives each slot's name and
+// width (p.42) and nothing about where it sits; the layout figure (pp.12-13) is an image. Whether a
+// dual-slot card in one slot covers or starves its neighbour depends on exactly that, so it stays an
+// obligation here rather than being assumed from the numbering.
+data supermicro_h11ssl_slot_geometry_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the physical order of SLOT1-SLOT6 and their pitch from the rendered layout figure (pp.12-13) or a measured unit; the text layer carries names and widths only.",
+}
+
+// The BIOS bifurcation menu (p.75) labels the slots 'CPU2 SLOT1' and 'CPU1 SLOT2' through 'CPU1 SLOT6',
+// verbatim. Which root complex or die each slot hangs off is not stated, so these labels are recorded
+// as the manual's spelling and not read as a topology.
+data supermicro_h11ssl_bios_slot_labels: List<NonEmptyStr> = [
+  "CPU2 SLOT1", "CPU1 SLOT2", "CPU1 SLOT3", "CPU1 SLOT4", "CPU1 SLOT5", "CPU1 SLOT6",
+]
+
 // J23, PCI-E 3.0 x4 M-key, 2280 and 22110 (pp.15,41).
 data supermicro_h11ssl_m2_lanes: Nat = 4
 
@@ -304,6 +320,17 @@ data supermicro_h11ssl_fan_current_standing: CitedFigureStanding = TranscribedUn
   read_obligation: "Manual p.39 states no per-header current limit; ground against the Supermicro H11SSL datasheet or the board's fan-header silkscreen rating before any fan-load budget.",
 }
 // Fan speed is set by BMC Thermal Management; with it enabled 'use all 4-pin fans' (p.39).
+
+// ---- Cooling zones (p.16, p.39). The feature list states 'Dual cooling zones' (p.16), and p.39
+// lists the seven headers. NEITHER PAGE SAYS WHICH HEADER BELONGS TO WHICH ZONE, so the assignment
+// is not a fact of this manual and is not authored here: a consumer that needs it reads the standing
+// below and refuses until it is grounded. A mapping observed on a unit (which header's duty moves when
+// one zone's duty is written) is that unit's receipt, in the observing layer.
+data supermicro_h11ssl_cooling_zone_count: Nat = 2
+
+data supermicro_h11ssl_header_zone_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "The manual states two cooling zones (p.16) and seven headers (p.39) but not which header is in which zone. Ground it in Supermicro documentation for this board's BMC, or record a per-unit observation as a receipt; do not infer it from the header names.",
+}
 
 // ---- Power (pp.44-45).
 type H11sslAtxSignal = Atx3v3 | AtxNeg12V | AtxGround | AtxPsOn | Atx5V | AtxPwrOk | Atx5Vsb | Atx12V | AtxReservedNc
@@ -451,3 +478,9 @@ data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = Supermicr
   dimms_per_channel: 1,
   lan_ports: [Lan1, Lan2],
 }
+
+// DESIGN section 3c declared frontier, for the cooling-zone count, the zone and slot-geometry
+// standings and the BIOS slot labels.
+data supermicro_h11ssl_zone_and_slot_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a fleet placement model reads supermicro_h11ssl_header_zone_standing and supermicro_h11ssl_slot_geometry_standing and refuses to derive zone reach or slot adjacency on an H11SSL host while either is uncited. SUFFICIENT FOR: the standings have a consumer that acts on them; until then they are recorded obligations." as NonEmptyStr
+)
