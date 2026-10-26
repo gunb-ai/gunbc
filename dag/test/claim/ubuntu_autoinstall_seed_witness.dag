@@ -9,7 +9,7 @@ module test.claim.ubuntu_autoinstall_seed_witness
 // (a headless box nobody can log into must be unrepresentable as valid).
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { Cons, Empty, list_append }
+import std.algebra { Cons, Empty, list_append, trim }
 import std.measure { byte_size }
 import std.optional { Optional, Absent, Present }
 import extdeps.debian.debconf {
@@ -70,6 +70,7 @@ import gunbc.os_install_emit {
   AutoinstallUserDataRefused,
   AutoinstallUserDataRendered,
   autoinstall_user_data,
+  autoinstall_user_data_document,
 }
 import extdeps.external_authority {
   CitedToAuthority,
@@ -103,7 +104,17 @@ import extdeps.storage.types {
 }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
 import extdeps.ssh.keys { Ed25519, SshPublicKey }
-import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.toolchain.types { Aarch64, Architecture, Riscv64, X86_64 }
+import extdeps.network.mac { Eui48Address, MacParseFailed, MacParsed, mac_addresses_are_equal, parse_mac_address }
+import extdeps.languages.yaml.types { YamlValue }
+import gunbc.provisioning.public_nocloud_seed {
+  PublicSeedAdmitted,
+  PublicSeedRefused,
+  admit_public_nocloud_seed,
+  public_nocloud_seed_client_mac,
+  public_nocloud_seed_user_data,
+  seed_credential_keys,
+}
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiHttpBoot, UefiPxe }
 import extdeps.uri { Https, Uri }
@@ -122,8 +133,37 @@ import gunbc.machine_intake.subject {
   UnitKeyStanding,
 }
 import gunbc.provisioning.ubuntu_autoinstall_seed {
-  AddressingIsInstallerManaged,
+  // The per-board profile rows and the architecture row table, imported by the amd64 render witness and the
+  // no-rows RED: a board's driver set is a ROW the witness can read, not a literal the witness would have to
+  // re-declare (which would make the test the authority on what the board carries).
   AdminAccessAuthorisation,
+  AhciModule,
+  Amd64Architecture,
+  Amd64MicrocodeDriver,
+  AltraBoard,
+  Ast2500DrmDriver,
+  BoardSeedProfile,
+  IgbNicModule,
+  KeyOnlyPostureAdmitsNoKeys,
+  KipmiSiDriver,
+  IpmiWatchdogDriver,
+  PackageSilenceUnestablishedForArchitecture,
+  PlatformUnsupported,
+  ProvisioningBoard,
+  ProvisioningTargetStanding,
+  SdModuleModule,
+  SeedIsNonInteractive,
+  SeedRefused,
+  SupermicroH11SslBoard,
+  UasModule,
+  UsbStorageModule,
+  board_required_amd64_late_package_rows,
+  board_seed_profile,
+  build_ubuntu_autoinstall_seed,
+  nvme_cli_silence_receipt,
+  package_rows_for_architecture,
+  render_ubuntu_autoinstall_seed,
+  seed_document,
   AdminCredentialPosture,
   CandidateIsNotPersistent,
   CredentialHandleUnset,
@@ -164,7 +204,6 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   silenced_package,
   selectors_are_the_same,
   rendered_document_digest,
-  seed_document,
   AdminPasswordHashReceipt,
   BoundDisk,
   BoundDiskUnread,
@@ -199,10 +238,8 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   SeedAddressing,
   SeedAudit,
   SeedDeliveryStrategy,
-  SeedIsNonInteractive,
   SeedLocale,
   SeedNetworkPosture,
-  SeedRefused,
   SelectionRefused,
   ByObservedSerial,
   ByCatalogIdentity,
@@ -210,13 +247,10 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   LinuxFirmwareDriver,
   AhciPlatformModule,
   NvmeBlockModule,
-  KipmiSiDriver,
-  IpmiWatchdogDriver,
   QuestionAnswered,
   PackageVerifiedSilent,
   SilentReceipt,
   ipmitool_silence_receipt,
-  nvme_cli_silence_receipt,
   dmidecode_silence_receipt,
   rasdaemon_silence_receipt,
   board_required_late_package_rows,
@@ -265,7 +299,6 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   credential_diagnostic,
   ubuntu_autoinstall_seed_digest,
   bind_ubuntu_autoinstall_seed,
-  build_ubuntu_autoinstall_seed,
   check_binding_against_seed,
 
   AdminPasswordRefusalCause,
@@ -288,7 +321,6 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   admin_password_hash_receipt,
   console_stanza_for,
   project_autoinstall_identity,
-  render_ubuntu_autoinstall_seed,
   mirror_diagnostic,
   disk_erase_authorisation,
   disk_may_be_erased_onto,
@@ -1081,13 +1113,294 @@ test fn a_runner_role_is_refused_a_seed() -> Bool {
   }
 }
 
-// CATCHES: the architecture gate, i.e. the arm64 package and driver set reaching an x86 unit.
-test fn a_non_aarch64_unit_is_refused() -> Bool {
+// CATCHES: the architecture gate being row-driven and total. X86_64 is provisionable BECAUSE IT CARRIES ROWS
+// (the amd64 silence receipts the seed audit checks against), so it admits — an earlier version of this row
+// asserted the opposite, which was the arm64-only assumption written as a test. The refusal half moved to
+// a_architecture_with_no_rows_is_refused: what the gate refuses is an architecture nobody has admitted a
+// package row for, not an architecture that merely differs from the first board this module served.
+test fn an_x86_64_unit_is_admitted_by_its_rows() -> Bool {
   match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
-    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: standing } =>
+      match standing {
+        ProvisioningTargetStanding { architecture: X86_64, bmc_firmware: AmiMegaRac, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68 } => true
+        _ => false
+      }
+    TargetRefused { reason: _ } => false
+  }
+}
+
+// CATCHES: the door defaulting an architecture in without rows. Riscv64 is the honest third case: a real
+// architecture, no admitted package row, so NOTHING about it has been verified silent and a seed built for it
+// would be a document of unverifiable claims. The refusal must name the missing row (PlatformUnsupported),
+// not the platform's name — and it must arrive through the same match arm X86_64 passes through, which is why
+// both cases sit in this pair of rows rather than in two branches.
+test fn an_architecture_with_no_rows_is_refused() -> Bool {
+  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: Riscv64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: PlatformUnsupported { architecture: Riscv64 } } => true
+    TargetRefused { reason: _ } => false
     TargetAdmitted { standing: _ } => false
   }
 }
+// ---------------------------------------------------------------------------
+// 2b-seed: the amd64 seed rendered, the ARM rendering pinned, and the two REDs
+// the row model owes. Everything here reads the ROW TABLE and the PROFILE ROWS;
+// nothing re-declares what a board carries.
+// ---------------------------------------------------------------------------
+
+// THE x86 TARGET, ADMITTED THE WAY ANY TARGET IS ADMITTED. One call to the one door, so this fixture cannot
+// drift from the door's own verdict: if the amd64 rows are ever deleted, this becomes a refusal and every test
+// below fails loudly rather than installing an unverified seed.
+fn target_x86() -> ProvisioningTargetAdmission {
+  admit_provisioning_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, )
+}
+
+// THE amd64 INSTALL SET IS THE ADMITTED amd64 ROWS *PLUS* THE ONE PACKAGE THAT PROMPTS.
+// openssh-server can never BE a silence row: this module's own prompting vocabulary gives it a debconf question
+// (openssh-server/password-authentication), so the honest intent is QuestionAnswered with that key false — exactly
+// how the arm64 fixture carries it. And it is not decoration: the ssh: section renders ONLY when openssh-server is
+// in the install set, so a key-only seed without it would install a host carrying the operator's key and NO SSH
+// SERVER, and `allow-pw: false` would never be written, let alone audited. Silence rows and answered prompts are
+// two different kinds of row, and a seed needs both to boot into a reachable key-only account.
+fn amd64_install_set() -> List<PackageIntent> {
+  list_append(
+    left: package_rows_for_architecture(architecture: X86_64),
+    right: [QuestionAnswered {
+      package: OpenSshServerPackage,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: AnswerBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
+    }],
+  )
+}
+
+// CATCHES: the amd64 seed drifting from the H11SSL profile rows — a module dropped from the row, a citation retyped
+// into the test, a package list assembled by hand at the call site. The seed is built from
+// board_seed_profile(SupermicroH11SslBoard, …) and the amd64 row table and NOTHING else, so what the render says is
+// what the rows say, and every assertion below is really an assertion about the rows. The credential is
+// PasswordUnset with a key: the operator's posture (no password at all), which is also the only posture whose
+// document passes the public NoCloud admission checked in the last clause.
+test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Absent => false
+    Present { value: entry } =>
+      match board_seed_profile(board: SupermicroH11SslBoard, delivery: virtual_media_strategy) {
+        BoardSeedProfile { install_drivers: drivers, loadable_modules: modules, late_drivers: late_drivers, late_packages: late_packages } =>
+          match build_ubuntu_autoinstall_seed(
+            target: target_x86(),
+            network: network_posture,
+            install_drivers: drivers,
+            loadable_modules: modules,
+            late_drivers: late_drivers,
+            install_packages: amd64_install_set(),
+            late_packages: late_packages,
+            disk: serial_selector,
+            entry: entry,
+            credential: PasswordUnset,
+            password_read: password_read_for(credential: PasswordUnset),
+            locale: EnUsUtf8,
+            delivery: virtual_media_strategy,
+            keyboard: UsLayout,
+          ) {
+            Absent => false
+            Present { value: seed } =>
+              let rendered = render_ubuntu_autoinstall_seed(seed: seed)
+              // THE ARCHITECTURE IS THE amd64 SPELLING, NOT A BORROWED aarch64 ONE.
+              rendered.contains(needle: "arch=x86_64")
+                // THE BOARD'S OWN KERNEL MODULES, EACH WITH ITS v6.8 CITATION INLINED BY THE RENDER — a token
+                // that lost its @path would still contain the name, so both halves are asserted together.
+                && rendered.contains(needle: "mod:igb=IGB@drivers/net/ethernet/intel/Kconfig")
+                && rendered.contains(needle: "mod:ahci=SATA_AHCI@drivers/ata/Kconfig")
+                && rendered.contains(needle: "mod:nvme=BLK_DEV_NVME@drivers/nvme/host/Kconfig")
+                // THE AST2500 BMC SET, AS LATE DRIVERS.
+                && rendered.contains(needle: "mod:ast=DRM_AST")
+                && rendered.contains(needle: "mod:ipmi_si=IPMI_SI")
+                && rendered.contains(needle: "mod:ipmi_watchdog=IPMI_WATCHDOG")
+                // THE VIRTUAL-MEDIA USB SET, WHICH THE DELIVERY AXIS ADDS TO THE BOARD ROW.
+                && rendered.contains(needle: "mod:usb-storage=USB_STORAGE")
+                && rendered.contains(needle: "mod:uas=USB_UAS")
+                && rendered.contains(needle: "mod:sd_mod=BLK_DEV_SD@drivers/scsi/Kconfig")
+                // THE PACKAGES ARE THE amd64 ROWS: each one's own token, spelling the version the silence was
+                // established at on THIS architecture's artifact, and answered=0. Asserted per row rather than as
+                // one prefix, because the list is a sorted join — "packages=" may sit before any other row's name.
+                && rendered.contains(needle: "amd64-microcode+silent,silent@3.20231019.1ubuntu2,cited,answered=0")
+                && rendered.contains(needle: "nvme-cli+silent,silent@2.8-1build2,cited,answered=0")
+                // THE LATE SET IS THE HEADLESS-DIAGNOSTIC FOUR, AT THEIR amd64 BUILDS.
+                && rendered.contains(needle: "ipmitool+silent,silent@1.8.19-7build2,cited,answered=0")
+                && rendered.contains(needle: "dmidecode+silent,silent@3.5-3build1,cited,answered=0")
+                && rendered.contains(needle: "rasdaemon+silent,silent@0.8.0-2,cited,answered=0")
+                // amd64-microcode ARRIVES AS AN INSTALL DRIVER TOO. pkg: and the apt row above are two different
+                // acts — install this, versus what the seed writes — and both must be present for this board.
+                && rendered.contains(needle: "pkg:amd64-microcode")
+                // NO PASSWORD FIELD EXISTS ANYWHERE IN THE DOCUMENT THIS SEED WRITES.
+                && (match seed_document(seed: seed) {
+                     DocumentRefused { reason: _ } => false
+                     DocumentBuilt { payload: payload, content: content } =>
+                       document_names_no_password_field(content: content)
+                         && !content.contains(needle: "identity")
+                         && content.contains(needle: "lock_passwd: true")
+                         && content.contains(needle: "allow-pw: false")
+                         // THE DOCUMENT FITS THE CLOSED PUBLIC NoCloud SCHEMA. Not an approximation checked
+                         // key by key here: the real mint runs on the real rendered tree and its own audit
+                         // says admitted. This is the row that fails first if the emitter and the schema ever
+                         // drift apart.
+                         && (match admit_public_nocloud_seed( client_mac: x86_client_mac(), user_data: autoinstall_user_data_document(payload: payload), ) {
+                              PublicSeedAdmitted { seed: minted } =>
+                                // THE MINTED ARTIFACT IS THE DOCUMENT WE HANDED IT, FOR THE MAC WE NAMED.
+                                public_nocloud_seed_user_data(seed: minted).contains(needle: "lock_passwd: true")
+                                  && public_nocloud_seed_user_data(seed: minted).contains(needle: "allow-pw: false")
+                                  && mac_addresses_are_equal(
+                                    left: public_nocloud_seed_client_mac(seed: minted),
+                                    right: x86_client_mac(),
+                                  )
+                              PublicSeedRefused { findings: _ } => false
+                            })
+                   })
+          }
+      }
+    }
+  }
+
+// THE CLIENT MAC THE MINT DERIVES meta-data FROM. The public NoCloud seed builds its meta-data instance-id
+// from the MAC, so the witness must hand it a real parsed address rather than a string; this is the same
+// parse-the-text path a live PXE request arrives by.
+fn x86_client_mac() -> Eui48Address {
+  match parse_mac_address(text: "ac:1f:6b:e3:f7:fe") {
+    MacParsed { address: m } => m
+    // UNPARSEABLE TEXT NAMES NO HOST. Reachable only if the fixture text above stopped being a MAC, which would
+    // silently vacuate every mac-bound assertion in this file — so it is named, not papered over.
+    MacParseFailed { error: _ } => the_mac_fixture_is_not_a_mac()
+  }
+}
+
+fn the_mac_fixture_is_not_a_mac() -> Bool {
+  false
+}
+
+// CATCHES: the ARM rendering moving under the rename. THE CONTROL, NOT A REGRESSION TEST: the digest below was
+// captured from the pre-rename module (gunbc.provisioning.altra_autoinstall_seed at its own head) rendering
+// this same fixture, and is asserted as an absolute. Every byte of the aarch64 document — the identity section,
+// its hash, the ssh section, the storage section, the ordering, the quoting — must be what it was while this
+// module still carried the board's name in its own. A refactor that reworded, reordered, or "tidied" anything
+// on the PasswordHandle path moves this digest and fails here, which is the only reason the rename is allowed
+// to be invisible to the fleet.
+test fn the_arm_rendering_is_byte_identical_to_the_pre_rename_capture() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: pair } =>
+      match seed_document(seed: pair.seed) {
+        DocumentRefused { reason: _ } => false
+        DocumentBuilt { payload: _, content: content } =>
+          sha256_hex_of_text(text: content)
+            == "7044037d409ab316009b79f41f996bcf0b8c261ae2bf65f6a5e7b1e985f945c9"
+      }
+  }
+}
+
+// CATCHES: an x86 seed certified from arm64's homework. One package row is swapped for the SAME package's
+// arm64 receipt — same name, same version string, evidence read from the wrong .deb. Silence receipts are
+// per-architecture exactly because the two builds are separately compiled and free to differ in their
+// maintainers' scripts, so this must refuse, naming both the package and the architecture the claim was
+// checked against.
+test fn an_x86_seed_carrying_an_arm64_only_package_row_refuses() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Absent => false
+    Present { value: entry } =>
+      match audit_ubuntu_autoinstall_seed(
+        network: network_posture,
+        install_packages: [PackageVerifiedSilent { silence: nvme_cli_silence_receipt }],
+        late_packages: [],
+        locale: EnUsUtf8,
+        entry: entry,
+        strategy: virtual_media_strategy,
+        architecture: X86_64,
+        credential: PasswordUnset,
+      ) {
+        SeedIsNonInteractive { evidence: _ } => false
+        SeedRefused { cause: cause } =>
+          match cause {
+            PackageSilenceUnestablishedForArchitecture { name: named, architecture: asked } =>
+              named == "nvme-cli" as NonEmptyStr && asked == "x86_64" as NonEmptyStr
+            _ => false
+          }
+      }
+  }
+}
+
+// CATCHES: the amd64 rows being deleted or unshipped while the architecture stays admitted. An architecture
+// with no package rows refuses the TARGET (an architecture with nothing verified about it is not a supported
+// platform), and a seed whose rows are nonetheless forced through the audit refuses at the package gate.
+// Riscv64 is the honest witness here: a real architecture with no row table behind it. The refusal arrives
+// through the same match arm X86_64 passes when it ADMITS, which is the whole point of the row model — the
+// difference between these two boards is data, not control flow.
+test fn an_architecture_with_no_package_rows_refuses_at_the_door_and_the_gate() -> Bool {
+  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: Riscv64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetAdmitted { standing: _ } => false
+    TargetRefused { reason: reason } =>
+      match reason {
+        PlatformUnsupported { architecture: _ } =>
+          // WITH NO ROWS, NO SEED BUILDS: the same emptiness the door reads, read again where a seed would.
+          list_length(items: package_rows_for_architecture(architecture: Riscv64)) == 0
+        _ => false
+      }
+  }
+}
+
+// CATCHES: a key-only seed that locks every door — the posture that admits no password AND no key would be a
+// board nobody can reach, installed unattended and then refused forever. The refusal is the AUDIT's, not the
+// entry mint's (a minted entry can be locked-console-with-keys; this is the posture asking "is there any way
+// in at all?"), so the cause is KeyOnlyPostureAdmitsNoKeys and no other cause is allowed to satisfy the row.
+test fn a_key_only_posture_with_no_keys_refuses() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Absent => false
+    Present { value: entry } =>
+      // FIRST: the green case, so the row cannot be satisfied by an unrelated refusal.
+      (match audit_ubuntu_autoinstall_seed(
+             network: network_posture,
+             install_packages: package_rows_for_architecture(architecture: Aarch64),
+             late_packages: [],
+             locale: EnUsUtf8,
+             entry: entry,
+             strategy: virtual_media_strategy,
+             architecture: Aarch64,
+             credential: PasswordUnset,
+           ) {
+             SeedIsNonInteractive { evidence: _ } => true
+             SeedRefused { cause: _ } => false
+           })
+        // THEN: the same audit with an entry that carries no authorised key. Under PasswordUnset the entry
+        // mint refuses a locked console with no keys, so the entry that reaches the audit here is the one an
+        // unlock would mint — the posture with zero keys, which is exactly the locked-out host.
+        && (match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
+             Absent => false
+             Present { value: bare_entry } =>
+               match audit_ubuntu_autoinstall_seed(
+                 network: network_posture,
+                 install_packages: package_rows_for_architecture(architecture: Aarch64),
+                 late_packages: [],
+                 locale: EnUsUtf8,
+                 entry: bare_entry,
+                 strategy: virtual_media_strategy,
+                 architecture: Aarch64,
+                 credential: PasswordUnset,
+               ) {
+                 SeedIsNonInteractive { evidence: _ } => false
+                 SeedRefused { cause: cause } =>
+                   match cause {
+                     KeyOnlyPostureAdmitsNoKeys => true
+                     PackageSilenceUnestablishedForArchitecture { name: _, architecture: _ } => false
+                     PackagePrompts { name: _, question: _ } => false
+                     PackagePromptingUnclassified { name: _ } => false
+                     AddressingIsInstallerManaged => false
+                     ArchiveMirrorAbsent => false
+                     NoEntrypointAtAll => false
+                   }
+               }
+           })
+    }
+  }
 
 // CATCHES: a seed being buildable for a refused target.
 test fn a_refused_target_yields_no_seed() -> Bool {
@@ -2835,9 +3148,11 @@ test fn a_receipt_from_another_secret_version_is_refused_by_name() -> Bool {
 // because "!" is a password VALUE: a document carrying it does state a password field, and the condition is
 // that no such field be written. So this row now checks FOUR things, each killing a different way back:
 //   - password_field_from is Absent under PasswordUnset (the module states no field),
-//   - the rendered document contains no "passwd" and no "password" substring anywhere, which covers
-//     passwd:, hashed_passwd:, password: and any future spelling, since every one of them contains one of
-//     those two words,
+//   - no line of the rendered document IS a credential field: the check runs on each line's KEY position
+//     against the closed vocabulary (password, passwd, hashed_passwd, plain_text_passwd, chpasswd, ssh_keys),
+//     which covers every current and future spelling of a credential field WITHOUT rejecting lock_passwd:
+//     true — the cloud-init lock the key-only posture is required to carry (a substring veto over "passwd"
+//     would condemn the very document this posture must emit),
 //   - no crypt-shaped digest appears: no "$6$", "$5$", "$2b$", "$y$" — the prefixes libxcrypt's admitted
 //     schemes emit, so a hash could not enter through a renamed key without tripping this,
 //   - the OLD marker "!"-star is absent too: it is the pre-rename spelling, and its absence is what makes this
@@ -2871,21 +3186,54 @@ test fn a_seed_with_no_password_locks_the_account_instead_of_setting_a_default()
   }
 }
 
-// THE NO-PASSWORD CHECK, AS A REUSABLE PREDICATE OVER RENDERED TEXT. The two words are what a credential field
-// must be called in any spelling cloud-init or subiquity accepts (passwd, hashed_passwd, password, and the
-// plural forms the schema also carries — all of which contain one of these two substrings), and the five
-// prefixes are what the ADMITTED crypt schemes emit, taken from extdeps.libxcrypt.crypt_scheme's own accepted
-// set rather than invented here: a hash arriving under an unforeseen key name still has to carry one of those
-// prefixes to be a hash this system would accept. Checking both words and every prefix means a regression cannot
-// hide by renaming the field.
+// THE NO-PASSWORD CHECK, AS A REUSABLE PREDICATE OVER RENDERED TEXT. Two halves, each covering what the other
+// cannot: key-position veto over the closed credential vocabulary (catches a field by NAME, in any spelling
+// the vocabulary lists, without condemning lock_passwd — the lock the key-only posture must carry), and a
+// whole-document veto over the crypt prefixes libxcrypt's admitted schemes emit, taken from
+// extdeps.libxcrypt.crypt_scheme's own accepted set rather than invented here (catches a HASH wherever it
+// hides, because a hash that carries none of those prefixes is not a hash this system would accept anyway).
+// Checking both means a regression cannot hide by renaming the field or by burying the value in content.
 fn document_names_no_password_field(content: String) -> Bool {
-  !content.contains(needle: "passwd")
-    && !content.contains(needle: "password")
-    && !content.contains(needle: "$6$")
-    && !content.contains(needle: "$5$")
-    && !content.contains(needle: "$2b$")
-    && !content.contains(needle: "$y$")
-    && !content.contains(needle: "$7$")
+  no_credential_key_line(document: content)
+    && document_carries_no_crypt_digest(document: content)
+}
+
+// THE CREDENTIAL KEY VOCABULARY IS IMPORTED, NOT RESTATED. seed_credential_keys is the same list
+// gunbc.provisioning.public_nocloud_seed closes its admission against — identity's password, the user-entry
+// forms (passwd, hashed_passwd, plain_text_passwd), the chpasswd section, and the ssh_keys section that would
+// install keys outside the admitted set — so the witness's veto and the mint's admission cannot drift: what the
+// mint rejects by name is what this predicate rejects by name, from one spelling of the list. A local copy here
+// would be exactly the second-authority DESIGN §3 forbids.
+
+// A DOCUMENT CARRIES NO CREDENTIAL FIELD WHEN NO LINE *IS* ONE, not merely when no line mentions one. The
+// difference is what makes this check compatible with the key-only posture: the posture REQUIRES the line
+// `lock_passwd: true` (cloud-init's own lock, per the operator's condition), and a substring check over
+// "passwd" would reject the very document this posture is required to emit. So the check is on the KEY
+// POSITION of each line: strip the indentation and a list dash, cut at the first colon — what remains must
+// not be one of the credential names. A credential smuggled in under some other spelling is still caught by
+// the digest check below, because a hash is only a hash if it carries one of the admitted crypt prefixes.
+fn no_credential_key_line(document: String) -> Bool {
+  let lines = split(s: document, delimiter: "\n")
+  let keys = lines.map(line =>
+    match split(s: trim(replace(s: trim(line), from: "- ", to: "")), delimiter: ":") {
+      Cons { head: name, tail: _ } => trim(name)
+      Empty => trim(line)
+    }
+  )
+  !any(keys, key => any(seed_credential_keys, named => named == key))
+}
+
+// NO ADMITTED CRYPT DIGEST APPEARS ANYWHERE IN THE BYTES. The prefixes are libxcrypt's admitted schemes — the
+// ones extdeps.libxcrypt.crypt_scheme would accept as a credential — so a hash could not enter under a renamed
+// key without tripping this. Unlike the key check, this one IS a substring check over the whole document: a
+// digest is content, and content has no position where it is allowed.
+fn document_carries_no_crypt_digest(document: String) -> Bool {
+  !document.contains(needle: "$6$")
+    && !document.contains(needle: "$5$")
+    && !document.contains(needle: "$2b$")
+    && !document.contains(needle: "$2y$")
+    && !document.contains(needle: "$y$")
+    && !document.contains(needle: "$7$")
 }
 
 // THE LOCK MARKER, STATED BY THE WITNESS AND NOT IMPORTED FROM THE MODULE: if the two agreed by sharing one

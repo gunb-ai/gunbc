@@ -3464,12 +3464,19 @@ fn autoinstall_payload(seed: UbuntuAutoinstallSeed) -> Optional<UbuntuAutoinstal
         fully_automated: true,
         target_distribution: NobleNumbat2404Lts,
         identity: Absent,
+        // THE NAME IS POSIX-LEGAL ON PURPOSE. gunbc.provisioning.public_nocloud_seed admits the user's name
+        // through extdeps.posix.shell_command_language.admit_posix_shell_name (XBD 3.235), whose continue
+        // alphabet is letters, digits and underscore — a hyphen is not in it. "gunbc-admin" would render a
+        // document the seed admission refuses at the name leaf, so the key-only account is named the way the
+        // rule allows. (The SEEDED-HANDLE identity above keeps "gunbc-admin": that document publishes no
+        // user-data users section at all, so its username never meets the POSIX leaf, and its bytes are the
+        // ones the ARM control witness pins byte-for-byte.)
         user_data: Present { value: [
           CloudInitUserEntry {
-            name: "gunbc-admin" as NonEmptyStr,
-            gecos: "gunbc provisioning" as NonEmptyStr,
+            name: "gunbcadmin" as NonEmptyStr,
             ssh_authorized_keys: seed.entry.authorised_keys,
             lock_passwd: true,
+            shell: BashLoginShell,
           },
         ] },
         locale: seed_locale_wire(locale: seed.locale),

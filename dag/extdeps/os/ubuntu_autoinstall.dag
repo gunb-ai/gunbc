@@ -42,11 +42,24 @@ type AutoinstallIdentity {
 // is defined as one that carries no password at all, so the type cannot state the thing the operator's
 // condition forbids. `lock_passwd` stays settable because a user with keys and an unlocked empty password
 // field is a different machine than one with keys and a locked password field.
+//
+// `shell` is a CLOSED TYPE, not a string, for the same reason `passwd` is missing: cloud-init cc_users_groups
+// admits a named login shell, and gunbc.provisioning.public_nocloud_seed admits exactly two spellings
+// (/bin/bash, /bin/sh) at that leaf, so the type stores the choice from that closed list rather than text a
+// caller could get wrong and a seed publisher would have to re-audit. `sudo` is NOT a field at all: with
+// lock_passwd true, a passwordless account can only have the NOPASSWD rule, so the closed seed schema admits
+// exactly one string there and there is no choice to store. gunbc.os_install_emit emits that one rule.
+//
+// NO `gecos`: it is a cosmetic comment and the closed seed schema does not admit it. Dropping it is the honest
+// direction (a field this fleet's seed cannot publish is a field the type should not offer), not a loss --
+// the account's identity is its name and its keys.
+type CloudInitUserShell = BashLoginShell | PosixShell
+
 type CloudInitUserEntry {
   name: NonEmptyStr
-  gecos: NonEmptyStr
   ssh_authorized_keys: List<SshPublicKey>
   lock_passwd: Bool
+  shell: CloudInitUserShell
 }
 
 type AutoinstallStoragePolicy
