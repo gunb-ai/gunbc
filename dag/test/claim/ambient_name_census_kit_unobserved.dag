@@ -1,10 +1,10 @@
 module test.claim.ambient_name_census_kit_unobserved
 
-import std.types { Bool }
+import std.types { Bool, String }
 import std.process { ExitSuccess, ExitFailure }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.cli_wire { CliWirePrintable }
-import gunbc.instruments.ambient_name_census_reading { ambient_census_kit_standing }
+import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
+import gunbc.instruments.ambient_name_census_reading { ambient_census_kit_standing, ambient_name_census_standing_with_kit, ambient_census_fixture_expected }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -38,6 +38,40 @@ test fn c_held_base_with_a_kit_row_holds_and_prints_it() -> Bool {
 test fn c_a_base_already_refused_keeps_its_own_cause() -> Bool {
   match ambient_census_kit_standing(base: CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "fixture control: x" } }, kit_stdout: "", kit_root: "k/dag") {
     CliWirePrintable { bytes: _, exit: ExitFailure { code: c, reason: r } } => c == 1 && r == "fixture control: x"
+    _ => false
+  }
+}
+
+// THE PAIRING HALF (DESIGN section 3, a witness discriminates at one interface): the four claims above are the
+// decision table of ambient_census_kit_standing. These run the reader the host calls,
+// ambient_name_census_standing_with_kit, over a base that HOLDS -- the fixture rows the reader itself expects
+// (ambient_census_fixture_expected, read, not restated), the unindexed control at 2, one clean module line -- so
+// deleting the wrapper's delegation to the kit judgment turns the refusal claim red.
+fn held_base_with_kit(kit_stdout: String) -> CliWireResponse {
+  ambient_name_census_standing_with_kit(
+    fixture_stdout: ambient_census_fixture_expected() |> join(separator: "\n"),
+    fixture_status: 0,
+    unindexed_status: 2,
+    tree_stdout: "binding_module\texamples.held\t1\t0\t0\t0",
+    tree_runs: "",
+    rewritten: "",
+    kit_stdout: kit_stdout,
+    kit_root: "target/ambient-name-census/kit_overlay/dag"
+  )
+}
+
+test fn w_the_host_reader_refuses_2_naming_the_kit_root_over_a_held_base_with_no_kit_row() -> Bool {
+  match held_base_with_kit(kit_stdout: "") {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: c, reason: r } } =>
+      c == 2 && starts_with(s: r, prefix: "kit_unobserved: ") && contains(s: r, pattern: "target/ambient-name-census/kit_overlay/dag")
+    _ => false
+  }
+}
+
+// The base above holds on its own: with one kit row the host reader exits 0, so the refusal above is the kit's.
+test fn w_the_host_reader_holds_over_the_same_base_with_a_kit_row() -> Bool {
+  match held_base_with_kit(kit_stdout: "binding_unbound\texamples.kit_chars_unimported\tchars\t5:42") {
+    CliWirePrintable { bytes: _, exit: ExitSuccess } => true
     _ => false
   }
 }
