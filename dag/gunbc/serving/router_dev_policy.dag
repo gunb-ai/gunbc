@@ -2,7 +2,7 @@ module gunbc.serving.router_dev_policy
 
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
-import std.measure { second, ByteSize, mebibyte, mebibyte_to_byte_size }
+import std.measure { second, second_count, ByteSize, byte_size_count, mebibyte, mebibyte_to_byte_size, Second }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -242,11 +242,11 @@ fn router_dev_access_lines() -> List<String> {
     "local function serve(pick, session)",
     "  ngx.ctx.counted = pick.name",
     "  ngx.ctx.route = pick",
-    "  state:set('seen:' .. session, ngx.now(), 21600)",
+    "  state:set('seen:' .. session, ngx.now(), " + to_string(second_count(s: router_dev_binding_ttl())) + "),
     "  ngx.req.set_header('X-Pool-Session', session)",
     "  ngx.req.set_header('X-Session-Id', session)",
     "  if pick.path_prefix and pick.path_prefix ~= '' then ngx.req.set_uri(pick.path_prefix .. ngx.var.uri, false) end",
-    "  state:set('session:' .. session, pick.name, 21600)",
+    "  state:set('session:' .. session, pick.name, " + to_string(second_count(s: router_dev_binding_ttl())) + "),
     // The dashboard sends the effort inside chat_template_kwargs, which is where vLLM and Strata read
     // it; a name the target model does not implement is a 400 from that engine, so the row's dialect is
     // applied at the same place the engine would read it. An unmapped name is left alone and the engine
@@ -374,6 +374,11 @@ fn router_dev_header_lines() -> List<String> {
 // worker boundary; the epoch is set once at init so a reader can tell a zero from an untouched counter.
 fn router_usage_key_prefix() -> String { "meter:v2:owned:" }
 
+// THE CAP ON ONE ACCUMULATED USAGE FRAME. A stream whose usage frame will not fit is an error, not a
+// truncated read -- a size, so it is a ByteSize like the body limits it sits beside, not a count whose
+// unit nobody declared.
+fn router_usage_frame_cap() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 2)) }
+
 fn router_dev_body_filter_lines() -> List<String> {
   [
     "if not ngx.ctx.route or ngx.ctx.route.overflow or ngx.status ~= 200 then return end",
@@ -402,7 +407,9 @@ fn router_dev_body_filter_lines() -> List<String> {
     // buffer is capped, and a stream that exceeds the cap is an ERROR, not a truncated read.
     "local chunk = ngx.arg[1] or ''",
     "local buf = (ngx.ctx.usage_buffer or '') .. chunk",
-    "if #buf > 2097152 then ngx.ctx.usage_error = 'usage frame exceeded 2 MiB' ngx.ctx.usage_buffer = nil return end",
+    "if #buf > " + to_string(byte_size_count(b: router_usage_frame_cap())) + " then",
+    "  ngx.ctx.usage_error = 'usage frame exceeded the cap' ngx.ctx.usage_buffer = nil return",
+    "end",
     "local content = ngx.var.upstream_http_content_type or ''",
     "if content:find('text/event-stream', 1, true) then",
     "  local pos = 1",
@@ -464,16 +471,22 @@ fn router_dev_log_lines() -> List<String> {
     "  state:incr('active:' .. ngx.ctx.counted, -1, 0)",
     "  state:incr('upstream:' .. ngx.ctx.counted .. ':' .. tostring(ngx.status), 1, 0)",
     "  if ngx.status >= 500 or ngx.status == 401 or ngx.status == 403 then",
-    "    state:set('unavailable:' .. ngx.ctx.counted, true, " + to_string(router_dev_ejection_seconds()) + ")",
+    "    state:set('unavailable:' .. ngx.ctx.counted, true, " + to_string(second_count(s: router_dev_ejection())) + ")",
     "  end",
     "end",
   ]
 }
 
 // How long an engine that just failed stays out of the pick. Long enough to cover a retry storm, short
-// enough that a recovered engine is back on its own; a row field rather than a Lua literal so it can be
-// reasoned about next to the caps it interacts with.
-fn router_dev_ejection_seconds() -> Int { 30 }
+// enough that a recovered engine is back on its own; a declared duration rather than a Lua literal so it
+// can be reasoned about next to the caps it interacts with, and rendered through the same std.measure
+// carrier the proxy timeouts beside it use (review 86789: this file's own proxy_read_timeout is a Second).
+fn router_dev_ejection() -> Second { second(count: 30) }
+
+// HOW LONG A SESSION KEEPS ITS ENGINE without touching it. Long enough that a session surviving a lunch
+// break still finds its cache, short enough that an abandoned binding cannot pin a lane forever; a
+// declared duration, same carrier as the ejection above and the proxy timeouts in openresty.dag.
+fn router_dev_binding_ttl() -> Second { second(count: 21600) }
 
 // GET /router/stats with a client key: the tallies and the active turns per upstream, as JSON.
 fn router_dev_stats_lines() -> List<String> {
@@ -599,7 +612,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         ] },
       ] },
     ]) }
-  } } } } } } } } } } } } } } } } } } }
+  } } } } } } } } } } } } } } } } } }
 }
 
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
