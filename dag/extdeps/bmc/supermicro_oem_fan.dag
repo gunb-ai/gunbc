@@ -3,6 +3,7 @@ module extdeps.bmc.supermicro_oem_fan
 import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
 import std.nat { Nat }
 import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { trim }
 import std.measure { Percent, percent, percent_count }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -180,3 +181,8 @@ fn supermicro_duty_argument(duty: Percent) -> NonEmptyStr? {
   let d = percent_count(duty)
   if d > 100 { none } else { Present { value: concat("0x", byte_hex_lower(v: d as Int)) as NonEmptyStr } }
 }
+
+// DESIGN section 3c declared frontier.
+data supermicro_oem_fan_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the fleet fan posture for zones that reach a passive card imports these operations to set and read back the zone's posture on a Supermicro BMC, and the GPU-card converge leg refuses a host whose zone readback does not echo the write. SUFFICIENT FOR: the operations have a production consumer. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness parses captures that were produced by running exactly these argv in band on the H11 (BMC 1.52), but no enrolled claim executes GetFanMode or GetZoneDuty on a real Supermicro BMC; that claim runs host-side in the converge leg, against the host it converges." as NonEmptyStr
+)
