@@ -55,7 +55,8 @@ import std.layout { doc_text, render }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.systemd.systemctl { systemctl_restart_argv, systemctl_status_argv, systemctl_user_daemon_reload_argv }
 import extdeps.tools.gnu_coreutils { coreutils_install_directory_argv, coreutils_install_directory_owned_argv }
-import gunbc.gunbc_cli_command { gunbc_installed_run_with_argument_command }
+import gunbc.gunbc_cli_command { gunbc_installed_run_with_named_arguments_command }
+import gunbc.cli_invoke { NamedArgumentRequest }
 import std.types { NonEmptyStr }
 import std.optional { Absent, Present }
 import gunbc.live_deploy.member_identity { plan_publishes_tree, plan_installs_executable }
@@ -584,15 +585,21 @@ fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_
       UserWorkSliceUnitFileRefused { cause: c } =>
         ApplyPlanRefused { step: "user-work-slice", reason: join(["live-deploy apply refused: ", c, " (DESIGN 5: refuse, never widen)"], "") }
       UserWorkSliceUnitFileReady { file: f } =>
-        match gunbc_installed_run_with_argument_command(
+        match gunbc_installed_run_with_named_arguments_command(
           binary: fixed_serve_binary_path(binary: spec.service.serve_binary) as NonEmptyStr,
           source_roots: [join([source_root, "/dag"], ""), join([source_root, "/src/v2"], "")],
           entry: convergence_placement_entry_path,
           function: "repository_convergence_readback_wet",
-          argument_name: "receipt",
-          argument_value: convergence_receipt_path(instance_root: spec.service.instance_root as String),
+          arguments: [
+            NamedArgumentRequest { name: "receipt", value: convergence_receipt_path(instance_root: spec.service.instance_root as String) },
+            // THE READBACK IS BOUND TO THE RUN IT ANSWERS FOR. The candidate is the very string this
+            // apply's convergence unit was written with on its ExecStart -- the same plan field, the
+            // same rendering row -- so the installed readback compares the receipt's candidate against
+            // THIS plan's revision and a receipt left by a prior run refuses as stale (S83469995).
+            NamedArgumentRequest { name: "candidate", value: release_revision_execstart_text(binding: RevisionBoundAtEmission { revision: plan.target.revision }) },
+          ],
         ) {
-          Absent => ApplyPlanRefused { step: "convergence-readback", reason: "live-deploy apply refused: the convergence readback argument was not admitted", }
+          Absent => ApplyPlanRefused { step: "convergence-readback", reason: "live-deploy apply refused: the convergence readback arguments (receipt path and plan candidate) were not admitted", }
           Present { value: readback } =>
             ApplyPlanReady { legs: [
               apply_root_leg(step: "tree-root", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: "/opt/gunbc")),
