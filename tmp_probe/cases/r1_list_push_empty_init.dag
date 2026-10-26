@@ -1,0 +1,11 @@
+module tprobe.r1_list_push_empty_init
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key }
+import std.algebra { list_push, list_map, FreeMonoid }
+
+fn probe_case() -> Int {
+  let pushed = list_push([], "a" as NonEmptyStr)
+  let reveal: Int = pushed
+  count(pushed)
+}

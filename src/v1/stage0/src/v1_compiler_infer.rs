@@ -13361,13 +13361,6 @@ pub fn infer_call_arguments_generic_pass(
             } else {
                 ar_inferred.clone()
             };
-            {
-                let __lbl_f = type_node_label(formal_raw.clone(), scope.type_env.source_indices.clone());
-                let __lbl_a = type_node_label(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), scope.type_env.source_indices.clone());
-                let __child_lbls: Vec<String> = { let ch = crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()).children.clone(); ch.iter().map(|c| type_node_label(c.clone(), scope.type_env.source_indices.clone())).collect() };
-                let __subst_pairs: Vec<String> = st.subst.iter().map(|(k,v)| format!("{}={}", k, type_node_label(v.clone(), scope.type_env.source_indices.clone()))).collect();
-                eprintln!("DIAGARG mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} actual={} children={:?} subst={:?}", scope.module_name, scope.caller_decl_name, pair.0, crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()), is_lambda_expr(crate::v1_std_core::arg_value(a.clone())), __lbl_f, __lbl_a, __child_lbls, __subst_pairs);
-            }
             let next_subst = if !has_formal.clone() {
                 st.subst.clone()
             } else {
@@ -14864,13 +14857,13 @@ Rc::new(InferResult {
                             expected.clone(),
                         );
                         let call_fold_acc_type = match call_fold_info.clone() {
-                            Some(fi) => Some({
-                                let __it = crate::v1_compiler_infer_types::resolved_type(
+                            Some(fi) => Some(fold_init_joined_with_expected(
+                                crate::v1_compiler_infer_types::resolved_type(
                                     crate::v1_std_core::arg_value(fi.typed_arg.clone()),
-                                );
-                                eprintln!("DIAGFOLD1 mod={:?} caller={:?} init_ty={} expected={} joined={}", scope.module_name, scope.caller_decl_name, type_node_label(__it.clone(), scope.type_env.source_indices.clone()), match expected.clone() { Some(e) => type_node_label(e, scope.type_env.source_indices.clone()), None => "<none>".to_string() }, type_node_label(fold_init_joined_with_expected(__it.clone(), expected.clone(), scope.clone()), scope.type_env.source_indices.clone()));
-                                fold_init_joined_with_expected(__it.clone(), expected.clone(), scope.clone())
-                            }),
+                                ),
+                                expected.clone(),
+                                scope.clone(),
+                            )),
                             std::option::Option::None => std::option::Option::None,
                         };
                         let declared_formal_authority_failed = match (*call_target.clone()).clone()
@@ -15252,8 +15245,6 @@ Rc::new(InferResult {
                                 };
                                 let refined_call_fold_acc_type = match call_fold_acc_type.clone() {
                                     Some(acc) => {
-                                        eprintln!("DIAGFOLD2 mod={:?} caller={:?} acc={} fully_resolved={} unapplied_generic={}", scope.module_name, scope.caller_decl_name, type_node_label(acc.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::is_fully_resolved(acc.clone(), scope.type_env.source_indices.clone()), fold_accumulator_is_unapplied_generic(acc.clone()));
-
                                         if (!crate::v1_compiler_infer_types::is_fully_resolved(
                                             acc.clone(),
                                             scope.type_env.source_indices.clone(),
@@ -15273,15 +15264,13 @@ Rc::new(InferResult {
                                             .first()
                                             .cloned()
                                             {
-                                                Some(lambda_arg) => Some({
-                                                    let __lr = crate::v1_compiler_infer_types::resolved_type(
+                                                Some(lambda_arg) => Some(
+                                                    crate::v1_compiler_infer_types::resolved_type(
                                                         crate::v1_std_core::arg_value(
                                                             lambda_arg.clone(),
                                                         ),
-                                                    );
-                                                    eprintln!("DIAGFOLD3 mod={:?} caller={:?} lambda_return={}", scope.module_name, scope.caller_decl_name, type_node_label(__lr.clone(), scope.type_env.source_indices.clone()));
-                                                    __lr
-                                                }),
+                                                    ),
+                                                ),
                                                 std::option::Option::None => {
                                                     call_fold_acc_type.clone()
                                                 }
@@ -16248,7 +16237,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 Some(first_type) => Rc::new(v1_rt::list_skip(&joined_arm_types.clone(), 1))
                     .iter()
                     .cloned()
-                    .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
+                    .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
                         crate::v1_compiler_infer_types::prefer_specific_type(
                             acc,
                             t.clone(),
