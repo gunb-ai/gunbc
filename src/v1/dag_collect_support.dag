@@ -10,6 +10,7 @@ import v1.std.core {
 }
 
 import std.types { bool_text }
+import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 
 import v1.compiler.emit_core_support { escape_json_string }
@@ -90,15 +91,15 @@ fn connective_name(value: Connective) -> String {
   }
 }
 
-fn dag_node_bag_hash(digests: List<String>) -> String {
+fn dag_node_bag_hash(digests: List<Fnv1a64StructuralDigestHex>) -> Fnv1a64StructuralDigestHex {
   digests |> sort_by(d => d) |> fold(init: atom_identity_hash("^dag_collect_bag_empty"), f: (acc, d) => hash_combine(acc, d))
 }
 
-fn dag_node_seq_hash(digests: List<String>) -> String {
+fn dag_node_seq_hash(digests: List<Fnv1a64StructuralDigestHex>) -> Fnv1a64StructuralDigestHex {
   digests |> fold(init: atom_identity_hash("^dag_collect_seq_empty"), f: (acc, d) => hash_combine(acc, d))
 }
 
-fn child_subtree_hash(connective: Connective, digests: List<String>) -> String {
+fn child_subtree_hash(connective: Connective, digests: List<Fnv1a64StructuralDigestHex>) -> Fnv1a64StructuralDigestHex {
   match connective {
     Conj => dag_node_bag_hash(digests: digests)
     Disj => dag_node_bag_hash(digests: digests)
@@ -107,7 +108,7 @@ fn child_subtree_hash(connective: Connective, digests: List<String>) -> String {
   }
 }
 
-fn dag_node_surface_leaf_mix(node: Node) -> String {
+fn dag_node_surface_leaf_mix(node: Node) -> Fnv1a64StructuralDigestHex {
   atom_identity_hash(concat(
     node.name, "|",
     connective_name(value: node.connective), "|",
@@ -131,7 +132,7 @@ fn literal_value_fingerprint(value: LiteralValue) -> String {
 // (Bind.declaration, VariantPattern.field_bindings) must be folded in
 // recursively or two arms/bindings differing only by pattern collapse to the
 // same fingerprint.
-fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
+fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> Fnv1a64StructuralDigestHex {
   match pattern {
     Absent => atom_identity_hash("^dag_collect_match_pattern_absent")
     Present { value: Bind { declaration: d } } =>
@@ -148,7 +149,7 @@ fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
   }
 }
 
-fn dag_node_surface_fingerprint_rec(node: Node) -> String {
+fn dag_node_surface_fingerprint_rec(node: Node) -> Fnv1a64StructuralDigestHex {
   let child_hashes = node.children |> map(c => dag_node_surface_fingerprint_rec(node: c))
   let param_hashes = node.params |> map(p => dag_node_surface_fingerprint_rec(node: p))
   let with_children = hash_combine(dag_node_surface_leaf_mix(node: node), child_subtree_hash(connective: node.connective, digests: child_hashes))
@@ -156,7 +157,7 @@ fn dag_node_surface_fingerprint_rec(node: Node) -> String {
   hash_combine(with_params, match_pattern_fingerprint_rec(pattern: node.match_pattern))
 }
 
-fn dag_node_surface_fingerprint(node: Node) -> String {
+fn dag_node_surface_fingerprint(node: Node) -> Fnv1a64StructuralDigestHex {
   dag_node_surface_fingerprint_rec(node: node)
 }
 
