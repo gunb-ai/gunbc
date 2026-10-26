@@ -6407,13 +6407,23 @@ pub fn run_regen_round_cost(
     let stage0_src = workspace.join("src/v1/stage0/src");
     let candidate_src = workspace.join(candidate_dir_rel).join("src");
     let host = host_name();
-    let tree = git_head_sha(&workspace)?;
-    let tree_dirty = git_tree_dirty(&workspace)?;
-    let source_identity = source_identity(&workspace, &tree)?;
     let exe_before = running_image_digest()?;
 
     // Recover an interrupted transaction before attempting to build or observe a new subject.
     restore_regen_convergence_journal(&workspace)?;
+
+    // THE SUBJECT IS READ AFTER THE RESTORE, which is what that comment has always claimed and
+    // what the round-1 bootstrap makes load-bearing rather than incidental. A heal round WRITES
+    // the base mirror into the worktree (the journal holds the head's bytes, restored on every
+    // exit path), and the seed build may relink this image and re-exec: the second image compares
+    // the identity it observes against the one the first image carried (`SourceChangedAcrossHandoff`).
+    // Read before the restore, the first image would see the committed head and the second would
+    // see whatever the previous image had written, and the round would refuse for a defect in the
+    // observation order rather than in the source. Read here, every image of one round observes
+    // one tree: the committed state, journal recovered.
+    let tree = git_head_sha(&workspace)?;
+    let tree_dirty = git_tree_dirty(&workspace)?;
+    let source_identity = source_identity(&workspace, &tree)?;
 
     // THE ROUND-1 BOOTSTRAP (DESIGN §5, RFM #14963): when the caller is the heal round, the seed
     // build below compiles the BASE ref's committed mirror instead of the head's. Unconditional
@@ -7280,6 +7290,35 @@ mod heal_round_one_base_mirror_tests {
             "unlocated refusal: {error}"
         );
         let _ = fs::remove_dir_all(&clone);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE HANDOFF CARRIES ONE IDENTITY. The seed build can relink this image and re-exec, and the
+    /// second image refuses (`SourceChangedAcrossHandoff`) unless the identity it observes matches
+    /// the one it was handed. The bootstrap WRITES base bytes into the worktree, so if the subject
+    /// were read before the journal restore the first image would report the committed head and the
+    /// second would report the base-seeded tree, and the round would die on a heal run for a defect
+    /// in the observation order. This pins the invariant that ordering buys.
+    #[test]
+    fn the_subject_is_the_committed_tree_under_every_bootstrap_state() {
+        let (root, stage0, _) = base_mirror_fixture();
+        let head = git_head_sha(&root).expect("fixture head");
+        let committed = source_identity(&root, &head).expect("committed identity");
+        let subject = fixture_subject(&root);
+        bootstrap_round_one_from_base_mirror(&root, &stage0, "base-ref", &subject)
+            .expect("the round-1 bootstrap runs");
+        assert_ne!(
+            source_identity(&root, &head).expect("seeded identity"),
+            committed,
+            "the fixture must actually dirty the tree, or it proves nothing"
+        );
+        restore_regen_convergence_journal_for_subject(&root, &subject).expect("restore");
+        assert_eq!(
+            source_identity(&root, &head).expect("recovered identity"),
+            committed,
+            "after the ONE restore the round must observe the committed tree, so every image of one \
+             round carries one identity"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
