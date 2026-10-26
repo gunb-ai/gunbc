@@ -6,7 +6,7 @@ import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, CodeBlock, Al
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
-// THE DESIGN CARRIER FOR "INSTALL A CARD, GET DRIVERS, POWER AND FANS RIGHT". DESIGN §1: a plan's
+// THE DESIGN CARRIER FOR "INSTALL A CARD, GET DRIVERS, POWER AND FANS RIGHT". DESIGN.md preamble: a plan's
 // authority is its `.dag` carrier, so there is no docs/plans/*.md for it (`PlanIsAuthorityOnly`).
 //
 // Two conventions it holds itself to: every code reference names a module and symbol, never a
@@ -22,6 +22,168 @@ fn t4(a: String, b: String, c: String, d: String) -> MarkdownTableRow {
 fn t3(a: String, b: String, c: String) -> MarkdownTableRow {
   row(cells: [cell(text: a), cell(text: b), cell(text: c)])
 }
+
+// THE DEPENDENCY GRAPH IS TYPED ROWS; section 7's table is their projection. An id is a closed sum,
+// so a misspelled node has no constructor. Each relation between nodes is a `needs` edge, and row
+// prose names no node, so the declared graph is the whole graph. A home is either an existing
+// declaration, which must resolve, or the module that a node will create.
+type GpuCardNodeId
+  = GcD0 | GcD1 | GcD2
+  | GcN0 | GcN1 | GcN2 | GcN3 | GcN4 | GcN5 | GcN6 | GcN7 | GcN8 | GcN9 | GcN10 | GcN11 | GcN12
+  | GcGoal
+
+type GpuCardNodeHome
+  = GcExtends { symbol: String }
+  | GcCreates { module: String }
+  | GcOperatorDecides
+
+type GpuCardNodeStanding = GcUnstarted | GcInReview { pr: String } | GcLanded { pr: String } | GcDecided
+
+type GpuCardGraphRow {
+  id: GpuCardNodeId
+  what: String
+  home: GpuCardNodeHome
+  done: String
+  needs: List<GpuCardNodeId>
+  standing: GpuCardNodeStanding
+}
+
+fn gc_node_label(id: GpuCardNodeId) -> String {
+  match id {
+    GcD0 => "D0"
+    GcD1 => "D1"
+    GcD2 => "D2"
+    GcN0 => "N0"
+    GcN1 => "N1"
+    GcN2 => "N2"
+    GcN3 => "N3"
+    GcN4 => "N4"
+    GcN5 => "N5"
+    GcN6 => "N6"
+    GcN7 => "N7"
+    GcN8 => "N8"
+    GcN9 => "N9"
+    GcN10 => "N10"
+    GcN11 => "N11"
+    GcN12 => "N12"
+    GcGoal => "G"
+  }
+}
+
+fn gc_home_text(h: GpuCardNodeHome) -> String {
+  match h {
+    GcExtends { symbol } => join(["extends `", symbol, "`"], "")
+    GcCreates { module } => join(["new `", module, "`"], "")
+    GcOperatorDecides => "operator"
+  }
+}
+
+fn gc_standing_text(s: GpuCardNodeStanding) -> String {
+  match s {
+    GcUnstarted => "unstarted"
+    GcInReview { pr } => join(["in review, ", pr], "")
+    GcLanded { pr } => join(["landed, ", pr], "")
+    GcDecided => "decided"
+  }
+}
+
+fn gc_needs_text(ids: List<GpuCardNodeId>) -> String {
+  if ids.length() == 0 { "nothing" } else { join(map(ids, i => gc_node_label(id: i)), ", ") }
+}
+
+fn gc_row_projection(r: GpuCardGraphRow) -> MarkdownTableRow {
+  row(cells: [
+    cell(text: gc_node_label(id: r.id)),
+    cell(text: join([r.what, " Done: ", r.done], "")),
+    cell(text: gc_home_text(h: r.home)),
+    cell(text: gc_needs_text(ids: r.needs)),
+    cell(text: gc_standing_text(s: r.standing)),
+  ])
+}
+
+data gpu_card_graph_rows: List<GpuCardGraphRow> = [
+  GpuCardGraphRow {
+    id: GcD0, what: "Confirm the active-card set in section 0.", home: GcOperatorDecides,
+    done: "the operator names every installed card and its host.", needs: [], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcD1, what: "The fan posture for zones the firmware cannot see (section 5.4).", home: GcOperatorDecides,
+    done: "the fleet fan ruling is amended or reaffirmed.", needs: [], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcD2, what: "The NVIDIA driver branch, and open versus proprietary kernel modules.", home: GcOperatorDecides,
+    done: "one branch is named, and its release notes list every active card.", needs: [], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN0, what: "Active-card census, the H11 host identity, the section-3 receipts, and the two incidents as failure-mode rows.",
+    home: GcExtends { symbol: "gunbc.fleet.fleet_host_identity::operator_hosts" },
+    done: "every active card is a row naming its host and catalog model, and the H11 host has an opaque identity.", needs: [GcD0], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN1, what: "nvidia-smi power, clock, P-state and persistence queries and effects, with unsupported output as its own arm.",
+    home: GcExtends { symbol: "extdeps.nvidia.system_management_interface::NvidiaComputeAppsRead" },
+    done: "each operation parses a captured output and refuses an unsupported one, in a witness.", needs: [], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN2, what: "Driver releases, packages, kernel-module flavour, and nvidia-persistenced.",
+    home: GcCreates { module: "extdeps.nvidia.linux_driver" },
+    done: "the chosen branch is cited, and the supported-GPU list is read from its release notes.", needs: [GcD2], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN3, what: "Catalog rows for every active model not yet catalogued, a multi-GPU board shape for the A16, and a configurable power range distinct from TDP.",
+    home: GcExtends { symbol: "extdeps.gpu.types::GpuModelCatalogRow" },
+    done: "every active card resolves to a cited catalog row.", needs: [], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN4, what: "Supermicro OEM fan-mode and zone-duty operations, and a Supermicro BMC family arm.",
+    home: GcCreates { module: "extdeps.bmc.supermicro_oem_fan" },
+    done: "get and set for mode and zone duty are modelled, with a readback parse.", needs: [], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN5, what: "H11SSL header-to-zone map, physical slot order and pitch.",
+    home: GcExtends { symbol: "extdeps.boards.supermicro_h11ssl::supermicro_h11ssl_fan_headers" },
+    done: "every header maps to a zone, cited or typed as a read obligation.", needs: [], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN6, what: "Placement: card residence by slot, fan residence and topology by header, and the derived zone reach.",
+    home: GcExtends { symbol: "gunbc.fleet.fleet_fan_wiring::InstalledFanModelStanding" },
+    done: "an adjacent pair of passive cards and an unmapped header each refuse in a witness.", needs: [GcN0, GcN3, GcN5], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN7, what: "The section-6 matrix as an instrument row, run on each active model.",
+    home: GcCreates { module: "gunbc.serving.gpu_power_state_receipt" },
+    done: "each active model has a receipt for every phase, including whole-host wall power.", needs: [GcN0, GcN1], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN8, what: "The power-state machine and a per-model cap and park selection through std.decision.",
+    home: GcCreates { module: "gunbc.serving.gpu_power_state_policy" },
+    done: "each active model's policy is a selection receipt, and a cap outside the device range refuses.", needs: [GcN1, GcN3, GcN7], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN9, what: "An accelerator guard role, and a zone posture for passive cards whose fail-safe is full duty.",
+    home: GcExtends { symbol: "product.fleet_fan_policy::FleetFanPolicy" },
+    done: "a lost reading or a dead loop drives the zone to full duty, in a witness.", needs: [GcD1, GcN4, GcN6], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN10, what: "The converge leg, with observe, plan, apply, independent readback and typed refusals, as one fleet-converge mode.",
+    home: GcCreates { module: "gunbc.host.gpu_card_converge" },
+    done: "the discriminating refusals in this section go red on the real path.", needs: [GcN2, GcN6, GcN8, GcN9], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN11, what: "Run the leg on each active host, and remove the section-4 specimens.",
+    home: GcCreates { module: "gunbc.host.gpu_card_converge" },
+    done: "every active card's readback holds and no specimen remains.", needs: [GcN10], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcN12, what: "R9700 rows: the AMD driver, ROCm, amd-smi and the catalog row, through the same leg.",
+    home: GcCreates { module: "extdeps.gpu.amd" },
+    done: "satisfied with nothing to do while the census shows no R9700. Once one is installed, its readback holds and no code beyond rows was added.", needs: [GcN10], standing: GcUnstarted
+  },
+  GpuCardGraphRow {
+    id: GcGoal, what: "Every active card converges.", home: GcCreates { module: "gunbc.host.gpu_card_converge" },
+    done: "the bound in section 0 holds on every active host.", needs: [GcN11, GcN12], standing: GcUnstarted
+  },
+]
 
 fn gpu_card_host_program_body() -> List<MarkdownBlock> {
   [
@@ -144,9 +306,14 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
     CodeBlock { code: "A1 no client (persistence on)          60 s\nA2 bare CUDA/HIP context               60 s\nA3 context + 1 GiB allocation          60 s\nA4 engine loaded, idle                 2-5 min\nA5 clock-parked (read min, -lmi gated) 60 s\nA6 wake: reset clocks, one warm request -> time to normal clocks + first useful token\nA7 engine stopped, driver persisted    60 s   (the floor)\n\nper sample: card + VBIOS, driver + kernel-module flavour, persistence, engine state,\n            P-state, SM/mem clock, card power, card energy counter, temperature,\n            fan duty/rpm per zone, whole-host wall power, CPU package power\nper run:    wake time, request energy, whether KV/expert cache survived" },
     p(text: "Whole-host wall power is mandatory. Saving 10 W on a card is not a deep-sleep strategy if the host idles at 250 W, so an A-phase without a wall reading is a refused receipt, not a partial one. The instrument runs only on active models (section 0): the A16, which is mostly done, then the PRO 6000 Max-Q and the RTX 2000 Ada, and the R9700 once it is installed. The A2 and T10 wait until they are in the fleet."),
     h2(text: "7. The dependency graph"),
-    p(text: "Each node is one PR-sized change, unless it is marked as a decision. An arrow means the node needs the one it points at. G is the bound from section 0."),
-    CodeBlock { code: "D1 fan posture ruling (operator)        D2 driver branch pin (operator)\n\nN0  active-card census + H11 host identity + section-3 receipts + incident rows\nN1  extdeps.nvidia.system_management_interface: power/clock/pstate/persistence ops\nN2  extdeps.nvidia.linux_driver + extdeps.nvidia.persistence_daemon      <- D2\nN3  extdeps.gpu: RTX 2000 Ada row, multi-GPU board shape (A16), power-range field\nN4  extdeps.bmc.supermicro_oem_fan + BmcFirmwareFamily Supermicro arm\nN5  extdeps.boards.supermicro_h11ssl: header->zone, slot order/pitch\nN6  placement: card residence, fan residence, zone reach        <- N0 N3 N5\nN7  receipts for each active model (section 6 instrument)       <- N0 N1\nN8  power-state policy + std.decision selection per active model <- N1 N3 N7\nN9  fan-zone posture for passive cards (accelerator guard)      <- D1 N4 N6\nN10 converge leg (observe/plan/apply/readback, typed refusals)  <- N2 N6 N8 N9\nN11 run N10 on each active host; delete section-4 specimens     <- N10\nN12 R9700 rows (extdeps.amd.*, extdeps.gpu.amd), only when installed  <- N10 (no fork)\n\nG   every active card's readback holds                          <- N11 (+ N12 if installed)\n\nparallel from the start: N0 N1 N3 N4 N5    first join: N6    critical path: N5 -> N6 -> N9 -> N10 -> N11" },
-    p(text: "There are two places to watch. N9 cannot start until D1 is answered, and it is the only thing between the A16s and convergence that waits on a person. N12 is in the graph only so that the leg is designed with it in mind: if adding the R9700 would need anything beyond rows, N10 was built wrong."),
+    p(text: "The graph is the typed rows `gunbc.plans.gpu_card_host_program::gpu_card_graph_rows`, and this table is their projection. Each change node is one PR. A decision node is the operator's. G is the bound from section 0. \"Needs\" lists completion prerequisites, and the test.claim witness checks that every edge names a row, that the graph is acyclic, and that every node is an ancestor of G. So nothing that G does not need is in the graph."),
+    TableBlock {
+      header: row(cells: [cell(text: "node"), cell(text: "what"), cell(text: "home"), cell(text: "needs"), cell(text: "standing")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: map(gpu_card_graph_rows, r => gc_row_projection(r: r)),
+    },
+    p(text: "Nodes that can start now: N0, N1, N3, N4 and N5. The critical path is N5, N6, N9, N10, N11, G. N9 is the only change on it that waits on a person (D1). N12 is satisfied with nothing to do while no R9700 is installed. It is in the graph so that N10 is designed for it: if adding the R9700 needs anything beyond rows, N10 was built wrong."),
+    p(text: "**Why the graph rows are not shared with the serving fleet program's rows.** `gunbc.plans.serving_fleet_program::ServingFleetRow` and the row type here have the same skeleton (id, home, edges, standing, done), and this is the second instance, so by DESIGN §6b it should be generalized. Not in this change: lifting the shape into `gunbc.plan` changes a sibling plan and its witness, which is outside this program's bound. The trigger is this PR's merge, and the follow-up is one shared plan-graph row type in `gunbc.plan` with both plans and both witnesses migrated onto it."),
     p(text: "Done means executed (DESIGN §5): G is a readback on each host, not a merged PR. And N10 counts only when discriminating inputs go red on the real path: a cap below the device minimum, a header with no zone, and adjacent passive cards each refuse."),
     h2(text: "8. Decisions for the operator"),
     ul(items: [
