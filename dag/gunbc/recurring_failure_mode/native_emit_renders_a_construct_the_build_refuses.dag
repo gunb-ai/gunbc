@@ -3,7 +3,7 @@ module gunbc.recurring_failure_mode.native_emit_renders_a_construct_the_build_re
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data native_emit_renders_a_construct_the_build_refuses: RecurringFailureMode = RecurringFailureMode {
   identity: "native_emit_renders_a_construct_the_build_refuses" as NonEmptyStr,
@@ -13,7 +13,7 @@ data native_emit_renders_a_construct_the_build_refuses: RecurringFailureMode = R
     standing: BelowCeiling {
       current: FoundOnRung { rung: Mitigatable },
       ceiling: StructurallyGuaranteed,
-      blocker: AwaitsOneGrounding { grounding: "the native emitter renders two constructs that the emitted crate's own cargo build refuses -- a Copy derive over an Rc heap field, and a Nat-to-Int cast rendered as a panic expression in argument position -- and neither module is rendered on main today, so no required check reaches the defect; the fix belongs to the emitter owner and was routed there at gunbc#14545" },
+      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
       trigger_capability: "emitter fixes for both constructs (below, receipts), after which a first-time rendering of std.bit or of a Nat-cast module builds; the further ceiling step is an emit-time check that renders and cargo-builds each newly pulled module when a new import first adds it to a native crate, so the refusal names the import that pulled it instead of arriving unattributed after a twenty-minute build",
     },
   },
