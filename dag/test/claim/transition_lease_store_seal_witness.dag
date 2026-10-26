@@ -85,8 +85,8 @@ fn blocking_delta_outcomes(hostile: String, holds: fn(Int) -> Bool) -> CensusVer
 // that says it is missing -- a blocking MissingExport whose subject is that callable's name, exactly one -- and
 // the delta on top of it. Restore transition_lease_acquire_of or lease_acquisition_of and that row goes to zero,
 // which reds the claim whatever else the closure carries. This keyed pair is the whole of what the scratch shell
-// driver used to measure by splicing the two folds back in (review 86705 asked for the evidence, not the script);
-// the folds are deleted, so the absent name is the measured fact, and the deletion is visible in this PR's diff.
+// the folds are deleted, so the absent name is the measured fact: restore either fold and the keyed row goes to
+// zero and the claim reds. The evidence is the claim, not a script run beside it.
 fn laundering_route_is_gone(source: String, deleted_callable: String) -> ProcessExit {
   census_verdict_all([
     census_verdict(

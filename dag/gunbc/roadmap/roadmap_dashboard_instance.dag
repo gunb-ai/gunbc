@@ -390,7 +390,7 @@ fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
 }
 
 // THE INSTANCE ROOT IS ABSOLUTE AND SPELLED ONE WAY, a fact of the instance that every store derived from
-// instance_root reads, so it is answered here once and not per store (review 86022 of gunb-ai/gunbc#15105).
+// instance_root reads, so it is answered here once and not per store: one rule, applied at every sibling store.
 // A relative root resolves against each process's working directory, so two processes would address two
 // directories as "the" instance; "/" is the host root, not an instance. A doubled or trailing separator, or
 // a `.` or `..` segment, still names the same directory on disk, but every identity this repository takes by

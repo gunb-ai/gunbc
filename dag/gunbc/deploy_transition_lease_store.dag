@@ -159,7 +159,11 @@ fn transition_lease_location(store: TransitionLeaseStore) -> String {
 // THE REFUSIONS, read off the hold library's acquire outcome. PUBLIC AND REFUSAL-ONLY by design: the arms below
 // carry no proof, so folding them is safe for any caller. What is deliberately NOT here is the admitted arm, and
 // there is no public function anywhere that turns an acquire outcome -- authored, or genuine and taken from some
-// other store or slot -- into a held lease. The admitting arm used to live here as
+// other store or slot -- into a held lease. This is a specimen of gunbc.recurring_failure_mode
+// admitted_call_edge_with_unrestricted_value_egress: a confined type whose admitted caller RETURNS the confined
+// value is itself an unrestricted constructor for it, and in a language with no module-private the only repairs are
+// to remove the alternate mint or close its egress, and the repair here took the first. The admitting arm used to
+// live here as
 // `transition_lease_acquire_of(store, outcome)`, and it was a laundering route: it ignored the outcome's
 // slot_key and paired whatever outcome it was handed with whatever STORE the caller named beside it, so a real
 // acquire at store A slot X minted a held lease for the transition store B with no CAS in B at all. It now lives

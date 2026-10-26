@@ -558,8 +558,7 @@ test fn the_context_mint_refuses_every_spelling_but_the_canonical_absolute_root(
 }
 
 // AND EACH STORE'S OWN MINT APPLIES THE SAME RULE, not only the context that calls them: the context mint refuses at
-// the inhibition store first, so without this the lease store's rule would never be exercised (review 86022 of
-// gunb-ai/gunbc#15105: one rule, applied at both siblings).
+// the inhibition store first, so without this the lease store's rule would never be exercised.
 fn expect_mints_refused(test: String, step: String, root: String, names: String) -> ProcessExit {
   let lease = match transition_lease_store(instance: instance_at(dir: root)) {
     TransitionLeaseStoreUnready { detail: d } =>

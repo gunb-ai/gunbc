@@ -502,7 +502,8 @@ type LeaseAcquisition
 // AND THERE IS NO PUBLIC GUARD MINT OVER AN OUTCOME. The guard's acquired arm used to live here as
 // `lease_acquisition_of(context, subject, holder, outcome)`, taking the acquire outcome as an argument: any
 // module could write `TransitionLeaseAcquired { held: <whatever held it could get its hands on> }` and be handed
-// a TransitionGuard for whatever context, subject and holder it named beside it -- a second laundering route,
+// a TransitionGuard for whatever context, subject and holder it named beside it -- the same specimen of
+// gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress as the store's fold, one layer up,
 // one layer up from the store's. It is deleted. The only mint of a guard is inline in acquire_transition_lease
 // below, over the outcome that call's own transition_lease_acquire returned, so a guard exists only where a
 // committed acquire happened in the context's own lease store.
