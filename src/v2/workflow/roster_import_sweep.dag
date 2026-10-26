@@ -3352,3 +3352,4 @@ fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, 
       }
   }
 }
+// Probe row for attribution (valiant-deer-27): a comment-only touch makes this module rewritten, so the census resolves it as a subject WITHOUT the wave rows.
