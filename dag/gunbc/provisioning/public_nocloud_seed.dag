@@ -8,7 +8,7 @@ import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping, yaml_mapping, yaml_string, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
-import extdeps.ssh.keys { Ed25519, Rsa, EcdsaP256, ssh_key_algorithm_token }
+import extdeps.ssh.keys { ssh_canonical_public_key_line_admitted }
 import extdeps.libxcrypt.crypt_scheme { crypt_hash_shaped }
 import extdeps.standards.rfc_7468 { pem_text_carries_private_key_block }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
@@ -24,8 +24,8 @@ import gunbc.os_install_emit { cloud_config_user_data, AutoinstallUserDataRender
 // HOW (merry-fox-82, hold at 7dd8eb19, option (a)). The only mint is admit_public_nocloud_seed. It admits a user-data
 // DOCUMENT TREE (the YAML the seed renderer builds, gunbc.os_install_emit autoinstall_user_data_document) against a
 // CLOSED, PER-PATH schema (public_seed_user_data_schema): each path the amd64 key-only install needs, and at each
-// path a typed leaf -- a value from a closed list, an exact boolean, an exact integer, a public key line of an
-// algorithm extdeps.ssh.keys names, or a POSIX name (extdeps.posix.shell_command_language admit_posix_shell_name, XBD
+// path a typed leaf -- a value from a closed list, an exact boolean, an exact integer, a canonical public key line
+// (extdeps.ssh.keys: keytype and a blob that decodes to it, no comment), or a POSIX name (extdeps.posix.shell_command_language admit_posix_shell_name, XBD
 // 3.235). A key at a path the schema does not list refuses, whatever its value, so every free-text field -- the
 // command lists (early-, late-, error-commands), uri, sudo rules, packages -- has no way in; a field the seed later
 // needs is added here as a typed leaf, never as a string. meta-data is not admitted from a caller at all: this module
@@ -126,8 +126,11 @@ fn seed_key_path(path: String, key: String) -> String {
   if path == "" { key } else { join([path, ".", key], "") }
 }
 
+// An authorized key is a CANONICAL public key line (extdeps.ssh.keys ssh_canonical_public_key_line_admitted): keytype
+// and blob only, the blob decoding to the same keytype (RFC 4253 section 6.6), and no comment -- sshd(8)'s comment is
+// free text, so a seed carries none (merry-fox-82, hold at 0dd912cd). Renderers emit ssh_public_key_canonical_line.
 fn seed_public_key_line(line: String) -> Bool {
-  any([Ed25519, Rsa, EcdsaP256], a => starts_with(s: line, prefix: concat(ssh_key_algorithm_token(a: a) as String, " ")))
+  ssh_canonical_public_key_line_admitted(line: line)
 }
 
 fn seed_string_backstop(document: SeedDocument, path: String, text: String) -> List<PublicSeedFinding> {

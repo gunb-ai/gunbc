@@ -6296,6 +6296,31 @@ pub fn shared_by_every_declarer(
     }
 }
 
+pub fn shared_type_declaration_is_marked_shared(
+    module_path: String,
+    name: String,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    (v1_rt::set_contains(&emit_info.shared_types.clone(), name.clone())
+        || match crate::v1_compiler_infer_emit_info::type_summary_decided(
+            emit_info.type_summaries.clone(),
+            crate::v1_compiler_infer_emit_info::type_decl_identity(module_path, name.clone()),
+        ) {
+            Some(summary) => v1_rt::set_contains(
+                &maybe_mark_shared_type(
+                    v1_rt::rc_empty_set::<String>(),
+                    summary.clone(),
+                    emit_info.recursive_type_set.clone(),
+                    crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
+                        .needs_sharing
+                        .clone(),
+                ),
+                summary.name.clone(),
+            ),
+            std::option::Option::None => false,
+        })
+}
+
 pub fn build_shared_types(
     type_summaries: Rc<TypeSummaryIndex>,
     recursive_type_set: Rc<BTreeSet<String>>,
@@ -17493,7 +17518,11 @@ pub fn emit_struct_from_children(
             env.module_path.clone(),
             name.clone(),
             children.clone(),
-            shared_types.clone(),
+            shared_type_declaration_is_marked_shared(
+                env.module_path.clone(),
+                name.clone(),
+                emit_info.clone(),
+            ),
             has_fn_fields,
             v1_rt::set_contains(
                 &emit_info.map_key_required_type_names.clone(),
@@ -27670,11 +27699,12 @@ pub fn rust_call_arg_function_value_adapt(
     idx: i64,
 ) -> String {
     {
-        let is_call_result = match (*arg.expr_data.clone()).clone() {
+        let is_rc_carried = match (*arg.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => true,
+            ExprData::ExprFieldAccess { summary: _, .. } => true,
             _ => false,
         };
-        if !is_call_result.clone() {
+        if !is_rc_carried.clone() {
             return arg_str.clone();
         }
         match callee.clone() {

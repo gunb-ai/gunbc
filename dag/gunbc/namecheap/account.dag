@@ -1,6 +1,7 @@
 module gunbc.namecheap.account
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List }
+import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name }
 
 data namecheap_domain_sld: NonEmptyStr = "gunb"
 data namecheap_domain_tld: NonEmptyStr = "ai"
@@ -19,4 +20,64 @@ data namecheap_account_report: NamecheapAccountReport = NamecheapAccountReport {
   username: "briansrls", domain: join([namecheap_domain_sld as String, ".", namecheap_domain_tld as String], ""),
   api_allowlist_ipv4: "96.224.201.7", allowlist_label: "dev",
   source: "owner Namecheap API allowlist console report 2026-09-27",
+}
+
+// WHICH NAMESERVERS THE REGISTRAR DELEGATES gunb.ai TO. A registrar setting is a different fact
+// from what resolvers answer: the .ai parent zone serves the new NS set only after the registry
+// publishes it, which the operator expects to take a day or two. So the standing is two arms,
+// and this row holds only the first. The Cloudflare nameserver names are assigned per account by
+// Cloudflare. The comment on NamecheapAccountReport asks for the API allowlist to be re-observed when
+// the DNS controller changes; this change triggers that. Frontier: gunbc.plans.boot_origin_bmc_media B1
+// (BootOriginHostnameAllocated) and the fleet zone (gunbc.plans.fleet_naming_reach_access P7) consume
+// this row, and both require DelegationObservedInParent, never the registrar report alone.
+type RegistrarNameserverSetting
+  = RegistrarBasicDns
+  | RegistrarCustomNameservers { nameservers: List<HostName> }
+
+type NameserverDelegationStanding
+  = DelegationReportedAtRegistrar { setting: RegistrarNameserverSetting, source: String }
+  | DelegationObservedInParent { setting: RegistrarNameserverSetting, source: String }
+
+// The operator's report is transcribed text; each name reaches HostName only through the DNS
+// authority's parser, and a name it refuses is a typed reading, never a dropped row. An NS target
+// is an absolute domain name (RFC 1035 section 3.3.11), and the console omits the root dot, so the
+// raw string is kept as evidence and parsed in its absolute form: the reading is FullyQualified and
+// compares equal (host_name_eq) to a parent-zone NS answer for the same server.
+type NameserverNameRefusal {
+  raw: NonEmptyStr
+  cause: DomainNameParseError
+}
+
+type NameserverDelegationReading
+  = DelegationRead { standing: NameserverDelegationStanding }
+  | DelegationNameRefused { refusal: NameserverNameRefusal }
+
+data gunb_ai_reported_nameservers: List<NonEmptyStr> = ["alexandra.ns.cloudflare.com", "austin.ns.cloudflare.com"]
+
+data gunb_ai_nameserver_report_source: String = "operator Namecheap console report 2026-10-26: Custom DNS set to the two Cloudflare nameservers; parent-zone propagation pending"
+
+fn absolute_ns_spelling(raw: String) -> String {
+  if ends_with(s: raw, suffix: ".") { raw } else { concat(raw, ".") }
+}
+
+fn parse_nameservers(raws: List<NonEmptyStr>) -> Result<List<HostName>, NameserverNameRefusal> {
+  fold(raws, init: Ok { value: [] }, f: (acc, raw) => match acc {
+    Err { value: refusal } => Err { value: refusal }
+    Ok { value: hs } => match parse_host_name(raw: absolute_ns_spelling(raw: raw as String)) {
+      Err { value: cause } => Err { value: NameserverNameRefusal { raw: raw, cause: cause } }
+      Ok { value: host } => Ok { value: concat(hs, [host]) }
+    }
+  })
+}
+
+fn gunb_ai_nameserver_delegation() -> NameserverDelegationReading {
+  match parse_nameservers(raws: gunb_ai_reported_nameservers) {
+    Err { value: refusal } => DelegationNameRefused { refusal: refusal }
+    Ok { value: hosts } => DelegationRead {
+      standing: DelegationReportedAtRegistrar {
+        setting: RegistrarCustomNameservers { nameservers: hosts },
+        source: gunb_ai_nameserver_report_source,
+      },
+    }
+  }
 }

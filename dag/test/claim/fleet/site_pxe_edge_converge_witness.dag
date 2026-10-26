@@ -138,6 +138,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   HttpListenWildcard,
   HttpListenOtherAddress,
   HttpListenAbsent,
+  HttpListenUnobservable,
   HttpLegNotNeeded,
   HttpLegActivation,
   site_pxe_edge_install_bindings,
@@ -769,7 +770,7 @@ fn fixture_user_data() -> YamlValue {
     kv(key: "version", value: yaml_int(n: 1)),
     kv(key: "ssh", value: yaml_mapping(entries: [
       kv(key: "install-server", value: yaml_bool(b: true)),
-      kv(key: "authorized-keys", value: yaml_sequence(elements: [yaml_string(s: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFixtureFixtureFixtureFixtureFixtureFixture fixture")])),
+      kv(key: "authorized-keys", value: yaml_sequence(elements: [yaml_string(s: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8g")])),
       kv(key: "allow-pw", value: yaml_bool(b: false)),
     ])),
   ]))])
@@ -943,6 +944,14 @@ test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
   let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
   let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
   !site_pxe_edge_run_succeeded(run: wildcard) && site_pxe_edge_run_succeeded(run: bound)
+}
+
+// RED (review 86471): A LISTENER PROBE THAT COULD NOT RUN IS NOT "NOTHING LISTENING". It is its own arm, carrying the
+// reason, and an apply whose probe was unobservable is not converged either.
+test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
+  !site_pxe_edge_run_succeeded(run: blind) && HttpListenUnobservable { reason: "x" } != HttpListenAbsent
 }
 
 // ONE ds= TOKEN (review 86171): the seeded-media string builder now composes the shared token through GRUB's quoting

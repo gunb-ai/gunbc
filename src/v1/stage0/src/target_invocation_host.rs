@@ -533,6 +533,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("router-proxy-falsifier"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/router_proxy_falsifier.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
@@ -661,6 +667,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "src/v2/workflow/roster_import_sweep.dag",
                 function: "roster_import_sweep_controls_wire",
+            },
+        ),
+        (
+            instrument_label("credential-acquisition-systemd-rows"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/test/claim/dispatch_credential_acquisition_witness.dag",
+                function: "credential_acquisition_systemd_rows_wire",
             },
         ),
         (

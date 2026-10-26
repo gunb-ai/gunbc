@@ -2,8 +2,7 @@ module test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.shell
-import gunbc.output_policy { OutcomeIsData }
-import gunbc.retained_shell_script { retained_runtime }
+import std.types { FilePath }
 import std.algebra { non_empty_to_list }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderObservation,
@@ -40,13 +39,13 @@ data committed_image_path: String = site_pxe_edge_committed_ipxe_arm64.path as S
 
 
 fn digest_observation(path: String) -> SitePxeEdgeChainloaderObservation {
-  let r = shell.Exec.Run(script: retained_runtime(body: concat("sha256sum ", path), reason: "chainloader real-execution witness: sha256sum of the image" as NonEmptyStr), expect: OutcomeIsData)
-  site_pxe_edge_digest_observation(path: path as NonEmptyStr, success: r.success, line: r.stdout)
+  let r = shell.Exec.RunArgv(program: "sha256sum", arguments: [path])
+  site_pxe_edge_digest_observation(path: path as NonEmptyStr, success: r.exit_code == 0, line: r.stdout)
 }
 
 fn embedded_revision(path: String) -> SitePxeEdgeEmbeddedRevision {
-  let r = shell.Exec.Run(script: retained_runtime(body: concat("grep -a -o -E '[(]g[0-9a-f]{5}[)]' ", path), reason: "chainloader real-execution witness: embedded revision grep" as NonEmptyStr), expect: OutcomeIsData)
-  site_pxe_edge_embedded_revision(success: r.success, output: r.stdout)
+  let r = shell.Exec.RunArgv(program: "grep", arguments: ["-a", "-o", "-E", "[(]g[0-9a-f]{5}[)]", path])
+  site_pxe_edge_embedded_revision(success: r.exit_code == 0, output: r.stdout)
 }
 
 // The arm64 chain's standing from the production per-chain fold, with the member read at `path` (the digest
@@ -89,10 +88,12 @@ test fn a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_e
     false
   } else {
     let copy = join([dir.path as String, "/snponly-arm64.efi"], "")
-    let made = shell.Exec.Run(script: retained_runtime(body: join(["cp ", committed_image_path, " ", copy, " && LC_ALL=C sed -i 's/(gc51ca)/(gc51cb)/g' ", copy], ""), reason: "chainloader real-execution witness: corrupt one marker byte in a copy" as NonEmptyStr), expect: OutcomeIsData)
+    let copied = shell.Copy.File(source: committed_image_path as FilePath, destination: copy as FilePath)
+    let edited = shell.Exec.RunArgv(program: "env", arguments: ["LC_ALL=C", "sed", "-i", "s/(gc51ca)/(gc51cb)/g", copy])
     let causes = causes_for(path: copy)
     let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-    made.success
+    copied.success
+      && edited.exit_code == 0
       && contains(causes, "ipxe-embedded-revision-mismatch: image carries c51cb, pinned c51ca")
       && contains(causes, "member-digest-mismatch snponly.efi")
       && cleaned.success
