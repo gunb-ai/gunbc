@@ -86,6 +86,7 @@ type LuaPhase
   | AccessPhase
   | ContentPhase
   | HeaderFilterPhase
+  | BodyFilterPhase
   | LogPhase
 
 type LocationMatch
@@ -151,7 +152,7 @@ fn nginx_variable(text: String) -> Optional<NginxVariable> {
 }
 
 fn lua_phase_name(ph: LuaPhase) -> String {
-  match ph { InitPhase => "init_by_lua_block" AccessPhase => "access_by_lua_block" ContentPhase => "content_by_lua_block" HeaderFilterPhase => "header_filter_by_lua_block" LogPhase => "log_by_lua_block" }
+  match ph { InitPhase => "init_by_lua_block" AccessPhase => "access_by_lua_block" ContentPhase => "content_by_lua_block" HeaderFilterPhase => "header_filter_by_lua_block" BodyFilterPhase => "body_filter_by_lua_block" LogPhase => "log_by_lua_block" }
 }
 
 fn location_match_text(m: LocationMatch) -> String {
