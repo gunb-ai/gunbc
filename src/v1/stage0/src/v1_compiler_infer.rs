@@ -35474,6 +35474,7 @@ pub fn build_emit_graph_info(
             expected_type: std::option::Option::None,
             tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+            trmc_out: false,
             dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
         })
     }
