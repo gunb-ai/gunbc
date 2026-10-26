@@ -22,8 +22,8 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
-import std.optional { Absent, Optional, Present, optional_present, optional_absent }
+import v2.std.node { node_same_occurrence, Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+import std.optional { optional_eq, Absent, Optional, Present, optional_present, optional_absent }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, lexical_reference_node, parameter_reference_node, parameter_reference_path_optional, qualified_name_from_dotted_string }
 import v2.std.resolution_policy { NamespaceOnlyY }
 import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
@@ -246,7 +246,7 @@ fn pr_lambda_grounding_matches_recorded() -> Bool {
                       match inferred_facts_resolved_type(facts: facts) {
                         Holds { value: ty } =>
                           match b.standing {
-                            LexicalDeclared { node: d } => d == ty
+                            LexicalDeclared { node: d } => node_same_occurrence(a: d, b: ty)
                             LexicalValued { node: _ } => false
                             LexicalOwedFormal { field_type: _ } => false
                             LexicalUntyped => false
@@ -331,7 +331,7 @@ test fn pr_unkeyed_lexical_reference_refuses_and_type_parameter_stays_atom_holds
     Accepted { value: _, diagnostics: _ } => false
   }
   let type_param_atom = match resolve_node(ctx: pr_ctx(kind: TypeParameterFrame { binders: empty_map(), owner: optional_absent() }), n: pr_x_atom) {
-    Accepted { value: v, diagnostics: _ } => v == pr_x_atom
+    Accepted { value: v, diagnostics: _ } => node_same_occurrence(a: v, b: pr_x_atom)
     Rejected { diagnostics: _ } => false
   }
   refused && type_param_atom
@@ -465,7 +465,7 @@ test fn pr_parameter_grounds_through_the_index_holds() -> Bool {
   let g = pr_program_grounding()
   match g.f_grounded {
     Present { value: _ } =>
-      (g.f_grounded == g.f_declared) && (g.g_grounded == g.g_declared) && (g.f_grounded != g.g_grounded)
+      (optional_eq(a: g.f_grounded, b: g.f_declared, eq: fn(p, q) { node_same_occurrence(a: p, b: q) })) && (optional_eq(a: g.g_grounded, b: g.g_declared, eq: fn(p, q) { node_same_occurrence(a: p, b: q) })) && (!optional_eq(a: g.f_grounded, b: g.g_grounded, eq: fn(p, q) { node_same_occurrence(a: p, b: q) }))
     Absent => false
   }
 }

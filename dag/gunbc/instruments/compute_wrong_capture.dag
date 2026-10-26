@@ -1,5 +1,8 @@
 module gunbc.instruments.compute_wrong_capture
 
+import gunbc.compute.compute_attempt_slots_root { compute_seat_directory, ComputeFlatSeat }
+import gunbc.owned_directory { owned_directory_path }
+import gunbc.host.user_session_runtime { UserSessionRuntimeBound, UserSessionRuntimeAbsent, observe_user_session_runtime, user_session_unit_setenv, user_session_launcher_env }
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.algebra { trim }
 import std.process { ExitSuccess, ExitFailure }
@@ -18,10 +21,9 @@ import gunbc.compute.work_provider_local {
   NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path,
 }
 import gunbc.instruments.compute_run_unit_cold {
-  HermeticUserSessionRuntimeAbsent, HermeticUserSessionRuntimeBound,
-  observe_hermetic_user_session_runtime, observe_isolated_job_toolchain_homes, observe_workspace,
+  observe_isolated_job_toolchain_homes, observe_workspace,
   observe_run_frame, observe_head, prepare_checkout, mkdir_ok, path_is_under_production_instance_root,
-  hermetic_user_session_unit_setenv, hermetic_toolchain_unit_setenv, hermetic_user_session_launcher_env,
+  hermetic_toolchain_unit_setenv,
   compute_run_unit_cold_unit_grant,
 }
 
@@ -120,7 +122,7 @@ fn wrong_capture_mark_tree(instance: HostDashboardInstance, layout: ComputeLayou
 
 fn wrong_capture_unit_env(runtime_dir: FilePath, homes: IsolatedJobToolchainHomes) -> List<SystemdSetenvBinding> {
   concat(
-    concat(compute_operation_env(op: work_default_build()), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+    concat(compute_operation_env(op: work_default_build()), user_session_unit_setenv(runtime_dir: runtime_dir)),
     hermetic_toolchain_unit_setenv(homes: homes),
   )
 }
@@ -163,7 +165,7 @@ fn wrong_capture_build(
     identity_hex: identity,
     argv: compute_command_argv(instance: instance, layout: layout, op: work_default_build(), dependency: NoComputeDependency),
     env: wrong_capture_unit_env(runtime_dir: runtime_dir, homes: homes),
-    launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+    launcher_env: user_session_launcher_env(runtime_dir: runtime_dir),
     granted: compute_run_unit_cold_unit_grant(),
     user_runtime_dir: runtime_dir,
     // NoStopObservation: this instrument's evidence is the staged output blobs it reads out of the
@@ -285,13 +287,13 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
 }
 
 fn wrong_capture_run(arm: WrongCaptureArm) -> CliWireResponse {
-  match observe_hermetic_user_session_runtime() {
-    HermeticUserSessionRuntimeAbsent =>
+  match observe_user_session_runtime() {
+    UserSessionRuntimeAbsent =>
       CliWirePrintable {
         bytes: join([arm.name, ": no observation: user session bus absent at /run/user/<uid>/bus"], ""),
         exit: ExitFailure { code: 2, reason: "user session bus absent" },
       }
-    HermeticUserSessionRuntimeBound { runtime_dir } =>
+    UserSessionRuntimeBound { runtime_dir } =>
       match observe_isolated_job_toolchain_homes() {
         Absent =>
           CliWirePrintable {
@@ -339,7 +341,7 @@ fn wrong_capture_run(arm: WrongCaptureArm) -> CliWireResponse {
               && mkdir_ok(instance: instance, path: layout_b.work_dir)
               && mkdir_ok(instance: instance, path: layout_a.target_dir)
               && mkdir_ok(instance: instance, path: layout_a.staging_dir)
-              && mkdir_ok(instance: instance, path: layout_a.attempts_dir)
+              && mkdir_ok(instance: instance, path: owned_directory_path(t: compute_seat_directory(instance: instance, seat: ComputeFlatSeat)) as String)
             if !dirs_ok || (head == "") {
               CliWirePrintable {
                 bytes: join([arm.name, ": could not create the two layouts or read HEAD"], ""),

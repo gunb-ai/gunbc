@@ -172,15 +172,6 @@ pub fn primitive_data_decl_type_facts() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
-pub fn primitive_type_declarer_qualified_names() -> Rc<PrimitiveIdentity> {
-    thread_local! {
-        static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("type_declarer_qualified_names".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
-}
-
 pub fn primitive_concept_decl_facts() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -308,6 +299,15 @@ pub fn never_type_qualified_path() -> String {
     )
 }
 
+pub fn primitive_list_push() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("list_push".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_string_contains() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -321,6 +321,15 @@ pub fn primitive_chars() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
             primitive_identity_slug("chars".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
+pub fn primitive_sha256_hex_of_text() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("sha256_hex_of_text".to_string())
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -352,7 +361,7 @@ pub fn primitive_projection_row(
 ) -> Rc<PrimitiveProjection> {
     Rc::new(PrimitiveProjection {
         primitive: primitive.clone(),
-        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        declaration: crate::std_decl_ref::decl_ref(module_path, decl_name),
         fidelity: fidelity.clone(),
     })
 }
@@ -381,12 +390,6 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_data_decl_type_facts(),
             "v2.std.decl_index".to_string(),
             "data_decl_type_facts".to_string(),
-            Rc::new(ProjectionFidelity::HostRealizedSeam),
-        ),
-        primitive_projection_row(
-            primitive_type_declarer_qualified_names(),
-            "v2.std.decl_index".to_string(),
-            "type_declarer_qualified_names".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
@@ -468,6 +471,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_list_push(),
+            "std.algebra".to_string(),
+            "list_push".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_string_contains(),
             "std.algebra".to_string(),
             "string_contains".to_string(),
@@ -477,6 +486,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_chars(),
             "std.host_text".to_string(),
             "chars".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_sha256_hex_of_text(),
+            "std.content_hash".to_string(),
+            "sha256_hex_of_text".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

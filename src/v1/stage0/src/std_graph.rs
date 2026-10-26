@@ -2,7 +2,7 @@
 // Source module: std.graph
 
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_count_shape, collection_map_shape,
+    collection_concat_shape, collection_count_shape, collection_map_shape, list_push,
 };
 pub use crate::std_optional::Optional;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
@@ -125,18 +125,14 @@ pub fn forward_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    build_adjacency_views(names.clone(), graph.clone())
-        .forward
-        .clone()
+    build_adjacency_views(names, graph).forward.clone()
 }
 
 pub fn reverse_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    build_adjacency_views(names.clone(), graph.clone())
-        .reverse
-        .clone()
+    build_adjacency_views(names, graph).reverse.clone()
 }
 
 pub fn dfs_finish_order(
@@ -213,7 +209,7 @@ pub fn graph_strongly_connected_components(
     graph: Rc<CallGraph>,
 ) -> Rc<Vec<Rc<Vec<String>>>> {
     {
-        let adjacency = build_adjacency_views(names.clone(), graph.clone());
+        let adjacency = build_adjacency_views(names.clone(), graph);
         let finish = names.iter().cloned().fold(
             Rc::new(DfsFinishAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
@@ -260,7 +256,7 @@ pub fn graph_multi_node_scc_members(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<Vec<String>> {
-    graph_strongly_connected_components(names.clone(), graph.clone())
+    graph_strongly_connected_components(names, graph)
         .iter()
         .cloned()
         .fold(
@@ -276,7 +272,7 @@ pub fn graph_multi_node_scc_members(
 }
 
 pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
-    ((graph_multi_node_scc_members(names.clone(), graph.clone()).len() as i64) > 0)
+    ((graph_multi_node_scc_members(names, graph).len() as i64) > 0)
 }
 
 pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<Vec<String>> {
@@ -313,7 +309,7 @@ pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<V
             self_cycles.clone(),
             Rc::new({
                 let mut __result = Vec::new();
-                for member in graph_multi_node_scc_members(names.clone(), graph.clone())
+                for member in graph_multi_node_scc_members(names, graph.clone())
                     .iter()
                     .cloned()
                 {
@@ -366,33 +362,32 @@ pub fn graph_reverse_reachable_members(
     graph: Rc<CallGraph>,
     start: String,
 ) -> Rc<Vec<String>> {
-    graph_reverse_reachable_members_from_views(
-        build_adjacency_views(names.clone(), graph.clone()),
-        start.clone(),
-    )
+    graph_reverse_reachable_members_from_views(build_adjacency_views(names, graph), start)
 }
 
 pub fn is_lexicographic_descent(mut __tco_loop_evidence: Rc<Vec<DescentEvidence>>) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut evidence = __tco_loop_evidence;
-        match evidence.clone().first().cloned() {
-            std::option::Option::None => {
-                break false;
-            }
-            Some(e) => match e.clone() {
-                DescentEvidence::Strict => {
-                    break true;
-                }
-                DescentEvidence::NonIncreasing => {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&evidence, 1));
-                    __tco_loop_evidence = __tco_0;
-                    continue;
-                }
-                DescentEvidence::DescentUnknown => {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut evidence = __tco_loop_evidence;
+            match evidence.clone().first().cloned() {
+                std::option::Option::None => {
                     break false;
                 }
-            },
+                Some(e) => match e.clone() {
+                    DescentEvidence::Strict => {
+                        break true;
+                    }
+                    DescentEvidence::NonIncreasing => {
+                        let __tco_0 = Rc::new(v1_rt::list_skip(&evidence, 1));
+                        __tco_loop_evidence = __tco_0;
+                        continue;
+                    }
+                    DescentEvidence::DescentUnknown => {
+                        break false;
+                    }
+                },
+            }
         }
     }
 }
@@ -438,7 +433,7 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>
                 });
                 let nd_graph =
                     build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
-                (graph_has_multi_node_scc(members.clone(), nd_graph.clone()) == false)
+                (graph_has_multi_node_scc(members.clone(), nd_graph) == false)
             }
         }
     }

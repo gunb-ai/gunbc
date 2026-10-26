@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_belt_exit_drain_wet_witness
 
 import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.host.host_layout { attempt_exit_stall_record_path, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.host.host_layout { attempt_exit_stall_record_path, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
   attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
@@ -11,14 +11,17 @@ import gunbc.durable_handoff_host {
   HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
 }
 import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
+import gunbc.roadmap.spool_stall { SpoolStallStep, SpoolStallMove, SpoolStallClaim, SpoolStallListRequests, spool_stall_step_text, spool_stall_step_of_text, SpoolStallRead, spool_stall_read_at, SpoolStallNone, SpoolStallHeld, spool_stall_record_at, SpoolStallEntry, SpoolStallUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exit_drain_at, belt_exit_drain_moving_at, belt_exit_entry_move_at, BeltExitDrain, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused, BeltExitEntryUnmovable, BeltExitEntryClaimed, belt_exit_drain_failures,
-  belt_exit_stall_failures, belt_exit_stall_read_at, BeltExitStallNone, BeltExitStallHeld, belt_exit_stall_release_at, belt_exit_stall_analyze_at, belt_exit_stall_record_at, BeltExitStallEntry, BeltExitStallUnreadable, belt_exit_stall_record_text, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
+  belt_exit_stall_failures, belt_exit_stall_release_at, belt_exit_stall_analyze_at, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
+  belt_exit_stall_clear_target, belt_exit_stall_clear_admission, belt_exit_stall_clear_at, BeltExitClearTarget, BeltExitClearAdmission, BeltExitClearTargeted, BeltExitClearTargetRefused, BeltExitClearAdmitted, BeltExitClearRefused, BeltExitCleared, BeltExitClearFailed, BeltExitClearOutcome, belt_exit_stall_whoami,
   belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   host_exec_argv, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitObservation, AttemptUnitStartRecorded, attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.worker_lifecycle { WorkerProcessExited }
 
 // THE EXIT DRAIN AND THE COLLECTED-WORKER READ, RUN OVER A REAL SPOOL. Each control makes a spool under
@@ -249,7 +252,8 @@ data obligation_exit: String = "wet-node+feedfacefeedface+obligation+0123456789a
 // the orphaned claim to queued, consumes the entry, starts the attempt, and the run adopts and settles.
 test fn a_claimant_killed_at_its_run_bound_is_rescued_by_its_stop_hook_entry() -> Bool {
   let root = fresh_spool(tag: "orphan-b")
-  let hook_renders = match attempt_exit_hook(instance_root: root, node_id: "wet-node", attempt_key: "feedfacefeedface", role: AttemptObligationRole) {
+  let inst = srv1_lab_dashboard_instance()
+  let hook_renders = match attempt_exit_hook(instance_root: root, node_id: "wet-node", attempt_key: "feedfacefeedface", role: AttemptObligationRole, record_owner: inst.directory_owner) {
     AttemptExitHookRendered { exec_line } => string_contains(s: exec_line as String, pattern: "+obligation+") && string_contains(s: exec_line as String, pattern: attempt_exit_inbox_dir(instance_root: root))
     AttemptExitHookRefused { reason: _ } => false
   }
@@ -360,8 +364,8 @@ test fn a_pass_that_claimed_nothing_behind_an_unmovable_entry_records_the_stall(
   let wrote = record(root: root, name: worker_exit)
   let pass = unmovable_pass(root: root)
   let reported = belt_exit_stall_failures(root: root, d: pass)
-  wrote && count(reported) == 1 && match belt_exit_stall_read_at(root: root) {
-    BeltExitStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.entry)) == [worker_exit]
+  wrote && count(reported) == 1 && match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.entry)) == [worker_exit]
     _ => false
   }
 }
@@ -383,8 +387,8 @@ test fn a_pass_that_claimed_something_or_nothing_unmovable_records_no_stall() ->
   wrote && clean_wrote
     && count(belt_exit_stall_failures(root: root, d: pass)) == 0
     && count(belt_exit_stall_failures(root: clean_root, d: clean)) == 0
-    && belt_exit_stall_read_at(root: root) == BeltExitStallNone
-    && belt_exit_stall_read_at(root: clean_root) == BeltExitStallNone
+    && spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) == SpoolStallNone
+    && spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: clean_root)) == SpoolStallNone
 }
 
 // The record is create-only: a later stalled pass keeps the first record as the evidence.
@@ -395,8 +399,8 @@ test fn the_stall_record_is_create_only() -> Bool {
   let r1 = belt_exit_stall_failures(root: root, d: p1)
   let p2 = unmovable_pass(root: root)
   let r2 = belt_exit_stall_failures(root: root, d: p2)
-  wrote && count(r1) == 1 && count(r2) == 1 && match belt_exit_stall_read_at(root: root) {
-    BeltExitStallHeld { entries } => count(entries) == 1
+  wrote && count(r1) == 1 && count(r2) == 1 && match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallHeld { entries } => count(entries) == 1
     _ => false
   }
 }
@@ -408,12 +412,12 @@ test fn release_refuses_while_an_entry_is_unmovable_then_clears_the_record_and_h
   let pass = unmovable_pass(root: root)
   let recorded = belt_exit_stall_failures(root: root, d: pass)
   let still = belt_exit_stall_release_at(root: root, move: (r, e, from, to) => refusing_move_of(entry: worker_exit, root: r, name: e, from: from, to: to))
-  let held_after = match belt_exit_stall_read_at(root: root) { BeltExitStallHeld { entries: _ } => true _ => false }
+  let held_after = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) { SpoolStallHeld { entries: _ } => true _ => false }
   let freed = belt_exit_stall_release_at(root: root, move: belt_exit_entry_move_at)
   wrote && count(recorded) == 1 && held_after
     && match still { BeltExitStallStillUnmovable { entries } => count(entries) == 1 _ => false }
     && match freed { BeltExitStallReleased { reclaimed: _ } => true _ => false }
-    && belt_exit_stall_read_at(root: root) == BeltExitStallNone
+    && spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) == SpoolStallNone
     && names_at(root: root, stage: AttemptExitQueued) == [worker_exit]
     && count(names_in(root: root, stage_is_queued: false)) == 0
 }
@@ -436,13 +440,116 @@ test fn analyze_does_not_call_an_entry_foreign_when_the_principal_is_unread() ->
 test fn the_stall_record_round_trips_any_cause_and_a_corrupt_record_is_unreadable() -> Bool {
   let root = fresh_spool(tag: "json")
   let cause = "mv exited 1:\nmv: \"x\" :: Permission denied"
-  let wrote = belt_exit_stall_record_at(root: root, unmovable: [BeltExitStallEntry { entry: worker_exit, step: "claim", cause: cause }])
-  let round_trips = match belt_exit_stall_read_at(root: root) {
-    BeltExitStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.cause)) == [cause] && (entries |> map(e => e.step)) == ["claim"]
+  let wrote = spool_stall_record_at(stalled_dir: attempt_exit_stalled_dir(instance_root: root), record_path: attempt_exit_stall_record_path(instance_root: root), unmovable: [SpoolStallEntry { entry: worker_exit, step: SpoolStallClaim, cause: cause }])
+  let round_trips = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.cause)) == [cause] && (entries |> map(e => e.step)) == [SpoolStallClaim]
     _ => false
   }
   let bad_root = fresh_spool(tag: "badjson")
   let made = belt_exec(cmd: host_exec_argv(program: "/bin/sh", args: ["-c", join(["mkdir -p $(dirname ", attempt_exit_stall_record_path(instance_root: bad_root), ") && printf 'unmovable :: x' > ", attempt_exit_stall_record_path(instance_root: bad_root)], "")]), workdir: "/")
-  let unreadable = match belt_exit_stall_read_at(root: bad_root) { BeltExitStallUnreadable { reason: _ } => true _ => false }
+  let unreadable = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: bad_root)) { SpoolStallUnreadable { reason: _ } => true _ => false }
   round_trips && unreadable
+}
+
+// THE CLEAR'S ADMISSION ON SUPPLIED VALUES (a witness discriminates at one interface): the record, the readings
+// (ownership is supplied: a root-owned entry cannot be made without sudo) and the entry are supplied, so each refusal
+// is one boundary's answer. The effect and inhabitance claims below run the real route. -- quick-bee-65
+data clear_entry: String = "n+a+worker+inv+exit-code+exited+200"
+
+fn held_inbox() -> SpoolStallRead {
+  SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitQueued }, cause: "mv: Permission denied" }] }
+}
+
+fn target_refused(t: BeltExitClearTarget) -> Bool {
+  match t { BeltExitClearTargetRefused { reason: _ } => true _ => false }
+}
+
+fn admission_refused(a: BeltExitClearAdmission) -> Bool {
+  match a { BeltExitClearRefused { reason: _ } => true _ => false }
+}
+
+fn clear_failed(o: BeltExitClearOutcome) -> Bool {
+  match o { BeltExitClearFailed { reason: _ } => true _ => false }
+}
+
+fn clear_done(o: BeltExitClearOutcome) -> Bool {
+  match o { BeltExitCleared { to_path: _ } => true _ => false }
+}
+
+test fn the_clear_target_is_only_an_entry_named_in_the_current_stall_record_with_its_move() -> Bool {
+  let root = "/srv/inst"
+  let located = match belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: clear_entry) {
+    BeltExitClearTargeted { from_path, to_path } =>
+      from_path == join([attempt_exit_inbox_dir(instance_root: root), "/", clear_entry], "")
+        && to_path == join([attempt_exit_queued_dir(instance_root: root), "/", clear_entry], "")
+    BeltExitClearTargetRefused { reason: _ } => false
+  }
+  located
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: "someone-else"))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: "../../etc"))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: ".."))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: ""))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallNone, entry: clear_entry))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallUnreadable { reason: "corrupt" }, entry: clear_entry))
+    && target_refused(t: belt_exit_stall_clear_target(root: root, held: SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: SpoolStallListRequests, cause: "x" }] }, entry: clear_entry))
+}
+
+test fn the_clear_admits_only_an_empty_plain_directory_the_drain_principal_does_not_own() -> Bool {
+  let me = BeltExitStallObserved { value: "gunbc" }
+  let root_dir = BeltExitStallObserved { value: "directory|root|755" }
+  let empty = BeltExitStallObserved { value: "" }
+  let admitted = match belt_exit_stall_clear_admission(stat: root_dir, whoami: me, contents: empty) { BeltExitClearAdmitted => true _ => false }
+  admitted
+    && admission_refused(a: belt_exit_stall_clear_admission(stat: root_dir, whoami: me, contents: BeltExitStallObserved { value: "/x/child" }))
+    && admission_refused(a: belt_exit_stall_clear_admission(stat: root_dir, whoami: me, contents: BeltExitStallUnobserved { reason: "find refused" }))
+    && admission_refused(a: belt_exit_stall_clear_admission(stat: BeltExitStallObserved { value: "directory|gunbc|755" }, whoami: me, contents: empty))
+    && admission_refused(a: belt_exit_stall_clear_admission(stat: BeltExitStallObserved { value: "symbolic link|root|777" }, whoami: me, contents: empty))
+    && admission_refused(a: belt_exit_stall_clear_admission(stat: BeltExitStallObserved { value: "regular file|root|644" }, whoami: me, contents: empty))
+    && admission_refused(a: belt_exit_stall_clear_admission(stat: BeltExitStallUnobserved { reason: "gone" }, whoami: me, contents: empty))
+    && admission_refused(a: belt_exit_stall_clear_admission(stat: root_dir, whoami: BeltExitStallUnobserved { reason: "id refused" }, contents: empty))
+}
+
+// EFFECT + INHABITANCE: the real stall record, the real stat/find of a real empty entry. The entry is really owned by
+// this principal, so the principal reading is supplied as another user to make it foreign-owned (ownership is the one
+// supplied value). The clear lands the entry in queued under the same name and removes it from inbox; a re-run with the
+// target already present and the source recreated runs only the rmdir; a non-empty, an unrecorded and a symlinked
+// entry are refused with nothing created; analyze names this verb.
+test fn the_real_clear_re_materializes_the_entry_in_queued_idempotently_and_refuses_the_rest() -> Bool {
+  let root = fresh_spool(tag: "clear")
+  let wrote = record(root: root, name: worker_exit)
+  let recorded = belt_exit_stall_failures(root: root, d: unmovable_pass(root: root))
+  let other = BeltExitStallObserved { value: "nobody-else" }
+  let report = belt_exit_stall_analyze_at(root: root, whoami: other)
+  let inbox_entry = join([attempt_exit_inbox_dir(instance_root: root), "/", worker_exit], "")
+  let filled = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["--", join([inbox_entry, "/child"], "")]), workdir: "/")
+  let refused_full = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: other)
+  let untouched = names_at(root: root, stage: AttemptExitInbox) == [worker_exit] && count(names_at(root: root, stage: AttemptExitQueued)) == 0
+  let emptied = belt_exec(cmd: host_exec_argv(program: "rmdir", args: ["--", join([inbox_entry, "/child"], "")]), workdir: "/")
+  let refused_absent = belt_exit_stall_clear_at(root: root, entry: "not-recorded", whoami: other)
+  let first = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: other)
+  let landed = names_at(root: root, stage: AttemptExitQueued) == [worker_exit] && count(names_at(root: root, stage: AttemptExitInbox)) == 0
+  let reborn = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["--", inbox_entry]), workdir: "/")
+  let rerun = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: other)
+  let idempotent = names_at(root: root, stage: AttemptExitQueued) == [worker_exit] && count(names_at(root: root, stage: AttemptExitInbox)) == 0
+  let swapped = belt_exec(cmd: host_exec_argv(program: "ln", args: ["-s", "/tmp", inbox_entry]), workdir: "/")
+  let linked = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: other)
+  wrote && count(recorded) == 1
+    && clear_failed(o: refused_full) && untouched
+    && clear_failed(o: refused_absent)
+    && clear_done(o: first) && landed
+    && clear_done(o: rerun) && idempotent
+    && clear_failed(o: linked)
+    && any(report, l => string_contains(s: l, pattern: "belt_exit_stall_clear_cli") && string_contains(s: l, pattern: "entry="))
+}
+
+// THE STEP DECODES ONCE, AT READ: every spelling an earlier head wrote still decodes (the lab's live record wrote
+// "inbox -> queued"), each decodes to the typed step that renders back to it, and an unknown spelling is refused
+// rather than guessed. -- quick-bee-65
+test fn a_recorded_step_decodes_once_to_a_typed_step_and_an_unknown_spelling_is_refused() -> Bool {
+  let moved = match spool_stall_step_of_text(text: "inbox -> queued") { Present { value: SpoolStallMove { from, to } } => from == AttemptExitInbox && to == AttemptExitQueued _ => false }
+  let claim = match spool_stall_step_of_text(text: "claim") { Present { value: SpoolStallClaim } => true _ => false }
+  let listed = match spool_stall_step_of_text(text: "list-requests") { Present { value: SpoolStallListRequests } => true _ => false }
+  let renders = spool_stall_step_text(step: SpoolStallMove { from: AttemptExitRunning, to: AttemptExitQueued }) == "running -> queued"
+  let refused = match spool_stall_step_of_text(text: "inbox => queued") { Absent => true _ => false }
+  moved && claim && listed && renders && refused && match spool_stall_step_of_text(text: "somewhere else") { Absent => true _ => false }
 }

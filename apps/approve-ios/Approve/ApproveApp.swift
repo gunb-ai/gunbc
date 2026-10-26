@@ -1,3 +1,4 @@
+import GoogleSignIn
 import SwiftUI
 import UserNotifications
 
@@ -10,6 +11,7 @@ struct ApproveApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .onOpenURL { _ = GIDSignIn.sharedInstance.handle($0) }
                 .environmentObject(state)
                 .task {
                     delegate.attach(state)
@@ -49,7 +51,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        Task { @MainActor in state?.lastError = "APNs registration failed: \(error.localizedDescription)" }
+        Task { @MainActor in state?.record(.apnsRegistration, .failed("APNs registration failed: \(error.localizedDescription)")) }
     }
 
     /// Background delivery: the result is the real one from re-listing, never a constant.

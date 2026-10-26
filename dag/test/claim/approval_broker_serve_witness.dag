@@ -6,17 +6,20 @@ import extdeps.http.server {
   ServedRouteTable,
   ServedRouteTableBuilt, ServedRouteTableBuildRefused,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
-  serve_select_route,
+  serve_select_route, http_extension_field_name, serve_typed_arm_header_names, serve_response_header_wire,
+  HttpExtensionFieldNameAdmitted, HttpExtensionFieldNameRefused, ServeResponseHeaderField,
 }
 import extdeps.uri_path { path_param_value }
+import std.unicode.scalar { ascii_uppercase }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_response, approval_broker_marker_in_text,
+  approval_broker_marked_body, BrokerBodyMarked, BrokerMarkerRefused,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
-  ConfirmHandlerObserved, BrokerNoRouteMatched,
+  ConfirmHandlerObserved, BrokerNoRouteMatched, DeviceEnrolHandlerObserved,
   approval_broker_served_token, approval_serving_process_token,
 }
 import gunbc.auth.approval_broker_serve {
-  ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler,
+  ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler, DeviceListHandler, DeviceRevokeHandler,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
   approval_broker_route_specs,
   approval_broker_route_table_build,
@@ -29,7 +32,8 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission_under, approval_writer_authority, approval_writer_process,
 }
-import extdeps.http.server { ServeHttpResponse }
+import extdeps.http.server { ServeHttpResponse, serve_wire_response, application_json_utf8 }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
@@ -86,32 +90,35 @@ test fn approval_broker_table_selects_the_store_receipt_route_as_a_post() -> Boo
     }
 }
 
-// THE SIX DEVICE ROUTES ARE ANSWERED HERE AND ONLY AS POSTS (gunbc.auth.approval_device_wire:
+// THE SIX PHONE ROUTES ARE ANSWERED HERE AND ONLY AS POSTS (gunbc.auth.approval_device_wire:
 // every device operation is a POST whose body carries its authentication). The two suffixed
 // routes bind one segment; a GET on any of them is 405, not a read.
-test fn approval_broker_table_selects_the_six_device_routes_as_posts() -> Bool {
+test fn approval_broker_table_selects_the_device_routes_with_their_methods() -> Bool {
   broker_selects(method: POST, path: "/approve/device/enrol", want: DeviceEnrolHandler)
     && broker_selects(method: POST, path: "/approve/device/redeem", want: DeviceRedeemHandler)
     && broker_selects(method: POST, path: "/approve/device/pending", want: DevicePendingHandler)
     && broker_selects(method: POST, path: "/approve/device/requests/id-ZXNj", want: DeviceRequestHandler)
     && broker_selects(method: POST, path: "/approve/device/enrollments/id-ZW5y", want: DeviceEnrollmentReadbackHandler)
     && broker_selects(method: POST, path: "/approve/device/push", want: DevicePushUpdateHandler)
+    // THE TWO OPERATOR ROUTES: the list is a GET, the revoke a POST binding one enrollment segment.
+    && broker_selects(method: GET, path: "/approve/devices", want: DeviceListHandler)
+    && broker_selects(method: POST, path: "/approve/devices/revoke/id-ZW5y", want: DeviceRevokeHandler)
     && match serve_select_route(table: broker_table_or_empty(), method: GET, path: "/approve/device/pending") {
       MethodNotAllowed { allowed: ms } => count(ms) == 1
       _ => false
     }
 }
 
-// THE TABLE IS EXACTLY THE ELEVEN: the four approval routes, the store receipt route and the six
-// device routes. A new row is not a neutral addition: every route this process serves is one more
+// THE TABLE IS EXACTLY THE FOURTEEN: the favicon and approval routes, the store receipt route and the eight
+// device routes (six phone routes, the operator list and revoke). A new row is not a neutral addition: every route this process serves is one more
 // thing whose demand shares the broker's slice, and the split exists because co-tenancy is what
 // made an approval poll depend on a dashboard render. The eleventh is the approval loop's own: a
 // receipt is minted from the broker's decision store and nowhere else, and it is a separate POST so
 // that bearer authority over store writes never rides the public status GET.
 test fn approval_broker_table_carries_no_other_route() -> Bool {
-  count(approval_broker_route_specs()) == 11
+  count(approval_broker_route_specs()) == 14
     && match approval_broker_route_table_build() {
-      ServedRouteTableBuilt { table: t } => count(t.routes) == 11
+      ServedRouteTableBuilt { table: t } => count(t.routes) == 14
       ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     }
 }
@@ -218,7 +225,11 @@ test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bo
     tailscale_identity: "",
   )
   r.status == 404
-    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: BrokerNoRouteMatched) as String)
+    && (match approval_broker_marker_in_response(headers: serve_wire_response(r: r).headers, body: r.body) {
+      MarkerObserved { process: p, marker: m } =>
+        approval_broker_served_token(p: p, m: m) == approval_broker_served_token(p: BrokerProcess, m: BrokerNoRouteMatched)
+      NoMarkerInBody => false
+    })
 }
 
 // AND THE READER AGREES WITH THE WRITER ON ONE SPELLING. The two claims above establish that the
@@ -232,7 +243,7 @@ test fn the_marker_reader_recovers_the_fold_the_real_entry_used() -> Bool {
     body: "",
     tailscale_identity: "",
   )
-  match approval_broker_marker_in_body(body: r.body) {
+  match approval_broker_marker_in_response(headers: serve_wire_response(r: r).headers, body: r.body) {
     MarkerObserved { process: p, marker: m } =>
       approval_broker_served_token(p: p, m: m)
         == approval_broker_served_token(p: BrokerProcess, m: ConfirmHandlerObserved)
@@ -273,11 +284,11 @@ test fn the_two_processes_do_not_produce_the_same_marker_on_one_route() -> Bool 
     tailscale_identity: "",
     process: RoadmapProcess,
   )
-  let seen_broker = match approval_broker_marker_in_body(body: by_broker.body) {
+  let seen_broker = match approval_broker_marker_in_response(headers: serve_wire_response(r: by_broker).headers, body: by_broker.body) {
     MarkerObserved { process: p, marker: _ } => approval_serving_process_token(p: p) as String
     NoMarkerInBody => "none"
   }
-  let seen_roadmap = match approval_broker_marker_in_body(body: by_roadmap.body) {
+  let seen_roadmap = match approval_broker_marker_in_response(headers: serve_wire_response(r: by_roadmap).headers, body: by_roadmap.body) {
     MarkerObserved { process: p, marker: _ } => approval_serving_process_token(p: p) as String
     NoMarkerInBody => "none"
   }
@@ -445,4 +456,118 @@ test fn a_non_writer_may_still_render_the_confirmation_page() -> Bool {
     body: "",
   )
   r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
+}
+
+// ── A JSON ANSWER IS STILL JSON, AND STILL MARKED ──────────────────────────────────────────────
+// THE DEFECT: approval_broker_marked_body appended `x-approval-broker: <token>` to the body of every
+// subtype without comment syntax, so POST /approve/device/enrol answered `{...}x-approval-broker: ...`
+// and the phone app's strict decoder could read no device route. These claims run the REAL entry
+// (the pairing obligation: a supplied hypothesis about the boundary is a reading only once the
+// producer has run) on a device route whose request body the route refuses before any store effect.
+fn device_enrol_refusal_through_the_real_entry() -> ServeHttpResponse {
+  approval_broker_respond(
+    method_label: "POST",
+    path: "/approve/device/enrol",
+    body: "not json",
+    tailscale_identity: "",
+  )
+}
+
+test fn a_device_route_json_body_parses_as_json_with_no_marker_in_it() -> Bool {
+  let r = device_enrol_refusal_through_the_real_entry()
+  r.content_type == application_json_utf8
+    && !string_contains(s: r.body, pattern: "approval-broker/")
+    && !string_contains(s: r.body, pattern: "x-approval-broker")
+    && (match parse_json_document(s: r.body) {
+      JsonDocumentParsed { value: _ } => true
+      JsonDocumentUnreadable { gap: _ } => false
+    })
+}
+
+test fn a_device_route_json_marker_is_in_the_header_the_reader_looks_in() -> Bool {
+  let r = device_enrol_refusal_through_the_real_entry()
+  let seen = approval_broker_marker_in_response(headers: serve_wire_response(r: r).headers, body: r.body)
+  let body_only = approval_broker_marker_in_text(body: r.body)
+  (match seen {
+    MarkerObserved { process: p, marker: m } =>
+      approval_broker_served_token(p: p, m: m)
+        == approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved)
+    NoMarkerInBody => false
+  }) && (match body_only {
+    NoMarkerInBody => true
+    MarkerObserved { process: _, marker: _ } => false
+  })
+}
+
+// RED CONTROL: the old arm, spelled out, on the same JSON. If this parses, the parse claim above
+// discriminates nothing.
+test fn the_old_body_appended_marker_does_not_parse_as_json() -> Bool {
+  let r = device_enrol_refusal_through_the_real_entry()
+  let old = join([r.body, "x-approval-broker: ", approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved) as String, "\n"], "")
+  match parse_json_document(s: old) {
+    JsonDocumentParsed { value: _ } => false
+    JsonDocumentUnreadable { gap: _ } => true
+  }
+}
+
+// The producer's own arm: a JSON body comes back byte-identical and the marker is one header.
+test fn a_json_body_is_served_untouched_with_exactly_one_marker_header() -> Bool {
+  let j = approval_broker_marked_body(content_type: application_json_utf8, body: "{}", m: DeviceEnrolHandlerObserved, process: BrokerProcess)
+  match j {
+    BrokerBodyMarked { body: b, headers: hs } => b == "{}" && hs.length() == 1
+    BrokerMarkerRefused { reason: _ } => false
+  }
+}
+
+// The sealed name's one construction route: a token is admitted and rides the wire as that label.
+test fn the_field_name_admits_a_token_and_the_wire_carries_it_verbatim() -> Bool {
+  match http_extension_field_name(label: "X-Served-By") {
+    HttpExtensionFieldNameAdmitted { name: n } => {
+      let w = serve_response_header_wire(header: ServeResponseHeaderField { name: n, value: "t" })
+      w.name == "X-Served-By" && w.value == "t"
+    }
+    HttpExtensionFieldNameRefused { cause: _ } => false
+  }
+}
+
+// RED controls: a framing field (any case), a non-token and an empty label are refused.
+test fn the_field_name_refuses_a_framing_field_and_a_non_token() -> Bool {
+  let framing = match http_extension_field_name(label: "Content-Length") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+  let folded = match http_extension_field_name(label: "tRaNsFeR-eNcOdInG") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+  let spaced = match http_extension_field_name(label: "X Bad: y") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+  let empty = match http_extension_field_name(label: "") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+  let typed_arm = match http_extension_field_name(label: "set-cookie") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+  let location = match http_extension_field_name(label: "Location") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+  framing && folded && spaced && empty && typed_arm && location
+}
+
+fn field_name_is_refused(label: String) -> Bool {
+  match http_extension_field_name(label: label) {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+}
+
+test fn every_typed_arm_field_name_is_refused_in_any_case() -> Bool {
+  let names = serve_typed_arm_header_names()
+  (names |> count) == 3
+    && all(names, n => field_name_is_refused(label: n) && field_name_is_refused(label: ascii_uppercase(s: n)))
 }

@@ -1,0 +1,413 @@
+module test.claim.roadmap.dispatch_worker_traversal_witness
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.access.posix { FileMode, FileOwnership, PermissionBits, file_mode_of_octal_text }
+import gunbc.roadmap.dispatch_worker_traversal {
+  HandedPath,
+  AncestorStat,
+  AncestorStatObserved,
+  AncestorStatUnobserved,
+  WorkerMembership,
+  WorkerMembershipObserved,
+  WorkerMembershipUnobserved,
+  DispatchWorkerTraversalAdmitted,
+  DispatchWorkerAncestorNotTraversable,
+  DispatchWorkerTraversalCouldNotLook,
+  dispatch_worker_traversal_admit,
+  dispatch_worker_traversal_wire,
+  dispatch_worker_handed_chain,
+  dispatch_worker_chain_paths,
+  worker_membership_of_id_line,
+  dispatch_worker_entered_paths,
+}
+import gunbc.roadmap.roadmap_belt_actuate { belt_worker_traversal_outcome }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_worker_unit_properties,
+  gunbc_harness_spawn_argv,
+}
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_handed_set, dispatch_worker_credentials }
+import gunbc.harness.harness_operator_credential { operator_route_credential_file }
+import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
+import gunbc.roadmap.dispatch_worker_handed_set {
+  HandedEntry,
+  HandedSourceRoot,
+  HandedReadOnly,
+  dispatch_worker_source_roots,
+  dispatch_worker_path_settings_are_the_set,
+  dispatch_worker_set_exit_root,
+}
+import extdeps.systemd { ReadOnlyPathsProperty, BindPathsProperty }
+import extdeps.systemd.systemd_run {
+  NamedUnitSetting, SystemdRunProperty, LoadCredentialSetting,
+  systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
+  CredentialIdentifierInvalid, CredentialSourceNotOneAbsolutePath,
+}
+import std.measure { kibibyte }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, srv1_dashboard_lab_root, srv1_live_dashboard_instance }
+
+// The srv1 lab, 2026-10-21: the unit ran as gunbc-worker (uid 1004; groups gunbc-worker and
+// gunbc-attempt) and systemd failed it with 200/CHDIR because .local/share is 0710 briansrls:briansrls.
+// The receipts below are that observation, typed; the RED and the GREEN differ ONLY in the receipt
+// chain (and the root it describes), so a pass cannot come from a different judge.
+
+// A literal below is always well-formed octal text; the Absent arm is the all-denied mode, so a typo
+// in a receipt reads as a blocked directory rather than a pass.
+fn none_mode() -> FileMode {
+  let nothing = PermissionBits { read: false, write: false, execute: false }
+  FileMode { owner: nothing, group: nothing, other: nothing, setuid: false, setgid: false, sticky: false }
+}
+
+fn mode(octal: String) -> FileMode {
+  match file_mode_of_octal_text(text: octal) {
+    Present { value: m } => m
+    Absent => none_mode()
+  }
+}
+
+fn dir(path: String, uid: Int, gid: Int, octal: String) -> AncestorStat {
+  AncestorStatObserved { path: path, ownership: FileOwnership { uid: uid, gid: gid }, mode: mode(octal: octal) }
+}
+
+fn worker() -> WorkerMembership {
+  WorkerMembershipObserved { worker: "gunbc-worker", uid: 1004, gids: [1004, 1003] }
+}
+
+fn lab_old_root() -> String {
+  "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0"
+}
+
+fn handed_source(root: String) -> List<HandedPath> {
+  [HandedPath { path: join([root, "/source"], ""), leaf_is_directory: true }]
+}
+
+fn old_chain() -> List<AncestorStat> {
+  [
+    dir(path: "/home", uid: 0, gid: 0, octal: "755"),
+    dir(path: "/home/briansrls", uid: 1000, gid: 1000, octal: "755"),
+    dir(path: "/home/briansrls/.local", uid: 1000, gid: 1000, octal: "755"),
+    dir(path: "/home/briansrls/.local/share", uid: 1000, gid: 1000, octal: "710"),
+    dir(path: "/home/briansrls/.local/share/gunbc-dashboard-instances", uid: 1000, gid: 1000, octal: "755"),
+    dir(path: lab_old_root(), uid: 1000, gid: 1000, octal: "755"),
+    dir(path: join([lab_old_root(), "/source"], ""), uid: 1000, gid: 1003, octal: "2770"),
+  ]
+}
+
+fn new_chain() -> List<AncestorStat> {
+  [
+    dir(path: "/opt", uid: 0, gid: 0, octal: "755"),
+    dir(path: "/opt/gunbc-lab", uid: 1000, gid: 1000, octal: "755"),
+    dir(path: "/opt/gunbc-lab/codex-provider-feedback-v0", uid: 1000, gid: 1003, octal: "750"),
+    dir(path: "/opt/gunbc-lab/codex-provider-feedback-v0/source", uid: 1000, gid: 1003, octal: "2770"),
+  ]
+}
+
+// RED on the observed lab: the refusal names the FIRST ancestor that denies traversal, with its
+// owner and mode, and the belt maps it to a failed step -- belt_session_container_create (placement
+// record, enqueue, argv) is reached only on ExecStepsOk, so no spawn argv exists on this path.
+test fn the_observed_lab_chain_refuses_naming_local_share_and_emits_no_spawn() -> Bool {
+  let reach = dispatch_worker_traversal_admit(handed: handed_source(root: lab_old_root()), stats: old_chain(), membership: worker())
+  match reach {
+    DispatchWorkerAncestorNotTraversable { worker: w, handed_path: _, blocking_dir: d, observed_owner: o, observed_mode: _ } =>
+      w == "gunbc-worker" && d == "/home/briansrls/.local/share" && o.uid == 1000
+        && string_contains(s: dispatch_worker_traversal_wire(reach: reach), pattern: "710")
+        && string_contains(s: dispatch_worker_traversal_wire(reach: reach), pattern: "/home/briansrls/.local/share")
+        && match belt_worker_traversal_outcome(reach: reach) {
+          ExecStepFailed { step: s, detail: _ } => s == "worker-traversal"
+          ExecStepsOk => false
+        }
+    _ => false
+  }
+}
+
+// GREEN: the same judge, the same worker, the re-rooted chain.
+test fn the_re_rooted_lab_chain_admits() -> Bool {
+  match dispatch_worker_traversal_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: new_chain(), membership: worker()) {
+    DispatchWorkerTraversalAdmitted => true
+    _ => false
+  }
+}
+
+// AMENDMENT A: a declared group the host lacks never makes a traversal pass. With the host reporting
+// only the primary gid, the 0750 group-1003 instance directory refuses even though the roster
+// declares gunbc-attempt.
+test fn a_declared_group_the_host_lacks_does_not_admit() -> Bool {
+  let without = WorkerMembershipObserved { worker: "gunbc-worker", uid: 1004, gids: [1004] }
+  match dispatch_worker_traversal_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: new_chain(), membership: without) {
+    DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: d, observed_owner: _, observed_mode: _ } =>
+      d == "/opt/gunbc-lab/codex-provider-feedback-v0"
+    _ => false
+  }
+}
+
+test fn unobserved_membership_is_a_could_not_look_refusal() -> Bool {
+  match dispatch_worker_traversal_admit(
+    handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"),
+    stats: new_chain(),
+    membership: WorkerMembershipUnobserved { worker: "gunbc-worker", reason: "id could not look the account up" },
+  ) {
+    DispatchWorkerTraversalCouldNotLook { worker: _, handed_path: _, subject: s, reason: _ } => s == "the worker's group membership"
+    _ => false
+  }
+}
+
+test fn an_unstatted_ancestor_is_a_could_not_look_refusal_not_a_pass() -> Bool {
+  let stats = [
+    dir(path: "/opt", uid: 0, gid: 0, octal: "755"),
+    AncestorStatUnobserved { path: "/opt/gunbc-lab", reason: "stat could not read the path" },
+  ]
+  match dispatch_worker_traversal_admit(handed: handed_source(root: "/opt/gunbc-lab/codex-provider-feedback-v0"), stats: stats, membership: worker()) {
+    DispatchWorkerTraversalCouldNotLook { worker: _, handed_path: _, subject: s, reason: _ } => s == "/opt/gunbc-lab"
+    _ => false
+  }
+}
+
+// The climb is judged for every identity: the service user is the owner of every ancestor and
+// passes by OBSERVATION (owner execute), even through the 0710 .local/share that refuses the worker.
+test fn the_service_user_passes_the_old_chain_by_observation() -> Bool {
+  let service = WorkerMembershipObserved { worker: "briansrls", uid: 1000, gids: [1000] }
+  match dispatch_worker_traversal_admit(handed: handed_source(root: lab_old_root()), stats: old_chain(), membership: service) {
+    DispatchWorkerTraversalAdmitted => true
+    _ => false
+  }
+}
+
+// The membership parse: the numeric ids come off id(1)'s `N(name)` entries; a line missing a field is
+// unobserved, never an empty membership.
+test fn id_output_parses_to_numeric_groups_and_garbage_is_unobserved() -> Bool {
+  let parsed = worker_membership_of_id_line(
+    worker: "gunbc-worker",
+    line: "uid=1004(gunbc-worker) gid=1004(gunbc-worker) groups=1004(gunbc-worker),1003(gunbc-attempt)\n",
+  )
+  (match parsed {
+    WorkerMembershipObserved { worker: _, uid: u, gids: g } => u == 1004 && g == [1004, 1004, 1003]
+    WorkerMembershipUnobserved { worker: _, reason: _ } => false
+  })
+    && (match worker_membership_of_id_line(worker: "w", line: "id: 'w': no such user") {
+      WorkerMembershipUnobserved { worker: _, reason: _ } => true
+      WorkerMembershipObserved { worker: _, uid: _, gids: _ } => false
+    })
+}
+
+// The chain of a directory leaf includes the leaf (WorkingDirectory= is entered); the chain of a file
+// excludes it. The filesystem root is not a stat'd boundary.
+test fn the_chain_orders_ancestors_from_the_root_and_includes_a_directory_leaf() -> Bool {
+  dispatch_worker_handed_chain(handed: HandedPath { path: "/a/b/c", leaf_is_directory: true }) == ["/a", "/a/b", "/a/b/c"]
+    && dispatch_worker_handed_chain(handed: HandedPath { path: "/a/b/c", leaf_is_directory: false }) == ["/a", "/a/b"]
+    && dispatch_worker_chain_paths(handed: [
+      HandedPath { path: "/a/b/c", leaf_is_directory: true },
+      HandedPath { path: "/a/b/d", leaf_is_directory: false },
+    ]) == ["/a", "/a/b", "/a/b/c"]
+}
+
+// INHABITANCE CLAIM: the receipts above describe the real lab, because the lab's root constant is
+// the root of the paths the real unit plan hands over. The old-root literal appears nowhere here; the
+// RED's root is a supplied hypothesis, this is the pairing to the real producer.
+test fn the_lab_root_is_outside_the_home_tree() -> Bool {
+  !starts_with(s: srv1_dashboard_lab_root as String, prefix: "/home/")
+    && starts_with(s: srv1_dashboard_lab_root as String, prefix: "/opt/gunbc-lab/")
+}
+
+// THE UNIT AND THE SET ARE ONE FACT. The worker unit's properties and its handed set come from the
+// same plan fields; the claim compares the unit's path-carrying settings with the set's rendering.
+fn fixture_hook() -> NonEmptyStr {
+  "+install -d -m 00755 -o svc -g grp /i/attempt-exit-spool/inbox/n+k" as NonEmptyStr
+}
+
+fn fixture_properties() -> List<SystemdRunProperty> {
+  dispatch_worker_unit_properties(
+    instance: srv1_lab_dashboard_instance(),
+    working_directory: "/wt",
+    attempt_worktree: "/wt",
+    worker_log_path: "/wt/log",
+    granted: kibibyte(count: 1048576),
+    process_bounds: session_process_bounds,
+    exit_hook: fixture_hook(),
+  )
+}
+
+fn fixture_set() -> List<HandedEntry> {
+  dispatch_worker_handed_set(
+    instance: srv1_lab_dashboard_instance(),
+    working_directory: "/wt",
+    attempt_worktree: "/wt",
+    stdout_path: "/wt/log",
+    stderr_path: "/wt/log",
+  )
+}
+
+test fn the_unit_path_settings_are_exactly_the_handed_set_rendering() -> Bool {
+  dispatch_worker_path_settings_are_the_set(properties: fixture_properties(), set: fixture_set(), exit_hook: fixture_hook())
+}
+
+// RED: a raw path-carrying setting appended beside the set -- a path the hand list never had -- breaks
+// the equality, for a read-only path and for a bind mount alike.
+test fn a_raw_path_setting_beside_the_set_breaks_the_equality() -> Bool {
+  let extra_read_only = concat(fixture_properties(), [NamedUnitSetting { property: ReadOnlyPathsProperty, value: "/srv/elsewhere" as NonEmptyStr }])
+  let extra_bind = concat(fixture_properties(), [NamedUnitSetting { property: BindPathsProperty, value: "/a:/b" as NonEmptyStr }])
+  !dispatch_worker_path_settings_are_the_set(properties: extra_read_only, set: fixture_set(), exit_hook: fixture_hook())
+    && !dispatch_worker_path_settings_are_the_set(properties: extra_bind, set: fixture_set(), exit_hook: fixture_hook())
+}
+
+// The converse: an entry in the set that the unit does not render (a set grown without the unit).
+test fn a_set_entry_the_unit_does_not_render_breaks_the_equality() -> Bool {
+  let grown = concat(fixture_set(), [HandedEntry { role: HandedReadOnly { missing_ok: false }, path: "/only/in/the/set" }])
+  !dispatch_worker_path_settings_are_the_set(properties: fixture_properties(), set: grown, exit_hook: fixture_hook())
+}
+
+// Both module roots the harness worker loads from are in the set, are the same words the argv carries,
+// and so are judged by the reach fold.
+test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool {
+  let repo = srv1_lab_dashboard_instance().repo_root as String
+  let roots = dispatch_worker_source_roots(repo_root: repo)
+  let argv = gunbc_harness_spawn_argv(
+    gunbc_program: "/bin/gunbc",
+    repo_root: repo,
+    worktree_path: "/wt",
+    brief: "b",
+    timeout_program: "/t",
+    request_scratch_path: "/r",
+    events_path: "/e",
+    attempt_identity: "worker:n-k",
+    alignment_chain_fingerprint: "f",
+  )
+  count(roots) == 2
+    && any(fixture_set(), e => e.path == join([repo, "/dag"], ""))
+    && any(fixture_set(), e => e.path == join([repo, "/src/v2"], ""))
+    && any(argv, w => w == join([repo, "/dag"], ""))
+    && any(argv, w => w == join([repo, "/src/v2"], ""))
+    && any(
+      dispatch_worker_chain_paths(handed: map(fixture_set(), e => HandedPath { path: e.path, leaf_is_directory: true })),
+      p => p == join([repo, "/src/v2"], ""),
+    )
+}
+
+// RED on the live candidate: a source root the worker cannot enter (0700 owned by someone else) refuses
+// naming that directory.
+test fn an_unreachable_source_root_refuses_naming_it() -> Bool {
+  let root = "/opt/gunbc-lab/codex-provider-feedback-v0/source/dag"
+  let stats = [
+    dir(path: "/opt", uid: 0, gid: 0, octal: "755"),
+    dir(path: "/opt/gunbc-lab", uid: 1000, gid: 1000, octal: "755"),
+    dir(path: "/opt/gunbc-lab/codex-provider-feedback-v0", uid: 1000, gid: 1003, octal: "750"),
+    dir(path: "/opt/gunbc-lab/codex-provider-feedback-v0/source", uid: 1000, gid: 1003, octal: "2770"),
+    dir(path: root, uid: 1000, gid: 1000, octal: "700"),
+  ]
+  match dispatch_worker_traversal_admit(handed: [HandedPath { path: root, leaf_is_directory: true }], stats: stats, membership: worker()) {
+    DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: d, observed_owner: _, observed_mode: _ } => d == root
+    _ => false
+  }
+}
+
+// THE EXIT ROOT IS THE MANAGER'S, NOT THE WORKER'S. A layout in which the worker cannot even traverse
+// the exit inbox (0700 owned by the service user) is ADMITTED, because the "+" hook creates the record
+// as the manager; the worker-entered fold leaves the exit root out. The control: judging the same
+// chain with the exit root included refuses naming the inbox, so the stats do discriminate. RED on the
+// head that folded HandedExitRoot into worker traversal.
+test fn a_layout_the_worker_cannot_traverse_to_the_exit_inbox_is_admitted() -> Bool {
+  let set = fixture_set()
+  let inbox = dispatch_worker_set_exit_root(set: set)
+  let everything = map(set, e => HandedPath { path: e.path, leaf_is_directory: true })
+  let stats = map(dispatch_worker_chain_paths(handed: everything), p =>
+    if starts_with(s: p, prefix: inbox) {
+      dir(path: p, uid: 1000, gid: 1000, octal: "700")
+    } else {
+      dir(path: p, uid: 0, gid: 0, octal: "755")
+    })
+  (match dispatch_worker_traversal_admit(handed: dispatch_worker_entered_paths(set: set), stats: stats, membership: worker()) {
+    DispatchWorkerTraversalAdmitted => true
+    _ => false
+  })
+    && (match dispatch_worker_traversal_admit(handed: everything, stats: stats, membership: worker()) {
+      DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: d, observed_owner: _, observed_mode: _ } => starts_with(s: d, prefix: inbox)
+      _ => false
+    })
+    && count(dispatch_worker_entered_paths(set: set)) + 1 + count(dispatch_worker_credentials(instance: srv1_lab_dashboard_instance())) == count(set)
+}
+
+// ── THE DEDICATED WORKER'S CREDENTIAL: handed by the manager from the root credstore ─────────────────
+
+fn loaded_credentials(props: List<SystemdRunProperty>) -> List<SystemdRunProperty> {
+  filter(props, p => match p {
+    LoadCredentialSetting { identifier: _, source: _ } => true
+    _ => false
+  })
+}
+
+fn loads_identifier_from_credstore(props: List<SystemdRunProperty>, identifier: NonEmptyStr, instance_id: String) -> Bool {
+  any(props, p => match p {
+    LoadCredentialSetting { identifier: id, source: src } =>
+      (id as String) == (identifier as String)
+        && starts_with(s: src as String, prefix: "/etc/credstore/")
+        && ends_with(s: src as String, suffix: join(["-", instance_id], ""))
+        && !string_contains(s: src as String, pattern: "/home/")
+    _ => false
+  })
+}
+
+// The lab worker runs as the dedicated account, which has no home: its unit loads the operator route's key under
+// the route's own identifier (gunbc.harness.harness_operator_credential, the datum the harness looks up in
+// $CREDENTIALS_DIRECTORY, so the reader and the unit cannot name different files), from a root-owned credstore
+// copy for this instance and never from the service user's custody path. RED on a head whose lab unit loaded
+// nothing (the lab's first harness turn then refused reading /nonexistent/.config/...), or loaded the custody path.
+test fn the_dedicated_worker_unit_loads_the_route_key_from_the_root_credstore() -> Bool {
+  let props = loaded_credentials(props: fixture_properties())
+  count(props) == 1
+    && loads_identifier_from_credstore(props: props, identifier: operator_route_credential_file.identifier, instance_id: srv1_lab_dashboard_instance().instance_id as String)
+}
+
+// The control: a worker that runs as the service user reads its own custody, so its unit is handed nothing.
+test fn a_service_user_worker_unit_loads_no_credential() -> Bool {
+  count(loaded_credentials(props: dispatch_worker_unit_properties(
+    instance: srv1_live_dashboard_instance(),
+    working_directory: "/wt",
+    attempt_worktree: "/wt",
+    worker_log_path: "/wt/log",
+    granted: kibibyte(count: 1048576),
+    process_bounds: session_process_bounds,
+    exit_hook: fixture_hook(),
+  ))) == 0
+}
+
+// THE CREDSTORE IS THE MANAGER'S, NOT THE WORKER'S. A credstore the worker cannot traverse (0700 root, its
+// declared mode) is ADMITTED, because the manager reads it; the worker-entered fold leaves credential sources
+// out. The control: judging the same chain with the credential sources included refuses naming the credstore.
+test fn a_credstore_the_worker_cannot_traverse_is_admitted() -> Bool {
+  let set = fixture_set()
+  let everything = map(set, e => HandedPath { path: e.path, leaf_is_directory: true })
+  let stats = map(dispatch_worker_chain_paths(handed: everything), p =>
+    if starts_with(s: p, prefix: "/etc/credstore") {
+      dir(path: p, uid: 0, gid: 0, octal: "700")
+    } else {
+      dir(path: p, uid: 0, gid: 0, octal: "755")
+    })
+  (match dispatch_worker_traversal_admit(handed: dispatch_worker_entered_paths(set: set), stats: stats, membership: worker()) {
+    DispatchWorkerTraversalAdmitted => true
+    _ => false
+  })
+    && (match dispatch_worker_traversal_admit(handed: everything, stats: stats, membership: worker()) {
+      DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: d, observed_owner: _, observed_mode: _ } => starts_with(s: d, prefix: "/etc/credstore")
+      _ => false
+    })
+}
+
+// The directive is the unit-file authority's spelling, and the inputs systemd would misread refuse: an
+// identifier carrying ":" (the directive splits ID from PATH there) or "/", and a source that is not absolute.
+test fn load_credential_renders_id_colon_path_and_refuses_what_systemd_would_misread() -> Bool {
+  (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "gunbc-gpu-pod-api-key" as NonEmptyStr, source: "/etc/credstore/k-i" as NonEmptyStr }) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a == "LoadCredential=gunbc-gpu-pod-api-key:/etc/credstore/k-i"
+    SystemdRunPropertyAssignmentRefused { cause: _ } => false
+  })
+    && (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "a:b" as NonEmptyStr, source: "/etc/credstore/k" as NonEmptyStr }) {
+      SystemdRunPropertyAssignmentRefused { cause: CredentialIdentifierInvalid } => true
+      _ => false
+    })
+    && (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "a/b" as NonEmptyStr, source: "/etc/credstore/k" as NonEmptyStr }) {
+      SystemdRunPropertyAssignmentRefused { cause: CredentialIdentifierInvalid } => true
+      _ => false
+    })
+    && (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "k" as NonEmptyStr, source: "credstore/k" as NonEmptyStr }) {
+      SystemdRunPropertyAssignmentRefused { cause: CredentialSourceNotOneAbsolutePath } => true
+      _ => false
+    })
+}

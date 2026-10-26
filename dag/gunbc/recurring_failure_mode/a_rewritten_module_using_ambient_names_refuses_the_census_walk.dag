@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_rewritten_module_using_ambient_names_refuses_the_census_walk
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data a_rewritten_module_using_ambient_names_refuses_the_census_walk: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_rewritten_module_using_ambient_names_refuses_the_census_walk" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "INVALID STATE: any pull request that rewrites a module whose source uses ambient roster or primitive names (count, concat, to_string, join, split, starts_with, first, map_get, map_insert, map_keys, empty_map, List, Map) makes `gunbc test //gunbc/instruments:ambient-name-census` answer exit 2, no observation. The census appends the rewritten modules to its roster subjects and runs ONE census-scoped over all of them (target_invocation_host run_ambient_name_census, cli_run native_lane_runner run_census_controls_and_subjects, v2.compiler.source_root_eval native_lane_census_scoped_ingest); a rewritten module reached that way resolves with those names unbound (resolve.dag resolve_atom_primitive_authority: a roster head is unbound unless visible, and std.primitives joins the symbol index only if the acquired closure reaches it), so it is listed refused_rewritten at resolve and its occurrences carry no binding rows. The unchanged lines are not the cause: the module resolves on main only because it is not in the walked population until a PR rewrites it.",
+
+    "HARM: the wave's edits to exactly the modules that use the most ambient names are never judged, and the PR answers 2 whatever it changed. The reading is a no-observation, not a defect in the PR, so a reader can mistake it for either.",
+
+    "RECEIPT, 2026-10-23, royal-seal-415 on gunbc#14831. Discriminator: origin/main 1afb0379c9e plus a whitespace-only newline on gunbc.instrument_targets, gunbc.instruments.namespace_wave_binding_diff, gunbc.target_binding and v2.compiler.occurrence_binding_census (probe commit e30c242267c, pushed to a throwaway branch since deleted; GITHUB_SHA pinned to it so the remote runner derives the rewritten set from it) answers exit 2 with 4 rewritten rows and 3 refused_rewritten resolve rows, and the same unbound ambient names as the PR head (count 19, List 17, to_string 14, join 11, concat 6, map_get 5). The first probe, a local-only commit, printed zero rewritten rows and exit 0: the census reads the rewritten set from git commits, not the working tree, so a probe must be a commit the runner can fetch. Text: `ambient-name-census: 5 rewritten module(s) reached but refused at resolve (refused_rewritten rows above): their occurrences have no binding rows, so the wave's edits were not judged`.",
+
+    "CEILING AND TRIGGER: the census path binds the ambient primitive authority for a rewritten subject exactly as it does for a roster subject. gunbc#14710 (quiet-carp-503) is reworking the substrate-entry fold that decides this; its landing is the trigger, and this row's control is the whitespace probe above, which must exit 0 once it lands.",
+  ],
+
+  evidence: [],
+}

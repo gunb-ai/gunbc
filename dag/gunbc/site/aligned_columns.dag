@@ -24,10 +24,6 @@ fn column_width(cells: List<String>) -> Int {
   fold(cells, init: 0, f: (acc, c) => if text_width(s: c) > acc { text_width(s: c) } else { acc })
 }
 
-fn list_length(xs: List<String>) -> Int {
-  fold(xs, init: 0, f: (acc, _x) => acc + 1)
-}
-
 fn gap_at(gaps: List<Int>, index: Int) -> Int {
   fold(enumerate(gaps), init: 0, f: (acc, g) => if g.first == index { g.second } else { acc })
 }
@@ -37,7 +33,12 @@ fn aligned_cell(cell: String, column: List<String>, gap: Int) -> String {
 }
 
 fn aligned_row(row: List<String>, table: List<List<String>>, gaps: List<Int>) -> String {
-  let last = list_length(xs: row) - 1
+  // ONE length authority (DESIGN §3: no nickname fork of an existing operation). The former
+  // site-local `list_length` was an exact re-mint of std.types.list_length<T> and is deleted;
+  // this call consumes the std authority directly, named by module path so the effect join
+  // settles on it without waiting on the flat namespace.
+  // Authority: dag/std/types.dag `list_length`.
+  let last = std.types.list_length(items: row) - 1
   join(map(enumerate(row), pair => if pair.first == last {
     pair.second
   } else {

@@ -68,17 +68,17 @@ import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_file_converge {
   RunnerHostFileSubject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused,
   runner_host_file_subject,
-  RunnerHostPrivilegeStanding, AdministratorPrivilegeAvailable,
+  FleetHostPrivilegeStanding, AdministratorPrivilegeAvailable,
   RunnerSlotPopulation, SlotPopulationObserved, RunnerSlotUnitResult, SlotTeardownEffective,
   SlotReloadNotPending,
-  RunnerHostFileRun, RunnerHostFileResult, RunnerHostFilePlanned, RunnerHostFileObservation,
+  RunnerHostFileRun, FleetHostFileResult, FleetHostFilePlanned, FleetHostFileObservation,
   HostFileIdentical, PathsRootOnly, HostFileLeaveInPlace,
   HostFileNotAppliedObserveOnly, ManagerReloadNotOwed, ActuationAdmitted, ResidueAlreadyAbsent,
   runner_host_file_run_succeeded, runner_host_file_run_text, runner_host_cap_files,
   RunnerHostCapPhase, CapPhaseWithheld, CapPhaseNotOwed, CapPhaseObserved, CapPhaseRan,
   runner_host_cap_phase_settled, runner_host_cap_phase_text,
   run_runner_host_cap_phase,
-  RunnerHostFilesObserveOnly, RunnerHostFilesApply, RunnerHostFileConvergeMode,
+  FleetHostFilesObserveOnly, FleetHostFilesApply, FleetHostFileConvergeMode,
 }
 import gunbc.runner.runner_slot_cap_converge {
   SlotCapStanding, SlotCapsAtDesired, SlotCapsStopped, SlotCapsNeedRestart,
@@ -127,7 +127,7 @@ fn cap_featured_unit() -> NonEmptyStr? {
   }
 }
 
-fn cap_privilege() -> RunnerHostPrivilegeStanding { AdministratorPrivilegeAvailable }
+fn cap_privilege() -> FleetHostPrivilegeStanding { AdministratorPrivilegeAvailable }
 
 // THE WHOLE-HOST AT-DESIRED WORLD. `settled` is a HOST-WIDE predicate (every reading must stand),
 // so a control that asks for a settled pass must script EVERY unit the subject declares -- not just
@@ -359,7 +359,7 @@ fn legs_of_route(route: List<DispatchRecord>) -> List<String> {
   })
 }
 
-fn cap_run(mode: RunnerHostFileConvergeMode, legs: List<ScriptedCommand>) -> CapRun {
+fn cap_run(mode: FleetHostFileConvergeMode, legs: List<ScriptedCommand>) -> CapRun {
   match cap_subject() {
     Absent => CapRunEnded { cause: "srv1 is not an admitted runner host subject" }
     Present { value: subject } => match cap_context() {
@@ -384,8 +384,8 @@ fn cap_run(mode: RunnerHostFileConvergeMode, legs: List<ScriptedCommand>) -> Cap
   }
 }
 
-fn observe(legs: List<ScriptedCommand>) -> CapRun { cap_run(mode: RunnerHostFilesObserveOnly, legs: legs) }
-fn apply_mode(legs: List<ScriptedCommand>) -> CapRun { cap_run(mode: RunnerHostFilesApply, legs: legs) }
+fn observe(legs: List<ScriptedCommand>) -> CapRun { cap_run(mode: FleetHostFilesObserveOnly, legs: legs) }
+fn apply_mode(legs: List<ScriptedCommand>) -> CapRun { cap_run(mode: FleetHostFilesApply, legs: legs) }
 
 fn phase_of(r: CapRun) -> RunnerHostCapPhase {
   match r {
@@ -731,12 +731,12 @@ fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
     Present { value: subject } => Present {
       value: RunnerHostFileRun {
         subject: subject,
-        mode: RunnerHostFilesObserveOnly,
+        mode: FleetHostFilesObserveOnly,
         privilege: AdministratorPrivilegeAvailable,
-        results: map(runner_host_cap_files(), f => RunnerHostFileResult {
-          planned: RunnerHostFilePlanned {
+        results: map(runner_host_cap_files(), f => FleetHostFileResult {
+          planned: FleetHostFilePlanned {
             file: f,
-            observation: RunnerHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
+            observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
             action: HostFileLeaveInPlace,
           },
           outcome: HostFileNotAppliedObserveOnly,
@@ -929,5 +929,5 @@ test fn an_empty_observed_phase_refuses_the_observe_run() -> Bool {
 // A STAMPED-OFF APPLY PHASE ON AN OBSERVE RECORD REFUSES. CapPhaseRan says the write legs ran -- not
 // what this mode did; the mismatch is a second path to one observation and gets no pass.
 test fn an_apply_phase_on_an_observe_record_refuses() -> Bool {
-  observe_run_succeeded(phase: CapPhaseRan { files: [], reload: ManagerReloadNotOwed, slots: [] }) == false
+  observe_run_succeeded(phase: CapPhaseRan { files: [], reload: ManagerReloadNotOwed, slots: [], certified: [] }) == false
 }

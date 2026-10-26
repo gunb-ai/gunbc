@@ -18,7 +18,7 @@ import gunbc.rust_emitted_edge {
   EmittedModuleTarget,
   EmittedCrateRootTarget
 }
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
 
 // THE PARTITION OF A MODULE GRAPH INTO COMPILATION UNITS, OVER ITS MODULES AND EDGES ALONE.
 //

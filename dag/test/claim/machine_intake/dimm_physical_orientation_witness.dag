@@ -111,8 +111,8 @@ test fn w_the_same_anchors_on_another_reported_board_are_refused_unmodeled() -> 
   managed_hosts() |> all(h => match h.access {
     BmcAccessUnobserved { endpoint: _ } => false
     BmcAccessObserved { observation: o } => {
-      let jade = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: jade_fru_read) }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-      let asrock = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: asrock_fru_read) }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      let jade = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: jade_fru_read) }, secure: h.secure, smpro: h.smpro)
+      let asrock = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: asrock_fru_read) }, secure: h.secure, smpro: h.smpro)
       o.identity.board == collins_fru_read
         && resolves_full_mirror(binding_host: h, anchors: mtcollins1_placement_anchors)
         && refused_unmodeled(binding_host: jade, anchors: mtcollins1_placement_anchors, board: jade_fru_read)
@@ -128,7 +128,7 @@ test fn w_an_unobserved_controller_is_refused_at_the_binding_not_as_an_unmodeled
   managed_hosts() |> all(h => match h.access {
     BmcAccessUnobserved { endpoint: _ } => false
     BmcAccessObserved { observation: o } => {
-      let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, secure: h.secure, smpro: h.smpro)
       match bmc_control_binding(observed: unobserved.access, secured: unobserved.secure) {
         BmcControlAccessUnobserved { endpoint: e } => (e.host as String) == (o.endpoint.host as String)
         BmcControlBound { route: _ } => false

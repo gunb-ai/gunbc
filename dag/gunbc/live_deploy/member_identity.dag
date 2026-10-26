@@ -16,7 +16,7 @@ import extdeps.rust.cargo { cargo_default_release_dir_rel }
 // reconciles the desired roster against `observed: []`, so every member is an add on every apply
 // and an already-converged host replays its whole installation -- measured 2026-09-06 at nineteen
 // minutes, of which the deploy's real mutations were seconds and the rest was five source-compiling
-// evaluators started in series by unconditional restarts. docs/plans/deploy-convergence-observed-side.md
+// evaluators started in series by unconditional restarts. `gunbc.plans.deploy_convergence_observed_side`
 // refutes the obvious repair (feed the same path-keyed roster an observed side): a member whose value
 // is a function of its own key cannot be seen to be stale, so a non-degenerate diff over paths would
 // report CONVERGED over a stale host. The member therefore needs a real identity -- the smallest fact
@@ -51,6 +51,22 @@ type ConvergedMember
   | ServiceProcess
   | DirectoryRoot { path: NonEmptyStr }
   | OidcConfigFile
+  // WORKER-ROOT-EQUIVALENT-3 (WORKER-ROOT-EQUIVALENT round 3, bright-moth-475 2026-10-20). These two
+  // members are the WRE-3 git posture, MOVED onto the route the lab deploy actually runs
+  // (live_deploy_apply_desired_operator_local_wet) from the FROZEN dashboard-instance provision route
+  // that never executes. They are NOT folded into the three git-directory DirectoryRoot members, and
+  // that separation is load-bearing, not tidiness: a DirectoryRoot's identity is its TOP directory's
+  // standing (gunbc.owned_directory owned_directory_decide), and once the top converges the emitter
+  // skips the whole fragment set (emit.dag owned_directory_will_install is false on a Keep top, so even
+  // the EntriesReadableByDependents recursive leg is dead there) -- the interiors are never swept, and
+  // the host's existing fan-out/reflog children stay briansrls:briansrls 755/775. The worker's first
+  // commit needs those INTERIORS group-writable; that is a standing about the SUBTREE's contents, which
+  // is genuinely independent of whether the top is 2770. A member's identity must say what is actually
+  // decided, so it gets its own member whose observation is the interior receipt, not a bit smuggled
+  // onto the top. Both are gated on instance.worker = dedicated, so srv1_live (WorkerIsServiceUser,
+  // where the worker IS the service user) never carries them -- see the roster's gate.
+  | GitWorkerSubtree { path: NonEmptyStr, child: NonEmptyStr }
+  | RepositorySharedPosture { path: NonEmptyStr }
 
 fn converged_member_label(m: ConvergedMember) -> String {
   match m {
@@ -61,6 +77,8 @@ fn converged_member_label(m: ConvergedMember) -> String {
     ServiceProcess => "service-process"
     DirectoryRoot { path } => join(["directory-root:", path as String], "")
     OidcConfigFile => "oidc-config-file"
+    GitWorkerSubtree { path, child } => join(["git-worker-subtree:", path as String, ":", child as String], "")
+    RepositorySharedPosture { path } => join(["repository-shared-posture:", path as String], "")
   }
 }
 
@@ -135,6 +153,30 @@ type OidcConfigFileIdentity {
   document: Fnv1a64Structural
 }
 
+// THE GIT-WORKER SUBTREE'S STANDING, as a closed pair rather than a set of observed modes. The repair
+// is idempotent and re-asserts the WHOLE subtree (chgrp -R the declared group, then the additive
+// g+w/g+s/+t walk restricted to the children), so a plan derived from an under-granted interior does
+// not depend on WHICH child was under-granted -- it re-walks the subtree either way. Two arms is
+// therefore enough, and adding a per-mode arm would be a second copy of a fact the repair does not
+// branch on (DESIGN 3). The observed rendering is carried only so the refusal/readback text can say
+// what the host held, exactly as DirectoryRootStanding carries observed_mode for the same reason.
+type GitWorkerSubtreeStanding
+  = SubtreeConverged
+  | SubtreeNeedsRegroup { observed: NonEmptyStr }
+
+// THE REPOSITORY'S SHARED REPOSITORY POSTURE, as ONE structural fact. It is the three git config keys
+// (core.sharedRepository, gc.auto=0, maintenance.auto=false) PLUS the git-maintenance unit+timer the
+// deferred keys stand in for -- and those are ONE member, not two, because they are one obligation:
+// turning off the automatic repack (the gc keys) without installing the scheduled repack (the unit)
+// leaves the repository growing loose objects with no owner. The keys and the unit are hashed together
+// into one document so they cannot drift apart across deploys (the same reason OidcConfigFileIdentity
+// hashes a config to one digest). Its repair re-writes the keys and re-installs+re-enables the unit as
+// one step group.
+type RepositorySharedPostureIdentity {
+  path: NonEmptyStr
+  document: Fnv1a64Structural
+}
+
 type MemberIdentity
   = TreeIdentity { tree: TreePublicationIdentity }
   | ExecutableIdentity { digest: Digest }
@@ -143,6 +185,8 @@ type MemberIdentity
   | ProcessAt { process: ServiceProcessIdentity }
   | RootAt { root: DirectoryRootIdentity }
   | OidcConfigAt { file: OidcConfigFileIdentity }
+  | GitWorkerSubtreeAt { path: NonEmptyStr, child: NonEmptyStr, standing: GitWorkerSubtreeStanding }
+  | RepositorySharedPostureAt { posture: RepositorySharedPostureIdentity }
 
 fn member_identity_member(i: MemberIdentity) -> ConvergedMember {
   match i {
@@ -153,6 +197,8 @@ fn member_identity_member(i: MemberIdentity) -> ConvergedMember {
     ProcessAt { process: _ } => ServiceProcess
     RootAt { root } => DirectoryRoot { path: root.path }
     OidcConfigAt { file: _ } => OidcConfigFile
+    GitWorkerSubtreeAt { path, child, standing: _ } => GitWorkerSubtree { path: path, child: child }
+    RepositorySharedPostureAt { posture } => RepositorySharedPosture { path: posture.path }
   }
 }
 
@@ -239,6 +285,21 @@ fn oidc_config_file_identity_wire(f: OidcConfigFileIdentity) -> String {
   join([f.path as String, ":", structural_digest_wire(h: f.document)], "")
 }
 
+// The subtree's standing renders the host's reading only as text (the repair does not branch on it,
+// see GitWorkerSubtreeStanding), and the posture renders as ONE digest because the three config keys
+// and the maintenance unit are one obligation -- a stale-plan fingerprint that could separate them
+// would be a second authority for a fact the document hash already closes.
+fn git_worker_subtree_standing_wire(s: GitWorkerSubtreeStanding) -> String {
+  match s {
+    SubtreeConverged => "converged"
+    SubtreeNeedsRegroup { observed } => join(["needs-regroup=", observed as String], "")
+  }
+}
+
+fn repository_shared_posture_identity_wire(p: RepositorySharedPostureIdentity) -> String {
+  join([p.path as String, ":", structural_digest_wire(h: p.document)], "")
+}
+
 fn member_identity_wire(i: MemberIdentity) -> String {
   match i {
     TreeIdentity { tree } => join(["tree:", tree_publication_identity_wire(t: tree)], "")
@@ -248,6 +309,12 @@ fn member_identity_wire(i: MemberIdentity) -> String {
     ProcessAt { process } => join(["process:", service_process_identity_wire(p: process)], "")
     RootAt { root } => join(["root:", directory_root_identity_wire(r: root)], "")
     OidcConfigAt { file } => join(["oidc-config:", oidc_config_file_identity_wire(f: file)], "")
+    GitWorkerSubtreeAt { path, child, standing } =>
+      join(
+        ["git-worker-subtree:", path as String, ":", child as String, ":", git_worker_subtree_standing_wire(s: standing)],
+        "",
+      )
+    RepositorySharedPostureAt { posture } => join(["repository-shared-posture:", repository_shared_posture_identity_wire(p: posture)], "")
   }
 }
 
@@ -377,6 +444,8 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
       OidcConfigAt { file: _ } => false
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
+      RepositorySharedPostureAt { posture: _ } => false
     }
     ExecutableIdentity { digest: da } => match b {
       ExecutableIdentity { digest: db } => digest_eq(a: da, b: db)
@@ -386,6 +455,8 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
       OidcConfigAt { file: _ } => false
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
+      RepositorySharedPostureAt { posture: _ } => false
     }
     UnitFileAt { file: fa } => match b {
       UnitFileAt { file: fb } => (fa.unit as String) == (fb.unit as String) && content_hash_eq_structural(left: fa.document, right: fb.document)
@@ -395,6 +466,8 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
       OidcConfigAt { file: _ } => false
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
+      RepositorySharedPostureAt { posture: _ } => false
     }
     UnitManagerAt { standing: sa } => match b {
       UnitManagerAt { standing: sb } => manager_standing_eq(a: sa, b: sb)
@@ -404,6 +477,8 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
       OidcConfigAt { file: _ } => false
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
+      RepositorySharedPostureAt { posture: _ } => false
     }
     ProcessAt { process: pa } => match b {
       ProcessAt { process: pb } => process_identity_eq(a: pa, b: pb)
@@ -413,6 +488,8 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       UnitManagerAt { standing: _ } => false
       RootAt { root: _ } => false
       OidcConfigAt { file: _ } => false
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
+      RepositorySharedPostureAt { posture: _ } => false
     }
     RootAt { root: ra } => match b {
       RootAt { root: rb } => (ra.path as String) == (rb.path as String) && directory_root_standing_wire(s: ra.standing) == directory_root_standing_wire(s: rb.standing)
@@ -422,6 +499,8 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       UnitManagerAt { standing: _ } => false
       ProcessAt { process: _ } => false
       OidcConfigAt { file: _ } => false
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
+      RepositorySharedPostureAt { posture: _ } => false
     }
     OidcConfigAt { file: fa } => match b {
       OidcConfigAt { file: fb } => (fa.path as String) == (fb.path as String) && content_hash_eq_structural(left: fa.document, right: fb.document)
@@ -431,6 +510,37 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       UnitManagerAt { standing: _ } => false
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
+      RepositorySharedPostureAt { posture: _ } => false
+    }
+    GitWorkerSubtreeAt { path: pa, child: ca, standing: sa } => match b {
+      // THE WHOLE STANDING IS THE FACT: two converged renderings of the same subtree are equal;
+      // a converged and a needs-regroup rendering are not; two needs-regroup renderings of the SAME
+      // subtree are equal only when they saw the same deficiency, because the plan derived from them
+      // re-walks either way and the wire keeps the refusal text honest.
+      GitWorkerSubtreeAt { path: pb, child: cb, standing: sb } =>
+        (pa as String) == (pb as String) && (ca as String) == (cb as String)
+          && git_worker_subtree_standing_wire(s: sa) == git_worker_subtree_standing_wire(s: sb)
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
+      OidcConfigAt { file: _ } => false
+      RepositorySharedPostureAt { posture: _ } => false
+    }
+    RepositorySharedPostureAt { posture: ua } => match b {
+      RepositorySharedPostureAt { posture: ub } =>
+        (ua.path as String) == (ub.path as String) && content_hash_eq_structural(left: ua.document, right: ub.document)
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
+      OidcConfigAt { file: _ } => false
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
     }
   }
 }
@@ -652,6 +762,11 @@ type MemberMutation
   | RestartService
   | CreateRoot
   | RepairRootMode
+  // The git-worker subtree's interiors re-grouped and made group-writable, and the repository's shared
+  // posture (three config keys + the maintenance unit) asserted. Both idempotent re-assertions of the
+  // declared posture, like RepairRootMode.
+  | RegroupGitWorkerSubtree
+  | AssertRepositorySharedPosture
 
 fn member_mutation_label(e: MemberMutation) -> String {
   match e {
@@ -664,6 +779,8 @@ fn member_mutation_label(e: MemberMutation) -> String {
     RestartService => "restart-service"
     CreateRoot => "create-root"
     RepairRootMode => "repair-root-mode"
+    RegroupGitWorkerSubtree => "regroup-git-worker-subtree"
+    AssertRepositorySharedPosture => "assert-repository-shared-posture"
   }
 }
 
@@ -719,6 +836,13 @@ fn release_member_changed(d: MemberDecision) -> Bool {
     UnitManager => decision_changes(d: d)
     ServiceProcess => decision_changes(d: d)
     OidcConfigFile => decision_changes(d: d)
+    // NEITHER MOVES THE SERVE PROCESS. The subtree's interiors and the repository posture are facts
+    // about the repository on disk; the process reads git through its worktrees, and re-grouping the
+    // object fan-out or re-writing the three local config keys does not make a running process wrong
+    // about the release it serves. The same reading the comment on release_member_changed gives for
+    // roots: prerequisites, not served inputs.
+    GitWorkerSubtree { path: _, child: _ } => false
+    RepositorySharedPosture { path: _ } => false
   }
 }
 
@@ -732,6 +856,10 @@ fn member_mutation_for(d: MemberDecision, decisions: List<MemberDecision>) -> Me
     UnitManager => if file_changed || decision_changes(d: d) { DaemonReload } else { KeepMember }
     ServiceProcess => if release_changed || decision_changes(d: d) { RestartService } else { KeepMember }
     OidcConfigFile => if decision_changes(d: d) { WriteOidcConfig } else { KeepMember }
+    GitWorkerSubtree { path: _, child: _ } =>
+      if decision_changes(d: d) { RegroupGitWorkerSubtree } else { KeepMember }
+    RepositorySharedPosture { path: _ } =>
+      if decision_changes(d: d) { AssertRepositorySharedPosture } else { KeepMember }
     DirectoryRoot { path: _ } => match d {
       Create { member: _, to: _ } => CreateRoot
       Replace { member: _, from: _, to: _ } => RepairRootMode
@@ -829,6 +957,8 @@ fn mutation_is_keep(e: MemberMutation) -> Bool {
     RestartService => false
     CreateRoot => false
     RepairRootMode => false
+    RegroupGitWorkerSubtree => false
+    AssertRepositorySharedPosture => false
   }
 }
 
@@ -870,6 +1000,8 @@ fn member_row_label(r: MemberEffectRow, target: ReleaseTarget) -> List<String> {
     RestartService => [join(["restart ", target.unit as String], "")]
     CreateRoot => [join(["create-root ", converged_member_label(m: r.member)], "")]
     RepairRootMode => [join(["repair-root-mode ", converged_member_label(m: r.member)], "")]
+    RegroupGitWorkerSubtree => [join(["regroup-git-worker-subtree ", converged_member_label(m: r.member)], "")]
+    AssertRepositorySharedPosture => [join(["assert-repository-shared-posture ", converged_member_label(m: r.member)], "")]
   }
 }
 
@@ -924,5 +1056,7 @@ fn full_install_plan(roster: List<ConvergedMember>, target: ReleaseTarget) -> Re
     ServiceProcess => RestartService
     DirectoryRoot { path: _ } => CreateRoot
     OidcConfigFile => WriteOidcConfig
+    GitWorkerSubtree { path: _, child: _ } => RegroupGitWorkerSubtree
+    RepositorySharedPosture { path: _ } => AssertRepositorySharedPosture
   })
 }

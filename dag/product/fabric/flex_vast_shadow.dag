@@ -1,5 +1,6 @@
 module product.fabric.flex_vast_shadow
 
+import product.fabric.flex_serving_image { flex_lil_serving_image, flex_serving_image_reference }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.types { NonEmptyStr, String, Bool, Int, List, Port, EpochMs }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
@@ -473,7 +474,7 @@ data flex_host_images: List<FlexHostImageRow> = [
   },
   FlexHostImageRow {
     recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
-    image: "ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7" as NonEmptyStr,
+    image: flex_serving_image_reference(image: flex_lil_serving_image),
     filters: Present { value: flex_flash_next_vast_filters },
     read_on: Present { value: "2026-10-18 operator-account read of Vast template flash-next lil v2 (runtype ssh)" as NonEmptyStr },
     ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),

@@ -1,6 +1,8 @@
 module gunbc.roadmap.roadmap_model
 
 import std.types { NonEmptyStr, brand, Map }
+import std.algebra { list_snoc_item }
+// THE map_insert value SITES BELOW PASS A LIST-AND-SINGLETON WHERE THE FORMALS DECLARED List; they used to spell it with the builtin concat, which the typed declarer declares String-returning (std.primitives.dag concat_contract). list_snoc_item IS that meaning, declared in std.algebra. The judgment that exposed them is gunbc.recurring_failure_mode.nominal_isomorphic_record_admitted_at_sibling_declaration, whose row records the remaining corpus population.
 import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap.roadmap_status {
@@ -153,7 +155,7 @@ fn roadmap_parent_index(edges: List<RoadmapEdge>) -> Map<String, List<RoadmapNod
   let empty: Map<String, List<RoadmapNodeId>> = empty_map()
   fold(edges, init: empty, f: fn(acc, e) {
     match roadmap_parents_of(parents: acc, id: e.child as String) {
-      Present { value: ps } => map_insert(m: acc, key: e.child as String, value: concat(ps, [e.parent]))
+      Present { value: ps } => map_insert(m: acc, key: e.child as String, value: list_snoc_item(xs: ps, item: e.parent))
       Absent => map_insert(m: acc, key: e.child as String, value: [e.parent])
     }
   })
@@ -181,7 +183,7 @@ fn roadmap_primary_children_index(nodes: List<RoadmapNode>, edges: List<RoadmapE
       Absent => acc
       Present { value: p } =>
         match map_lookup(m: acc, key: p as String) {
-          Present { value: kids } => map_insert(m: acc, key: p as String, value: concat(kids, [n]))
+          Present { value: kids } => map_insert(m: acc, key: p as String, value: list_snoc_item(xs: kids, item: n))
           Absent => map_insert(m: acc, key: p as String, value: [n])
         }
     }
@@ -318,7 +320,7 @@ fn receipts_by_node(receipts: List<RoadmapAcceptanceReceipt>) -> Map<String, Lis
   let empty: Map<String, List<RoadmapAcceptanceReceipt>> = empty_map()
   fold(receipts, init: empty, f: fn(acc, r) {
     match map_lookup(m: acc, key: r.node as String) {
-      Present { value: rs } => map_insert(m: acc, key: r.node as String, value: concat(rs, [r]))
+      Present { value: rs } => map_insert(m: acc, key: r.node as String, value: list_snoc_item(xs: rs, item: r))
       Absent => map_insert(m: acc, key: r.node as String, value: [r])
     }
   })
@@ -793,7 +795,7 @@ fn roadmap_nodes_by_id(nodes: List<RoadmapNode>) -> Map<String, List<RoadmapNode
   let empty: Map<String, List<RoadmapNode>> = empty_map()
   fold(nodes, init: empty, f: fn(acc, n) {
     match map_lookup(m: acc, key: n.node as String) {
-      Present { value: ns } => map_insert(m: acc, key: n.node as String, value: concat(ns, [n]))
+      Present { value: ns } => map_insert(m: acc, key: n.node as String, value: list_snoc_item(xs: ns, item: n))
       Absent => map_insert(m: acc, key: n.node as String, value: [n])
     }
   })

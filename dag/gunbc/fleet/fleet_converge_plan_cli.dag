@@ -1557,8 +1557,8 @@ fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSl
     } else {
       match actions_runner_registration_decode(raw: read.content) {
         ActionsRunnerRegistrationUnreadable { reason } => SlotRegistrationUnreadable { reason: reason }
-        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => SlotRegisteredEphemeral
-        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => SlotRegisteredPersistent
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral, agent_name: _ } => SlotRegisteredEphemeral
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: _ } => SlotRegisteredPersistent
       }
     }
   }

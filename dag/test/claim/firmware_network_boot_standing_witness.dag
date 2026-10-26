@@ -14,10 +14,9 @@ import std.optional { Optional, Present, Absent }
 // THE SEAL PROBES RUN THROUGH THE CORPUS'S OWN HARNESS, never a hand-rolled compiler call: it reports
 // blocking diagnostics by class AND subject, so a probe can name WHICH mint refused rather than merely
 // that something refused.
-import gunbc.compile_census_probe { blocking_subject_census, census_rows_for, census_verdict, census_verdict_all }
+import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_rows_for, census_verdict, census_verdict_all, census_delta_verdict, CensusVerdict }
 import std.process { ProcessExit }
-import gunbc.compile_diagnostic_census { census_count_at_key }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, census_count_at_key, censuses_differ_by_exactly_the_target_key }
 // THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
 // states what their status is TODAY, so the day the probe lands, this is the thing that changes.
 import std.dissolution { DissolutionCondition, DissolutionPending, DissolutionFired, DissolutionUnbound, unbound_dissolution }
@@ -64,6 +63,13 @@ import gunbc.firmware_network_boot_standing {
   BiosVersionRefused,
   BiosVersionUnobserved,
   AttemptConstructed,
+  AdmissibleRouteSelection,
+  Executable,
+  AllRefused,
+  NoAdmissibleRows,
+  select_admissible,
+  admissible_readiness_for,
+  redirect_target,
   AttemptDhcpStanding,
   NetworkBootAttemptConstruction,
   DhcpOfferObserved,
@@ -2227,29 +2233,30 @@ data passthrough_source: String = verdict_probe_hdr + "\nfn pass_through(evidenc
 
 data lawful_verdict_source: String = verdict_probe_hdr + "\nfn honest_observation() -> FirmwareBootObservation {\n  firmware_boot_observation(\n    boot_order: BootOrderUnobserved { reason: \"never asked\" },\n    boot_options: BootOptionsUnobserved { reason: \"never asked\" },\n    nics: NicsUnobserved { reason: \"never asked\" },\n    secure_boot: SecureBootUnobserved { reason: \"never asked\" },\n    bios_version: BiosVersionUnobserved { reason: \"never asked\" },\n  )\n}\n"
 
-fn sole_ctor_count(source: String) -> Int {
-  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "SoleConstructorViolation") {
-    // Absent means the census could not run AT ALL, and 0 rows is how a probe that never ran reports, so
-    // unrunnable is a FAIL, never a pass. WHAT THIS ARM DOES NOT CATCH: a source that DOES run but carries
-    // an unrelated blocking error -- an unresolved import is exactly one. The census runs, reports
-    // Present{0}, zero rows of the wanted class, and a lawful-side `== 0` asks for exactly zero. A misspelled import in
-    // verdict_probe_hdr left this witness green, lawful checks included. NO COUNT ESTABLISHES IMPORT RESOLUTION, in either direction: an observed census can
-    // report zero rows of the wanted class while the source has unrelated errors, so zero does not
-    // establish successful compilation and the lawful `== 0` can be satisfied by a failure -- and a
-    // hostile `>= 1` can be satisfied WHILE an unrelated import defect coexists with the real violation,
-    // because violations are collected per source and an import error does not suppress them. Neither
-    // zero nor positive counts say WHERE a name resolved from. Nothing in this
-    // file guards the header's imports against silent drift: the admission wall is covered by the
-    // compiler's own fixtures, and the frontier row
-    // firmware_network_boot_probe_resolution_frontier records the missing capability (resolved
-    // identity of each use). No witness
-    // demonstrates the fooled guard today: the check that would distinguish it (resolved identity of
-    // the use) is exactly the capability that frontier names, so an embedded 'look-alike header that
-    // still passes the substring' witness would only restate the substring semantics over hand-written
-    // literals. The honest form of that limit is the frontier row, not a tautological witness.
-    Present { value: n } => n
-    Absent => 0 - 1
-  }
+fn sole_ctor_census(source: String) -> CompileDiagnosticCensus {
+  // A census that could not run AT ALL is CensusUnobserved, never a count, so unrunnable is a FAIL
+  // (exit 2), never a pass. WHAT THIS PROBE DOES NOT CATCH: a source that DOES run but carries
+  // an unrelated blocking error -- an unresolved import is exactly one. The census runs, reports
+  // an observed zero, zero rows of the wanted class, and a lawful-side `== 0` asks for exactly zero. A misspelled import in
+  // verdict_probe_hdr left this witness green, lawful checks included. NO COUNT ESTABLISHES IMPORT RESOLUTION, in either direction: an observed census can
+  // report zero rows of the wanted class while the source has unrelated errors, so zero does not
+  // establish successful compilation and the lawful `== 0` can be satisfied by a failure -- and a
+  // hostile `>= 1` can be satisfied WHILE an unrelated import defect coexists with the real violation,
+  // because violations are collected per source and an import error does not suppress them. Neither
+  // zero nor positive counts say WHERE a name resolved from. What DOES guard the header is the textual
+  // module-and-symbol pin in the argument-spine test below -- drift detection only: it catches a typo,
+  // a deletion, or a retarget to a module that does not even declare the name. It is LEXICAL, so it
+  // does NOT establish resolved provenance; the frontier row
+  // firmware_network_boot_probe_resolution_frontier records that residual gap. No witness
+  // demonstrates the fooled guard today: the check that would distinguish it (resolved identity of
+  // the use) is exactly the capability that frontier names, so an embedded 'look-alike header that
+  // still passes the substring' witness would only restate the substring semantics over hand-written
+  // literals. The honest form of that limit is the frontier row, not a tautological witness.
+  blocking_class_census(source: source, wanted_class: "SoleConstructorViolation")
+}
+
+fn sole_ctor_verdict(source: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: sole_ctor_census(source: source), holds: holds)
 }
 
 // WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused. CAREFUL, measured not argued: neither side's COUNT proves
@@ -2280,10 +2287,12 @@ fn sole_ctor_count(source: String) -> Int {
 // recorded intent (it costs nothing; the corpus's own audit probe frames the coproduct case as the open
 // question), and documented there as intent, not as a wall. Claiming the annotation was the wall would
 // have been rung inflation inside my own evidence -- the exact defect, so the claim here is written to what a probe executed rather than to what the type appears to say.
-test fn no_foreign_module_may_write_a_verdict_by_hand() -> Bool {
-  sole_ctor_count(source: forge_evidence_only_source) >= 1
-    && sole_ctor_count(source: forge_ready_source) >= 1
-    && sole_ctor_count(source: lawful_verdict_source) == 0
+test fn no_foreign_module_may_write_a_verdict_by_hand() -> ProcessExit {
+  census_verdict_all([
+    sole_ctor_verdict(source: forge_evidence_only_source, holds: fn(n) { n >= 1 }),
+    sole_ctor_verdict(source: forge_ready_source, holds: fn(n) { n >= 1 }),
+    sole_ctor_verdict(source: lawful_verdict_source, holds: fn(n) { n == 0 })
+  ])
 }
 
 // THE THREE-SOURCE SEAL MEASUREMENT, asserted as a DELTA. What is claimed is
@@ -2293,20 +2302,19 @@ test fn no_foreign_module_may_write_a_verdict_by_hand() -> Bool {
 // `record_count` is the hostile case, `control_count` the lawful one; the delta is the guarantee. The
 // pre-existing evidence-only forge is kept as the denominator so a reader can see the seal was doing
 // SOMETHING before this change and can tell how much of the refusal the change added.
-test fn the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count() -> Bool {
-  let evidence_only_count: Int = sole_ctor_count(source: forge_evidence_only_source)
-  let conclusion_record_count: Int = sole_ctor_count(source: rewrap_source)
-  let pass_through_count: Int = sole_ctor_count(source: passthrough_source)
+test fn the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count() -> ProcessExit {
   // BOTH hostile cases refuse, and the lawful one does not.
-  evidence_only_count >= 1
-    && conclusion_record_count >= 1
-    && pass_through_count == 0
+  census_verdict_all([
+    sole_ctor_verdict(source: forge_evidence_only_source, holds: fn(n) { n >= 1 }),
+    sole_ctor_verdict(source: rewrap_source, holds: fn(n) { n >= 1 }),
+    sole_ctor_verdict(source: passthrough_source, holds: fn(n) { n == 0 }),
     // THE DELTA IS THE POINT: the pass-through, which holds the same evidence and writes no
     // conclusion, is refused by ZERO. If it were refused too, the wall would be about holding a
     // ReadyEvidence at all, and nothing here would show the conclusion is sealed.
-    && conclusion_record_count - pass_through_count >= 1
-    && sole_ctor_count(source: forge_ready_source) >= 1
-    && sole_ctor_count(source: lawful_verdict_source) == 0
+    census_delta_verdict(red: sole_ctor_census(source: rewrap_source), control: sole_ctor_census(source: passthrough_source), holds: fn(n) { n >= 1 }),
+    sole_ctor_verdict(source: forge_ready_source, holds: fn(n) { n >= 1 }),
+    sole_ctor_verdict(source: lawful_verdict_source, holds: fn(n) { n == 0 })
+  ])
 }
 
 // (2) CUSTODY OF THE CALL ROUTE, and the swapped-conclusion case in one: a caller that RESPECTS
@@ -2339,6 +2347,25 @@ test fn the_probe_is_refused_once_at_the_target_key() -> Bool {
       blocking: true,
     ) == 1
   }
+}
+
+// RESTORED DRIFT GUARD (#14634 guard, standalone after the census migration deleted its host
+// test with #14578/#14805 -- the carrier string verdict_probe_hdr survived but NOTHING asserted
+// it until now; re-measurement at main head showed the pin-flip mutation running green).
+// TEXTUAL DRIFT GUARD on the relocated symbol's import line, not a proof of provenance. It pins
+// the exact module-and-symbol substring so a typo, a deletion, or a retarget to a module that
+// never declares the name reddens this test -- the drift modes a census cannot see at all.
+// It CANNOT establish WHERE SecureBootUnobserved resolves: string_contains is a substring check;
+// a header carrying the pinned text only inside a comment plus a real import from a look-alike
+// module still satisfies it. That residual limit is tracked as the typed frontier
+// firmware_network_boot_probe_resolution_frontier, not claimed closed here. A plain DELETION of
+// the import name is also caught at resolution by every probe source that uses SecureBootUnobserved;
+// the retarget to a look-alike declaring the same name is the mode only this guard reddens.
+test fn the_probe_header_pins_the_secure_boot_leaf_import_line() -> Bool {
+  string_contains(
+    s: verdict_probe_hdr,
+    pattern: "import gunbc.secure_boot_observation { SecureBootUnobserved }",
+  )
 }
 
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> ProcessExit {
@@ -3649,4 +3676,58 @@ test fn probe_resolution_frontier_is_open_not_secretly_satisfiable() -> Bool {
       present_decls: [decl_ref(module_path: "gunbc.secure_boot_observation", decl_name: "SecureBootObservation")],
     )
     == DissolutionUnbound
+}
+
+// THE SELECTION IS A SUM, so the pair-of-Optionals state "neither an executable row nor a refusal" has
+// no constructor. Positive controls: each arm is constructed by the real fold over a supplied sweep and
+// consumed by a match that names the other two.
+test fn an_empty_sweep_selects_no_admissible_rows() -> Bool {
+  match select_admissible(readiness: []) {
+    NoAdmissibleRows => true
+    Executable { route: _ } => false
+    AllRefused { first: _ } => false
+  }
+}
+
+test fn a_bound_slot_selects_the_executable_row() -> Bool {
+  match select_admissible(readiness: admissible_readiness_for(
+    blocker: NetworkBootOptionNotSelected,
+    redirect_to: redirect_target(join: fixture_join(), available: fixture_available()),
+    existence: fixture_existence_enabled(),
+    observed_bios_version: present(version: "1.08"),
+  )) {
+    Executable { route: _ } => true
+    AllRefused { first: _ } => false
+    NoAdmissibleRows => false
+  }
+}
+
+test fn an_unread_unit_selects_the_first_refusal() -> Bool {
+  match select_admissible(readiness: admissible_readiness_for(
+    blocker: NoInterfaceCarriesPxe,
+    redirect_to: redirect_target(join: fixture_join(), available: fixture_available()),
+    existence: fixture_existence_enabled(),
+    observed_bios_version: Absent,
+  )) {
+    AllRefused { first: _ } => true
+    Executable { route: _ } => false
+    NoAdmissibleRows => false
+  }
+}
+
+// THE RED: the old disagree shape written as fixture source. `Executable` carries one field, `route`,
+// so the old pair's field names are refused at the constructor;
+// the three positive tests above are the lawful constructions of each arm.
+data old_selection_shape_source: String = "module probe_old_selection\nimport std.optional { Absent }\nimport gunbc.firmware_network_boot_standing { AdmissibleRouteSelection, Executable }\nfn old_shape() -> AdmissibleRouteSelection {\n  Executable { executable: Absent, first_refusal: Absent }\n}\n"
+
+test fn the_old_disagree_shape_is_refused_by_the_compiler() -> Bool {
+  match census_rows_for(source: old_selection_shape_source) {
+    Absent => false
+    Present { value: probe } => census_count_at_key(
+      rows: probe.rows,
+      diagnostic_class: "FieldNotFound",
+      subject_name: "executable",
+      blocking: true,
+    ) >= 1
+  }
 }

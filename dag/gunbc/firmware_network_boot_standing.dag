@@ -23,7 +23,7 @@ module gunbc.firmware_network_boot_standing
 
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
 import std.algebra { length, fold_list, list_append, contains, list_map, string_concat_join, Cons, Empty }
-import std.optional { Optional, Present, Absent, optional_prefer_first_present }
+import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
 import extdeps.provisioning.network_boot {
@@ -1035,51 +1035,40 @@ fn route_readiness_of(
   }
 }
 
-// WHAT A SWEEP OF ADMISSIBLE ROWS SETTLES, both questions answered in the same pass. The two answers
-// travel together because they are produced by the same walk over the same list; two selector fns each
-// with their own Bool predicate (an earlier shape here) classified every row twice, needed an arm that
-// could not be reached in each, and those arms were fabricated `Absent`s -- a made-up answer standing
-// in for 'the filter and the rematch disagree', which is exactly the case a reader most needs to see.
-type AdmissibleRouteSelection {
+// WHAT A SWEEP OF ADMISSIBLE ROWS SETTLES, as one of exactly three states. A pair of Optionals made a
+// fourth state writable (neither answer present for a non-empty sweep), and every reader then needed an
+// arm for a case the fold cannot produce; as a sum that state has no constructor.
+type AdmissibleRouteSelection
   // THE MOST-PREFERRED ROW AN ACTUATOR COULD DRIVE, in catalog order.
-  executable: Optional<FirmwareNetworkBootPreparationRoute>,
-  // THE MOST-PREFERRED ROW THAT COULD NOT BE DRIVEN, which is the remedy to pursue: it belongs to the
-  // same mechanism the fleet would have tried first, and it carries the read that ends it.
-  first_refusal: Optional<RouteBindingRefusal>,
-}
+  = Executable { route: FirmwareNetworkBootPreparationRoute }
+  // NO ROW COULD BE DRIVEN; this is the MOST-PREFERRED refusal, which is the remedy to pursue: it
+  // belongs to the same mechanism the fleet would have tried first, and it carries the read that ends it.
+  | AllRefused { first: RouteBindingRefusal }
+  // THE SWEEP WAS EMPTY: no catalog row resolves this blocker.
+  | NoAdmissibleRows
 
-// ONE SWEEP, ONE CLASSIFICATION PER ROW. Each row's arm is read ONCE, by this match, and decides which
-// accumulator field it feeds -- so there is no predicate to keep in step with a rematch, and a row
-// cannot be counted into both answers or into neither. First-wins (which is catalog order, which is
-// fleet preference) comes from `std.optional`'s existing prefer-first combiner rather than a fresh
-// 'is this already filled' test, which would have re-introduced the Bool this deletes.
-//
-// An empty answer in either field means what it says: no row in that state existed. Both fields empty
-// is only possible for an empty input, which is why the callers can distinguish 'no mechanism in the
-// catalog' from 'mechanism known, name unread' without a third state.
+// ONE SWEEP, ONE CLASSIFICATION PER ROW. Each row's arm is read ONCE, by this match. An executable row
+// outranks any refusal wherever it sits in the list, and within each class the first row wins (catalog
+// order, which is fleet preference).
 fn select_admissible(
   readiness: List<RouteReadinessStanding>
 ) -> AdmissibleRouteSelection {
   fold_list(
     xs: readiness,
-    empty: AdmissibleRouteSelection { executable: Absent, first_refusal: Absent },
+    empty: NoAdmissibleRows,
     cons: fn(acc, row) {
       match row {
         RouteExecutable { route: route, requires: _ } =>
-          AdmissibleRouteSelection {
-            executable: optional_prefer_first_present(
-              left: acc.executable,
-              right: Present { value: route },
-            ),
-            first_refusal: acc.first_refusal,
+          match acc {
+            Executable { route: kept } => Executable { route: kept }
+            AllRefused { first: _ } => Executable { route: route }
+            NoAdmissibleRows => Executable { route: route }
           }
         RouteNotExecutable { mechanism: _, refusal: refusal } =>
-          AdmissibleRouteSelection {
-            executable: acc.executable,
-            first_refusal: optional_prefer_first_present(
-              left: acc.first_refusal,
-              right: Present { value: refusal },
-            ),
+          match acc {
+            Executable { route: kept } => Executable { route: kept }
+            AllRefused { first: kept } => AllRefused { first: kept }
+            NoAdmissibleRows => AllRefused { first: refusal }
           }
       }
     },
@@ -1405,14 +1394,11 @@ fn ready_evidence(
 //      CONCLUSION, not through possession of the proof. Proven by
 //      no_foreign_module_may_write_a_verdict_by_hand and, for the rewrap specifically, by
 //      the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count.
-//  (3) NOT ENFORCED BY THIS COMPILER -- the `sole_constructor` annotation on THIS UNION. Measured, not
-//      believed: adding a hand-written `Ready {...}` around an already-forged evidence raised the
-//      SoleConstructorViolation count by ZERO, so the union-level annotation is not what refuses. Every
-//      corpus precedent seals a RECORD (test.fixture.sole_constructor_sealed / _variant_probe, whose own
-//      audit probe frames the coproduct case as the open question), and this is consistent with them.
-//      It is kept because it costs nothing and records the intent should the native compiler grow the
-//      check -- but a reader must not take it as the wall. If (1) and (2) are ever weakened, the probes
-//      go red; nothing protects the verdict by reading this annotation.
+//  (3) NO SEAL ON THIS UNION. Seals bind RECORDS, not union arms (test.fixture.sole_constructor_sealed
+//      / _variant_probe): adding a hand-written `Ready {...}` around forged evidence raised the
+//      SoleConstructorViolation count by ZERO, so a union-level annotation would be a decoration. The
+//      custody is the sealed payloads of (2) and the call walls of (1); if (1) or (2) are weakened, the
+//      probes go red.
 //
 // Arms stay public for MATCHING: a match is not a mint, so consumers can consume verdicts freely and
 // none can fabricate one.
@@ -1494,7 +1480,7 @@ fn admit_preparation(
   AdmittedPreparation { route: route, blocking: blocking }
 }
 
-type FirmwareNetworkBootStanding sole_constructor
+type FirmwareNetworkBootStanding
   = Ready { conclusion: AdmittedReadyConclusion }
   | NeedsPreparation { admitted: AdmittedPreparation }
   | Unobserved { unanswered: List<UnansweredAxis> }
@@ -1709,57 +1695,46 @@ fn network_boot_attempt(
   // two steps `prepare` walks, so an attempt cannot exist for a route the verdict would not have
   // declared -- and a caller cannot hand over a bound route of its own construction, which is how a
   // redirect pointing at a reference copied from another unit would otherwise reach the wire.
-  match admissible_readiness_for(
+  match select_admissible(readiness: admissible_readiness_for(
     blocker: blocker,
     redirect_to: redirect_target(join: join, available: available),
     existence: existence,
     observed_bios_version: observed_bios_version,
-  ) {
-    Empty => AttemptBlockerUncataloged { blocker: blocker }
-    readiness =>
-      match select_admissible(readiness: readiness) {
-        AdmissibleRouteSelection { executable: Present { value: bound }, first_refusal: _ } =>
-          AttemptConstructed {
-            attempt: NetworkBootAttempt {
-              route: bound,
-              boot_control: boot_control,
-              reset_observed_at: reset_observed_at,
-              resulting_dhcp: resulting_dhcp,
-              unit_label: unit_label,
-            },
-          }
-        // NOTHING WAS WRITTEN, because there was nothing correct to write. The blocker, the mechanism
-        // and the binding's own answer travel out together, so a reader can tell 'the fleet has no row
-        // for this' (AttemptBlockerUncataloged) from 'the fleet has a row and we have not read this
-        // unit's firmware' -- and the second one names the read that ends it.
-        AdmissibleRouteSelection { executable: Absent, first_refusal: first } =>
-          match first {
-            Present { value: RouteBindingStaleGrounding {
-              mechanism: mechanism,
-              grounded_for_bios_version: grounded,
-              observed_bios_version: seen,
-            } } =>
-              AttemptRouteUnbound {
-                blocker: blocker,
-                mechanism: mechanism,
-                refusal: RouteBindingStaleGrounding {
-                  mechanism: mechanism,
-                  grounded_for_bios_version: grounded,
-                  observed_bios_version: seen,
-                },
-              }
-            Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
-              AttemptRouteUnbound {
-                blocker: blocker,
-                mechanism: mechanism,
-                refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
-              }
-            // UNREACHABLE: the sweep above filled BOTH fields from one walk, so a non-empty admissible
-            // list cannot leave `first_refusal` empty while `executable` is also empty. It stays written
-            // out because the compiler requires the arm and because an empty answer here would mean the
-            // fold produced rows that belonged to neither state -- which is the one thing worth seeing.
-            Absent => AttemptBlockerUncataloged { blocker: blocker }
-          }
+  )) {
+    NoAdmissibleRows => AttemptBlockerUncataloged { blocker: blocker }
+    Executable { route: bound } =>
+      AttemptConstructed {
+        attempt: NetworkBootAttempt {
+          route: bound,
+          boot_control: boot_control,
+          reset_observed_at: reset_observed_at,
+          resulting_dhcp: resulting_dhcp,
+          unit_label: unit_label,
+        },
+      }
+    // NOTHING WAS WRITTEN, because there was nothing correct to write. The blocker, the mechanism
+    // and the binding's own answer travel out together, so a reader can tell 'the fleet has no row
+    // for this' (AttemptBlockerUncataloged) from 'the fleet has a row and we have not read this
+    // unit's firmware' -- and the second one names the read that ends it.
+    AllRefused { first: RouteBindingStaleGrounding {
+      mechanism: mechanism,
+      grounded_for_bios_version: grounded,
+      observed_bios_version: seen,
+    } } =>
+      AttemptRouteUnbound {
+        blocker: blocker,
+        mechanism: mechanism,
+        refusal: RouteBindingStaleGrounding {
+          mechanism: mechanism,
+          grounded_for_bios_version: grounded,
+          observed_bios_version: seen,
+        },
+      }
+    AllRefused { first: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
+      AttemptRouteUnbound {
+        blocker: blocker,
+        mechanism: mechanism,
+        refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
       }
   }
 }
@@ -2046,64 +2021,40 @@ fn prepare(
   // is total per row, `executable` and `not_executable` cannot both be empty when rows exist: the
   // 'invent a refusal for the leftover case' arm that a two-fold design needs is absent, and there is
   // nothing here whose reachability has to be argued.
-  match admissible_readiness_for(
+  match select_admissible(readiness: admissible_readiness_for(
     blocker: blocker,
     redirect_to: redirect_target(join: join, available: available),
     existence: existence,
     observed_bios_version: observed_bios_version,
-  ) {
-    // NO ROW AT ALL FOR THIS BLOCKER -- a fleet-catalog gap. Distinguished from the next arm because
+  )) {
+    // NO ROW AT ALL FOR THIS BLOCKER -- a fleet-catalog gap. Distinguished from AllRefused because
     // the remedies differ in kind: this one is a catalog change affecting every unit, that one is one
     // GET against one unit.
-    Empty =>
+    NoAdmissibleRows =>
       Refused {
         cause: NoRouteOwnsThisBlocking { why: "no catalog row resolves this blocker" },
         gaps: [],
       }
-    readiness =>
-      match select_admissible(readiness: readiness) {
-        // THE MOST-PREFERRED DRIVABLE ROW WINS, and preference is still catalog order.
-        AdmissibleRouteSelection { executable: Present { value: bound }, first_refusal: _ } =>
-          // THE ROUTE TRAVELS INSIDE THE SEAL. `bound` came out of bind_route_from, so it
-          // is a bound row rather than a catalog row; wrapping it here is the only way to put it in a
-          // verdict, and a caller that skipped this fold could not build the payload at all.
-          NeedsPreparation {
-            admitted: admit_preparation(route: bound, blocking: blocker),
-          }
-        // ROWS EXIST AND NOT ONE CAN BE NAMED. The sweep already settled both answers, so this reads
-        // the other field of the SAME result -- no second walk, no chance for the two to disagree.
-        AdmissibleRouteSelection { executable: Absent, first_refusal: first } =>
-          match first {
-            Present { value: RouteBindingStaleGrounding {
-              mechanism: mechanism,
-              grounded_for_bios_version: grounded,
-              observed_bios_version: seen,
-            } } =>
-              Refused {
-                cause: RouteBindingStaleForUnit {
-                  mechanism: mechanism,
-                  grounded_for_bios_version: grounded,
-                  observed_bios_version: seen,
-                },
-                gaps: [],
-              }
-            Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
-              Refused {
-                cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed },
-                gaps: [],
-              }
-            // UNREACHABLE: the list was non-empty and the fold is total per row, so a row landed in
-            // neither selector. Refusing with the disagreement named is the only honest thing left --
-            // and if a reader ever sees this cause, a selector has stopped matching an arm.
-            Absent =>
-              Refused {
-                cause: NoRouteOwnsThisBlocking {
-                  why: "admissible rows exist for this blocker yet the readiness fold reported none as executable and none as refused; the selectors disagree with the fold",
-                },
-                gaps: [],
-              }
-          }
+    // THE MOST-PREFERRED DRIVABLE ROW WINS, and preference is still catalog order. The route travels
+    // inside the seal: `bound` came out of bind_route_from, so it is a bound row rather than a catalog
+    // row, and wrapping it here is the only way to put it in a verdict.
+    Executable { route: bound } =>
+      NeedsPreparation { admitted: admit_preparation(route: bound, blocking: blocker) }
+    AllRefused { first: RouteBindingStaleGrounding {
+      mechanism: mechanism,
+      grounded_for_bios_version: grounded,
+      observed_bios_version: seen,
+    } } =>
+      Refused {
+        cause: RouteBindingStaleForUnit {
+          mechanism: mechanism,
+          grounded_for_bios_version: grounded,
+          observed_bios_version: seen,
+        },
+        gaps: [],
       }
+    AllRefused { first: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
+      Refused { cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed }, gaps: [] }
   }
 }
 
@@ -3069,7 +3020,7 @@ fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
 // ProxyDHCP edge boot this?' instead of an assumed answer.
 //
 // Legacy BIOS is refused rather than Unobserved because the finding is real and belongs in the
-// report: the unit's firmware is fine, OUR edge (gunbc.site_uefi_arm64_pxe_edge, cut 6) serves UEFI
+// report: the unit's firmware is fine, OUR edge (gunbc.site_pxe_edge, cut 6) serves UEFI
 // only, so the thing that has to change is not the unit. A future legacy-capable edge adds the arm
 // together with the evidence that it exists.
 type EdgeServiceableByMode

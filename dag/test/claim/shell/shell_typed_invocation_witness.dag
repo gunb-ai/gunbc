@@ -1,9 +1,8 @@
 module test.claim.shell.shell_typed_invocation_witness
 
 import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
-import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
 import extdeps.linux.usb_gadget {
   UsbGadget,
   MassStorageLun,
@@ -415,18 +414,8 @@ test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadg
 // staged fact stays something only staging can mint.
 data prepared_op_bypass_probe_source: String = "module probe.prepared_op_bypass\nimport extdeps.linux.usb_gadget { ConfigfsPreparedOp, ConfigfsPreparedLinkFunction, ConfigfsOpCommand, configfs_prepared_realization }\n\ndata probe_bypass_prepared: ConfigfsPreparedOp = ConfigfsPreparedOp {\n  disposition: ConfigfsPreparedLinkFunction {\n    gadget_dir: \"/sys/kernel/config/usb_gadget/gunbcvm\",\n    function: \"mass_storage.0\",\n    configuration: \"c.1\",\n  },\n}\n\nfn probe_bypass_run(op: ConfigfsPreparedOp) -> ConfigfsOpCommand {\n  configfs_prepared_realization(op: op)\n}\n"
 
-fn bypass_probe_census(source: String) -> CompileDiagnosticCensus {
-  compile_dag_diagnostic_census(source)
-}
-
-test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> Bool {
-  match census_blocking_count_for_class(
-    census: bypass_probe_census(source: prepared_op_bypass_probe_source),
-    wanted: "SoleConstructorViolation"
-  ) {
-    Present { value: n } => n >= 1
-    Absent => false
-  }
+test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: prepared_op_bypass_probe_source, wanted_class: "SoleConstructorViolation"), holds: fn(n) { n >= 1 }))
 }
 
 // THE DISCRIMINATING CONTROL FOR THE CALL WALL (review 5360613023 at e1bbd12223): a foreign
@@ -438,14 +427,8 @@ test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> 
 // distinguishes custody of the construction route, which no content control can.
 data direct_mint_call_probe_source: String = "module probe.direct_mint_call\nimport extdeps.linux.usb_gadget { UsbGadget, MassStorageLun, ConfigfsMkdir, ConfigfsStaging, configfs_op_prepared }\n\nfn unadmitted_direct_mint() -> ConfigfsStaging {\n  configfs_op_prepared(\n    gadget: UsbGadget {\n      config_root: \"/sys/kernel/config/usb_gadget\",\n      name: \"a/b\",\n      id_vendor: \"0x1d6b\",\n      id_product: \"0x0104\",\n      manufacturer: \"gunbc\",\n      product: \"gunbc-virtual-media\",\n      serial: \"srv4-0001\",\n      config_label: \"c.1\",\n      lun: MassStorageLun {\n        backing_device: \"/dev/nbd0\",\n        cdrom: false,\n        read_only: true,\n        removable: true,\n      },\n      udc: \"1e6a0000.usb-vhub:p3\",\n    },\n    op: ConfigfsMkdir { path: \"/sys/kernel/config/usb_gadget/a/b\" },\n  )\n}\n"
 
-test fn foreign_module_cannot_call_the_prepared_mint_directly() -> Bool {
-  match census_blocking_count_for_class(
-    census: bypass_probe_census(source: direct_mint_call_probe_source),
-    wanted: "ConstructorCallAdmissionRefused"
-  ) {
-    Present { value: n } => n >= 1
-    Absent => false
-  }
+test fn foreign_module_cannot_call_the_prepared_mint_directly() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: direct_mint_call_probe_source, wanted_class: "ConstructorCallAdmissionRefused"), holds: fn(n) { n >= 1 }))
 }
 
 // THE PRODUCTION ROUTE IS THE NAME LAW'S CONTROL (review 5360078848 at a00c5f6a83): a slash

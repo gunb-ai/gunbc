@@ -50,7 +50,7 @@ import gunbc.machine_intake.prior_life_boundary {
   mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization,
   prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive, baseline_cursor_sel_final_record,
 }
-import std.content_hash { content_hash_equal, content_hash_of_value }
+import std.content_hash { content_hash_equal, content_hash_of_value, sha256_hex_of_text }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import test.claim.machine_intake.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world }
 import gunbc.auth.standing_operator_grant {
@@ -1017,7 +1017,7 @@ fn mtjade1_grant_with_foreign_interlock() -> StandingOperatorGrant {
     ruling: StandingDestructiveAuthorization {
       ruling_text: g.ruling.ruling_text,
       effect_subject: g.ruling.effect_subject,
-      interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
+      interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "grant_discharges_bmc_secure_account_write") },
     },
     scope: g.scope,
     effects: g.effects,

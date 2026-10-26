@@ -1,0 +1,41 @@
+module gunbc.rung_drop.node_reaching_composite_equality
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeclaredBy, ReplacementStaged }
+import std.decl_ref { decl_ref }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+
+// DECLARED 2026-10-24 with Node joining the equality-inadmissible rows (gunbc#14842). Every bare Node ==
+// moved onto node_same_occurrence or node_equal_ignoring_provenance, and List/Optional/RuntimeValue/
+// DependencyView/Diagnostic operands onto their existing lifts. What remains compares a COMPOSITE that
+// reaches Node (SymbolicCost, ComplexityAssessment, IdempotencyVerdict, ParallelismRelation, ModelCore,
+// NormalizedTree, TargetModel, ExecutorBatch, List<TypeVariableInstance>), for which no erasure route
+// exists without a hand-written equality per type. The seed admits == at exactly the declarations in the
+// population (module and declaration), and only where neither operand is itself Node or Edge; any other
+// site still refuses. Every listed site asks the STRUCTURAL question (an actual value against an expected
+// or a recomputed one), so the follow-up target is structural equality with a Node-leaf route.
+// MechanicallyPreventable, not structurally guaranteed: the listed sites still compare Node provenance,
+// and what keeps the list closed is the seed's == guard refusing any other site wherever the seed compiles
+// it (required v2-bootstrap closures included). The witness REDs that prove that refusal
+// (test.claim.self_host_equality_admission_witness) are off the required path (gunbc.rung_drop
+// v1_required_lanes_withdrawn).
+data node_reaching_composite_equality: RungDrop = RungDrop {
+  identity: "node_reaching_composite_equality" as NonEmptyStr,
+  subject: "== on composites that reach v2.std.node Node, at the enumerated declarations",
+  declared: "2026-10-24",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "derived structural equality with a Node-leaf occurrence route, so a composite reaching Node compares through the erasure route without a per-type equality" },
+    // The 31 members live ONCE, in the seed the guard runs in; this row compiles without src/v1, so it
+    // cites that declaration. THE CITATION IS UNCHECKED: nothing on this side resolves a v1 symbol, and a
+    // claim that imports v1.compiler.infer from the dag tree fails resolve inside the seed module
+    // (measured 2026-10-24: 04_infer.dag fold_terminal_expr not in scope outside the seed build). A seed
+    // rename that the guard's own reference survives would leave this citation stale. Trigger for the
+    // check: v1.compiler.infer resolves from a dag-tree claim, which then imports the declaration by name.
+    // Consequently the population is UNREADABLE here (gunbc.rung_drop DeclaredBy), and the rung claim
+    // rests on the seed guard alone: the guard admits exactly the cited list and refuses every other site.
+    population: DeclaredBy { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_node_reaching_composite_drop_population") },
+    restoration_trigger: "the language derives structural equality for a composite with a Node-leaf occurrence route; then every listed declaration compares through it and equality_node_reaching_composite_drop_population is deleted",
+  } }
+}

@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_belt_tick_cli
 
 import std.types { String, List, NonEmptyStr }
 import gunbc.dispatch_credential_acquisition {
-  credential_acquisition_slots_root,
+  credential_acquisition_slots, credential_acquisition_store, CredentialAcquisitionStoreReady, CredentialAcquisitionStoreUnready,
   credential_recover_root,
   credential_root_recovery_report,
   credential_reader_standing,
@@ -16,7 +16,9 @@ import gunbc.live_deploy.desired {
   DesiredDeploymentUnknownInstanceId,
   DesiredDeploymentRosterRefused,
 }
-import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name }
+import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_attempt_unit_drain_path_unit_name }
+import gunbc.roadmap.spool_stall { spool_stall_step_text, spool_stall_clear_at, SpoolStallCleared, SpoolStallClearRefused }
+import gunbc.host.host_layout { attempt_unit_spool_stall_record_path }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
@@ -50,7 +52,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_instance_obligation_enqueue, belt_obligation_enqueue_json,
   belt_attempt_obligations_run, belt_attempt_obligation_receipt_write, belt_attempt_obligation_run_json, belt_attempt_obligation_run_failure,
   belt_exit_entries_settle, belt_exit_entries_claim, belt_exit_entries_pending_at, BeltExitClaimed, BeltExitClaimRefused, belt_exit_drain_for_instance, belt_exit_drain_json, belt_exit_drain_failures,
-  belt_exit_stall_failures, belt_exit_stall_analyze_at, belt_exit_stall_whoami, belt_exit_stall_release_at, belt_exit_entry_move_at,
+  belt_exit_stall_failures, belt_exit_stall_analyze_at, belt_exit_stall_whoami, belt_exit_stall_clear_at, BeltExitCleared, BeltExitClearFailed, belt_exit_stall_release_at, belt_exit_entry_move_at,
   BeltExitStallNotHeld, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallReleaseRefused,
   belt_exit_stall_rearm_at, BeltExitStallRearmed, BeltExitStallRearmRefused,
   belt_discover_for_instance, belt_discovery_json, belt_discovery_pass_outcome,
@@ -528,7 +530,7 @@ fn belt_exit_drain_cli() -> ProcessExit {
   })
 }
 
-// THE OPERATOR ROUTE OUT OF AN EXIT-SPOOL STALL (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_record_at).
+// THE OPERATOR ROUTE OUT OF AN EXIT-SPOOL STALL (gunbc.roadmap.roadmap_belt_actuate spool_stall_record_at).
 // Both verbs run as the drain's principal. `analyze` is read-only and exits non-zero while a stall is held,
 // printing why each recorded entry cannot leave. `release` re-attempts every recorded claim, and only when none
 // is still unmovable deletes the stall record and re-arms the failed path unit (the one privileged effect;
@@ -539,6 +541,17 @@ fn belt_exit_stall_analyze_cli() -> ProcessExit {
     let report = belt_exit_stall_analyze_at(root: instance.instance_root as String, whoami: belt_exit_stall_whoami())
     exit_failure(reason: join(report, "\n"))
   })
+}
+
+// THE CLEAR for an EMPTY foreign-owned entry (belt_exit_stall_clear_at). It runs as the drain's principal with no
+// privilege: it creates the entry in the recorded move's target stage and removes the foreign one, the claim's own
+// outcome, then `release` re-arms the trigger. A non-empty, unrecorded or symlinked entry is refused with a cause.
+fn belt_exit_stall_clear_cli(entry: String) -> ProcessExit {
+  belt_instance_from_env(entry: "belt_exit_stall_clear_cli", continuation: instance =>
+    match belt_exit_stall_clear_at(root: instance.instance_root as String, entry: entry, whoami: belt_exit_stall_whoami()) {
+      BeltExitClearFailed { reason } => exit_failure(reason: join(["belt_exit_stall_clear_cli: refused ", entry, ": ", reason], ""))
+      BeltExitCleared { to_path: _ } => ExitSuccess
+    })
 }
 
 fn belt_exit_stall_release_cli() -> ProcessExit {
@@ -559,10 +572,37 @@ fn belt_exit_stall_release_cli() -> ProcessExit {
           BeltExitStallNotHeld => rearm()
           BeltExitStallReleased { reclaimed: _ } => rearm()
           BeltExitStallStillUnmovable { entries } =>
-            exit_failure(reason: join(["belt_exit_stall_release_cli: still unmovable, the stall record is kept: ", join(entries |> map(e => join([e.entry, " (", e.step, ": ", e.cause, ")"], "")), "; ")], ""))
+            exit_failure(reason: join(["belt_exit_stall_release_cli: still unmovable, the stall record is kept: ", join(entries |> map(e => join([e.entry, " (", spool_stall_step_text(step: e.step), ": ", e.cause, ")"], "")), "; ")], ""))
           BeltExitStallReleaseRefused { reason } => exit_failure(reason: join(["belt_exit_stall_release_cli: ", reason], ""))
         }
       }
+    })
+}
+
+// THE ATTEMPT-UNIT SPOOL'S ROUTE OUT OF A STALL: ONE verb, one privileged effect. The drain re-claims every
+// request when it runs again, so there is nothing for release to claim itself: it clears the record
+// (stalled/ is group-writable by the service principal, like requests/) and re-arms the failed path unit with
+// belt_exit_stall_rearm_at, the same census site as the exit spool's (the effect is identical: reset-failed
+// and start one named system path unit). If a request is still unmovable the drain stalls again at once,
+// writing a fresh record: unlike the exit spool's release (belt_exit_stall_release_at refuses while anything is
+// unmovable), the drain's next pass is this verb's verification (see gunbc.roadmap.spool_stall). A refused clear skips the re-arm; a refused re-arm is typed with the exact argv.
+fn attempt_unit_stall_release_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "attempt_unit_stall_release_cli", continuation: instance =>
+    match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
+      DesiredDeploymentRosterRefused { refusal: r } =>
+        exit_failure(reason: join(["attempt_unit_stall_release_cli: desired roster refused: ", desired_roster_refusal_detail(refusal: r)], ""))
+      DesiredDeploymentUnknownInstanceId { instance_id: id } =>
+        exit_failure(reason: join(["attempt_unit_stall_release_cli: no desired deployment for instance ", id], ""))
+      DesiredDeploymentFound { row: row } =>
+        match spool_stall_clear_at(record_path: attempt_unit_spool_stall_record_path(instance_root: instance.instance_root as String)) {
+          SpoolStallClearRefused { reason } => exit_failure(reason: join(["attempt_unit_stall_release_cli: the stall record was not cleared: ", reason], ""))
+          SpoolStallCleared =>
+            match belt_exit_stall_rearm_at(path_unit: deployment_attempt_unit_drain_path_unit_name(names: row.names)) {
+              BeltExitStallRearmed => ExitSuccess
+              BeltExitStallRearmRefused { argv, reason } =>
+                exit_failure(reason: join(["attempt_unit_stall_release_cli: the stall record is cleared but the re-arm was refused (", reason, "); run as a privileged operator: ", join(argv, " ")], ""))
+            }
+        }
     })
 }
 
@@ -587,12 +627,15 @@ fn belt_credential_recovery_cli() -> ProcessExit {
           Absent => exit_failure(reason: "belt_credential_recovery_cli: host clock unreadable")
           Present { value: now } => {
             let unit = deployment_belt_service_unit_name(names: row.names)
-            let root = credential_acquisition_slots_root(instance_root: instance.instance_root as String)
-            let recovered = credential_recover_root(root: root, now: now, reader_for: rec =>
-              belt_credential_reader_for(instance: instance, node_id: rec.node_id, attempt_key: rec.identity))
+            let recovered = match credential_acquisition_store(instance: instance) {
+              CredentialAcquisitionStoreUnready { detail } => CredentialRootFailed { report: detail }
+              CredentialAcquisitionStoreReady { store: credentials } =>
+                credential_recover_root(credentials: credentials, now: now, reader_for: rec =>
+                  belt_credential_reader_for(instance: instance, node_id: rec.node_id, attempt_key: rec.identity))
+            }
             let receipt = serialize_json(v: json_object(members: [
               json_kv(key: "unit", value: json_string(s: unit as String)),
-              json_kv(key: "slots_root", value: json_string(s: root as String)),
+              json_kv(key: "store", value: json_string(s: credential_acquisition_slots.member as String)),
               json_kv(key: "recovered", value: json_string(s: credential_root_recovery_report(r: recovered))),
             ]))
             let receipt_path = join([instance.instance_root as String, "/credential-acquisition-recovery.json"], "")

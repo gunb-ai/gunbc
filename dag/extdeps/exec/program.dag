@@ -124,6 +124,7 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
 // until their carrier is typed.
 fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
   admit_callers: [
+    decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_stats_query_command"),
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program"),
     decl_ref(module_path: "gunbc.host.cursor_agent_realization", decl_name: "cursor_agent_pinned_program"),
     decl_ref(module_path: "test.claim.cursor_runtime_root_wet_witness", decl_name: "wet_logging_stand_in"),
@@ -200,13 +201,16 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_program"),
     decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_program"),
+    decl_ref(module_path: "extdeps.tools.util_linux_findmnt", decl_name: "findmnt_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_flock", decl_name: "flock_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_program"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_path_resolved_program"),
+    decl_ref(module_path: "extdeps.systemd.loginctl", decl_name: "loginctl_path_resolved_program"),
     decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_program"),
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
     decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
+    decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_extract_bbl_profiles_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
@@ -217,7 +221,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_jailer_run_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
-    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_argument_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
   ]
   = ProgramIdentity { invocation: invocation, catalog: UncatalogedDebt }
