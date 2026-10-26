@@ -65,7 +65,7 @@ import gunbc.host.host_layout {
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
   attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
-import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
+import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
@@ -1043,7 +1043,7 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
 type AttemptUnitEntryOutcome
   = AttemptUnitEntrySkipped
   | AttemptUnitEntryHandled { handled: AttemptUnitHandled }
-  | AttemptUnitEntryUnmovable { entry: String, step: String, cause: String }
+  | AttemptUnitEntryUnmovable { entry: String, step: SpoolStallStep, cause: String }
 
 fn attempt_unit_handled_failure(handled: AttemptUnitHandled) -> List<ProcessExit> {
   match handled {
@@ -1067,7 +1067,7 @@ fn attempt_unit_outcome_failure(outcome: AttemptUnitEntryOutcome) -> List<Proces
   match outcome {
     AttemptUnitEntryHandled { handled: h } => attempt_unit_handled_failure(handled: h)
     AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } =>
-      [exit_failure(reason: join([entry, ": unmovable at ", step, " (stays in requests/): ", cause], ""))]
+      [exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))]
     AttemptUnitEntrySkipped => [] as List<ProcessExit>
   }
 }
@@ -1117,7 +1117,7 @@ fn attempt_unit_pass_of(outcomes: List<AttemptUnitEntryOutcome>) -> AttemptUnitD
 fn attempt_unit_entry_outcome(instance_root: String, instance: HostDashboardInstance?, entry: String) -> AttemptUnitEntryOutcome {
   match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
     AttemptSystemUnitAlreadyClaimed { entry: _ } => AttemptUnitEntrySkipped
-    AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: "claim", cause: c }
+    AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: SpoolStallClaim, cause: c }
     AttemptSystemUnitClaimSymlink { entry: e } =>
       AttemptUnitEntryHandled { handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: "request entry is a symlink") }
     AttemptSystemUnitClaimRefused { entry: e, reason: why } =>
@@ -1133,7 +1133,7 @@ fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
     AttemptSystemUnitRequestListRefused { reason } =>
-      attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: "list-requests", cause: reason }])
+      attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: SpoolStallListRequests, cause: reason }])
     AttemptSystemUnitRequestNames { names: entries } =>
       attempt_unit_pass_of(outcomes: map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry)))
   }
