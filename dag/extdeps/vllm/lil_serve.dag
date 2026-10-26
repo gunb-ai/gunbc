@@ -94,8 +94,10 @@ fn lil_serve_environment_argv(e: LilServeEnvironmentEntry) -> List<String> {
 
 // WHERE THE API KEY COMES FROM — an INTERFACE shape, deliberately carrying NO shell spelling. This
 // module owns the launcher's interface; the bash `-lc` substitution srv1's wrapper uses is one
-// REALIZATION of it, rendered where that medium is a fact of the deployment
-// (gunbc.serving.srv1_serving_launch srv1_serving_api_key_substitution). The interface refuses to bake
+// REALIZATION of it, spelled where that medium is a fact of the deployment: inside the retained host
+// wrapper (gunbc.serving.srv1_serving_launch srv1_serving_wrapper, home gunbc.retained_shell_script),
+// which is the container's actual `bash -lc` command string. No module function builds shell syntax
+// out of string literals (review 86807, ctrl HAND-SHELL: medium-as-string). The interface refuses to bake
 // a transport: DESIGN 3, "transport has fused when an operation is forked per transport" — the key
 // value, the substitution wire, and the direct-exec file-read are the SAME operation across transports,
 // so the interface states only the source and each realization spells its own token.
@@ -176,9 +178,9 @@ type LilServeLaunch {
 
 // Render the launcher's argument tokens. `api_key_wire` is the token a REALIZATION passes for the key
 // VALUE at the transport this launch is started through: for srv1's container (a `bash -lc` command
-// string) it is the substitution wire rendered by gunbc.serving.srv1_serving_launch
-// srv1_serving_api_key_substitution; a direct-exec realization would pass the file's contents read at
-// start. The interface does not choose between them (DESIGN 3: no fused transport); the witness
+// string) it is the substitution token the retained wrapper carries, supplied by the CALLER
+// (gunbc.serving.srv1_serving_launch srv1_serving_launch_argv takes it as a parameter — this module
+// never constructs it); a direct-exec realization would pass the file's contents read at start. The interface does not choose between them (DESIGN 3: no fused transport); the witness
 // test.claim.serving.srv1_serving_launch_witness pins the srv1 realization's full token sequence to
 // what `docker inspect` showed, so a medium cannot silently change under a caller.
 fn lil_serve_launch_argv(launch: LilServeLaunch, api_key_wire: String) -> List<String> {
