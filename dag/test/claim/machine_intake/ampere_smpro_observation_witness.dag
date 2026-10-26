@@ -20,7 +20,7 @@ import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site
 import gunbc.machine_intake.ampere_smpro_observation {
   smpro_socket_stage, CurrentStageEstablished, ReportedStageUnavailable,
   SmproProbeRaw, SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent,
-  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, smpro_pass_dossier_text,
+  smpro_probe_outcome, smpro_control_refusal, smpro_request_wire, smpro_request_text, smpro_pass_dossier_text,
   smpro_pass_probe_count, smpro_pass_read_order, smpro_pass_sequenced, smpro_pass_plan, SmproTarget, SmproPlan,
   SmproSite, SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SiteFromOperatorBrief, smpro_site_admit, smpro_site_targets,
   SiteHasNoTargets, SiteControlNotATarget, SiteControlAmbiguous, SiteSocketRepeated, SiteAddressRepeated,
@@ -147,8 +147,18 @@ test fn the_seven_bit_address_is_shifted_and_an_eight_bit_one_refuses() -> Bool 
     && (match master_write_read_slave_byte(seven_bit_address: 158) { Present { value: _ } => false Absent => true })
 }
 
+fn request_text_of(bus: Int, slave: Int, reg: Int) -> String {
+  match smpro_request_wire(bus: bus, slave: slave, reg: reg) {
+    Absent => ""
+    Present { value: w } => smpro_request_text(w: w) as String
+  }
+}
+
+// A request byte that is not a byte leaves the request unencodable rather than misspelled.
 test fn the_bootstage_request_writes_the_register_and_the_size() -> Bool {
-  (smpro_request_text(bus: 5, slave: 158, reg: 176) as String) == "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02"
+  request_text_of(bus: 5, slave: 158, reg: 176) == "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02"
+    && match smpro_request_wire(bus: 256, slave: 158, reg: 176) { Absent => true  Present { value: _ } => false }
+    && match smpro_request_wire(bus: 5, slave: 158, reg: -1) { Absent => true  Present { value: _ } => false }
 }
 
 test fn the_plan_is_every_ordered_register_on_two_sockets() -> Bool {
@@ -352,7 +362,7 @@ test fn a_second_site_derives_its_request_bytes() -> Bool {
       Absent => false
       Present { value: b } => match master_write_read_slave_byte(seven_bit_address: s.control.seven_bit_address) {
         Absent => false
-        Present { value: sl } => (smpro_request_text(bus: b, slave: sl, reg: smpro_manufacturer_id_reg.offset) as String) == "raw 0x06 0x52 0x0a 0x22 0x02 0x02 0x02"
+        Present { value: sl } => request_text_of(bus: b, slave: sl, reg: smpro_manufacturer_id_reg.offset) == "raw 0x06 0x52 0x0a 0x22 0x02 0x02 0x02"
       }
     }
   }
