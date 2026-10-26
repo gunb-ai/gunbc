@@ -3946,10 +3946,41 @@ pub fn settled_rhs(
             let mut fuel = __tco_loop_fuel;
             match alias_rhs_of_declaration(head.clone(), env.clone()) {
                 std::option::Option::None => {
-                    break Some(Rc::new(SettledType {
-                        head: head.clone(),
-                        args: rhs.children.clone(),
-                    }));
+                    match parameterized_alias_of_declaration(
+                        head.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                    ) {
+                        std::option::Option::None => {
+                            break Some(Rc::new(SettledType {
+                                head: head.clone(),
+                                args: rhs.children.clone(),
+                            }));
+                        }
+                        Some(pa) => {
+                            if (fuel.clone() <= 0) {
+                                break std::option::Option::None;
+                            } else {
+                                match settled_parameterized_alias(
+                                    pa.clone(),
+                                    rhs.children.clone(),
+                                    source_indices.clone(),
+                                    env.clone(),
+                                    v1_rt::int_sub(fuel.clone(), 1),
+                                ) {
+                                    Some(through) => {
+                                        break Some(through.clone());
+                                    }
+                                    std::option::Option::None => {
+                                        break Some(Rc::new(SettledType {
+                                            head: head.clone(),
+                                            args: rhs.children.clone(),
+                                        }));
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 Some(next) => match next.declaration.clone() {
                     Some(next_head) => {
