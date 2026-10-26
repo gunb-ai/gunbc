@@ -4031,23 +4031,37 @@ fn resolve_base_mirror_authority(
             }
         ));
     }
-    let output = Command::new("git")
-        .args(["rev-parse", "--verify", &format!("{base_ref}^{{commit}}")])
-        .current_dir(workspace)
-        .output()
-        .map_err(|e| format!("git rev-parse {base_ref}: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "BootstrapBaseMirrorRefUnresolved: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base_ref} \
-             resolves to no commit here: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+    // ONE AUTHORITY, LOCATED BY GIT'S OWN NAME-SPACE — not a second path. `main` and
+    // `refs/remotes/origin/main` are two names for the same pull-request base commit; which name
+    // exists is a property of the checkout (heal checks out the PR head sha, so a local `main`
+    // need not exist even though the base does). Trying the second NAME retries a name lookup,
+    // never an authority: if neither resolves, this refuses. Building from the head mirror because
+    // the base could not be located would be the forbidden second path wearing a different name.
+    let mut candidates = vec![base_ref.to_string()];
+    if !base_ref.starts_with("refs/") {
+        candidates.push(format!("refs/remotes/origin/{base_ref}"));
     }
-    let base_commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let mut base_commit = String::new();
+    let mut last_error = String::new();
+    for candidate in &candidates {
+        let output = Command::new("git")
+            .args(["rev-parse", "--verify", &format!("{candidate}^{{commit}}")])
+            .current_dir(workspace)
+            .output()
+            .map_err(|e| format!("git rev-parse {candidate}: {e}"))?;
+        if output.status.success() {
+            base_commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !base_commit.is_empty() {
+                break;
+            }
+        }
+        last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    }
     if base_commit.is_empty() {
         return Err(format!(
             "BootstrapBaseMirrorRefUnresolved: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base_ref} \
-             resolved to an empty commit id"
+             resolves to no commit here (tried {:?}): {last_error}",
+            candidates
         ));
     }
     let population = base_mirror_population(workspace, &base_commit)?;
@@ -7208,6 +7222,64 @@ mod heal_round_one_base_mirror_tests {
             read(&stage0.join("fixture_emitted.rs")).contains("refused for 'Nat'"),
             "a repeat bootstrap replaced the head snapshot with base bytes"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// ONE AUTHORITY, TWO NAMES. Heal checks out the PR head sha, so the base branch may exist
+    /// only as its remote-tracking name — that is a checkout fact, not a second authority, and the
+    /// two names must resolve to the SAME commit. A ref that resolves under neither name still
+    /// refuses.
+    #[test]
+    fn the_base_ref_is_located_under_either_local_or_remote_name() {
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        // A checkout of the PR head: the base exists only as `origin/<name>`.
+        let clone = std::env::temp_dir().join(format!(
+            "{}-clone",
+            root.file_name().unwrap().to_str().unwrap()
+        ));
+        let output = Command::new("git")
+            .args([
+                "clone",
+                "-q",
+                "--no-checkout",
+                &root.to_string_lossy(),
+                &clone.to_string_lossy(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "clone: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Command::new("git")
+            .args(["checkout", "-q", "pr"])
+            .current_dir(&clone)
+            .output()
+            .unwrap();
+        let cloned_stage0 = clone.join(STAGE0_SRC_REL);
+        assert!(
+            read(&cloned_stage0.join("fixture_emitted.rs")).contains("refused for 'Nat'"),
+            "the clone must sit on the damaged head"
+        );
+        let subject = fixture_subject(&clone);
+        let restored =
+            bootstrap_round_one_from_base_mirror(&clone, &cloned_stage0, "base-ref", &subject)
+                .expect("the base is reachable through its remote-tracking name");
+        assert_eq!(restored.base_commit, base_commit);
+        assert!(read(&cloned_stage0.join("fixture_emitted.rs")).contains("base mirror bytes"));
+        let error = bootstrap_round_one_from_base_mirror(
+            &clone,
+            &cloned_stage0,
+            "no-such-base-anywhere",
+            &subject,
+        )
+        .expect_err("no name resolves, so it must refuse");
+        assert!(
+            error.starts_with("BootstrapBaseMirrorRefUnresolved"),
+            "unlocated refusal: {error}"
+        );
+        let _ = fs::remove_dir_all(&clone);
         let _ = fs::remove_dir_all(&root);
     }
 
