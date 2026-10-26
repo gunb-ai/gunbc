@@ -4744,38 +4744,6 @@ pub fn string_type() -> Rc<Node> {
     CACHED.with(|c: &Rc<Node>| c.clone())
 }
 
-pub fn hash_type() -> Rc<Node> {
-    thread_local! {
-            static CACHED: Rc<Node> = {
-                Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: "Hash".to_string(),
-        span: kernel_span("Hash".to_string()),
-        ident_span: Some(kernel_span("Hash".to_string())),
-        children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: std::option::Option::None,
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: std::option::Option::None,
-        transport: std::option::Option::None,
-        properties: Rc::new(vec![]),
-        type_annotation: std::option::Option::None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-        declaration_marker: DeclarationMarker::Unmarked,
-        declaration: std::option::Option::None,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
-            };
-        }
-    CACHED.with(|c: &Rc<Node>| c.clone())
-}
-
 pub fn int_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
