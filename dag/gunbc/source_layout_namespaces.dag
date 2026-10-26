@@ -209,6 +209,7 @@ fn layout_namespaces() -> List<String> {
     "extdeps.ssh",
     "extdeps.standards",
     "extdeps.storage",
+    "extdeps.strata",
     "extdeps.sudo",
     "extdeps.systemd",
     "extdeps.systems",
