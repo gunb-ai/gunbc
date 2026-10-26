@@ -83,10 +83,36 @@ test fn the_rendered_text_holds_the_expected_fragments() -> Bool {
 }
 
 // An unsafe token has no constructor result: the checked constructors return Absent, so it cannot reach a row.
+// The refusals go BEYOND the old blacklist: characters that no quote/comment/block rule catches but the admitted
+// class does not list — '?', ',', '=', '&', '<', '|', backtick, '(', ')' — are refused too, and a variable must
+// start at a letter. These are the cases a blacklist lets through; the whitelist is the construction.
 test fn an_unsafe_token_is_absent() -> Bool {
   match nginx_token(text: "x'; os.execute('x") { Absent => true Present { value: _ } => false }
     && match nginx_variable(text: "a$b") { Absent => true Present { value: _ } => false }
     && match nginx_token(text: "x#") { Absent => true Present { value: _ } => false }
     && match nginx_variable(text: "a-b") { Absent => true Present { value: _ } => false }
     && match nginx_token(text: "x-seat-permit") { Absent => false Present { value: _ } => true }
+    && match nginx_token(text: "a?b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a,b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a=b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a&b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a<b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a|b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a`b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a(b)") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "1abc") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "a.b") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "a_b") { Absent => false Present { value: _ } => true }
+}
+
+// What the brand does NOT do: it is not enforced, so a forced cast reaches a row and renders unescaped.
+// This test pins the hole the gunbc.guarantee_stall nginx_token_validator_construction row carries — it is
+// expected to go red when the gap closes (constructor-only admission), not to certify the hole as fine.
+test fn a_forced_cast_bypasses_the_constructor_and_renders_unescaped() -> Bool {
+  let injected = render_nginx_directives(rows: [ProxyPassToHost {
+    host: "127.0.0.1'; os.exit(1)" as NginxToken,
+    port: 9001 as Port,
+    path: "/" as NginxToken,
+  }])
+  string_contains(injected, "'; os.exit(1)")
 }

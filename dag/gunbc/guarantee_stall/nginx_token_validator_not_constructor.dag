@@ -1,0 +1,72 @@
+module gunbc.guarantee_stall.nginx_token_validator_not_constructor
+
+// A rung drop: an EMITTED-CONFIG INVARIANT is checked after the fact rather than made unconstructible.
+//
+// WHAT THE MECHANISM IS — extdeps.proxy.openresty's two token brands are admitted by whitelisted
+// CONSTRUCTION: nginx_token and nginx_variable refuse a value whose every character is not in the admitted
+// class (alphanumeric plus - _ . / : % for tokens; letters, digits and _, starting at a letter, for Lua
+// variable names). The emitted nginx/Lua text interpolates the brands verbatim, so a value that got in through
+// a constructor cannot carry a quote, a semicolon, a comment, a block brace or whitespace.
+//
+// WHAT IT DOES NOT DO — the brands are not enforced: nothing stops a cast elsewhere putting an unchecked
+// string into an NginxToken and reaching render_nginx_directives. That is the drop, and it is demonstrated,
+// not asserted, by test.claim.serving.router_proxy_config_witness
+// ::a_forced_cast_bypasses_the_constructor_and_renders_unescaped, which pins what such a cast renders today.
+//
+// WHAT WOULD CLOSE IT — the rung above: admission by constructor alone. A cast from the unbranded string into
+// the brand is refused where the brand is declared, so the only route to an NginxToken or NginxVariable value
+// is the checking constructor; the cast test then flips red, which is its declared purpose.
+
+import std.types { Bool }
+import gunbc.guarantee_stall { GuaranteeStall, DeclaredBy, StallMechanism, ClimbBlocker, StallPopulation, UncountedNotEnumerable, StallEvidence, Observed, CounterexamplePinned }
+import gunbc.rung_climb { NextRungTrigger, ClimbTriggerBound }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.source_annotation { SourceAnnotation, SourceFile }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.proxy.openresty { nginx_token }
+
+fn nginx_token_validator_climbs_when() -> NextRungTrigger {
+  ClimbTriggerBound {
+    ref: DeclarationRef {
+      scope: WholeDeclaration,
+      module_path: "extdeps.proxy.openresty",
+      symbol: "NginxToken",
+    },
+  }
+}
+
+data nginx_token_validator_not_constructor_stall: GuaranteeStall = GuaranteeStall {
+  id: "gunbc.guarantee_stall/nginx_token_validator_not_constructor",
+  rung_below: 2,
+  rung_target: 3,
+  guarantee: "every value interpolated into emitted nginx or Lua text carries no delimiter character; the emitted config's injection-freedom holds because such a value cannot be built",
+  mechanism: StallMechanism {
+    what_it_is: "the two token brands are admitted by whitelisted constructors (nginx_token, nginx_variable) that refuse any character outside the admitted class",
+    what_it_omits: "the brands are not enforced — a cast elsewhere puts an unchecked string into an NginxToken or NginxVariable and renders it unescaped into the config",
+    closes_rung_by: "admission by constructor alone: a cast into the brand is refused where the brand is declared, so the checking constructor is the only route to a value of the type",
+  },
+  blocker: ClimbBlocker {
+    kind: "missing-substrate",
+    why_not_wall: "a forced cast demonstrably bypasses the constructor and renders unescaped, pinned as a counterexample by the witness row cited in evidence; the climb lands with the enforcement, so the gap is a stall, not a wall",
+    evidence: CounterexamplePinned {
+      id: "a-forced-cast-bypasses-the-constructor-and-renders-unescaped",
+      catches_absent_guarantee: Observed,
+    },
+    population: UncountedNotEnumerable,
+  },
+  climbs_when: nginx_token_validator_climbs_when(),
+  dissolution: bound_dissolution(ref: DeclarationRef { scope: WholeDeclaration, module_path: "extdeps.proxy.openresty", symbol: "NginxToken" }),
+  declared_on: SourceAnnotation { file: SourceFile(path: "dag/extdeps/proxy/openresty.dag"), line: 1, column: 1 },
+  declared_by: DeclaredBy {
+    session_id: "proud-bear-756",
+    claimed_on: SourceAnnotation { file: SourceFile(path: "dag/gunbc/guarantee_stall/nginx_token_validator_not_constructor.dag"), line: 1, column: 1 },
+  },
+}
+
+test fn a_forced_cast_is_what_keeps_this_a_stall() -> Bool {
+  match nginx_token(text: "a'b") { Absent => true Present { value: _ } => false }
+}
+
+test fn the_climb_trigger_is_bound_not_prose() -> Bool {
+  match nginx_token_validator_climbs_when() { ClimbTriggerBound { ref: r } => r.symbol == "NginxToken" _ => false }
+}
