@@ -504,6 +504,11 @@ pub type PhysicalCoreCount = Rc<Measure<Count, One, Nat>>;
 
 pub type CharacterCount = Rc<Measure<Count, One, Nat>>;
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DisplayPixelCount {
+    pub pixels: i64,
+}
+
 pub type TokenCount = Rc<Measure<Count, One, Nat>>;
 
 pub type AllocatorBlockCount = Rc<Measure<Count, One, Nat>>;
