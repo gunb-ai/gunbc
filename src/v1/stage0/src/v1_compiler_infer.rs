@@ -14857,13 +14857,13 @@ Rc::new(InferResult {
                             expected.clone(),
                         );
                         let call_fold_acc_type = match call_fold_info.clone() {
-                            Some(fi) => Some(fold_init_joined_with_expected(
-                                crate::v1_compiler_infer_types::resolved_type(
+                            Some(fi) => Some({
+                                let __it = crate::v1_compiler_infer_types::resolved_type(
                                     crate::v1_std_core::arg_value(fi.typed_arg.clone()),
-                                ),
-                                expected.clone(),
-                                scope.clone(),
-                            )),
+                                );
+                                eprintln!("DIAGFOLD1 mod={:?} caller={:?} init_ty={} expected={} joined={}", scope.module_name, scope.caller_decl_name, type_node_label(__it.clone(), scope.type_env.source_indices.clone()), expected.map(|e| type_node_label(e, scope.type_env.source_indices.clone())).unwrap_or("<none>".to_string()), type_node_label(fold_init_joined_with_expected(__it, expected.clone(), scope.clone()), scope.type_env.source_indices.clone()));
+                                fold_init_joined_with_expected(__it, expected.clone(), scope.clone())
+                            }),
                             std::option::Option::None => std::option::Option::None,
                         };
                         let declared_formal_authority_failed = match (*call_target.clone()).clone()
@@ -15245,6 +15245,8 @@ Rc::new(InferResult {
                                 };
                                 let refined_call_fold_acc_type = match call_fold_acc_type.clone() {
                                     Some(acc) => {
+                                        eprintln!("DIAGFOLD2 mod={:?} caller={:?} acc={} fully_resolved={} unapplied_generic={}", scope.module_name, scope.caller_decl_name, type_node_label(acc.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::is_fully_resolved(acc.clone(), scope.type_env.source_indices.clone()), fold_accumulator_is_unapplied_generic(acc.clone()));
+
                                         if (!crate::v1_compiler_infer_types::is_fully_resolved(
                                             acc.clone(),
                                             scope.type_env.source_indices.clone(),
@@ -15264,13 +15266,15 @@ Rc::new(InferResult {
                                             .first()
                                             .cloned()
                                             {
-                                                Some(lambda_arg) => Some(
-                                                    crate::v1_compiler_infer_types::resolved_type(
+                                                Some(lambda_arg) => Some({
+                                                    let __lr = crate::v1_compiler_infer_types::resolved_type(
                                                         crate::v1_std_core::arg_value(
                                                             lambda_arg.clone(),
                                                         ),
-                                                    ),
-                                                ),
+                                                    );
+                                                    eprintln!("DIAGFOLD3 mod={:?} caller={:?} lambda_return={}", scope.module_name, scope.caller_decl_name, type_node_label(__lr.clone(), scope.type_env.source_indices.clone()));
+                                                    __lr
+                                                }),
                                                 std::option::Option::None => {
                                                     call_fold_acc_type.clone()
                                                 }
