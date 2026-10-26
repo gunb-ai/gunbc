@@ -54,11 +54,11 @@ fn router_dev_init_lines(state_dir: String, alias: String) -> List<String> {
     "for line in (slurp(dir .. '/client_keys') or ''):gmatch('[^\\r\\n]+') do ROUTER_KEYS[line] = true end",
     "ROUTER_UPSTREAMS = cjson.decode(slurp(dir .. '/upstreams.json') or '[]') or \{}",
     "ROUTER_ALIAS = '" + alias + "'",
-    "ngx.shared.router_state:add('meter:epoch', tostring(ngx.now()))",
+    "ngx.shared.router_state:add('meter:v2:epoch', tostring(ngx.now()))",
     "function router_comparison(model)",
     "  local quant = model == 'qwen3.8-flash-next-iq3_s' and 'iq3_s' or (model == 'Qwen3.8-Flash-Next' and 'nvfp4' or (model == ROUTER_ALIAS and 'mixed' or nil))",
     "  if not quant then return nil end",
-    "  return \{currency='USD', unit='per_million_tokens', input=0, output=0.47, quantization=quant, estimated=true, reference_model='qwen/qwen3.8-flash', source='https://openrouter.ai/api/v1/models/qwen/qwen3.8-flash/endpoints', as_of='2026-10-25', method='Unadjusted Alibaba output-price proxy; vendor quantization is undisclosed. Input comparison is zero by operator policy.'}",
+    "  return \{currency='USD', unit='per_million_tokens', input=0.15, cached=0.016, output=0.47, quantization=quant, estimated=true, reference_model='qwen/qwen3.8-flash', source='https://openrouter.ai/api/v1/models/qwen/qwen3.8-flash/endpoints', as_of='2026-10-26', method='Alibaba prompt, cached-prompt and output price proxy; vendor quantization is undisclosed. Cache discounts apply only to provider-reported cached tokens. Actual owned spend is zero.'}",
     "end",
   ]
 }
@@ -184,8 +184,10 @@ fn router_dev_body_lines() -> List<String> {
     "  local v=cjson.decode(raw) local u=type(v)=='table' and v.usage",
     "  if type(u)~='table' then return end",
     "  local a,b=u.prompt_tokens,u.completion_tokens",
+    "  local details=u.prompt_tokens_details local reported=type(details)=='table' and details.cached_tokens~=nil and details.cached_tokens~=cjson.null",
+    "  local cached=0 if reported then cached=details.cached_tokens end",
     "  local function count(n) return type(n)=='number' and n>=0 and n<9007199254740992 and n%1==0 end",
-    "  if count(a) and count(b) then ngx.ctx.usage=\{prompt=a,generated=b} else ngx.ctx.usage_error='invalid token counters' end",
+    "  if count(a) and count(b) and count(cached) and cached<=a then ngx.ctx.usage=\{prompt=a,generated=b,cached=cached,cache_reported=reported} else ngx.ctx.usage_error='invalid token counters' end",
     "end",
     "local chunk=ngx.arg[1] or '' local buf=(ngx.ctx.usage_buffer or '') .. chunk",
     "if #buf>2097152 then ngx.ctx.usage_error='usage frame exceeded 2 MiB' ngx.ctx.usage_buffer=nil return end",
@@ -205,13 +207,14 @@ fn router_dev_log_lines() -> List<String> {
     "state:incr('status:' .. tostring(ngx.status), 1, 0)",
     "local u=ngx.ctx.route",
     "if u and not u.overflow then",
-    "  local k='meter:owned:' .. u.model .. ':' local usage=ngx.ctx.usage",
+    "  local k='meter:v2:owned:' .. u.model .. ':' local usage=ngx.ctx.usage",
     "  state:incr(k .. 'requests',1,0)",
     "  if ngx.status~=200 or not ngx.ctx.usage_complete then state:incr(k .. 'failed',1,0)",
     "  elseif usage and not ngx.ctx.usage_error then",
     "    local p=router_comparison(u.model)",
-    "    state:incr(k .. 'measured',1,0) state:incr(k .. 'prompt',usage.prompt,0) state:incr(k .. 'generated',usage.generated,0)",
-    "    if p then state:incr(k .. 'value',(usage.prompt*p.input+usage.generated*p.output)/1000000,0) else state:incr(k .. 'unpriced',1,0) end",
+    "    state:incr(k .. 'measured',1,0) state:incr(k .. 'prompt',usage.prompt,0) state:incr(k .. 'generated',usage.generated,0) state:incr(k .. 'cached',usage.cached,0)",
+    "    if not usage.cache_reported then state:incr(k .. 'cache_unreported',1,0) end",
+    "    if p then state:incr(k .. 'value',((usage.prompt-usage.cached)*p.input+usage.cached*p.cached+usage.generated*p.output)/1000000,0) else state:incr(k .. 'unpriced',1,0) end",
     "  else state:incr(k .. 'unmeasured',1,0) end",
     "end",
     "if ngx.ctx.counted then state:incr('active:' .. ngx.ctx.counted, -1, 0) state:incr('upstream:' .. ngx.ctx.counted .. ':' .. tostring(ngx.status), 1, 0) if ngx.status >= 500 or ngx.status == 401 or ngx.status == 403 then state:set('unavailable:' .. ngx.ctx.counted, true, 30) end end",
@@ -226,11 +229,11 @@ fn router_dev_stats_lines() -> List<String> {
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
     "local state = ngx.shared.router_state",
     "local out = \{}",
-    "local meter=\{version=1,epoch=state:get('meter:epoch'),models=\{}} local seen=\{}",
+    "local meter=\{version=2,epoch=state:get('meter:v2:epoch'),models=\{}} local seen=\{}",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  if not u.overflow and not seen[u.model] then",
-    "    seen[u.model]=true local k='meter:owned:' .. u.model .. ':' local p=router_comparison(u.model)",
-    "    meter.models[#meter.models+1]=\{model=u.model,billing='owned',actual_spend_usd=0,comparison_pricing=p,requests=state:get(k .. 'requests') or 0,measured_requests=state:get(k .. 'measured') or 0,unmeasured_requests=state:get(k .. 'unmeasured') or 0,failed_requests=state:get(k .. 'failed') or 0,unpriced_requests=state:get(k .. 'unpriced') or 0,prompt_tokens=state:get(k .. 'prompt') or 0,completion_tokens=state:get(k .. 'generated') or 0,comparison_value_usd=state:get(k .. 'value') or 0}",
+    "    seen[u.model]=true local k='meter:v2:owned:' .. u.model .. ':' local p=router_comparison(u.model)",
+    "    meter.models[#meter.models+1]=\{model=u.model,billing='owned',actual_spend_usd=0,comparison_pricing=p,requests=state:get(k .. 'requests') or 0,measured_requests=state:get(k .. 'measured') or 0,unmeasured_requests=state:get(k .. 'unmeasured') or 0,failed_requests=state:get(k .. 'failed') or 0,unpriced_requests=state:get(k .. 'unpriced') or 0,prompt_tokens=state:get(k .. 'prompt') or 0,completion_tokens=state:get(k .. 'generated') or 0,cached_prompt_tokens=state:get(k .. 'cached') or 0,cache_unreported_requests=state:get(k .. 'cache_unreported') or 0,comparison_value_usd=state:get(k .. 'value') or 0}",
     "  end",
     "end",
     "out.usage=meter",
@@ -398,9 +401,10 @@ fn no_members() -> List<JsonKeyValue> { [] }
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
     RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [] },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
+    // The operator removed H11's Ada (2026-10-26). Compatible old bindings retire onto this tier.
+    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-c1"] },
     // h11-a16 (x86): one engine per GPU, named by its PCI bus (indices renumber when a card is added). Buses
-    // 05-08 and 85-88 are the two A16 boards; c1 is an RTX 2000 Ada. A single 16 GB engine serves ~10-13 warm
+    // The eight A16 endpoints remain; the removed Ada's port 18089 is no longer advertised. A 16 GB engine serves ~10-13 warm
     // tok/s at 200k, so cap 2. Retiring names count old-worker turns during a graceful rename;
     // old workers decrement their original counters when those requests finish.
     RouterDevUpstream { name: "h11-05", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-0"] },
@@ -411,7 +415,6 @@ fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
     RouterDevUpstream { name: "h11-86", scheme: UpstreamHttp, host: "192.168.1.202", port: 18086, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     RouterDevUpstream { name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     RouterDevUpstream { name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
-    RouterDevUpstream { name: "h11-c1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18089, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router.
     // cap is unused for overflow: the pool's engines admit work and expose their own queue to the bidder.
     RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [] },
