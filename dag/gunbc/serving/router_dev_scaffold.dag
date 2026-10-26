@@ -57,7 +57,7 @@ data router_dev_hand_deploy_scaffold: Disposition = Scaffold {
 
 
 // 3. HAND-MAINTAINED FIRST-PARTY LIST. upstreams.json names srv1 vLLM (cap 4), srv3 Strata
-// (cap 4), nine h11 Strata lanes (cap 2 each), and ctrl's /rented-pool overflow gateway. The gateway
+// (cap 4), eight h11 A16 Strata lanes (cap 2 each), and ctrl's /rented-pool overflow gateway. The gateway
 // deliberately bypasses ctrl's /pool router setting, so it cannot loop back here. ctrl discovers rented
 // cards and bids from distinct overflow conversations, subject to its existing budget and queue policy.
 // No rented card is copied into this router's list; replacements remain ctrl's responsibility. The
