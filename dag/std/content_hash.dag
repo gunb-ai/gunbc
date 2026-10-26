@@ -122,6 +122,21 @@ fn sha256_hex_digest(hex: String) -> Sha256Digest? {
   }
 }
 
+// THE ONE DECLARED HOME OF sha256_hex_of_text (NAMESPACE-XL; root-coordinator decision, sleek-owl-397). Its meaning
+// is three steps, in order: ENCODE the text as UTF-8 (std.bytes utf8_encode_bytes -- not Latin-1, not UTF-16, not the
+// Unicode scalars of std.host_text chars), DIGEST those octets with SHA-256 (FIPS 180-4; the substrate's own fold is
+// extdeps.crypto.sha2 sha256_hex), RENDER the 32-octet digest as 64 lowercase hex digits (the sha256_hex_digest wall
+// above admits it). The body cannot compose those pieces: extdeps.crypto.sha2 imports this module, so composing it here
+// is a cycle, and this module has no digest-of-octets piece of its own. So it is a host seam: a self-call body bound
+// by THIS declaration's identity (std.primitive_projection primitive_sha256_hex_of_text, HostRealizedSeam), realized by
+// the interpreter's RustCrypto arm (gunbc.host_crypto_digest_seed_growth). The pure fold stays its differential oracle
+// through the known answers they share (test.claim.sha256_host_known_answer_witness). There is no Rust bridge row, so
+// emitted code refuses (the unrealized-seam panic), never recurses. The std.primitives sha256_hex_of_text_contract row
+// that admitted the bare name with no import is retired; a caller reaches this by `import std.content_hash`.
+fn sha256_hex_of_text(text: String) -> String {
+  sha256_hex_of_text(text: text)
+}
+
 fn sha1_hex_digest(hex: String) -> Sha1Digest? {
   if content_hash_validate_lower_hex_length(text: hex, expected_hex_digits: 40) {
     Present { value: Sha1Digest { hex: hex as Sha1DigestHex } }
