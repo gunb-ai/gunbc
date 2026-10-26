@@ -2980,8 +2980,8 @@ pub struct RegenRoundCostOutcome {
     /// Anything that stopped the round short of install/rebuild/diff, or that the regen
     /// reported as a failure. Non-empty means the round is not a clean round.
     pub round_failures: Vec<String>,
-    /// The commit the base ref resolved to, when this round was asked to bootstrap round 1 from
-    /// the base mirror (DESIGN §5, RFM #14963). The receipt text names it too; carrying it lets a
+    /// The base commit round 1 seeded from, when this round was asked to bootstrap (DESIGN §5,
+    /// RFM #14963). The receipt text names it too; carrying it lets a
     /// caller (and a test) assert WHICH commit the round seeded from without parsing that text.
     /// `None` is not "it failed": it means this round was never a heal round.
     pub base_mirror_commit: Option<String>,
@@ -2990,10 +2990,14 @@ pub struct RegenRoundCostOutcome {
 pub const REGEN_ROUND_COST_RECEIPT_REL: &str = "target/stage0-regen-round-cost.txt";
 /// Set on the single re-exec after the seed build replaced the running executable.
 const REGEN_ROUND_COST_REEXEC_ENV: &str = "GUNBC_REGEN_ROUND_COST_REEXEC";
-/// The heal round's base-mirror authority (DESIGN §5, RFM PR #14963): the base ref whose
+/// The heal round's base-mirror authority (DESIGN §5, RFM PR #14963): the base commit whose
 /// COMMITTED stage0 mirror population bootstraps round 1's seed, carried as an env value so the
 /// ref never reaches argv — the admit gate refuses any argv word containing `${{`.
-const REGEN_ROUND_COST_BASE_MIRROR_ENV: &str = "HEAL_BASE_REF";
+/// THE ROUND'S BOOTSTRAP AUTHORITY, its own name: the pull request's base COMMIT (`base.sha`),
+/// bound by `gunbc.heal_workflow` `heal_round_base_mirror_env`. Distinct from `HEAL_BASE_REF`,
+/// which is the candidate step's branch NAME (`gunbc.heal_candidate` `heal_candidate_base_ref_env`)
+/// and answers a different question.
+const REGEN_ROUND_COST_BASE_MIRROR_ENV: &str = "HEAL_BASE_MIRROR_COMMIT";
 const REGEN_ROUND_COST_PRODUCER: &str = "claim_executor --regen-round-cost";
 const REGEN_ROUND_COST_ENTRY_UNDER_ROOT: &str = "gunbc/regen_round_cost.dag";
 
@@ -3917,7 +3921,8 @@ fn is_hand_maintained_stage0_basename(basename: &str) -> bool {
 /// What the round-1 bootstrap did, in the receipt's vocabulary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct BaseRestore {
-    /// The commit id the base ref resolved to. The receipt NAMES it (sleek-owl-397 caution, RFM #14963).
+    /// The base commit, exactly as the step named it. The receipt NAMES it (sleek-owl-397
+    /// caution, RFM #14963).
     base_commit: String,
     /// The generated mirrors whose bytes the round-1 seed actually built from the base commit.
     basenames: Vec<String>,
@@ -3941,7 +3946,8 @@ struct BaseRestore {
 /// artifact its own repair regenerates).
 ///
 /// THIS IS NOT A FALLBACK AND IS NEVER TAKEN AFTER A FAILURE. The heal round step passes
-/// `--base-mirror` unconditionally and the ref arrives as `HEAL_BASE_REF`; a round that is not a
+/// `--base-mirror` unconditionally and the commit arrives as `HEAL_BASE_MIRROR_COMMIT`; a round
+/// that is not a
 /// heal round simply does not ask for it. One path runs per invocation — there is no second
 /// attempt, no retry, and nothing to fall back TO (§5).
 ///
@@ -3966,10 +3972,10 @@ struct BaseRestore {
 fn bootstrap_round_one_from_base_mirror(
     workspace: &Path,
     stage0_src: &Path,
-    base_ref: &str,
+    base_commit_env: Option<&str>,
     subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<BaseRestore, String> {
-    let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_ref)?;
+    let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
     let in_worktree = worktree_mirror_population(stage0_src)?;
     let subjects: BTreeSet<String> = from_base
         .keys()
@@ -4008,72 +4014,94 @@ fn bootstrap_round_one_from_base_mirror(
     })
 }
 
-/// Resolve `HEAL_BASE_REF` to a commit and read that commit's generated mirror population. A ref
-/// that resolves to no commit is a TYPED REFUSAL, never a widening to the head mirror: building
-/// from the head when base could not be read is the forbidden second path in the other direction.
-/// (The base ref must be resolvable — heal's checkout is `fetch-depth: 0`, which carries every
-/// branch, and `behavioral_receipt_host` refuses the same way when `origin/main` is missing.)
+/// Read the base commit's generated mirror population, from THE ONE AUTHORITY the heal round step
+/// binds: `HEAL_BASE_MIRROR_COMMIT`, the pull request's immutable `base.sha`.
+///
+/// It is a COMMIT ID, not a name, and this function never looks one up. A branch is a moving name
+/// that a checkout's local branch and its remote-tracking ref can disagree about (a local `main`
+/// can sit behind `origin/main`); seeding the round from whichever one happens to exist, and then
+/// recording the pick as "the base commit", would fabricate a fact the round never established —
+/// DESIGN §3 (each fact lives in exactly one place) and §5 (no plausible output is fabricated).
+/// GitHub has already resolved this pull request's base to a commit; that commit is the input.
+///
+/// Every refusal is typed and located, and none of them builds from the head mirror instead:
+/// - `BootstrapBaseMirrorCommitUnresolved` — the step did not supply an authority at all (unset, or
+///   present but blank: the two causes are named differently, so a mis-wired step and an empty
+///   string are distinguishable in the log),
+/// - `BootstrapBaseMirrorCommitMalformed` — a name or a short prefix rather than a full commit id,
+/// - `BootstrapBaseMirrorCommitUnreachable` — a well-formed id this checkout does not contain, or
+///   one that is not a commit (heal's checkout is `fetch-depth: 0`, so the base is present),
+/// - `BootstrapBaseMirrorUnreadable` — the commit is present but carries no mirror population.
+///
+/// No case falls through to a build: the caller refuses the round.
 fn resolve_base_mirror_authority(
     workspace: &Path,
-    raw_ref: &str,
+    raw_commit: Option<&str>,
 ) -> Result<(String, BTreeMap<String, BaseMirrorFile>), String> {
-    let raw = raw_ref;
-    let base_ref = raw.trim();
-    if base_ref.is_empty() {
+    let env = REGEN_ROUND_COST_BASE_MIRROR_ENV;
+    let raw = match raw_commit {
+        None => {
+            return Err(format!(
+                "BootstrapBaseMirrorCommitUnresolved: {env} is UNSET while --base-mirror asked \
+                 round 1 to bootstrap from the base mirror; the heal round step must bind it to \
+                 the pull request's base commit"
+            ))
+        }
+        Some(value) => value,
+    };
+    let base_commit = raw.trim();
+    if base_commit.is_empty() {
         return Err(format!(
-            "BootstrapBaseMirrorRefUnresolved: {REGEN_ROUND_COST_BASE_MIRROR_ENV} is {} \
-             while --base-mirror asked round 1 to bootstrap from the base mirror; the heal round \
-             step must name the pull request's base ref",
+            "BootstrapBaseMirrorCommitUnresolved: {env} is set but {} while --base-mirror asked \
+             round 1 to bootstrap from the base mirror; the heal round step must bind it to the \
+             pull request's base commit",
             if raw.is_empty() {
-                "unset or empty"
+                "EMPTY"
             } else {
                 "only whitespace"
             }
         ));
     }
-    // ONE AUTHORITY, LOCATED BY GIT'S OWN NAME-SPACE — not a second path. `main` and
-    // `refs/remotes/origin/main` are two names for the same pull-request base commit; which name
-    // exists is a property of the checkout (heal checks out the PR head sha, so a local `main`
-    // need not exist even though the base does). Trying the second NAME retries a name lookup,
-    // never an authority: if neither resolves, this refuses. Building from the head mirror because
-    // the base could not be located would be the forbidden second path wearing a different name.
-    let mut candidates = vec![base_ref.to_string()];
-    if !base_ref.starts_with("refs/") {
-        candidates.push(format!("refs/remotes/origin/{base_ref}"));
-    }
-    let mut base_commit = String::new();
-    let mut last_error = String::new();
-    for candidate in &candidates {
-        let output = Command::new("git")
-            .args(["rev-parse", "--verify", &format!("{candidate}^{{commit}}")])
-            .current_dir(workspace)
-            .output()
-            .map_err(|e| format!("git rev-parse {candidate}: {e}"))?;
-        if output.status.success() {
-            base_commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !base_commit.is_empty() {
-                break;
-            }
-        }
-        last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    }
-    if base_commit.is_empty() {
+    // A FULL commit id, so the authority is not a name that could be re-resolved to something else
+    // between the step's read and this build.
+    if base_commit.len() != 40
+        || !base_commit
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte.to_ascii_lowercase()))
+    {
         return Err(format!(
-            "BootstrapBaseMirrorRefUnresolved: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base_ref} \
-             resolves to no commit here (tried {:?}): {last_error}",
-            candidates
+            "BootstrapBaseMirrorCommitMalformed: {env}={base_commit} is not a 40-hex commit id. \
+             The round's bootstrap authority is the pull request's base COMMIT, never a branch \
+             name or an abbreviated id: a name resolves to whichever commit the checkout happens \
+             to hold under it, which is a different authority from the one the receipt would name."
         ));
     }
-    let population = base_mirror_population(workspace, &base_commit)?;
+    let output = Command::new("git")
+        .args([
+            "rev-parse",
+            "--verify",
+            &format!("{base_commit}^{{commit}}"),
+        ])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("git rev-parse {base_commit}: {e}"))?;
+    let resolved = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() || resolved != base_commit {
+        return Err(format!(
+            "BootstrapBaseMirrorCommitUnreachable: {env}={base_commit} is not a commit this \
+             checkout contains ({})",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let population = base_mirror_population(workspace, base_commit)?;
     if population.is_empty() {
         return Err(format!(
-            "BootstrapBaseMirrorUnreadable: {} at {base_commit} carries no generated mirror \
-             population under {STAGE0_SRC_REL}; a round cannot bootstrap from a mirror that \
-             does not exist",
-            REGEN_ROUND_COST_BASE_MIRROR_ENV
+            "BootstrapBaseMirrorUnreadable: {env}={base_commit} carries no generated mirror \
+             population under {STAGE0_SRC_REL}; a round cannot bootstrap from a mirror that does \
+             not exist"
         ));
     }
-    Ok((base_commit, population))
+    Ok((resolved, population))
 }
 
 /// The seed build's cost as observed by one process image.
@@ -6440,11 +6468,11 @@ pub fn run_regen_round_cost(
         // pull-request-controlled text and the workflow admit gate refuses any argv word
         // containing `${{`, so the ref never reaches argv. The subject is the one the install path
         // reads later, so the journal this bootstrap creates is the journal the round restores.
-        let base_ref_env = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).unwrap_or_default();
+        let base_commit_env = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
         let restored = bootstrap_round_one_from_base_mirror(
             &workspace,
             &stage0_src,
-            &base_ref_env,
+            base_commit_env.as_deref(),
             &current_convergence_checkpoint_subject(&workspace)?,
         )?;
         v1_rt::trace_mark("round.base_mirror_bootstrap.done".to_string());
@@ -7051,13 +7079,10 @@ mod heal_round_one_base_mirror_tests {
             "// base hand-maintained main\n",
         )
         .unwrap();
-        git(&["init", "-q"]);
+        git(&["init", "-q", "--initial-branch=main"]);
         git(&["add", "-A"]);
         git(&["commit", "-qm", "base"]);
         let base_commit = head_sha();
-        // A NAMED BASE REF, as heal's `HEAL_BASE_REF` supplies one, independent of the runner's
-        // default-branch name.
-        git(&["branch", "base-ref", &base_commit]);
 
         // HEAD — the PR. Its committed mirror carries the refusal its `.dag` edits remove.
         git(&["checkout", "-q", "-b", "pr"]);
@@ -7116,7 +7141,7 @@ mod heal_round_one_base_mirror_tests {
         let restored = bootstrap_round_one_from_base_mirror(
             &root,
             &stage0,
-            "base-ref",
+            Some(&base_commit),
             &fixture_subject(&root),
         )
         .expect("the round-1 bootstrap runs");
@@ -7138,8 +7163,13 @@ mod heal_round_one_base_mirror_tests {
     #[test]
     fn hand_maintained_files_and_directories_survive_the_bootstrap() {
         let (root, stage0, _) = base_mirror_fixture();
-        bootstrap_round_one_from_base_mirror(&root, &stage0, "base-ref", &fixture_subject(&root))
-            .expect("the round-1 bootstrap runs");
+        bootstrap_round_one_from_base_mirror(
+            &root,
+            &stage0,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect("the round-1 bootstrap runs");
         assert!(
             read(&stage0.join("std_logic.rs")).contains("head hand-maintained"),
             "the bootstrap reverted a hand-maintained file to base"
@@ -7154,7 +7184,7 @@ mod heal_round_one_base_mirror_tests {
         );
         // …and it is not in the roster the bootstrap may write, because base has no bytes for it.
         let (_, population) =
-            resolve_base_mirror_authority(&root, "base-ref").expect("base resolves");
+            resolve_base_mirror_authority(&root, Some(&base_commit)).expect("base resolves");
         assert!(
             !population.contains_key("fixture_added_by_pr.rs"),
             "base reported a population it never committed"
@@ -7173,7 +7203,7 @@ mod heal_round_one_base_mirror_tests {
     fn the_one_journal_snapshots_head_and_returns_it_after_the_bootstrap() {
         let (root, stage0, _) = base_mirror_fixture();
         let subject = fixture_subject(&root);
-        bootstrap_round_one_from_base_mirror(&root, &stage0, "base-ref", &subject)
+        bootstrap_round_one_from_base_mirror(&root, &stage0, Some(&base_commit), &subject)
             .expect("the round-1 bootstrap runs");
         assert!(read(&stage0.join("fixture_emitted.rs")).contains("base mirror bytes"));
         restore_regen_convergence_journal_for_subject(&root, &subject)
@@ -7185,31 +7215,94 @@ mod heal_round_one_base_mirror_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// A BASE REF THAT RESOLVES TO NOTHING IS A TYPED REFUSAL and writes nothing. Falling back to
-    /// the head mirror when base cannot be read would be the forbidden second path wearing a
-    /// different name.
+    /// EVERY MISSING OR MALFORMED AUTHORITY IS A TYPED, LOCATED REFUSAL, and none of them writes a
+    /// byte. Falling back to the head mirror when base could not be read would be the forbidden
+    /// second path wearing a different name, so the round refuses instead.
     #[test]
-    fn an_unresolvable_or_empty_base_ref_refuses_typed_and_writes_nothing() {
+    fn every_unusable_base_authority_refuses_typed_and_writes_nothing() {
         let (root, stage0, base_commit) = base_mirror_fixture();
         let subject = fixture_subject(&root);
         let head_bytes = read(&stage0.join("fixture_emitted.rs"));
-        for bad in ["no-such-base", "   ", ""] {
-            let error = bootstrap_round_one_from_base_mirror(&root, &stage0, bad, &subject)
-                .expect_err("a base ref naming no commit must refuse");
+        let cases: [(&str, Option<&str>, &str); 5] = [
+            ("unset", None, "BootstrapBaseMirrorCommitUnresolved"),
+            ("empty", Some(""), "BootstrapBaseMirrorCommitUnresolved"),
+            (
+                "whitespace",
+                Some("   "),
+                "BootstrapBaseMirrorCommitUnresolved",
+            ),
+            // A BRANCH NAME is not an authority: it resolves to whatever the checkout holds under
+            // it, which is a different commit from the one the receipt would go on naming.
+            (
+                "branch name",
+                Some("main"),
+                "BootstrapBaseMirrorCommitMalformed",
+            ),
+            (
+                "abbreviated id",
+                Some(&base_commit[..8]),
+                "BootstrapBaseMirrorCommitMalformed",
+            ),
+        ];
+        for (cause, value, refusal) in cases {
+            let error = bootstrap_round_one_from_base_mirror(&root, &stage0, value, &subject)
+                .expect_err(format!("{cause} must refuse").as_str());
             assert!(
-                error.starts_with("BootstrapBaseMirrorRefUnresolved"),
-                "refusal for {bad:?} is unlocated: {error}"
+                error.starts_with(refusal),
+                "{cause}: expected {refusal}, got {error}"
+            );
+            assert!(
+                error.contains(REGEN_ROUND_COST_BASE_MIRROR_ENV),
+                "{cause}: the refusal does not name the env it refused: {error}"
             );
             assert_eq!(
                 read(&stage0.join("fixture_emitted.rs")),
                 head_bytes,
-                "a refused bootstrap still moved bytes"
+                "{cause}: a refused bootstrap still moved bytes"
             );
         }
-        // A commit id is as good a ref as a branch name: what matters is that it resolves.
-        let restored = bootstrap_round_one_from_base_mirror(&root, &stage0, &base_commit, &subject)
-            .expect("a commit id is a valid base ref");
-        assert_eq!(restored.base_commit, base_commit);
+        // UNSET and EMPTY are distinguishable, so a mis-wired step is not read as an empty string.
+        let unset = bootstrap_round_one_from_base_mirror(&root, &stage0, None, &subject)
+            .expect_err("unset refuses");
+        let empty = bootstrap_round_one_from_base_mirror(&root, &stage0, Some(""), &subject)
+            .expect_err("empty refuses");
+        assert!(
+            unset.contains("UNSET") && !empty.contains("UNSET") && empty.contains("EMPTY"),
+            "the two causes collapsed: {unset} | {empty}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A WELL-FORMED COMMIT THE CHECKOUT DOES NOT CONTAIN REFUSES, and does not quietly resolve to
+    /// the commit that branch, tag, or remote-tracking name happens to point at. This is the drift
+    /// the reviewer named: a local `main` behind `origin/main` is a DIFFERENT AUTHORITY, and the
+    /// round must refuse rather than seed from whichever one exists and call it the base.
+    #[test]
+    fn a_commit_the_checkout_lacks_refuses_rather_than_re_resolving_a_name() {
+        let (root, stage0, _) = base_mirror_fixture();
+        let subject = fixture_subject(&root);
+        // A real 40-hex id that this repository has never contained.
+        let foreign = "0000000000000000000000000000000000000000";
+        let error = bootstrap_round_one_from_base_mirror(&root, &stage0, Some(foreign), &subject)
+            .expect_err("an absent commit must refuse");
+        assert!(
+            error.starts_with("BootstrapBaseMirrorCommitUnreachable"),
+            "unreachable refusal: {error}"
+        );
+        assert_eq!(
+            read(&stage0.join("fixture_emitted.rs")),
+            "// head mirror bytes -- shared layer refused for 'Nat'\n",
+            "a refusal still moved bytes"
+        );
+        // A name that DOES exist is still refused: existing does not make it the authority.
+        git(&["branch", "stale-base", "main"]);
+        let error =
+            bootstrap_round_one_from_base_mirror(&root, &stage0, Some("stale-base"), &subject)
+                .expect_err("a name is never the authority, stale or not");
+        assert!(
+            error.starts_with("BootstrapBaseMirrorCommitMalformed"),
+            "name-as-authority must be malformed: {error}"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -7219,11 +7312,13 @@ mod heal_round_one_base_mirror_tests {
     fn a_second_bootstrap_is_the_same_authority_and_keeps_the_head_snapshot() {
         let (root, stage0, base_commit) = base_mirror_fixture();
         let subject = fixture_subject(&root);
-        let first = bootstrap_round_one_from_base_mirror(&root, &stage0, "base-ref", &subject)
-            .expect("first");
+        let first =
+            bootstrap_round_one_from_base_mirror(&root, &stage0, Some(&base_commit), &subject)
+                .expect("first");
         let seeded = read(&stage0.join("fixture_emitted.rs"));
-        let second = bootstrap_round_one_from_base_mirror(&root, &stage0, "base-ref", &subject)
-            .expect("second");
+        let second =
+            bootstrap_round_one_from_base_mirror(&root, &stage0, Some(&base_commit), &subject)
+                .expect("second");
         assert_eq!(first.base_commit, second.base_commit);
         assert_eq!(second.base_commit, base_commit);
         assert_eq!(read(&stage0.join("fixture_emitted.rs")), seeded);
@@ -7235,16 +7330,17 @@ mod heal_round_one_base_mirror_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// ONE AUTHORITY, TWO NAMES. Heal checks out the PR head sha, so the base branch may exist
-    /// only as its remote-tracking name — that is a checkout fact, not a second authority, and the
-    /// two names must resolve to the SAME commit. A ref that resolves under neither name still
-    /// refuses.
+    /// THE REAL CI SHAPE: heal checks out the PR HEAD commit and the base needs no branch name at
+    /// all. The step hands over `base.sha`, the object is present in the `fetch-depth: 0`
+    /// checkout, and the round seeds from it — while a name that would resolve elsewhere is
+    /// refused outright. This is what makes the commit (not the name) the right thing to bind.
     #[test]
-    fn the_base_ref_is_located_under_either_local_or_remote_name() {
-        let (root, stage0, base_commit) = base_mirror_fixture();
-        // A checkout of the PR head: the base exists only as `origin/<name>`.
+    fn a_head_only_checkout_seeds_from_the_base_commit_with_no_branch_name() {
+        let (root, _, base_commit) = base_mirror_fixture();
+        // A clone that contains BOTH commits but names only the PR branch: no local `main`, and
+        // the base's remote-tracking name deleted, exactly as a head-sha checkout can present.
         let clone = std::env::temp_dir().join(format!(
-            "{}-clone",
+            "{}-head-only",
             root.file_name().unwrap().to_str().unwrap()
         ));
         let output = Command::new("git")
@@ -7262,63 +7358,51 @@ mod heal_round_one_base_mirror_tests {
             "clone: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        Command::new("git")
-            .args(["checkout", "-q", "pr"])
-            .current_dir(&clone)
-            .output()
-            .unwrap();
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(&clone)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+        git(&["checkout", "-q", "pr"]);
+        git(&["branch", "-D", "main"]);
+        git(&["update-ref", "-d", "refs/remotes/origin/main"]);
+        git(&["update-ref", "-d", "refs/remotes/origin/base-ref"]);
         let cloned_stage0 = clone.join(STAGE0_SRC_REL);
         assert!(
             read(&cloned_stage0.join("fixture_emitted.rs")).contains("refused for 'Nat'"),
             "the clone must sit on the damaged head"
         );
+        // NO NAME RESOLVES ANYWHERE, yet the commit is an object in the checkout.
+        let name_error = Command::new("git")
+            .args(["rev-parse", "--verify", "main"])
+            .current_dir(&clone)
+            .output()
+            .unwrap();
+        assert!(
+            !name_error.status.success(),
+            "the fixture must have no base NAME to fall back to"
+        );
         let subject = fixture_subject(&clone);
-        let restored =
-            bootstrap_round_one_from_base_mirror(&clone, &cloned_stage0, "base-ref", &subject)
-                .expect("the base is reachable through its remote-tracking name");
-        assert_eq!(restored.base_commit, base_commit);
-        assert!(read(&cloned_stage0.join("fixture_emitted.rs")).contains("base mirror bytes"));
-        let error = bootstrap_round_one_from_base_mirror(
+        let restored = bootstrap_round_one_from_base_mirror(
             &clone,
             &cloned_stage0,
-            "no-such-base-anywhere",
+            Some(&base_commit),
             &subject,
         )
-        .expect_err("no name resolves, so it must refuse");
+        .expect("the base COMMIT is enough; no name is consulted");
+        assert_eq!(restored.base_commit, base_commit);
         assert!(
-            error.starts_with("BootstrapBaseMirrorRefUnresolved"),
-            "unlocated refusal: {error}"
+            read(&cloned_stage0.join("fixture_emitted.rs")).contains("base mirror bytes"),
+            "the head's damaged mirror survived a base-commit bootstrap"
         );
         let _ = fs::remove_dir_all(&clone);
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    /// THE HANDOFF CARRIES ONE IDENTITY. The seed build can relink this image and re-exec, and the
-    /// second image refuses (`SourceChangedAcrossHandoff`) unless the identity it observes matches
-    /// the one it was handed. The bootstrap WRITES base bytes into the worktree, so if the subject
-    /// were read before the journal restore the first image would report the committed head and the
-    /// second would report the base-seeded tree, and the round would die on a heal run for a defect
-    /// in the observation order. This pins the invariant that ordering buys.
-    #[test]
-    fn the_subject_is_the_committed_tree_under_every_bootstrap_state() {
-        let (root, stage0, _) = base_mirror_fixture();
-        let head = git_head_sha(&root).expect("fixture head");
-        let committed = source_identity(&root, &head).expect("committed identity");
-        let subject = fixture_subject(&root);
-        bootstrap_round_one_from_base_mirror(&root, &stage0, "base-ref", &subject)
-            .expect("the round-1 bootstrap runs");
-        assert_ne!(
-            source_identity(&root, &head).expect("seeded identity"),
-            committed,
-            "the fixture must actually dirty the tree, or it proves nothing"
-        );
-        restore_regen_convergence_journal_for_subject(&root, &subject).expect("restore");
-        assert_eq!(
-            source_identity(&root, &head).expect("recovered identity"),
-            committed,
-            "after the ONE restore the round must observe the committed tree, so every image of one \
-             round carries one identity"
-        );
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -7782,7 +7866,7 @@ mod regen_convergence_host_instrument_tests {
                 String::from_utf8_lossy(&output.stderr)
             );
         };
-        git(&["init", "-q"]);
+        git(&["init", "-q", "--initial-branch=main"]);
         git(&["add", "."]);
         git(&["commit", "-qm", "fixture"]);
         let subject = RegenConvergenceCheckpointSubject {
