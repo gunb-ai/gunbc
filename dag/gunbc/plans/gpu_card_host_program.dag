@@ -1,0 +1,177 @@
+module gunbc.plans.gpu_card_host_program
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, CodeBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+// THE DESIGN CARRIER FOR "INSTALL A CARD, GET DRIVERS, POWER AND FANS RIGHT". DESIGN §1: a plan's
+// authority is its `.dag` carrier, so there is no docs/plans/*.md for it (`PlanIsAuthorityOnly`).
+//
+// Two conventions it holds itself to: every code reference names a module and symbol, never a
+// file:line (DESIGN §3), and a measured figure is stated together with its standing -- measured,
+// estimated, or read off a hand-written script -- because §4d forbids a bet being consumed as a fact.
+// The figures in section 3 are RECEIPTS this repository took. None of them is an upstream fact, so none
+// of them may land in extdeps.
+
+fn t4(a: String, b: String, c: String, d: String) -> MarkdownTableRow {
+  row(cells: [cell(text: a), cell(text: b), cell(text: c), cell(text: d)])
+}
+
+fn t3(a: String, b: String, c: String) -> MarkdownTableRow {
+  row(cells: [cell(text: a), cell(text: b), cell(text: c)])
+}
+
+fn gpu_card_host_program_body() -> List<MarkdownBlock> {
+  [
+    p(text: "Status: **draft, under design with the operator.** Nothing in this program has landed yet. Section 8 lists the decisions it needs first. The model lands before the converge leg, per DESIGN's model-before-implement rule, and the order is in section 7. The lane sits under the Mt. Collins worker."),
+    h2(text: "0. The bound: every active card converges"),
+    p(text: "**The program is finished when every card that is serving in the fleet today converges.** That means the converge leg's independent readback holds for each card, on its host, through the real path. Nothing outside that set is a goal. A card enters the set only when it is physically installed in a fleet host, and the census node (N0 in section 7) is the authority for which cards those are. This document is not that authority."),
+    p(text: "The working reading of the set, **to be confirmed by N0 and not to be cited as it stands**: the H11 host's two A16 boards (eight GPUs, in SLOT2 and SLOT6); srv1's RTX PRO 6000 Max-Q; and the 2 × RTX 2000 Ada that serve the Strata pool. The PRO 6000 Workstation's host is unrecorded. The A2 and T10 are figures from external reports, not fleet cards, so they are **out of bound**. The two R9700s are out of bound until they are installed, and then they join through the same leg (N12). DGX Spark GB10 units are outside the bound: their driver comes with DGX OS and has its own program."),
+    p(text: "The bound also limits what gets modelled. Fan zones are required only where a card is **passive**, which on the reading above is the A16s in the H11. An actively cooled card needs an accelerator guard reading, not a host-driven zone. A model, row or measurement that no active card's convergence consumes is a follow-up, not part of this program (DESIGN §3c)."),
+    h2(text: "1. The request"),
+    p(text: "When a card goes into a host, the fleet should get every one of these right from the model, not from a script someone wrote by hand on that host:"),
+    ul(items: [
+      li(text: "**the driver**: the right package and pinned version for the card's vendor and generation. For the active set in section 0 that is NVIDIA only (A16, RTX 2000 Ada, RTX PRO 6000). AMD (two Radeon AI PRO R9700 on ROCm) joins the same leg once they are installed;"),
+      li(text: "**the card's power states**: an applied power cap inside the range the device reports, persistence, and an idle policy that parks clocks without throwing away warm state;"),
+      li(text: "**physical placement**: which slot each card sits in, and which fan is physically plugged into which header;"),
+      li(text: "**the fan zones**: which board zone each header belongs to, and which temperatures that zone follows, so that a policy asking for more cooling reaches the fans that actually cool the card;"),
+      li(text: "**one converge leg** that observes all of this, applies it, reads it back independently, and refuses with a typed cause when any part does not hold."),
+    ]),
+    h2(text: "2. What main already carries"),
+    p(text: "Most of the vocabulary this program needs already has a home. The program extends those homes and adds new ones only where no home exists (DESIGN §3b)."),
+    TableBlock {
+      header: t4(a: "concern", b: "home on main", c: "what it holds", d: "gap this program fills"),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        t4(a: "board slots", b: "`extdeps.boards.supermicro_h11ssl::supermicro_h11ssl_pcie_slots`", c: "SLOT1–6 and their lane counts (2, 4 and 6 are x16; 1, 3 and 5 are x8)", d: "physical order and spacing (whether a dual-slot passive card in one slot blocks or starves its neighbour), and which CPU root complex each slot hangs off"),
+        t4(a: "board fan headers", b: "`extdeps.boards.supermicro_h11ssl::supermicro_h11ssl_fan_headers`", c: "FAN1–5 and FANA–B, plus their pinout", d: "**which zone each header belongs to.** The numbered headers being zone 0 and the lettered ones zone 1 is read off the hand-written controller, not cited to the manual yet"),
+        t4(a: "what is plugged into a header", b: "`gunbc.fleet.fleet_fan_wiring`, `gunbc.fleet.fleet_fan_tach_expectation`", c: "header to installed fan, its model standing (`InstalledFanModelStanding`), and where tach is expected, for srv1–srv4", d: "no H11 host row. A daisy chain (3 × 120 mm on FANB) is several fans behind one tach. The module states that \"which PWM endpoint CONTROLS a header\" is not modelled; that is the zone layer"),
+        t4(a: "fleet fan intent", b: "`product.fleet_fan_policy::fleet_fan_policy`", c: "`FirmwareAutomatic` is the only resting posture; a held duty floor is a guarded excursion; the guard roles are SoC, DIMM, VRD and outlet", d: "**there is no accelerator guard role, and no resting posture in which a host-side loop follows GPU temperature.** The H11 controller sits outside the fleet ruling today (section 5.4, decision D1)"),
+        t4(a: "fan converge routes", b: "`gunbc.fleet.fleet_fan_converge_routes`", c: "an OpenBMC route that is bound, and a MegaRAC route that is unbound", d: "`extdeps.bmc.endpoint::BmcFirmwareFamily` has no Supermicro arm, and there is no model of Supermicro's OEM fan-mode and zone-duty commands"),
+        t4(a: "ipmitool transport", b: "`extdeps.bmc.ipmi`", c: "one operation per command, including a `raw` precedent (`MasterWriteReadAuthenticated`)", d: "the Supermicro OEM operations belong in their own module, which binds to this transport"),
+        t4(a: "GPU catalog", b: "`extdeps.gpu.types::GpuModelCatalogRow`, `extdeps.gpu.nvidia`", c: "one TDP per row; rows for the RTX PRO 6000 (Workstation, Max-Q, Server), PRO 5000, 5090, B200, B300 and H200 NVL; `GpuRuntime` already includes `Rocm`", d: "no rows for the A2, T10, RTX 2000 Ada or R9700, and no AMD GPU module. There is no field for a configurable power range (A2 40–60 W, PRO 6000 Server 400–600 W). The A16 (`extdeps.gpu.nvidia_a16`) is deliberately not a catalog row, because the board carries four GPUs, so a board-of-N-GPUs shape is missing"),
+        t4(a: "nvidia-smi", b: "`extdeps.nvidia.system_management_interface`", c: "`QueryComputeApps` only, with a parse that cannot turn a refusal into zero", d: "no power, clock, P-state or persistence queries, and no `-pl`, `-pm`, `-lmc`/`-rmc`, `-lgc`/`-rgc`, `-lmi` or supported-clock operations"),
+        t4(a: "NVML / CUDA", b: "`extdeps.nvidia.management_library`, `extdeps.nvidia.cuda_driver`", c: "device-memory observation that can refuse; a modelled attribute query", d: "nothing for driver packaging, versions, open versus proprietary kernel module, or `nvidia-persistenced`"),
+        t4(a: "watt semantics", b: "`gunbc.serving.home_serving_power_policy`", c: "the catalog TDP and an applied limit are distinct figures; an applied limit above TDP is refused", d: "the device-reported **minimum** (48.75 W per A16 GPU) is a third figure. It is a reading of the card, not the catalog's TDP and not a policy choice"),
+        t4(a: "operating-point selection", b: "`product.mt_collins_power_policy` (first consumer of `std.decision`)", c: "selection of a fleet operating point, with a receipt", d: "the per-card cap and park choice should be another consumer of the same selection, not a constant written into a policy row"),
+        t4(a: "host provisioning pattern", b: "`gunbc.runner.runner_browser_toolchain` (#12500); #15177 (open, `gunbc.runner.runner_gpu_container_toolchain`)", c: "an observe / converge / readback leg that runs as a fleet-converge mode", d: "#15177 states that **the driver is never pinned anywhere in the install path**: the toolkit leg assumes some driver is already present. This program is where that driver comes from"),
+        t4(a: "host identity", b: "`gunbc.fleet.fleet_host_identity`", c: "srv1–4, srv9–16, and opaque host-xxxxxx identities", d: "the H11 A16 host (192.168.1.202) has no identity row. There are `gunbc.machine_intake.supermicro_h11ssl_*` receipts for H11SSL units, keyed by BMC MAC"),
+      ]
+    },
+    h2(text: "3. What was measured, and where it must land"),
+    p(text: "These are receipts: they record what this repository observed on one host, so they belong in the observing layer (DESIGN §3, external upstream decomposition). A device's reported minimum power limit is an observation of the device. It becomes an upstream fact only once it is cited to NVIDIA."),
+    TableBlock {
+      header: t3(a: "reading (A16, one GPU unless stated)", b: "figure", c: "standing"),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        t3(a: "no process", b: "P8, 15.6 W, 210 / 405 MHz", c: "measured"),
+        t3(a: "bare CUDA context, no work", b: "P0, 27.0 W, 1755 / 6251 MHz", c: "measured. This happens with any context, not only Strata's"),
+        t3(a: "Strata loaded, idle", b: "P0, 27.0 W", c: "measured"),
+        t3(a: "Strata loaded, memory clock locked to its minimum", b: "P8, about 12.5–15.6 W, warm state retained, wake about 1–2 s", c: "measured. The wake time is approximate"),
+        t3(a: "minimum power limit", b: "48.75 W; the driver refuses anything lower", c: "measured as a refusal; not cited to NVIDIA"),
+        t3(a: "48.75 W against the stock 62.5 W, in this chassis", b: "same throughput: the cards hit their thermal limit before the cap", c: "measured on one cooling configuration"),
+        t3(a: "core clock locked to 900 MHz", b: "about 20% lower throughput", c: "measured"),
+        t3(a: "warm decode bottleneck, 16 GB engine", b: "about 60% memory bandwidth, about 38% SM; PCIe about 0.5 GB/s average with 7 GB/s bursts", c: "measured, one sensitivity run"),
+        t3(a: "lid off", b: "87–92 °C at idle, then Xid 154 on six GPUs", c: "incident"),
+        t3(a: "two boards in adjacent slots", b: "96–99 °C under load at minimum clocks; one GPU dropped off the bus", c: "incident"),
+        t3(a: "SLOT2 + SLOT6, Ada removed, 3 × 120 mm on FANB", b: "48–81 °C", c: "measured, **not yet at full load**"),
+        t3(a: "RTX 2000 Ada, idle with the engine loaded", b: "about 7–8 W per card; it downclocks without help", c: "measured"),
+      ]
+    },
+    p(text: "The two incidents are what force slot spacing and fan zones into the model. Adjacency is a placement fact that predicted a failure, and the lid-off Xid shows the harm of running a passive card under a zone that does not follow its temperature. Each incident files or updates a `gunbc.recurring_failure_mode` row (DESIGN §4b). The receipts for the other cards (A2, T10, PRO 6000 Max-Q and Workstation, R9700) do not exist yet; section 6 is the instrument that produces them."),
+    h2(text: "4. The hand-written state this program replaces"),
+    p(text: "These are specimens. They are not a template to copy. The converge leg deletes each of them when it takes over its job (delete-first, DESIGN §3), and each one's behaviour becomes a control the leg must reproduce."),
+    ul(items: [
+      li(text: "`/usr/local/sbin/a16-fan.sh` + `a16-fan.service` puts the BMC in full mode (Supermicro raw `0x30 0x45`) and writes zone duty (`0x30 0x70 0x66`). Zone 0 follows the CPU and zone 1 follows the hottest GPU. A hand-edited override file, `/etc/a16-fan.zone0`, can pin zone 0."),
+      li(text: "`/usr/local/sbin/a16-idle-memclock.sh` + `a16-idle-memclock.service` is the idle memory-clock parker."),
+      li(text: "The `h11-strata@<bus>.service` template applies the 48.75 W cap at start, matching the A16 by PCI ID `0x25b6`. The cap belongs to the card's power policy, not to the engine unit."),
+      li(text: "Persistence is set by hand with `nvidia-smi -pm 1`. On this host `nvidia-persistenced` is a `static` unit, so it is never enabled and the setting is lost on reboot."),
+    ]),
+    p(text: "The engine units themselves, `strata-pool.service` on srv3 and the router configuration, are serving deployment, not card provisioning. Section 9 covers them."),
+    h2(text: "5. The model, by layer"),
+    h3(text: "5.1 Upstream facts (extdeps): one module per independently versioned upstream"),
+    ul(items: [
+      li(text: "**`extdeps.nvidia.system_management_interface`** (extended, since it is the same upstream): power queries (`power.draw`, `power.limit`, `power.min_limit`, `power.max_limit`, `pstate`, `clocks.gr`, `clocks.mem`, `persistence_mode`), `-q -d SUPPORTED_CLOCKS`, and `-lmi`, which reports whether memory-clock changes are unsupported, deferred or runtime-modifiable. It also gets the effects `-pl`, `-pm`, `-lmc`/`-rmc` and `-lgc`/`-rgc`. Each operation's \"not supported\" output is its own arm, as `QueryComputeApps` already does."),
+      li(text: "**`extdeps.nvidia.persistence_daemon`** (new): `nvidia-persistenced` and its unit shape, including the case where the packaged unit is `static` and has no `[Install]` section."),
+      li(text: "**`extdeps.nvidia.linux_driver`** (new): driver branches and releases, the distribution package names, open versus proprietary kernel module, and the supported-GPU list per release, each cited to NVIDIA's release notes. It holds no version pin: a pin is policy."),
+      li(text: "**`extdeps.amd.amdgpu_driver`** and **`extdeps.amd.rocm`** (new), plus **`extdeps.amd.amd_smi`** (new): the kernel driver and firmware the R9700 needs, the ROCm release that supports the card and on which distributions, and the power-cap and clock operations. The R9700's figures (architecture, memory, board power, PCIe) are read obligations until they are cited. None is transcribed here from memory."),
+      li(text: "**Catalog rows**: the A2, T10 and RTX 2000 Ada in `extdeps.gpu.nvidia`, and the R9700 in a new `extdeps.gpu.amd`. `extdeps.gpu.types` gains a **configurable power range** that is distinct from TDP, and a **multi-GPU board** shape so the A16 can be catalogued as one board of four GA107 GPUs without pretending it is one GPU."),
+      li(text: "**`extdeps.bmc.supermicro_oem_fan`** (new): Supermicro's OEM IPMI fan-mode get/set (`0x30 0x45`, with modes Standard, Full, Optimal, HeavyIO and PUE, read before they are typed) and per-zone duty get/set (`0x30 0x70 0x66`), bound to the `extdeps.bmc.ipmi` transport. `extdeps.bmc.endpoint::BmcFirmwareFamily` gains a Supermicro arm."),
+      li(text: "**`extdeps.boards.supermicro_h11ssl`** (extended): the header-to-zone map, cited to the manual page that states it or held as a typed read obligation until it is; physical slot order and pitch; and each slot's root complex."),
+    ]),
+    h3(text: "5.2 Physical placement (gunbc.fleet): what is plugged into what, on which host"),
+    ul(items: [
+      li(text: "An identity row for the H11 host. Under the 2026-10-07 rule it is opaque, not \"h11\"."),
+      li(text: "**Card residence**: which card (by serial, with its catalog row) sits in which slot of which host. This extends `gunbc.fleet.fleet_physical_inventory`, which already binds assets to hosts. Adjacency is derived from the board's slot order, never authored, so that \"two passive boards in adjacent slots\" is a refusable placement and not something that is only discovered later."),
+      li(text: "**Fan residence** extends `gunbc.fleet.fleet_fan_wiring`: each header's fans, how many, and their topology (direct, splitter or daisy chain). The tach expectation follows from the topology, so a chain is rotation expected with tach unreadable, which is a different state from a dead fan."),
+      li(text: "**Zone reach** is derived: header to zone from the board, joined with fan residence. The answer is \"zone 1 on this host drives these fans, and they cool these slots\". The last part, which fans cool which slots, is an operator declaration with its own standing, because nothing reads airflow."),
+    ]),
+    h3(text: "5.3 Card power states (gunbc.serving): a state machine, not a set of constants"),
+    TableBlock {
+      header: t4(a: "state", b: "GPU and model", c: "wake cost", d: "what survives"),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        t4(a: "Hot", b: "context open, normal clocks", c: "none", d: "weights, expert cache, KV"),
+        t4(a: "ClockParked", b: "context open, minimum supported clocks", c: "about 1–3 s (A16: about 1–2 s, measured)", d: "everything in VRAM"),
+        t4(a: "EngineStopped", b: "no CUDA context; driver persisted", c: "seconds to minutes", d: "host and disk caches only"),
+        t4(a: "HostOff", b: "whole serving cell down", c: "tens of seconds to minutes", d: "durable host state only"),
+      ]
+    },
+    ul(items: [
+      li(text: "**The policy is per card model and is selected, not chosen by hand.** For each model, the applied cap and the park decision are a `std.decision` selection over measured readings (throughput, card power, whole-host wall power, wake cost) under hard constraints. The cap must sit within the device-reported [min, max], and `gunbc.serving.home_serving_power_policy` already refuses an applied limit above TDP. The result is a `SelectionReceipt`, the same shape `product.mt_collins_power_policy` produces. The A16 values in section 3 become the first evidence set, and the A16 policy becomes the first `SelectedWithin`."),
+      li(text: "**The park clock is a reading, never a constant.** The minimum comes from `SUPPORTED_CLOCKS` for that card, and the park is admitted only when `-lmi` reports the change as runtime-modifiable. 405 MHz is the A16's reading, not a fleet number. When `-lmi` reports the change as deferred or unsupported, parking for that card refuses; it does not fall back to a power cap."),
+      li(text: "**A power cap is not an idle control.** A cap constrains the card under load. Idle power is governed by context, clocks, firmware and fans, so the model keeps them as two separate fields, and a policy cannot claim idle savings from a cap."),
+      li(text: "**Break-even is a fold, not prose:** `t = E_wake / (P_old − P_new)`. On the A16, ClockParked and no-process both read about 15.5 W, so the denominator for stopping the engine is about zero, and stopping the engine never wins on GPU energy alone. The fold must refuse when the denominator is not positive. It must not report infinity as a recommendation."),
+      li(text: "**Wake is part of the contract:** reset the clocks, read back that they reset, then dispatch. A wake that returns without that readback has not converged (DESIGN §3d)."),
+      li(text: "**Fleet consolidation**, meaning which replica to wake and when to shut a whole host down, belongs to the router and the serving fleet program, not to this program. This program supplies the per-card states and their measured costs, which that program consumes."),
+    ]),
+    h3(text: "5.4 Fan zones driven by policy: the conflict with the fleet ruling"),
+    p(text: "`product.fleet_fan_policy` rests every host in `FirmwareAutomatic` (ruling `gunbc.design_ruling fan_policy_is_one_fleet_management_workflow`), and every guard trips **toward automatic**. On the H11 that is the wrong direction for the GPU zone. The Supermicro firmware cannot see the temperature of a passive A16, so automatic control does not follow the part that is heating, and the lid-off Xid is what that costs. The hand-written controller already breaks the ruling: it runs the BMC in full mode with a host loop that follows the GPUs."),
+    p(text: "So the model needs an **accelerator guard role**, and a zone posture whose sources are declared temperature readings, such as \"hottest GPU on this zone's slots\". Its fail-safe is **full duty, not automatic**, whenever the loop dies, a reading is lost or the run exits. That is a change to a ruled policy, so it is decision D1. The loop itself is generated from the model, and its duty curve is a `std.decision` selection with the site's acoustic intent (`gunbc.fleet.fleet_acoustic_intent`) as one axis."),
+    h3(text: "5.5 The converge leg (gunbc.host): observe, apply, read back, refuse"),
+    p(text: "It follows the pattern of #12500 and #15177 as one fleet-converge mode, regenerated into the workflow by the model:"),
+    ol(items: [
+      li(text: "**Observe**: PCI IDs and slot of each device (from `/sys/bus/pci/slots` joined with the board's slot table), loaded driver and version, every nvidia-smi or amd-smi reading in 5.1, persistence unit state, BMC fan mode and zone duty, and any residue from the specimens in section 4."),
+      li(text: "**Plan**: compare desired with observed and decide Noop, Apply or Refuse for each fact. The plan never chooses a cap or curve itself (§3d); those arrive as selection receipts."),
+      li(text: "**Apply**: install the pinned driver packages, enable persistence (with a drop-in where the unit is `static`), install a boot-time oneshot that applies the cap and persistence, and install the generated fan loop and idle parker as units with no hand-written files. Then remove the specimens."),
+      li(text: "**Read back** from a second, independent observation: the cap equals what was desired and sits within [min, max], persistence survives a service restart, a park/wake cycle moves the P-state both ways, and the zone-duty readback echoes what was written."),
+    ]),
+    p(text: "Typed refusals include: the device is not in the catalog; the driver does not support the device; the driver version differs from the pin; the cap is outside the device's range; the park clock is not runtime-modifiable; a header is unmapped to any zone; a slot is unmapped to the board; adjacent passive cards; a zone is fed by an unreadable temperature; the duty readback does not match; a specimen is still present after apply. Each one is located at the card, slot or header."),
+    h2(text: "6. The measurement instrument: one matrix, every card"),
+    p(text: "A `gunbc test <label>` row in `gunbc.instrument_targets`, not a one-off script. Each phase records the fields below and emits typed receipts that the 5.3 selection consumes:"),
+    CodeBlock { code: "A1 no client (persistence on)          60 s\nA2 bare CUDA/HIP context               60 s\nA3 context + 1 GiB allocation          60 s\nA4 engine loaded, idle                 2-5 min\nA5 clock-parked (read min, -lmi gated) 60 s\nA6 wake: reset clocks, one warm request -> time to normal clocks + first useful token\nA7 engine stopped, driver persisted    60 s   (the floor)\n\nper sample: card + VBIOS, driver + kernel-module flavour, persistence, engine state,\n            P-state, SM/mem clock, card power, card energy counter, temperature,\n            fan duty/rpm per zone, whole-host wall power, CPU package power\nper run:    wake time, request energy, whether KV/expert cache survived" },
+    p(text: "Whole-host wall power is mandatory. Saving 10 W on a card is not a deep-sleep strategy if the host idles at 250 W, so an A-phase without a wall reading is a refused receipt, not a partial one. The instrument runs only on active models (section 0): the A16, which is mostly done, then the PRO 6000 Max-Q and the RTX 2000 Ada, and the R9700 once it is installed. The A2 and T10 wait until they are in the fleet."),
+    h2(text: "7. The dependency graph"),
+    p(text: "Each node is one PR-sized change, unless it is marked as a decision. An arrow means the node needs the one it points at. G is the bound from section 0."),
+    CodeBlock { code: "D1 fan posture ruling (operator)        D2 driver branch pin (operator)\n\nN0  active-card census + H11 host identity + section-3 receipts + incident rows\nN1  extdeps.nvidia.system_management_interface: power/clock/pstate/persistence ops\nN2  extdeps.nvidia.linux_driver + extdeps.nvidia.persistence_daemon      <- D2\nN3  extdeps.gpu: RTX 2000 Ada row, multi-GPU board shape (A16), power-range field\nN4  extdeps.bmc.supermicro_oem_fan + BmcFirmwareFamily Supermicro arm\nN5  extdeps.boards.supermicro_h11ssl: header->zone, slot order/pitch\nN6  placement: card residence, fan residence, zone reach        <- N0 N3 N5\nN7  receipts for each active model (section 6 instrument)       <- N0 N1\nN8  power-state policy + std.decision selection per active model <- N1 N3 N7\nN9  fan-zone posture for passive cards (accelerator guard)      <- D1 N4 N6\nN10 converge leg (observe/plan/apply/readback, typed refusals)  <- N2 N6 N8 N9\nN11 run N10 on each active host; delete section-4 specimens     <- N10\nN12 R9700 rows (extdeps.amd.*, extdeps.gpu.amd), only when installed  <- N10 (no fork)\n\nG   every active card's readback holds                          <- N11 (+ N12 if installed)\n\nparallel from the start: N0 N1 N3 N4 N5    first join: N6    critical path: N5 -> N6 -> N9 -> N10 -> N11" },
+    p(text: "There are two places to watch. N9 cannot start until D1 is answered, and it is the only thing between the A16s and convergence that waits on a person. N12 is in the graph only so that the leg is designed with it in mind: if adding the R9700 would need anything beyond rows, N10 was built wrong."),
+    p(text: "Done means executed (DESIGN §5): G is a readback on each host, not a merged PR. And N10 counts only when discriminating inputs go red on the real path: a cap below the device minimum, a header with no zone, and adjacent passive cards each refuse."),
+    h2(text: "8. Decisions for the operator"),
+    ul(items: [
+      li(text: "**D1, fan posture for zones the firmware cannot see.** (a) Amend the fleet fan ruling: a host loop that follows declared accelerator temperatures may be a resting posture for such a zone, and it fails safe to full duty. (b) Keep firmware-automatic only, and run GPU zones in Supermicro Full or HeavyIO with no loop, which is louder but has no loop to die. *Recommend (a)*: (b) spends acoustic budget the site's intent says it does not have, and today's controller is already (a), only unmodelled."),
+      li(text: "**D2, driver pin.** Which NVIDIA branch (production or new-feature), and whether to use open or proprietary kernel modules, for a fleet that mixes Turing (T10), Ampere (A16, A2), Ada and Blackwell. *Recommend* one production branch whose release notes list every card on the fleet, using open modules where all cards support them. This is to be checked against the release notes, not assumed."),
+      li(text: "**D0, the active set.** Confirm the reading in section 0, and in particular which host holds the RTX PRO 6000 Workstation and where the RTX 2000 Ada pair sits. N0 records the answer."),
+      li(text: "**D3, R9700 host.** Which host the two R9700s go into, and therefore which kernel and distribution the ROCm rows have to support. This decision only matters once they are installed (N12)."),
+      li(text: "**D4, who parks.** The parker can run on the host (a generated watcher, as today), in the engine, or be driven by the router. *Recommend* router-driven state with a host-side actuator and readback, so that park and wake are visible to the consolidation policy rather than hidden beneath it."),
+      li(text: "**D5, lane shape.** One lane under the Mt. Collins worker, working the graph in section 7. N0, N1, N3, N4 and N5 can run in parallel, and nothing outside the graph is in scope."),
+    ]),
+    h2(text: "9. Boundaries: what this program does not own"),
+    ul(items: [
+      li(text: "Engine deployment (Strata and vLLM units, ports, memory slices) and the pool router, including reconciling the hand edit to the live router into #15113, belong to the serving fleet program (`gunbc.plans.serving_fleet_program`). This program hands it card states and their costs."),
+      li(text: "The container toolkit belongs to #15177. That leg should consume this program's driver readback as a prerequisite rather than assume a driver."),
+      li(text: "Fleet-wide consolidation and host power-off are routing policy. This program supplies the per-card ladder and its measured wake costs."),
+    ]),
+  ]
+}
+
+data gpu_card_host_program_plan: Plan = Plan {
+  slug: "gpu-card-host-program",
+  title: "GPU card hosting: drivers, power states, placement and fan zones",
+  body: gpu_card_host_program_body(),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Dissolves at G in section 7. Every card in N0's active-card census converges through one leg, with its independent readback holding on its host. The leg's refusals have been exercised on the real path: a cap below the device minimum, a header with no zone, and adjacent passive cards. None of the section-4 hand-written specimens remains, and each active model's power and park policy is a selection receipt rather than a literal. Then this document's content lives in the model's types and the document is deleted."),
+  },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+}
