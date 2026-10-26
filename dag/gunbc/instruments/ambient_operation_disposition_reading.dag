@@ -347,7 +347,7 @@ fn ambient_operation_disposition_standing(
   base_stdout: String,
   base_probed: String
 ) -> CliWireResponse {
-  match ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten, base_stdout: base_stdout, base_probed: base_probed) {
+  match ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten) {
     CliWireUnprintable { cause: c } => CliWireUnprintable { cause: c }
     CliWirePrintable { bytes: b, exit: x } =>
       match x {
