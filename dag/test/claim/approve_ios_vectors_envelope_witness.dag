@@ -1,0 +1,129 @@
+module test.claim.approve_ios_vectors_envelope_witness
+
+// L6-iv: the envelope name the generated Swift asks vectors.json for is spelled exactly once in the
+// repository — as a declaration in the fixture module.
+//
+// data envelope_vectors_fixed is assembled from named rows (data fx_env_<name>: EnvelopeVector), and a
+// test passes THAT ROW to at_envelope, which renders the row's own `name` field. There is no name left
+// in the carrier to get wrong, so the second authority is gone rather than checked. What the first
+// review (review 38602) blocked was precisely the checked version: a lookup that returned the string it
+// was handed, an `Absent => ""` fabricated default, and a .contains("envelope(\"\")") grep over the
+// rendered text to notice a miss. DESIGN §5: "make it unwritable — correctness by construction, not
+// validation"; "a typecheck and a .contains() grep are not consumers"; a plausible output fabricated on
+// a failure path is a hard reject. All three are deleted, and with them the claims that could only be
+// true by being red at the head they are committed at.
+//
+// WHAT REMAINS, and the warrant for it. The construction retires the unknown-name state entirely:
+// passing a row means there is no string to misspell, so no claim asserts one any more. What the
+// construction cannot express from inside the carrier is that the carrier has stopped spelling names —
+// that is a property of the carrier's own text, so two lenses read it. DESIGN §5:413 warrants exactly
+// this: "construction first … keep lenses for the residue, where a pure reader over the same Node tree
+// costs no substrate edits. A lens nothing gates on is itself a lie" — each lens below is paired with the
+// emission it gates, and both were tested in the other direction: at the pre-rework head, where 15 names
+// were hand-typed at call sites, the first lens is the one that reddens.
+//
+// Each *_helper is a test fn; the evidence_* wrappers remain for gunbc run --function. Run each evidence_* at the head under review. A Bool false under `gunbc run --function` exits 2, which
+// means "did not return a ProcessExit" and is NOT a verdict, so every evidence_* returns one.
+
+import std.types { Bool, String, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.auth.approval_device_redemption_fixtures { envelope_vectors_fixed }
+import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }
+import v2.extdeps.languages.swift.rows { SwiftRowEmitted, SwiftRowEmissionRefused }
+
+data carrier_module_path: String = "dag/gunbc/approve_ios_swift_protocol_vector_tests.dag"
+
+// ---------------------------------------------------------------- helpers (not claims)
+
+fn emission_text() -> String {
+  match expected_approve_ios_protocol_vector_tests_swift() {
+    SwiftRowEmitted { source: s } => s
+    SwiftRowEmissionRefused { reason: _ } => ""
+  }
+}
+
+// The carrier's own source, read the way the committed claim witnesses read a module (precedent:
+// dag/test/claim/action_use_admission_witness.dag:352). "" if the read is refused, which every claim
+// below tests for rather than treating as "clean".
+fn carrier_source() -> String {
+  let read = Filesystem.Read(path: carrier_module_path, expect: ExpectSuccess)
+  if read.success { read.content } else { "" }
+}
+
+// A row name as it appears in emitted Swift: try envelope("<name>").
+fn envelope_call_needle(name: String) -> String {
+  concat(concat("try envelope(\"", name), "\")")
+}
+
+// The fixture rows the emitted file asks for by name. Assembled by asking the fixture, never by keeping
+// a list of names here — a list would put the second authority back.
+fn exercised_rows() -> List<String> {
+  let text = emission_text()
+  filter(envelope_vectors_fixed, v => text.contains(envelope_call_needle(name: v.name as String)))
+}
+
+// ---------------------------------------------------------------- claims (all green at this head)
+
+// POSITIVE, the lens over the carrier's SOURCE. It held 15 hand-typed envelope names at call sites
+// before the rework, and this is the claim that reddens that head. The searched shape is the call site
+// itself — `at_envelope(name: "…")` — not prose about it, so a comment cannot satisfy it and a comment
+// about the old shape cannot break it.
+test fn carrier_source_carries_no_envelope_call_literal_helper() -> Bool {
+  let src = carrier_source()
+  src != "" && !src.contains("at_envelope(name:")
+}
+
+// POSITIVE, the join the construction is responsible for and the lenses cannot restate: at_envelope takes
+// the fixture's ROW and renders the string by READING IT OFF THE VALUE, so no name can be spelled here
+// that the row does not carry. Both halves are needed and neither is enough alone: the signature alone is
+// satisfied by a body that hardcodes a name, and the substring `sw_str(s: v.name as String)` alone is
+// satisfied by any other map over a row (surface_vectors renders it too), so an earlier version of this
+// claim survived a control that hardcoded "pending_list" into the envelope call. The whole expression is
+// therefore asserted, and it occurs exactly once in the module, at the envelope call.
+test fn carrier_renders_the_rows_own_name_helper() -> Bool {
+  let src = carrier_source()
+  src != ""
+    && src.contains("fn at_envelope(v: EnvelopeVector)")
+    && src.contains("sw_try(e: sw_calln(f: \"envelope\", a: [sw_pos(v: sw_str(s: v.name as String))]))")
+}
+
+// POSITIVE, the fixture side of the join: the fixture spells every row with a non-empty name, so the
+// rows the carrier passes are rows the fixture actually owns.
+test fn fixture_spells_every_row_helper() -> Bool {
+  count(envelope_vectors_fixed) > 0
+    && all(envelope_vectors_fixed, v => v.name != "")
+}
+
+// POSITIVE: some fixture rows really are exercised by the emitted Swift, so a deleted envelope test
+// cannot leave the file green while the lenses above stay satisfied.
+test fn some_fixture_rows_are_exercised_helper() -> Bool {
+  emission_text() != "" && count(exercised_rows()) > 0
+}
+
+// ---------------------------------------------------------------- evidence wrappers (ProcessExit)
+
+fn evidence_carrier_source_carries_no_envelope_call_literal() -> ProcessExit {
+  if carrier_source_carries_no_envelope_call_literal_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the carrier still hand-types an envelope name at a call site" }
+  }
+}
+
+fn evidence_carrier_renders_the_rows_own_name() -> ProcessExit {
+  if carrier_renders_the_rows_own_name_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "at_envelope does not take a fixture row and render the row's own name" }
+  }
+}
+
+fn evidence_fixture_spells_every_row() -> ProcessExit {
+  if fixture_spells_every_row_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the fixture carries a row with no name" }
+  }
+}
+
+fn evidence_some_fixture_rows_are_exercised() -> ProcessExit {
+  if some_fixture_rows_are_exercised_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "no fixture envelope row is exercised by the emitted Swift" }
+  }
+}

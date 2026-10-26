@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.declared_frontier_outlives_the_firing_of_its_own_trigger
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data declared_frontier_outlives_the_firing_of_its_own_trigger: RecurringFailureMode = RecurringFailureMode {
   identity: "declared_frontier_outlives_the_firing_of_its_own_trigger" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a declared consumption frontier outlives the firing of its own trigger** (INVALID STATE: a declaration admitted under section 3c as consumed by a named later consumer, whose trigger has since been SATISFIED BY OTHER MEANS, so the declaration is dangling while every artifact around it still describes it as a frontier).",

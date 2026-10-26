@@ -1540,9 +1540,9 @@ pub enum InterpError {
     /// publishing it, a missing `mock_response` by authoring one, a filesystem REMOVAL by a wet
     /// route (removal has no mock arm). One sentence for all three is the state-space
     /// conflation DESIGN's recurring-failure list names.
-    HermeticHostEffectRefused {
+    HostEffectRefused {
         operation: String,
-        ground: HermeticEffectGround,
+        ground: EffectRefusalGround,
     },
     /// A HOST FILESYSTEM EFFECT FAILED: the realization asked the host to create or write a path
     /// and the host refused. Its own variant, never a `TypeError`: nothing about the program's
@@ -1572,10 +1572,10 @@ impl InterpError {
     }
 }
 
-/// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
-/// different remedy — see `InterpError::HermeticHostEffectRefused`.
+/// WHY A RUN COULD NOT REALIZE ONE OPERATION. Closed, and each arm names a
+/// different remedy — see `InterpError::HostEffectRefused`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HermeticEffectGround {
+pub enum EffectRefusalGround {
     /// The service is corpus-governed and no published mock case names this operation.
     /// `published_cases` carries the cases that DO exist for the service, so the refusal
     /// states its own remedy rather than sending the reader to look for it.
@@ -1586,6 +1586,10 @@ pub enum HermeticEffectGround {
     /// A filesystem REMOVAL. Distinct from the two above because there is no mock arm to
     /// author: the operation's whole content is the effect, so only a wet route can run it.
     FilesystemRemoval,
+    /// A witness frame whose modeled realization is admitted only under Hermetic execution,
+    /// reached by a run that dispatches real effects. The one ground refused UNDER a non-hermetic
+    /// mode, so its remedy is the opposite of the three above: run it hermetically.
+    FrameNotRealizableUnderMode,
 }
 
 impl fmt::Display for InterpError {
@@ -1750,22 +1754,28 @@ impl fmt::Display for InterpError {
                 name,
                 probed.join(", ")
             ),
-            InterpError::HermeticHostEffectRefused { operation, ground } => match ground {
-                HermeticEffectGround::UnpublishedMockCase { published_cases } => write!(
+            InterpError::HostEffectRefused { operation, ground } => match ground {
+                EffectRefusalGround::UnpublishedMockCase { published_cases } => write!(
                     f,
                     "hermetic mode: operation {operation} is not a published mock case for its \
                      corpus-governed service \u{2014} refusing to realize (published cases: \
                      {published_cases:?})"
                 ),
-                HermeticEffectGround::NoMockResponse => write!(
+                EffectRefusalGround::NoMockResponse => write!(
                     f,
                     "hermetic mode: no mock_response for operation {operation} \u{2014} refusing \
                      to fabricate Unit"
                 ),
-                HermeticEffectGround::FilesystemRemoval => write!(
+                EffectRefusalGround::FilesystemRemoval => write!(
                     f,
                     "hermetic mode: {operation} refuses filesystem removal (no mock arm; the \
                      operation's whole content is the effect, so only a wet route can run it)"
+                ),
+                EffectRefusalGround::FrameNotRealizableUnderMode => write!(
+                    f,
+                    "wet run cannot realize {operation}: a modeled operation realization is \
+                     admitted only under Hermetic execution, and this run dispatches real \
+                     effects (route gap, not a verdict)"
                 ),
             },
             InterpError::HostToolRelativePathAmbiguous { name } => write!(
@@ -9836,10 +9846,14 @@ fn admit_modeled_realization(
         false,
     )?;
     if !matches!(admitted, Value::Bool(true)) {
-        return Err(modeled_refused(
-            "(frame)",
-            "a modeled operation realization is admitted only under Hermetic execution; this run dispatches real effects",
-        ));
+        // A ROUTE GAP, NOT A VERDICT: the run was never given a route that can realize this
+        // frame, so the claim did not reach its subject. Returned as the typed route-gap error and
+        // not as `modeled_refused`, which the frame builtin turns into a `WitnessRefused` value a
+        // claim can map to false.
+        return Err(InterpError::HostEffectRefused {
+            operation: "(frame)".to_string(),
+            ground: EffectRefusalGround::FrameNotRealizableUnderMode,
+        });
     }
     let envelope = record_field(ctx, frame, "envelope")
         .ok_or_else(|| modeled_refused("(frame)", "the frame carries no envelope"))?;
@@ -9940,7 +9954,7 @@ fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
     })
 }
 
-/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// The BoundOperationInvocation (`std.operation_argv`) of one dispatched operation: its resolved
 /// identity -- declaring file, service, operation -- and each declared input by name.
 fn bound_operation_invocation_value(
     service_name: &str,
@@ -10468,6 +10482,7 @@ fn try_witness_evaluation_dispatch(
             let absent_state = || variant_value(ctx, "Optional", "Absent", vec![]);
             let admitted = match admit_modeled_realization(&frame, env, ctx) {
                 Ok(slot) => slot,
+                Err(error @ InterpError::HostEffectRefused { .. }) => return Some(Err(error)),
                 Err(error) => {
                     return Some(Ok(variant_value(
                         ctx,
@@ -10493,6 +10508,11 @@ fn try_witness_evaluation_dispatch(
                     .with(|slots| slots.borrow_mut().last_mut().and_then(|s| s.take()));
                 (evaluated, slot)
             };
+            // A route gap raised inside the subject is no observation either, so it leaves the
+            // frame as the error and never as a `WitnessRefused` verdict value.
+            if let Err(error @ InterpError::HostEffectRefused { .. }) = evaluated {
+                return Some(Err(error));
+            }
             let (route, state, interrupted, clock) = match slot {
                 Some(slot) => (
                     list_value(slot.route),
@@ -10880,10 +10900,6 @@ fn match_pattern(
                         }
                         _ => None,
                     },
-                    // GroupCompletion{pos,neg} destructuring against a native Value::Int is
-                    // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
-                    // unmatched pattern name falls through to `_ => None` below, refusing rather
-                    // than fabricating a (pos, neg) pair.
                     Value::Null
                         if name_last == "Violates"
                             && parent_enum_is(parent_enum.as_ref(), "Witness") =>
@@ -13336,14 +13352,9 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
-        if type_name == "GroupCompletion" {
-            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
-                fields_get(&fields, ctx.sym("pos")),
-                fields_get(&fields, ctx.sym("neg")),
-            ) {
-                return Ok(Value::Int(pos - neg));
-            }
-        }
+        // No record is collapsed into an integer by its spelling. A GroupCompletion<Nat> is a pair --
+        // std.integer int_of_group_completion is the declared mapping onto the integers -- and the
+        // emitted Rust keeps it a record, so the interpreter must too.
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
@@ -13855,9 +13866,6 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Value::Float(n) => Ok(str_value(n.to_string())),
             Value::Bool(b) => Ok(str_value(b.to_string())),
             Value::Str(ref s) => Ok(Value::Str(s.clone())),
-            // Corpus wire/debug casts for structured values — not the blanket Display
-            // fallback that silently stringified List/Map (§5 fabricated plausible output).
-            Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
             v => Err(refused(&v, "String")),
         },
         t => Err(refused(&val, t)),
@@ -14682,7 +14690,7 @@ fn hermetic_checkout_input_disposition_under(
     // path to exist, so it failed identically for three dispositions with different remedies —
     // a file the commit says is NOT THERE, a path RESOLVING OUTSIDE the root, and one
     // UNRESOLVABLE otherwise. One error string for three states is the conflation
-    // `HermeticEffectGround` was split to prevent, twenty lines above the enum recording it.
+    // `EffectRefusalGround` was split to prevent, twenty lines above the enum recording it.
     //
     // The commit determines absence as it determines contents: "no such file" is read OFF THE
     // INPUT, not host state, so it belongs on the same wet arm as a successful read, not in the
@@ -14880,9 +14888,9 @@ fn eval_service_call(
                 })
                 .collect();
             cases.sort();
-            return Err(InterpError::HermeticHostEffectRefused {
+            return Err(InterpError::HostEffectRefused {
                 operation: key.clone(),
-                ground: HermeticEffectGround::UnpublishedMockCase {
+                ground: EffectRefusalGround::UnpublishedMockCase {
                     published_cases: cases.into_iter().cloned().collect(),
                 },
             });
@@ -15434,7 +15442,7 @@ fn value_to_host_string(val: &Value) -> String {
 }
 
 /// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
-/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
+/// `dag/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
 /// enum is its seed realization. Every arm refuses; none widens, defaults, or sanitizes
 /// (DESIGN §5).
 #[derive(Debug, Clone)]
@@ -17158,65 +17166,6 @@ fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext)
             variant_name: ctx.sym("GateNotRun"),
             fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
         },
-    }
-}
-
-fn unlisted_import_binding_source_value(
-    source: crate::cli_run::UnlistedImportBindingSource,
-    ctx: &InterpContext,
-) -> Value {
-    let variant = match source {
-        crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
-        crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
-        crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
-        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
-    };
-    Value::Variant {
-        type_name: ctx.sym("UnlistedImportBindingSource"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![]),
-    }
-}
-
-fn declared_import_closure_binding_value(
-    observation: crate::cli_run::DeclaredImportClosureBindingObservation,
-    ctx: &InterpContext,
-) -> Value {
-    match observation {
-        crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
-            let binding_source = match observed.binding_source {
-                Some(source) => {
-                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
-                }
-                None => optional_absent(ctx),
-            };
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingObserved"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("binding_source"), binding_source),
-                    (
-                        ctx.sym("definer_module"),
-                        str_value(observed.definer_module.unwrap_or_default()),
-                    ),
-                    (
-                        ctx.sym("symbol_resolves"),
-                        Value::Bool(observed.symbol_resolves),
-                    ),
-                    (
-                        ctx.sym("blocking_hard_diagnostic_count"),
-                        Value::Int(observed.blocking_hard_diagnostic_count),
-                    ),
-                ])),
-            }
-        }
-        crate::cli_run::DeclaredImportClosureBindingObservation::NotRunnable(cause) => {
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingNotRunnable"),
-                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-            }
-        }
     }
 }
 
@@ -21301,6 +21250,9 @@ pub enum RestResponseDecodeCause {
     /// Both the wire key and the authored name of one renamed field are present; which one
     /// populates the field would be decided by iteration order.
     AmbiguousWireSpelling { authored: String, wire: String },
+    /// A field declared `std.decimal` `ExactDecimal` was answered by a JSON value that is not a
+    /// finite decimal number whose digits fit the record's Int units.
+    NotAnExactDecimal { json_text: String },
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -21344,6 +21296,11 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
+            RestResponseDecodeCause::NotAnExactDecimal { json_text } => write!(
+                f,
+                "declared ExactDecimal, answered `{}`, which is not a finite decimal whose digits fit Int units",
+                json_text
+            ),
         }
     }
 }
@@ -21561,6 +21518,49 @@ fn decode_json_by_declared_type(
             }
             _ => Ok(json_to_value(json)),
         };
+    }
+    // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
+    // as a JSON number (extdeps.cloud.vast_ai money fields). serde_json's arbitrary_precision keeps the
+    // number's wire text, so it is decoded from the wire's own digits and scale; a number that is not a
+    // finite decimal whose digits fit Int units refuses. Without this arm the number fell through to `json_to_value` and
+    // the declared ExactDecimal arrived as a Float (gunbc.recurring_failure_mode
+    // rest_response_declared_exact_decimal_decoded_as_float).
+    // `T?` on the wire is T or null; null returned above, so a present value decodes as the declared T
+    // (a present value is carried raw, as `json_to_value` carries it). Without this the declared type
+    // under the optional layer was never consulted.
+    if name.rsplit('.').next() == Some("Optional") {
+        if let Some(inner) = ty.children.first() {
+            return decode_json_by_declared_type(json, inner, path, ctx);
+        }
+    }
+    if name.rsplit('.').next() == Some("ExactDecimal") {
+        if let serde_json::Value::Number(n) = json {
+            let text = n.to_string();
+            return match exact_decimal_from_json_number_text(&text) {
+                Some((units, fraction_digits)) => {
+                    let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+                    if let Some(ck) = CanonKey::new(str_value("units")) {
+                        fields.insert(ck, Value::Int(units));
+                    }
+                    if let Some(ck) = CanonKey::new(str_value("fraction_digits")) {
+                        fields.insert(ck, Value::Int(fraction_digits));
+                    }
+                    Ok(map_value(fields))
+                }
+                None => Err(RestResponseDecodeRefusal {
+                    field_path: path.to_string(),
+                    coproduct: name.clone(),
+                    cause: RestResponseDecodeCause::NotAnExactDecimal { json_text: text },
+                }),
+            };
+        }
+        return Err(RestResponseDecodeRefusal {
+            field_path: path.to_string(),
+            coproduct: name.clone(),
+            cause: RestResponseDecodeCause::NotAnExactDecimal {
+                json_text: json.to_string(),
+            },
+        });
     }
     if ty.connective == Connective::Disj {
         let nullary =
@@ -21805,6 +21805,69 @@ pub(crate) fn json_container_depth(json: &serde_json::Value) -> usize {
     deepest
 }
 
+/// The largest decimal exponent an i64-unit decimal can carry: i64::MAX has 19 digits, 18 of them free.
+const EXACT_DECIMAL_MAX_DECIMAL_EXPONENT: u64 = 18;
+
+/// The largest scale (fraction digits) a decoded ExactDecimal may carry: 18 free significant digits whose
+/// leading digit lies at most 18 places past the point.
+const EXACT_DECIMAL_MAX_SCALE: i64 = 2 * EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64;
+
+/// The exact `(units, fraction_digits)` of a JSON number's decimal text: `-?D+(.D+)?([eE][+-]?D+)?`.
+/// `units` is the signed mantissa digits and `fraction_digits` the count of digits after the point less
+/// the exponent; a negative scale is folded into `units`. `None` when the text is not that grammar or
+/// the digits do not fit i64, so the caller refuses rather than rounding.
+fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
+    let (negative, rest) = match text.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, text),
+    };
+    let (mantissa, exponent) = match rest.find(['e', 'E']) {
+        Some(i) => (&rest[..i], rest[i + 1..].parse::<i64>().ok()?),
+        None => (rest, 0),
+    };
+    // The exponent is bounded BEFORE any scaling: an i64 holds at most 18 full decimal digits, so an
+    // exponent beyond that either overflows the units or names a scale no Int-unit decimal carries. Without
+    // the bound a zero mantissa (`0e9223372036854775807`) never overflows and the scaling loop below does
+    // not return, and `1e-999999999` would be accepted with a billion fraction digits (review 82479).
+    // The scale is capped separately, because the exponent bound does not limit it: `parse::<i64>` accepts
+    // leading zeros, so `0.` followed by ten thousand zeros and a `1` has exponent 0 and scale 10001
+    // (review 82586). The cap is EXACT_DECIMAL_MAX_SCALE (36): at most 18 free significant digits whose
+    // leading digit lies at most 18 places past the point. An earlier cap at 19 refused a live price with 17
+    // significant digits at 20 fraction digits (`0.00026041666666666666`, fleet-converge run 39222150650)
+    // and with it the whole offer page.
+    if exponent.unsigned_abs() > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT {
+        return None;
+    }
+    let (int_part, frac_part) = match mantissa.find('.') {
+        Some(i) => (&mantissa[..i], &mantissa[i + 1..]),
+        None => (mantissa, ""),
+    };
+    if int_part.is_empty()
+        || !int_part.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let digits = format!("{}{}", int_part, frac_part);
+    let mut units: i64 = digits.parse::<i64>().ok()?;
+    let mut fraction_digits: i64 = (frac_part.len() as i64).checked_sub(exponent)?;
+    if fraction_digits > EXACT_DECIMAL_MAX_SCALE {
+        return None;
+    }
+    while fraction_digits < 0 {
+        units = units.checked_mul(10)?;
+        fraction_digits += 1;
+    }
+    Some((
+        if negative {
+            units.checked_neg()?
+        } else {
+            units
+        },
+        fraction_digits,
+    ))
+}
+
 fn json_to_value(json: &serde_json::Value) -> Value {
     value_depth_guarded(|| match json {
         serde_json::Value::Null => Value::Null,
@@ -21907,9 +21970,9 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
         }
     }
     let op_name = authored_name_at(ctx.si(), op_node.clone());
-    Err(InterpError::HermeticHostEffectRefused {
+    Err(InterpError::HostEffectRefused {
         operation: op_name.to_string(),
-        ground: HermeticEffectGround::NoMockResponse,
+        ground: EffectRefusalGround::NoMockResponse,
     })
 }
 
@@ -22479,9 +22542,9 @@ fn eval_emit_host_native_cache_evict_builtin(
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::HermeticHostEffectRefused {
+        return Err(InterpError::HostEffectRefused {
             operation: "emit_host_native_cache_evict".to_string(),
-            ground: HermeticEffectGround::FilesystemRemoval,
+            ground: EffectRefusalGround::FilesystemRemoval,
         });
     }
     let workspace_dir =
@@ -23791,8 +23854,8 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
-            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
-            // sha256_hex_of_text_contract).
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (the host realization
+            // of the declared seam std.content_hash sha256_hex_of_text).
             arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
                 Ok(Some(str_value(sha256_hex_of_text_digest(
                     expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
@@ -24463,26 +24526,15 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.decl_facts_at" { "decl_facts_at" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
-                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
+                let qualified_names =
+                    expect_str_list($positional.get(1).copied(), "decl_facts_at")?;
+                let type_names = expect_str_list($positional.get(2).copied(), "decl_facts_at")?;
                 Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
                     $ctx,
                     &pool_roots,
-                    qualified_name.as_str(),
+                    &qualified_names,
+                    &type_names,
                 )?))
-            },
-
-            arm "free_call.type_declarer_qualified_names" { "type_declarer_qualified_names" } => {
-                let pool_roots =
-                    expect_str_list($positional.first().copied(), "type_declarer_qualified_names")?;
-                let bare_name =
-                    expect_value_str($positional.get(1).copied(), "type_declarer_qualified_names")?;
-                Ok(Some(
-                    crate::coproduct_reflection::eval_type_declarer_qualified_names(
-                        $ctx,
-                        &pool_roots,
-                        bare_name.as_str(),
-                    )?,
-                ))
             },
 
             arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
@@ -24643,6 +24695,15 @@ macro_rules! v1_builtin_arms {
                                 $ctx.sym("argv_input_refs"),
                                 list_value(
                                     row.argv_input_refs
+                                        .into_iter()
+                                        .map(str_value)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
+                            (
+                                $ctx.sym("executable_input_refs"),
+                                list_value(
+                                    row.executable_input_refs
                                         .into_iter()
                                         .map(str_value)
                                         .collect::<Vec<_>>(),
@@ -25078,22 +25139,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
-                let pool_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                let consumer_module = expect_str($positional.get(2).copied(), $name)?;
-                let symbol = expect_str($positional.get(3).copied(), $name)?;
-                Ok(Some(declared_import_closure_binding_value(
-                    crate::cli_run::observe_declared_import_closure_symbol_binding(
-                        &pool_roots,
-                        &entry_path,
-                        &consumer_module,
-                        &symbol,
-                    ),
-                    $ctx,
-                )))
-            },
-
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
             ))),
@@ -25142,6 +25187,9 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
+            arm "free_call.witness_deferral_freeze_population_census" { "witness_deferral_freeze_population_census" } => Ok(Some(str_value(
+                crate::cli_run::witness_deferral_freeze_population_census(),
+            ))),
             arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),
@@ -26736,7 +26784,7 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
 }
 
 // SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
-// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// sha256_hex_of_text (declared at std.content_hash sha256_hex_of_text), the same RustCrypto sha2 the HMAC
 // seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
 fn sha256_hex_of_text_digest(text: &str) -> String {
     use sha2::{Digest, Sha256};

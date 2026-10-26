@@ -165,22 +165,94 @@ module gunbc.recurring_failure_mode
 // line immediately AFTER the closing marker. If neither side closes itself and the text below supplies
 // the closer, the union needs one inserted between them.
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Int }
 import std.decl_ref { DeclarationRef }
+import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_index }
+import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding, GroundingAuthority, GroundingDeclared, GroundingUndeclared, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, trigger_capability_admission }
+
+// WHERE A CLASS STANDS ON THE GUARANTEE LADDER, TYPED (DESIGN section 4b, the ledger rule's rung
+// found at / ceiling / next trigger). The rung and trigger vocabulary is gunbc.guarantee_rung and
+// gunbc.rung_climb (the referent-free core gunbc.guarantee_stall composes with its `awaiting`
+// referents), not a second one: a row's below-ceiling standing IS a stall without the subject, the
+// population and the awaited lanes. The ledger does not import the stall, so reading rungs does not
+// reach roadmap_model and extdeps.github.
+//
+// THE POSITION TYPE IS SEPARATE FROM THE RUNG TYPE because section 4b says silent wrongness is below
+// the ladder and not a rung, so a class FOUND silently wrong has no GuaranteeRung to be found at;
+// guarantee_rung's OutsideTheLadder is the different fact "external reality, observed at a boundary".
+type RungPosition
+  = FoundBelowTheLadder
+  | FoundOnRung { rung: GuaranteeRung }
+
+// BELOW CEILING WITHOUT A BLOCKER IS UNCONSTRUCTIBLE: BelowCeiling has no arm without a blocker
+// (which of the three section 4b ob.2 cases). The trigger capability (section 4b ob.3) is a bare
+// String, so an empty or referent-spelled one IS constructible and standing_admission REFUSES it
+// (validation, rung 2). AtCeiling carries ONE rung, so at-ceiling-with-a-trigger and
+// current-above-ceiling have no constructor.
+//
+// `current` is the rung the row's prose last states for the class (a CURRENT RUNG / RUNG NOW /
+// CLIMBED receipt); where no receipt states a later rung, the standing is the rung as filed.
+type RungStanding
+  = AtCeiling { rung: GuaranteeRung, ceiling_reason: NonEmptyStr }
+  | BelowCeiling { current: RungPosition, ceiling: GuaranteeRung, blocker: ClimbBlocker, trigger_capability: String }
+
+// RELATION TO gunbc.rung_drop OffLadderJudgment.NotJudgeableFromProse: the same honest refusal (a
+// rung cannot be read from authored prose), but that arm is one undifferentiated answer about a
+// drop's on/off-ladder status, whereas the ledger needs the reason countable, so UnreadCause refines
+// it rather than parallels it; RungRead's FoundOnRung reuses GuaranteeRung exactly as OnLadderAt does.
+//
+// WHY A ROW'S RUNG IS NOT READ. Each arm is a real class of prose the migration met, so the census
+// counts them by arm and a guess has no home. There is deliberately no "not yet migrated" arm: this
+// cut reads every row, and an arm for unmigrated rows would let a later row be authored unread.
+type UnreadCause
+  = NoRungStated
+  | FoundAtAmbiguous
+  | CeilingNotStated
+  | CeilingAmbiguous
+  | CurrentRungUnstatedAfterClimb
+  | CeilingStatedWithoutTrigger
+  | TriggerNamesArtifactNotCapability
+  | BlockerClassUnstated
+
+type RungReading
+  = RungUnread { cause: UnreadCause }
+  | RungRead { found_at: RungPosition, standing: RungStanding }
 
 type RecurringFailureMode {
   identity: NonEmptyStr
+  rung: RungReading
   receipts: List<String>
   evidence: List<DeclarationRef>
 }
 
-// THE RECEIPTS ARE THE ROW'S PARTS AND THE JOIN IS RENDERING, WHICH IS WHY THIS FOLD LIVES HERE.
-// Join with a single space is the separator. A trailing-space-on-every-receipt convention is
-// deleted: it was a migration-time oracle against the one string the list replaced, and it is
-// not a wall — an author dropping the space glued two receipts with nothing between them and
-// nothing in the corpus refused. After the split the consumer is the projection; the check is
-// that rendered projection bytes match for every row that already carried a separator, and a
-// row whose rendering changes was already missing one.
 fn authored(r: RecurringFailureMode) -> String {
   join(r.receipts, " ")
+}
+
+fn rung_position_index(p: RungPosition) -> Int {
+  match p {
+    FoundBelowTheLadder => -1
+    FoundOnRung { rung: r } => guarantee_rung_index(r: r)
+  }
+}
+
+type StandingAdmission
+  = StandingAdmitted
+  | StandingNotBelowCeiling { subject: String }
+  | StandingTriggerRefused { subject: String, admission: TriggerAdmission }
+
+fn standing_admission(subject: String, s: RungStanding) -> StandingAdmission {
+  match s {
+    AtCeiling { rung: _, ceiling_reason: _ } => StandingAdmitted
+    BelowCeiling { current: c, ceiling: k, blocker: b, trigger_capability: t } =>
+      if rung_position_index(p: c) < guarantee_rung_index(r: k) {
+        let admission = trigger_capability_admission(subject: subject, capability: t)
+        match admission {
+          TriggerAdmitted => StandingAdmitted
+          _ => StandingTriggerRefused { subject: subject, admission: admission }
+        }
+      } else {
+        StandingNotBelowCeiling { subject: subject }
+      }
+  }
 }

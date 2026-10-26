@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.rest_success_and_decode_are_separately_true
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data rest_success_and_decode_are_separately_true: RecurringFailureMode = RecurringFailureMode {
   identity: "rest_success_and_decode_are_separately_true" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "REST success and REST semantic result are separately true and only one of them is checked (an operation is declared, hermetically witnessed and green; a wet call to it classifies the exchange as SUCCESS because a 200 did come back, and the declared record is Null - so a consumer reads a successful fetch that fetched nothing)",

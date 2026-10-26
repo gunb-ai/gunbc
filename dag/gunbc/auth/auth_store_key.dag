@@ -1,6 +1,7 @@
 module gunbc.auth.auth_store_key
 
 import std.types { String, NonEmptyStr, Bool, Int }
+import std.host_text { chars }
 
 // THE ONE SHAPE AN EXTERNALLY SUPPLIED IDENTIFIER MAY HAVE BEFORE IT NAMES A FILE. A login
 // transaction's state arrives in the callback query and a session id arrives in the Cookie header;

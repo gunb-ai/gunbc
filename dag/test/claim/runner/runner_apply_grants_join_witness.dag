@@ -1,0 +1,211 @@
+module test.claim.runner.runner_apply_grants_join_witness
+
+import std.types { Bool, String, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, SystemdMaskNowUnit, executor_privileged_operation_argv,
+}
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import gunbc.runner.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
+import gunbc.runner.runner_host_grants { runner_host_privileged_operations }
+import gunbc.runner.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
+import gunbc.runner.runner_slot_retirement {
+  SlotRetirementEvidence, SlotRetirementEvidencePresent, SlotRetirementEvidenceAbsent,
+  RunnerRetirementStanding, RetirementPendingDrain, srv4_transition_interruption_authorization,
+  interruption_authorization_for_host, HostInterruptionAuthorizationPresent, HostInterruptionAuthorizationAbsent,
+  host_maskable_units,
+}
+import gunbc.runner.runner_slot_provision { RunnerSlotMember, SlotProvenanceObserved, SlotUnregistered, runner_slot_member_observed }
+import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
+import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.fleet.fleet_converge_plan { fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE IDENTITY JOIN: every `sudo -n` line a host's apply script emits has a matching line in that
+// host's rendered grants (runner_host_privileged_operations, the operation set the sudoers file is
+// rendered from). A line the grants do not authorize is refused by sudo at apply time -- under
+// `set -e` the script stops there and every later line never runs (gunbc.recurring_failure_mode
+// a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize).
+//
+// THE ARMS ARE DRIVEN, NOT ASSUMED. An earlier cut ran with observed_slots and standings empty, so the
+// membership-removal arm of retirement_actuation_units (the arm that masks srv1-14 tonight) never
+// emitted a line and the join read green over a population it never reached (review 82316). The
+// witnesses below observe removed members inside and outside the authorization, with standings.
+//
+// The comparison is over words, not quoting: the apply renders quoted words, the grant renders
+// sudoers words, so both are reduced to their unquoted argv joined by spaces, the apply side keeping
+// its `sudo -n` prefix and the grant side gaining it.
+
+// A removed member the planner may act on: in the host grammar, unregistered, inactive, disabled -- the
+// retired-incarnation provenance that makes its removal Owned rather than MemberRemovalRefused
+// (OwnershipUnknown). Without it the membership arm refuses every removal and emits nothing, which is
+// the empty population the first cut of this join read green over.
+fn join_retired_member(instance_name: String) -> RunnerSlotMember {
+  runner_slot_member_observed(
+    instance_name: instance_name,
+    provenance: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
+  )
+}
+
+fn join_pending(unit: String) -> RunnerRetirementStanding {
+  RetirementPendingDrain { unit: unit, cause: "the slot's runner is still serving" }
+}
+
+fn join_srv1_evidence(host: HostIdentity, units: List<String>) -> SlotRetirementEvidence {
+  match interruption_authorization_for_host(host: host) {
+    HostInterruptionAuthorizationPresent { authorization: a } =>
+      SlotRetirementEvidencePresent { authorization: a, standings: map(units, u => join_pending(unit: u)) }
+    HostInterruptionAuthorizationAbsent { host: _, cause: c } =>
+      SlotRetirementEvidenceAbsent { cause: c }
+  }
+}
+
+fn join_apply_text_over(deploy: RunnerHostDeploy, slots: List<RunnerSlotMember>, evidence: SlotRetirementEvidence) -> String {
+  let host = deploy.host_label as HostIdentity
+  let request = FullHostConverge {
+    host: deploy.host_label,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: slots,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: evidence,
+    observed_host_grants: witness_grants_rendered(host: deploy.host_label),
+  }
+  fleet_converge_apply_shell(request: request, terminal: fleet_converge_apply_terminal(request: request))
+}
+
+// srv1-30 is a removed member INSIDE the 09-17 scope (13-50); srv1-60 is a removed member OUTSIDE every
+// authorization. Both carry a standing that requires actuation if the unit were covered.
+fn join_inside() -> String { "actions-runner@srv1-30.service" }
+fn join_outside() -> String { "actions-runner@srv1-60.service" }
+
+fn join_apply_text(deploy: RunnerHostDeploy) -> String {
+  let host = deploy.host_label as HostIdentity
+  join_apply_text_over(
+    deploy: deploy,
+    slots: [join_retired_member(instance_name: "srv1-30"), join_retired_member(instance_name: "srv1-60")],
+    evidence: join_srv1_evidence(host: host, units: [join_inside(), join_outside()]),
+  )
+}
+
+// A removed member the host's authorization does not name but ANOTHER host's does (srv4's 13-21), so the
+// evidence covers it while the host's own grants do not: the one way a candidate reaches the apply
+// outside the static set. The evidence is SUPPLIED (a roster observed under another host's authorization);
+// the producer never builds it, because the evidence's authorization and the grants' set are one
+// function of the host, so this arm is the defense that keeps the two from diverging if they ever do.
+fn join_foreign_apply_text(deploy: RunnerHostDeploy) -> String {
+  join_apply_text_over(
+    deploy: deploy,
+    slots: [join_retired_member(instance_name: "srv4-13")],
+    evidence: SlotRetirementEvidencePresent {
+      authorization: srv4_transition_interruption_authorization,
+      standings: [join_pending(unit: "actions-runner@srv4-13.service")],
+    },
+  )
+}
+
+fn join_unquoted(l: String) -> String { replace(s: l, from: "'", to: "") }
+
+fn join_grant_words(op: ExecutorPrivilegedOperation) -> String {
+  concat("sudo -n ", join(map(executor_privileged_operation_argv(op: op), w => w as String), " "))
+}
+
+// The apply spells the elevation through the one sudo seam (sudo_elevate_argv); the grant side spells
+// `sudo -n`. The apply side's own prefix is derived from the seam, never copied, then normalized.
+fn join_apply_sudo_prefix() -> String { concat(join(sudo_elevate_argv(command: []), " "), " ") }
+
+fn join_apply_sudo_lines(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+    |> map(l => join_unquoted(l: l))
+    |> filter(l => l.starts_with(prefix: join_apply_sudo_prefix()))
+    |> map(l => replace(s: l, from: join_apply_sudo_prefix(), to: "sudo -n "))
+}
+
+fn join_ungranted(text: String, ops: List<ExecutorPrivilegedOperation>) -> List<String> {
+  let granted = map(ops, op => join_grant_words(op: op))
+  join_apply_sudo_lines(text: text) |> filter(l => count(filter(granted, g => g == l)) == 0)
+}
+
+fn join_is_mask(op: ExecutorPrivilegedOperation) -> Bool {
+  match op { SystemdMaskNowUnit { unit: _ } => true _ => false }
+}
+
+test fn every_sudo_line_srv1_apply_emits_is_granted() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      join_ungranted(text: join_apply_text(deploy: d), ops: runner_host_privileged_operations(deploy: d)) == []
+        && join_ungranted(text: join_foreign_apply_text(deploy: d), ops: runner_host_privileged_operations(deploy: d)) == []
+  }
+}
+
+// POSITIVE POLE, MEMBERSHIP ARM: the removed member inside the authorization is masked, so an empty ungranted
+// set is a measurement of a line the apply emitted. The one outside is withheld, never masked.
+test fn the_membership_removal_arm_masks_inside_the_authorization_and_withholds_outside_it() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      let t = join_unquoted(l: join_apply_text(deploy: d))
+      string_contains(s: t, pattern: concat("sudo -n /usr/bin/systemctl mask --now ", join_inside()))
+        || string_contains(s: t, pattern: concat("mask --now ", join_inside()))
+  }
+}
+
+test fn a_removed_member_outside_the_authorization_is_not_masked() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      let t = join_unquoted(l: join_apply_text(deploy: d))
+      !string_contains(s: t, pattern: concat("mask --now ", join_outside()))
+        && string_contains(s: t, pattern: "runner-slot teardown: unit=actions-runner@srv1-60.service")
+  }
+}
+
+// CONTROL: a candidate the evidence covers but the host's grants do not is WITHHELD, not masked.
+test fn a_candidate_outside_the_hosts_grants_is_withheld_and_not_masked() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      let t = join_unquoted(l: join_foreign_apply_text(deploy: d))
+      !string_contains(s: t, pattern: "mask --now actions-runner@srv4-13.service")
+        && string_contains(s: t, pattern: "runner-slot retirement: unit=actions-runner@srv4-13.service")
+  }
+}
+
+// POSITIVE POLE: the grants are exactly the host's static maskable set.
+test fn the_mask_grants_are_exactly_the_hosts_maskable_units() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      let masks = filter(runner_host_privileged_operations(deploy: d), op => join_is_mask(op: op))
+      count(masks) > 0
+        && count(masks) == count(host_maskable_units(host: operator_host_srv1))
+        && all(host_maskable_units(host: operator_host_srv1), u =>
+          count(filter(masks, op => join_grant_words(op: op) == concat("sudo -n /usr/bin/systemctl mask --now ", u as String))) == 1)
+  }
+}
+
+// DISCRIMINATING CONTROL: removing the mask grant for the unit the apply masks makes the join name that line.
+test fn removing_the_mask_grant_for_a_masked_unit_reds_the_join() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      let ops = runner_host_privileged_operations(deploy: d)
+      let kept = filter(ops, op => !(join_is_mask(op: op) && string_contains(s: join_grant_words(op: op), pattern: join_inside())))
+      count(join_ungranted(text: join_apply_text(deploy: d), ops: kept)) == 1
+  }
+}
+
+// DISCRIMINATING CONTROL, NON-MASK: with only the mask grants the join reds on the other lines.
+test fn removing_the_non_mask_grants_reds_the_join() -> Bool {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } =>
+      count(join_ungranted(text: join_apply_text(deploy: d), ops: filter(runner_host_privileged_operations(deploy: d), op => join_is_mask(op: op)))) > 0
+  }
+}

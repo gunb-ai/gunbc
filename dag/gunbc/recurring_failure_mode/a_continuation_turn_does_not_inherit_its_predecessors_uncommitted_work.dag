@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.a_continuation_turn_does_not_inherit_its_pre
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data a_continuation_turn_does_not_inherit_its_predecessors_uncommitted_work: RecurringFailureMode = RecurringFailureMode {
   identity: "a_continuation_turn_does_not_inherit_its_predecessors_uncommitted_work" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a continuation turn is spawned from a predecessor attempt whose unfinished edits exist only in an uncommitted worktree, and the continuation origin carries the committed branch (and verdict) but not those edits, so the next worker starts from a head that dropped the predecessor's uncommitted work. HARM: the loop that was supposed to be write then verify then diagnose then write on one lineage silently restarts from a thinner tree; hours of uncommitted work vanish without a typed refusal (DESIGN section 5).",

@@ -16,7 +16,7 @@ import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
-  RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict,
+  RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
   PanickedBeforeVerdict, NotAttemptedAfterAbort,
 }
 import gunbc.target_binding {
@@ -235,6 +235,8 @@ fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: NotAttemptedAfterAbort {} } }
     ObservationUnreadableBeforeVerdict =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: ObservationUnreadableBeforeVerdict {} } }
+    SubjectUnresolvedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: SubjectUnresolvedBeforeVerdict {} } }
   }
 }
 
@@ -695,6 +697,7 @@ fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatu
     PanickedBeforeVerdict => TestStatusFailed {}
     NotAttemptedAfterAbort => TestStatusHaltedBeforeTesting {}
     ObservationUnreadableBeforeVerdict => TestStatusIncomplete {}
+    SubjectUnresolvedBeforeVerdict => TestStatusIncomplete {}
   }
 }
 

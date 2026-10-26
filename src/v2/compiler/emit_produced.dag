@@ -1,5 +1,6 @@
 module v2.compiler.emit_produced
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import v2.compiler.inferred_tree { InferredTree }
@@ -39,7 +40,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Occupancy, Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.node { Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
@@ -99,7 +100,6 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
     TypeNode { connective: Atom { identity: _ } } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Disj } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Arrow } => emit_produced_decl_not_conj_refusal(decl: decl)
-    TypeNode { connective: Occupancy } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Instantiation } => emit_produced_decl_not_conj_refusal(decl: decl)
     ComputationNode { behavior: _ } => emit_produced_decl_not_conj_refusal(decl: decl)
   }
@@ -139,7 +139,6 @@ fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
         TypeNode { connective: Atom { identity: _ } } => false
         TypeNode { connective: Conj } => false
         TypeNode { connective: Disj } => false
-        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: _ } => false
       }
@@ -382,8 +381,8 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
 fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>, tree: InferredTree, declarations: SymbolIndex) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
     ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host, tree: tree, declarations: declarations)
-    ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(name: n, params: [], node: c, target: target, realization_host: realization_host)
-    ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(name: n, params: [], node: r, target: target, realization_host: realization_host)
+    ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: n, params: [], node: c, target: target, realization_host: realization_host)
+    ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: n, params: [], node: r, target: target, realization_host: realization_host)
     ModuleMemberRefinement { name: n, refinement: m } => emit_refinement_declaration(name: n, refinement: m, target: target, realization_host: realization_host)
     ModuleMemberBodylessArrow => emit_module_member_refused(reason: ^emit_module_member_arrow_has_no_body, at: edge.target)
     ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)

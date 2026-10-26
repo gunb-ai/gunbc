@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.pending_run_cancelled_by_a_later_dispatch_wi
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data pending_run_cancelled_by_a_later_dispatch_with_no_signal: RecurringFailureMode = RecurringFailureMode {
   identity: "pending_run_cancelled_by_a_later_dispatch_with_no_signal" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a workflow serializes its runs with a bare concurrency group, so the platform keeps ONE pending run per group and cancels the one already waiting when another is dispatched -- and the lane that dispatched the cancelled run is told nothing.** INVALID STATE: a dispatched run is a receipt someone is waiting on; under `concurrency: <group>` its pending form can be replaced by any later dispatch from any lane. HARM: the evidence a change is waiting for never exists, and the wait is indistinguishable from a slow queue until someone reads the run list. The remedy that suggests itself, dispatching again, does the same to whoever is now pending. DISTINGUISHING FACTS: the cancelled run has conclusion `cancelled` and ZERO jobs (it never started), which separates it from a run cancelled mid-flight; the group has exactly one in-progress run and the superseding run is the pending one.",

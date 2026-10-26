@@ -108,3 +108,67 @@ fn ssh_ed25519_key_identity(material: NonEmptyStr) -> SshEd25519KeyIdentity? {
     }
   }
 }
+
+// ── THE OPTIONS FIELD OF AN authorized_keys LINE (sshd(8) AUTHORIZED_KEYS FILE FORMAT, this module's
+// anchor). A line is "options, keytype, base64-encoded key, comment", space-separated, with the options
+// field optional; options are "comma-separated option specifications" with no spaces "except within
+// double quotes". The names below are sshd's own spellings. Only the options this corpus writes are
+// modeled; sshd defines more (from=, permitopen=, environment=, expiry-time=, ...), and a reader of a
+// live file must not assume this set is the whole vocabulary.
+//
+// command="command": the command "is executed whenever this key is used for authentication. The command
+// supplied by the user (if any) is ignored" -- it reaches the forced command only as SSH_ORIGINAL_COMMAND.
+// So a key carrying it runs that one command and nothing a client asks for. restrict is the umbrella
+// for every restriction, including future ones; the individual no-* options are named here so a line
+// says exactly which it disables.
+type AuthorizedKeyOption
+  = ForcedCommandOption { command: AuthorizedKeyForcedCommand }
+  | NoAgentForwardingOption
+  | NoPortForwardingOption
+  | NoPtyOption
+  | NoUserRcOption
+  | NoX11ForwardingOption
+  | RestrictOption
+
+// A FORCED COMMAND IS ADMITTED ONLY WHEN IT NEEDS NO QUOTING. The value sits inside double quotes, so a
+// double quote, a backslash or a line break in it would need escaping whose reading this module does not
+// model; such a command has no constructor here rather than an escape that might be read differently.
+type AuthorizedKeyForcedCommand sole_constructor { text: NonEmptyStr }
+
+fn authorized_key_forced_command(text: String) -> AuthorizedKeyForcedCommand? {
+  if text == "" || text.contains("\"") || text.contains("\\") || text.contains("\n") || text.contains("\r") {
+    none
+  } else {
+    Present { value: AuthorizedKeyForcedCommand { text: text as NonEmptyStr } }
+  }
+}
+
+fn authorized_key_option_text(o: AuthorizedKeyOption) -> String {
+  match o {
+    ForcedCommandOption { command: c } => join(["command=\"", c.text as String, "\""], "")
+    NoAgentForwardingOption => "no-agent-forwarding"
+    NoPortForwardingOption => "no-port-forwarding"
+    NoPtyOption => "no-pty"
+    NoUserRcOption => "no-user-rc"
+    NoX11ForwardingOption => "no-X11-forwarding"
+    RestrictOption => "restrict"
+  }
+}
+
+type AuthorizedKeyEntry {
+  options: List<AuthorizedKeyOption>
+  key: SshPublicKey
+}
+
+// THE LINE: the options field when there is one, then the key line this module already renders.
+// CONSUMPTION (DESIGN section 3c): a declared frontier. Its production reader is the managed-host file row
+// that writes an authorized_keys file from AuthorizedKeyEntry rows (gunbc.runner.runner_host_file_converge,
+// the second change of work item adhoc-0abea207-7ec); until then the boot medium reader key's witness reads
+// it.
+fn authorized_key_entry_line(e: AuthorizedKeyEntry) -> String {
+  if e.options.length() == 0 {
+    ssh_public_key_line(k: e.key)
+  } else {
+    join([join(map(e.options, o => authorized_key_option_text(o: o)), ","), " ", ssh_public_key_line(k: e.key)], "")
+  }
+}

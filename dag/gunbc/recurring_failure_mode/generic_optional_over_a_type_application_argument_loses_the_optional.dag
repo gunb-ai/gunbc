@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.generic_optional_over_a_type_application_argument_loses_the_optional
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data generic_optional_over_a_type_application_argument_loses_the_optional: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_optional_over_a_type_application_argument_loses_the_optional" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**CLASS: a pattern binding of a generic optional `T?` is typed `T`, not `T?`, when `T` is instantiated with a TYPE APPLICATION -- an alias such as `Nat` (= `CommutativeSemiring<Magnitude>`) or a generic record such as `CohortSeatReading<K>`.** Primitive arguments (`Int`, `String`) and bare type parameters keep the optional. INVALID STATE: with `type StaircaseOutcome<L, S> = StaircaseStopped { last_sustained: L?, stop: S } | ...` (std.staircase), `match o { StaircaseStopped { last_sustained: l, stop: _ } => match l { Absent => true Present { value: _ } => false } _ => false }` over `o: StaircaseOutcome<Nat, S>` refuses at resolve with `dag/std/nat.dag:7:12: error: variant 'Absent' not found in type 'Nat'` (and the same for Present). `Nat` is the alias `CommutativeSemiring<Magnitude>`. The error is located at the alias declaration, not the use site.",

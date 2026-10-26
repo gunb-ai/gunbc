@@ -6,7 +6,7 @@ import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_r
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.compiler.name_resolve { resolve_with_admission_policy }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Symbol, Authored }
+import v2.std.node { Symbol, Authored, NotADeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -49,7 +49,8 @@ fn quad_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Nod
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -72,7 +73,8 @@ fn quad_subject_with_import_use() -> Node {
           kind: TypeNode { connective: Atom { identity: ^dag_token_ident } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

@@ -157,19 +157,41 @@ fn out_of_closure_malformed_body_is_owned_by_the_parse_sweep() {
 
 #[test]
 fn ordinary_front_end_retains_an_authored_annotation() {
+    // The annotation binding is demanded HERE, by the reader, not by the compile route.
+    // gunbc P0.2 (v1-interface-cull-audit lane B, 2026-10-19) deleted the bind that
+    // `front_end_sources` ran on every compile: `compile_to_resolved_with_options` never read
+    // `frontend.annotations`, so ~35 s of frontend's 55 s fed no consumer (§3a). A reader that
+    // wants the bound graph builds it from the same three production pieces the round-trip
+    // claim uses -- one tokenize, one parse, one bind over both -- so the lexical halves
+    // cannot drift. Same asserted outcome as before the cull: an authored comment above a
+    // data row binds to a non-empty graph. If the binder ever starts dropping it, this refuses.
     use std::rc::Rc;
-    use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};
+    use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
+    use v1_compiler::v1_compiler_annotation_bind::bind_annotations;
+    use v1_compiler::v1_compiler_parse::parse_with_table;
+    use v1_compiler::v1_compiler_tokenize::tokenize_artifact;
+    use v1_compiler::v1_rt;
+    use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, NewlineIndex};
 
-    let source = "module probe_root.noted\n\n// authored note\ndata ok: Bool = true\n";
-    let result = front_end_sources(Rc::new(
-        vec![Rc::new(SourceFile {
-            path: "noted.dag".to_string(),
-            content: source.to_string(),
-        })]
-        .into(),
-    ));
+    let file = "noted.dag".to_string();
+    let source = "module probe_root.noted\n\n// authored note\ndata ok: Bool = true\n".to_string();
+    let artifact = tokenize_artifact(source.clone(), file.clone(), dag_parse_environment());
+    let parsed = parse_with_table(
+        artifact.tokens.clone(),
+        v1_rt::rc_map_insert(
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            file.clone(),
+            build_newline_index(file.clone(), source.clone()),
+        ),
+        empty_intern_table(),
+    );
+    let graph = bind_annotations(
+        parsed.occurrence_transport.clone(),
+        parsed.source_extents.clone(),
+        artifact.annotations.clone(),
+    );
     assert!(
-        !result.annotations.rows.is_empty(),
-        "the ordinary front end must keep the bound annotation of an authored comment"
+        !graph.rows.is_empty(),
+        "a reader demanding its own binding must keep the bound annotation of an authored comment"
     );
 }

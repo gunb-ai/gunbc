@@ -2,7 +2,9 @@ module gunbc.compile_diagnostic_census
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, Map }
+import std.optional { Absent, Present }
+import std.algebra { empty_map, map_insert, map_lookup, map_support_keys }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -119,6 +121,24 @@ fn census_total_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
   fold(rows, init: 0, f: (acc, r) => acc + r.count)
 }
 
+// THE SELECTED ROWS, spelled ONCE. These two compositions -- "the blocking rows of class X", and
+// "those same rows whose subject is S" -- were each written out at two call sites: the typed probes
+// in gunbc.compile_census_probe and the Int-returning count selectors in gunbc.guarantee_probe_corpus
+// composed census_blocking_rows/census_rows_of_class (plus a raw field comparison on subject_name)
+// by hand, in both places, identically. Two spellings of one selection can drift apart silently --
+// a change to what "blocking of class X" means would have to be made twice -- so the composition
+// lives here, beside the primitive filters it composes and the row type whose `subject_name` field
+// it reads. Both consumers already import this module; neither gains an edge. The corpus keeps its
+// `Int?` selectors as thin folds over these, the probes keep their union re-wrapping as a thin arm
+// over these; the SELECTION has exactly one home.
+fn census_blocking_rows_of_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
+  census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted)
+}
+
+fn census_blocking_rows_of_class_at_subject(rows: List<CompileDiagnosticCensusRow>, wanted_class: String, wanted_subject: String) -> List<CompileDiagnosticCensusRow> {
+  census_blocking_rows_of_class(rows: rows, wanted: wanted_class) |> filter(r => r.subject_name == wanted_subject)
+}
+
 // THE KEYED COMPARATOR, HOMED HERE BECAUSE THE RULE ABOVE IS THIS MODULE'S.
 //
 // The annotation on CompileDiagnosticCensus names the two exact forms -- a count scoped to a class
@@ -159,38 +179,70 @@ fn census_count_at_key(
   )
 }
 
-fn census_key_delta(
-  r: CompileDiagnosticCensusRow,
-  red: List<CompileDiagnosticCensusRow>,
-  green: List<CompileDiagnosticCensusRow>
-) -> Int {
-  let in_red = census_count_at_key(rows: red, diagnostic_class: r.diagnostic_class as String, subject_name: r.subject_name, blocking: r.blocking)
-  let in_green = census_count_at_key(rows: green, diagnostic_class: r.diagnostic_class as String, subject_name: r.subject_name, blocking: r.blocking)
-  in_red - in_green
+// THE HISTOGRAM IS BUILT ONCE, AS AN INDEXED POPULATION. A census is compared as a Map from
+// (class, subject, blocking) to the SUMMED count at that key, one fold per row list, so a comparison
+// costs O(n) indexed map operations (O(n log n) total under the persistent-map realization std.algebra
+// Map currently has) rather than a re-filter of the whole list per row. Every comparator below reads
+// this one form: equality of two censuses and the one-key differential are the same walk over the
+// union of keys, and a key present on one side only is as visible as one present on both.
+type CensusKey {
+  diagnostic_class: String
+  subject_name: String
+  blocking: Bool
 }
 
-fn census_row_is_key(r: CompileDiagnosticCensusRow, target_class: String, target_subject: String) -> Bool {
-  (r.diagnostic_class as String) == target_class && r.subject_name == target_subject && r.blocking
+fn census_key_of(r: CompileDiagnosticCensusRow) -> CensusKey {
+  CensusKey { diagnostic_class: r.diagnostic_class as String, subject_name: r.subject_name, blocking: r.blocking }
 }
 
-fn census_expected_delta(r: CompileDiagnosticCensusRow, target_class: String, target_subject: String) -> Int {
-  if census_row_is_key(r: r, target_class: target_class, target_subject: target_subject) { 1 } else { 0 }
+fn census_histogram_count(h: Map<CensusKey, Int>, key: CensusKey) -> Int {
+  match map_lookup(m: h, key: key) {
+    Present { value: n } => n
+    Absent => 0
+  }
 }
 
-// RANGING OVER BOTH ROW LISTS is what makes the union the domain: a key present only in the GREEN is
-// as visible as one present only in the RED, so a row that DISAPPEARS fails as loudly as one that
-// appears. The target key is asserted separately rather than left to the row walk, so this still
-// refuses when the target is absent from both sides -- a comparator that passes on two identical
-// censuses would establish nothing.
+fn census_histogram(rows: List<CompileDiagnosticCensusRow>) -> Map<CensusKey, Int> {
+  let seed: Map<CensusKey, Int> = empty_map()
+  fold(rows, init: seed, f: (acc, r) => map_insert(m: acc, key: census_key_of(r: r), value: census_histogram_count(h: acc, key: census_key_of(r: r)) + r.count))
+}
+
+// Whether every key of `left` carries, in `right`, the count `expected(key)` away from its own.
+fn census_histogram_keys_all_offset(
+  left: Map<CensusKey, Int>,
+  right: Map<CensusKey, Int>,
+  offset: fn(CensusKey) -> Int
+) -> Bool {
+  map_support_keys(m: left) |> all(k => census_histogram_count(h: left, key: k) - census_histogram_count(h: right, key: k) == offset(k))
+}
+
+// EXACT EQUALITY OF TWO CENSUSES, key by key in BOTH directions. A total can hide an offsetting pair
+// (one diagnostic gone, another arrived); ranging over both key sets makes the union the domain.
+fn census_histograms_equal(a: List<CompileDiagnosticCensusRow>, b: List<CompileDiagnosticCensusRow>) -> Bool {
+  let ha = census_histogram(rows: a)
+  let hb = census_histogram(rows: b)
+  census_histogram_keys_all_offset(left: ha, right: hb, offset: k => 0)
+    && census_histogram_keys_all_offset(left: hb, right: ha, offset: k => 0)
+}
+
+fn census_blocking_histograms_equal(a: List<CompileDiagnosticCensusRow>, b: List<CompileDiagnosticCensusRow>) -> Bool {
+  census_histograms_equal(a: census_blocking_rows(rows: a), b: census_blocking_rows(rows: b))
+}
+
+// The red side exceeds the green by exactly one occurrence at the target key (class and subject,
+// blocking) and agrees at every other key of either side. The target is asserted separately from the
+// walk, so this still refuses when the target is absent from both sides -- a comparator that passes
+// on two identical censuses would establish nothing.
 fn censuses_differ_by_exactly_the_target_key(
   red: List<CompileDiagnosticCensusRow>,
   green: List<CompileDiagnosticCensusRow>,
   target_class: String,
   target_subject: String
 ) -> Bool {
-  let target_in_red = census_count_at_key(rows: red, diagnostic_class: target_class, subject_name: target_subject, blocking: true)
-  let target_in_green = census_count_at_key(rows: green, diagnostic_class: target_class, subject_name: target_subject, blocking: true)
-  ((target_in_red - target_in_green) == 1)
-    && red |> all(r => census_key_delta(r: r, red: red, green: green) == census_expected_delta(r: r, target_class: target_class, target_subject: target_subject))
-    && green |> all(r => census_key_delta(r: r, red: red, green: green) == census_expected_delta(r: r, target_class: target_class, target_subject: target_subject))
+  let hr = census_histogram(rows: red)
+  let hg = census_histogram(rows: green)
+  let target = CensusKey { diagnostic_class: target_class, subject_name: target_subject, blocking: true }
+  ((census_histogram_count(h: hr, key: target) - census_histogram_count(h: hg, key: target)) == 1)
+    && census_histogram_keys_all_offset(left: hr, right: hg, offset: k => if k == target { 1 } else { 0 })
+    && census_histogram_keys_all_offset(left: hg, right: hr, offset: k => if k == target { -1 } else { 0 })
 }

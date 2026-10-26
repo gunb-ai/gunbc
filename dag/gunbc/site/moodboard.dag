@@ -1,11 +1,11 @@
 module gunbc.site.moodboard
 
-import std.markup { Fragment, Element, FragmentText, Attribute, attr }
+import std.markup { MarkupDocument, Fragment, Element, FragmentText, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class }
 import std.types { NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import extdeps.languages.css.properties { Cursor }
-import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.languages.html { try_serialize_html_document, EmitOk, EmitRejected, html_doctype_name }
 import gunbc.design.principles {
   RegisterPrinciple, register_principles, register_thesis, principle_id_key,
 }
@@ -433,9 +433,18 @@ fn moodboard_page() -> Fragment {
   ] }
 }
 
+// The document type is declared through the model now: Fragment.Document carries it through the
+// guarded serializer instead of being concatenated onto the serialized string here. That was a real
+// gap, not cosmetics — the concatenation sat OUTSIDE try_serialize_html_source, so the doctype line
+// bypassed every guard, and its spelling was one more hand-typed copy of "<!DOCTYPE" (§6b: a leaf
+// beside the modeled route).
+fn moodboard_document() -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: moodboard_page() }
+}
+
 fn moodboard_html() -> String {
-  match try_serialize_html_source(node: moodboard_page()) {
-    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+  match try_serialize_html_document(doc: moodboard_document()) {
+    EmitOk { html: h } => h
     EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
   }
 }

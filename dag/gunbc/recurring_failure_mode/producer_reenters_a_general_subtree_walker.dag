@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.producer_reenters_a_general_subtree_walker
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data producer_reenters_a_general_subtree_walker: RecurringFailureMode = RecurringFailureMode {
   identity: "producer_reenters_a_general_subtree_walker" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "**a producer re-enters a general subtree walker and multiplies work by enclosing-tree depth** (INVALID STATE: a body producer that owns a captured slot reaches its content not by consuming that slot once but by handing it to a GENERAL reader -- the value reader `v2.compiler.body_lowering_fold` `body_lower_value_lowered`, which folds the subtree bottom-up and, when the fold does not bring it to a lowered node, falls to the top-down walker `body_lower_body_subtree_lower` and its deep searches (`body_lower_find_captured`, `body_lower_find_control_form_optional`) -- and that reader in turn reaches the NEXT producer the same way. Each nesting level then re-traverses what the levels above it already traversed, so the visits per owned node grow with the depth of the tree enclosing it rather than staying bounded.)",

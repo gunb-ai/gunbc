@@ -1,10 +1,8 @@
 module gunbc.fleet.org_actions_converge
 
-import gunbc.auth.approved_secret_grants { secret_grants_via_approval }
-
 import std.process { ProcessExit, exit_failure }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
-import gunbc.auth.gcp_secret_access { secret_access_ensure_for, secret_accessor_grant }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_ensure_for, secret_accessor_grant }
 import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 
 // This module's org-actions READ path moved to gunbc.fleet.org_actions_inspection, which binds it
@@ -17,20 +15,20 @@ import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_acc
 // same channel gunbc.auth.gcp_secret_access uses) and reconciles roles/secretmanager.secretAccessor
 // on ci-github-app-private-key for that principal: get policy, delta, set policy, read back the
 // grant. Once it has run, the org-actions step's in-run mint stops answering 403.
+// THE CELL THIS CEREMONY BINDS, read by the trust-root binder join.
+fn org_admin_app_key_ceremony_grant() -> SecretAccessGrant {
+  secret_accessor_grant(target: gunbai_ci_app_pem_secret)
+}
+
 fn org_admin_app_key_access_converge_with_supplied_token() -> ProcessExit
 {
   match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
     SuppliedTokenReady { token: t } =>
-      secret_access_ensure_for(grant: secret_accessor_grant(target: gunbai_ci_app_pem_secret), token_source: OperatorSuppliedToken { token: t })
+      secret_access_ensure_for(grant: org_admin_app_key_ceremony_grant(), token_source: OperatorSuppliedToken { token: t })
   }
 }
 
-// The shared approval workflow binds the exact grants and beneficiary before obtaining its credential.
-fn org_admin_app_key_access_request_approval() -> ProcessExit {
-  secret_grants_via_approval(grants: [secret_accessor_grant(target: gunbai_ci_app_pem_secret)], request_only: true)
-}
-
-fn org_admin_app_key_access_converge_via_approval() -> ProcessExit {
-  secret_grants_via_approval(grants: [secret_accessor_grant(target: gunbai_ci_app_pem_secret)], request_only: false)
-}
+// THIS IS THE KEY'S ONLY BINDER, AND IT IS THE CEREMONY'S: the gunbai-ci App key is a trust root
+// (gunbc.auth.gcp_iam_trust_roots) until the deployment-gate App is decided, so no approval-gated route
+// may own its IAM. The approval entries that stood here are deleted with gunbc.auth.approved_secret_grants.

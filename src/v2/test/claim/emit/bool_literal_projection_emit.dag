@@ -30,7 +30,7 @@ import v2.extdeps.languages.typescript {
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.eval { Inputs, inputs_root_only }
 import v2.extdeps.languages.rust_emit_small { rust_emit_small_bool_projection_target }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealizationsUnwired,
   TargetBoolLiteralShape,
   TargetModel,
   TargetValueExpression,
@@ -110,6 +110,7 @@ fn blp_projection_with(bool_form: TargetBoolLiteralShape) -> TargetValueExpressi
   TargetValueExpressionProjection {
     bool_literal_form: bool_form,
     int_literal_form: rust_value_expression_projection().int_literal_form,
+    list_introduction_form: rust_value_expression_projection().list_introduction_form,
     binding_ref_form: rust_value_expression_projection().binding_ref_form,
     primitive_apply_form: rust_value_expression_projection().primitive_apply_form,
     callable_apply_form: rust_value_expression_projection().callable_apply_form,
@@ -133,7 +134,7 @@ fn blp_emit(
   match target_value_expression_to_concrete_tokens(
     expr: blp_bool_literal_expr(),
     projection: projection,
-    catalog: catalog
+    catalog: TargetRealizationCatalog { operators: catalog, primitives: PrimitiveRealizationsUnwired }
   ) {
     Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(

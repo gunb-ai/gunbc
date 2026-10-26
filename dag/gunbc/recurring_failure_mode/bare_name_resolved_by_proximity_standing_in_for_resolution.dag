@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data bare_name_resolved_by_proximity_standing_in_for_resolution: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_name_resolved_by_proximity_standing_in_for_resolution" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**bare name resolved by proximity, standing in for resolution** (the reference-edge reader in `v1_compiler.cli_run` `entry_resolve` binds a bare name in an IMPORT-LESS file by 'proximity disambiguation' -- the longest shared module-path prefix with a pool declarer -- yielding a UniqueBare or AmbiguousBare edge. A heuristic standing where lexical resolution (locals plus imports) is the authority; DESIGN §4: in a closed system a heuristic is never necessary.)",

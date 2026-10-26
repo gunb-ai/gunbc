@@ -1,6 +1,7 @@
 module gunbc.githooks.githooks_pre_push_emit
 
 import extdeps.git { git_toplevel_shell_subexpr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.githooks.githooks_repo_local_git_config_emit { emit_repo_local_git_config_converge_shell }
 import gunbc.commit_workflow {
   commit_gate_roster,
@@ -18,7 +19,41 @@ import gunbc.local_tidy_spec {
 
 data pre_push_fmt_only_note: String = "The pre-push hook is fmt-only, restored to CLAUDE.md's documented contract ('pre-push runs cargo fmt') by operator ruling 2026-07-25. It was previously a shim that exec'd `claim_batch --pre-push`, which ran the affected-set witness corpus and would cargo-build claim_batch from inside the push when the binary was missing. That weight bought ZERO enforcement: a git hook is opt-in per clone (core.hooksPath), bypassable with --no-verify, and absent in container worktrees, and gunbc.commit_workflow's own commit_gate_rust_suite_removed_disposition already records it PROVEN ineffective (#6658 landed an unformatted .rs on main and no hook caught it). That is the worst of both worlds by construction — no enforcement, but enough weight to make a legitimately-red mid-lane branch feel unpushable, which is the pressure that converts honest reds into workaround greens (priced receipt: three rounds of hand-import workarounds and one decorative gate on the namespace type-binding lane, 2026-07-25). A check that cannot enforce should at least be instant. THE 'CI LOSES NOTHING' CLAUSE WAS TRUE WHEN WRITTEN AND IS HALF FALSE NOW, corrected 2026-08-27 rather than deleted, because which half failed is the finding. It read that cargo fmt is a required-path build step and the witness corpus is the required `ci` floor which also stamps the merge-admission receipt. The witness corpus half survives under a new authority (v2.workflow.required_floor required_floor_site_disposition). THE FMT HALF DOES NOT: the 2026-08-15 floor cut deleted the build job, and neither required lane of the emitted .github/workflows/witnesses.yml runs fmt. So this hook is now the only surface that runs fmt at all, while this very note explains at length why a hook enforces nothing -- the argument for slimming and the argument that fmt is unguarded are the same argument, and they only became compatible when the thing they both relied on was deleted. Recorded at check grain as an Uncovered residual in gunbc.commit_workflow check_removal_roster; merge-admission stamping is likewise gone and sits on DESIGN's unguarded re-add list. The hook body is DERIVED from commit_gate_roster's GitPrePushHook enrollments via project_local_tidy_checks, so the roster stays the single authority (DESIGN section 3) — re-heavying the hook requires a roster edit that githooks_pre_push_emit_test catches, never a silent drift."
 
-data githooks_pre_push_emit_medium_disposition_note: String = "🟡 dissolve-on: shell emission via the grammar path — the bash medium modeled as GrammarRelationRow rows read forward, superseding these concat-built shell string literals (DESIGN section 4, one grammar read in both directions). Stated on THIS carrier rather than only on the githooks_pre_commit_emit sibling that names the hook-emit family (review 45175): the family trigger was tracked once and the pre-push half inherited it implicitly, which is exactly the implicit-marker shape the medium gate asks not to rely on. The registered Disposition for this surface is gunbc.local_tidy_spec githooks_pre_push_emit_scaffold, a Scaffold binding expected_githooks_pre_push_sh with dissolves_to RealizationDispatch; this row is its in-module statement, not a second authority. A git hook is one of the foreign executors DESIGN's shell-to-intent routing names as rendering through the bounded bash grammar (GHA run:, cron, git hooks) — no gunbc runtime is present at push time — so the concat-built spelling is the declared interim medium for this site, not an unmarked hand-shell expansion. This change edits the failure arm inside that existing surface and adds no new emission site."
+
+// THE CONCAT BODY IS A COUNTED RESIDUAL, NOT A SILENT ONE. expected_githooks_pre_push_sh assembles
+// the committed .githooks/pre-push by concatenation (its own literals, emit_pre_push_fleet_ref_skip_preamble,
+// emit_local_tidy_line and emit_pre_push_fmt_recipe_echo all join medium strings), so the hook's bytes
+// are decided by concat rather than EMITTED from typed intent through v2.workflow.bash_emit. The hook
+// STAYS shell permanently — git is the foreign executor that runs it (census §1.A category (a)); the
+// cutover changes who assembles the bytes, never the language. It is BLOCKED on the emitter's
+// vocabulary, not on wiring: v2.workflow.bash_emit renders only the statement kinds
+// gunbc.languages.bash spells, and the hook's lines use forms that module does not model — the
+// #!/usr/bin/env shebang line, comment lines, 'set -euo pipefail' (the renderer spells 'set -e'
+// only), the while-read loop, case/esac, [[ ]] tests, $(( )) arithmetic, and >&2 fd redirection
+// (with-redir is file-only; while/case are ingest-recognized-unmodeled in
+// gunbc.languages.bash_command_fold). Emitting those forms through concat is exactly the
+// refusal-flattening DESIGN §5 forbids, so the body is DECLARED here, counted, with its trigger
+// NAMED. The Scaffold registration for this surface stays the single authority in
+// gunbc.local_tidy_spec (githooks_pre_push_emit_scaffold, binding expected_githooks_pre_push_sh
+// with dissolves_to RealizationDispatch) — this module adds only the DISSOLUTION row naming the
+// capability, the DissolutionCondition form its sibling
+// gunbc.githooks.githooks_repo_local_git_config_emit uses for its converge block. Carrier choice:
+// DissolutionCondition because the contract fits a permanent foreign-executor body awaiting emitter
+// rows (rung_drop models a verdict withdrawn from the gate — nothing is withdrawn here; the artifact
+// and its behavior persist; and not gunbc.retained_shell_script, whose roster Charter 2 exits empty).
+// §3c readers: the row is ENROLLED IN THE PRODUCTION ROSTER FOLD —
+// gunbc.githooks.githooks_pre_push_frontier registers it as a FrontierRow (subject: this
+// declaration) and gunbc.census_closure_frontier.census_closure_frontier_row_groups() folds that
+// group in, so gunbc.dissolution_census.dissolution_census_verdict() resolves this row's trigger
+// against the live declaration index. The claim pair: test.claim.githooks_pre_push_emit
+// witness_carrier_reader_reads_the_row imports this row and calls dissolution_description on it
+// (the executing route — it refuses when a named emitter form, the grammar module, or the
+// scaffold's binding is missing from the trigger text), and test.claim
+// .githooks_pre_push_emit_residual_census.witness_concat_body_is_counted_residual runs the fold
+// and counts exactly one row for this subject without importing either githooks module, so
+// deleting the row or its registration reddens the claim while every module still compiles.
+
+data githooks_pre_push_emit_concat_body_dissolution: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the concat assembly of expected_githooks_pre_push_sh (its shebang/generated-header literals, emit_pre_push_fleet_ref_skip_preamble, emit_local_tidy_line, emit_pre_push_fmt_recipe_echo; the sibling converge block is carried by gunbc.githooks.githooks_repo_local_git_config_emit's own row) — DISSOLVES WHEN gunbc.languages.bash gains the grammar rows v2.workflow.bash_emit renders for: shebang, comment, set -euo pipefail, while-read, case/esac, [[ ]] double-bracket test, $(( )) arithmetic expansion, and >&2 fd redirection (with-redir is file-only today; while/case are ingest-recognized-unmodeled in gunbc.languages.bash_command_fold) — after which the hook body is EMITTED from typed intent (bash_emit_stmts) and the concat fragments are deleted, byte-identically. The hook itself stays shell permanently: git executes it (census §1.A category (a)).")
 
 // The failure arm is split three ways at the exit status (gunbc.local_tidy_spec local_tidy_fmt_exit_partition_note): 1 is the only status that reports drift, and every other non-zero status names cargo as unrunnable and proposes no remedy that depends on cargo. The unavailable branch passes the drift recipe into local_tidy_fmt_outcome_recipe and provably cannot emit it — the FmtToolUnavailable arm never reads that parameter, so the wall is construction, not a convention about which string to echo here.
 fn emit_pre_push_fmt_recipe_echo(outcome_recipe: String) -> String {

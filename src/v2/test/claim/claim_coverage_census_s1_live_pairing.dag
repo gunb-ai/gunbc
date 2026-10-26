@@ -1,0 +1,65 @@
+module v2.test.claim.claim_coverage_census_s1_live_pairing
+
+// THE PAIRING CLAIM THAT RUNS THE REAL DISCOVERY (Charter 4 exit census, sunny-ibex-149; warm-wolf-570's GO).
+//
+// WHY IT IS NOT IN `src/v2/test/claim/claim_coverage_census_s1_witness.dag`: that corpus is pure in a specific
+// sense — it injects fixtures, so the fold's LOGIC is decided on data the claim itself supplies. DESIGN 3's
+// pairing obligation needs the opposite here. The carrier row this claim checks is hand-authored `.dag`
+// data, so deleting a claim's fn cannot change the ROW — the only thing that can change is DISCOVERY. A
+// claim that joined the row against an injected universe could not fail when the fn disappeared, and an
+// assertion that can only fail because a sibling claim shares a code path is exactly what the pairing
+// obligation forbids. So this claim runs the census's fold for real, against the checkout.
+//
+// IT IS STILL NOT A WET CLAIM, AND THE RUNNER SAID SO. `claim_batch --claim-run --wet` refuses it with
+// "the claim runs no effectful operation: every effect is supplied through the hermetic envelope": its
+// reads go through the ingress `acquire` channel, which is the hermetic route, not past a wet gate. The
+// distinction is the corpus's, not mine, so the name follows the gate: no `wet_witness` suffix, no
+// `--claim-run --wet` anywhere, and no row in the wet schedule -- a scheduled identity the gate refuses to
+// run would be an enrolment that cannot execute. The claim reads the repository the way every discovery
+// witness in this corpus does (`test.claim.floor_discovery_producer`, which asks the ingress to inventory
+// the same governed roots), and its cost is declared rather than hidden: it is a member of
+// `v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt`, where the measured steps, the fixed
+// pipeline's budget and the trigger that retires it are recorded.
+//
+// THE SCOPE IS SUPPLIED, NOT INVENTED. `s1_compose_scoped` is the census's fold given a subset of the
+// governed roots (see that module: one enumeration, one identity join, one classification; the roots are a
+// parameter). Nothing here re-implements discovery, and no claim runs the full-corpus entry -- the
+// full-corpus cost is the instrument's own business, measured and reported there.
+
+import std.types { String, Bool }
+import v2.workflow.claim_coverage_census_s1 { GroundedCover, S1Composed, S1InputsUnread, classifier_member_text }
+import v2.workflow.claim_coverage_census_s1_live { s1_compose_scoped }
+
+// THE GOVERNED DIRECTORY HOLDING THE PAIRING CLAIM'S FILE, AS A ROOT. The producer's walk takes a file root as one module file (its
+// rule: a listing that fails on something that stats as a file IS a module file), so scoping to this path
+// costs one file's content read and one marker read -- not the 41 files of the directory that contains it.
+// The path comes from the layout authority (`gunbc.source_layout`), which is the same rule the census
+// itself joins paths to modules on: the governed path of module
+// `v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness`. It is a ROOT, and what
+// discovery finds inside it remains the ingress's answer, not this corpus's.
+data real_path_pairing_root: String = "src/v2/test/claim/compiler"
+
+data rcf_carrier: String = "gunbc.module_real_path_pairing_claim.infer_record_construct_field_inhabitance_witness"
+
+// THE MODULE-REAL-PATH PAIRING ROW GROUNDS AGAINST THE REAL DISCOVERY (jolly-boar-495's row — the only
+// claim over the full ingest). Before this claim its RED was asserted in the carrier's comment and
+// guaranteed only by SHARING the stale-enrolment code path with the three pre-fix #14373 rows. Now: delete
+// the fn at `src/v2/test/claim/compiler/infer_record_construct_field_inhabitance_witness.dag`, discovery
+// stops bearing the identity, the row turns StaleEnrolled, and this claim fails. Both halves are asserted
+// together — the identity must be in the discovered universe AND the row must be a grounded cover over
+// exactly that identity — so the claim cannot pass on a census that discovered nothing and enrolled nothing.
+test fn the_module_real_path_pairing_row_grounds_against_the_real_discovery() -> Bool {
+  let identity = "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness.rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds"
+  match s1_compose_scoped(roots: [real_path_pairing_root]) {
+    S1InputsUnread { causes: _ } => false
+    S1Composed { census: census, label_defects: _ } =>
+      any(census.universe, candidate => candidate == identity)
+        && any(census.stands, standing => match standing {
+             GroundedCover { row: row, covers: covers } =>
+               row.carrier == rcf_carrier
+                 && classifier_member_text(row: row) == identity
+                 && any(covers, covered => covered == identity)
+             _ => false
+           })
+  }
+}

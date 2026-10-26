@@ -17,6 +17,7 @@ import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.target_representation { VariantParentIdentity }
 import std.decl_ref { DeclarationRef }
+import std.generated_provider { GeneratedProviderUnavailableCause, generated_provider_unavailable_message }
 import std.induction { SubValueRelation }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -386,6 +387,7 @@ type CompilerDiagnostic
   | ReceiverTypeUnestablished { method: String, span: SourceSpan }
   | TextRepresentationUnidentifiedAtBoundary { position: String, span: SourceSpan }
   | TextCrossingHasNoImplicitRoute { expected: String, got: String, route: String, span: SourceSpan }
+  | GeneratedProviderUnavailable { declaration: DeclarationRef, cause: GeneratedProviderUnavailableCause, span: SourceSpan }
   | AlgebraApplicationEvidenceUnavailable { receiver_type: String, argument_index: Int, span: SourceSpan }
   | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
   | TestCodeReferenced { referrer: String, target: String, span: SourceSpan }
@@ -395,6 +397,7 @@ type CompilerDiagnostic
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
   | DuplicateModule    { name: String, span: SourceSpan }
+  | TypeAliasCycle     { members: List<String>, span: SourceSpan }
   | DuplicateDeclaration { module_name: String, name: String, span: SourceSpan }
   | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
   | ParseError         { message: String, span: SourceSpan }
@@ -437,6 +440,7 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | EqualityOnFunctionMember { type_name: String, member: String, span: SourceSpan }
   | EqualityMemberUnjudgeable { type_name: String, member: String, span: SourceSpan }
+  | EqualityOnInadmissibleType { type_name: String, span: SourceSpan }
   | EqualityOptionalityMismatch { optional_side: String, span: SourceSpan }
   | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
   | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
@@ -633,6 +637,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ReceiverTypeUnestablished { method: _, span: s } => s
     TextRepresentationUnidentifiedAtBoundary { position: _, span: s } => s
     TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: s } => s
+    GeneratedProviderUnavailable { declaration: _, cause: _, span: s } => s
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: s } => s
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
     TestCodeReferenced { referrer: _, target: _, span: s } => s
@@ -642,6 +647,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
     DuplicateModule    { name: _, span: s }                    => s
+    TypeAliasCycle     { members: _, span: s }                 => s
     DuplicateDeclaration { module_name: _, name: _, span: s }  => s
     MissingAnnotation  { fn_name: _, what: _, span: s }        => s
     ParseError         { message: _, span: s }                 => s
@@ -684,6 +690,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     CallNamedArgOnFunctionValue { callee: _, argument: _, span: s } => s
     EqualityOnFunctionMember { type_name: _, member: _, span: s } => s
     EqualityMemberUnjudgeable { type_name: _, member: _, span: s } => s
+    EqualityOnInadmissibleType { type_name: _, span: s } => s
     EqualityOptionalityMismatch { optional_side: _, span: s } => s
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
@@ -718,6 +725,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, span: _ } => concat("method '", m, "' on receiver type '", t, "' is admitted by a declared unresolved-method frontier row; dissolves on: ", tr)
     AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, span: _ } => concat("algebra receiver application evidence unavailable for '", t, "' at argument ", to_string(value: i), ": structural members are not type arguments")
     TextCrossingHasNoImplicitRoute { expected: e, got: g, route: r, span: _ } => concat(concat(concat(concat(concat(concat("text crossing with no implicit route: expected ", e), ", got "), g), " -- host text and a code-point sequence meet only through a declared conversion plan; call "), r), " (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows)")
+    GeneratedProviderUnavailable { declaration: d, cause: c, span: _ } => generated_provider_unavailable_message(declaration: d, cause: c)
     TextRepresentationUnidentifiedAtBoundary { position: p, span: _ } => concat(concat("text boundary unjudged at ", p), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)")
     ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
     FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, span: _ } =>
@@ -729,6 +737,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
     DuplicateModule    { name: n, span: _ }                       => concat("duplicate module declaration: '", n, "'")
+    TypeAliasCycle     { members: ms, span: _ }                   => concat("type alias cycle: ", join(ms, separator: " -> "))
     DuplicateDeclaration { module_name: m, name: n, span: _ }     => concat("duplicate declaration '", n, "' in module '", m, "' -- a second declaration of one name silently replaced the first")
     MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
     ParseError         { message: m, span: _ }                    => m
@@ -797,6 +806,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("call shape mismatch calling function value '", c, "': named argument '", a, "' is not supported — use positional arguments")
     EqualityOnFunctionMember { type_name: t, member: m, span: _ } =>
       concat("equality is not defined for '", t, "': member '", m, "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='")
+    EqualityOnInadmissibleType { type_name: t, span: _ } =>
+      concat("equality is not defined for '", t, "': it is declared equality-inadmissible (it carries provenance that derived '==' would compare) — compare through the erasure route (node_equal_ignoring_provenance for structure, node_same_occurrence for identity) instead of '=='")
     EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>
@@ -885,6 +896,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     TextRepresentationUnidentifiedAtBoundary { position: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    GeneratedProviderUnavailable { declaration: _, cause: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenced { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingField { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -893,6 +905,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     NonExhaustiveMatch { missing: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CircularDependency { modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateModule { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeAliasCycle { members: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateDeclaration { module_name: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingAnnotation { fn_name: _, what: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ParseError { message: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -937,6 +950,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     CallNamedArgOnFunctionValue { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityOnInadmissibleType { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOptionalityMismatch { optional_side: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -1523,8 +1537,6 @@ fn make_variant_node(occurrence_identity: NodeOccurrenceIdentity, name: String, 
 
 fn variant_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 fn variant_node_fields(n: Node) -> List<Node> { n.children }
-fn variant_node_span(n: Node) -> SourceSpan { n.span }
-
 type ChildRole {
   name: String
   accessor: String
@@ -1599,10 +1611,6 @@ data wrapper_child_roles: Map<String, List<ChildRole>> = {
 fn is_child_accessor_in_model(name: String) -> Bool {
   (map_values(expr_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
   || (map_values(wrapper_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
-}
-
-fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
-  map_get(expr_child_roles, variant_name)
 }
 
 type NodeFieldRole
@@ -2130,18 +2138,6 @@ fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_verb_key, source_indices: source_indices)
 }
 
-fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
-
-// Transport KIND is discriminated by which marker property is present, not by a stored tag, and
-// that has a consequence which is easy to undo by accident: `rest_transport_node` ALWAYS writes a
-// `base_url` property, filled from the empty-string literal `parse_rest_fields` substitutes when
-// `url:` is omitted -- and omitting it is the NORM, since the base normally comes from the service
-// `config`. So that fabricated "" is load-bearing structure holding the discrimination up, not a
-// lazy default: remove it and every rest transport in the corpus reclassifies as `local`. The same
-// holds for `config`'s `endpoint`, where `config { }` is legal. This is also why
-// `is_local_transport` is defined negatively -- local is genuinely the residual, and there is no
-// marker for it to carry. The file arm is NOT in this class: an omitted `path:` has no such role,
-// and `parse_file_fields` refuses it (gunbc#8949).
 fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
@@ -2444,20 +2440,12 @@ fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, aut
   concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)
 }
 
-fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "svc_endpoint")
-}
-
 fn service_config_endpoint(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: n.properties, prop_name: "svc_endpoint", source_indices: source_indices)
 }
 
 fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: n.properties, prop_name: "svc_auth", source_indices: source_indices)
-}
-
-fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
 }
 
 fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
@@ -2738,6 +2726,226 @@ fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
   LineCol { line: line, col: col }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE ONE AUTHORITY FOR A REFUSAL'S LOCATION.
+//
+// A span carries two CHAR offsets into a file. Offsets are the compiler's own units; what an
+// author reads is a POSITION -- file, line, column -- the triple they can type into an editor.
+// A refusal whose location cannot be reproduced in an editor is not a location, however many
+// digits it carries, so the honest alternatives are exactly two: say where it is, or say in
+// words that it cannot be said. This block is the only thing in the seed that renders a POSITION or
+// an honest unlocated phrase; every site that still prints raw offsets is named below as a surviving
+// leaf, not quietly left out of the claim.
+//
+// WHY IT IS ONE PLACE AND NOT ONE PER CALL SITE (DESIGN 6b). Before this block there was no
+// authority at all: each producer formatted a location itself. The compile lane printed
+// `{file}:{start}-{end}`; the emitted CLI printed `{file}:{line}:{col}` from its own walk; and host
+// Rust formatted `{file}:{line}:{col}` again in Rust. One diagnostic therefore reached the same
+// author twice in different units -- measured at the pre-PR head, `(m.dag:133-134)` from the lane and
+// `error[m.dag:9:5]` from the CLI for the SAME call-shape refusal: the same place, two units, which
+// reads as a compiler that does not know where it is.
+//
+// WHAT THIS BLOCK GOVERNS AT THIS HEAD, site by site rather than as a slogan. In the SEED, every
+// reader-facing position now comes from `locate_span` and `render_span_location`: the emitted CLI's
+// diagnostic block and its caret (`05_emit_rust.dag` `render_one_diagnostic`), the emitted
+// `compile_error!` texts (`render_rust_optional_carrier_inner`'s Absent arm,
+// `emit_width_type_arg_identity_refusal`, `rust_type_arg_identity_spelling`'s
+// UnitVariantPhantomEvidenceUnavailable arm, `emit_shell_call`'s argv-element refusal,
+// `fm_located_refusal`), the parse lane (`02_parse.dag` `field_init_position`), and the compile lane's
+// self-compile refusal (`compile.dag` `stage0_self_compile_refusal_message`, via
+// `interpreter_blocking_diagnostic_messages_with_source_indices`).
+//
+// HOST RUST CALLS THIS, IT DOES NOT REIMPLEMENT IT. The breadth census, enumerated rather than
+// summarised: SEVEN host formatters used to compose `{file}:{line}:{col}` in Rust --
+// `module_path_index/index.rs` `ModuleBindingRefusal::rendered`, `cli_run.rs` `run_dag_parse_sweep`,
+// `declaration_index.rs` `render_finding`, `cli_run.rs` `format_error_loc` (the most-used one, 4
+// call sites), `cli_run/entry_resolve.rs`'s qualified-projection census line and its `parse-failed
+// at …` line, and `cli_run/test_marker.rs` `located_parse_refusal`. All seven now call the function
+// emitted from here: four call `render_span_location`, and `run_dag_parse_sweep` /
+// `render_finding` call `render_span_location_in_stream` in the tokeniser, because the caller that
+// holds the file's text can hold the stream -- and the stream is the only thing that can answer
+// 'this file produced no lexeme'. SIX lane calls went through the 1-arg name, which printed raw
+// offsets: five printing sites (`cli_run/emit_host.rs` x3, `target_invocation_host.rs` x2) and one
+// count-only site; all six now pass the `source_indices` they already held to
+// `interpreter_blocking_diagnostic_messages_with_source_indices`, and the 1-arg name is DELETED.
+// What the hand-written formats could not express is the point of the change, not a side effect: a
+// span with no index used to come back as the BARE PATH, which reads as a location with the position
+// missing, and now comes back as the typed `<file>: (no position: <cause>)` naming the file.
+//
+// NOT CONVERTED, named so the census is complete rather than convenient: `bin/diagnostics_witness.rs`
+// `diag_line_col` and `cli_run/required_floor_runner.rs`'s line scan read coordinates in order to
+// COMPARE them against asserted numbers -- they render nothing for a reader, so routing them through
+// a renderer would be the wrong dependency. `main.rs` `render_one_diagnostic` still shows a
+// `byte_to_line_col` + `format!` in the committed copy: `main.rs` is a declared member of
+// `EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES` (`src/v1/05_emit_rust.dag`
+// `emit_main_rs`/`emit_main_diagnostic_fns`, note `emitter_produced_divergent_note`), the regenerator
+// rejects a hand edit to it, and the EMITTER already renders through `render_span_location`;
+// reconciling the committed copy with its emitter is the byte-equality leaf, not this change.
+//
+// WHY THIS COULD NOT LAND IN ONE COMMIT (stated because the ordering is not obvious, and a future
+// reader will otherwise "simplify" it). A host call to `crate::v1_std_core::render_span_location`
+// only compiles once the stage0 MIRROR emitted from this seed carries that function, and mirrors are
+// written by the regenerator, never by hand (DESIGN 5). So the seed edit and its hand-written
+// callers cannot be one commit: tried and measured, the regenerator's own verify fails (REGEN-EXIT=1)
+// because it compiles the emitted candidate against the hand-written files copied from the working
+// tree. The seed lands first, the heal job publishes the mirror, and this commit cuts the host over.
+//
+// The deletion test is
+// dag/test/claim/diagnostic_span_location_rendering_witness.dag: one row reads the lane line and
+// the CLI line for a single diagnostic, so a second formatter growing back makes them disagree.
+//
+// THE UNLOCATED ARM IS TYPED, AND IT KEEPS THE FILE. When a span cannot be placed the answer is
+// `Unlocated { cause: ... }` naming WHY, and `render_span_location` renders it in words that
+// cannot be mistaken for a position: never `byte 75`, never a bare `<synthetic>` where a path
+// belongs, and never an offset dressed as a location. The file is kept even when the position is
+// lost -- a refusal about `cfg/nolexemes.dag` must still say so.
+// ---------------------------------------------------------------------------------------------
+
+// A span that COULD be placed. 1-based line and column, the units an editor takes; the end is
+// carried so a range that straddles lines is not silently narrowed to its first position.
+type LocatedSpan {
+  file: String
+  start_line: Int
+  start_col: Int
+  end_line: Int
+  end_col: Int
+}
+
+// WHY a span could not be placed. Named causes, not prose: a refusal can be routed by cause, a
+// claim can assert WHICH reason it got, and a caller that must not degrade (a build gate, say)
+// can match on the one it cares about instead of pattern-matching sentences.
+type UnlocatedCause
+  = FileHasNoLexemes { file: String }
+  | NoSourceIndex { file: String }
+  | SpanOutsideIndexedSource { file: String }
+  | SynthesizedNode { authored_file: String }
+
+type SpanLocation
+  = Located { at: LocatedSpan }
+  | Unlocated { cause: UnlocatedCause }
+
+// The words that stand WHERE A POSITION WOULD STAND. Deliberately carries no digit run followed
+// by a colon, so neither a reader nor a test can mistake it for a location: the claim's
+// structural predicate accepts `m.dag:9:5` and refuses everything this arm can print. The file is
+// printed by `render_span_location` in front of it, because a refusal that loses which file it is
+// about is worse than one that loses the position.
+data unlocated_position_phrase: String = "(no position:"
+
+// THE FILE A SYNTHESIZED NODE CARRIES. `no_span()` stamps it, and it is NOT a path: printing it
+// where a path belongs tells an author to open a file that does not exist. It stays the marker for
+// nodes the compiler MADE; a real file whose position is lost is `FileHasNoLexemes`/`NoSourceIndex`
+// below, which keeps the real path -- a real file's position is not "synthetic".
+data synthetic_span_file: String = "<synthetic>"
+
+fn file_has_no_lexemes(file: String) -> SpanLocation {
+  SpanLocation.Unlocated { cause: FileHasNoLexemes { file: file } }
+}
+
+// WHETHER a span can be placed, and where. Four refusals, each with its own cause and each
+// keeping the file it is about:
+//   * SynthesizedNode -- the compiler made this node; there is no source behind the span at all.
+//   * FileHasNoLexemes -- the file is real and named, but pure trivia (comments/whitespace/nothing)
+//     produced no lexeme, so there is no position to report. NOT produced here: only a caller that
+//     holds the token stream can know it, so it is decided in the tokeniser, by
+//     `token_stream_has_no_lexemes` (built from `is_trivia_shape`, the same predicate the EOF-span
+//     rule uses) and said by `render_span_location_in_stream`. A caller that has only a span gets
+//     NoSourceIndex or a Located answer, never a guess about lexemes.
+//   * NoSourceIndex -- the compiler has not indexed the source it is refusing in, so the line is
+//     genuinely not known. Printing the offsets instead is the original sin this block removes.
+//   * SpanOutsideIndexedSource -- the span disagrees with the file (negative, inverted, or past
+//     the end). Guessing a line from a span the file contradicts would be a second lie.
+fn locate_span(span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> SpanLocation {
+  if span.file == synthetic_span_file {
+    SpanLocation.Unlocated { cause: SynthesizedNode { authored_file: synthetic_span_file } }
+  } else {
+    match map_get(source_indices, span.file) {
+      Absent => SpanLocation.Unlocated { cause: NoSourceIndex { file: span.file } }
+      Present { value: index } =>
+        let src_len = count(index.char_codes)
+        if span.start < 0 || span.end < span.start || span.end > src_len {
+          SpanLocation.Unlocated { cause: SpanOutsideIndexedSource { file: span.file } }
+        } else {
+          let from = byte_to_line_col(index: index, offset: span.start)
+          let to = byte_to_line_col(index: index, offset: span.end)
+          SpanLocation.Located { at: LocatedSpan {
+            file: span.file,
+            start_line: from.line,
+            start_col: from.col,
+            end_line: to.line,
+            end_col: to.col
+          } }
+        }
+    }
+  }
+}
+
+// WHY, in words, for each cause. One match, so a new cause cannot be added without saying what it
+// sounds like -- there is no default arm.
+fn unlocated_cause_phrase(cause: UnlocatedCause) -> String {
+  match cause {
+    FileHasNoLexemes { file: _ } => "file has no lexemes)"
+    NoSourceIndex { file: _ } => "no source index for this file)"
+    SpanOutsideIndexedSource { file: _ } => "the span lies outside the indexed source)"
+    SynthesizedNode { authored_file: _ } => "the node is synthesized, not read from a file)"
+  }
+}
+
+// The file a refusal is ABOUT -- and the empty string when there is no file to name. A refusal
+// about a real file must always say which one, even when its position is lost; a SYNTHESIZED node
+// has no file behind it, and printing the sentinel `<synthetic>` in a file position would tell an
+// author to open something that does not exist. `render_span_location` omits the prefix here, so
+// the sentinel never appears where a path belongs.
+fn unlocated_cause_file(cause: UnlocatedCause) -> String {
+  match cause {
+    FileHasNoLexemes { file: file } => file
+    NoSourceIndex { file: file } => file
+    SpanOutsideIndexedSource { file: file } => file
+    SynthesizedNode { authored_file: _ } => ""
+  }
+}
+
+// THE ONLY THING THAT PUTS A LOCATION INTO WORDS.
+//
+// A refusal's LOCATION is where it starts -- `file:line:col`, the triple an editor accepts. The
+// EXTENT of a span is not part of a location: it is what the caret block under the refusal shows,
+// and a caller that needs it takes `located_span_of` rather than a string. Rendering the end here
+// would put a range where a position belongs and change every `error[file:line:col]:` the CLI
+// prints -- a second format for the same fact, which is the thing this block is here to remove.
+//
+// THE UNLOCATED ARM KEEPS THE FILE AND SAYS SO: `cfg/nolexemes.dag: (no position: file has no
+// lexemes)`. That line is deliberately not a location -- no editor accepts it -- which is the
+// point: the alternative was `byte 75`, a byte count wearing a location's clothes.
+fn render_span_location(span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> String {
+  render_span_location_of(location: locate_span(span: span, source_indices: source_indices))
+}
+
+// THE ONE RENDERER: a decided location in, reader-facing text out. Every arm that says WHERE is
+// here, and nothing upstream of it formats a position -- `locate_span` decides, the stream entry
+// above decides, and this says it.
+fn render_span_location_of(location: SpanLocation) -> String {
+  match location {
+    Located { at: at } =>
+      concat(at.file, concat(":", concat(to_string(value: at.start_line), concat(":", to_string(value: at.start_col)))))
+    Unlocated { cause: cause } =>
+      let about = unlocated_cause_file(cause: cause)
+      let phrase = concat(unlocated_position_phrase, " ", unlocated_cause_phrase(cause: cause))
+      if about == "" { phrase } else { concat(about, concat(": ", phrase)) }
+  }
+}
+
+// The same question with only the located answer, for a caller that genuinely needs the triple
+// (a caret column, a slice) and has a fallback for its absence. The seed's optional
+// spelling is `T?` with Present/Absent, as at `Node`'s `ident_span` field in this module. Prefer
+// `render_span_location`:
+// a caller that reaches past this has to decide what to say when there is no position, and that
+// decision belongs here.
+fn located_span_of(span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> LocatedSpan? {
+  match locate_span(span: span, source_indices: source_indices) {
+    Located { at: at } => Present { value: at }
+    Unlocated { cause: _ } => Absent
+  }
+}
+
 fn source_line_at(index: NewlineIndex, line: Int) -> String {
   let src_len = count(index.char_codes)
   let line_start = if line <= 1 { 0 }
@@ -2819,13 +3027,6 @@ fn intern_find(table: InternTable, s: String) -> Int? {
   match map_get(table.index, s) {
     Present { value: id } => Present { value: id }
     Absent => none
-  }
-}
-
-fn intern_find_or_empty(table: InternTable, s: String) -> Int {
-  match map_get(table.index, s) {
-    Present { value: id } => id
-    Absent => 0
   }
 }
 

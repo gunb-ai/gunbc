@@ -8,7 +8,7 @@ import std.measure { Second, second }
 import std.encoding { base64_encode, Standard }
 import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
 import extdeps.clock { Clock }
-import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused }
+import extdeps.auth.jws { JwsRs256, JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.tools.curl {
   curl_http_signature_get, curl_http_signature_post_json, curl_dumped_header_value,
@@ -20,9 +20,10 @@ import extdeps.cloud.oracle_oci_request_signing {
   OciApiKeyId, OciRequest, OciRequestShape, OciGetRequest, OciPostJson,
   OciSigningReady, OciSigningRefused, oci_signing_plan, oci_http_date, oci_authorization_header,
 }
-import gunbc.jws_signer_realize { jws_rs256_sign }
+import gunbc.jws_signer_realize { jws_sign }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import product.supplier.oracle_oci { oci_tenancy_home_region }
+import std.content_hash { sha256_hex_of_text }
 
 // THE OPERATOR'S OCI TENANCY AS AN API: credential, identity, one signed exchange, and the two reads
 // every converge over it is built from, a complete list and an admitted row.
@@ -128,7 +129,7 @@ fn oci_signed_exchange(shape: OciRequestShape, host: NonEmptyStr, path_and_query
       match oci_signing_plan(req: OciRequest { shape: shape, host: host, path_and_query: path_and_query, date: date }) {
         OciSigningRefused { cause } => OciExchangeRefused { cause: cause }
         OciSigningReady { signing_string, headers_list, content_sha256, content_length } =>
-          match jws_rs256_sign(signing_input: signing_string as NonEmptyStr, key: oci_api_signing_key) {
+          match jws_sign(alg: JwsRs256, signing_input: signing_string as NonEmptyStr, key: oci_api_signing_key) {
             JwsSignRefused { detail } => oci_refused(cause: concat("THE REQUEST WAS NOT SIGNED, NOTHING SENT: ", detail))
             JwsSigned { signature } =>
               oci_send(

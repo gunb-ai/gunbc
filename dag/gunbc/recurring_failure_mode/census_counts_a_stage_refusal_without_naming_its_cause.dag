@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.census_counts_a_stage_refusal_without_naming_its_cause
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data census_counts_a_stage_refusal_without_naming_its_cause: RecurringFailureMode = RecurringFailureMode {
   identity: "census_counts_a_stage_refusal_without_naming_its_cause" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a census consumes a stage's refusal diagnostics to COUNT what the refusal covers and renders none of them, so its output says that a module refused and never why or where** (INVALID STATE: v2.compiler.reference_conservation conservation_against_refusal took the normalize refusal's NonEmptyDiagnostics, folded them into a RefusalCover, and discarded them. The report carried a `refused` number and one `refusal-not-at-or-above` row per atom the refusal did not cover; reference_conservation_report_lines printed no reason and no locus. The TokenizeOrParseRefused row kept its diagnostics on the report and the renderer printed only the count of unmeasured rows, so a parse refusal was equally unnamed.)",

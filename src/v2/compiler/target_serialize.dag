@@ -76,7 +76,6 @@ import v2.std.node { positional_child_target_nodes,
   declaration_reference_body_marked,
   node_subtree_count,
   Arrow,
-  Occupancy,
   Branch,
   ComputationNode,
   Disj,
@@ -96,6 +95,9 @@ import v2.std.type_binder {
 import v2.std.node_query { find_arrow_body_child, find_named_child, find_labeled_child }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
+  ConcreteSyntaxLayoutItem,
+  LayoutToken,
+  LayoutNest,
   TargetValueExpression,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -105,7 +107,7 @@ import v2.std.compilers.target_model {
   TargetTypeExpressionProjection,
   TargetTypeExprAtom,
   TargetTypeExprArrow,
-  TargetTypeExprOccupancy,
+  TargetTypeExprOptionalInstantiation,
   TargetTypeExprInstantiation,
   TargetTypeExprRecord,
   TargetTypeExprSum,
@@ -295,8 +297,6 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
-    TypeNode { connective: Occupancy } =>
-      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     ComputationNode { behavior: _ } =>
@@ -425,8 +425,6 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
-    TypeNode { connective: Occupancy } =>
-      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: rules))
     ComputationNode { behavior: _ } =>
@@ -456,7 +454,6 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
     TypeNode { connective: Atom { identity: _ } } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Disj } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
-    TypeNode { connective: Occupancy } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     ComputationNode { behavior: _ } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
   }
@@ -517,8 +514,6 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
     TypeNode { connective: Disj } =>
       Accepted { value: Absent, diagnostics: None }
     TypeNode { connective: Arrow } =>
-      Accepted { value: Absent, diagnostics: None }
-    TypeNode { connective: Occupancy } =>
       Accepted { value: Absent, diagnostics: None }
     TypeNode { connective: Instantiation } =>
       Accepted { value: Absent, diagnostics: None }
@@ -631,7 +626,6 @@ fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<N
       TypeNode { connective: Atom { identity: _ } } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Disj } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Arrow } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-      TypeNode { connective: Occupancy } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       TypeNode { connective: Instantiation } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
       ComputationNode { behavior: _ } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
     }
@@ -658,6 +652,61 @@ fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
     }
   )
 }
+// THE DECL ROUTE'S FOLD OVER A LAYOUT-KEEPING SPINE: a token is spelled as in the flat fold, a nested block is
+// the same std.layout nest the grammar-row route makes (target_text_nested) by the unit the target spells, and
+// an unspelled unit refuses (translate_layout_unit_unspelled) rather than printing the block flat.
+fn serialize_concrete_syntax_layout_to_source_string(
+  target: TargetModel,
+  items: List<ConcreteSyntaxLayoutItem>
+) -> Outcome<TargetText> {
+  fold_list(
+    xs: items,
+    empty: Accepted { value: target_text_empty, diagnostics: None },
+    cons: fn(acc, item) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match serialize_concrete_syntax_layout_item(target: target, item: item) {
+            Accepted { value: text, diagnostics: td } =>
+              Accepted {
+                value: target_text_seq(acc: partial, next: text),
+                diagnostics: diagnostics_merge(outer: ad, inner: td)
+              }
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+          }
+      }
+    }
+  )
+}
+
+fn serialize_concrete_syntax_layout_item(target: TargetModel, item: ConcreteSyntaxLayoutItem) -> Outcome<TargetText> {
+  match item {
+    LayoutToken { token: tok } => serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: [tok])
+    LayoutNest { unit: unit, items: inner } =>
+      nest_by_spelled_unit(
+        target: target,
+        unit: unit,
+        body: fn() { serialize_concrete_syntax_layout_to_source_string(target: target, items: inner) }
+      )
+  }
+}
+
+// The one rule both routes nest by: the unit must be spelled by the target (an unspelled unit refuses), and the
+// body is built only once it is, then wrapped in the std.layout nest.
+fn nest_by_spelled_unit(target: TargetModel, unit: Symbol, body: fn() -> Outcome<TargetText>) -> Outcome<TargetText> {
+  match map_get_checked(target.binding_spellings, unit) {
+    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
+      bind_outcome(
+        o: body(),
+        f: fn(text) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: text)) }
+      )
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
@@ -708,7 +757,6 @@ fn translate_project_transform_surface_or_callable_in_arrow_scope(
     TypeNode { connective: Conj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Disj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Arrow } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
-    TypeNode { connective: Occupancy } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Instantiation } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     ComputationNode { behavior: _ } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
   }
@@ -1003,15 +1051,6 @@ fn project_value_node_structurally(
         declarations: declarations,
         handle_transform: handle_transform
       )
-    TypeNode { connective: Occupancy } =>
-      project_occupancy_carrier_from_inferred_facts(
-        arrow: arrow,
-        occupancy: node,
-        target: target,
-        tree: tree,
-        declarations: declarations,
-        handle_transform: handle_transform
-      )
     TypeNode { connective: Conj } =>
       if declaration_reference_body_marked(target: node) {
         match inferred_facts_for_projected_node(tree: tree, node: node) {
@@ -1265,16 +1304,11 @@ fn serialize_relation_row_nested_bounded(
   unit: Symbol,
   tokens: List<Node>
 ) -> Outcome<TargetText> {
-  match map_get_checked(target.binding_spellings, unit) {
-    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
-      bind_outcome(
-        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens),
-        f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
-      )
-    Accepted { value: Absent, diagnostics: _ } =>
-      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  nest_by_spelled_unit(
+    target: target,
+    unit: unit,
+    body: fn() { serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens) }
+  )
 }
 
 // A nest's unit must be spelled by the target. The binding lookup's fallback to the symbol's own
@@ -1462,8 +1496,6 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
-    TypeNode { connective: Occupancy } =>
-      outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     ComputationNode { behavior: _ } =>
@@ -1499,8 +1531,6 @@ fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outco
     TypeNode { connective: Disj } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Arrow } =>
-      outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
-    TypeNode { connective: Occupancy } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
@@ -2268,12 +2298,12 @@ fn serialize_type_expr_emitted_wire_bounded(
         form: projection.instantiation_form,
         node: wire.node
       )
-    TargetTypeExprOccupancy =>
+    TargetTypeExprOptionalInstantiation =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
         projection: projection,
-        form: projection.occupancy_form,
+        form: projection.optional_instantiation_form,
         node: wire.node
       )
     TargetTypeExprRecord =>
@@ -2539,7 +2569,7 @@ fn serialize_type_expr_boundary_bounded(
               emitted: emitted
             )
           TargetTypeExprInstantiation => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
-          TargetTypeExprOccupancy => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
+          TargetTypeExprOptionalInstantiation => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprRecord => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprSum => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprArrow => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)

@@ -1,0 +1,188 @@
+module test.claim.approve_ios_vectors_resource_witness
+
+//
+// Charter 5 L6 (proud-bee-376), item (iii). DESIGN.md §5: the fact a generated file states lives in
+// exactly one .dag declaration, and a claim that is red at the head it is committed at is
+// indistinguishable from a broken one — so EVERY claim here is green at this head, including the ones
+// that assert a refusal. They can be, because the emission boundary is driveable:
+// approve_ios_vectors_emission takes the parts and the escape-population as arguments, so the refusal
+// arms are reached by passing a value, not by breaking the tree and hoping a claim fails.
+//
+// WHAT WAS WRONG. load() asked the XCTest bundle for a resource by two hand-typed strings —
+// forResource: "vectors", withExtension: "json" — while the only authority for the emitted file's name
+// is gunbc.generated_artifact's location row for ApprovalDeviceVectorsArtifact. The pair was a second
+// authority for a fact that row already owns. Worse, the file's own doc comment already CLAIMED a join
+// to the emitter ("the .dag witness has not emitted it") that no row implemented: rename the emitted
+// fixture and load() silently looks for a file that no longer exists, and per
+// approve_ios_vector_check_unenrolled_frontier (dag/gunbc/approve_ios_app.dag) ApproveTests "is executed
+// by no lane" — no macOS runner, so it runs only when an operator presses Run on a MacBook. So the
+// drift class this witness kills is one nothing on the merge path could have seen.
+//
+// WHAT IT CLAIMS. The stem and extension are read off that row's `name` through one total match that
+// yields ResourceParts or nothing, and the boundary refuses the emission when it yields nothing, naming
+// the broken join. The first review (review 38602) blocked the earlier shape, which built the two
+// strings with an empty-string sentinel and then checked the rendered text; that sentinel and its
+// .contains() scan are gone (DESIGN §5: unwritable, not checked; a typecheck plus a grep is no
+// consumer), and with them went the claims that could only be true by being red.
+
+import std.types { Bool, String, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.optional { Present, Absent }
+import v2.extdeps.languages.swift.rows { SwiftRowEmitted, SwiftRowEmissionRefused }
+import gunbc.generated_artifact { ApprovalDeviceVectorsArtifact, artifact_location }
+import gunbc.approve_ios_swift_protocol_vector_tests {
+  approve_ios_vectors_artifact_name,
+  approve_ios_vectors_resource_parts,
+  approve_ios_vectors_artifact_resource_parts,
+  approve_ios_vectors_emission,
+  approve_ios_vectors_no_resource_parts,
+  approve_ios_vectors_escape_refusal_reason,
+  expected_approve_ios_protocol_vector_tests_swift,
+}
+
+// The row the app must agree with, read back through the authority — never typed again in this module.
+fn authority_name() -> String {
+  artifact_location(a: ApprovalDeviceVectorsArtifact).name
+}
+
+// The stem and extension computed HERE, straight off the authority row, so the carrier's own derivation
+// is compared against an independent reading of the same row rather than against a copy of the carrier's.
+fn authority_stem() -> String {
+  match authority_name().split(delimiter: ".").first() {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+fn authority_extension() -> String {
+  match authority_name().split(delimiter: ".").last() {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+// The load() line as emitted, or "" if the emission refused (the non-emptiness claims below then fail
+// rather than passing on an empty string).
+fn emitted_load_line() -> String {
+  match expected_approve_ios_protocol_vector_tests_swift() {
+    SwiftRowEmitted { source: s } =>
+      match s.split(delimiter: "\n").filter(l => l.contains("forResource:")).first() {
+        Present { value: line } => line
+        Absent => ""
+      }
+    SwiftRowEmissionRefused { reason: _ } => ""
+  }
+}
+
+// The needle assembled from the authority row: forResource: "<stem>", withExtension: "<extension>" —
+// built from the row here, so the byte claim checks the emitted file against the authority rather than
+// against a literal copy of it.
+fn rows_resource_needle() -> String {
+  concat(concat(concat(concat("forResource: \"", authority_stem()), "\", withExtension: \""), authority_extension()), "\"")
+}
+
+// ---------------------------------------------------------------- claims (all green at this head)
+
+// POSITIVE: the emission is not silently refused, so the claims below are not being satisfied by an
+// empty file.
+test fn emission_is_not_silently_refused_helper() -> Bool {
+  match expected_approve_ios_protocol_vector_tests_swift() {
+    SwiftRowEmitted { source: s } => s != ""
+    SwiftRowEmissionRefused { reason: _ } => false
+  }
+}
+
+// POSITIVE: the emitted load() asks Bundle for the name the authority row carries. Both the needle and
+// the line are derived, and the line must be non-empty, so an absent load() cannot pass.
+test fn emitted_bytes_carry_the_rows_resource_name_helper() -> Bool {
+  let s = emitted_load_line()
+  s != "" && s.contains(rows_resource_needle())
+}
+
+// POSITIVE: the carrier's total match agrees with an independent split of the same row, in both fields.
+test fn derivation_agrees_with_the_row_helper() -> Bool {
+  let row_stem = authority_stem()
+  let row_ext = authority_extension()
+  match approve_ios_vectors_artifact_resource_parts() {
+    Present { value: p } => p.stem == row_stem && p.extension == row_ext
+    Absent => false
+  }
+}
+
+// POSITIVE (was a red-by-design claim before the boundary was made driveable): every name that is not
+// <stem>.<extension> yields NO parts, and the real row's name yields exactly the row's two halves. The
+// shapes below are the whole class of rename that used to silently retarget load().
+test fn malformed_names_yield_no_parts_helper() -> Bool {
+  all(["vectors", ".json", "vectors.", "", "a.b.json"], name =>
+    match approve_ios_vectors_resource_parts(name: name) {
+      Present { value: _ } => false
+      Absent => true
+    })
+    && match approve_ios_vectors_resource_parts(name: "vectors.json") {
+      Present { value: p } => p.stem == "vectors" && p.extension == "json"
+      Absent => false
+    }
+}
+
+// POSITIVE: with no parts the boundary refuses, and the refusal carries THIS diagnostic. The reason is
+// compared against the string spelled here, independently of the carrier's own data — asserting equality
+// with approve_ios_vectors_resource_refusal_reason would be a tautology, since that is the very constant
+// the boundary returns, and a control that renames it would stay green (caught by running exactly that
+// control). It must also not be the escape arm's reason, or a broken join would report the wrong fault.
+//
+// The literal below is the diagnostic's identity, so spelling it a second time is the point: it is what a
+// runbook and the CI log match against, not a derivation of anything.
+test fn refusal_is_taken_and_carries_the_named_reason_helper() -> Bool {
+  match approve_ios_vectors_emission(parts: approve_ios_vectors_no_resource_parts(), escape_present: true) {
+    SwiftRowEmissionRefused { reason: r } =>
+      r == "approve-ios-vectors-resource-name-not-a-stem-and-extension"
+        && r != approve_ios_vectors_escape_refusal_reason
+    SwiftRowEmitted { source: _ } => false
+  }
+}
+
+// POSITIVE: the reason is carried as a value, not baked into bytes — this arm produces no Swift at all.
+test fn refusal_produces_no_bytes_helper() -> Bool {
+  match approve_ios_vectors_emission(parts: approve_ios_vectors_no_resource_parts(), escape_present: true) {
+    SwiftRowEmissionRefused { reason: _ } => true
+    SwiftRowEmitted { source: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------- evidence wrappers (ProcessExit)
+
+fn evidence_emission_is_not_silently_refused() -> ProcessExit {
+  if emission_is_not_silently_refused_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "emission refused or produced no bytes at this head" }
+  }
+}
+
+fn evidence_emitted_bytes_carry_the_rows_resource_name() -> ProcessExit {
+  if emitted_bytes_carry_the_rows_resource_name_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the emitted load() does not ask for the authority row's resource name" }
+  }
+}
+
+fn evidence_derivation_agrees_with_the_row() -> ProcessExit {
+  if derivation_agrees_with_the_row_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "carrier derivation disagrees with the authority row" }
+  }
+}
+
+fn evidence_malformed_names_yield_no_parts() -> ProcessExit {
+  if malformed_names_yield_no_parts_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "a malformed resource name yielded parts, or the real name yielded the wrong halves" }
+  }
+}
+
+fn evidence_refusal_is_taken_and_carries_the_named_reason() -> ProcessExit {
+  if refusal_is_taken_and_carries_the_named_reason_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "absent parts did not refuse with the named resource reason" }
+  }
+}
+
+fn evidence_refusal_produces_no_bytes() -> ProcessExit {
+  if refusal_produces_no_bytes_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the refusal arm emitted bytes" }
+  }
+}

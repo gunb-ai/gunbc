@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.non_verdict_disposition_surfaces_as_refusal
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = RecurringFailureMode {
   identity: "non_verdict_disposition_surfaces_as_refusal" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a non-verdict disposition surfaced as a refusal** (a gate COMPUTES the difference between THIS SUBJECT IS WRONG and I DID NOT FINISH LOOKING AT THIS SUBJECT, and then DISCARDS it at its aggregate boundary.",

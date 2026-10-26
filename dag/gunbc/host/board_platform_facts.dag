@@ -1,0 +1,104 @@
+// THE HOST'S BOARD -> SoC -> ARCHITECTURE PLATFORM FACT, reached from the observed controller.
+//
+// This is the consumer-layer join that turns a host's observed board into the firmware architecture
+// the boot machinery needs. It reads the facts, with no host-name or board-name branch in the code:
+// the observed board FRU (host.access -> identity.board) is joined to the board authority the binding
+// table resolves for that FRU, and the authority is joined to the per-board SoC edge that names the
+// SoC families the board admits. The architecture is then DERIVED from those families
+// (extdeps.board_soc.board_soc_architecture), established only when every admitted family agrees.
+//
+// Every missing link is a typed UNESTABLISHED answer, not a default and not a crash: an unobserved
+// board, a FRU the binding table does not resolve, a board whose binding is not evidence-grade, and a
+// board with no SoC edge all leave the architecture unestablished. The installed CPU is an observed
+// fact (the mtcollins1 boot run observes it); this edge bounds what the board may install and does
+// not replace that observation.
+module gunbc.host.board_platform_facts
+
+import std.types { List }
+import std.algebra { FreeSemigroup }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessObserved }
+import extdeps.board_authority { BoardAuthorityRef, board_authority_for, board_facts_authority, board_authority_ref_eq }
+import extdeps.board_soc { BoardSocEdge, BoardSocArchitectureStanding, board_soc_architecture }
+import extdeps.cpu.types { SoCFamily }
+import gunbc.board_authority_binding { board_authority_bindings }
+import extdeps.ampere.mt_collins_board { mt_collins_board_soc_edge }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_soc_edge }
+
+// THE CONSUMER-LAYER TABLE OF PER-BOARD SoC EDGES. Each row is the per-board data from its board
+// module; the host's board is joined to exactly the edge its authority names. A second board with a
+// different set of SoC families adds a row; no code names a board here.
+data board_soc_edges: List<BoardSocEdge> = [mt_collins_board_soc_edge, supermicro_h11ssl_board_soc_edge]
+
+// THE ONE BOARD LOOKUP: the host's observed board -> the SoC edge its authority names, or NONE.
+//
+// THE CHAIN, WRITTEN ONCE: the observed board FRU (host.access -> identity.board) -> the board
+// authority the binding table resolves for that FRU -> the per-board SoC edge that authority names.
+// Everything derived from a host's board goes through here. It was written twice before (once for the
+// architecture, once for the families, the second admitting in its own comment that it "stops one link
+// earlier") -- two resolutions of "which edge does this host's board name", which is DESIGN Sec 2's
+// "model a concept once and derive every use" violated and Sec 6b's trigger, the second local
+// implementation of one rule. A `none` from here is one fact with three causes, and they are deliberately
+// NOT distinguished: no access observation, no hardware-grade authority, or no edge naming the authority.
+// A caller that ever needs those apart asks for them individually; today none does.
+fn host_board_soc_edge(access: BmcAccessObservationStanding) -> BoardSocEdge? {
+  match access {
+    BmcAccessObserved { observation: obs } => {
+      let lookup = board_authority_for(observation: obs.identity.board, bindings: board_authority_bindings)
+      match board_facts_authority(lookup: lookup) {
+        Absent => none
+        Present { value: authority } => board_soc_edges_for(authority: authority)
+      }
+    }
+    BmcAccessUnobserved { endpoint: _ } => none
+  }
+}
+
+// THE FIRMWARE ARCHITECTURE A HOST'S BOARD ESTABLISHES, OR NOT, reached from the observed controller.
+//
+// The board lookup, then DERIVATION: the edge's admitted SoC families agree on one architecture, and a
+// board with no edge (or no observation, or no authority) leaves it Unestablished rather than defaulting.
+// The installed CPU is an observed fact (the mtcollins1 boot run observes it); this edge bounds what the
+// board may install and does not replace that observation.
+fn host_board_architecture(access: BmcAccessObservationStanding) -> BoardSocArchitectureStanding {
+  match host_board_soc_edge(access: access) {
+    Absent => Unestablished
+    Present { value: edge } => board_soc_architecture(edge: edge)
+  }
+}
+
+// THE SoC FAMILIES THE BOUND BOARD ADMITS, AS A NON-EMPTY SET OR NOTHING. This is the fact a
+// platform-FACILITY capability keys on (gunbc.host.smpro_platform_capability.smpro_facility): a named
+// family answers about the silicon, and an absent family means NOTHING is known about it -- which is a
+// different answer from a family that lacks the facility, and must never be collapsed into one.
+//
+// The board lookup, then PROJECTION of the edge's families: one link shorter than the architecture, and
+// the same chain, because both ask the same question first.
+//
+// The `?` is exactly one fact: NO ROW WAS REACHED -- no access observation, no hardware authority, or no
+// edge naming the authority. It is NOT also "the roster is empty", and that is the point (review 81501):
+// BoardSocEdge.soc_families is FreeSemigroup, so an edge cannot be written empty, and flattening it to a
+// List here threw that guarantee away at the one consumer that leads to SMpro -- which then rebuilt the
+// empty case at runtime, with a refusal cause and a rendered sentence, for a state that is impossible to
+// write. Returning the carrier keeps the fact the type already carried (DESIGN Sec 5, and the ruling
+// nonemptiness_is_constructed_or_proved).
+fn host_board_soc_families(access: BmcAccessObservationStanding) -> FreeSemigroup<SoCFamily>? {
+  // THE EDGE IS RETURNED AS WRITTEN. No flattening, no re-counting: soc_families is a
+  // FreeSemigroup, so a non-empty roster is what an edge can be, and the caller gets that fact
+  // rather than a List it has to interrogate again.
+  match host_board_soc_edge(access: access) {
+    Absent => none
+    Present { value: edge } => Present { value: edge.soc_families }
+  }
+}
+
+// THE PER-BOARD SoC EDGE THE AUTHORITY NAMES, OR NONE. The board -> SoC edge is per-board DATA: each
+// board module mints its own row (extdeps.ampere.mt_collins_board.mt_collins_board_soc_edge), and this
+// table joins an authority to the edges that name it.
+fn board_soc_edges_for(authority: BoardAuthorityRef) -> BoardSocEdge? {
+  // filter |> first IS already the Optional this function returns; matching it open to hand back each
+  // arm unchanged re-derived the canonical surface inside the function for no answer (the same
+  // hand-unfolding this PR deleted in cpu_model_catalog_row_eq, whose comment is the rule: OPTIONAL
+  // EQUALITY IS COMPARISON, not a match).
+  board_soc_edges |> filter(e => board_authority_ref_eq(a: e.board, b: authority)) |> first()
+}
+

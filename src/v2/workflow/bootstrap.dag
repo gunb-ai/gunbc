@@ -3,7 +3,7 @@ module v2.workflow.bootstrap
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import v2.std.node { Atom, Conj, Edge, Hash, Authored, StructuralLabel, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, symbol_eq }
+import v2.std.node { node_same_occurrence, Atom, Conj, Edge, Hash, Authored, StructuralLabel, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, symbol_eq, NotADeclaration }
 import std.algebra { list_snoc_item, bag_eq, contains, fold_list, unique }
 import v2.std.language_model {
   LanguageModel,
@@ -204,19 +204,23 @@ fn bootstrap_seed_capability_inventory_root() -> Node {
     children: [
       Edge {
         label: Authored { name: ^bootstrap_construct_source_language_subset },
-        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset)
+        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^bootstrap_construct_target_model_subset },
-        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_target_model_subset)
+        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_target_model_subset),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^bootstrap_construct_runtime_model_subset },
-        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_runtime_model_subset)
+        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_runtime_model_subset),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^bootstrap_construct_lowering_subset },
-        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
+        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -408,11 +412,13 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
           kind: TypeNode { connective: Atom { identity: pin } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^bootstrap_projection_hash_digest_slot_edge },
-        target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
+        target: bootstrap_hash_digest_fixture_atom_node(digest: digest),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -505,23 +511,28 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
     children: [
       Edge {
         label: Authored { name: ^bootstrap_projection_snapshot_root_edge },
-        target: inputs.snapshot.root
+        target: inputs.snapshot.root,
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^bootstrap_projection_snapshot_language_model_edge },
-        target: language_model_to_node(lm: inputs.snapshot.language_model)
+        target: language_model_to_node(lm: inputs.snapshot.language_model),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^bootstrap_projection_snapshot_content_hash_edge },
-        target: bootstrap_projection_snapshot_content_hash_pin_node(pin: inputs.snapshot.content_hash.pin)
+        target: bootstrap_projection_snapshot_content_hash_pin_node(pin: inputs.snapshot.content_hash.pin),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^bootstrap_projection_target_bundle_edge },
-        target: inputs.target_model.bundle
+        target: inputs.target_model.bundle,
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^bootstrap_projection_runtime_identity_edge },
-        target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
+        target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -529,7 +540,7 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
 }
 
 fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {
-  (inputs.snapshot.root == bootstrap_source_snapshot_root())
+  (node_same_occurrence(a: inputs.snapshot.root, b: bootstrap_source_snapshot_root()))
     && (inputs.snapshot.language_model.language_identity == seed_capability_language_model().language_identity)
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
     && (inputs.target_model == rust_target_model())

@@ -5,6 +5,7 @@ import std.algebra { list_head, skip, list_at_optional }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.toml.types { TomlValue, TomlKeyValue, TomlEntry, TomlTable, TomlDocument, TomlString, TomlInteger, TomlBool, TomlArray, TomlInlineTable }
+import std.host_text { chars }
 
 
 
@@ -135,7 +136,7 @@ fn toml_char_is_bare_key(p: Int) -> Bool {
 }
 
 fn toml_key_is_bare(key: String) -> Bool {
-  let cs = chars(s: key)
+  let cs = chars(text: key)
   ((cs |> count) > 0) && ((cs |> filter(p => !toml_char_is_bare_key(p: p)) |> count) == 0)
 }
 

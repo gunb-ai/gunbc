@@ -1,20 +1,21 @@
 module test.claim.constructor_tag_route_probe_red
 
+// The named frontier: one type variable bound to two distinct coproduct declarations must refuse
+// at typecheck. It does not: the call is accepted and answers false, so this witness RUNS and
+// returns false. That makes it a polarity red, NOT a regression control -- once infer refuses the
+// call the file stops compiling instead of greening. The fix PR deletes this file and its
+// admission row in favour of its own refusal-at-typecheck control. See
+// dag/gunbc/recurring_failure_mode/one_type_variable_bound_to_two_distinct_coproducts.dag and the
+// admission row in dag/gunbc/explicit_witness_admission.dag.
+
+import std.primitives { tag_of, same_arm }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type Pa = P1 { a: Int } | P2
 type Pb = Q1 { a: Int } | Q2
 
-type ConstructorTag<T> = ConstructorTag { name: String }
-
-fn tag_of<T>(v: T) -> ConstructorTag<T> {
-  ConstructorTag { name: discriminant(v: v) }
-}
-
-fn same_arm<T>(a: T, b: T) -> Bool {
-  tag_of(v: a) == tag_of(v: b)
-}
-
 test fn same_arm_one_t_two_coproducts_must_refuse() -> Bool {
-  same_arm(a: P1 { a: 1 }, b: Q1 { a: 1 })
+  same_arm(tag: tag_of(v: P1 { a: 1 }), v: Q1 { a: 1 })
 }

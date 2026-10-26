@@ -55,6 +55,8 @@ import gunbc.machine_intake.megarac_fan_thermal_guard {
   MegaRacThermalGuardHolds,
   MegaRacThermalGuardTrip,
   MegaRacThermalGuardUnread,
+  MegaRacThermalGuardCeilingUnestablished,
+  CeilingUnestablished,
   ReEnableCoolingManager,
   RunExited,
   TemperatureUnreadable,
@@ -93,6 +95,7 @@ import extdeps.bmc.megarac {
   megarac_redirection_status_of_wire,
   megarac_web_event_log_layout,
 }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.ampere.oem_sel {
   AmpereBootSyndromeOemSel,
   AmpereOemSelManufacturerIdNotThisPen,
@@ -317,11 +320,13 @@ fn megarac_guard_readable_fixture(soc: Int) -> List<MegaRacTempReading> {
   ]
 }
 
+// The M128-30 catalog row has datasheet limits, so the SoC trip is derivable here; the Q80-30 case
+// (no limits row) is witness_unestablished_ceiling_is_not_a_temperature_trip.
 test fn thermal_guard_trip_re_enables_the_cooling_manager() -> Bool {
-  match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 85)) {
+  match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 85), cpu: altra_max_m12830_catalog) {
     MegaRacThermalGuardTrip { sensor: s, temperature: t } =>
       (s as String) == "CPU0_SOC_Temp"
-        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 84)) {
+        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 84), cpu: altra_max_m12830_catalog) {
           MegaRacThermalGuardHolds =>
             match megarac_fan_safety_restore(
               verdict: MegaRacThermalGuardTrip { sensor: s, temperature: t },
@@ -330,14 +335,18 @@ test fn thermal_guard_trip_re_enables_the_cooling_manager() -> Bool {
                 true
               Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
                 false
+              Present { value: ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } } =>
+                false
               Present { value: ReEnableCoolingManager { cause: RunExited } } => false
               Absent => false
             }
           MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
           MegaRacThermalGuardUnread { sensor: _ } => false
+          MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
         }
     MegaRacThermalGuardHolds => false
     MegaRacThermalGuardUnread { sensor: _ } => false
+    MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
   }
 }
 
@@ -351,7 +360,7 @@ test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
     MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
     MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
   ]
-  match megarac_thermal_guard_verdict(readings: readings) {
+  match megarac_thermal_guard_verdict(readings: readings, cpu: altra_max_m12830_catalog) {
     MegaRacThermalGuardUnread { sensor: s } =>
       (s as String) == "CPU0_SOC_Temp"
         && match megarac_fan_safety_restore(
@@ -359,6 +368,8 @@ test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
         ) {
           Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
             true
+          Present { value: ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } } =>
+            false
           Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
             false
           Present { value: ReEnableCoolingManager { cause: RunExited } } => false
@@ -366,6 +377,7 @@ test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
         }
     MegaRacThermalGuardHolds => false
     MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+    MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
   }
 }
 
@@ -385,13 +397,15 @@ test fn mid_boot_exit_leaves_the_cooling_manager_enabled() -> Bool {
   match megarac_fan_run_exit_restore() {
     ReEnableCoolingManager { cause: RunExited } =>
       (megarac_fan_exit_manager_readback_body() as String) == "{\"manager_disabled\":0}"
-        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 36)) {
+        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 36), cpu: altra_max_m12830_catalog) {
           MegaRacThermalGuardHolds => true
           MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
           MegaRacThermalGuardUnread { sensor: _ } => false
+          MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
         }
     ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } => false
     ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } => false
+    ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } => false
   }
 }
 
@@ -405,7 +419,7 @@ test fn dimm_over_uncited_ceiling_re_enables_the_manager() -> Bool {
     MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
     MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
   ]
-  match megarac_thermal_guard_verdict(readings: readings) {
+  match megarac_thermal_guard_verdict(readings: readings, cpu: altra_max_m12830_catalog) {
     MegaRacThermalGuardTrip { sensor: s, temperature: _ } =>
       (s as String) == "CPU0_DIMMG0_Temp"
         && match megarac_fan_safety_restore(
@@ -415,11 +429,14 @@ test fn dimm_over_uncited_ceiling_re_enables_the_manager() -> Bool {
             true
           Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
             false
+          Present { value: ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } } =>
+            false
           Present { value: ReEnableCoolingManager { cause: RunExited } } => false
           Absent => false
         }
     MegaRacThermalGuardHolds => false
     MegaRacThermalGuardUnread { sensor: _ } => false
+    MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
   }
 }
 

@@ -1,0 +1,110 @@
+module test.claim.record_emission_candidate_set_witness
+
+// LANE G (v1-interface-cull-audit@63a464edf01 P1.5 steps 1-2): the anonymous-record-literal
+// emission route — one candidate set (anonymous_record_struct_candidates, 05_emit_rust.dag) now
+// drives the zero/one/many answer for BOTH the single-field arm and the multi-field arm of
+// emit_typed_record_lit. These four claims execute the changed route end-to-end against the real
+// emit pipeline through the real acceptance path, pinning the SINGLE-FIELD and MULTI-FIELD
+// specimens on both sides of the resolution seam: resolution must render, ambiguity must refuse,
+// and neither arm may silently pick. Every expected string was captured from the MERGE BASE
+// (fb29604ee96, pre-Lane-G emitter) so a passing claim is a preservation receipt, not a tautology
+// with head. Each case gets its own provider fixture (dag/test/fixture/laneg_*.dag): the candidate
+// pool IS the specimen, and sharing a provider would let one case's roster pollute another's.
+// Importless providers per the witness-cost ruling (test.fixture.anonhead_provider: the first
+// landing imported a real provider and paid its whole import closure against the run's CPU floor
+// budget, BUDGET-REFUSED on run 32226586721).
+//
+// WHY F2 (single-field ambiguity) ASSERTS EMITTED TEXT and F4 (multi-field ambiguity) ASSERTS A
+// CENSUS: the located AmbiguousAnonymousRecordLiteral diagnostic fires only for literals with more
+// than one field (the walker's children |> count > 1 condition), and it is GateBlocking — a hard
+// diagnostic. compile_dag_rust_emit_check refuses to read the file at all when the compile carries
+// any hard diagnostic, so F4's emitted text is NOT readable through that host and its refusal is
+// asserted where located diagnostics are observable: the compile diagnostic census, class-pinned
+// AND subject-pinned (the subject for this class is the sorted candidate names joined on '|', so
+// "LanegDupA|LanegDupB" says the refusal is about THESE two structs, not about the fixture being
+// malformed for some unrelated reason). F2's literal is single-field, the walker skips it, the
+// compile stays hard-diagnostic-free, and the changed arm's refusal IS the emitted content — the
+// compile_error! line, verbatim from the merge base.
+
+import std.types { String, Int, Bool }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_verdict_all, census_exit }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The changed arms' refusal string, verbatim from the merge base (05_emit_rust.dag renders it for
+// any >1 candidate set).
+data refusal_text: String = "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
+
+// F1: single field, ZERO candidates reachable from the consumer scope (the consumer imports only
+// the function, so no record type summary is in scope) — the changed single-field arm's
+// zero-candidate pass-through renders the bare value, exactly the merge-base render.
+fn w_single_field_pass_through() -> Bool {
+  compile_dag_rust_emit_check(
+    "module laneg_single_res_consumer\n\nimport test.fixture.laneg_single_res_provider \{\n  takes_solo,\n\}\n\nfn probe() -> Int \{\n  takes_solo(s: \{ v: 7 \})\n\}\n",
+    "src/laneg_single_res_consumer.rs",
+    ["takes_solo(7)"],
+    [refusal_text, "LanegSolo \{"]
+  )
+}
+
+// F2: single field, TWO same-shape candidates — the changed single-field arm's refusal, read from
+// the emitted call site (no hard diagnostic here: the located diagnostic needs >1 field). The
+// negative assertion pins the silent pick the refusal replaces: had the arm chosen first, the call
+// would carry a LanegDupS1 struct literal.
+fn w_single_field_refusal() -> Bool {
+  compile_dag_rust_emit_check(
+    "module laneg_single_amb_consumer\n\nimport test.fixture.laneg_single_amb_provider \{\n  takes_ds1,\n\}\n\nfn probe() -> Int \{\n  takes_ds1(a: \{ w: 7 \})\n\}\n",
+    "src/laneg_single_amb_consumer.rs",
+    ["takes_ds1(compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\"))"],
+    ["takes_ds1(LanegDupS1 \{", "takes_ds1(LanegDupS2 \{"]
+  )
+}
+
+// F3: multi field, exactly ONE candidate — the changed multi-field arm's singleton renders the
+// nominal struct literal. The negative assertion pins the tuple pass-through the singleton replaces:
+// a zero-candidate fall-through would have rendered `takes_point((1, 2))`.
+fn w_multi_field_nominal_struct() -> Bool {
+  compile_dag_rust_emit_check(
+    "module laneg_multi_res_consumer\n\nimport test.fixture.laneg_multi_res_provider \{\n  takes_point,\n\}\n\nfn probe() -> Int \{\n  takes_point(p: \{ x: 1, y: 2 \})\n\}\n",
+    "src/laneg_multi_res_consumer.rs",
+    ["LanegPoint \{", "x: 1", "y: 2"],
+    [refusal_text, "(1, 2)"]
+  )
+}
+
+// F4: multi field, TWO same-shape candidates with identical field types (no hint narrowing is
+// possible) — the located refusal naming both structs. Class alone would be satisfied by any
+// ambiguity in the closure; the subject ("LanegDupA|LanegDupB", the sorted candidates joined on
+// '|') is what says THIS literal refused against THESE two structs. NOT-RUNNABLE IS NOT ZERO (the
+// duplicate_record_field_refusal_witness ruling): a census that could not run has observed
+// nothing, and answering 0 would let a broken harness satisfy the refusal claim by silence; a
+// refused census is CensusUnobserved, exit 2, never a number, so the claim cannot be satisfied
+// by a run that did not happen.
+fn w_multi_field_located_refusal() -> ProcessExit {
+  census_verdict_all([
+    census_verdict(census: blocking_class_census(source: laneg_multi_amb_source(), wanted_class: "AmbiguousAnonymousRecordLiteral"), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_subject_census(source: laneg_multi_amb_source(), wanted_class: "AmbiguousAnonymousRecordLiteral", wanted_subject: "LanegDupA|LanegDupB"), holds: fn(n) { n == 1 }),
+  ])
+}
+
+fn laneg_multi_amb_source() -> String {
+  "module laneg_multi_amb_consumer\n\nimport test.fixture.laneg_multi_amb_provider \{\n  takes_da,\n\}\n\nfn probe() -> Int \{\n  takes_da(a: \{ left: 1, right: 2 \})\n\}\n"
+}
+
+test fn single_field_literal_passes_through_bare_value() -> Bool {
+  w_single_field_pass_through()
+}
+
+test fn single_field_ambiguous_literal_emits_the_refusal() -> Bool {
+  w_single_field_refusal()
+}
+
+test fn multi_field_literal_emits_nominal_struct() -> Bool {
+  w_multi_field_nominal_struct()
+}
+
+test fn multi_field_ambiguous_literal_refuses_with_located_diagnostic() -> ProcessExit {
+  w_multi_field_located_refusal()
+}

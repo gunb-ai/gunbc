@@ -4,9 +4,11 @@ import extdeps.languages.dag.syntax { dag_parse_environment }
 
 import std.syntax { LiteralValue, BinOp, ParseEnvironment }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
+import std.generated_provider { GeneratedProviderDemand }
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
+  render_span_location,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
   diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span, Connective,
   NoConnective, Arrow, Cardinality, resource_use_name_at, resource_use_resource,
@@ -28,13 +30,6 @@ import v1.std.core {
   MatchBoundBinding, ServiceValueBinding
 }
 
-import v1.compiler.annotation_bind { bind_annotations }
-import std.source_annotation {
-  SourceAnnotationGraph,
-  UnboundAnnotationCapture,
-  source_annotation_graph_concat,
-  source_annotation_graph_empty
-}
 import v1.compiler.tokenize { tokenize_artifact }
 
 import v1.compiler.parse {
@@ -124,10 +119,15 @@ type PipelineResult {
   rust_crates: List<EmittedRustCrate>
 }
 
-// The authored source annotation graph rides beside the semantic result rather than inside it.
-// Every existing consumer reads the fields it already read and is unaffected; annotation-aware
-// machinery reads the graph. Refusals are carried too, because a graph without them cannot
-// distinguish prose that was never written from prose that was dropped.
+// The front end carries the SEMANTIC result and nothing else. It used to ride a bound
+// SourceAnnotationGraph beside it (gunbc P0.2, v1-interface-cull-audit lane B, 2026-10-19):
+// every consumer read only the semantic fields, so the bind -- the whole ~35 s of the 55 s
+// frontend per §3a -- executed on the compile path to feed no reader. An annotation reader
+// now demands its own binding: v1.compiler.annotation_bind.bind_annotations over the
+// tokenizer's captures and the parse's extents/transport, exactly as the round-trip and
+// v1/v2-agreement claims have always done. Removing the field rather than emptying it is the
+// honest shape: a completeness-promising graph of zero rows would have lied (§5a amendment B);
+// a field that does not exist cannot.
 
 type FrontendResult {
   graph: ModuleGraph?
@@ -135,7 +135,6 @@ type FrontendResult {
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
   occurrence_transport: OccurrenceTransport
-  annotations: SourceAnnotationGraph
 }
 
 type FrontendOccurrenceResolution {
@@ -149,16 +148,19 @@ type FrontendAccum {
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
   occurrence_allocator: OccurrenceIdAllocator
-  annotations: SourceAnnotationGraph
 }
 
-data frontend_prepared_authored_note: String = "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass.
-
-Threading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone."
-
+// FrontendPrepared once also carried the tokenizer's `annotations` captures, threaded so an
+// annotation reader would never re-tokenize and drift from the parse (the note this row
+// replaced). gunbc P0.2 (v1-interface-cull-audit lane B, 2026-10-19) deleted the compile-path
+// bind that consumed them; no reader remained on this type, so the carrier went with it. The
+// anti-drift invariant it protected still holds where annotations are read: every annotation
+// consumer (v1.tests.claim.annotation_gap_round_trip_test, v2.test.claim.manual
+// .annotation_gap_v1_v2_agreement) takes BOTH halves -- tokens and captures -- from ONE
+// tokenize_artifact result and binds against that same parse, so the two halves cannot observe
+// different sources.
 type FrontendPrepared {
   tokens: List<Token>
-  annotations: List<UnboundAnnotationCapture>
   newline_index: NewlineIndex
 }
 
@@ -770,35 +772,11 @@ fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, Ne
   }
 }
 
-fn serialize_named_arg(arg: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  concat(
-    "{\"name\": ", json_optional_string(value: arg_name_at(n: arg, source_indices: source_indices)),
-    ", \"value\": ", serialize_node_ref(node: arg_value(n: arg), key_to_id: key_to_id),
-    "}")
-}
-
-fn serialize_match_arm(arm: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  concat(
-    "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices),
-    ", \"guard\": ", json_optional_node_ref(value: arm_guard(n: arm), key_to_id: key_to_id),
-    ", \"body\": ", serialize_node_ref(node: arm_body(n: arm), key_to_id: key_to_id),
-    "}")
-}
-
 fn serialize_field_init(field_init: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: field_init_node_name_at(n: field_init, source_indices: source_indices)),
     ", \"value\": ", serialize_node_ref(node: field_init_node_value(n: field_init), key_to_id: key_to_id),
     "}")
-}
-
-fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  match part {
-    Text { value: inner } =>
-      concat("{\"kind\": \"Text\", \"value\": ", json_quote(s: inner), "}")
-    Interpolation { expr: inner } =>
-      concat("{\"kind\": \"Interpolation\", \"expr\": ", serialize_node_ref(node: inner, key_to_id: key_to_id), "}")
-  }
 }
 
 fn serialize_resolved_call_formal(value: ResolvedCallFormal, key_to_id: Map<String, String>) -> String {
@@ -1086,17 +1064,6 @@ fn serialize_resource_use(resource_use: Node, source_indices: Map<String, Newlin
     "}")
 }
 
-fn serialize_field(field: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  concat(
-    "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_indices: source_indices)),
-    ", \"type_expr\": ", serialize_node_ref(node: field_node_type_expr(n: field), key_to_id: key_to_id),
-    ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
-    ", \"default_value\": ", json_optional_node_ref(value: field_node_default_value(n: field), key_to_id: key_to_id),
-    ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field, source_indices: source_indices)),
-    ", \"span\": ", serialize_span(span: field_node_span(n: field)),
-    "}")
-}
-
 fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: param_node_name_at(n: param, source_indices: source_indices)),
@@ -1328,7 +1295,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     let si = build_newline_index(file: s.path, source: s.content)
     FrontendPrepared {
       tokens: artifact.tokens,
-      annotations: artifact.annotations,
       newline_index: si,
     }
   )
@@ -1339,7 +1305,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     newline_indices: [],
     intern_table: intern_table,
     occurrence_allocator: occurrence_id_allocator_initial(),
-    annotations: source_annotation_graph_empty(),
   }, f: (acc, p) =>
     let parsed = parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
@@ -1351,11 +1316,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       intern_table: acc.intern_table,
       occurrence_allocator: acc.occurrence_allocator,
       env: dag_parse_environment
-    )
-    let bound = bind_annotations(
-      transport: parsed.occurrence_transport,
-      extents: parsed.source_extents,
-      captures: p.annotations
     )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
@@ -1370,7 +1330,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound),
     }
   )
   let parse_results = parsed.parse_results
@@ -1393,8 +1352,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     diagnostics: concat(parse_diagnostics, resolution.diagnostics),
     newline_indices: newline_indices,
     intern_table: parsed.intern_table,
-    occurrence_transport: occurrence_transport,
-    annotations: parsed.annotations
+    occurrence_transport: occurrence_transport
   }
 }
 
@@ -1495,12 +1453,10 @@ fn parse_revision_declarations_with_environment(
     newline_indices: [],
     intern_table: empty_intern_table(),
     occurrence_allocator: occurrence_id_allocator_initial(),
-    annotations: source_annotation_graph_empty(),
   }, f: (acc, s) =>
     let artifact = tokenize_artifact(source: s.content, file: s.path, env: environment)
     let p = FrontendPrepared {
       tokens: artifact.tokens,
-      annotations: artifact.annotations,
       newline_index: build_newline_index(file: s.path, source: s.content),
     }
     let parsed = parse_with_table_in_occurrence_scope(
@@ -1528,7 +1484,6 @@ fn parse_revision_declarations_with_environment(
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: acc.annotations,
     }
   )
   let parse_results = parsed.parse_results
@@ -1579,7 +1534,18 @@ fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget,
   )
 }
 
-fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
+// THE COMPILE LANE'S REFUSAL LINE. The location inside the parentheses is rendered by the ONE
+// AUTHORITY in 00_core.dag, in the units the author reads -- not by this site. This line and the
+// emitted CLI's `error[file:line:col]:` block describe the SAME diagnostic, and they used to
+// disagree: measured at the head, this printed `(m.dag:133-134)` while the CLI printed
+// `error[m.dag:9:5]` for one call-shape refusal. Same place, two units, and the author reading the
+// lane line (the CLI block is the part that gets truncated) cannot open the file where the refusal
+// says to. `source_indices` is threaded from the caller, which already holds it on the
+// PipelineResult; it is not rebuilt here, so there is one index and one renderer.
+fn interpreter_blocking_diagnostic_messages_with_source_indices(
+  diagnostics: List<ErrorNode>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
   diagnostics
     |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
     |> map(d => {
@@ -1587,22 +1553,31 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> Lis
       concat(
         diagnostic_to_message(d: d.diagnostic),
         " (",
-        span.file,
-        ":",
-        to_string(value: span.start),
-        "-",
-        to_string(value: span.end),
+        render_span_location(span: span, source_indices: source_indices),
         ")"
       )
     })
 }
 
+// THE PRE-EXISTING EXPORTED NAME, BODY UNCHANGED FROM origin/main -- byte-for-byte, so this commit
+// degrades NOTHING for its current callers. It is the offset-formatting renderer the five PRINTING
+// host sites still call today (cli_run/emit_host.rs three sites, target_invocation_host.rs two
+// sites): their lines look exactly as they did before this PR. THE TRUTH OF THAT CLAIM IS THIS
+// PARAGRAPH, not a promise: the located name below has no host caller at this commit.
+//
+// NO RUNG-DROP ROW IS CITED HERE, BECAUSE NO SUCH ROW EXISTS, and inventing one would be the worst
+// kind of citation: the fleet counts what is declared, and a cite to a row nobody declared counts
+// nothing. The debt is the ordinary kind a two-step landing leaves behind -- one exported name with
+// no host caller yet -- and its witness is this branch's own claim rows, which go green only when
 // The SUBJECT is the caller's fact, never this function's. Both arms once hardcoded
 // "v2 self-compile" while the generic compile path reached them, so a user compiling
 // their own fixture was told a compile they never ran had failed -- a false subject
 // costs the next reader's search, the stale-citation harm class.
 fn stage0_self_compile_refusal_message(subject: String, result: PipelineResult) -> String? {
-  let hard_messages = interpreter_blocking_diagnostic_messages(diagnostics: result.diagnostics)
+  let hard_messages = interpreter_blocking_diagnostic_messages_with_source_indices(
+    diagnostics: result.diagnostics,
+    source_indices: fold(result.newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
+  )
   if hard_messages |> count > 0 {
     Present {
       value: concat(
@@ -1623,6 +1598,7 @@ fn stage0_self_compile_refusal_message(subject: String, result: PipelineResult) 
 type ResolvedPipelineResult {
   graph: ResolvedGraph?
   diagnostics: List<ErrorNode>
+  provider_demands: List<GeneratedProviderDemand>
   source_indices: Map<String, NewlineIndex>
   complexity: ComplexityReport
   ownership: List<OwnershipProof>
@@ -1646,6 +1622,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       ResolvedPipelineResult {
         graph: none,
         diagnostics: frontend.diagnostics,
+        provider_demands: [],
         source_indices: empty_map(),
         complexity: empty_complexity_report(),
         ownership: [],
@@ -1656,7 +1633,8 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let pass = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let typed = pass.graph
       let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {
@@ -1677,6 +1655,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       ResolvedPipelineResult {
         graph: typed,
         diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
+        provider_demands: pass.provider_demands,
         source_indices: source_indices,
         complexity: complexity,
         ownership: ownership,

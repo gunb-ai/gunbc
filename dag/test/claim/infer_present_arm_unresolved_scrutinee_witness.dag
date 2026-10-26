@@ -1,6 +1,7 @@
 module test.claim.infer_present_arm_unresolved_scrutinee_witness
 
-import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_class_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -27,13 +28,15 @@ data present_arm_unresolved_green_source: String = "module probe_present_arm_unr
 
 data present_arm_unresolved_class: String = "PresentArmScrutineeTypeUnresolved"
 
-test fn a_present_arm_over_an_unresolved_scrutinee_refuses() -> Bool {
-  blocking_class_count_for(source: present_arm_unresolved_red_source, wanted_class: present_arm_unresolved_class) == 1
+test fn a_present_arm_over_an_unresolved_scrutinee_refuses() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: present_arm_unresolved_red_source, wanted_class: present_arm_unresolved_class), holds: fn(n) { n == 1 }))
 }
 
-test fn the_typed_producer_is_accepted() -> Bool {
-  blocking_class_count_for(source: present_arm_unresolved_green_source, wanted_class: present_arm_unresolved_class) == 0
-    && total_blocking_count_for(source: present_arm_unresolved_red_source) - total_blocking_count_for(source: present_arm_unresolved_green_source) == 1
+test fn the_typed_producer_is_accepted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: present_arm_unresolved_green_source, wanted_class: present_arm_unresolved_class), holds: fn(n) { n == 0 }),
+    census_delta_verdict(red: total_blocking_census(source: present_arm_unresolved_red_source), control: total_blocking_census(source: present_arm_unresolved_green_source), holds: fn(n) { n == 1 }),
+  ])
 }
 
 // THE ROUTE, NOT ONLY THE VERDICT (DESIGN section 3, the pairing obligation). The accepted shape is

@@ -5,16 +5,13 @@ import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable,
   StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_index,
 }
-import gunbc.guarantee_stall {
-  GuaranteeStall,
-  CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt,
-  BoundedPopulation, UncountedNotEnumerable,
-  stall_is_below_ceiling, stall_report_message,
-  every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size,
-  NextRungTrigger, climbs_when, climbs_when_awaiting,
-  TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent,
-  stall_trigger_admission, every_stall_trigger_is_admitted,
-}
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling, stall_report_message, every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size, NextRungTrigger, climbs_when, climbs_when_awaiting, stall_trigger_admission, every_stall_trigger_is_admitted }
+import gunbc.rung_climb { AwaitsOneGrounding, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent, GroundingUndeclared, GroundingDeclared }
+import std.types { List, NonEmptyStr }
+import std.algebra { fold_list, length }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
@@ -36,22 +33,22 @@ data control_stall: GuaranteeStall = GuaranteeStall {
   subject: "control.stall.subject",
   current: StructurallyGuaranteed,
   ceiling: StructurallyGuaranteed,
-  blocker: CannotClimbFurther { why: "control why" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   population: BoundedPopulation { members: ["control.stall.member"] },
   next_rung_trigger: climbs_when(capability: "control stall trigger")
 }
 
-// THE PERMANENCE FOLD READS THE BLOCKER, in both directions. Only CannotClimbFurther is permanent,
-// and a fold stuck at either constant is a different defect, so one assertion sees only one of them.
-test fn stall_permanence_follows_the_blocker() -> Bool {
+// THE BLOCKER FOLD READS THE ARM, in both directions. A stall is below its ceiling by definition, so
+// "cannot climb further" is not an arm here (gunbc.rung_climb ClimbBlocker): the control is the
+// grounding arm and the live row the unbuilt arm, and a fold stuck at either constant is a
+// different defect, so one assertion sees only one of them.
+test fn stall_blocker_fold_follows_the_arm() -> Bool {
   match control_stall.blocker {
-    CannotClimbFurther { why: _ } => true
-    AwaitsOneGrounding { grounding: _ } => false
     ClimbableButUnbuilt => false
-  } && match next_rung_trigger_enforcement_stall.blocker {
-    CannotClimbFurther { why: _ } => false
     AwaitsOneGrounding { grounding: _ } => true
+  } && match next_rung_trigger_enforcement_stall.blocker {
     ClimbableButUnbuilt => true
+    AwaitsOneGrounding { grounding: _ } => false
   }
 }
 
@@ -233,4 +230,42 @@ test fn the_report_names_the_asked_lane_only_when_one_is_carried() -> Bool {
   contains_text(haystack: asked, needle: "[asked: node://adhoc-00000000-000]")
     && contains_text(haystack: asked, needle: "the control capability arrives")
     && !contains_text(haystack: unasked, needle: "[asked:")
+}
+
+// A GROUNDING IS A TYPED REFERENCE THAT MUST RESOLVE, not prose beside the trigger capability. The
+// capability is carried once, by the trigger (DESIGN section 4b); the blocker can only point at an
+// authority, and a pointer to a declaration that does not exist is refused here.
+fn stall_grounding_refs(ss: List<GuaranteeStall>) -> List<DeclarationRef> {
+  fold_list(
+    xs: ss,
+    empty: [],
+    cons: fn(acc, s) {
+      match s.blocker {
+        AwaitsOneGrounding { grounding: GroundingDeclared { reference: r } } => concat(acc, [r])
+        AwaitsOneGrounding { grounding: GroundingUndeclared } => acc
+        ClimbableButUnbuilt => acc
+      }
+    },
+  )
+}
+
+test fn every_declared_grounding_of_a_rostered_stall_resolves() -> Bool {
+  let refs = stall_grounding_refs(ss: all_guarantee_stalls)
+  length(xs: refs) > 0 && cited_declaration_ref_refusal_count_live(refs: refs, pool_roots: witness_layer_roots) == 0
+}
+
+test fn a_declared_grounding_naming_no_declaration_is_refused() -> Bool {
+  let dangling = GuaranteeStall {
+    subject: "control.dangling",
+    current: Mitigatable,
+    ceiling: StructurallyGuaranteed,
+    blocker: AwaitsOneGrounding {
+      grounding: GroundingDeclared {
+        reference: DeclarationRef { module_path: "std.algebra" as NonEmptyStr, decl_name: "NoSuchDecl_Grounding_RED" as NonEmptyStr, field: WholeDeclaration },
+      },
+    },
+    population: BoundedPopulation { members: ["control"] },
+    next_rung_trigger: climbs_when(capability: "control capability arrives"),
+  }
+  cited_declaration_ref_refusal_count_live(refs: stall_grounding_refs(ss: [dangling]), pool_roots: witness_layer_roots) == 1
 }

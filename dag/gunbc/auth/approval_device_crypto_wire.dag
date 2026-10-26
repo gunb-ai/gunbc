@@ -2,7 +2,7 @@ module gunbc.auth.approval_device_crypto_wire
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.algebra { trim }
+import std.algebra { trim, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 import std.encoding { base64_decode, Standard }
 import extdeps.crypto.signature {
   VerifyingKey, SignatureBytes, SignedMessage, SignatureVerification, SignatureVerified, SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed,
@@ -20,6 +20,10 @@ import extdeps.apple.app_attest {
 }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text, json_field, FieldRead, FieldAbsent, FieldMalformed }
+import gunbc.auth.approval_device_crypto_realization {
+  DeviceCryptoObligation, DeviceCryptoHandlerReceipt, device_crypto_obligations,
+  P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder,
+}
 import gunbc.auth.approval_device_wire {
   WireDecode, WireDecoded, WireRefused, wire_object, wire_string, wire_member, wire_refused_at,
   decode_verifying_key_in, decode_signature_bytes_in, verifying_key_json, signature_bytes_json,
@@ -742,7 +746,7 @@ fn wire_counter(o: JsonValue, key: String) -> WireDecode<Int> {
 }
 
 fn decode_signed_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
-  match wire_parsed(text: text, allowed: ["verdict", "arm", "key", "message"]) {
+  match wire_parsed(text: text, allowed: echoed_allowed(own: ["verdict", "arm", "key", "message"])) {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
     WireDecoded { value: o } =>
       match decode_verifying_key_in(o: o, key: "key") {
@@ -757,7 +761,7 @@ fn decode_signed_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
 }
 
 fn decode_attested_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
-  match wire_parsed(text: text, allowed: ["verdict", "arm", "key_id", "public_key_point_b64url", "receipt_b64", "environment", "client_data"]) {
+  match wire_parsed(text: text, allowed: echoed_allowed(own: ["verdict", "arm", "key_id", "public_key_point_b64url", "receipt_b64", "environment", "client_data"])) {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
     WireDecoded { value: o } =>
       match wire_string(obj: o, key: "key_id") {
@@ -784,7 +788,7 @@ fn decode_attested_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
 }
 
 fn decode_asserted_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
-  match wire_parsed(text: text, allowed: ["verdict", "arm", "key_id", "public_key_point_b64url", "counter", "client_data"]) {
+  match wire_parsed(text: text, allowed: echoed_allowed(own: ["verdict", "arm", "key_id", "public_key_point_b64url", "counter", "client_data"])) {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
     WireDecoded { value: o } =>
       match wire_string(obj: o, key: "key_id") {
@@ -834,7 +838,7 @@ fn refusal_fields_of(f1: String?, f2: String?) -> WireDecode<RefusalFields> {
 }
 
 fn decode_refusal_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
-  match wire_parsed(text: text, allowed: ["verdict", "arm", "f1", "f2"]) {
+  match wire_parsed(text: text, allowed: echoed_allowed(own: ["verdict", "arm", "f1", "f2"])) {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
     WireDecoded { value: o } =>
       match wire_text_opt(o: o, key: "f1") {
@@ -855,7 +859,7 @@ fn decode_refusal_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
 // THE ANSWER CARRYING NO MEMBERS BEYOND VERDICT AND ARM: the order route's three answers, decoded strictly so an
 // unexpected member is refused, not ignored.
 fn decode_no_payload(text: String) -> WireDecode<DeviceCryptoPayload> {
-  match wire_parsed(text: text, allowed: ["verdict", "arm"]) {
+  match wire_parsed(text: text, allowed: echoed_allowed(own: ["verdict", "arm"])) {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
     WireDecoded { value: _ } => WireDecoded { value: NoPayload }
   }
@@ -901,7 +905,7 @@ fn decode_device_crypto_payload(verdict: DeviceCryptoVerdict, arm: String, text:
 
 // THE CLIENT'S READ OF AN ANSWER: the broker's one decode of what the service wrote with device_crypto_answer_json.
 fn decode_device_crypto_answer(text: String) -> WireDecode<DeviceCryptoAnswer> {
-  match wire_parsed(text: text, allowed: ["verdict", "arm", "key", "message", "key_id", "public_key_point_b64url", "receipt_b64", "environment", "client_data", "counter", "f1", "f2"]) {
+  match wire_parsed(text: text, allowed: echoed_allowed(own: ["verdict", "arm", "key", "message", "key_id", "public_key_point_b64url", "receipt_b64", "environment", "client_data", "counter", "f1", "f2"])) {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
     WireDecoded { value: o } =>
       match wire_string(obj: o, key: "verdict") {
@@ -916,6 +920,92 @@ fn decode_device_crypto_answer(text: String) -> WireDecode<DeviceCryptoAnswer> {
                   match decode_device_crypto_payload(verdict: verdict, arm: arm as String, text: text) {
                     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
                     WireDecoded { value: p } => WireDecoded { value: DeviceCryptoAnswer { verdict: verdict, arm: arm as String, payload: p } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ── THE RECEIPT ECHO: every 200 answer names the receipt its sidecar was admitted under ─────────
+// A caller cannot learn from the sidecar's startup line which binary answered it, so each answer repeats the startup
+// receipt (gunbc.auth.approval_device_crypto_realization DeviceCryptoHandlerReceipt): handler_identity, exact_revision
+// and the obligations covered, as three more members of the same flat object. The client joins them to what the
+// deploy provisioned (gunbc.auth.approval_device_crypto_realization device_crypto_echo_join) before it mints
+// anything, so an answer from any other binary, or from one whose receipt does not cover the population, is refused
+// rather than trusted. There is no GET route for the receipt: a receipt read apart from an answer would not be the
+// answer's.
+data device_crypto_echo_keys: List<String> = ["handler_identity", "exact_revision", "covered"]
+
+fn echoed_allowed(own: List<String>) -> List<String> {
+  fold(device_crypto_echo_keys, init: own, f: (acc, k) => acc |> list_push(k))
+}
+
+fn device_crypto_obligation_wire(o: DeviceCryptoObligation) -> String {
+  match o {
+    P256SignatureVerification => "P256SignatureVerification"
+    AppAttestAttestationVerification => "AppAttestAttestationVerification"
+    AppAttestAssertionVerification => "AppAttestAssertionVerification"
+    P256BasePointOrder => "P256BasePointOrder"
+  }
+}
+
+fn device_crypto_obligation_of_wire(w: String) -> DeviceCryptoObligation? {
+  match filter(device_crypto_obligations, o => device_crypto_obligation_wire(o: o) == w).first() {
+    Present { value: o } => Present { value: o }
+    Absent => none
+  }
+}
+
+type DeviceCryptoEchoedAnswer {
+  answer: DeviceCryptoAnswer
+  echo: DeviceCryptoHandlerReceipt
+}
+
+fn device_crypto_echoed_answer_json(a: DeviceCryptoAnswer, receipt: DeviceCryptoHandlerReceipt) -> String {
+  serialize_json(v: json_object(members: fold(payload_members(p: a.payload), init: [
+    json_kv(key: "verdict", value: json_string(s: device_crypto_verdict_wire(v: a.verdict))),
+    json_kv(key: "arm", value: json_string(s: a.arm)),
+    json_kv(key: "handler_identity", value: json_string(s: receipt.handler_identity as String)),
+    json_kv(key: "exact_revision", value: json_string(s: receipt.exact_revision as String)),
+    json_kv(key: "covered", value: json_string(s: join(map(receipt.covered, o => device_crypto_obligation_wire(o: o)), ","))),
+  ], f: (acc, m) => acc |> list_push(m))))
+}
+
+fn covered_of_wire(w: String) -> WireDecode<List<DeviceCryptoObligation>> {
+  if w == "" { WireDecoded { value: [] } }
+  else {
+    let named = map(split(w, separator: ","), n => device_crypto_obligation_of_wire(w: n))
+    if count(flat_map(named, n => match n { Absent => [1] Present { value: _ } => [] })) > 0 { WireRefused { at: "covered", cause: "names an obligation the device-crypto population does not have" } }
+    else { WireDecoded { value: flat_map(named, n => match n { Present { value: o } => [o] Absent => [] }) } }
+  }
+}
+
+// THE CLIENT'S READ OF AN ANSWER AND THE RECEIPT IT ECHOES. A missing echo member is refused at its name; the
+// covered list is read as the sidecar wrote it, partial or empty included, because judging coverage is the join's.
+fn decode_device_crypto_echoed_answer(text: String) -> WireDecode<DeviceCryptoEchoedAnswer> {
+  match decode_device_crypto_answer(text: text) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: answer } =>
+      match wire_parsed(text: text, allowed: echoed_allowed(own: ["verdict", "arm", "key", "message", "key_id", "public_key_point_b64url", "receipt_b64", "environment", "client_data", "counter", "f1", "f2"])) {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: o } =>
+          match wire_string(obj: o, key: "handler_identity") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: h } =>
+              match wire_string(obj: o, key: "exact_revision") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: r } =>
+                  match wire_text_opt(o: o, key: "covered") {
+                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                    WireDecoded { value: w } =>
+                      match covered_of_wire(w: match w { Present { value: t } => t Absent => "" }) {
+                        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                        WireDecoded { value: covered } => WireDecoded { value: DeviceCryptoEchoedAnswer {
+                          answer: answer,
+                          echo: DeviceCryptoHandlerReceipt { handler_identity: h, exact_revision: r, covered: covered },
+                        } }
+                      }
                   }
               }
           }

@@ -3,7 +3,6 @@ import std.types { String, List }
 import std.measure { Second }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
-import gunbc.live_deploy.emit { apply_intent_fragments, compose_host_script_mutate_steps }
 import extdeps.git.partial_clone { ObjectSourceCanServe, ObjectSourceServeAdmission }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
@@ -149,20 +148,4 @@ fn claim_oidc_now() -> Second? {
 
 fn apply_complete_object_source_serve() -> ObjectSourceServeAdmission {
   ObjectSourceCanServe { source: "/home/ghrunner/work/gunbc/gunbc" }
-}
-
-fn apply_emitted_steps_text_at(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> String {
-  pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_intent_fragments(
-    spec: spec,
-    effects: apply_empty_host_effects(spec: spec),
-    access: ci_deploy_srv1_access,
-    plan: plan,
-    cap_authorization: CapConvergeWithheld { cause: "apply emission projection" },
-    oidc_now: oidc_now,
-    object_source_serve: apply_complete_object_source_serve(),
-  )))
-}
-
-fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
-  apply_emitted_steps_text_at(spec: spec, plan: plan, oidc_now: claim_oidc_now())
 }

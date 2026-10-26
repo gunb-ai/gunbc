@@ -1,0 +1,11 @@
+module v2.test.claim.manual.ctor_tag_ne_red
+
+// RED (ii-b): `!=` reaches the same admission and must refuse too.
+
+import std.primitives { tag_of }
+
+type ProbeNe = N0 | N1 { a: Int }
+
+test fn ne_on_carrier_must_refuse() -> Bool {
+  tag_of(v: N0) != tag_of(v: N0)
+}

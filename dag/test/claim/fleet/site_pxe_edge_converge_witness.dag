@@ -1,14 +1,19 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.algebra { FreeSemigroup, non_empty_to_list, skip }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
+import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
-import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
-import extdeps.network.ipv4 { ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
+import gunbc.site_pxe_edge { SiteEdgeRoster, first_onboarding_known_client_mac, site_edge_served_loader_chain }
+import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, MacWrongOctetCount }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
@@ -22,17 +27,17 @@ import gunbc.fleet.site_pxe_edge_converge {
   SecureBootRefused,
   SecureBootVerdictBooted,
   SecureBootVerdictRejected,
-  ChainloaderSecureBootUnobserved,
-  ChainloaderSecureBootRefused,
-  ChainloaderSecureBootRejected,
+  SitePxeEdgeChainloaderObservation,
   ChainloaderDigestObserved,
   ChainloaderDigestUnobservable,
+  SitePxeEdgeProbe,
   SitePxeEdgeProbeHeld,
   SitePxeEdgeProbeObservedNegative,
   SitePxeEdgeProbeUnobservable,
   SitePxeEdgeProbeNotAttempted,
-  site_pxe_edge_desired_inputs,
   SitePxeEdgeApply,
+  SitePxeEdgeObserveOnly,
+  SitePxeEdgeRun,
   SitePxeEdgePostActivation,
   PostActivationNotRead,
   PostActivationDigestHeld,
@@ -44,38 +49,61 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_chainloader_pin,
   site_pxe_edge_chainloader_target,
   site_pxe_edge_chainloader_path,
+  SitePxeEdgeChainPin,
+  SitePxeEdgeChainPinned,
+  SitePxeEdgeChainUnpinned,
+  SitePxeEdgePinnedChain,
+  site_pxe_edge_chain_pins,
+  site_pxe_edge_arm64_ipxe_chain_pin,
+  site_pxe_edge_ubuntu_chain_pin,
+  site_pxe_edge_pinned_members,
+  site_pxe_edge_member_digest,
+  SitePxeEdgeMemberObservation,
+  SitePxeEdgeEmbeddedObservation,
+  SitePxeEdgeChainStanding,
+  SitePxeEdgeChainServable,
+  SitePxeEdgeChainWithheld,
+  SitePxeEdgeChainCause,
+  ChainUnpinned,
+  MemberUnobservable,
+  MemberDigestMismatch,
+  IpxeEmbeddedRevisionUnobservable,
+  IpxeEmbeddedRevisionMismatch,
+  IpxeBuildTargetMismatch,
+  IpxeBuildArchitectureMismatch,
+  IpxeInstalledFilenameMismatch,
+  IpxeSecureBootUnobserved,
+  IpxeSecureBootRefused,
+  IpxeSecureBootRejected,
+  site_pxe_edge_chain_standing,
+  site_pxe_edge_servable_chains,
+  site_pxe_edge_chain_cause_text,
   site_pxe_edge_gate_causes,
   site_pxe_edge_gate_cause_text,
   SitePxeEdgeGateCause,
-  SitePxeEdgeRun,
-  SitePxeEdgeObserveOnly,
-  site_pxe_edge_run_succeeded,
   TftpServerAddressUnparseable,
   SegmentNetworkUnparseable,
-  site_pxe_edge_segment_network,
-  site_pxe_edge_tftp_server_address,
   KnownClientMacUnparseable,
-  ChainloaderUnpinned,
-  ChainloaderUnobservable,
-  ChainloaderDigestMismatch,
-  ChainloaderNotTheIpxeArm64Build,
-  ChainloaderBuildTargetNotIpxeArm64,
-  ChainloaderArchitectureNotAarch64,
+  NoChainServable,
+  ServedPathCollision,
   DnsmasqBinaryAbsent,
   DnsmasqBinaryUnobservable,
   AdministratorPrivilegeUnobservable,
   AdministratorPrivilegeRefused,
+  site_pxe_edge_run_succeeded,
+  site_pxe_edge_segment_network,
+  site_pxe_edge_tftp_server_address,
   site_pxe_edge_digest_observation,
   site_pxe_edge_embedded_revision,
   SitePxeEdgeEmbeddedRevision,
   EmbeddedRevisionRead,
   EmbeddedRevisionUnobservable,
-  ChainloaderEmbeddedRevisionMismatch,
-  ChainloaderEmbeddedRevisionUnobservable,
+  site_pxe_edge_desired_inputs,
   site_pxe_edge_desired_files,
   site_pxe_edge_roster,
   site_pxe_edge_unit_file,
   site_pxe_edge_subject,
+  PackageHeld, PackageBinaryDigestUnread,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -85,6 +113,10 @@ data hex_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: hex_a })
 
 data digest_b: ContentHash = Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
+
+data edge_server: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)
+
+data segment: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)
 
 // SUPPLIED VALUE, not an observation: the raw stdout the grep prints for the pinned image, handed to the production
 // parser. No claim here reads the committed blob; the parser is what these tests discriminate.
@@ -116,19 +148,6 @@ fn with_secure_boot(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeCh
   SitePxeEdgeChainloaderPinned { build: build_with(filename: "snponly.efi", target: ipxe_arm64_efi_snponly, architecture: Aarch64, digest: digest_a, secure_boot: secure_boot) }
 }
 
-fn secure_boot_causes(secure_boot: SitePxeEdgeSecureBootStanding) -> List<SitePxeEdgeGateCause> {
-  site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: with_secure_boot(secure_boot: secure_boot),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  )
-}
-
 fn pinned(digest: ContentHash) -> SitePxeEdgeChainloaderPin {
   pinned_as(filename: "snponly.efi", digest: digest)
 }
@@ -151,140 +170,114 @@ fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderBuildRecei
   }
 }
 
-test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
-  length(site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: pinned(digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  )) == 0
+fn path_of(pin: SitePxeEdgeChainloaderPin) -> NonEmptyStr {
+  target_of(pin: pin).installed_filename
 }
 
-// TODAY'S STATE, on the real row: the chainloader is built and pinned (digest read from the pin itself;
-// re-derive it with `sha256sum artifacts/ipxe/snponly-arm64.efi`), so the pin no longer closes the gate. Supplying the file as observed
-// at the pinned digest and every probe held, exactly one cause remains: Secure Boot is unobserved.
-test fn the_landed_pin_is_pinned_and_closes_the_gate_only_on_secure_boot() -> Bool {
-  let causes = site_pxe_edge_gate_causes(
+// THE ARM CHAIN'S CAUSES for one supplied digest reading and one supplied revision reading of its member.
+fn ipxe_causes(pin: SitePxeEdgeChainloaderPin, digest: SitePxeEdgeChainloaderObservation, embedded: SitePxeEdgeEmbeddedRevision) -> List<SitePxeEdgeChainCause> {
+  causes_of(standing: site_pxe_edge_chain_standing(
+    pin: site_pxe_edge_arm64_ipxe_chain_pin(pin: pin),
+    observations: [SitePxeEdgeMemberObservation { served_path: path_of(pin: pin), digest: digest }],
+    embedded: [SitePxeEdgeEmbeddedObservation { served_path: path_of(pin: pin), revision: embedded }],
+  ))
+}
+
+fn causes_of(standing: SitePxeEdgeChainStanding) -> List<SitePxeEdgeChainCause> {
+  match standing {
+    SitePxeEdgeChainServable { chain: _ } => []
+    SitePxeEdgeChainWithheld { architecture: _, causes: cs } => non_empty_to_list(xs: cs)
+  }
+}
+
+fn servable_ipxe(pin: SitePxeEdgeChainloaderPin, digest: SitePxeEdgeChainloaderObservation) -> List<SitePxeEdgePinnedChain> {
+  site_pxe_edge_servable_chains(standings: [site_pxe_edge_chain_standing(
+    pin: site_pxe_edge_arm64_ipxe_chain_pin(pin: pin),
+    observations: [SitePxeEdgeMemberObservation { served_path: path_of(pin: pin), digest: digest }],
+    embedded: [SitePxeEdgeEmbeddedObservation { served_path: path_of(pin: pin), revision: landed_embedded() }],
+  )])
+}
+
+fn gate(servable: List<SitePxeEdgePinnedChain>, dnsmasq_binary: SitePxeEdgeProbe, privilege: SitePxeEdgeProbe) -> List<SitePxeEdgeGateCause> {
+  site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
-    pin: site_pxe_edge_chainloader_pin,
-    chainloader: ChainloaderDigestObserved { digest: landed_digest() },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
+    servable: servable,
+    collisions: [],
+    dnsmasq_binary: dnsmasq_binary,
+    privilege: privilege,
   )
-  length(causes) == 1 && (match causes.first() {
-    Present { value: c } => match c {
-      ChainloaderSecureBootUnobserved { why: _ } => true
-      TftpServerAddressUnparseable { error: _ } => false
-      SegmentNetworkUnparseable { error: _ } => false
-      KnownClientMacUnparseable { error: _ } => false
-      ChainloaderUnpinned { obligation: _ } => false
-      ChainloaderUnobservable { reason: _ } => false
-      ChainloaderDigestMismatch { observed: _, pinned: _ } => false
-      ChainloaderEmbeddedRevisionMismatch { embedded: _, pinned: _ } => false
-      ChainloaderEmbeddedRevisionUnobservable { reason: _ } => false
-      ChainloaderNotTheIpxeArm64Build { pinned: _, expected: _ } => false
-      ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
-      ChainloaderArchitectureNotAarch64 { architecture: _ } => false
-      ChainloaderSecureBootRefused { why: _ } => false
-      ChainloaderSecureBootRejected { evidence: _ } => false
-      DnsmasqBinaryAbsent { reason: _ } => false
-      DnsmasqBinaryUnobservable { reason: _ } => false
-      AdministratorPrivilegeUnobservable { reason: _ } => false
-      AdministratorPrivilegeRefused { reason: _ } => false
-    }
-    Absent => false
-  })
 }
 
 fn landed_digest() -> ContentHash {
   target_of(pin: site_pxe_edge_chainloader_pin).digest
 }
 
-// WHAT REMAINS CLOSED TODAY, ENUMERATED: with the file not yet on srv4 (digest unobservable), dnsmasq
-// and privilege not yet probed, the landed pin yields exactly the four causes that are still true GIVEN a supplied revision reading;
-// on the real route the srv4 revision read is also absent, which the next test counts as the fifth.
+test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
+  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded()) == []
+    && gate(servable: servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }), dnsmasq_binary: SitePxeEdgeProbeHeld, privilege: SitePxeEdgeProbeHeld) == []
+}
+
+// TODAY'S STATE, on the real row: the chainloader is built and pinned (re-derive with `sha256sum
+// artifacts/ipxe/snponly-arm64.efi`). Supplying the file as observed at the pinned digest, exactly one chain
+// cause remains, Secure Boot unobserved, and with no other chain servable the edge-wide gate closes on that.
+test fn the_landed_pin_is_pinned_and_closes_the_gate_only_on_secure_boot() -> Bool {
+  let causes = ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestObserved { digest: landed_digest() }, embedded: landed_embedded())
+  length(causes) == 1
+    && (match causes.first() {
+      Present { value: IpxeSecureBootUnobserved { why: _ } } => true
+      Present { value: _ } => false
+      Absent => false
+    })
+    && gate(servable: servable_ipxe(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestObserved { digest: landed_digest() }), dnsmasq_binary: SitePxeEdgeProbeHeld, privilege: SitePxeEdgeProbeHeld) == [NoChainServable]
+}
+
+// WHAT REMAINS CLOSED TODAY, ENUMERATED: with the file not yet on srv4, the ARM chain has two causes given a
+// supplied revision reading, and the edge-wide gate three (no chain servable, dnsmasq and privilege unprobed).
 test fn the_landed_pin_leaves_exactly_the_four_unanswered_causes() -> Bool {
-  let texts = map(site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: site_pxe_edge_chainloader_pin,
-    chainloader: ChainloaderDigestUnobservable { reason: "file not placed on srv4" },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeUnobservable { reason: "not probed" },
-    privilege: SitePxeEdgeProbeUnobservable { reason: "not probed" },
-  ), c => site_pxe_edge_gate_cause_text(cause: c))
-  length(texts) == 4
-    && contains(join(texts, "\n"), "chainloader-unobservable: file not placed on srv4\nchainloader-secure-boot-unobserved: ")
-    && contains(join(texts, "\n"), "\ndnsmasq-binary-unobservable: not probed\nadministrator-privilege-unobservable: not probed")
+  let chain_texts = map(ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestUnobservable { reason: "file not placed on srv4" }, embedded: landed_embedded()), c => site_pxe_edge_chain_cause_text(cause: c))
+  let gate_texts = map(gate(servable: [], dnsmasq_binary: SitePxeEdgeProbeUnobservable { reason: "not probed" }, privilege: SitePxeEdgeProbeUnobservable { reason: "not probed" }), c => site_pxe_edge_gate_cause_text(cause: c))
+  length(chain_texts) == 2
+    && contains(join(chain_texts, "\n"), "member-unobservable snponly.efi: file not placed on srv4\nipxe-secure-boot-unobserved: ")
+    && length(gate_texts) == 3
+    && contains(join(gate_texts, "\n"), "no-chain-servable: every served chain is withheld (see the chain lines)\ndnsmasq-binary-unobservable: not probed\nadministrator-privilege-unobservable: not probed")
 }
 
 test fn the_real_route_before_placement_has_five_causes() -> Bool {
-  length(site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: site_pxe_edge_chainloader_pin,
-    chainloader: ChainloaderDigestUnobservable { reason: "file not placed on srv4" },
-    embedded: EmbeddedRevisionUnobservable { reason: "file not placed on srv4" },
-    dnsmasq_binary: SitePxeEdgeProbeUnobservable { reason: "not probed" },
-    privilege: SitePxeEdgeProbeUnobservable { reason: "not probed" },
-  )) == 5
+  length(ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestUnobservable { reason: "file not placed on srv4" }, embedded: EmbeddedRevisionUnobservable { reason: "file not placed on srv4" })) == 3
+    && length(gate(servable: [], dnsmasq_binary: SitePxeEdgeProbeUnobservable { reason: "not probed" }, privilege: SitePxeEdgeProbeUnobservable { reason: "not probed" })) == 3
 }
 
-// Acceptance is the gate's absence of a Secure Boot cause: only an observed boot is accepted; unobserved, refused and an
-// observed rejection are all false yet close the gate with three different causes.
+// Acceptance is the absence of a Secure Boot cause: only an observed boot is accepted; unobserved, refused and an
+// observed rejection each withhold the chain with their own cause.
 test fn secure_boot_acceptance_is_derived_and_each_standing_has_its_own_cause() -> Bool {
-  length(secure_boot_causes(secure_boot: booted())) == 0
-    && secure_boot_causes(secure_boot: SecureBootUnobserved { why: "x" }) == [ChainloaderSecureBootUnobserved { why: "x" }]
-    && secure_boot_causes(secure_boot: SecureBootRefused { why: "y" }) == [ChainloaderSecureBootRefused { why: "y" }]
-    && secure_boot_causes(secure_boot: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "e" }) == [ChainloaderSecureBootRejected { evidence: "e" }]
+  let at = ChainloaderDigestObserved { digest: digest_a }
+  length(ipxe_causes(pin: with_secure_boot(secure_boot: booted()), digest: at, embedded: landed_embedded())) == 0
+    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootUnobserved { why: "x" }), digest: at, embedded: landed_embedded()) == [IpxeSecureBootUnobserved { why: "x" }]
+    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootRefused { why: "y" }), digest: at, embedded: landed_embedded()) == [IpxeSecureBootRefused { why: "y" }]
+    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "e" }), digest: at, embedded: landed_embedded()) == [IpxeSecureBootRejected { evidence: "e" }]
 }
 
+// HASH-MISMATCH RED: a placed member whose bytes differ from its pin withholds its chain with the member named,
+// and an edge with no other servable chain renders no config at all -- nothing is served.
 test fn mismatched_digest_closes_the_gate() -> Bool {
-  site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: pinned(digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_b },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  ) == [ChainloaderDigestMismatch { observed: digest_b, pinned: digest_a }]
+  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }, embedded: landed_embedded()) == [MemberDigestMismatch { served_path: "snponly.efi", observed: digest_b, pinned: digest_a }]
+    && length(servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b })) == 0
+    && (match site_pxe_edge_desired_inputs(servable: servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }), roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+      Absent => true
+      Present { value: _ } => false
+    })
 }
 
 test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool {
-  site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  ) == [ChainloaderNotTheIpxeArm64Build { pinned: "grubnetaa64.efi", expected: "snponly.efi" }]
+  let p = pinned_as(filename: "grubnetaa64.efi", digest: digest_a)
+  ipxe_causes(pin: p, digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded()) == [IpxeInstalledFilenameMismatch { pinned: "grubnetaa64.efi", expected: "snponly.efi" }]
 }
 
 test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
-  site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: pinned(digest: digest_a),
-    chainloader: ChainloaderDigestUnobservable { reason: "no such file" },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeObservedNegative { reason: "absent" },
-    privilege: SitePxeEdgeProbeHeld,
-  ) == [ChainloaderUnobservable { reason: "no such file" }, DnsmasqBinaryAbsent { reason: "absent" }]
+  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestUnobservable { reason: "no such file" }, embedded: landed_embedded()) == [MemberUnobservable { served_path: "snponly.efi", reason: "no such file" }]
+    && gate(servable: [], dnsmasq_binary: SitePxeEdgeProbeObservedNegative { reason: "absent" }, privilege: SitePxeEdgeProbeHeld) == [NoChainServable, DnsmasqBinaryAbsent { reason: "absent" }]
 }
 
 test fn sha256sum_line_parses_to_the_pinned_hash() -> Bool {
@@ -301,18 +294,37 @@ test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool {
   }
 }
 
+fn arm_chain(pin: SitePxeEdgeChainloaderPin) -> List<SitePxeEdgePinnedChain> {
+  match site_pxe_edge_arm64_ipxe_chain_pin(pin: pin) {
+    SitePxeEdgeChainPinned { chain: c } => [c]
+    SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => []
+  }
+}
+
+fn roster_of_chains(chains: List<SitePxeEdgePinnedChain>) -> SiteEdgeRoster? {
+  match chains.first() {
+    Absent => Absent
+    Present { value: h } => site_pxe_edge_roster(chains: FreeSemigroup { head: h, tail: skip(xs: chains, n: 1) }, known_client_macs: known_macs(), tftp_server_address: edge_server)
+  }
+}
+
 test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool {
   let t = target_of(pin: pinned(digest: digest_a))
-  match site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)), network: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)).first() {
+  match roster_of_chains(chains: arm_chain(pin: pinned(digest: digest_a))) {
     Absent => false
-    Present { value: cfg } =>
-      cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
-        && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
-        && contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
-        && contains(cfg.content, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi,srv4,192.168.1.196")
-        && contains(cfg.content, "tftp-root=/srv/gunbc-site-pxe-edge/tftp")
-        && length(split(cfg.content, "dhcp-boot=")) == 2
-        && site_pxe_edge_chainloader_path(target: t) as String == "/srv/gunbc-site-pxe-edge/tftp/snponly.efi"
+    Present { value: r } =>
+      match site_pxe_edge_desired_files(roster: r, network: segment, chains: arm_chain(pin: pinned(digest: digest_a))).first() {
+        Absent => false
+        Present { value: cfg } =>
+          cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
+            && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
+            && contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+            && contains(cfg.content, "pxe-service=tag:efi-arm64,tag:onboarding-known,11,\"gunbc efi-arm64\",snponly.efi,192.168.1.196")
+            && contains(cfg.content, "tftp-root=/srv/gunbc-site-pxe-edge/tftp")
+            && length(split(cfg.content, "pxe-service=")) == 2
+            && !contains(cfg.content, "dhcp-boot=")
+            && site_pxe_edge_chainloader_path(target: t) as String == "/srv/gunbc-site-pxe-edge/tftp/snponly.efi"
+      }
   }
 }
 
@@ -338,70 +350,33 @@ test fn an_unparseable_roster_closes_the_gate() -> Bool {
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
     roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } },
-    pin: pinned(digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
+    servable: arm_chain(pin: pinned(digest: digest_a)),
+    collisions: [],
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [KnownClientMacUnparseable { error: MacWrongOctetCount { observed_count: 5 } }]
 }
 
-// THE REFUSAL'S ADVICE IS FOLLOWABLE: pin exactly the `expected` the not-the-build refusal reports and
-// that cause is gone. Paired with a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate.
+// THE REFUSAL'S ADVICE IS FOLLOWABLE: pin exactly the `expected` the filename refusal reports and that cause is
+// gone. Paired with a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate.
 test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
-  let refused = site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  )
-  match refused.first() {
+  match ipxe_causes(pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded()).first() {
+    Present { value: IpxeInstalledFilenameMismatch { pinned: _, expected: e } } =>
+      length(ipxe_causes(pin: pinned_as(filename: e, digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded())) == 0
+    Present { value: _ } => false
     Absent => false
-    Present { value: c } =>
-      match c {
-        ChainloaderNotTheIpxeArm64Build { pinned: _, expected: e } =>
-          length(site_pxe_edge_gate_causes(
-            tftp_server: site_pxe_edge_tftp_server_address,
-            segment: site_pxe_edge_segment_network,
-            roster: first_onboarding_known_client_mac,
-            pin: pinned_as(filename: e, digest: digest_a),
-            chainloader: ChainloaderDigestObserved { digest: digest_a },
-            embedded: landed_embedded(),
-            dnsmasq_binary: SitePxeEdgeProbeHeld,
-            privilege: SitePxeEdgeProbeHeld,
-          )) == 0
-        TftpServerAddressUnparseable { error: _ } => false
-        SegmentNetworkUnparseable { error: _ } => false
-        KnownClientMacUnparseable { error: _ } => false
-        ChainloaderUnpinned { obligation: _ } => false
-        ChainloaderUnobservable { reason: _ } => false
-        ChainloaderDigestMismatch { observed: _, pinned: _ } => false
-        ChainloaderEmbeddedRevisionMismatch { embedded: _, pinned: _ } => false
-        ChainloaderEmbeddedRevisionUnobservable { reason: _ } => false
-        ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
-        ChainloaderArchitectureNotAarch64 { architecture: _ } => false
-        ChainloaderSecureBootUnobserved { why: _ } => false
-        ChainloaderSecureBootRefused { why: _ } => false
-        ChainloaderSecureBootRejected { evidence: _ } => false
-        DnsmasqBinaryAbsent { reason: _ } => false
-        DnsmasqBinaryUnobservable { reason: _ } => false
-        AdministratorPrivilegeUnobservable { reason: _ } => false
-        AdministratorPrivilegeRefused { reason: _ } => false
-      }
   }
 }
 
-fn observe_run(causes: List<SitePxeEdgeGateCause>) -> SitePxeEdgeRun {
-  observe_run_with_unit(causes: causes, unit_active: SitePxeEdgeProbeObservedNegative { reason: "ActiveState=inactive" })
+fn observe_run(chains: List<SitePxeEdgeChainStanding>, causes: List<SitePxeEdgeGateCause>) -> SitePxeEdgeRun {
+  observe_run_with_unit(chains: chains, causes: causes, unit_active: SitePxeEdgeProbeObservedNegative { reason: "ActiveState=inactive" })
 }
 
-fn observe_run_with_unit(causes: List<SitePxeEdgeGateCause>, unit_active: SitePxeEdgeProbe) -> SitePxeEdgeRun {
+fn observe_run_with_unit(chains: List<SitePxeEdgeChainStanding>, causes: List<SitePxeEdgeGateCause>, unit_active: SitePxeEdgeProbe) -> SitePxeEdgeRun {
   SitePxeEdgeRun {
     mode: SitePxeEdgeObserveOnly,
+    package: PackageHeld { binary: PackageBinaryDigestUnread { reason: "supplied" } },
+    chains: chains,
     gate_causes: causes,
     files: [],
     activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
@@ -413,6 +388,8 @@ fn observe_run_with_unit(causes: List<SitePxeEdgeGateCause>, unit_active: SitePx
 fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
   SitePxeEdgeRun {
     mode: SitePxeEdgeApply,
+    package: PackageHeld { binary: PackageBinaryDigestUnread { reason: "supplied" } },
+    chains: [],
     gate_causes: [],
     files: [],
     activation: SitePxeEdgeProbeHeld,
@@ -421,30 +398,34 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
   }
 }
 
-// OBSERVE REPORTS FINDINGS BUT REFUSES WHAT IT COULD NOT SEE: an unpinned chainloader is a finding
-// and observe succeeds; an undigestible chainloader or refused privilege is a failure to observe.
+fn withheld(cause: SitePxeEdgeChainCause) -> SitePxeEdgeChainStanding {
+  SitePxeEdgeChainWithheld { architecture: Aarch64, causes: FreeSemigroup { head: cause, tail: [] } }
+}
+
+// OBSERVE REPORTS FINDINGS BUT REFUSES WHAT IT COULD NOT SEE: an unpinned chain is a finding and observe
+// succeeds; an undigestible member or refused privilege is a failure to observe.
 test fn observe_succeeds_on_findings_and_refuses_what_it_could_not_see() -> Bool {
-  site_pxe_edge_run_succeeded(run: observe_run(causes: [ChainloaderUnpinned { obligation: "pin it" }]))
-    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [ChainloaderUnobservable { reason: "sha256sum exit=1" }]))
-    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
-    && site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeRefused { reason: "non-interactive sudo exit=1" }]))
+  site_pxe_edge_run_succeeded(run: observe_run(chains: [withheld(cause: ChainUnpinned { obligation: "pin it" })], causes: [NoChainServable]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(chains: [withheld(cause: MemberUnobservable { served_path: "snponly.efi", reason: "sha256sum exit=1" })], causes: [NoChainServable]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(chains: [], causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
+    && site_pxe_edge_run_succeeded(run: observe_run(chains: [], causes: [AdministratorPrivilegeRefused { reason: "non-interactive sudo exit=1" }]))
 }
 
 // THE RENDERED SEGMENT IS THE FLEET MODEL'S: site_pxe_edge_segment_network parses from
-// gunbc.fleet.fleet_intent_network operator_lan_segment, and the config built from it renders that network
-// in its dhcp-range line.
+// gunbc.fleet.fleet_intent_network operator_lan_segment, and the config built from it renders that network in its
+// dhcp-range line.
 test fn the_rendered_dhcp_range_is_the_parsed_fleet_segment() -> Bool {
   match site_pxe_edge_segment_network {
     Ipv4ParseFailed { error: _ } => false
-    Ipv4Parsed { address: network } => {
-      let t = target_of(pin: pinned(digest: digest_a))
-      match site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)), network: network).first() {
+    Ipv4Parsed { address: network } =>
+      match roster_of_chains(chains: arm_chain(pin: pinned(digest: digest_a))) {
         Absent => false
-        Present { value: cfg } =>
-          network == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)
-            && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
+        Present { value: r } =>
+          match site_pxe_edge_desired_files(roster: r, network: network, chains: []).first() {
+            Absent => false
+            Present { value: cfg } => network == segment && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
+          }
       }
-    }
   }
 }
 
@@ -454,9 +435,8 @@ test fn an_unparseable_tftp_server_address_closes_the_gate() -> Bool {
     tftp_server: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: 3 } },
     segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
-    pin: pinned(digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
+    servable: arm_chain(pin: pinned(digest: digest_a)),
+    collisions: [],
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [TftpServerAddressUnparseable { error: Ipv4WrongOctetCount { observed_count: 3 } }]
@@ -468,106 +448,79 @@ test fn an_unparseable_segment_network_closes_the_gate() -> Bool {
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: 1 } },
     roster: first_onboarding_known_client_mac,
-    pin: pinned(digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
+    servable: arm_chain(pin: pinned(digest: digest_a)),
+    collisions: [],
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [SegmentNetworkUnparseable { error: Ipv4WrongOctetCount { observed_count: 1 } }]
 }
 
-// PROVENANCE: an x86 build installed under the expected basename with a digest that agrees is still
-// refused -- the receipt's architecture is checked, not only the filename and digest.
-test fn a_non_arm64_build_with_the_expected_name_and_digest_is_refused() -> Bool {
+// A COLLISION REPORTED AGAINST THE ROSTER CLOSES THE GATE, with the path named.
+test fn a_served_path_collision_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
-    pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: ipxe_arm64_efi_snponly, architecture: X86_64, digest: digest_a) },
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
+    servable: arm_chain(pin: pinned(digest: digest_a)),
+    collisions: ["grub/grub.cfg"],
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
-  ) == [ChainloaderArchitectureNotAarch64 { architecture: X86_64 }]
+  ) == [ServedPathCollision { served_path: "grub/grub.cfg" }]
 }
 
-// PROVENANCE: a receipt naming a different iPXE build target is refused even when its installed name and
-// digest agree.
+// PROVENANCE: an x86 build installed under the expected basename with a digest that agrees is still refused on the
+// arm64 row -- the receipt's architecture is checked against the ROW's, not only the filename and digest.
+test fn a_non_arm64_build_with_the_expected_name_and_digest_is_refused() -> Bool {
+  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: ipxe_arm64_efi_snponly, architecture: X86_64, digest: digest_a) }, digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded())
+    == [IpxeBuildArchitectureMismatch { build: X86_64, chain: Aarch64 }]
+}
+
+// PROVENANCE: a receipt naming a different iPXE build target is refused even when its installed name and digest agree.
 test fn a_different_ipxe_build_target_is_refused() -> Bool {
   let x86_target = IpxeBuildTarget { platform: "bin-x86_64-efi", image: "snponly.efi" }
-  site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: x86_target, architecture: Aarch64, digest: digest_a) },
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  ) == [ChainloaderBuildTargetNotIpxeArm64 { pinned: x86_target, expected: ipxe_arm64_efi_snponly }]
+  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: x86_target, architecture: Aarch64, digest: digest_a) }, digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded())
+    == [IpxeBuildTargetMismatch { pinned: x86_target, expected: ipxe_arm64_efi_snponly }]
 }
 
-// POST-ACTIVATION BYTES: the gate's digest agreed, but the file digested after restart differs, so the
-// apply is refused; the same run with the post-activation digest holding succeeds.
+// POST-ACTIVATION BYTES: the gate's digest agreed, but the member digested after restart differs, so the apply is
+// refused with the member named; the same run with the digest holding succeeds.
 test fn a_post_activation_digest_that_differs_refuses_the_apply() -> Bool {
-  site_pxe_edge_post_activation(pin: pinned(digest: digest_a), observation: ChainloaderDigestObserved { digest: digest_b })
-      == PostActivationDigestDiffers { observed: digest_b, pinned: digest_a }
-    && !site_pxe_edge_run_succeeded(run: apply_run(post: site_pxe_edge_post_activation(pin: pinned(digest: digest_a), observation: ChainloaderDigestObserved { digest: digest_b })))
-    && site_pxe_edge_run_succeeded(run: apply_run(post: site_pxe_edge_post_activation(pin: pinned(digest: digest_a), observation: ChainloaderDigestObserved { digest: digest_a })))
+  let chains = arm_chain(pin: pinned(digest: digest_a))
+  let differs = site_pxe_edge_post_activation(chains: chains, observations: [SitePxeEdgeMemberObservation { served_path: "snponly.efi", digest: ChainloaderDigestObserved { digest: digest_b } }])
+  let holds = site_pxe_edge_post_activation(chains: chains, observations: [SitePxeEdgeMemberObservation { served_path: "snponly.efi", digest: ChainloaderDigestObserved { digest: digest_a } }])
+  differs == PostActivationDigestDiffers { served_path: "snponly.efi", observed: digest_b, pinned: digest_a }
+    && !site_pxe_edge_run_succeeded(run: apply_run(post: differs))
+    && site_pxe_edge_run_succeeded(run: apply_run(post: holds))
     && !site_pxe_edge_run_succeeded(run: apply_run(post: PostActivationUnobservable { reason: "sha256sum exit=1" }))
 }
 
-// OBSERVE SEMANTICS: a probe that ran and found no (dnsmasq absent, unit inactive) is a finding and
-// observe succeeds; a probe that could not run (dnsmasq or the unit read unobservable) refuses observe.
+// OBSERVE SEMANTICS: a probe that ran and found no (dnsmasq absent, unit inactive) is a finding and observe
+// succeeds; a probe that could not run (dnsmasq or the unit read unobservable) refuses observe.
 test fn observe_keeps_observed_negatives_and_refuses_unobservable_probes() -> Bool {
-  site_pxe_edge_run_succeeded(run: observe_run(causes: [DnsmasqBinaryAbsent { reason: "test -x dnsmasq exit=1" }]))
-    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [DnsmasqBinaryUnobservable { reason: "ssh leg refused" }]))
-    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
-    && site_pxe_edge_run_succeeded(run: observe_run_with_unit(causes: [], unit_active: SitePxeEdgeProbeObservedNegative { reason: "ActiveState=inactive" }))
-    && !site_pxe_edge_run_succeeded(run: observe_run_with_unit(causes: [], unit_active: SitePxeEdgeProbeUnobservable { reason: "ssh leg refused" }))
+  site_pxe_edge_run_succeeded(run: observe_run(chains: [], causes: [DnsmasqBinaryAbsent { reason: "test -x dnsmasq exit=1" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(chains: [], causes: [DnsmasqBinaryUnobservable { reason: "ssh leg refused" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(chains: [], causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
+    && site_pxe_edge_run_succeeded(run: observe_run_with_unit(chains: [], causes: [], unit_active: SitePxeEdgeProbeObservedNegative { reason: "ActiveState=inactive" }))
+    && !site_pxe_edge_run_succeeded(run: observe_run_with_unit(chains: [], causes: [], unit_active: SitePxeEdgeProbeUnobservable { reason: "ssh leg refused" }))
 }
 
-// A sudo -n THAT RAN AND ANSWERED NO IS A FINDING, NOT A FAILURE TO OBSERVE: observe reports it and
-// still succeeds, while a privilege leg that never executed refuses the observe run.
+// A sudo -n THAT RAN AND ANSWERED NO IS A FINDING, NOT A FAILURE TO OBSERVE.
 test fn an_executed_privilege_refusal_is_a_finding_observe_still_succeeds() -> Bool {
-  site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeRefused { reason: "non-interactive sudo exit=1 sudo: a password is required" }]))
-    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "remote words refused" }]))
+  site_pxe_edge_run_succeeded(run: observe_run(chains: [], causes: [AdministratorPrivilegeRefused { reason: "non-interactive sudo exit=1 sudo: a password is required" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(chains: [], causes: [AdministratorPrivilegeUnobservable { reason: "remote words refused" }]))
 }
 
-// GATE-OPEN IMPLIES THE CONFIG IS DERIVABLE: the desired inputs are derived once and read by the file
-// list, so an apply cannot pass a clean gate and still narrow to the unit file alone. The same four
-// facts that leave the gate empty leave the inputs Present, and a failure in any one leaves both closed.
+// GATE-OPEN IMPLIES THE CONFIG IS DERIVABLE: the same servable chains that leave the gate empty leave the inputs
+// Present, and no servable chain or a failed roster parse leaves both closed.
 test fn an_open_gate_implies_the_desired_config_inputs_exist() -> Bool {
-  let open_causes = site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: pinned(digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  )
-  let open_inputs = site_pxe_edge_desired_inputs(pin: pinned(digest: digest_a), roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
-  let unpinned_inputs = site_pxe_edge_desired_inputs(pin: SitePxeEdgeChainloaderUnpinned { obligation: "rebuild after invalidation" }, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
-  let unparsed_inputs = site_pxe_edge_desired_inputs(pin: pinned(digest: digest_a), roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
-  length(open_causes) == 0
+  let servable = servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })
+  let open_inputs = site_pxe_edge_desired_inputs(servable: servable, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let none_inputs = site_pxe_edge_desired_inputs(servable: [], roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let unparsed_inputs = site_pxe_edge_desired_inputs(servable: servable, roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  length(gate(servable: servable, dnsmasq_binary: SitePxeEdgeProbeHeld, privilege: SitePxeEdgeProbeHeld)) == 0
     && (match open_inputs { Present { value: _ } => true  Absent => false })
-    && (match unpinned_inputs { Present { value: _ } => false  Absent => true })
+    && (match none_inputs { Present { value: _ } => false  Absent => true })
     && (match unparsed_inputs { Present { value: _ } => false  Absent => true })
-}
-
-fn embedded_causes(embedded: SitePxeEdgeEmbeddedRevision) -> List<SitePxeEdgeGateCause> {
-  site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: pinned(digest: digest_a),
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: embedded,
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  )
 }
 
 // The revision is parsed from raw grep output by the one production fn; an unreadable or absent group is
@@ -609,24 +562,138 @@ test fn the_full_commit_is_not_decision_bearing() -> Bool {
     installed_filename: ipxe_arm64_efi_snponly.image,
     secure_boot: booted(),
   )
-  site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: SitePxeEdgeChainloaderPinned { build: other },
-    chainloader: ChainloaderDigestObserved { digest: digest_a },
-    embedded: landed_embedded(),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  ) == []
+  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: other }, digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded()) == []
 }
 
-// RED: an image whose embedded revision differs from the pinned one (including by a single character) closes
-// the gate with a typed mismatch; the matching image adds no revision cause; an unreadable one is its own cause.
+// RED: an image whose embedded revision differs from the pinned one (including by a single character) withholds
+// the chain with a typed mismatch; the matching image adds no revision cause; an unreadable one is its own cause.
 test fn an_embedded_revision_that_differs_from_the_pin_is_a_typed_refusal() -> Bool {
-  (embedded_causes(embedded: landed_embedded()) == [])
-    && (embedded_causes(embedded: site_pxe_edge_embedded_revision(success: true, output: "(gc51cb)\n"))
-        == [ChainloaderEmbeddedRevisionMismatch { embedded: "c51cb", pinned: "c51ca" }])
-    && (embedded_causes(embedded: site_pxe_edge_embedded_revision(success: false, output: ""))
-        == [ChainloaderEmbeddedRevisionUnobservable { reason: "grep found no embedded iPXE revision in the image" }])
+  let at = ChainloaderDigestObserved { digest: digest_a }
+  (ipxe_causes(pin: pinned(digest: digest_a), digest: at, embedded: landed_embedded()) == [])
+    && (ipxe_causes(pin: pinned(digest: digest_a), digest: at, embedded: site_pxe_edge_embedded_revision(success: true, output: "(gc51cb)\n"))
+        == [IpxeEmbeddedRevisionMismatch { embedded: "c51cb", pinned: "c51ca" }])
+    && (ipxe_causes(pin: pinned(digest: digest_a), digest: at, embedded: site_pxe_edge_embedded_revision(success: false, output: ""))
+        == [IpxeEmbeddedRevisionUnobservable { reason: "grep found no embedded iPXE revision in the image" }])
+}
+
+// THE ARM LOADER CHAIN IS UNCHANGED (control, merry-fox-82 condition 2): the roster derived from the LANDED iPXE pin
+// serves exactly one chain, for Aarch64, of exactly one member -- snponly.efi at the landed digest, unauthenticated
+// -- so the TFTP root still holds only that chainloader for this row. The digest is compared to the committed
+// artifacts/ipxe/snponly-arm64.efi's sha256, not to the pin.
+test fn the_landed_arm64_chain_is_the_single_ipxe_chainloader() -> Bool {
+  match roster_of_chains(chains: arm_chain(pin: site_pxe_edge_chainloader_pin)) {
+    Absent => false
+    Present { value: r } =>
+      length(r.served_chains.tail) == 0
+        && r.served_chains.head.architecture == Aarch64
+        && r.served_chains.head.client == UefiArm64
+        && network_boot_loader_chain_is_chainloader_only(chain: site_edge_served_loader_chain(chain: r.served_chains.head))
+        && (r.served_chains.head.members.head.member.served_path as String) == "snponly.efi"
+        && r.served_chains.head.members.head.member.verifier == NotAuthenticated
+        && content_hash_equal(left: r.served_chains.head.members.head.digest, right: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }))
+  }
+}
+
+// ── The amd64 row ────────────────────────────────────────────────────────────────────────────────
+
+data fixture_grub_cfg: String = "set timeout=1\nmenuentry \"gunbc autoinstall\" {\n  linux /vmlinuz ip=dhcp autoinstall ---\n  initrd /initrd\n}\n"
+
+fn amd64_pin(rendering: String?) -> SitePxeEdgeChainPin {
+  site_pxe_edge_ubuntu_chain_pin(
+    row_architecture: X86_64,
+    chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain,
+    pins: ubuntu_noble_amd64_network_boot_member_pins(),
+    rendered_configuration: rendering,
+    citation: "Ubuntu 24.04.3 amd64 fixture",
+  )
+}
+
+fn amd64_chain() -> SitePxeEdgePinnedChain? {
+  match amd64_pin(rendering: Present { value: fixture_grub_cfg }) {
+    SitePxeEdgeChainPinned { chain: c } => Present { value: c }
+    SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => Absent
+  }
+}
+
+// Every placed blob member of a chain observed at its pin (the bytes on srv4 are what the observer extracted).
+fn observed_at_pins(chain: SitePxeEdgePinnedChain) -> List<SitePxeEdgeMemberObservation> {
+  map(site_pxe_edge_pinned_members(chain: chain), m => SitePxeEdgeMemberObservation { served_path: m.member.served_path, digest: ChainloaderDigestObserved { digest: site_pxe_edge_member_digest(m: m) } })
+}
+
+fn with_one_differing(chain: SitePxeEdgePinnedChain, path: String) -> List<SitePxeEdgeMemberObservation> {
+  map(observed_at_pins(chain: chain), o => if (o.served_path as String) == path { SitePxeEdgeMemberObservation { served_path: o.served_path, digest: ChainloaderDigestObserved { digest: digest_b } } } else { o })
+}
+
+// THE PRODUCTION amd64 ROW WAITS ON EXACTLY ITS RENDERING: every blob member is pinned from the verified ISO, and
+// the row is Unpinned only because grub.cfg (which names the seed origin) is not yet bound.
+test fn the_landed_amd64_row_is_unpinned_only_on_its_rendered_configuration() -> Bool {
+  length(ubuntu_noble_amd64_network_boot_member_pins()) == 4
+    && (match skip(xs: site_pxe_edge_chain_pins, n: 1).first() {
+      Present { value: SitePxeEdgeChainUnpinned { architecture: a, obligation: o } } => a == X86_64 && contains(o as String, "grub/grub.cfg is rendered by the edge")
+      Present { value: _ } => false
+      Absent => false
+    })
+}
+
+// A ROW WHOSE MEDIA BUILDS FOR ANOTHER ARCHITECTURE IS UNPINNED: the amd64 media under an Aarch64 row.
+test fn an_arm64_row_over_amd64_media_is_unpinned() -> Bool {
+  match site_pxe_edge_ubuntu_chain_pin(row_architecture: Aarch64, chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain, pins: ubuntu_noble_amd64_network_boot_member_pins(), rendered_configuration: Present { value: fixture_grub_cfg }, citation: "fixture") {
+    SitePxeEdgeChainUnpinned { architecture: a, obligation: o } => a == Aarch64 && contains(o as String, "another architecture")
+    SitePxeEdgeChainPinned { chain: _ } => false
+  }
+}
+
+// X86 SERVABLE AS DATA: with a rendering bound, the amd64 chain whose four placed blobs read back at their pins is
+// servable, and a roster of both chains renders both pxe-service lines plus grub.cfg as a desired file.
+test fn an_amd64_chain_read_back_at_its_pins_is_served() -> Bool {
+  match amd64_chain() {
+    Absent => false
+    Present { value: c } =>
+      causes_of(standing: site_pxe_edge_chain_standing(pin: SitePxeEdgeChainPinned { chain: c }, observations: observed_at_pins(chain: c), embedded: [])) == []
+        && (match roster_of_chains(chains: arm_chain(pin: pinned(digest: digest_a)) + [c]) {
+          Absent => false
+          Present { value: r } => {
+            let files = site_pxe_edge_desired_files(roster: r, network: segment, chains: [c])
+            any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg" && f.content == fixture_grub_cfg)
+              && (match files.first() {
+                Present { value: cfg } =>
+                  contains(cfg.content, "pxe-service=tag:efi-x86_64,tag:onboarding-known,7,\"gunbc efi-x86_64\",bootx64.efi,192.168.1.196")
+                    && contains(cfg.content, "pxe-service=tag:efi-arm64,tag:onboarding-known,11,")
+                Absent => false
+              })
+          }
+        })
+  }
+}
+
+// HASH-MISMATCH RED ON THE x86 CHAIN: one member (the kernel) read back with other bytes withholds the amd64 chain
+// with that member named, the arm64 chain is unaffected, and the rendered config then offers x86 nothing.
+test fn an_amd64_member_with_other_bytes_withholds_only_its_chain() -> Bool {
+  match amd64_chain() {
+    Absent => false
+    Present { value: c } => {
+      let x86 = site_pxe_edge_chain_standing(pin: SitePxeEdgeChainPinned { chain: c }, observations: with_one_differing(chain: c, path: "vmlinuz"), embedded: [])
+      let arm = site_pxe_edge_chain_standing(
+        pin: site_pxe_edge_arm64_ipxe_chain_pin(pin: pinned(digest: digest_a)),
+        observations: [SitePxeEdgeMemberObservation { served_path: "snponly.efi", digest: ChainloaderDigestObserved { digest: digest_a } }],
+        embedded: [SitePxeEdgeEmbeddedObservation { served_path: "snponly.efi", revision: landed_embedded() }],
+      )
+      let served = site_pxe_edge_servable_chains(standings: [arm, x86])
+      length(causes_of(standing: x86)) == 1
+        && (match causes_of(standing: x86).first() {
+          Present { value: MemberDigestMismatch { served_path: p, observed: o, pinned: _ } } => (p as String) == "vmlinuz" && o == digest_b
+          Present { value: _ } => false
+          Absent => false
+        })
+        && length(served) == 1
+        && (match site_pxe_edge_desired_inputs(servable: served, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+          Absent => false
+          Present { value: i } =>
+            match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
+              Present { value: cfg } => !contains(cfg.content, "bootx64.efi") && !contains(cfg.content, "client-arch,7")
+              Absent => false
+            }
+        })
+    }
+  }
 }

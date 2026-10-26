@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.instrument_blind_spot_anti_correlated_with_severity
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data instrument_blind_spot_anti_correlated_with_severity: RecurringFailureMode = RecurringFailureMode {
   identity: "instrument_blind_spot_anti_correlated_with_severity" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an instrument loses its subject precisely as that subject becomes severe enough to act on, so the evidence required to justify a repair is destroyed by the condition the repair would fix** (INVALID STATE: an instrument accumulates observations and publishes them at a completion boundary; a subject that exceeds a limit never reaches that boundary; so the observation is dropped, and the instrument reports the subject as ABSENT rather than as LOST.",

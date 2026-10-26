@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.arithmetic_accepts_an_unconstrained_type_variable_operand
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data arithmetic_accepts_an_unconstrained_type_variable_operand: RecurringFailureMode = RecurringFailureMode {
   identity: "arithmetic_accepts_an_unconstrained_type_variable_operand" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a binary arithmetic operand whose type is an unconstrained TypeVariable is accepted. Two populations carry that type: a declared generic parameter (`fn zz_t<T>(x: T) -> Int { x + 1 }`) and the unsolved empty_list_element placeholder (`fold_list(xs: ms(), empty: [], cons: fn(acc, m) { acc })` then `modules |> first` and `Present { value: m } => m + 1`). Neither operand type admits `+`, so no type system that read its operands would accept either program.",

@@ -1,4 +1,5 @@
 module test.claim.markup_medium_convergence
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.live_tree { LiveTreeDisposition }
 import std.markup {
@@ -26,6 +27,20 @@ import extdeps.languages.markdown {
   commonmark_gfm_spellings,
   serialize_markdown_source_with,
 }
+import extdeps.languages.react_jsx {
+  jsx_markup_medium,
+  jsx_comment_open_sequence,
+  jsx_comment_close_sequence,
+}
+import extdeps.languages.html {
+  html_comment_open_sequence,
+  html_comment_close_sequence,
+}
+import std.markup { CommentGrammar, DeclaresDocument, NoDocumentGrammar }
+import std.types { NonEmptyStr }
+import std.algebra { Empty, FreeSemigroup }
+import std.languages { html_format, markdown_format }
+import std.optional { Present, Absent }
 import std.markdown {
   MarkdownDocument,
   ParagraphBlock,
@@ -47,8 +62,8 @@ fn md_medium() -> MarkupMedium {
 }
 
 test fn witness_same_fold_html_vs_md() -> Bool {
-  let html = serialize_fragment_with(frag: em_hi(), medium: html_markup_medium())
-  let md = serialize_fragment_with(frag: em_hi(), medium: md_medium())
+  let html = render_markup(serialize_fragment_with(frag: em_hi(), medium: html_markup_medium()))
+  let md = render_markup(serialize_fragment_with(frag: em_hi(), medium: md_medium()))
   (html == "<em>hi</em>") && (md == "*hi*") && (html != md)
 }
 
@@ -60,12 +75,21 @@ fn md_medium_underscore() -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
+    comment_grammar: CommentGrammar {
+      open: "<!-- ",
+      close: " -->",
+      terminators: FreeSemigroup { head: "-->", tail: Empty },
+    },
+    document_grammar: DeclaresDocument {
+    open: "<!DOCTYPE ",
+    name_end_whitespace: " " as NonEmptyStr,
+    },
   }
 }
 
 test fn witness_perturb_row_flips_output() -> Bool {
-  let base = serialize_fragment_with(frag: em_hi(), medium: md_medium())
-  let perturbed = serialize_fragment_with(frag: em_hi(), medium: md_medium_underscore())
+  let base = render_markup(serialize_fragment_with(frag: em_hi(), medium: md_medium()))
+  let perturbed = render_markup(serialize_fragment_with(frag: em_hi(), medium: md_medium_underscore()))
   (base == "*hi*") && (perturbed == "_hi_") && (base != perturbed)
 }
 
@@ -92,12 +116,21 @@ fn single_quote_medium() -> MarkupMedium {
     void_tags: [],
     void_rendering: OmitClose,
     raw_text_tags: [],
+    comment_grammar: CommentGrammar {
+      open: "<!-- ",
+      close: " -->",
+      terminators: FreeSemigroup { head: "-->", tail: Empty },
+    },
+    document_grammar: DeclaresDocument {
+    open: "<!DOCTYPE ",
+    name_end_whitespace: " " as NonEmptyStr,
+    },
   }
 }
 
 test fn witness_third_medium_is_one_row() -> Bool {
-  let html = serialize_fragment_with(frag: button_node(), medium: html_markup_medium())
-  let single_quote = serialize_fragment_with(frag: button_node(), medium: single_quote_medium())
+  let html = render_markup(serialize_fragment_with(frag: button_node(), medium: html_markup_medium()))
+  let single_quote = render_markup(serialize_fragment_with(frag: button_node(), medium: single_quote_medium()))
   (html == "<button class=\"primary\">Go</button>")
     && (single_quote == "<button class='primary'>Go</button>")
     && (html != single_quote)
@@ -154,3 +187,73 @@ test fn witness_xss_still_rejected_through_fold() -> Bool {
   }
 }
 
+// ── comment and doctype spellings: one home, checked by execution ──────────────────────────────
+//
+// These claims are the reason a medium may hold a comment spelling at all. The medium is the object a
+// serializer is allowed to consult, so the spelling has to live on it — but three media each typing
+// "<!-- " would be three homes for one fact (§3), which is exactly what happened when this change first
+// landed (review 82174 on #14351: markdown and jsx re-typed the HTML rows). They are imports now, and
+// these claims are the regression fence: they catch a copy returning, IF the copy diverges.
+
+fn html_medium() -> MarkupMedium { html_markup_medium() }
+fn md_medium_c() -> MarkupMedium { markdown_markup_medium(sp: commonmark_gfm_spellings) }
+
+// std.languages' html_format/markdown_format now READ html_comment_open_sequence /
+// html_comment_close_sequence, so these two claims are not what holds them equal — the import does.
+// What they are is the fence against the read being replaced by a fresh literal again (measured: C11
+// drifts the row and both go red). Stated precisely, because the distinction matters: a re-typed copy
+// carrying the SAME characters would stay green, so the claims pin AGREEMENT, and the read-relationship
+// itself is the import plus the comment in std/languages.dag. The Absent arms are not decoration either:
+// CommentSyntax fields are String?, so an absent delimiter is a real state of that type, and refusing it
+// is what keeps the claim about "the same characters" rather than "no worse than nothing".
+test fn witness_html_comment_rows_agree_with_std_languages() -> Bool {
+  match html_format.comment.block_start {
+    Present { value: o } =>
+      match html_format.comment.block_end {
+        Present { value: c } =>
+          o == html_comment_open_sequence && c == html_comment_close_sequence
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn witness_markdown_comment_rows_agree_with_std_languages() -> Bool {
+  match markdown_format.comment.block_start {
+    Present { value: o } =>
+      match markdown_format.comment.block_end {
+        Present { value: c } =>
+          o == html_comment_open_sequence && c == html_comment_close_sequence
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A Markdown comment IS the HTML comment (CommonMark 0.30 §6.6 / §4.2 pass both through as HTML
+// blocks), so the Markdown medium must report the SAME characters the HTML medium does. Not an
+// assertion that they are equal to a literal — an assertion that the two media cannot drift.
+test fn witness_markdown_comment_delimiters_are_the_html_ones() -> Bool {
+  let md = md_medium_c()
+  md.comment_grammar.open == html_medium().comment_grammar.open
+    && md.comment_grammar.close == html_medium().comment_grammar.close
+    && md.comment_grammar.terminators == html_medium().comment_grammar.terminators
+    && md.document_grammar == html_medium().document_grammar
+}
+
+// JSX is the case the split exists FOR, and it is now assertable in both directions. A "<!-- -->"
+// comment inside JSX is parsed as text, so JSX must NOT report HTML's delimiters. And a JSX file is an
+// ECMAScript module with no document type to declare, so it reports NoDocumentGrammar — which is a
+// POSITIVE assertion about an absence, something the old shape could not express: it had a Bool saying
+// false beside a doctype keyword it had to keep filled in and then call "not applicable" (review 82209
+// on #14351). Equality on a closed sum is the strongest form of that: the medium names its grammar and
+// nothing else.
+test fn witness_jsx_comment_delimiters_differ_and_declares_no_document() -> Bool {
+  let jx = jsx_markup_medium()
+  jx.comment_grammar.open == jsx_comment_open_sequence
+    && jx.comment_grammar.close == jsx_comment_close_sequence
+    && jx.comment_grammar.open != html_medium().comment_grammar.open
+    && jx.comment_grammar.close != html_medium().comment_grammar.close
+    && jx.document_grammar == NoDocumentGrammar
+    && html_medium().document_grammar != NoDocumentGrammar
+}

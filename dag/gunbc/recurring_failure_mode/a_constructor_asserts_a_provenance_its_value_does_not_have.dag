@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_constructor_asserts_a_provenance_its_value_does_not_have
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_constructor_asserts_a_provenance_its_value_does_not_have: RecurringFailureMode = RecurringFailureMode {
   identity: "a_constructor_asserts_a_provenance_its_value_does_not_have" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "A COPRODUCT WHOSE ARMS NAME WHERE A NUMBER CAME FROM IS A PROVENANCE CLAIM, AND AN ARM CHOSEN BECAUSE NO OTHER ARM FITS IS A FALSE ONE. The invalid state is a value sitting under a constructor that says somebody MEASURED it when the measurement was of a different subject -- and unlike a wrong number, it cannot be caught by checking the number, because the number may be perfectly correct for the thing that was actually measured.",

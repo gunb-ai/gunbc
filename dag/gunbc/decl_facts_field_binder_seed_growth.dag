@@ -1,0 +1,52 @@
+module gunbc.decl_facts_field_binder_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added so that the decl_facts reflection marshals a
+// declared field as the binder node v2.std.node_query already constructs and reads. Authored
+// because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated
+// hand growth in src/v1 a stop-line, and this change adds two hand items to
+// v1_compiler.coproduct_reflection.
+//
+// WHAT THE CHANGE IS. It covers exactly the field shapes of a declared RECORD in the type-declaration
+// arm of the reflection: a field with a type and no default, a field with a type and a literal
+// default, and an optional field (`f: T?`). Before it the host marshalled such a field as
+// `name -> bare type Atom`, while v2.std.node_query binder_node (the constructor) and
+// declared_field_list (the reader) speak `name -> binder Conj` carrying a BinderTypeEdge and an
+// optional BinderDefaultEdge, so declared_field_list read every decl_facts record as the empty list
+// and the host form carried no default. For those three shapes the bare form, and the node_query
+// fallback arm that read it (member_edge_type_name, recorded there as stage0 HOLD #13388), are
+// deleted in the same change. A field with a NON-LITERAL default is covered by no shape: the marshal
+// refuses it (review 83500).
+//
+// WHY IT SERVES v2. decl_facts is the reflection route v2 witnesses and generators read (the
+// derived Swift wire reader among them); the change removes a divergence between that route and the
+// compiler's own constructor, and adds no capability to the seed (gunbc.v1.v1_maintenance_standing
+// v1_seed_standing PURPOSE test).
+//
+// DEFAULTS FAIL CLOSED. A literal default is reflected as the BinderDefaultEdge target
+// ComputationNode { Value } over the atom of its own spelling, the one meaning binder_node gives that
+// edge. Every other default expression refuses at the marshal with a typed error: reflecting its
+// source text under the same edge would give BinderDefaultEdge two meanings by producer (DESIGN 3).
+//
+// OPTIONAL FIELDS. main deleted the Occupancy connective: an optional layer is a std.optional
+// Instantiation over a declaration-reference spine (v2.std.optional_layers wrap_type_node_occupancy).
+// optional_layer_node is the host's SECOND SPELLING of that constructor, because the host cannot call
+// a .dag function; it is admitted only with a differential claim
+// (test.claim.decl_facts_field_binder_witness the_marshalled_optional_field_is_wrap_type_node_occupancy_over_its_type,
+// with its RED) and deleted with the host walk (trigger below).
+//
+// HAND-ITEM DELTA: +3 citable declarations, all in v1_compiler.coproduct_reflection.
+data decl_facts_field_binder_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "core_edge_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "marshal_field_binder", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "optional_layer_node", field: WholeDeclaration }
+  ],
+  reason: "The host reflection is a host walk over the seed's own parsed nodes, so the shape it hands the substrate can only be produced where those nodes are readable. marshal_field_binder is the one place a declared field becomes a node, and core_edge_value mints the core-marker edge label the binder shape needs; both exist to make the host emit v2.std.node_query binder_node's shape rather than a second encoding of the same fact (DESIGN section 3).",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all three when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk, at which point the field binder is built by v2.std.node_query binder_node from the parsed declaration and the host marshals no declared field.",
+  current_boundary: "Confined to the type-declaration arm of the reflection: marshal_variant_arm_target calls marshal_field_binder once per field, and the only other change in the module is the import list. The Optional cardinality wrapper is the std.optional Instantiation node_query declared_field_cardinality_of_target decodes; generic instantiations are still reflected as their head atom (marshal_type_expr_ref, unchanged)."
+}

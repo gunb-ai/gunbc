@@ -3,13 +3,17 @@ module v2.test.lens_cost.nested_product
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { LinearCost, ProductCost, SizeVariable, cost_lens }
 import v2.std.node {
-  Occupancy,
+  Atom,
+  Loop,
+  LoopBoundEdge,
+  core_edge_label,
   ComputationNode,
   Edge,
   Node,
   Positional,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -19,18 +23,32 @@ data nested_product_body: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
+data nested_product_inner_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^nested_product_inner_measure_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
 data nested_product_inner: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: nested_product_body }
+    Edge { label: Positional, target: nested_product_body, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_product_inner_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
 
+data nested_product_input_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^nested_product_input_measure_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
 data nested_product_input: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: nested_product_inner }
+    Edge { label: Positional, target: nested_product_inner, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_product_input_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -39,8 +57,8 @@ test fn nested_product_claim_holds() -> Bool {
   match cost_lens(n: nested_product_input) {
     Holds { value: actual } =>
       actual == ProductCost {
-        lhs: LinearCost { variable: SizeVariable { source: nested_product_input } },
-        rhs: LinearCost { variable: SizeVariable { source: nested_product_inner } }
+        lhs: LinearCost { variable: SizeVariable { source: nested_product_input_measure } },
+        rhs: LinearCost { variable: SizeVariable { source: nested_product_inner_measure } }
       }
     _ => false
   }

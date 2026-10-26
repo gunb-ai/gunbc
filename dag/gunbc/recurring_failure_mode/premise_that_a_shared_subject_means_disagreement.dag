@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.premise_that_a_shared_subject_means_disagreement
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data premise_that_a_shared_subject_means_disagreement: RecurringFailureMode = RecurringFailureMode {
   identity: "premise_that_a_shared_subject_means_disagreement" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**A PREMISE THAT MAKES A COST LOOK CORRECT RENDERS THE REGION BEHIND IT UNEXAMINABLE, AND THE TELL IS REPEATED REPAIRS THAT ALL STOP AT THE SAME BOUNDARY.** The invalid state is a stated justification -- not a check, not a type -- that classifies an observed cost as intended, so no instrument is ever pointed at it and its absence looks like the absence of a problem rather than the absence of a measurement.",

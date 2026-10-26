@@ -1,0 +1,35 @@
+module gunbc.rung_drop.dissolved_tombstone_module_absence_judged_only_by_a_witness
+
+import std.types { NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-10-22. A Dissolved row's RemovalTombstone claims that the modules it names are gone
+// from the tree. std.removal_tombstone removal_tombstone_verdict judges that claim from an observer
+// of module presence, but nothing on the required path runs it over the roster: only
+// test.claim.rung_drop_superseded_standing_witness does, and a witness is not evaluated by a green
+// v2-bootstrap (gunbc.rung_drop v1_required_lanes_withdrawn). Until a gate runs it, a tombstone that
+// names a module still in the tree is caught only when that witness is executed.
+
+data dissolved_tombstone_module_absence_population: FreeSemigroup<String> = FreeSemigroup {
+  head: "every Dissolved row of gunbc.rung_drop.roster rung_drop_roster: its RemovalTombstone removed_modules, as judged by std.removal_tombstone removal_tombstone_verdict",
+  tail: []
+}
+
+data dissolved_tombstone_module_absence_judged_only_by_a_witness: RungDrop = RungDrop {
+  identity: "dissolved_tombstone_module_absence_judged_only_by_a_witness" as NonEmptyStr,
+  subject: "a Dissolved rung drop whose tombstone names a module still in the tree is accepted by the required path",
+  declared: "2026-10-22",
+  standing: Standing {
+    declaration: TypedDeclaration {
+      previous: MechanicallyPreventable,
+      temporary: Mitigatable,
+      reason: ReplacementStaged {
+        replacement: "a required-path gate row that runs removal_tombstone_verdict over every Dissolved roster row with a module-presence observer"
+      },
+      population: Enumerated { members: dissolved_tombstone_module_absence_population },
+      restoration_trigger: "THE CAPABILITY: the required path refuses a Dissolved rung drop whose RemovalTombstone names a module present in the tree. WHAT THAT MUST BE SUFFICIENT FOR: a tombstone that lies about a removal is refused on the pull request that adds it, not when a witness is next executed."
+    }
+  }
+}

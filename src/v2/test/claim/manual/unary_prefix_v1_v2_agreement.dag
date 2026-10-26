@@ -1,0 +1,163 @@
+module v2.test.claim.manual.unary_prefix_v1_v2_agreement
+
+// THE v1-vs-v2 AGREEMENT for prefix operators, precedent: this directory's
+// annotation_gap_v1_v2_agreement (one text through both parsers, identical shapes).
+// Lane adhoc-9102e2d6-92f; the defect and its cause are recorded at
+// gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator.
+//
+// WHY v2 OWES AGREEMENT AND NOT A RE-PLUMB (manager ruling, 2026-10-20): v2's unary production is
+// structurally closed -- dag_grammar_unary_expr_expr (v2.extdeps.languages.dag) is
+//   unary_expr -> '-' unary_expr | postfix_expr
+// so a prefix operand is a unary_expr or a postfix_expr and can never reach an infix row, at any
+// binding power. The defect lived where v1 parsed the operand at a hand-written min_bp that
+// admitted the infix rows; the fix declares the prefix powers beside the infix rows (PrefixOperatorSpec
+// in v1.std.syntax) and reads them, and this claim proves both parsers then agree on nesting for
+// every defect case and control. The two operator authorities (SyntaxSpec on the 5..20 scale, the
+// v2 grammar rows on the 1..7 scale) remain a named single-authority debt, recorded in the RFM row.
+//
+// The shape contract (I(a,b) infix, P(x) prefix, l leaf) is implemented once per parser in
+// unary_prefix_v1_canon_lib / unary_prefix_v2_canon_lib, because one file importing both
+// v1.std.core and v2.std.node collides on the bare names Node and Symbol.
+//
+//   gunbc run --source-root dag --source-root src --source-root src/v1 --source-root src/v2 \
+//     --claim-run \
+//     --entry src/v2/test/claim/manual/unary_prefix_v1_v2_agreement.dag \
+//     --function unary_prefix_v1_v2_agreement_reports
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure, ExitSuccess }
+import v2.test.claim.manual.unary_prefix_v1_canon_lib { v1_canon }
+import v2.test.claim.manual.unary_prefix_v2_canon_lib { v2_canon }
+
+// THE ARMS: the brief's defect cases and controls, the manager's ruling additions (!a && b, !a || b
+// beside the minus ones), and the boundary arms that pin the DECLARED powers by agreement with v2's
+// structurally closed postfix production -- cast (-a as T, -(a as T), a + b as T), field access
+// (-a.b -> P(F(l)), (-a).b -> F(P(l))) and pipe (-a |> f, !a |> f -> M(P(l))): each is a shape one
+// parser can get wrong if a postfix gate is a literal instead of a declared row. The 12-arm list
+// this replaces advertised a dot and pipe arm it did not contain and collapsed `.`/`|>`/`as` to a
+// leaf in both walkers, so those shapes agreed vacuously; all 32 arms (22 binding + 10 record-literal
+// from review 84349) are MEASURED (see the expected map) and the walkers key on node kind and head
+// identity.
+data agreement_arms: List<String> = [
+  "-1 - 2",
+  "-(1 - 2)",
+  "-a + b",
+  "-a * b",
+  "-1 < 0",
+  "-3",
+  "!a && b",
+  "!a || b",
+  "!a * b",
+  "a - b",
+  "a * b",
+  "-a < b",
+  "-a as T",
+  "-(a as T)",
+  "a + b as T",
+  "-a.b",
+  "(-a).b",
+  "a |> f",
+  "-a |> f",
+  "!a |> f",
+  "!a.b",
+  "-a.b + c",
+  "Foo { x: 1 }",
+  "Foo.Bar { x: 1 }",
+  "-Foo { x: 1 }",
+  "!Foo { x: 1 }",
+  "-Foo.Bar { x: 1 }",
+  "!Foo.Bar { x: 1 }",
+  "a + Foo { x: 1 }",
+  "a * Foo { x: 1 }",
+  "a + Foo.Bar { x: 1 }",
+  "a * Foo.Bar { x: 1 }"
+]
+
+// THE SHAPE EACH SIDE MUST PRODUCE, stated from v2's closed production and v1's declared table --
+// both sides must equal it, so agreement is checked against an authority and not merely between
+// two parsers that could agree on a wrong tree.
+// Every expectation below is MEASURED, not read off the tables: the shape probes
+// (git history of the WIP branch session/nimble-otter-791, lane receipt in the PR body) print this
+// canonical shape for each arm under each parser at this head, and both sides print the same string.
+// The cast arms are the ones the side chat's finding turned on: with the prefix gate declared at 18
+// but `as` left an undeclared literal at 13, v1 read `-a as T` as (-a) as T = C-outermost while v2's
+// closed postfix production kept -(a as T) -- the P-outermost shape stated here. Declaring `as` at 19
+// above the prefix rows is what makes v1 print P(C(l)) and agree. `a + b as T` is the other cast
+// control: v2 has always read the cast over the RIGHT operand (the tightest binding), and the
+// declared rows move v1 onto that meaning too.
+fn agreement_expected(body: String) -> String {
+  match body {
+    "-1 - 2" => "I(P(l),l)"
+    "-(1 - 2)" => "P(I(l,l))"
+    "-a + b" => "I(P(l),l)"
+    "-a * b" => "I(P(l),l)"
+    "-1 < 0" => "I(P(l),l)"
+    "-3" => "P(l)"
+    "!a && b" => "I(P(l),l)"
+    "!a || b" => "I(P(l),l)"
+    "!a * b" => "I(P(l),l)"
+    "a - b" => "I(l,l)"
+    "a * b" => "I(l,l)"
+    "-a < b" => "I(P(l),l)"
+    "-a as T" => "P(C(l))"
+    "-(a as T)" => "P(C(l))"
+    "a + b as T" => "I(l,C(l))"
+    "-a.b" => "P(F(l))"
+    "(-a).b" => "F(P(l))"
+    "a |> f" => "M(l)"
+    "-a |> f" => "M(P(l))"
+    "!a |> f" => "M(P(l))"
+    "!a.b" => "P(F(l))"
+    "-a.b + c" => "I(P(F(l)),l)"
+    // THE RECORD-LITERAL ARMS (review 84349). Strings MEASURED at the head with the "{" row
+    // declared at 18 (invocation jb773f4f1): the record itself is one F, each field init another
+    // (v1's ExprRecordLit/FieldInit arms mirror v2's CONJ-spine lowering). With the row left at 13
+    // these arms go RED: v1 prints the unary over the bare dot (`P(F(l))`) with the record split
+    // into a second statement, while v2 keeps `P(F(F(l)))` -- the exact divergence the review
+    // predicted and measurement confirmed (invocation jd1752ffb, 12 cells x both routes x both
+    // bindings). The pipe-right family (`a |> Foo { x: 1 }`) is NOT here: v1 reads it as a call
+    // (`l`), v2 as a call over a record (`M(l)`), and the row value does not move either side --
+    // a pre-existing divergence with zero corpus sites, declared in the PR body rather than
+    // pinned by an arm that could not pass.
+    "Foo { x: 1 }" => "F(F(l))"
+    "Foo.Bar { x: 1 }" => "F(F(l))"
+    "-Foo { x: 1 }" => "P(F(F(l)))"
+    "!Foo { x: 1 }" => "P(F(F(l)))"
+    "-Foo.Bar { x: 1 }" => "P(F(F(l)))"
+    "!Foo.Bar { x: 1 }" => "P(F(F(l)))"
+    "a + Foo { x: 1 }" => "I(l,F(F(l)))"
+    "a * Foo { x: 1 }" => "I(l,F(F(l)))"
+    "a + Foo.Bar { x: 1 }" => "I(l,F(F(l)))"
+    "a * Foo.Bar { x: 1 }" => "I(l,F(F(l)))"
+    _ => "?"
+  }
+}
+
+fn agreement_line(body: String) -> String {
+  let v1 = v1_canon(body: body)
+  let v2 = v2_canon(body: body)
+  let want = agreement_expected(body: body)
+  let verdict =
+    if v1 == v2 && v1 == want { "OK" }
+    else if v1 == v2 { "AGREE-WRONG" }
+    else { "DISAGREE" }
+  concat("ARM[", body, "] v1=", v1, " v2=", v2, " want=", want, " ", verdict)
+}
+
+fn agreement_is_right(body: String) -> Bool {
+  let v1 = v1_canon(body: body)
+  let v2 = v2_canon(body: body)
+  let want = agreement_expected(body: body)
+  v1 == v2 && v1 == want
+}
+
+test fn unary_prefix_v1_v2_agreement_reports() -> ProcessExit {
+  let bad = agreement_arms |> filter(b => !agreement_is_right(body: b))
+  let lines = agreement_arms |> map(b => agreement_line(body: b)) |> join(separator: "\n")
+  if (bad |> count) > 0 {
+    exit_failure(reason: concat("unary-prefix v1-vs-v2 agreement: ", to_string(value: bad |> count), " arm(s) refused to agree on the expected nesting\n", lines))
+  } else {
+    ExitSuccess
+  }
+}

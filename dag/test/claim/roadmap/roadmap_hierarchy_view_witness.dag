@@ -312,10 +312,17 @@ test fn witness_rendered_issue_page_links_only_canonical_routes() -> Bool {
 // The document shell around this (issue_detail_page_for, which adds the stylesheet and the launch
 // context) is not run here: measured 2026-10-05 it costs over twice a new claim's whole budget and
 // none of it is the chain.
+// A CLAIM WAS DELETED HERE. witness_nav_scan_walks_into_a_document_root wrapped a page in a Document and
+// asserted the scan still saw the same links. std.markup made MarkupDocument a type of its own (review
+// 82244 on #14351), so a Fragment cannot contain a document and the claim is no longer expressible: the
+// walk it exercised, and the arm it red-controlled (C6), were both deleted with the shape that made them
+// reachable. A scan of a whole page is a scan of its root Fragment, which the claims above already cover.
+
 fn hv_nav_hrefs(node: Fragment) -> List<String> {
   match node {
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
     Element { tag, attributes, children } =>
       concat(
         if tag == "a" { map(filter(attributes, a => a.name == "href"), a => a.value) } else { [] },

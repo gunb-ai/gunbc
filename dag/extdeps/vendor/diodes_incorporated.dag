@@ -1,0 +1,31 @@
+module extdeps.vendor.diodes_incorporated
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-10-19 from the footer of a Diodes Incorporated datasheet (BSS138, DS30144 Rev. 25 - 2,
+// June 2024): "© 2024 Copyright Diodes Incorporated. All Rights Reserved."
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.diodes.com/datasheet/download/BSS138.pdf"
+  }
+}
+
+data diodes_incorporated: Vendor<Hardware> = Vendor { legal_name: "Diodes Incorporated" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.diodes_incorporated",
+      decl_name: "diodes_incorporated",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

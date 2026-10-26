@@ -1,0 +1,35 @@
+module test.claim.runner.efi_signature_requirement_witness
+
+import std.types { Bool }
+import gunbc.secure_boot_observation { SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused, VendorCommandRejected }
+import gunbc.runner.runner_host_hardware_observation {
+  efi_signature_requirement, UnsignedEfiPermittedWhileSecureBootDisabled, SignedEfiRequired,
+}
+
+test fn w_only_observed_disabled_permits_unsigned_efi() -> Bool {
+  match efi_signature_requirement(standing: SecureBootDisabled) {
+    UnsignedEfiPermittedWhileSecureBootDisabled => true
+    SignedEfiRequired => false
+  }
+}
+
+test fn w_observed_enabled_requires_signed_efi() -> Bool {
+  match efi_signature_requirement(standing: SecureBootEnabled) {
+    SignedEfiRequired => true
+    UnsignedEfiPermittedWhileSecureBootDisabled => false
+  }
+}
+
+test fn w_never_asked_requires_signed_efi() -> Bool {
+  match efi_signature_requirement(standing: SecureBootUnobserved { reason: "never asked" }) {
+    SignedEfiRequired => true
+    UnsignedEfiPermittedWhileSecureBootDisabled => false
+  }
+}
+
+test fn w_refused_read_requires_signed_efi() -> Bool {
+  match efi_signature_requirement(standing: SecureBootRefused { refusal: VendorCommandRejected { detail: "bmc refused" } }) {
+    SignedEfiRequired => true
+    UnsignedEfiPermittedWhileSecureBootDisabled => false
+  }
+}

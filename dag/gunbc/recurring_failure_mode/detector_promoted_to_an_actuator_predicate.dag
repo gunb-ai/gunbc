@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.detector_promoted_to_an_actuator_predicate
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data detector_promoted_to_an_actuator_predicate: RecurringFailureMode = RecurringFailureMode {
   identity: "detector_promoted_to_an_actuator_predicate" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a correct detector is wired to a side effect that is only valid on a subset of what it detects** (INVALID STATE: a predicate that TRULY and COMPLETELY describes a condition is promoted to select the population an ACTUATOR runs over, without the additional clause that separates the members needing the action from the members for which the same condition is the CORRECT and HEALTHY state. The detection is not wrong at any point. The promotion is.",

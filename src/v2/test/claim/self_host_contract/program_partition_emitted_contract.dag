@@ -2,7 +2,7 @@ module v2.test.claim.self_host_contract.program_partition_emitted_contract
 
 import std.logic { Bool }
 import v2.compiler.program_partition { partition_user_semantic_types_from_root, PartitionUserSemanticType }
-import v2.std.node { Node, Edge, Authored, Positional, TypeNode, ComputationNode, Conj, Disj, Value, node_synthetic }
+import v2.std.node { Node, Edge, Authored, Positional, TypeNode, ComputationNode, Conj, Disj, Value, node_synthetic, NotADeclaration }
 
 // THE program_partition ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. The expected verdicts are
 // read off the authority: v2.compiler.program_partition partition_user_semantic_types_from_root
@@ -28,11 +28,11 @@ fn ppc_module_root() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^Shape }, target: ppc_type_node_disj() },
-      Edge { label: Authored { name: ^value_decl }, target: ppc_value_node() },
-      Edge { label: Authored { name: ^Shape }, target: ppc_type_node_conj() },
-      Edge { label: Positional, target: ppc_type_node_disj() },
-      Edge { label: Authored { name: ^Pair }, target: ppc_type_node_conj() }
+      Edge { label: Authored { name: ^Shape }, target: ppc_type_node_disj(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^value_decl }, target: ppc_value_node(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^Shape }, target: ppc_type_node_conj(), declaration: NotADeclaration },
+      Edge { label: Positional, target: ppc_type_node_disj(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^Pair }, target: ppc_type_node_conj(), declaration: NotADeclaration }
     ]
   )
 }

@@ -1,0 +1,103 @@
+module v2.test.claim.execution.rust_member_decl_emit_host_run
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_emit_host,
+  runtime_value_parse
+}
+import v2.compiler.eval { Inputs, inputs_root_only }
+import v2.extdeps.languages.rust {
+  rust_member_decl_inject_fault_runtime_row,
+  rust_member_decl_runtime_row
+}
+import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_with_runtime }
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, TargetSemanticDeclMember }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.std.host_run { HostLogicalRun }
+import v2.std.host_transport { TargetEmitHostRuntimeRow }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v2.std.text { String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE RUST ROWS' member output BUILT AND RUN: the structure with its associated constant is
+// emitted through emit_semantic_type_decl, cargo builds it with a driver that reads Point::VERSION, and the
+// five-byte verdict is the evidence. The fault driver compares against a wrong text and must NOT report
+// success, so a green run cannot come from a driver that never read the constant.
+
+fn rmd_probe_inputs() -> Inputs {
+  inputs_root_only(
+    root: Node {
+      kind: TypeNode { connective: Atom { identity: ^rust_member_decl_emit_host_run_probe } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    }
+  )
+}
+
+fn rmd_atom_type(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn rmd_point_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ binder_edge(name: ^x, type_node: rmd_atom_type(name: ^dag_binding_type_int)) ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rmd_target(row: TargetEmitHostRuntimeRow) -> TargetModel {
+  rust_semantic_decl_target_model_with_runtime(runtime_row: row)
+}
+
+fn rmd_source(row: TargetEmitHostRuntimeRow, imports: List<Symbol>) -> Medium<String> {
+  match emit_semantic_type_decl(
+    header: [],
+    documentation: target_semantic_decl_no_documentation(),
+    conformances: ConformancesTargetDefault,
+    imports: imports, members: [ TargetSemanticDeclMember { name: ^VERSION, literal: ^V1 } ],
+    name: ^Point,
+    params: [],
+    node: rmd_point_record(),
+    target: rmd_target(row: row),
+    realization_host: rmd_target(row: row)
+  ) {
+    Accepted { value: decl, diagnostics: _ } => Medium { carried: decl.carried, fidelity: Lossless }
+    Rejected { diagnostics: _ } => Medium { carried: "", fidelity: Lossless }
+  }
+}
+
+fn rmd_verdict_bytes(row: TargetEmitHostRuntimeRow, imports: List<Symbol>) -> String {
+  match run_emit_host(target: rmd_target(row: row), source: rmd_source(row: row, imports: imports), fixture_inputs: rmd_probe_inputs()) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+          match runtime_value_parse(target: rmd_target(row: row), stdout: stdout) {
+            Accepted { value: _, diagnostics: _ } => stdout.bytes
+            Rejected { diagnostics: _ } => ""
+          }
+        _ => ""
+      }
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+test fn rust_member_decl_builds_and_reads_its_constant() -> Bool {
+  rmd_verdict_bytes(row: rust_member_decl_runtime_row(), imports: [^serde]) == emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
+}
+
+test fn rust_member_decl_wrong_constant_is_not_reported_as_success() -> Bool {
+  rmd_verdict_bytes(row: rust_member_decl_inject_fault_runtime_row(), imports: [^serde]) == emit_host_octets_byte_string(octets: [0, 4, 0, 0, 0])
+}
+
+// An import the build cannot resolve must leave no success verdict: the `use` line is real source cargo reads.
+test fn rust_unresolvable_use_does_not_build() -> Bool {
+  rmd_verdict_bytes(row: rust_member_decl_runtime_row(), imports: [^gunbc_no_such_crate]) != emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
+}

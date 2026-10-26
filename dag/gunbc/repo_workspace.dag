@@ -83,6 +83,13 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       ]
     },
     WorkspaceFootprint {
+      provenance: RepoTool { display: "Contract-stamp evidence scratch", owner_module: "gunbc.witness.compiler_gate_contract_stamp" },
+      artifacts: [
+        WorkspaceArtifact { pattern: "/gunbc-contract-stamp-evidence.log", meaning: "per-attempt case transcript the contract-stamp evidence harness tees under the checkout when it is run locally; on a runner it lives under RUNNER_TEMP, so this is the second net for the local case", reason: SessionRuntimeState },
+        WorkspaceArtifact { pattern: "/gunbc-contract-stamp-evidence.fail", meaning: "per-attempt verdict channel the same harness writes beside that transcript; an empty one of these was once committed by a blanket add, and an empty file that reads as a pass is exactly the silent green this module refuses", reason: SessionRuntimeState }
+      ]
+    },
+    WorkspaceFootprint {
       provenance: CitedUpstream { display: "Claude Code session state", upstream: "code.claude.com" },
       artifacts: [
         WorkspaceArtifact { pattern: ".claude/", meaning: "per-clone agent session state", reason: SessionRuntimeState }

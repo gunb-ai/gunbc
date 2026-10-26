@@ -1,11 +1,14 @@
 module gunbc.recurring_failure_mode.arity_proxy_for_callability_misroutes_a_found_local
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data arity_proxy_for_callability_misroutes_a_found_local: RecurringFailureMode = RecurringFailureMode {
   identity: "arity_proxy_for_callability_misroutes_a_found_local" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed (rung 3) on the ExprCall bare-name path; the receipt states no next-rung trigger for this class on that path." as NonEmptyStr } },
 
   receipts: [
     "**a callability question answered by counting parameters** (the v1 seed's direct-call seam in `v1.compiler.infer` decided whether a body-scope binding could be applied by asking whether its resolved type had MORE THAN ZERO parameters, so every nullary function value -- `fn() -> R` as a parameter, a let-bound `fn() { ... }`, a parameter typed by an alias of `fn() -> R` -- was classified as not callable, discarded, and the call retried as a GLOBAL name.)",

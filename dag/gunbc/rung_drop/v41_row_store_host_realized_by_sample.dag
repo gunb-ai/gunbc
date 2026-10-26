@@ -1,7 +1,8 @@
 module gunbc.rung_drop.v41_row_store_host_realized_by_sample
 
 import std.types { String, List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 
 // DECLARED 4b(3) DROP (2026-09-23, ruling A from proud-deer-538). Until this row the published Engram
@@ -35,17 +36,13 @@ data v41_row_store_host_realized_by_sample: RungDrop = RungDrop {
 
   declared: "2026-09-23",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "the .dag encoder (v41_place_row / v41_store_bytes) emitted and built, encoding every published store itself",
     },
-    population: [
-      "the eight stores gunbc.spark.v41_row_store_encode v41_store_encode_plan derives (layers 1 and 14 x ranks 0..3), identified from v41_published_store_readings",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "the eight stores gunbc.spark.v41_row_store_encode v41_store_encode_plan derives (layers 1 and 14 x ranks 0..3), identified from v41_published_store_readings", tail: [] } },
     restoration_trigger: "THE CAPABILITY: the emitted .dag row-store encoder builds and encodes all eight published stores from the materialized shards, and their sha256 are the identities v41_identify_row_store admits. An emitted encoder that encodes only a sample, or only one rank, or whose output is compared to the host program's rather than replacing it, does not satisfy this; the host program and this row delete together when it does.",
-  }
+  } }
 }

@@ -45,3 +45,12 @@ service grep.Grep {
 fn grep_fixed_string_in_tree_argv(pattern: NonEmptyStr, file_name: NonEmptyStr, root: NonEmptyStr) -> List<String> {
   ["grep", "-r", "-H", "-F", pattern as String, concat("--include=", file_name as String), root as String]
 }
+
+// EVERY NONEMPTY LINE OF THE NAMED FILES UNDER A TREE, as `path:line` rows. `-E .` matches any line
+// holding a character, so a cgroup interface file that holds one value prints exactly one row per file,
+// keyed by the file's real path -- including a systemd-escaped one, which is printed output here and
+// never an argv word. The same walk as grep_fixed_string_in_tree_argv with a pattern that selects the
+// file's content rather than a needle.
+fn grep_nonempty_lines_in_tree_argv(file_names: List<NonEmptyStr>, root: NonEmptyStr) -> List<String> {
+  concat(["grep", "-r", "-H", "-E", "."], concat(map(file_names, n => concat("--include=", n as String)), [root as String]))
+}

@@ -1,0 +1,28 @@
+module v2.test.claim.coproduct_arm_order_hash_identity
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Authored, Conj, Disj, Edge, Node, Symbol, TypeNode, content_hash }
+import v2.test.claim.coproduct_fixture { cpf_arm }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS content_hash OVER A COPRODUCT, with the Disj SUPPLIED at that boundary. Lowering a
+// pipe chain in declaration order (v2.std.compilers.sugar sugar_collect_pipe_chain_variants) changes the
+// STORED child order of every coproduct; content identity must not move with it, because the hash
+// canonicalizes labeled edges (canonicalize_labeled_for_content_hash). The positive control is a
+// different arm SET, which must hash differently, so equality is not an artifact of a constant hash.
+
+fn caoh_coproduct(arms: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Disj }, children: arms, occurrence_id: OccurrenceSynthetic }
+}
+
+test fn coproduct_content_hash_is_independent_of_arm_order_holds() -> Bool {
+  content_hash(n: caoh_coproduct(arms: [ cpf_arm(name: ^Active), cpf_arm(name: ^Pending), cpf_arm(name: ^Revoked) ]))
+    == content_hash(n: caoh_coproduct(arms: [ cpf_arm(name: ^Revoked), cpf_arm(name: ^Active), cpf_arm(name: ^Pending) ]))
+}
+
+test fn coproduct_content_hash_separates_a_different_arm_set_holds() -> Bool {
+  content_hash(n: caoh_coproduct(arms: [ cpf_arm(name: ^Active), cpf_arm(name: ^Pending) ]))
+    != content_hash(n: caoh_coproduct(arms: [ cpf_arm(name: ^Active), cpf_arm(name: ^Revoked) ]))
+}

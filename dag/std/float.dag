@@ -1,0 +1,20 @@
+module std.float
+
+// THE LANGUAGE-FACING FLOAT TYPE: one declaration, in its own module, the way std.integer declares Int
+// (operator ruling H5, 2026-10-18, v2-namespace-cutover N3: kernel types mirror Int). What Float MEANS is
+// not restated here: std.kernel_type_denotation carries it as IEEE 754-2019 binary64, citing
+// extdeps.standards.ieee_754_2019, the de-fork of gunbc#12547. That change deleted the two forked
+// declarations (std.float Float = Float64 and v2.std.float Float = Binary64) so the meaning had one home;
+// this declaration does not reopen that fork. It is the name a module imports, and its meaning stays the
+// one cited row. Rust realizes it through a row keyed on THIS declaration (gunbc.rust_source_type_bindings,
+// RustF64). It has no kernel value-type node and no kernel roster row: v2 recognizes a Float-declared
+// position by this declaration's identity, and a roster spelling would give the authored name `Float` an
+// ambient binding (operator rule, 2026-10-18: one semantic declaration per type; compiler recognition and
+// target realization refer to it by identity; no ambient privilege from kernel registration). A node is
+// added when a consumer needs one -- a ruled float-literal home, or Float operators.
+//
+// OPAQUE ON PURPOSE. A binary64 value is not modeled structurally here, and what a float literal denotes is
+// a separate ruling: typing `0.1` as binary64 rounds it, and an implicit conversion may not lose information
+// (DESIGN section 4), so v2.compiler.infer still refuses a float literal as
+// infer_reason_float_literal_home_unruled.
+type Float

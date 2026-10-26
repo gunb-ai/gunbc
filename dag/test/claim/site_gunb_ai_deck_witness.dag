@@ -1,0 +1,27 @@
+module test.claim.site_gunb_ai_deck_witness
+
+// §5 — the executed witness for gunbc.site.gunb_ai_deck. render_deck produces the bytes deck_write writes,
+// and the parity claim compares them to dag/test/fixture/gunb_ai/live_cards.js, a committed copy of gunb.ai's
+// served assets/cards.js. The fixture is a file outside the typed rows, so it discriminates the
+// SegmentGenerated segments (the rows and the emitter). The RetainedJs blocks were copied from that same
+// file, so for them equality is a transcription check, not independent evidence.
+//
+// RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_deck_witness.dag --claim-run
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.site.gunb_ai_deck { render_deck }
+
+data served_deck_path: String = "dag/test/fixture/gunb_ai/live_cards.js"
+
+fn served_deck() -> String {
+  let read = Filesystem.Read(path: served_deck_path)
+  if read.success { read.content } else { "" }
+}
+
+// The fixture is checked non-empty first (a missing file reads "" and a render that is also "" would equal it).
+test fn witness_generated_deck_equals_the_served_deck() -> Bool {
+  string_contains(s: served_deck(), pattern: "gunb.ai · story-deck renderer")
+    && render_deck() == served_deck()
+}

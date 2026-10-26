@@ -14,6 +14,7 @@ import gunbc.instruments.emit_host_transport {
   node_http_await_ready,
   node_http_await_reaped
 }
+import std.host_text { chars }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

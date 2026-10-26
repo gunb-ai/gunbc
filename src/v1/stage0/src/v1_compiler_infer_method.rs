@@ -9,13 +9,14 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
-    algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
-    kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate,
-    ContainerSource,
+    algebra_templates_for_profile, all_algebra_profiles, collection_join_shape,
+    free_monoid_scalar_templates, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
+    AlgebraTypeTemplate, ContainerSource,
 };
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_infer_env::node_with_children;
 pub use crate::v1_compiler_infer_types::{
     make_container_type, make_kernel_record_field, make_kernel_record_type, make_map_type,
     nominal_type_ref,
@@ -88,7 +89,7 @@ pub fn algebra_param_templates_in(
 ) -> Rc<Vec<Rc<AlgebraTypeTemplate>>> {
     match Rc::new({
         let mut __result = Vec::new();
-        for t in crate::std_algebra::algebra_templates_for_profile(profile.clone())
+        for t in crate::std_algebra::algebra_templates_for_profile(profile)
             .iter()
             .cloned()
         {
@@ -180,11 +181,7 @@ pub fn derived_signature_and_return(
     names: Rc<Vec<String>>,
     method: String,
 ) -> Rc<BuiltinSignature> {
-    derived_signature(
-        names.clone(),
-        method.clone(),
-        algebra_named_return(method.clone()),
-    )
+    derived_signature(names, method.clone(), algebra_named_return(method.clone()))
 }
 
 pub fn derived_signature(
@@ -193,7 +190,7 @@ pub fn derived_signature(
     returns: Rc<Node>,
 ) -> Rc<BuiltinSignature> {
     Rc::new(BuiltinSignature {
-        params: pair_declared_names(names.clone(), algebra_param_templates(method.clone())),
+        params: pair_declared_names(names, algebra_param_templates(method)),
         returns: returns.clone(),
     })
 }
@@ -205,10 +202,7 @@ pub fn derived_signature_in(
     returns: Rc<Node>,
 ) -> Rc<BuiltinSignature> {
     Rc::new(BuiltinSignature {
-        params: pair_declared_names(
-            names.clone(),
-            algebra_param_templates_in(profile.clone(), method.clone()),
-        ),
+        params: pair_declared_names(names, algebra_param_templates_in(profile, method)),
         returns: returns.clone(),
     })
 }
@@ -262,16 +256,13 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_container_type(
-        "List".to_string(),
-        type_variable_node(id.clone()),
-    )
-    .ty
-    .clone()
+    crate::v1_compiler_infer_types::make_container_type("List".to_string(), type_variable_node(id))
+        .ty
+        .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_container_type("List".to_string(), element.clone())
+    crate::v1_compiler_infer_types::make_container_type("List".to_string(), element)
         .ty
         .clone()
 }
@@ -836,7 +827,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("toolchain_home_interference_probe".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: type_variable_node("toolchain_interference_probe_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.extdeps.toolchain_interference.ToolchainInterferenceProbeResult".to_string()),
     }));
                 __m.insert("emit_host_run_transport".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1035,7 +1026,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: type_variable_node("argv_materialization_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("std.operation_argv.ArgvMaterialization".to_string()),
     }));
                 __m.insert("shell_transport_operation_rows".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1097,7 +1088,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("xl1_primary_root_tap".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.workflow.legacy_repair_tap.Xl1PrimaryRootTap".to_string()),
     }));
                 __m.insert("extdeps_shape_transport_policy_facts_for_qualified_name".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1106,7 +1097,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("extdeps_module_facts_record".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.lens.extdeps_shape_transport_policy.ExtdepsModuleFacts".to_string()),
     }));
                 __m.insert("extdeps_qualified_name_resolves_in_derived_module_set".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1124,7 +1115,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("extdeps_external_authority_module_facts_record".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.lens.mandatory_tag.corpus_scan.ExtdepsExternalAuthorityModuleFacts".to_string()),
     }));
                 __m.insert("extdeps_external_authority_live_clean_tree_holds".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1210,7 +1201,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("compile_diagnostic_census_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.compile_diagnostic_census.CompileDiagnosticCensus".to_string()),
     }));
                 __m.insert("compile_dag_multi_module_fixture".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1234,7 +1225,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("multi_module_compile_fixture_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.instruments.multi_module_compile_fixture.MultiModuleCompileFixtureOutcome".to_string()),
     }));
                 __m.insert("claim_scope_dag_multi_module_fixture".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1263,7 +1254,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("claim_scope_fixture_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.instruments.multi_module_compile_fixture.ClaimScopeFixtureOutcome".to_string()),
     }));
                 __m.insert("compile_dag_reference_occurrence_binding_census".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1292,7 +1283,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("reference_occurrence_binding_census_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.instruments.reference_occurrence_binding_census.ReferenceOccurrenceBindingCensus".to_string()),
     }));
                 __m.insert("compile_dag_importer_resolved_call_edges".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1336,7 +1327,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: type_variable_node("resolved_call_edge_census_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.evaluation_store_address_census.ResolvedCallEdgeCensus".to_string()),
     }));
                 __m.insert("compile_dag_callsite_resolved_call_edges".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1380,7 +1371,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: type_variable_node("resolved_call_edge_census_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.evaluation_store_address_census.ResolvedCallEdgeCensus".to_string()),
     }));
                 __m.insert("builtin_function_registry_keys".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1437,7 +1428,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: type_variable_node("primitive_call_edge_census_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.primitive_egress.census.PrimitiveCallEdgeCensus".to_string()),
     }));
                 __m.insert("source_root_ingest_module_identities".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1451,7 +1442,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: type_variable_node("module_identity_population".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.required_lane_resolution_census.ModuleIdentityPopulation".to_string()),
     }));
                 __m.insert("required_floor_nominal_subject_module_identities".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1465,7 +1456,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: type_variable_node("module_identity_population".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.required_lane_resolution_census.ModuleIdentityPopulation".to_string()),
     }));
                 __m.insert("entry_closure_module_identities".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1484,7 +1475,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("module_identity_population".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.required_lane_resolution_census.ModuleIdentityPopulation".to_string()),
     }));
                 __m.insert("compile_dag_call_form_leaf_guard".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1528,7 +1519,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: type_variable_node("evaluation_store_address_production_coverage_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.evaluation_store_address_census.EvaluationStoreAddressProductionCoverage".to_string()),
     }));
                 __m.insert("parsed_import_statements".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1542,36 +1533,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("parsed_import_statements_result".to_string()),
-    }));
-                __m.insert("observe_declared_import_closure_symbol_binding".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "pool_roots".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "entry_path".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "consumer_module".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "symbol".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    })]),
-        returns: type_variable_node("declared_import_closure_binding_result".to_string()),
+        returns: crate::v1_compiler_infer_env::node_with_children(crate::v1_compiler_infer_types::nominal_type_ref("std.import_statement.ParsedImportObservation".to_string()), Rc::new(vec![crate::v1_compiler_infer_types::nominal_type_ref("v2.std.compilers.lexing.Token".to_string())])),
     }));
                 __m.insert("witness_layer_roots_compile_clean_check".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1592,7 +1554,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("consume_generated_artifact_drift_gate_receipt".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: type_variable_node("gate_receipt_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.ci.ci_gate.GateReceipt".to_string()),
     }));
                 __m.insert("test_migration_debt_module_names".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1625,7 +1587,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("cargo_manifest_bin_parse".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.stage0.stage0_cargo_manifest.CargoManifestBinParse".to_string()),
     }));
                 __m.insert("parse_roadmap_acceptance_event_history_jsonl".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1634,7 +1596,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("roadmap_acceptance_event_history_parse".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.roadmap.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryParse".to_string()),
     }));
                 __m.insert("project_roadmap_acceptance_event_history_from_authority_text_host".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1643,7 +1605,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: type_variable_node("roadmap_acceptance_history_projection".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.roadmap.roadmap_acceptance_history_projection.RoadmapAcceptanceHistoryProjection".to_string()),
+    }));
+                __m.insert("witness_deferral_freeze_population_census".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![]),
+        returns: string_type(),
     }));
                 __m.insert("commit_witness_claim_roster_unresolvable_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1881,7 +1847,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: type_variable_node("floor_discovery_source_inventory_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.workflow.floor_discovery_producer.FloorDiscoverySourceInventory".to_string()),
     }));
                 __m.insert("module_declaration_facts".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1956,9 +1922,24 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     }), Rc::new(BuiltinParam {
-        name: "qualified_name".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "qualified_names".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
         name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "type_names".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
     }),
     })]),
         returns: list_of_type_variable("decl_fact_elem".to_string()),
@@ -2135,7 +2116,7 @@ pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
 }
 
 pub fn builtin_param_names(name: String) -> Rc<Vec<String>> {
-    match builtin_signature(name.clone()) {
+    match builtin_signature(name) {
         Some(sig) => Rc::new({
             let mut __result = Vec::new();
             for p in sig.params.clone().iter().cloned() {
@@ -2192,15 +2173,82 @@ pub fn builtin_host_text_param_names(name: String) -> Rc<Vec<String>> {
     }
 }
 
-pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
+pub fn template_renders_receiver_elements_as_host_text(template: Rc<AlgebraFieldTemplate>) -> bool {
+    (template.clone() == crate::std_algebra::collection_join_shape())
+}
+
+pub fn builtin_receiver_self_host_text_param_names(name: String) -> Rc<Vec<String>> {
     match builtin_signature(name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(sig) => {
+            if {
+                let mut __found = false;
+                for t in crate::std_algebra::free_monoid_scalar_templates()
+                    .iter()
+                    .cloned()
+                {
+                    if (t.name.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in Rc::new({
+                        let mut __result = Vec::new();
+                        for p in sig.params.clone().iter().cloned() {
+                            if match (*p.ty.clone()).clone() {
+                                AlgebraTypeTemplate::ReceiverSelf => true,
+                                _ => false,
+                            } {
+                                __result.push(p);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(p.name.clone());
+                    }
+                    __result
+                })
+            } else {
+                Rc::new(vec![])
+            }
+        }
+    }
+}
+
+pub fn host_display_deferred_formals() -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<Vec<String>>>> = {
+            let mut __m = HashMap::new();
+            __m.insert("to_string".to_string(), Rc::new(vec!["value".to_string()]));
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Vec<String>>>>| c.clone())
+}
+
+pub fn builtin_host_display_deferred_param_names(name: String) -> Rc<Vec<String>> {
+    match v1_rt::map_get(&host_display_deferred_formals(), name.clone()) {
+        Some(names) => names.clone(),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
+    match builtin_signature(name) {
         Some(sig) => Some(sig.returns.clone()),
         std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
-    match infer_builtin_call_type(name.clone()) {
+    match infer_builtin_call_type(name) {
         Some(v) => v.clone(),
         std::option::Option::None => unit_type(),
     }

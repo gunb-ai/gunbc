@@ -1,21 +1,23 @@
 module gunbc.host.host_reset_boot_selection
 
-import product.host_identity { host_identity_eq }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_virtual_media_boot_selection }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host { ManagedHost }
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
+import gunbc.host.virtual_media_boot_selection {
+  VirtualMediaBootSelectionOutcome, decide_virtual_media_boot_selection,
+}
 
 // THE BOOT A RESET RETURNS THROUGH IS RESET POLICY, not a fact about the host, so it lives in the
 // reset arm rather than on gunbc.host.managed_host ManagedHost, and this is its one authority:
-// gunbc.host.host_reset_subject_roster reads it to decide membership and hands the same value to the run.
-// gunbc.host.managed_host_boot boot_selection decides the boot arm's own; neither admission reads the
-// other's, so the two cannot be cross-wired. A host with no selection here is not a reset subject,
-// however capable its controller.
-fn reset_boot_selection(host: ManagedHost) -> IpmiBootSelection? {
-  if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
-    Present { value: mtcollins1_virtual_media_boot_selection }
-  } else {
-    none
-  }
+// gunbc.host.host_reset_subject_roster reads it to decide membership and hands the same value to the
+// run. gunbc.host.managed_host_boot boot_selection decides the boot arm's own; the two call the same
+// generic derivation (decide_virtual_media_boot_selection) but each arm keeps its own fn, so the two
+// cannot be cross-wired. The selection is DERIVED from the host's facts — the platform architecture its
+// board establishes and the controller's virtual-media capability — with no host-name branch. A
+// host that cannot have a selection decided for it is not a reset subject, however capable its
+// controller.
+fn reset_boot_selection(
+  evidence: MegaRacOperationEvidence,
+  host: ManagedHost,
+) -> VirtualMediaBootSelectionOutcome {
+  decide_virtual_media_boot_selection(evidence: evidence, access: host.access)
 }

@@ -27,7 +27,7 @@ import std.measure {
   InstantIncomparable,
   compare_instants,
 }
-import std.observation { OccurrenceId }
+import std.observation { AttemptOccurrenceId }
 
 // TIME NOT ACCOUNTED FOR IS A SET COMPLEMENT, NEVER A SUBTRACTION. The tempting reduction is
 // parent_total minus the sum of the children, which produces a number under every input and is
@@ -56,7 +56,7 @@ fn clock_frame_eq(a: ClockFrame, b: ClockFrame) -> Bool {
 }
 
 type OccurrenceExtent {
-  occurrence: OccurrenceId
+  occurrence: AttemptOccurrenceId
   interval: OrderedClosedInterval<Nanosecond>
 }
 
@@ -72,7 +72,7 @@ fn nanosecond_le(a: Nanosecond, b: Nanosecond) -> Bool {
 // a begin and an end that never belonged to the same clock: incomparable endpoints refuse here
 // rather than producing a width.
 fn occurrence_extent(
-  occurrence: OccurrenceId,
+  occurrence: AttemptOccurrenceId,
   begin: ObservationInstant,
   end: ObservationInstant,
 ) -> ExtentConstruction {
@@ -87,7 +87,7 @@ fn occurrence_extent(
 }
 
 fn extent_from_ordered(
-  occurrence: OccurrenceId,
+  occurrence: AttemptOccurrenceId,
   begin: ObservationInstant,
   end: ObservationInstant,
 ) -> ExtentConstruction {
@@ -105,13 +105,13 @@ fn extent_from_ordered(
 // Unattributed is the complement of their union, so no instant is ever unattributed and attributed
 // at once.
 type AttributionSpan
-  = Attributed { occurrence: OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
-  | Unattributed { parent: OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
+  = Attributed { occurrence: AttemptOccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
+  | Unattributed { parent: AttemptOccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
 
 type AttributionResult
   = AttributionComputed { spans: List<AttributionSpan> }
-  | AttributionRefusedForeignClock { child: OccurrenceId }
-  | AttributionRefusedChildOutsideParent { child: OccurrenceId }
+  | AttributionRefusedForeignClock { child: AttemptOccurrenceId }
+  | AttributionRefusedChildOutsideParent { child: AttemptOccurrenceId }
   | AttributionRefusedImpossibleInterval { cause: NonEmptyStr }
 
 type ExtentInFrame {
@@ -144,7 +144,7 @@ type GapConstruction
   | GapReady { span: AttributionSpan }
   | GapRefused { cause: NonEmptyStr }
 
-fn gap_span(parent: OccurrenceId, from: Nat, to: Nat) -> GapConstruction {
+fn gap_span(parent: AttemptOccurrenceId, from: Nat, to: Nat) -> GapConstruction {
   if to > from {
     match closed_interval(low: nanosecond(count: from), high: nanosecond(count: to), le: nanosecond_le) {
       IntervalRefused { reason: r } => GapRefused { cause: r }
@@ -250,7 +250,7 @@ fn attribute_within(
 // under Nat arithmetic and is still carried, because "cannot happen" is a claim about today's
 // carrier and not a licence to fabricate a span if it ever does.
 type ExtentSpec {
-  occurrence: OccurrenceId
+  occurrence: AttemptOccurrenceId
   frame: ClockFrame
   start_ns: Nat
   width_ns: Nat

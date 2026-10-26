@@ -186,7 +186,7 @@ pub fn unit_variant_index_remove_binding(
 ) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
     Rc::new(v1_rt::map_keys(&binding_unit_variant_contributions(
         binding.clone(),
-        source_indices.clone(),
+        source_indices,
     )))
     .iter()
     .cloned()
@@ -210,8 +210,7 @@ pub fn unit_variant_index_add_binding(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
     {
-        let contributions =
-            binding_unit_variant_contributions(binding.clone(), source_indices.clone());
+        let contributions = binding_unit_variant_contributions(binding.clone(), source_indices);
         Rc::new(v1_rt::map_keys(&contributions))
             .iter()
             .cloned()
@@ -278,7 +277,7 @@ pub fn unit_variant_index_shadow_insert(
             ),
             std::option::Option::None => unit_variant_index.clone(),
         };
-        unit_variant_index_add_binding(cleared.clone(), binding.clone(), source_indices.clone())
+        unit_variant_index_add_binding(cleared, binding, source_indices.clone())
     }
 }
 
@@ -356,6 +355,7 @@ pub struct SymbolIndex {
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
     pub transparent_alias_rep: Rc<HashMap<String, String>>,
+    pub alias_cycles: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
     pub file_modules: Rc<HashMap<String, String>>,
     pub module_named_imports: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
@@ -372,6 +372,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
         transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
+        alias_cycles: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
         type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
         file_modules: v1_rt::rc_empty_map::<String, String>(),
         module_named_imports: v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
@@ -492,7 +493,7 @@ pub fn bare_occurrence_import(
 
 pub fn declared_module_owner(index: Rc<SymbolIndex>, name: String) -> Option<String> {
     {
-        let owner = qualified_all_but_last(name.clone());
+        let owner = qualified_all_but_last(name);
         match v1_rt::map_get(&index.module_named_imports.clone(), owner.clone()) {
             Some(_) => Some(owner.clone()),
             std::option::Option::None => std::option::Option::None,
@@ -517,47 +518,54 @@ pub fn bare_occurrence_import_terminal(
     mut __tco_loop_name: String,
     mut __tco_loop_fuel: i64,
 ) -> Rc<BareOccurrenceBinding> {
-    loop {
-        #[allow(unused_mut)]
-        let mut index = __tco_loop_index;
-        #[allow(unused_mut)]
-        let mut module_path = __tco_loop_module_path;
-        #[allow(unused_mut)]
-        let mut name = __tco_loop_name;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() == 0) {
-            break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
-        } else {
-            match symbol_index_named_import_source(index.clone(), module_path.clone(), name.clone())
-            {
-                Some(next) => {
-                    let __tco_0 = index;
-                    let __tco_1 = next.clone();
-                    let __tco_2 = name;
-                    let __tco_3 = v1_rt::int_sub(fuel, 1);
-                    __tco_loop_index = __tco_0;
-                    __tco_loop_module_path = __tco_1;
-                    __tco_loop_name = __tco_2;
-                    __tco_loop_fuel = __tco_3;
-                    continue;
-                }
-                std::option::Option::None => {
-                    match symbol_index_lookup(
-                        index.clone(),
-                        v1_rt::concat(
-                            v1_rt::concat(module_path.clone(), ".".to_string()),
-                            name.clone(),
-                        ),
-                    ) {
-                        Some(decl) => {
-                            break Rc::new(BareOccurrenceBinding::BareOccurrenceImportedByName {
-                                module_path: module_path.clone(),
-                                declaration: decl.clone(),
-                            });
-                        }
-                        std::option::Option::None => {
-                            break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut index = __tco_loop_index;
+            #[allow(unused_mut)]
+            let mut module_path = __tco_loop_module_path;
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() == 0) {
+                break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
+            } else {
+                match symbol_index_named_import_source(
+                    index.clone(),
+                    module_path.clone(),
+                    name.clone(),
+                ) {
+                    Some(next) => {
+                        let __tco_0 = index;
+                        let __tco_1 = next.clone();
+                        let __tco_2 = name;
+                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                        __tco_loop_index = __tco_0;
+                        __tco_loop_module_path = __tco_1;
+                        __tco_loop_name = __tco_2;
+                        __tco_loop_fuel = __tco_3;
+                        continue;
+                    }
+                    std::option::Option::None => {
+                        match symbol_index_lookup(
+                            index.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(module_path.clone(), ".".to_string()),
+                                name.clone(),
+                            ),
+                        ) {
+                            Some(decl) => {
+                                break Rc::new(
+                                    BareOccurrenceBinding::BareOccurrenceImportedByName {
+                                        module_path: module_path.clone(),
+                                        declaration: decl.clone(),
+                                    },
+                                );
+                            }
+                            std::option::Option::None => {
+                                break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
+                            }
                         }
                     }
                 }
@@ -704,19 +712,46 @@ pub fn symbol_index_insert(
     qualified_name: String,
     resolved: Rc<Node>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = v1_rt::rc_map_insert(
             index.entries.clone(),
             qualified_name.clone(),
             resolved.clone(),
-        ),
-        global_bare: index.global_bare.clone(),
-        services: index.services.clone(),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
+        );
+        let __rb_1_0 = index.global_bare.clone();
+        let __rb_2_0 = index.services.clone();
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.alias_cycles.clone();
+        let __rb_5_0 = index.type_head_exposures.clone();
+        let __rb_6_0 = index.file_modules.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.alias_cycles = __rb_4_0;
+                __rb_r.type_head_exposures = __rb_5_0;
+                __rb_r.file_modules = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    alias_cycles: __rb_4_0,
+                    type_head_exposures: __rb_5_0,
+                    file_modules: __rb_6_0,
+                    module_named_imports: __rb_7_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn symbol_index_insert_decl(
@@ -724,26 +759,53 @@ pub fn symbol_index_insert_decl(
     module_path: String,
     binding: Rc<TypeBinding>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = v1_rt::rc_map_insert(
             index.entries.clone(),
             v1_rt::concat(
                 v1_rt::concat(module_path.clone(), ".".to_string()),
                 binding.name.clone(),
             ),
             binding.resolved.clone(),
-        ),
-        global_bare: symbol_index_track_global_bare(
+        );
+        let __rb_1_0 = symbol_index_track_global_bare(
             index.global_bare.clone(),
             module_path.clone(),
             binding.clone(),
-        ),
-        services: index.services.clone(),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
+        );
+        let __rb_2_0 = index.services.clone();
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.alias_cycles.clone();
+        let __rb_5_0 = index.type_head_exposures.clone();
+        let __rb_6_0 = index.file_modules.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.alias_cycles = __rb_4_0;
+                __rb_r.type_head_exposures = __rb_5_0;
+                __rb_r.file_modules = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    alias_cycles: __rb_4_0,
+                    type_head_exposures: __rb_5_0,
+                    file_modules: __rb_6_0,
+                    module_named_imports: __rb_7_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn symbol_index_insert_service(
@@ -752,38 +814,49 @@ pub fn symbol_index_insert_service(
     module_path: String,
     item: Rc<Node>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: index.entries.clone(),
-        global_bare: index.global_bare.clone(),
-        services: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = index.entries.clone();
+        let __rb_1_0 = index.global_bare.clone();
+        let __rb_2_0 = v1_rt::rc_map_insert(
             index.services.clone(),
             name.clone(),
             Rc::new(ServiceCensusEntry {
                 module_path: module_path.clone(),
                 item: item.clone(),
             }),
-        ),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
-}
-
-pub fn empty_scope() -> Rc<Scope> {
-    Rc::new(Scope {
-        locals: v1_rt::rc_empty_map::<String, Rc<ScopeBinding>>(),
-    })
-}
-
-pub fn scope_lookup(scope: Rc<Scope>, name: String) -> Option<Rc<ScopeBinding>> {
-    v1_rt::map_get(&scope.locals.clone(), name.clone())
-}
-
-pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
-    Rc::new(Scope {
-        locals: v1_rt::rc_map_insert(scope.locals.clone(), binding.name.clone(), binding.clone()),
-    })
+        );
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.alias_cycles.clone();
+        let __rb_5_0 = index.type_head_exposures.clone();
+        let __rb_6_0 = index.file_modules.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.alias_cycles = __rb_4_0;
+                __rb_r.type_head_exposures = __rb_5_0;
+                __rb_r.file_modules = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    alias_cycles: __rb_4_0,
+                    type_head_exposures: __rb_5_0,
+                    file_modules: __rb_6_0,
+                    module_named_imports: __rb_7_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -840,10 +913,6 @@ pub fn source_tree_of(file: String) -> String {
             }
         }
     }
-}
-
-pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
-    (source_tree_of(c.existing_site.clone()) != source_tree_of(c.incoming_site.clone()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1181,8 +1250,8 @@ pub fn merge_type_env_cache_guarded(
         let str_union = guarded_union_str_bindings(
             base.str_bindings.clone(),
             overlay.str_bindings.clone(),
-            import_path.clone(),
-            conflicts.clone(),
+            import_path,
+            conflicts,
         );
         Rc::new(GuardedTypeEnvCacheMerge {
             cache: Rc::new(TypeEnvCache {
@@ -1206,27 +1275,31 @@ pub fn merge_type_env_cache_guarded(
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
-    Rc::new(TypeEnvCache {
-        deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
-        cycle_set_str: v1_rt::rc_map_merge(
-            base.cycle_set_str.clone(),
-            overlay.cycle_set_str.clone(),
-        ),
-        variant_locals: v1_rt::rc_map_merge(
-            base.variant_locals.clone(),
-            overlay.variant_locals.clone(),
-        ),
-    })
-}
-
-pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
-        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
-            Some(binding) => Some(binding.clone()),
-            std::option::Option::None => std::option::Option::None,
-        },
-        std::option::Option::None => std::option::Option::None,
+    {
+        let __rb_0_0 = v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone());
+        let __rb_1_0 = v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone());
+        let __rb_2_0 =
+            v1_rt::rc_map_merge(base.cycle_set_str.clone(), overlay.cycle_set_str.clone());
+        let __rb_3_0 =
+            v1_rt::rc_map_merge(base.variant_locals.clone(), overlay.variant_locals.clone());
+        let mut __rb_h = overlay;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.deps_map = __rb_0_0;
+                __rb_r.str_bindings = __rb_1_0;
+                __rb_r.cycle_set_str = __rb_2_0;
+                __rb_r.variant_locals = __rb_3_0;
+            }
+            None => {
+                __rb_h = Rc::new(TypeEnvCache {
+                    deps_map: __rb_0_0,
+                    str_bindings: __rb_1_0,
+                    cycle_set_str: __rb_2_0,
+                    variant_locals: __rb_3_0,
+                });
+            }
+        }
+        __rb_h
     }
 }
 
@@ -1287,12 +1360,11 @@ pub fn import_visible_name(env: Rc<TypeEnv>, name: String) -> bool {
 }
 
 pub fn global_bare_blocked_by_listed_import_requirement(env: Rc<TypeEnv>, name: String) -> bool {
-    (bare_free_call_requires_listed_import(name.clone())
-        && !import_visible_name(env.clone(), name.clone()))
+    (bare_free_call_requires_listed_import(name.clone()) && !import_visible_name(env, name.clone()))
 }
 
 pub fn listed_import_required_bare_call_blocked(env: Rc<TypeEnv>, name: String) -> bool {
-    global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone())
+    global_bare_blocked_by_listed_import_requirement(env, name)
 }
 
 pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
@@ -1390,7 +1462,7 @@ pub fn global_bare_nearest_ancestor_candidate(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
-        let env_segs = crate::v1_std_core::module_path_segments(env_module_path.clone());
+        let env_segs = crate::v1_std_core::module_path_segments(env_module_path);
         let scan = candidates.iter().cloned().fold(
             Rc::new(GlobalBareNearestCandidateScan {
                 best_lcp: v1_rt::int_sub(0, 1),
@@ -1432,7 +1504,7 @@ pub fn global_bare_nearest_ancestor(
     env_module_path: String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<TypeBinding>> {
-    match global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone()) {
+    match global_bare_nearest_ancestor_candidate(env_module_path, candidates) {
         Some(cand) => Some(cand.binding.clone()),
         std::option::Option::None => std::option::Option::None,
     }
@@ -1443,7 +1515,7 @@ pub fn global_bare_chain_candidates(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Rc<Vec<Rc<GlobalBareCandidate>>> {
     {
-        let env_segs = crate::v1_std_core::module_path_segments(env_module_path.clone());
+        let env_segs = crate::v1_std_core::module_path_segments(env_module_path);
         Rc::new({
             let mut __result = Vec::new();
             for cand in candidates.iter().cloned() {
@@ -1466,7 +1538,7 @@ pub fn global_bare_unique_chain_candidate(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
-        let chain = global_bare_chain_candidates(env_module_path.clone(), candidates.clone());
+        let chain = global_bare_chain_candidates(env_module_path, candidates);
         match (*crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide(
             Rc::new({
                 let mut __result = Vec::new();
@@ -1543,7 +1615,7 @@ pub fn bare_name_miss_diagnostic(
     span: Rc<SourceSpan>,
 ) -> Rc<CompilerDiagnostic> {
     {
-        let cands = global_bare_strict_ambiguity_candidates(env.clone(), name.clone());
+        let cands = global_bare_strict_ambiguity_candidates(env, name.clone());
         if ((cands.clone().len() as i64) > 0) {
             Rc::new(CompilerDiagnostic::AmbiguousReference {
                 name: name.clone(),
@@ -1578,7 +1650,7 @@ pub fn global_bare_owner_module(
         },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
-        }) => match global_bare_policy_candidate(owner_module_path.clone(), cands.clone()) {
+        }) => match global_bare_policy_candidate(owner_module_path, cands.clone()) {
             Some(cand) => match binding_declares_name(
                 cand.binding.clone(),
                 name.clone(),
@@ -1598,8 +1670,7 @@ pub fn binding_declares_name(
     name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices.clone(), binding.resolved.clone())
-        == name.clone())
+    (crate::v1_std_core::authored_name_at(source_indices, binding.resolved.clone()) == name.clone())
 }
 
 pub fn borrowed_generic_param_names(
@@ -1650,7 +1721,7 @@ pub fn qualify_decl_reference_positions(
             }
             __result
         });
-        node_with_children(node_with_inferred(n.clone(), inf2.clone()), ch2.clone())
+        node_with_children(node_with_inferred(n.clone(), inf2), ch2)
     })
 }
 
@@ -1808,12 +1879,7 @@ pub fn qualify_borrowed_inferred(
 ) -> Option<Rc<InferredNode>> {
     match inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: t, .. }) => Some(Rc::new(InferredNode::Resolved {
-            node: qualify_borrowed_type_names(
-                t.clone(),
-                owner_module_path.clone(),
-                env.clone(),
-                excluded.clone(),
-            ),
+            node: qualify_borrowed_type_names(t.clone(), owner_module_path, env, excluded),
         })),
         _ => inferred.clone(),
     }
@@ -1821,7 +1887,7 @@ pub fn qualify_borrowed_inferred(
 
 pub fn qualified_all_but_last(name: String) -> String {
     {
-        let segs = crate::v1_std_core::module_path_segments(name.clone());
+        let segs = crate::v1_std_core::module_path_segments(name);
         let seg_count = (segs.clone().len() as i64);
         if (seg_count.clone() <= 1) {
             "".to_string()
@@ -1871,7 +1937,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
     if crate::std_types::is_kernel_type(name.clone()) {
         std::option::Option::None
     } else {
-        global_bare_lookup_candidates(env.clone(), name.clone())
+        global_bare_lookup_candidates(env, name.clone())
     }
 }
 
@@ -1943,7 +2009,7 @@ pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
         Some(binding) => Some(binding.clone()),
         std::option::Option::None => {
             let name = crate::v1_std_core::intern_str(env.intern_table.clone(), ident.clone());
-            lookup_binding_by_name(env.clone(), name.clone())
+            lookup_binding_by_name(env.clone(), name)
         }
     }
 }
@@ -1956,14 +2022,14 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
 }
 
 pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
-    match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
+    match crate::v1_std_core::intern_find(env.intern_table.clone(), name) {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
         std::option::Option::None => false,
     }
 }
 
 pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
-    match lookup_binding(env.clone(), ident.clone()) {
+    match lookup_binding(env, ident) {
         Some(binding) => Some(binding.resolved.clone()),
         std::option::Option::None => std::option::Option::None,
     }
@@ -2005,7 +2071,7 @@ pub fn declaration_substitution_basis(
             }
             __result
         });
-        let with_children = node_with_children(n.clone(), children.clone());
+        let with_children = node_with_children(n.clone(), children);
         let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
         let generic_leaf = ((((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
@@ -2022,7 +2088,7 @@ pub fn declaration_substitution_basis(
             });
         if generic_leaf.clone() {
             node_with_inferred(
-                with_children.clone(),
+                with_children,
                 Some(Rc::new(InferredNode::TypeVariable { id: name.clone() })),
             )
         } else {
@@ -2033,10 +2099,10 @@ pub fn declaration_substitution_basis(
 
 pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> bool {
     {
-        let a_segs = crate::v1_std_core::module_path_segments(ancestor.clone());
-        let d_segs = crate::v1_std_core::module_path_segments(descendant.clone());
+        let a_segs = crate::v1_std_core::module_path_segments(ancestor);
+        let d_segs = crate::v1_std_core::module_path_segments(descendant);
         (((a_segs.clone().len() as i64) > 0)
-            && (segment_lcp_len(a_segs.clone(), d_segs.clone()) == (a_segs.clone().len() as i64)))
+            && (segment_lcp_len(a_segs.clone(), d_segs) == (a_segs.clone().len() as i64)))
     }
 }
 
@@ -2152,7 +2218,7 @@ pub fn is_static_width_index_arm(
     variant_name: String,
 ) -> bool {
     ((variant_name.clone() == static_width_index_arm_name())
-        && match width_resolution_declaration(env.clone()) {
+        && match width_resolution_declaration(env) {
             Some(decl) => {
                 ((decl.span.file.clone() == coproduct.span.file.clone())
                     && (decl.span.start.clone() == coproduct.span.start.clone()))
@@ -2186,10 +2252,7 @@ pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> boo
             } else {
                 {
                     let prefix = qualified_all_but_last(name.clone());
-                    if type_ref_module_path_is_containment_prefix(
-                        prefix.clone(),
-                        env.module_path.clone(),
-                    ) {
+                    if type_ref_module_path_is_containment_prefix(prefix, env.module_path.clone()) {
                         match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
                             Some(_) => true,
                             std::option::Option::None => false,
@@ -2211,7 +2274,7 @@ pub fn variant_arm_type_projection(
     match owner.connective.clone() {
         Connective::Disj => match crate::v1_std_core::find_child_named(
             owner.clone(),
-            name.clone(),
+            name,
             env.source_indices.clone(),
         ) {
             Some(arm) => match ((arm.children.clone().len() as i64) == 0) {
@@ -2225,7 +2288,7 @@ pub fn variant_arm_type_projection(
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    crate::v1_std_core::authored_name_at(env.source_indices.clone(), node.clone())
+    crate::v1_std_core::authored_name_at(env.source_indices.clone(), node)
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
@@ -2290,29 +2353,6 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
     })
 }
 
-pub fn is_inductive_field(
-    env: Rc<TypeEnv>,
-    type_name: String,
-    variant_name: String,
-    field_name: String,
-) -> bool {
-    {
-        let mut __found = false;
-        for f in inductive_fields_for(env.clone(), type_name.clone())
-            .iter()
-            .cloned()
-        {
-            if ((f.variant_name.clone() == variant_name.clone())
-                && (f.field_name.clone() == field_name.clone()))
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
 pub fn put_inductive_field_guard_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -2358,7 +2398,7 @@ pub fn put_inductive_field(
             fields.clone(),
             type_name.clone(),
             append_inductive_field_absent(
-                existing.clone(),
+                existing,
                 Rc::new(InductiveField {
                     type_name: type_name.clone(),
                     variant_name: variant_name.clone(),
@@ -2388,7 +2428,7 @@ pub fn put_inductive_field_cross(
             fields.clone(),
             type_name.clone(),
             append_inductive_field_absent(
-                existing.clone(),
+                existing,
                 Rc::new(InductiveField {
                     type_name: type_name.clone(),
                     variant_name: variant_name.clone(),
@@ -2615,7 +2655,7 @@ pub fn census_declaration_type_env(
             >(),
             unit_variant_index_observed: false,
         });
-        env_with_type_variable_bindings(base.clone(), tp_names.clone())
+        env_with_type_variable_bindings(base, tp_names)
     }
 }
 
@@ -2640,7 +2680,7 @@ pub fn type_reference_declaration(
             },
         };
         let decl_name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone()),
+            crate::v1_std_core::authored_name_at(source_indices, rt.clone()),
         );
         if (decl_name.clone() == "".to_string()) {
             return std::option::Option::None;
@@ -2867,7 +2907,7 @@ pub fn declaration_ref_of_declaration_node(
 ) -> Option<Rc<DeclarationRef>> {
     {
         let decl_name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), decl.clone()),
+            crate::v1_std_core::authored_name_at(source_indices, decl.clone()),
         );
         if (decl_name.clone() == "".to_string()) {
             return std::option::Option::None;
@@ -2944,9 +2984,7 @@ pub fn declaration_ref_of_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<DeclarationRef>> {
-    match (*declaration_reading_of_type_node(rt.clone(), source_indices.clone(), env.clone()))
-        .clone()
-    {
+    match (*declaration_reading_of_type_node(rt, source_indices, env)).clone() {
         TypeNodeDeclarationReading::TypeNodeNamesDeclaration { declaration: d, .. } => {
             Some(d.clone())
         }
@@ -3037,7 +3075,7 @@ pub fn kernel_or_unidentified(
     resolved: Option<Rc<TypeNodeUnidentifiedCause>>,
 ) -> Rc<TypeReferenceDeclarationReading> {
     {
-        let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        let nm = crate::v1_std_core::authored_name_at(source_indices, n.clone());
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: v, .. }) => Rc::new(
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v.clone() },
@@ -3062,7 +3100,7 @@ pub fn declaration_provenance_of_ref(
     d: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Rc<TypeDeclarationProvenance> {
-    match declaration_node_of_ref(d.clone(), env.clone()) {
+    match declaration_node_of_ref(d, env) {
         Some(decl) => crate::v1_std_core::declaration_provenance_of(decl.clone()),
         std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
     }
@@ -3118,7 +3156,7 @@ pub fn text_identity_std_types_char() -> Rc<DeclarationRef> {
 }
 
 pub fn node_is_kernel_mint(n: Rc<Node>) -> bool {
-    match (*crate::v1_std_core::declaration_provenance_of(n.clone())).clone() {
+    match (*crate::v1_std_core::declaration_provenance_of(n)).clone() {
         TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => true,
         TypeDeclarationProvenance::CorpusDeclared { decl_file: _, .. } => false,
         TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
@@ -3126,7 +3164,7 @@ pub fn node_is_kernel_mint(n: Rc<Node>) -> bool {
 }
 
 pub fn node_is_kernel_mint_named(n: Rc<Node>, name: String) -> bool {
-    match (*crate::v1_std_core::declaration_provenance_of(n.clone())).clone() {
+    match (*crate::v1_std_core::declaration_provenance_of(n)).clone() {
         TypeDeclarationProvenance::KernelMinted { minted_name: m, .. } => {
             (m.clone() == name.clone())
         }
@@ -3183,12 +3221,8 @@ pub fn text_element_is_char(n: Rc<Node>, env: Rc<TypeEnv>) -> TextRepresentation
                 Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
                 _ => ch.clone(),
             };
-            match (*type_reference_declaration_reading(
-                el.clone(),
-                env.source_indices.clone(),
-                env.clone(),
-            ))
-            .clone()
+            match (*type_reference_declaration_reading(el, env.source_indices.clone(), env.clone()))
+                .clone()
             {
                 TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
                     declaration: e,
@@ -3218,7 +3252,7 @@ pub fn text_element_is_char(n: Rc<Node>, env: Rc<TypeEnv>) -> TextRepresentation
 }
 
 pub fn text_representation_by_identity(n: Rc<Node>, env: Rc<TypeEnv>) -> TextRepresentation {
-    text_representation_by_identity_bounded(n.clone(), env.clone(), 16, Rc::new(vec![]))
+    text_representation_by_identity_bounded(n, env, 16, Rc::new(vec![]))
 }
 
 pub fn text_representation_by_identity_bounded(
@@ -3227,194 +3261,129 @@ pub fn text_representation_by_identity_bounded(
     mut __tco_loop_fuel: i64,
     mut __tco_loop_visited: Rc<Vec<String>>,
 ) -> TextRepresentation {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        #[allow(unused_mut)]
-        let mut visited = __tco_loop_visited;
-        let resolved = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => Some(r.clone()),
-            _ => std::option::Option::None,
-        };
-        let kernel_string = (node_is_kernel_mint_named(n.clone(), "String".to_string())
-            || match resolved.clone() {
-                Some(r) => node_is_kernel_mint_named(r.clone(), "String".to_string()),
-                std::option::Option::None => false,
-            });
-        let generic_or_error = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: _, .. }) => true,
-            Some(InferredNode::CompilerError { .. }) => true,
-            _ => false,
-        };
-        let kernel_other = (node_is_kernel_mint(n.clone())
-            || match resolved.clone() {
-                Some(r) => node_is_kernel_mint(r.clone()),
-                std::option::Option::None => false,
-            });
-        if kernel_string.clone() {
-            break TextRepresentation::HostText;
-        } else {
-            if generic_or_error.clone() {
-                break TextRepresentation::NotText;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            #[allow(unused_mut)]
+            let mut visited = __tco_loop_visited;
+            let resolved = match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: r, .. }) => Some(r.clone()),
+                _ => std::option::Option::None,
+            };
+            let kernel_string = (node_is_kernel_mint_named(n.clone(), "String".to_string())
+                || match resolved.clone() {
+                    Some(r) => node_is_kernel_mint_named(r.clone(), "String".to_string()),
+                    std::option::Option::None => false,
+                });
+            let generic_or_error = match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                Some(InferredNode::CompilerError { .. }) => true,
+                _ => false,
+            };
+            let kernel_other = (node_is_kernel_mint(n.clone())
+                || match resolved.clone() {
+                    Some(r) => node_is_kernel_mint(r.clone()),
+                    std::option::Option::None => false,
+                });
+            if kernel_string.clone() {
+                break TextRepresentation::HostText;
             } else {
-                if (fuel.clone() <= 0) {
-                    break TextRepresentation::TextRepresentationUnidentified;
+                if generic_or_error.clone() {
+                    break TextRepresentation::NotText;
                 } else {
-                    if is_where_refinement_node(n.clone()) {
-                        match n.children.clone().first().cloned() {
-                            Some(base) => {
-                                let __tco_0 = base.clone();
-                                let __tco_1 = env;
-                                let __tco_2 = v1_rt::int_sub(fuel, 1);
-                                let __tco_3 = visited;
-                                __tco_loop_n = __tco_0;
-                                __tco_loop_env = __tco_1;
-                                __tco_loop_fuel = __tco_2;
-                                __tco_loop_visited = __tco_3;
-                                continue;
-                            }
-                            std::option::Option::None => {
-                                break TextRepresentation::TextRepresentationUnidentified;
-                            }
-                        }
+                    if (fuel.clone() <= 0) {
+                        break TextRepresentation::TextRepresentationUnidentified;
                     } else {
-                        match (*type_reference_declaration_reading(
-                            n.clone(),
-                            env.source_indices.clone(),
-                            env.clone(),
-                        ))
-                        .clone()
-                        {
-                            TypeReferenceDeclarationReading::TypeReferenceUnidentified {
-                                ..
-                            } => {
-                                if kernel_other.clone() {
-                                    break TextRepresentation::NotText;
-                                } else {
+                        if is_where_refinement_node(n.clone()) {
+                            match n.children.clone().first().cloned() {
+                                Some(base) => {
+                                    let __tco_0 = base.clone();
+                                    let __tco_1 = env;
+                                    let __tco_2 = v1_rt::int_sub(fuel, 1);
+                                    let __tco_3 = visited;
+                                    __tco_loop_n = __tco_0;
+                                    __tco_loop_env = __tco_1;
+                                    __tco_loop_fuel = __tco_2;
+                                    __tco_loop_visited = __tco_3;
+                                    continue;
+                                }
+                                std::option::Option::None => {
                                     break TextRepresentation::TextRepresentationUnidentified;
                                 }
                             }
-                            TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
-                                name: k,
-                                ..
-                            } => {
-                                if (k.clone() == "String".to_string()) {
-                                    break TextRepresentation::HostText;
-                                } else {
-                                    break TextRepresentation::NotText;
-                                }
-                            }
-                            TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable {
-                                id: _,
-                                ..
-                            } => {
-                                break TextRepresentation::NotText;
-                            }
-                            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                                declaration: d,
-                                ..
-                            } => {
-                                if crate::std_decl_ref::declaration_ref_eq(
-                                    d.clone(),
-                                    text_identity_std_algebra_free_monoid(),
-                                ) {
-                                    break text_element_is_char(n.clone(), env.clone());
-                                } else {
-                                    let key =
-                                        crate::std_decl_ref::declaration_ref_display_key(d.clone());
-                                    if {
-                                        let mut __found = false;
-                                        for v in visited.iter().cloned() {
-                                            if (v.clone() == key.clone()) {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    } {
-                                        break TextRepresentation::TextRepresentationUnidentified;
-                                    } else {
-                                        match declaration_binding_of_ref(d.clone(), env.clone()) {
-                                            std::option::Option::None => {
-                                                break TextRepresentation::TextRepresentationUnidentified;
-                                            }
-                                            Some(b) => {
-                                                let decl = b.resolved.clone();
-                                                let is_alias = ((decl.connective.clone()
-                                                    == Connective::NoConnective)
-                                                    && ((decl.children.clone().len() as i64) == 0));
-                                                if is_where_refinement_node(decl.clone()) {
-                                                    {
-                                                        let __tco_0 = decl.clone();
-                                                        let __tco_1 = env;
-                                                        let __tco_2 = v1_rt::int_sub(fuel, 1);
-                                                        let __tco_3 = v1_rt::concat(
-                                                            visited,
-                                                            Rc::new(vec![key.clone()]),
-                                                        );
-                                                        __tco_loop_n = __tco_0;
-                                                        __tco_loop_env = __tco_1;
-                                                        __tco_loop_fuel = __tco_2;
-                                                        __tco_loop_visited = __tco_3;
-                                                        continue;
-                                                    }
-                                                } else {
-                                                    if !is_alias.clone() {
-                                                        break TextRepresentation::NotText;
-                                                    } else {
-                                                        match decl
-                                                            .inferred
-                                                            .clone()
-                                                            .as_deref()
-                                                            .cloned()
-                                                        {
-                                                            Some(InferredNode::Resolved {
-                                                                node: target,
-                                                                ..
-                                                            }) => {
-                                                                let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
+                        } else {
+                            match (*type_reference_declaration_reading(n.clone(), env.source_indices.clone(), env.clone())).clone() {
+    TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => { if kernel_other.clone() {
+                            break TextRepresentation::NotText;
+} else {
+                            break TextRepresentation::TextRepresentationUnidentified;
+} },
+    TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: k, .. } => { if (k.clone() == "String".to_string()) {
+                            break TextRepresentation::HostText;
+} else {
+                            break TextRepresentation::NotText;
+} },
+    TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => { break TextRepresentation::NotText; },
+    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: d, .. } => { if crate::std_decl_ref::declaration_ref_eq(d.clone(), text_identity_std_algebra_free_monoid()) {
+                            break text_element_is_char(n.clone(), env.clone());
+} else {
+                            let key = crate::std_decl_ref::declaration_ref_display_key(d.clone());
+if { let mut __found = false; for v in visited.iter().cloned() { if (v.clone() == key.clone()) { __found = true; break; } } __found } {
+                                break TextRepresentation::TextRepresentationUnidentified;
+} else {
+                                match declaration_binding_of_ref(d.clone(), env.clone()) {
+    std::option::Option::None => { break TextRepresentation::TextRepresentationUnidentified; },
+    Some(b) => { let decl = b.resolved.clone();
+let is_alias = ((decl.connective.clone() == Connective::NoConnective) && ((decl.children.clone().len() as i64) == 0));
+if is_where_refinement_node(decl.clone()) {
+                                    {
+                                        let __tco_0 = decl.clone();
+let __tco_1 = env;
+let __tco_2 = v1_rt::int_sub(fuel, 1);
+let __tco_3 = v1_rt::concat(visited, Rc::new(vec![key.clone()]));
+__tco_loop_n = __tco_0;
+__tco_loop_env = __tco_1;
+__tco_loop_fuel = __tco_2;
+__tco_loop_visited = __tco_3;
+continue;
+}
+} else {
+                                    if !is_alias.clone() {
+                                        break TextRepresentation::NotText;
+} else {
+                                        match decl.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: target, .. }) => { let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
     TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: t, .. } => crate::std_decl_ref::declaration_ref_eq(t.clone(), d.clone()),
     _ => false,
 };
-                                                                if target_is_itself.clone() {
-                                                                    break TextRepresentation::NotText;
-                                                                } else {
-                                                                    {
-                                                                        let __tco_0 =
-                                                                            target.clone();
-                                                                        let __tco_1 = env;
-                                                                        let __tco_2 =
-                                                                            v1_rt::int_sub(fuel, 1);
-                                                                        let __tco_3 = v1_rt::concat(
-                                                                            visited,
-                                                                            Rc::new(vec![
-                                                                                key.clone()
-                                                                            ]),
-                                                                        );
-                                                                        __tco_loop_n = __tco_0;
-                                                                        __tco_loop_env = __tco_1;
-                                                                        __tco_loop_fuel = __tco_2;
-                                                                        __tco_loop_visited =
-                                                                            __tco_3;
-                                                                        continue;
-                                                                    }
-                                                                }
-                                                            }
-                                                            _ => {
-                                                                break TextRepresentation::NotText;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+if target_is_itself.clone() {
+                                            break TextRepresentation::NotText;
+} else {
+                                            {
+                                                let __tco_0 = target.clone();
+let __tco_1 = env;
+let __tco_2 = v1_rt::int_sub(fuel, 1);
+let __tco_3 = v1_rt::concat(visited, Rc::new(vec![key.clone()]));
+__tco_loop_n = __tco_0;
+__tco_loop_env = __tco_1;
+__tco_loop_fuel = __tco_2;
+__tco_loop_visited = __tco_3;
+continue;
+}
+} },
+    _ => { break TextRepresentation::NotText; },
+}
+}
+} },
+}
+}
+} },
+}
                         }
                     }
                 }
@@ -3455,7 +3424,7 @@ pub fn host_text_into_structural_sequence(
 ) -> bool {
     {
         let unpeeled_is_structural =
-            match text_representation_by_identity(unpeeled_actual.clone(), env.clone()) {
+            match text_representation_by_identity(unpeeled_actual, env.clone()) {
                 TextRepresentation::CodePointSequence => true,
                 TextRepresentation::HostText => false,
                 TextRepresentation::NotText => false,
@@ -3464,9 +3433,9 @@ pub fn host_text_into_structural_sequence(
         if unpeeled_is_structural.clone() {
             false
         } else {
-            match text_representation_by_identity(actual.clone(), env.clone()) {
+            match text_representation_by_identity(actual, env.clone()) {
                 TextRepresentation::HostText => match (*type_reference_declaration_reading(
-                    formal.clone(),
+                    formal,
                     env.source_indices.clone(),
                     env.clone(),
                 ))
@@ -3489,8 +3458,8 @@ pub fn host_text_into_structural_sequence(
 
 pub fn text_crossing_by_identity(left: Rc<Node>, right: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     text_representations_cross(
-        text_representation_by_identity(left.clone(), env.clone()),
-        text_representation_by_identity(right.clone(), env.clone()),
+        text_representation_by_identity(left, env.clone()),
+        text_representation_by_identity(right, env.clone()),
     )
 }
 
@@ -3565,12 +3534,9 @@ pub fn settled_type(
                     head: d.clone(),
                     args: n.children.clone(),
                 })),
-                Some(rhs) => settled_alias_rhs(
-                    rhs.clone(),
-                    source_indices.clone(),
-                    env.clone(),
-                    fuel.clone(),
-                ),
+                Some(rhs) => {
+                    settled_alias_rhs(rhs.clone(), source_indices.clone(), env.clone(), fuel)
+                }
             },
             _ => std::option::Option::None,
         }
@@ -3590,8 +3556,8 @@ pub fn settled_alias_rhs(
             Some(rhs_head) => settled_rhs(
                 rhs.clone(),
                 rhs_head.clone(),
-                source_indices.clone(),
-                env.clone(),
+                source_indices,
+                env,
                 v1_rt::int_sub(fuel.clone(), 1),
             ),
             std::option::Option::None => std::option::Option::None,
@@ -3610,12 +3576,7 @@ pub fn settled_type_of_declaration(
             head: d.clone(),
             args: Rc::new(vec![]),
         })),
-        Some(rhs) => settled_alias_rhs(
-            rhs.clone(),
-            source_indices.clone(),
-            env.clone(),
-            fuel.clone(),
-        ),
+        Some(rhs) => settled_alias_rhs(rhs.clone(), source_indices, env.clone(), fuel),
     }
 }
 
@@ -3626,48 +3587,50 @@ pub fn settled_rhs(
     mut __tco_loop_env: Rc<TypeEnv>,
     mut __tco_loop_fuel: i64,
 ) -> Option<Rc<SettledType>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut rhs = __tco_loop_rhs;
-        #[allow(unused_mut)]
-        let mut head = __tco_loop_head;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        match alias_rhs_of_declaration(head.clone(), env.clone()) {
-            std::option::Option::None => {
-                break Some(Rc::new(SettledType {
-                    head: head.clone(),
-                    args: rhs.children.clone(),
-                }));
-            }
-            Some(next) => match next.declaration.clone() {
-                Some(next_head) => {
-                    if (fuel.clone() <= 0) {
-                        break std::option::Option::None;
-                    } else {
-                        {
-                            let __tco_0 = next.clone();
-                            let __tco_1 = next_head.clone();
-                            let __tco_2 = source_indices;
-                            let __tco_3 = env;
-                            let __tco_4 = v1_rt::int_sub(fuel, 1);
-                            __tco_loop_rhs = __tco_0;
-                            __tco_loop_head = __tco_1;
-                            __tco_loop_source_indices = __tco_2;
-                            __tco_loop_env = __tco_3;
-                            __tco_loop_fuel = __tco_4;
-                            continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut rhs = __tco_loop_rhs;
+            #[allow(unused_mut)]
+            let mut head = __tco_loop_head;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            match alias_rhs_of_declaration(head.clone(), env.clone()) {
+                std::option::Option::None => {
+                    break Some(Rc::new(SettledType {
+                        head: head.clone(),
+                        args: rhs.children.clone(),
+                    }));
+                }
+                Some(next) => match next.declaration.clone() {
+                    Some(next_head) => {
+                        if (fuel.clone() <= 0) {
+                            break std::option::Option::None;
+                        } else {
+                            {
+                                let __tco_0 = next.clone();
+                                let __tco_1 = next_head.clone();
+                                let __tco_2 = source_indices;
+                                let __tco_3 = env;
+                                let __tco_4 = v1_rt::int_sub(fuel, 1);
+                                __tco_loop_rhs = __tco_0;
+                                __tco_loop_head = __tco_1;
+                                __tco_loop_source_indices = __tco_2;
+                                __tco_loop_env = __tco_3;
+                                __tco_loop_fuel = __tco_4;
+                                continue;
+                            }
                         }
                     }
-                }
-                std::option::Option::None => {
-                    break std::option::Option::None;
-                }
-            },
+                    std::option::Option::None => {
+                        break std::option::Option::None;
+                    }
+                },
+            }
         }
     }
 }
@@ -3759,7 +3722,7 @@ pub fn alias_rhs_with_index_identity(
 ) -> Option<Rc<Node>> {
     {
         let spelled = crate::v1_std_core::authored_name_at(env.source_indices.clone(), rhs.clone());
-        match declaration_named_in_module(spelled.clone(), owner_module.clone(), env.clone()) {
+        match declaration_named_in_module(spelled, owner_module, env.clone()) {
             std::option::Option::None => std::option::Option::None,
             Some(d) => Some(Rc::new(Node {
                 occurrence_identity: rhs.occurrence_identity.clone(),
@@ -3811,7 +3774,23 @@ pub fn declaration_named_in_module(
                 module_path.clone(),
                 name.clone(),
             ) {
-                Some(m) => Some(crate::std_decl_ref::decl_ref(m.clone(), name.clone())),
+                Some(m) => match (*bare_occurrence_import_terminal(
+                    env.symbol_index.clone(),
+                    m.clone(),
+                    name.clone(),
+                    16,
+                ))
+                .clone()
+                {
+                    BareOccurrenceBinding::BareOccurrenceImportedByName {
+                        module_path: declaring,
+                        ..
+                    } => Some(crate::std_decl_ref::decl_ref(
+                        declaring.clone(),
+                        name.clone(),
+                    )),
+                    _ => std::option::Option::None,
+                },
                 std::option::Option::None => match symbol_index_lookup(
                     env.symbol_index.clone(),
                     v1_rt::concat(
@@ -3867,7 +3846,7 @@ pub fn settled_arity_agrees(
     env: Rc<TypeEnv>,
     agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
 ) -> bool {
-    match declaration_node_of_ref(head.clone(), env.clone()) {
+    match declaration_node_of_ref(head, env) {
         std::option::Option::None => false,
         Some(decl) => {
             let arity = (decl.params.clone().len() as i64);
@@ -3876,7 +3855,7 @@ pub fn settled_arity_agrees(
             } else {
                 ((((l.args.clone().len() as i64) == arity.clone())
                     && ((r.args.clone().len() as i64) == arity.clone()))
-                    && settled_args_agree(l.args.clone(), r.args.clone(), agree.clone()))
+                    && settled_args_agree(l.args.clone(), r.args.clone(), agree))
             }
         }
     }
@@ -3888,56 +3867,62 @@ pub fn kernel_settled_name(
     mut __tco_loop_env: Rc<TypeEnv>,
     mut __tco_loop_fuel: i64,
 ) -> Option<String> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        let reading = match n.declaration.clone() {
-            Some(dn) => Rc::new(
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            let reading = match n.declaration.clone() {
+                Some(dn) => Rc::new(
+                    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                        declaration: dn.clone(),
+                    },
+                ),
+                std::option::Option::None => type_reference_declaration_reading(
+                    n.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                ),
+            };
+            match (*reading.clone()).clone() {
+                TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                    name: kernel, ..
+                } => {
+                    break Some(kernel.clone());
+                }
                 TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                    declaration: dn.clone(),
-                },
-            ),
-            std::option::Option::None => {
-                type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
-            }
-        };
-        match (*reading.clone()).clone() {
-            TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: kernel, .. } => {
-                break Some(kernel.clone());
-            }
-            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                declaration: d,
-                ..
-            } => {
-                if (fuel.clone() <= 0) {
-                    break std::option::Option::None;
-                } else {
-                    match alias_rhs_of_declaration(d.clone(), env.clone()) {
-                        std::option::Option::None => {
-                            break std::option::Option::None;
-                        }
-                        Some(rhs) => {
-                            let __tco_0 = rhs.clone();
-                            let __tco_1 = source_indices;
-                            let __tco_2 = env;
-                            let __tco_3 = v1_rt::int_sub(fuel, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_source_indices = __tco_1;
-                            __tco_loop_env = __tco_2;
-                            __tco_loop_fuel = __tco_3;
-                            continue;
+                    declaration: d,
+                    ..
+                } => {
+                    if (fuel.clone() <= 0) {
+                        break std::option::Option::None;
+                    } else {
+                        match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                            std::option::Option::None => {
+                                break std::option::Option::None;
+                            }
+                            Some(rhs) => {
+                                let __tco_0 = rhs.clone();
+                                let __tco_1 = source_indices;
+                                let __tco_2 = env;
+                                let __tco_3 = v1_rt::int_sub(fuel, 1);
+                                __tco_loop_n = __tco_0;
+                                __tco_loop_source_indices = __tco_1;
+                                __tco_loop_env = __tco_2;
+                                __tco_loop_fuel = __tco_3;
+                                continue;
+                            }
                         }
                     }
                 }
-            }
-            _ => {
-                break std::option::Option::None;
+                _ => {
+                    break std::option::Option::None;
+                }
             }
         }
     }
@@ -3964,7 +3949,7 @@ pub fn alias_settled_agree(
                 source_indices.clone(),
                 env.clone(),
             ),
-            Some(r) => settled_types_agree(l.clone(), r.clone(), env.clone(), agree.clone()),
+            Some(r) => settled_types_agree(l.clone(), r.clone(), env.clone(), agree),
         },
     }
 }
@@ -3976,13 +3961,7 @@ pub fn settled_types_agree(
     agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
 ) -> bool {
     (crate::std_decl_ref::declaration_ref_eq(l.head.clone(), r.head.clone())
-        && settled_arity_agrees(
-            l.head.clone(),
-            l.clone(),
-            r.clone(),
-            env.clone(),
-            agree.clone(),
-        ))
+        && settled_arity_agrees(l.head.clone(), l.clone(), r.clone(), env, agree))
 }
 
 pub fn alias_names_settled_agree(
@@ -3992,9 +3971,9 @@ pub fn alias_names_settled_agree(
     env: Rc<TypeEnv>,
     agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
 ) -> bool {
-    match declaration_named_by_type_name(left.clone(), env.clone()) {
+    match declaration_named_by_type_name(left, env.clone()) {
         std::option::Option::None => false,
-        Some(ld) => match declaration_named_by_type_name(right.clone(), env.clone()) {
+        Some(ld) => match declaration_named_by_type_name(right, env.clone()) {
             std::option::Option::None => false,
             Some(rd) => match settled_type_of_declaration(
                 ld.clone(),
@@ -4010,9 +3989,7 @@ pub fn alias_names_settled_agree(
                     16,
                 ) {
                     std::option::Option::None => false,
-                    Some(r) => {
-                        settled_types_agree(l.clone(), r.clone(), env.clone(), agree.clone())
-                    }
+                    Some(r) => settled_types_agree(l.clone(), r.clone(), env.clone(), agree),
                 },
             },
         },
@@ -4025,14 +4002,12 @@ pub fn kernel_settled_agree(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> bool {
-    match kernel_settled_name(left.clone(), source_indices.clone(), env.clone(), 16) {
+    match kernel_settled_name(left, source_indices.clone(), env.clone(), 16) {
         std::option::Option::None => false,
-        Some(l) => {
-            match kernel_settled_name(right.clone(), source_indices.clone(), env.clone(), 16) {
-                std::option::Option::None => false,
-                Some(r) => (l.clone() == r.clone()),
-            }
-        }
+        Some(l) => match kernel_settled_name(right, source_indices.clone(), env.clone(), 16) {
+            std::option::Option::None => false,
+            Some(r) => (l.clone() == r.clone()),
+        },
     }
 }
 
@@ -4119,7 +4094,7 @@ pub fn alias_rhs_head_of_declaration(
     item_ref: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<DeclarationRef>> {
-    match alias_rhs_of_declaration(item_ref.clone(), env.clone()) {
+    match alias_rhs_of_declaration(item_ref, env) {
         Some(rhs) => rhs.declaration.clone(),
         std::option::Option::None => std::option::Option::None,
     }

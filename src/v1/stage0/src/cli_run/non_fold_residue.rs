@@ -105,16 +105,15 @@ fn nfr_observing_layer_home_exception(host: &str) -> bool {
     host == NFR_OBSERVING_LAYER_HOST
 }
 
+type NfrParsedModule = (
+    std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
+    std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+);
+
 fn nfr_parse_module_from_source(
     module_rel_path: &str,
     content: &str,
-) -> Result<
-    (
-        std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
-        std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
-    ),
-    String,
-> {
+) -> Result<NfrParsedModule, String> {
     let filename = module_rel_path.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(
         content.to_string(),

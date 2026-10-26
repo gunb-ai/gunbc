@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.an_attempt_crashed_between_state_init_and_co
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable: RecurringFailureMode = RecurringFailureMode {
   identity: "an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: an attempt writes durable initiation state (placement record, attempt pointer, or equivalent) and can stop before the session container that is supposed to inhabit that state starts, and there is no modeled reconciliation that finishes or rolls back both sides of that pair. HARM: the next belt pass cannot tell orphaned state from a live session, so recovery is operator surgery rather than a typed repair (DESIGN section 4b found at mitigatable).",

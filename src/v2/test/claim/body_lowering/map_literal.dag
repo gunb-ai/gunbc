@@ -51,10 +51,14 @@ data ml_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = 
 
 // K = String is the KERNEL text binding (ruling, neat-boar-16 via gentle-koi-724): an unimported
 // String, not a declaration. The two infer controls below (ml_an_elaborated_map_infers_holds and its
-// same-module specimen) are EXPECTED-RED rows in gunbc.explicit_witness_admission, on generic record
-// construct grounding; every other claim holds. The string-keyed resolve claims were red on main from
-// #13641 until the operand reader kept a string literal's decoded value (v2.compiler.body_lowering_fold
-// body_lower_operand_raw_read), because a key with no text refused as
+// same-module specimen) HOLD on both routes: they were the two EXPECTED-RED rows in
+// gunbc.explicit_witness_admission on generic record construct grounding, and their rows' own dissolution
+// condition — "the fix lands and the claim passes, delete this row in that change" — fired when the fix
+// landed (v2.compiler.elaboration_guards generic record construct grounded via named-field inference), so
+// this PR deletes the admissions and their transitional_admission_exception identities with the executed
+// PASS receipt in the PR body. Every other claim holds. The string-keyed resolve claims were red on main
+// from #13641 until the operand reader kept a string literal's decoded value
+// (v2.compiler.body_lowering_fold body_lower_operand_raw_read), because a key with no text refused as
 // resolve_anonymous_map_key_text_unavailable before the key law ran.
 data ml_headed_source: String = "module v2.test.ml_headed\n\nimport std.types { Map }\nimport std.algebra { MapIntroductionEntry, map_from_entries }\n\ndata ml_x: Map<String, Bool> = map_from_entries(entries: [MapIntroductionEntry { key: \"a\", value: true }, MapIntroductionEntry { key: \"b\", value: false }])\n"
 

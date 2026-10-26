@@ -8,9 +8,11 @@ import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFami
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.host.managed_host {
-  ManagedHost, ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
-  ManagedHostNotSecured, ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_binding,
-  managed_membership_for,
+  ManagedHost, OrdinaryMember, MemberUnderDeclaredDrop, managed_membership_for,
+}
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding, BmcControlBound, BmcControlBoundRoute, BmcControlAccessUnobserved, BmcControlNotSecured,
+  BmcControlEndpointMismatch, bmc_control_binding, bmc_control_endpoint,
 }
 import gunbc.host.megarac_operation_standing {
   MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
@@ -21,8 +23,8 @@ import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_oper
 
 // A MEGARAC-ONLY OPERATION ON A MANAGED HOST, ADMITTED FROM WHAT THE HOST'S CONTROLLER WAS OBSERVED TO
 // BE (docs/plans/managed-host-untangle.md, cut 3). The BMC stack is read, never assumed: the family,
-// baseboard and build come off the access observation gunbc.host.managed_host managed_host_binding bound,
-// and a host whose binding refuses -- its access unobserved, its controller not secured, its observed
+// baseboard and build come off the access observation gunbc.host.bmc_control_binding bmc_control_binding
+// bound to the route, and a host whose route refuses -- its access unobserved, its controller not secured, its observed
 // endpoint not the secured one -- has no family to read and is refused here before any request. A bound
 // controller of another family is refused by family.
 //
@@ -42,14 +44,15 @@ import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_oper
 // shadow: cutting production over to it refuses mtcollins1's boot until a reading of 0.45.3 and
 // executed evidence at it are committed, so the cut-over is one later transition (staging ruling C).
 type AdmittedMegaRacHost sole_constructor {
-  binding: ManagedHostBinding
+  host: ManagedHost
+  route: BmcControlBoundRoute
   operation: MegaRacOperation
   firmware: BmcFirmwareReleaseIdentity
 }
 
 type MegaRacHostRefusal
   = MegaRacHostNotManaged { host: NonEmptyStr }
-  | MegaRacHostNotBound { standing: ManagedHostBindingStanding }
+  | MegaRacHostNotBound { standing: BmcControlStanding }
   | MegaRacHostNotMegaRac { family: BmcFirmwareFamily }
   | MegaRacOperationNotGrounded { operation: MegaRacOperation, identity: BmcObservedIdentity }
   | MegaRacObservationNotCurrent { observed: BmcFirmwareReleaseIdentity, current: BmcFirmwareReleaseIdentity }
@@ -66,34 +69,36 @@ fn megarac_operation_evidence() -> MegaRacOperationEvidence {
 }
 
 // THE FAMILY AND BINDING STEP BOTH ADMISSIONS SHARE: a bound MegaRAC controller's binding, or the refusal.
+// The route step: the host's row plus its BOUND CONTROL ROUTE and the reading the join checked. The
+// family is read off that reading, never assumed; a refusal carries the control standing.
 type MegaRacBindingStep
-  = MegaRacBindingAdmissible { binding: ManagedHostBinding }
+  = MegaRacBindingAdmissible { host: ManagedHost, route: BmcControlBoundRoute }
   | MegaRacBindingRefused { cause: MegaRacHostRefusal }
 
 fn megarac_binding_step(host: ManagedHost) -> MegaRacBindingStep {
-  match managed_host_binding(host: host) {
-    ManagedHostBound { binding: b } =>
-      match b.observation.identity.firmware.family {
-        AmiMegaRac => MegaRacBindingAdmissible { binding: b }
+  match bmc_control_binding(observed: host.access, secured: host.secure) {
+    BmcControlBound { route: route } =>
+      match route.observation.identity.firmware.family {
+        AmiMegaRac => MegaRacBindingAdmissible { host: host, route: route }
         OpenBmc => MegaRacBindingRefused { cause: MegaRacHostNotMegaRac { family: OpenBmc } }
       }
-    ManagedHostAccessUnobserved { endpoint: e } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } }
-    ManagedHostNotSecured { cause: c } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: ManagedHostNotSecured { cause: c } } }
-    ManagedHostEndpointMismatch { observed: o, secured: s } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: ManagedHostEndpointMismatch { observed: o, secured: s } } }
+    BmcControlAccessUnobserved { endpoint: e } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: BmcControlAccessUnobserved { endpoint: e } } }
+    BmcControlNotSecured { cause: c } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: BmcControlNotSecured { cause: c } } }
+    BmcControlEndpointMismatch { observed: o, secured: sc } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: BmcControlEndpointMismatch { observed: o, secured: sc } } }
   }
 }
 
 // THE ONE MINT OF AdmittedMegaRacHost, and it decides from the sealed evidence itself, never from a
 // supplied verdict. It is admitted only to the two admissions below, each of which runs the binding and
 // family step (and, for the gate, the current-build step) before reaching it.
-fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, binding: ManagedHostBinding, operation: MegaRacOperation, identity: BmcObservedIdentity) -> MegaRacHostAdmission
+fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, host: ManagedHost, route: BmcControlBoundRoute, operation: MegaRacOperation, identity: BmcObservedIdentity) -> MegaRacHostAdmission
   admit_callers: [
     decl_ref(module_path: "gunbc.host.megarac_managed_host", decl_name: "admit_megarac_host_observed_in"),
     decl_ref(module_path: "gunbc.host.megarac_managed_host", decl_name: "admit_megarac_host_at_current_build"),
   ]
 {
   if megarac_operation_executed_at(evidence: evidence, operation: operation, identity: identity) {
-    MegaRacHostAdmitted { host: AdmittedMegaRacHost { binding: binding, operation: operation, firmware: identity.firmware } }
+    MegaRacHostAdmitted { host: AdmittedMegaRacHost { host: host, route: route, operation: operation, firmware: identity.firmware } }
   } else {
     MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: operation, identity: identity } }
   }
@@ -107,7 +112,7 @@ fn admit_megarac_host(host: ManagedHost, operation: MegaRacOperation) -> MegaRac
 fn admit_megarac_host_observed_in(evidence: MegaRacOperationEvidence, host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
   match megarac_binding_step(host: host) {
     MegaRacBindingRefused { cause: c } => MegaRacHostRefused { cause: c }
-    MegaRacBindingAdmissible { binding: b } => megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: b.observation.identity)
+    MegaRacBindingAdmissible { host: h, route: route } => megarac_grounded_admission(evidence: evidence, host: h, route: route, operation: operation, identity: route.observation.identity)
   }
 }
 
@@ -120,15 +125,15 @@ fn admit_megarac_host_observed_in(evidence: MegaRacOperationEvidence, host: Mana
 fn admit_megarac_host_at_current_build(evidence: MegaRacOperationEvidence, host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
   match megarac_binding_step(host: host) {
     MegaRacBindingRefused { cause: c } => MegaRacHostRefused { cause: c }
-    MegaRacBindingAdmissible { binding: b } => {
-      let observed = b.observation.identity.firmware
-      match megarac_current_build(evidence: evidence, endpoint: b.observation.endpoint) {
-        CurrentBuildUnobserved => MegaRacHostRefused { cause: MegaRacCurrentBuildUnobserved { endpoint: b.observation.endpoint } }
+    MegaRacBindingAdmissible { host: h, route: route } => {
+      let observed = route.observation.identity.firmware
+      match megarac_current_build(evidence: evidence, endpoint: route.observation.endpoint) {
+        CurrentBuildUnobserved => MegaRacHostRefused { cause: MegaRacCurrentBuildUnobserved { endpoint: route.observation.endpoint } }
         CurrentBuildKnownUnread { transition: t } =>
           MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: t.to } }
         CurrentBuildRead { reading: r } =>
           if bmc_firmware_release_identity_eq(a: r.identity.firmware, b: observed) {
-            megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: r.identity)
+            megarac_grounded_admission(evidence: evidence, host: h, route: route, operation: operation, identity: r.identity)
           } else {
             MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: r.identity.firmware } }
           }
@@ -173,12 +178,12 @@ fn megarac_family_text(family: BmcFirmwareFamily) -> String {
   }
 }
 
-fn megarac_binding_refusal_text(standing: ManagedHostBindingStanding) -> String {
+fn megarac_binding_refusal_text(standing: BmcControlStanding) -> String {
   match standing {
-    ManagedHostBound { binding: _ } => "bound"
-    ManagedHostAccessUnobserved { endpoint: e } => join(["the controller at ", e.host as String, " was never observed, so its BMC family is unread"], "")
-    ManagedHostNotSecured { cause: _ } => "the controller is not BmcSecured, so there is no managed account to drive it with"
-    ManagedHostEndpointMismatch { observed: o, secured: s } => join(["the observed controller ", o.host as String, " is not the secured one ", s.host as String], "")
+    BmcControlBound { route: _ } => "bound"
+    BmcControlAccessUnobserved { endpoint: e } => join(["the controller at ", e.host as String, " was never observed, so its BMC family is unread"], "")
+    BmcControlNotSecured { cause: _ } => "the controller is not BmcSecured, so there is no managed account to drive it with"
+    BmcControlEndpointMismatch { observed: o, secured: s } => join(["the observed controller ", o.host as String, " is not the secured one ", s.host as String], "")
   }
 }
 
@@ -200,5 +205,5 @@ fn megarac_host_refusal_text(cause: MegaRacHostRefusal) -> NonEmptyStr {
 // THE HOST AN ADMITTED CARRIER IS FOR, so a caller holding another carrier (a unit-hold proof, a boot
 // subject) can require the two name one host.
 fn admitted_megarac_host_identity(host: AdmittedMegaRacHost) -> HostIdentity {
-  host.binding.host.host
+  host.host.host
 }

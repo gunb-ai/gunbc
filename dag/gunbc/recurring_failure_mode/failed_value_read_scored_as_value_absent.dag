@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.failed_value_read_scored_as_value_absent
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data failed_value_read_scored_as_value_absent: RecurringFailureMode = RecurringFailureMode {
+  identity: "failed_value_read_scored_as_value_absent" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor (the wrongness was silent -- nothing in the plan failed,
+  // the digest simply described keys that had never been read); closed by this row's RECOGNITION RULE
+  // at the one site it bit, which is a discipline other legs can skip, so the standing is mitigatable;
+  // the ceiling restates the row's own closure, not new belief.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a typed read-outcome combinator in extdeps.git for config reads -- the value / unset / indeterminate three-way filesystem_file_observation already gives filesystem reads -- so a leg CANNOT express nonzero-means-unset and every key read distinguishes the three outcomes by construction",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a readback leg maps the read tool's NONZERO exit to the VALUE'S ABSENCE, so a failed read and a genuinely unset value share one representation -- the sentinel, the empty string, the missing row. Whatever plan is folded from that representation asserts against what it never observed, and no signal distinguishes 'there was nothing to set' from 'the read could not see'. A tool's exit code is its OUTCOME VOCABULARY, not a boolean; any consumer that collapses 'any nonzero' into one arm commits this conflation.",
+    "WHERE IT BIT, in the silent form, with the loud form beside it (srv1, 2026-10-22, joint lab deploy composition f953f454 at head 7661561e): the repository-shared-posture observer read its three git-config keys at <instance>/source with `if exit != 0 => the key is unset`. On the re-root's fresh root the source repository did not exist yet, so every read died with 128 -- not-a-repository -- and all three keys were recorded as unset. Had the unit documents not ALSO refused (absence being their only refusal), the plan would have derived a Replace that re-asserted keys nobody had read: silent wrongness shipped as convergence. The deploy log shows only the loud half ('could not observe the host ... service unit:'); the silent half was invisible in the log and is what the claim reproduced over a real tree.",
+    "THE CLAIM THAT MAKES IT VISIBLE: test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness the_posture_observer_refuses_a_present_but_unreadable_repository_naming_the_read plants a real directory (present per the parent listing, not a repository) and demands a REFUSAL that names the key, the command and the path. At 7661561e that claim is RED in the worst available way: not an error, a PLAN -- the keys read 'unset', the member came back observed, and a Replace was derived for values never observed.",
+    "RECOGNITION RULE: every readback leg distinguishes the read tool's documented outcomes -- value, absence, failure -- never folding failure into absence; a failure refuses and NAMES the command and the path it failed at, at production, so no fold can re-label it later (the same fold pass that dropped the 'service unit:'/'timer unit:' positional prefixes passes these causes through verbatim). Enforced leg-by-leg by review and by a claim of this shape; when the typed three-way combinator named in the standing exists, a leg cannot express the conflation at all.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.live_deploy.member_observe", decl_name: "posture_config_leg", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", decl_name: "the_posture_observer_refuses_a_present_but_unreadable_repository_naming_the_read", field: WholeDeclaration },
+  ],
+}

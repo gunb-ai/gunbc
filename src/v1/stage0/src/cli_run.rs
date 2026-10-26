@@ -107,14 +107,14 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_type_declaration_use_census_runs, run_v2_demand_census,
-    run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit,
-    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
-    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
-    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
-    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
-    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
-    MEASURED_SPAWN_RECEIPT_ENV,
+    run_self_host, run_self_host_frontier, run_type_declaration_use_census_runs,
+    run_v2_census_verb, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
+    run_v2_native_cli_emit, run_v2_native_frontier, run_v2_select_spelled_modules, CensusInferRun,
+    MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured,
+    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
+    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
@@ -147,7 +147,8 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
+    resolve_entry_with_index_typed, resolve_seeded_compile_closure, resolve_stage_totals,
+    whole_tree_resolved_ctx, EntryResolveRefusal,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -172,7 +173,11 @@ pub use emit_host::{
     compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
 };
 pub use emit_host::{
-    compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
+    compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
+    compile_dag_rust_emit_check_memo_counts, reset_compile_dag_diagnostic_census_cost_counts,
+};
+pub use emit_host::{
+    emit_resolved_for_target_counting, every_module_render_calls, non_empty_selected_render_calls,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -204,6 +209,7 @@ pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
+mod provider_acquire;
 mod source_layout_lookup;
 pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
@@ -720,7 +726,9 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(detail) => {
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
@@ -3793,6 +3801,12 @@ fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
 fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
     let layers = witness_layer_roots();
     let shared = entry_resolve::try_process_shared_index(&layers)?;
+    // STEP 0 (census cost): per-call clone of the corpus-length source-file vec.
+    CENSUS_COST_SHARED_VEC_CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    CENSUS_COST_SHARED_VEC_LEN.fetch_add(
+        shared.source_files.len() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     let scratch = entry_resolve::new_multi_entry_index_scratch_over(
         shared.source_files.clone(),
         &shared.source_roots,
@@ -3819,6 +3833,12 @@ fn fixture_imported_corpus_sources(
             if let Some(rel_path) = module_index.get(&module_path) {
                 let abs_path = ws.join(rel_path);
                 if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    // STEP 0 (census cost): a real corpus read on the census resolve path.
+                    CENSUS_COST_DISK_READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    CENSUS_COST_DISK_READ_BYTES.fetch_add(
+                        file_content.len() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     seen.insert(
                         module_path,
                         Rc::new(v1_compiler_compile::SourceFile {
@@ -3832,6 +3852,12 @@ fn fixture_imported_corpus_sources(
                 let rel_path = format!("fixtures/fixture_closure_rustc/{rest}.dag");
                 let abs_path = ws.join(&rel_path);
                 if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    // STEP 0 (census cost): a real corpus read on the census resolve path.
+                    CENSUS_COST_DISK_READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    CENSUS_COST_DISK_READ_BYTES.fetch_add(
+                        file_content.len() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     seen.insert(
                         module_path,
                         Rc::new(v1_compiler_compile::SourceFile {
@@ -3952,15 +3978,42 @@ pub enum CompileDiagnosticCensus {
     NotRunnable(String),
 }
 
-thread_local! {
-    static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, CompileDiagnosticCensus>,
-    > = std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS: std::sync::atomic::AtomicU64 =
+// STEP 0 COST COUNTERS (census cost-shape scoping — measurement only, no behavior change).
+// Process-wide, atomic, read/reset through the pub fns in emit_host; a receipt is
+// process-differential (deltas around calls in one process).
+// What each one sees is the point of each one:
+//  * INDEX_CLONES / INDEX_CLONED_ENTRIES — every `build_module_path_index` call deep-clones
+//    the whole corpus-keyed module-path index (one String key + one String path per corpus
+//    module, allocated fresh per clone). The index itself is memoized (MODULE_PATH_INDEX_CACHE);
+//    these count what the memo does NOT remove: the per-call materialization of its bytes.
+//  * SHARED_VEC_CLONES / SHARED_VEC_LEN — the scratch route clones the process-shared index's
+//    corpus-length Vec<Rc<SourceFile>> per census call (Rc bumps, but corpus-length per call).
+//  * DISK_READS / DISK_READ_BYTES — every actual fs::read_to_string the census's resolve path
+//    performs (the import-closure seeds). These are the "files and bytes materialized per call"
+//    the census is accused of paying corpus-scale for; the counters settle whether that
+//    accusation is closure-scale or corpus-scale with numbers, not adjectives.
+pub static CENSUS_COST_INDEX_CLONES: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
-static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES: std::sync::atomic::AtomicU64 =
+pub static CENSUS_COST_INDEX_CLONED_ENTRIES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_SHARED_VEC_CLONES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_SHARED_VEC_LEN: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_DISK_READS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_DISK_READ_BYTES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+/// Times the underlay identity proof REFUSED -- i.e. a scratch tried to read the pool out of its
+/// underlay and was denied, with the refusal PROPAGATED (`?`), not swallowed and not downgraded to
+/// "build it yourself". Zero is the expected value for a census call; a nonzero count means either
+/// the pool drifted (the correct refusal, and the census call surfaces it as NotRunnable) or the
+/// proof is wrong about a legitimate scratch (which would be a loud red, not a silent loss of the
+/// fix, because the refusal propagates). `census_cost_step0_measurement` asserts it at zero over
+/// the warm series (a local cargo test, not a required-path gate -- see that file's
+/// execution-locus block), and cli_run's own `underlay_identity_proof_tests` drives it nonzero on
+/// drifted facts -- which is what keeps the proof from being code that never runs.
+pub static CENSUS_COST_IDENTITY_REFUSALS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
 /// One supplied module of a [`compile_dag_multi_module_fixture`] manifest: the path the compile
@@ -4283,7 +4336,7 @@ pub struct DeclaredImportClosureBindingObserved {
     pub blocking_hard_diagnostic_count: i64,
 }
 
-/// Result of [`observe_declared_import_closure_symbol_binding`]. `NotRunnable` is distinct from
+/// Result of [`declared_import_closure_binding_observation_from_resolved`]. `NotRunnable` is distinct from
 /// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclaredImportClosureBindingObservation {
@@ -4321,40 +4374,6 @@ const CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS: &[(&str, &str)] = &[
     ),
     ("src/v2/std/grounding.dag", "v2.std.verdict.VerdictTally"),
 ];
-
-/// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
-/// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
-/// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
-///
-/// MEASUREMENT ONLY — binding-source classification (`ListedImport` vs `PoolCoincidence`) is
-/// carried as data for Class B (#6985) controls; callers judge acceptance.
-pub fn observe_declared_import_closure_symbol_binding(
-    pool_roots: &[String],
-    entry_path: &str,
-    consumer_module: &str,
-    symbol: &str,
-) -> DeclaredImportClosureBindingObservation {
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compile_declared_import_closure_only_with_pool(pool_roots, entry_path, None)
-    }));
-    let resolved = match compiled {
-        Ok(Ok(r)) => r,
-        Ok(Err(cause)) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(cause);
-        }
-        Err(_) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(
-                "observe_declared_import_closure_symbol_binding: compile panicked before producing a graph"
-                    .to_string(),
-            );
-        }
-    };
-    declared_import_closure_binding_observation_from_resolved(
-        resolved.as_ref(),
-        consumer_module,
-        symbol,
-    )
-}
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
@@ -5882,11 +5901,30 @@ fn workspace_relative_entry_path(path: &str) -> String {
     norm
 }
 
+/// Identity mint for one BUILD of `ModuleGraphFactsLive` -- allocated where the corpus is
+/// actually scanned, never at a use site. A `Clone` of a built value keeps its mint, so a value
+/// that came out of the facts memo shares its parent's mint; two independent scans of the same
+/// pool get two different mints even when their content agrees. See the field's doc.
+pub(crate) fn next_facts_build_id() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
 /// set. Built once per `MultiEntryIndex` / resolve pass so closure queries do not re-scan the
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
+    /// Identity of the BUILD that produced this value, minted where the corpus is actually read
+    /// (`build_module_graph_facts_live_uncached`, `resolve_entry_graph_demand_acquired`) and
+    /// carried by `Clone`. Two values with the SAME id are the same scan of the same pool -- the
+    /// process-level facts memo hands out clones of one build, so a scratch that acquired its
+    /// facts from the memo shares the base's id, while two independent scans never share one.
+    /// That makes it the release-live witness for "this scratch's facts ARE the underlay's
+    /// facts": a content comparison of two clones could agree while the underlying builds
+    /// differed, and a `debug_assert_eq!` is compiled out exactly where the census runs
+    /// (every `claim_batch` build is `--release`). Read by `MultiEntryIndex::pool_identity_proof`.
+    pub(crate) build_id: u64,
     pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
     pub(crate) adjacency: HashMap<String, Vec<String>>,
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
@@ -7148,7 +7186,25 @@ pub enum IndexResidency {
     OwnedByThisCompile,
 }
 
+/// THE COMPILE TRANSACTION, AND ITS RECEIPT (§4 P0.1, §5a amendment A).
+///
+/// This is the outer boundary of ONE compile. The wrapper exists so the receipt is printed
+/// whatever the transaction's disposition — an early admission refusal still gets its rows,
+/// because an operator staring at a SIGKILL or a refusal is exactly who needs the receipt.
+/// `CompileRun.wall_ms` is sampled INSIDE the body before its locals finish dropping, and the
+/// caller materializes output and renders diagnostics after this returns, so the process rows
+/// staged here (printed at exit by `pre_entry_phase`) carry what falls outside even this.
 pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
+    let transaction_started = std::time::Instant::now();
+    let run = compile_emission_over_inner(request, residency);
+    crate::cli_run::pre_entry_phase::print_compile_transaction_receipt(
+        &request.subject.label(),
+        transaction_started,
+    );
+    run
+}
+
+fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let source_roots: &[String] = &request.source_roots;
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
@@ -7459,8 +7515,18 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
     let blocking: usize = emissions
         .iter()
         .map(|emission| {
-            v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+            // THE 1-ARG NAME IS GONE, so this counted caller uses the located renderer too. It only
+            // takes `.len()` -- the count is identical either way, since the located renderer emits
+            // one line per blocking diagnostic -- but it must still pass an index rather than a
+            // fabricated one, and `PipelineResult` carries the indices the compile actually built.
+            // Each `NewlineIndex` names its OWN file, so the keys are read from the index itself.
+            let mut source_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+            for index in emission.result.newline_indices.iter() {
+                source_indices.insert(index.file.clone(), index.clone());
+            }
+            v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
                 emission.result.diagnostics.clone(),
+                Rc::new(source_indices),
             )
             .len()
         })
@@ -7733,7 +7799,15 @@ fn parsed_file_references_of(
     if let Some(hit) = index.parsed_references.borrow().get(&file) {
         return hit.clone();
     }
-    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+    // The same identity fact the census read-throughs rest on, so the same gate: reading a
+    // per-file parse out of the underlay is answering a question about THE POOL from a pool the
+    // caller must prove it shares. A refusal PROPAGATES via `?` -- it does not fall through to
+    // parsing it here -- because reading a pool you cannot prove you share is the failure this
+    // overlay exists to prevent, and §5 fail-closed means refusing loudly (the builtin reports
+    // the located Err, the census reports NotRunnable, CI goes red) rather than proceeding on a
+    // guess. The pre-underlay behavior of parsing it here is what an index with NO underlay
+    // still does; that path is the `Ok(None)` branch of the gate, not a refusal.
+    if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(hit) = base.parsed_references.borrow().get(&file) {
             return hit.clone();
         }
@@ -7998,7 +8072,11 @@ fn admit_bare_references_of_file(
     if let Some(verdict) = index.bare_reference_admission.borrow().get(&file) {
         return verdict.clone();
     }
-    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+    // Gated on the underlay identity proof, as every other read-through is (see
+    // `scratch_underlay_if_proven`). A refusal propagates via `?` rather than falling through to
+    // computing this index's own verdict below -- fail-closed, §5; the fall-through below is only
+    // reached by an index with no underlay (the gate's `Ok(None`).
+    if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(verdict) = base.bare_reference_admission.borrow().get(&file) {
             return verdict.clone();
         }
@@ -8530,7 +8608,12 @@ fn build_both_closure_edge_index(
             return Ok(hit.clone());
         }
     }
-    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+    // Gated on the underlay identity proof like every other read-through. On refusal the `?`
+    // propagates the located Err (fail-closed, §5) -- this index does NOT quietly build its own
+    // edge index, because a scratch that cannot prove its pool is exactly the state where "build
+    // it yourself from local data" would answer the wrong question. The build-below path is for
+    // an index with no underlay at all.
+    if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(hit) = base.both_closure_edges.borrow().as_ref() {
             if hit.ref_out.contains_key(&file) {
                 return Ok(hit.clone());
@@ -8876,6 +8959,84 @@ mod closure_edge_demand_tests {
             None
         );
         reset_bare_reference_admission_completion_for_test();
+    }
+
+    /// §5 LANE A (P0.6) DISCRIMINATOR: `extend_with_bare_reference_closure` REUSES the index's
+    /// shared path lookup instead of rebuilding `path_to_source_lookup` per fixpoint round. What
+    /// must stay UNCHANGED is the closure and its order — this drives a two-round chain (entry
+    /// bare-calls `mid`, which bare-calls `deep`, so the second provider arrives only in round
+    /// two) through both the loader route and the fixpoint authority directly, on ONE index, and
+    /// the two must agree on paths in order. The sharing itself is pinned by pointer identity:
+    /// if a future edit re-mints the map per round (the pre-fix behavior), the `Rc` pointers
+    /// diverge and this goes red.
+    #[test]
+    fn bare_path_lookup_is_shared_across_rounds_with_closure_and_order_unchanged() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module probe_entry\nfn main() -> Int { mid() }\n",
+            ),
+            ("mid.dag", "module probe_mid\nfn mid() -> Int { deep() }\n"),
+            ("deep.dag", "module probe_deep\nfn deep() -> Int { 7 }\n"),
+        ]);
+        let index = fixture.index();
+        let entry_path = fixture.0.join("entry.dag").to_string_lossy().into_owned();
+        // The stage slot is thread-local and can carry residue; per the field's own contract,
+        // subtract a pre-span snapshot.
+        let before_snapshot = entry_resolve::resolve_stage_slot_snapshot();
+
+        let ordered = |sources: &[Rc<v1_compiler_compile::SourceFile>]| -> Vec<String> {
+            sources.iter().map(|s| s.path.clone()).collect()
+        };
+
+        // Route A: the ordinary loader, which closes through the fixpoint authority.
+        let via_loader = load_sources_for_entry_with_pool(&index, &entry_path).unwrap();
+        let via_loader = ordered(&via_loader);
+
+        // Route B: the fixpoint authority directly, seeded with the entry alone. Both routes
+        // share ONE index, so both must serve the SAME lookup; the closure and its order
+        // (paths ascending, the fixpoint's own normalization) must be identical.
+        let content = std::fs::read_to_string(&entry_path).unwrap();
+        // Seed with the workspace-relative path, exactly as the loader normalizes it — otherwise
+        // the seed and the index's copy of the entry survive `dedup_by(path)` as two rows.
+        let seed = Rc::new(v1_compiler_compile::SourceFile {
+            path: workspace_relative_entry_path(&entry_path),
+            content,
+        });
+        let lookup_ptr_before = Rc::as_ptr(&pool_path_lookup(&index));
+        let via_fixpoint = extend_sources_to_both_closure_fixpoint(vec![seed], &index).unwrap();
+        let via_fixpoint = ordered(&via_fixpoint);
+
+        assert!(
+            via_fixpoint.len() >= 3,
+            "the chain must pull BOTH providers across rounds, got {via_fixpoint:?}"
+        );
+        assert_eq!(
+            via_fixpoint, via_loader,
+            "closure and order must be unchanged by the lookup-sharing change"
+        );
+        assert!(
+            via_fixpoint.windows(2).all(|w| w[0] <= w[1]),
+            "the fixpoint's path-order normalization must survive: {via_fixpoint:?}"
+        );
+        // The lookup is the INDEX's memo, stable across the whole fixpoint — a regression that
+        // re-mints the index's own cell per round fails here. The rebuild elimination itself is
+        // what the self-host instrument prices: `load_bare_path_lookup` drops to ~0 ns per call
+        // after the first (the per-round calls keep counting, pinned below, so the instrument
+        // reads real data rather than an absent row).
+        assert_eq!(
+            lookup_ptr_before,
+            Rc::as_ptr(&pool_path_lookup(&index)),
+            "the path lookup must be minted once per index, not rebuilt per fixpoint round"
+        );
+        let after = entry_resolve::resolve_stage_slot_snapshot();
+        let calls = after.load_bare_path_lookup_calls - before_snapshot.load_bare_path_lookup_calls;
+        let rounds = after.load_fixpoint_rounds - before_snapshot.load_fixpoint_rounds;
+        assert!(
+            calls >= rounds && rounds >= 3,
+            "one lookup call per fixpoint round must still be counted (loader + direct \
+             fixpoint = at least 3 rounds), got {calls} calls for {rounds} rounds"
+        );
     }
 
     /// A `test` row is never a bare provider, and which rows are tests is the parse's
@@ -10115,8 +10276,17 @@ fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    // THE LOOKUP IS SHARED, NOT REBUILT PER ROUND (§4 P0.6). `path_to_source_lookup` maps
+    // `index.source_files`, which no code path mutates after the index is built (demand-acquired
+    // files arrive through a FRESH index, never into this one) — so the index's
+    // `OnceCell`-memoized `pool_path_lookup` answer is the same map every round would rebuild.
+    // This function runs once per fixpoint round of
+    // `extend_sources_to_both_closure_fixpoint`; before this, every round cloned the whole
+    // path-keyed map (a per-fixpoint-round O(pool) rebuild) to produce an identical lookup.
+    // The receipt keeps counting calls per round; the nanos drop to zero after the first, which
+    // is the point an operator can SEE the sharing rather than trust the claim.
     let lookup_started = std::time::Instant::now();
-    let lookup = path_to_source_lookup(&index.source_files);
+    let lookup = pool_path_lookup(index);
     resolve_stage_slot_add(|s| {
         s.load_bare_path_lookup += lookup_started.elapsed().as_nanos();
         s.load_bare_path_lookup_calls += 1;
@@ -10652,7 +10822,7 @@ impl BudgetKind {
 /// the seam.
 ///
 /// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
-/// `HermeticHostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
+/// `HostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
 /// pre-mapped `EvaluationBudgetExceeded` each have their OWN `ClaimOutcome` arm and are consumed
 /// by earlier arms of the match in `run_claim`, so they cannot reach this classifier. They are
 /// not silently folded into a neighbour: all five map to `MappedOutcomeEscaped`, a typed,
@@ -10776,7 +10946,7 @@ impl WitnessRuntimeCause {
             E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
-            | E::HermeticHostEffectRefused { .. }
+            | E::HostEffectRefused { .. }
             | E::EvalBudgetExceeded { .. }
             | E::WitnessWallBudgetExceeded { .. }
             | E::EvaluationBudgetExceeded { .. }
@@ -10866,7 +11036,7 @@ pub enum ClaimOutcome {
     /// execute it.
     HostEffectRefused {
         operation: String,
-        ground: v1_interpreter::HermeticEffectGround,
+        ground: v1_interpreter::EffectRefusalGround,
     },
     /// THE HOST UNWOUND. Not a `RuntimeError`: that arm carries an `InterpError` the evaluator
     /// RAISED and this runner CAUGHT, a value held in hand. A panic is the evaluator failing to
@@ -11439,6 +11609,14 @@ pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
     source_files: ModuleSourceIndex,
+    /// THE DEMAND-ACQUIRED PATH'S SOURCE LAYOUT, for generated providers (`provider_acquire`): the
+    /// layout's typed answer for a module this index's acquired closure does not hold. Set only by
+    /// `demand_acquire`; every index that already holds its whole pool leaves it empty.
+    provider_layout: RefCell<Option<Rc<dyn Fn(&str) -> entry_resolve::ProviderLayoutAnswer>>>,
+    /// The source each Holds answer read, kept so the rebuild acquires those exact bytes and never
+    /// reads the provider a second time.
+    provider_snapshots:
+        RefCell<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>>,
     module_graph_facts: ModuleGraphFactsLive,
     /// Per-index typed results, keyed by the typed-module CONTENT key
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
@@ -11523,6 +11701,13 @@ pub struct MultiEntryIndex {
     both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
     /// Fixture-scratch read-through: the process-shared index. Writes stay on this index.
     scratch_underlay: RefCell<Option<Rc<MultiEntryIndex>>>,
+    /// Memoized verdict of `scratch_underlay_identity_proof` for THIS scratch: `None` = not yet
+    /// computed, `Some(None)` = proven, `Some(Some(reason))` = refused. Memoized because the
+    /// proof walks the corpus by pointer and one of the five read-throughs
+    /// (`parsed_file_references_of`) runs once per DEMANDED FILE -- recomputing it per file would
+    /// cost more than the read-through saves. A scratch is per census call, so it is one proof
+    /// per call.
+    underlay_identity: RefCell<Option<Option<String>>>,
     /// Admission and edge selection need declaration heads, not resolved signatures.
     /// None identifies the whole-pool name census; Some(root) the existing tree/import view.
     closure_name_censuses: RefCell<HashMap<Option<String>, Rc<SymbolIndex>>>,
@@ -11745,6 +11930,109 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
 fn next_index_generation() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Proves the ONE fact every `scratch_underlay` read-through rests on: that a scratch's pool IS
+/// its underlay's pool, so answering a scratch's query from the underlay cannot answer a
+/// different question than the scratch would have answered for itself.
+///
+/// WHAT IT CHECKS, and why each half is needed:
+/// * every module path the scratch maps is the underlay's, BY `Rc` POINTER, not by content. The
+///   scratch's map is built by cloning the shared map, and this type is a persistent
+///   `im::HashMap<String, Rc<SourceFile>>`, so a clone hands out the SAME `Rc` allocations --
+///   pointer identity therefore means "the same pool", and a scratch whose entry was replaced
+///   with an equal-content-but-different value still fails. Comparing contents would be both
+///   slower and weaker: two independent scans of a pool that happens not to have changed agree
+///   on content while proving nothing about which scan the answer came from.
+/// * the graph facts carry the underlay's `build_id`. Facts are NOT shared by pointer because
+///   `ReferenceSelectionTier` has interior mutability (`OnceCell`/`RefCell` memos) and a scratch
+///   must not fill the shared index's caches -- so the pointer trick is unavailable there, and
+///   the minted build id is the release-live substitute: only a clone of the same build can share
+///   an id.
+///
+/// WHY THIS IS NOT ANOTHER `debug_assert_eq!`. It runs in `--release`, which is the only shape
+/// that exists here: every `claim_batch` build, and therefore every census call in CI, is
+/// `--release`. A `debug_assert_eq!` beside a pool read is a decoration -- it never executes
+/// where the thing it guards runs (DESIGN §4b, "a check whose forbidden state is expressible
+/// nowhere it runs is a decoration, green by construction and later cited as coverage"). It
+/// returns a located `Err` rather than panicking, so a drift makes the builtin refuse the way
+/// every other refusal here does instead of aborting the process.
+///
+/// COST: O(#pool files) pointer comparisons, once per census call (a scratch is built per call),
+/// against the ~336 ms a warm call takes -- and it is what lets the two read-throughs below
+/// delete the pool rebuilds instead of paying them.
+pub(crate) fn scratch_underlay_identity_proof(
+    scratch: &MultiEntryIndex,
+    base: &MultiEntryIndex,
+) -> Result<(), String> {
+    if scratch.source_files.len() != base.source_files.len() {
+        CENSUS_COST_IDENTITY_REFUSALS.fetch_add(1, Ordering::Relaxed);
+        return Err(format!(
+            "scratch underlay identity refused: scratch maps {} module paths, its underlay maps {}",
+            scratch.source_files.len(),
+            base.source_files.len()
+        ));
+    }
+    for (path, source) in scratch.source_files.iter() {
+        match base.source_files.get(path) {
+            // Pointer equality, not `==`: see the doc. A missing key is drift too.
+            Some(base_source) if Rc::ptr_eq(source, base_source) => {}
+            Some(_) => {
+                CENSUS_COST_IDENTITY_REFUSALS.fetch_add(1, Ordering::Relaxed);
+                return Err(format!(
+                    "scratch underlay identity refused: {path} is a different source value than \
+                     the underlay's, so the underlay cannot answer for this scratch"
+                ));
+            }
+            None => {
+                CENSUS_COST_IDENTITY_REFUSALS.fetch_add(1, Ordering::Relaxed);
+                return Err(format!(
+                    "scratch underlay identity refused: scratch maps {path}, the underlay does not"
+                ));
+            }
+        }
+    }
+    if scratch.module_graph_facts.build_id != base.module_graph_facts.build_id {
+        CENSUS_COST_IDENTITY_REFUSALS.fetch_add(1, Ordering::Relaxed);
+        return Err(format!(
+            "scratch underlay identity refused: scratch's graph facts were built by scan {} and \
+             the underlay's by scan {}, so reading through would mix two scans of the pool",
+            scratch.module_graph_facts.build_id, base.module_graph_facts.build_id
+        ));
+    }
+    Ok(())
+}
+
+/// THE GATE EVERY UNDERLAY READ-THROUGH MUST PASS. Returns the underlay to read through, or
+/// `None` when this index has no underlay (an ordinary index, which simply answers for itself),
+/// or a located `Err` when the identity proof refused.
+///
+/// There are five read-throughs of `scratch_underlay` -- `pool_parse`, `closure_name_census`,
+/// `parsed_file_references_of`, `admit_bare_references_of_file` and
+/// `build_both_closure_edge_index` -- and all five answer a question about THE POOL from the
+/// underlay's caches, so all five rest on the same fact and all five go through here. A refusal
+/// is returned rather than swallowed: a scratch that cannot prove its pool would otherwise be
+/// handed an answer from a pool it does not share, which is the failure the overlay exists to
+/// avoid; and it is not silently downgraded to "rebuild it yourself", because a false refusal on
+/// a legitimate scratch should be LOUD (the builtin refuses, CI goes red) rather than invisible
+/// (the fix quietly stops applying and the census just gets slow again).
+pub(crate) fn scratch_underlay_if_proven(
+    index: &MultiEntryIndex,
+) -> Result<Option<Rc<MultiEntryIndex>>, String> {
+    let base = index.scratch_underlay.borrow().clone();
+    let Some(base) = base else { return Ok(None) };
+    let memo = index.underlay_identity.borrow().clone();
+    if let Some(verdict) = memo {
+        return match verdict {
+            None => Ok(Some(base)),
+            Some(reason) => Err(reason),
+        };
+    }
+    let verdict = scratch_underlay_identity_proof(index, &base);
+    // The memo stores the verdict as `Option<String>` (None = proven); the proof speaks `Result`.
+    *index.underlay_identity.borrow_mut() = Some(verdict.as_ref().err().cloned());
+    verdict?;
+    Ok(Some(base))
 }
 
 /// One `MultiEntryIndex` construction: the module-name set it indexes (as a digest over the sorted
@@ -12538,8 +12826,14 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // `_inner`), `CostPartitionRow`, `InclusiveCostRow`, `CostAccountingVerdict`,
 // `CostAccountingRefusal`, `ExclusiveCostPartition`, `exclusive_cost_partition`,
 // `exclusive_cost_partition_from`, `render_exclusive_cost_partition_json`, `json_num`, the
-// `exclusive_cost_partition_law` test module, and the three `[cost-partition]` emissions
-// (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`) — ~700 LOC incl. tests.
+// `exclusive_cost_partition_law` test module, `out_of_span_rows`, and the three
+// `[cost-partition]` emissions (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`)
+// — ~700 LOC incl. tests. The probe is no longer print-only in `claim_batch`: a Refused
+// verdict decides the batch exit (`NoSpans` -> 2, any other refusal -> 1), through the
+// third parameter of `claim_batch`'s `batch_exit_code` (an already-admitted declaration; no
+// new one), its call site in `main`, and the `a_refused_partition_joins_the_batch_exit` test.
+// At deletion the parameter, call-site argument and test go with the probe, and removing the
+// probe while they stand fails to compile.
 // Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
@@ -12649,6 +12943,13 @@ pub enum CostAccountingRefusal {
     NestedSpanAttribution { nested_spans: u64 },
     /// No resolve span ran on this thread — there is nothing to partition.
     NoSpans,
+    /// A stage's span-captured total exceeds the thread's total for it, so the two slot
+    /// accounts disagree and the out-of-span remainder does not exist.
+    InSpanExceedsThread {
+        stage: &'static str,
+        in_span_nanos: u128,
+        thread_nanos: u128,
+    },
 }
 
 /// An exclusive, non-overlapping accounting of the measured parent work.
@@ -12663,6 +12964,10 @@ pub struct ExclusiveCostPartition {
     pub spans: u64,
     pub nested_spans: u64,
     pub exclusive: Vec<CostPartitionRow>,
+    /// Stage time recorded outside every top-level resolve span (e.g. the whole-corpus
+    /// parse the edge index build forces before the first span opens). It is not part of
+    /// the parent, so it is never a row of the partition, but it is reported here, typed.
+    pub out_of_span: Vec<CostPartitionRow>,
     pub inclusive: Vec<InclusiveCostRow>,
     /// Parent minus the exclusive rows: the work inside a resolve span that no row claims.
     pub remainder_nanos: u128,
@@ -12716,14 +13021,84 @@ impl ExclusiveCostPartition {
 /// separate reason that they corrupt the slot the rows come from.
 pub fn exclusive_cost_partition() -> ExclusiveCostPartition {
     let account = resolve_span_account();
-    exclusive_cost_partition_from(
-        &resolve_stage_totals(),
-        "summed_top_level_resolve_span_nanos",
-        account.span_nanos,
-        account.spans,
-        account.nested_spans,
-        resolve_span_rows_by_entry(),
-    )
+    // THE ROWS ARE DRAWN FROM THE SAME UNIVERSE AS THE PARENT: the per-entry rows each
+    // span captured at its own exit. `resolve_stage_totals()` also holds every stage add
+    // made OUTSIDE a top-level span (the whole-corpus `pool_parse` is forced by the edge
+    // index build before the first span opens, so every in-span `pool_parse` is 0), and a
+    // child drawn from a larger universe than its parent is not a partition of it: the
+    // exclusive rows then summed past the span total by exactly the out-of-span parse.
+    let mut in_span = ResolveStageNanos::default();
+    for entry_rows in resolve_stage_rows_by_entry().values() {
+        in_span.accumulate(entry_rows);
+    }
+    let totals = resolve_stage_totals();
+    let basis = "summed_top_level_resolve_span_nanos";
+    let args = |st: &ResolveStageNanos| {
+        exclusive_cost_partition_from(
+            st,
+            basis,
+            account.span_nanos,
+            account.spans,
+            account.nested_spans,
+            resolve_span_rows_by_entry(),
+        )
+    };
+    let partition = args(&in_span);
+    // The out-of-span cost does not vanish by narrowing the universe: it is carried as its
+    // own typed rows beside the partition (totals minus the span-captured rows), never a
+    // child of the parent span and never summed into `sum_exclusive`.
+    let whole = args(&totals);
+    // A reversed universe is a refusal naming the stage, never a clamp to "no out-of-span
+    // cost": it outranks a reconciled verdict and leaves an already-refused one in place.
+    let (out_of_span, verdict) = match out_of_span_rows(&whole.exclusive, &partition.exclusive) {
+        Ok(rows) => (rows, partition.verdict),
+        Err(cause) => (
+            Vec::new(),
+            match partition.verdict {
+                CostAccountingVerdict::Reconciled { .. } => {
+                    CostAccountingVerdict::Refused { cause }
+                }
+                refused => refused,
+            },
+        ),
+    };
+    // Counts and volumes (builds, modules, scan bytes) are events of the whole thread, not
+    // span-bound durations, so they and the inclusive observations keep the totals.
+    ExclusiveCostPartition {
+        exclusive: partition.exclusive,
+        remainder_nanos: partition.remainder_nanos,
+        verdict,
+        out_of_span,
+        ..whole
+    }
+}
+
+/// Stage time the thread recorded that no top-level span captured: thread totals minus the
+/// span-captured rows, per stage. The span-captured rows are a subset of the thread totals by
+/// construction, so a stage whose in-span total exceeds the thread total is two slot accounts
+/// disagreeing and refuses naming that stage.
+fn out_of_span_rows(
+    thread: &[CostPartitionRow],
+    in_span: &[CostPartitionRow],
+) -> Result<Vec<CostPartitionRow>, CostAccountingRefusal> {
+    let mut rows = Vec::new();
+    for (all, inside) in thread.iter().zip(in_span.iter()) {
+        match all.nanos.checked_sub(inside.nanos) {
+            Some(0) => {}
+            Some(outside) => rows.push(CostPartitionRow {
+                name: all.name,
+                nanos: outside,
+            }),
+            None => {
+                return Err(CostAccountingRefusal::InSpanExceedsThread {
+                    stage: all.name,
+                    in_span_nanos: inside.nanos,
+                    thread_nanos: all.nanos,
+                })
+            }
+        }
+    }
+    Ok(rows)
 }
 
 /// Same law over a caller-supplied parent/children pair drawn from ONE universe.
@@ -12994,6 +13369,7 @@ pub fn exclusive_cost_partition_from(
         spans: account.spans,
         nested_spans: account.nested_spans,
         exclusive,
+        out_of_span: Vec::new(),
         inclusive,
         remainder_nanos,
         verdict,
@@ -13040,6 +13416,18 @@ pub fn render_exclusive_cost_partition_json(
 
     out.push_str(",\"exclusive\":{");
     for (i, row) in p.exclusive.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        out.push_str(&esc(row.name.to_string()));
+        out.push_str("\":");
+        out.push_str(&json_num(row.nanos));
+    }
+    out.push('}');
+
+    out.push_str(",\"out_of_span\":{");
+    for (i, row) in p.out_of_span.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
@@ -13150,6 +13538,21 @@ pub fn render_exclusive_cost_partition_json(
                 }
                 CostAccountingRefusal::NoSpans => {
                     out.push_str("{\"kind\":\"NoSpans\"}");
+                }
+                CostAccountingRefusal::InSpanExceedsThread {
+                    stage,
+                    in_span_nanos,
+                    thread_nanos,
+                } => {
+                    out.push_str("{\"kind\":\"InSpanExceedsThread\",\"stage\":");
+                    out.push('"');
+                    out.push_str(&esc(stage.to_string()));
+                    out.push('"');
+                    out.push_str(",\"in_span_nanos\":");
+                    out.push_str(&json_num(*in_span_nanos));
+                    out.push_str(",\"thread_nanos\":");
+                    out.push_str(&json_num(*thread_nanos));
+                    out.push('}');
                 }
             }
             out.push_str(",\"shares_quotable\":false}");
@@ -13423,9 +13826,10 @@ mod module_schedule_batches_tests {
 fn finish_resolved_graph_assembly(
     modules: Rc<im::Vector<Rc<TypedModule>>>,
     diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
+    demand_chunks: Vec<provider_acquire::ProviderDemands>,
     binding_fork_counts: (usize, usize),
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands), String> {
     let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
     let registry_started = std::time::Instant::now();
     let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
@@ -13482,12 +13886,28 @@ fn finish_resolved_graph_assembly(
     }
     resolve_stage_slot_add(|s| s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos());
     let rewire_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    let rewire_index = modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<v1_compiler_infer::TypedModule>>(),
+        |acc, m| {
+            v1_rt::rc_map_insert(
+                acc,
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                m.clone(),
+            )
+        },
+    );
+    let modules = v1_compiler_infer::rewire_type_env_parent_links(
+        modules.clone(),
+        rewire_index.clone(),
+        source_indices.clone(),
+    );
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
     let rewire3_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_func_env_parent_links(
+        modules.clone(),
+        rewire_index.clone(),
+        source_indices.clone(),
+    );
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     // NO EmitGraphInfo IS BUILT HERE (v1.compiler.infer_items ResolvedGraph): emission builds its
@@ -13503,7 +13923,7 @@ fn finish_resolved_graph_assembly(
         diagnostics,
     });
     resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
-    Ok(graph)
+    Ok((graph, provider_acquire::group_pass_demands(&demand_chunks)))
 }
 
 /// When every module in the closure is already in the typed cache, skip the
@@ -13527,7 +13947,7 @@ fn try_reconcile_all_cache_hits(
     cycle_residue_slots: &HashSet<usize>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
-) -> Result<Option<Rc<ResolvedGraph>>, String> {
+) -> Result<Option<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands)>, String> {
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -13610,6 +14030,8 @@ fn try_reconcile_all_cache_hits(
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
     let empty_parent_diags = Rc::new(im::Vector::new());
+    let mut demand_chunks: Vec<provider_acquire::ProviderDemands> =
+        Vec::with_capacity(closure_modules.len());
     for tc_result in results.into_iter() {
         let tc_result = tc_result.expect("every slot filled by the dependency-order pass above");
         let graph_started = std::time::Instant::now();
@@ -13618,6 +14040,7 @@ fn try_reconcile_all_cache_hits(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
+        demand_chunks.push(tc_result.provider_demands.clone());
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -13633,6 +14056,7 @@ fn try_reconcile_all_cache_hits(
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
+        demand_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
@@ -13715,6 +14139,22 @@ fn parse_module_heads_for_pool_census(
 fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     if let Some(cached) = index.pool_parse.borrow().clone() {
         return Ok(cached);
+    }
+    // POOL FACT, READ THROUGH THE UNDERLAY -- gated on the identity proof, IN RELEASE. A
+    // fixture scratch's `source_files` is the process-shared slot's map cloned verbatim (its only
+    // constructor, `scratch_index_for_fixture_closure_extension`, does exactly
+    // `shared.source_files.clone()` and the fixture is never inserted here -- it is appended to
+    // the returned source Vec after the fixpoint), so `scratch_underlay: Some(base)` can only mean
+    // "my pool IS base's pool". That is the claim `scratch_underlay_if_proven` CHECKS rather than
+    // assumes; see its doc for why a check that only exists in debug builds is no check at all
+    // here (every `claim_batch` is `--release`).
+    // Falling through makes the ~4 s pool parse build once per process on the shared slot instead
+    // of once per census call. Isolation is unaffected: this READS base's warm copy and writes
+    // nothing to it -- the fixture's writes stay on the scratch's own parse/typed caches
+    // (RFM `fixture_compile_retained_on_the_process_shared_index`). The digest-equality,
+    // collision-stability and RFM arbiters in tests/census_cost_step0_measurement.rs judge it.
+    if let Some(base) = scratch_underlay_if_proven(index)? {
+        return pool_parse(&base);
     }
     // Deterministic pool order (sorted module paths keeps every derived census
     // build reproducible — determinism gate).
@@ -13969,6 +14409,30 @@ fn closure_name_census(
     if let Some(hit) = index.closure_name_censuses.borrow().get(&key) {
         return Ok(hit.clone());
     }
+    // THE CENSUS IS A POOL FACT, SO IT IS BUILT ONCE PER PROCESS AND READ THROUGH THE
+    // UNDERLAY — on BOTH keys. WHAT MAKES THIS SOUND, per key:
+    // * The whole-pool (None) key is built over `pool.nodes_by_file` + `pool.combined_si`
+    //   and nothing per-index (see the `None =>` arm below), and `pool_parse` already shares
+    //   the underlay's warm copy.
+    // * The PER-ROOT (Some) key reads `pool_parse` plus `index.module_graph_facts.adjacency`
+    //   (`tree_census_nodes`) — and reads NOTHING from `index.source_files`. A scratch's
+    //   `module_graph_facts` is not its own computation: `new_multi_entry_index_scratch_over`
+    //   passes `acquired_facts = None`, so the shell body takes
+    //   `build_module_graph_facts_live(source_roots)` — the SAME thread-local memo the shared
+    //   index hit, under the SAME root key the scratch was handed (`shared.source_roots`).
+    //   Same key, same memo, therefore the SAME facts value: the per-root answer on the
+    //   scratch is bit-identical to the base's. The fixture can no more enter it here than it
+    //   can enter `pool_parse`.
+    // NOT "per-index just because the field is a struct member": the field is a COPY OF A
+    // SHARED MEMO. The identity is a CHECKED FACT in every profile --
+    // `scratch_underlay_if_proven` compares the minted `build_id`s (and the pool map by pointer),
+    // so a scratch whose pool or facts drifted from its underlay's refuses to read through. The
+    // guard used to be two `debug_assert_eq!`s here and at `pool_parse`; those compiled out in
+    // `--release`, which is the only profile the census ever runs in, and a guard that never
+    // executes where the thing it guards runs is a decoration (DESIGN §4b).
+    if let Some(base) = scratch_underlay_if_proven(index)? {
+        return closure_name_census(&base, root);
+    }
     let pool = pool_parse(index)?;
     // Timed NET of `pool_parse`, which is forced above and carries its own row: this is the
     // name-census construction over pool heads -- global name information every bare-reference
@@ -14114,7 +14578,7 @@ fn reconcile_with_typed_cache(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     index: &MultiEntryIndex,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands), String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
@@ -14248,7 +14712,7 @@ fn reconcile_with_typed_cache(
                     Rc::new(im::Vector::new())
                 } else {
                     let parent_envs_started = std::time::Instant::now();
-                    let parent_result = v1_compiler_infer::collect_parent_envs(
+                    let parent_diagnostics = v1_compiler_infer::missing_parent_env_diagnostics(
                         resolved.clone(),
                         module_index.clone(),
                         source_indices.clone(),
@@ -14256,7 +14720,7 @@ fn reconcile_with_typed_cache(
                     resolve_stage_slot_add(|s| {
                         s.parent_envs += parent_envs_started.elapsed().as_nanos()
                     });
-                    parent_result.diagnostics.clone()
+                    parent_diagnostics.clone()
                 };
                 let tc_result = match cached {
                     Some(hit) => hit,
@@ -14366,8 +14830,23 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                let computed =
-                                    index_insert_typed(index, typed_key.clone(), computed)?;
+                                // A RESULT COMPUTED WHILE A DEMANDED PROVIDER WAS OUTSIDE THIS CLOSURE IS NOT
+                                // THE MODULE'S ANSWER. Its generated references were left as
+                                // needs-acquisition, and the content key (source hash plus direct-import
+                                // interfaces) cannot see a provider no import names, so caching it would
+                                // serve the unacquired result again after the provider joins. Only a
+                                // result whose every demanded provider is in the closure it was computed
+                                // against is cached; the draft is recomputed on the grown closure.
+                                let providers_held = computed.provider_demands.iter().all(|d| {
+                                    closure_names
+                                        .iter()
+                                        .any(|n| *n == d.declaration.module_path)
+                                });
+                                let computed = if providers_held {
+                                    index_insert_typed(index, typed_key.clone(), computed)?
+                                } else {
+                                    computed
+                                };
                                 Ok(computed)
                             };
 
@@ -14438,6 +14917,7 @@ fn reconcile_with_typed_cache(
     // diagnostic order — is assembled in the exact order the serial fold produced, so the
     // result is byte-identical regardless of how the schedule batched the closure.
     let mut modules_vec = im::Vector::new();
+    let mut demand_chunks: Vec<provider_acquire::ProviderDemands> = Vec::new();
     for (slot, entry) in dispatched.into_iter().enumerate() {
         let (parent_diags, tc_result) = entry.unwrap_or_else(|| {
             unreachable!(
@@ -14452,6 +14932,7 @@ fn reconcile_with_typed_cache(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
+        demand_chunks.push(tc_result.provider_demands.clone());
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -14467,19 +14948,32 @@ fn reconcile_with_typed_cache(
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
+        demand_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
 }
 
+/// THE ONE HOST ENTRY TO THE SPAN AUTHORITY. Every reader-facing `file:line:col` this file prints
+/// goes through here, and this function now contains NO formatting of its own: it hands the span and
+/// the index to the function emitted from the seed's span authority (`src/v1/00_core.dag`) and prints
+/// what comes back. The located shape is unchanged (`m.dag:67:20`) -- claims such as
+/// dag/test/claim/frontend_eval_witness.dag assert `x.dag:67:20: error: …` and keep passing -- and
+/// what CHANGED is the arm this function could not express before: a span with no index used to
+/// return the bare path, which reads as a location with the position missing. It now comes back as
+/// the authority's typed unlocated line, `<file>: (no position: <cause>)`, naming the file and
+/// saying why there is no position. A second `format!("{}:{}:{}", …)` written in host Rust is the
+/// fork this removes (DESIGN 6b).
 fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
-    match si.get(file) {
-        Some(idx) => {
-            let lc = byte_to_line_col(idx.clone(), start);
-            format!("{}:{}:{}", file, lc.line, lc.col)
-        }
-        None => file.to_string(),
-    }
+    let span = Rc::new(crate::v1_std_core::SourceSpan {
+        file: file.to_string(),
+        start,
+        // A caller hands over ONE coordinate -- the site an author is sent to. The end is the same
+        // boundary; the authority's start arm is what is printed, and the authority (not this
+        // number) decides whether a position exists at all.
+        end: start,
+    });
+    crate::v1_std_core::render_span_location(span, Rc::new(si.clone()))
 }
 
 fn format_error_node(
@@ -15257,26 +15751,77 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     // fault. A typed, LOCATED diagnostic rendered as untyped prose is the
                     // opposite of what DESIGN section 5 requires of a refusal.
                     //
-                    // The index is built from the same `content` the parse consumed, and
-                    // `byte_to_line_col` reads CHAR offsets -- which is what spans carry, since
-                    // `build_newline_index` indexes `chars()` and the tokenizer's positions are
-                    // char positions. A synthetic span (`no_span()`, file `<synthetic>`) names
-                    // no position in this file, so it renders as the path alone rather than as
-                    // a fabricated `1:1`.
-                    let index = crate::v1_std_core::build_newline_index(path_str.clone(), content);
+                    // The index is built from the same `content` the parse consumed, and the
+                    // authority reads CHAR offsets -- which is what spans carry, since
+                    // `build_newline_index` indexes `chars()` and the tokenizer's positions are char
+                    // positions. A synthetic span (`no_span()`, file `<synthetic>`) or a span whose
+                    // file is not the text this index was built from comes back from the authority as
+                    // a TYPED unlocated line, not as a position -- previously this site guessed, and
+                    // its only unlocated shape was the bare path.
+                    let index =
+                        crate::v1_std_core::build_newline_index(path_str.clone(), content.clone());
+                    // THE STREAM IS BUILT ONCE, BESIDE THE INDEX -- not once per diagnostic. The
+                    // stream depends only on `content` and `path_str`, neither of which moves inside
+                    // the loop below, so deriving it per iteration is a proven cost-shape defect
+                    // (DESIGN 6: a proven cost-shape defect is always fixed regardless of realized n
+                    // -- "n is small here" is not time-stable), and the real case this site exists
+                    // for is 52 refusals in one file: 52 full tokenizations of the same text.
+                    // `tokenize` returns `Rc<Vec<Rc<Token>>>`, so the N renderings below share ONE
+                    // stream by pointer -- `.clone()` is a refcount bump, not a re-lex.
+                    //
+                    // WHY NOT CARRY THE PARSE'S OWN STREAM, which would be better still (the parse
+                    // did lex this file): its result type -- `compile.dag`
+                    // `ParsedRevisionDeclarations` -- carries `modules`, `newline_indices`,
+                    // `diagnostics` and `occurrence_transport`, and NOT the token stream, so carrying
+                    // it means adding a field to a seed result type that `namespace_baseline::base_records`
+                    // also consumes. That is a model change with its own consumers, not a printer
+                    // change, and it is named here as the follow-up rather than done half-way or
+                    // skipped in silence. This hoist removes the per-iteration cost, which is the
+                    // defect; carrying would remove the second tokenization outright.
+                    let tokens = crate::v1_compiler_tokenize::tokenize(
+                        content.clone(),
+                        path_str.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                    );
                     let mut lock = errors.lock().expect("parse error lock");
                     for d in fill.diagnostics.iter() {
                         let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
-                        let located = if span.file == path_str {
-                            let lc =
-                                crate::v1_std_core::byte_to_line_col(index.clone(), span.start);
-                            format!("{path_str}:{}:{}", lc.line, lc.col)
-                        } else {
-                            path_str.clone()
-                        };
+                        // THE LOCATION IS THE AUTHORITY'S. This site used to decide the shape of a
+                        // location itself -- `format!("{path_str}:{}:{}", lc.line, lc.col)` -- and to
+                        // special-case the one span shape it knew about (a synthetic span rendering
+                        // as the bare path). That is a third renderer in host Rust: it could only
+                        // ever answer "located" or "the path", never "this refusal has no position,
+                        // and here is why". It now CALLS the function emitted from the span
+                        // authority in `src/v1/00_core.dag`, which owns `file:line:col` AND the
+                        // typed unlocated arms, so the CLI, the compile lane, the module index and
+                        // this sweep all answer in the same units.
+                        //
+                        // The index is keyed by the span's OWN file, and only when the span names the
+                        // file being swept: a diagnostic may point somewhere else, and locating it
+                        // against text it was not derived from would be a fabricated position. When
+                        // the index is not in this map, the authority answers with its typed
+                        // `NoSourceIndex` cause -- which keeps the file name -- instead of a guess.
+                        // The map is the SEED'S map type (`im::HashMap`), which is what the generated
+                        // signature takes -- see cli_run/pool_acquire.rs for the same hand-off.
+                        let mut source_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+                        if span.file == path_str {
+                            source_indices.insert(span.file.clone(), index.clone());
+                        }
+                        // THE STREAM ENTRY, NOT THE SPAN ENTRY. A file of pure trivia -- comments
+                        // only, whitespace, or empty -- has an index and a real offset for its EOF
+                        // marker, so the span entry locates it `path:1:1`: arithmetic nobody disputes
+                        // and a position the file does not have, which is the fabricated position this
+                        // PR exists to remove. The caller here holds the file's text, so it can hold
+                        // the stream too: `render_span_location_in_stream` asks the tokeniser's own
+                        // predicate whether any lexeme exists, and a file with none comes back
+                        // `<path>: (no position: file has no lexemes)` -- typed, keeping the name.
                         lock.push(format!(
                             "{}: {}",
-                            located,
+                            crate::v1_compiler_tokenize::render_span_location_in_stream(
+                                span.clone(),
+                                tokens.clone(),
+                                Rc::new(source_indices),
+                            ),
                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
                         ));
                     }
@@ -16071,7 +16616,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
                 ClaimOutcome::HostToolUnresolved { name, probed }
             }
-            v1_interpreter::InterpError::HermeticHostEffectRefused { operation, ground } => {
+            v1_interpreter::InterpError::HostEffectRefused { operation, ground } => {
                 ClaimOutcome::HostEffectRefused { operation, ground }
             }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
@@ -16183,35 +16728,22 @@ enum ExpectedRedArm {
     HostEffectRefused,
 }
 
-/// One label per `HermeticEffectGround`, in one place. The ground names the REMEDY, so a
-/// caller that re-spells it per site is re-deriving the remedy per site.
-pub fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
-    match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
-            "no published mock case for a corpus-governed service"
-        }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => {
-            "operation declares no mock_response"
-        }
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
-            "filesystem removal has no mock arm; only a wet route can run it"
-        }
-    }
-}
-
 /// The seam between the hand-Rust interpreter carrier and the `.dag`-modeled roster-join
 /// carrier for the same closed ground. Total in both directions by construction — adding an
 /// arm to either side fails to compile here rather than falling through to a default.
-fn hermetic_effect_ground_verdict(
-    ground: &v1_interpreter::HermeticEffectGround,
-) -> crate::v1_compiler_expected_red_roster_join::HermeticEffectGround {
-    use crate::v1_compiler_expected_red_roster_join::HermeticEffectGround as Modeled;
+pub fn effect_refusal_ground_verdict(
+    ground: &v1_interpreter::EffectRefusalGround,
+) -> crate::v1_compiler_expected_red_roster_join::EffectRefusalGround {
+    use crate::v1_compiler_expected_red_roster_join::EffectRefusalGround as Modeled;
     match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+        v1_interpreter::EffectRefusalGround::UnpublishedMockCase { .. } => {
             Modeled::UnpublishedMockCase
         }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::NoMockResponse => Modeled::NoMockResponse,
+        v1_interpreter::EffectRefusalGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
+            Modeled::FrameNotRealizableUnderMode
+        }
     }
 }
 
@@ -17556,7 +18088,9 @@ pub fn handle_serve(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(msg) => {
             eprintln!("error: {}", msg);
@@ -18273,10 +18807,12 @@ fn serve_write_response(
 }
 
 /// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
-/// closed `ServeWireHeaderName` coproduct -- the framing headers this seam writes itself
-/// (Content-Length, Content-Type, Connection) have no constructor there -- and this match is its
-/// RFC 9110 spelling. The value is handler data, so the realization boundary refuses one carrying
-/// CR, LF or NUL rather than writing a split header. None = wrong shape or refused value.
+/// RFC 9110 field-name String `extdeps.http.server` `serve_response_header_wire` chose, written
+/// verbatim: this seam keeps no per-header table and no name grammar. A name is already a token
+/// that is no framing or typed-arm field, because `ServeWireHeader` is `sole_constructor` and its
+/// open arm carries the sealed `HttpExtensionFieldName`. A value is handler data, so one carrying
+/// CR, LF or NUL is refused rather than written as a split header. None = wrong shape or refused
+/// value.
 fn serve_wire_header_line(
     item: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -18288,17 +18824,7 @@ fn serve_wire_header_line(
         return None;
     }
     let name = match ctx.field(fields, "name") {
-        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
-            if ctx.sym_eq(*variant_name, "WireHeaderLocation") {
-                "Location"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderSetCookie") {
-                "Set-Cookie"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderCacheControl") {
-                "Cache-Control"
-            } else {
-                return None;
-            }
-        }
+        Some(Value::Str(s)) => s.to_string(),
         _ => return None,
     };
     let value = match ctx.field(fields, "value") {
@@ -19648,8 +20174,15 @@ pub fn project_witness_cost_receipt(
                     args.push((
                         Some("error".to_string()),
                         str_value(format!(
-                            "hermetic route has no arm for {operation} ({})",
-                            hermetic_effect_ground_label(ground)
+                            "{} {operation} ({})",
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_mode_label(
+                                crate::v1_compiler_expected_red_roster_join::effect_refusal_mode(
+                                    effect_refusal_ground_verdict(ground)
+                                )
+                            ),
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_ground_label(
+                                effect_refusal_ground_verdict(ground)
+                            )
                         )),
                     ));
                     "witness_cost_seed_refused_event"
@@ -19989,7 +20522,7 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     // exec created and is not inherited. A missing field is None, never a fabricated zero.
     #[cfg(target_os = "linux")]
     {
-        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+        proc_status_kb_field("VmHWM").filter(|b| *b > 0)
     }
     #[cfg(target_os = "macos")]
     {
@@ -20091,16 +20624,17 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
 // the freeze itself). Not a compiler_frontier `.dag` row: seed-Rust, counted here.
 
 /// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
-/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
-/// `project_falsifier_witness_entries` turn them into explicit entries that RUN, and explicit rows
+/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries`
+/// turns them into explicit entries that RUN, and explicit rows
 /// merge after discovery with no exclusion filter — so an enrolled witness under an offline path
 /// executes even though the path excludes it (the two-edit rule `enforcement_coverage_exclusion_note`
 /// records: offlining such a witness requires deleting its enrollment too).
 ///
 /// Without this, the freeze wall would refuse 31 identities that already have a real consumer —
-/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count:
-/// `GitPrePushHook` is fmt-only since 2026-07-25 and runs no witness, so an enrollment naming only
-/// that surface is not a consumer.
+/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count
+/// (`EXECUTING_COMMIT_SURFACES`): `GitPrePushHook` is fmt-only since 2026-07-25 and
+/// `FalsifierCadenceJob` lost its executor at 611fd02770, so an enrollment naming only those is
+/// not a consumer.
 fn commit_roster_witness_claim_keys() -> &'static [String] {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
@@ -20112,13 +20646,20 @@ fn commit_roster_witness_claim_keys() -> &'static [String] {
     })
 }
 
+/// The enrollment surfaces that execute a witness. Hand-listed here only because the seed reads
+/// `commit_workflow.dag` by text scan; the authority is
+/// `gunbc.commit_workflow enrollment_is_scheduled`, and the unit test
+/// `executing_surfaces_mirror_enrollment_is_scheduled` pins this list to that predicate's body.
+/// `FalsifierCadenceJob` is deliberately absent: its executor (falsifier.yml) was deleted at
+/// 611fd02770 (#8283), so a row enrolled only there executes nowhere.
+const EXECUTING_COMMIT_SURFACES: [&str; 1] = ["GithubActionsCiJob"];
+
 fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
     // The ROW head, not the bare constructor name: `CommitWitnessClaim {` also opens the coproduct
     // declaration and every pattern-match arm over it, and one such arm's window happens to reach a
     // prose `entry:` literal in a neighbouring note. A row is always a `check:` field of a
     // `CommitCheckEnrollment`, so that prefix is the identity of a row rather than a guess about it.
     const HEAD: &str = "check: CommitWitnessClaim {";
-    const EXECUTING_SURFACES: [&str; 2] = ["GithubActionsCiJob", "FalsifierCadenceJob"];
     let mut keys: Vec<String> = Vec::new();
     let mut cursor = 0usize;
     while let Some(offset) = content[cursor..].find(HEAD) {
@@ -20143,7 +20684,10 @@ fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
                  {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable enrollment `surfaces:` list"
             );
         };
-        if !EXECUTING_SURFACES.iter().any(|s| surfaces.contains(s)) {
+        if !EXECUTING_COMMIT_SURFACES
+            .iter()
+            .any(|s| surfaces.contains(s))
+        {
             continue;
         }
         for function in quoted_literals(&list) {
@@ -20624,6 +21168,38 @@ fn read_frozen_roster_at_commit(
         ));
     }
     Ok(Some(String::from_utf8_lossy(&shown.stdout).into_owned()))
+}
+
+/// THE INSTRUMENT'S THIN READOUT over the SAME authority the required floor consults:
+/// `collect_frozen_path_deferral_additions`, which joins the live tree's typed
+/// FrozenPathDeferral entries (via `frozen_path_deferral_head_keys`) against the resolved diff
+/// baseline. This function adds NO judgment of its own — no second parser, no second comparison
+/// (DESIGN §5: a check restating a constraint the model already carries is a second representation
+/// of it). It renders the join's verdict as one tagged String for the dag instrument program
+/// `dag/gunbc/instruments/witness_deferral_freeze_population.dag`:
+/// * `refused|<cause>` — the join itself could not run (the baseline or a file read failed); the
+///   instrument refuses with a located diagnostic, never a silent pass (§5: every path succeeds
+///   fully or fails with a typed, located diagnostic).
+/// * `bounded` — no live identity sits outside the baseline population: the frozen list is bounded
+///   and shrinking only (an identity REMOVED from the roster shrinks the live set, so the join
+///   still holds — this is the removal arm's permit).
+/// * `unbounded|<identity>;;...` — at least one identity is outside the baseline population: a
+///   deferral was ADDED without its identity being in the drop row's declared population, which is
+///   the additions arm's refusal.
+/// Fixture determinism comes from the resolver's operator-override input (GUNBC_CI_DIFF_BASE), not
+/// from a test-only code path: a head-built run with the override pinned at HEAD self-compares, so
+/// the join reduces to exactly the working-tree identities — the planted entry, or its absence.
+pub fn witness_deferral_freeze_population_census() -> String {
+    match collect_frozen_path_deferral_additions() {
+        Err(reason) => format!("refused|{reason}"),
+        Ok(additions) => {
+            if additions.is_empty() {
+                "bounded".to_string()
+            } else {
+                format!("unbounded|{}", additions.join(";;"))
+            }
+        }
+    }
 }
 
 fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), String> {
@@ -23678,6 +24254,105 @@ mod module_grain_affected_equivalence_tests {
     }
 }
 
+#[cfg(test)]
+mod underlay_identity_proof_tests {
+    use super::{
+        build_module_index, default_source_roots, new_multi_entry_index_scratch_over,
+        new_multi_entry_index_shell, scratch_underlay_if_proven,
+    };
+    use std::rc::Rc;
+
+    /// THE GUARD RUNS WHERE THE GUARDED THING RUNS (mgr finding on #14675: the guard that used
+    /// to sit on these read-throughs was two `debug_assert_eq!`s, which are compiled out of
+    /// `--release` -- and `Cargo.toml` additionally sets `debug-assertions = false` for this
+    /// crate in dev, so they compiled out in EVERY profile the census runs in, and every
+    /// `claim_batch` build is `--release`. A guard that never executes where the thing it guards
+    /// runs is a decoration, DESIGN §4b).
+    ///
+    /// ARMS, one per forgery the proof has to catch:
+    /// * DRIFTED FACTS refuse. This is the arm no content comparison can provide: the scratch's
+    ///   facts are doctored to be CONTENT-EQUAL to the underlay's, differing only in the minted
+    ///   `build_id`. Two independent scans of an unchanged pool agree on every byte and still
+    ///   answer different questions, because each carries its own warm caches. So the witness has
+    ///   to be identity, and this asserts the refusal. Delete the `build_id` comparison, or turn
+    ///   it back into a `debug_assert_eq!`, and this arm goes red.
+    /// * A REPLACED POOL ENTRY refuses, by pointer. One entry is swapped for an equal-content
+    ///   copy: a content check would pass, the pointer witness does not.
+    /// * THE PROVEN SCRATCH PASSES and reads through. Without this arm the RED above could be
+    ///   satisfied by a guard that always refuses -- which is the silent-revert failure mode
+    ///   (correct output, the ~10 s back, nothing red), so the pair is what makes the guard live
+    ///   in both directions.
+    /// * AN ORDINARY INDEX has no underlay: not a refusal, just itself.
+    #[test]
+    fn underlay_identity_proof_refuses_drift_and_permits_the_proven_scratch() {
+        let roots = default_source_roots();
+        let map = build_module_index(&roots);
+        let base = Rc::new(new_multi_entry_index_shell(map.clone(), &roots));
+
+        let scratch = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
+        *scratch.scratch_underlay.borrow_mut() = Some(Rc::clone(&base));
+        assert!(
+            scratch_underlay_if_proven(&scratch)
+                .expect(
+                    "a legitimate scratch must be PERMITTED: an always-refusing guard would                      satisfy every other assertion in this test, so this arm is what stops the                      RED from being satisfied by a guard that simply never lets anything through"
+                )
+                .is_some(),
+            "a scratch that IS its underlay's pool must be allowed to read through it"
+        );
+        assert!(
+            scratch_underlay_if_proven(&scratch).unwrap().is_some(),
+            "the verdict is memoized and stays proven"
+        );
+
+        let mut drifted = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
+        drifted.module_graph_facts.build_id = base.module_graph_facts.build_id + 1;
+        *drifted.scratch_underlay.borrow_mut() = Some(Rc::clone(&base));
+        assert_eq!(
+            drifted.module_graph_facts.adjacency,
+            base.module_graph_facts.adjacency,
+            "precondition: the drift must be CONTENT-equal, or this arm only proves a content              comparison would have caught it -- which is the witness that cannot work"
+        );
+        let err = scratch_underlay_if_proven(&drifted)
+            .err()
+            .expect("facts minted by a different scan must refuse to read through the underlay");
+        assert!(
+            err.contains("scratch underlay identity refused") && err.contains("scan"),
+            "the refusal must name itself and the drift, got: {err}"
+        );
+
+        let mut replaced = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
+        let some_path = base
+            .source_files
+            .keys()
+            .next()
+            .expect("the pool is not empty")
+            .clone();
+        // A FRESH allocation of equal content: deref to the SourceFile and clone the value, so
+        // the Rc is not the underlay's Rc even though the bytes are identical.
+        let copy = Rc::new(
+            (**base
+                .source_files
+                .get(&some_path)
+                .expect("the pool lists a key it holds"))
+            .clone(),
+        );
+        replaced.source_files.insert(some_path.clone(), copy);
+        *replaced.scratch_underlay.borrow_mut() = Some(Rc::clone(&base));
+        let err = scratch_underlay_if_proven(&replaced)
+            .err()
+            .expect("a pool entry that is not the underlay's allocation must refuse");
+        assert!(
+            err.contains("different source value") && err.contains(&some_path),
+            "the refusal must name the drifted module path, got: {err}"
+        );
+
+        let plain = new_multi_entry_index_shell(map, &roots);
+        assert!(scratch_underlay_if_proven(&plain)
+            .expect("having no underlay is not an error")
+            .is_none());
+    }
+}
+
 // SCAFFOLD: folds into a .dag execution witness when the discovery/diff seed plumbing
 // migrates off the v1 host layer (§6 dissolution trigger)
 #[cfg(test)]
@@ -24004,10 +24679,45 @@ mod node_frontier_plumbing_controls {
             keys,
             vec![
                 "src/v2/test/claim/long/a_test.dag::ci_holds".to_string(),
-                "src/v2/test/claim/long/b_test.dag::falsifier_holds".to_string(),
             ],
-            "executing surfaces admit; the coproduct declaration and a pre-push-only row do not"
+            "only an executing surface admits; the coproduct declaration, a FalsifierCadenceJob-only \
+             row (dead executor) and a pre-push-only row do not"
         );
+    }
+
+    // THE DIFFERENTIAL PIN. The seed cannot call the .dag fact, so it mirrors it; this reads the
+    // authority's own body and refuses if the two surface sets ever differ. A mirror with no pin is
+    // a second authority that drifts silently (the fail-open this list once carried: it credited
+    // FalsifierCadenceJob after the predicate's executor was deleted).
+    #[test]
+    fn executing_surfaces_mirror_enrollment_is_scheduled() {
+        let content =
+            std::fs::read_to_string(workspace_root().join(super::COMMIT_WORKFLOW_AUTHORITY_REL))
+                .expect("read commit_workflow authority");
+        let head = content
+            .find("fn enrollment_is_scheduled(")
+            .expect("enrollment_is_scheduled is declared in the authority");
+        let body = &content[head..];
+        let body = &body[..body
+            .find("\n}\n")
+            .expect("enrollment_is_scheduled body closes")];
+        let mut authored: Vec<&str> = body
+            .split("surface: ")
+            .skip(1)
+            .map(|rest| {
+                rest.split(|c: char| !c.is_alphanumeric())
+                    .next()
+                    .unwrap_or("")
+            })
+            .collect();
+        authored.sort_unstable();
+        let mut mirrored: Vec<&str> = super::EXECUTING_COMMIT_SURFACES.to_vec();
+        mirrored.sort_unstable();
+        assert_eq!(
+            authored, mirrored,
+            "EXECUTING_COMMIT_SURFACES drifted from enrollment_is_scheduled"
+        );
+        assert!(!mirrored.contains(&"FalsifierCadenceJob"));
     }
 
     // The live half of the same fact: an enrolled witness under an offline path is admitted, and
@@ -24572,6 +25282,7 @@ mod module_graph_read_refusal_tests {
             })
             .collect();
         ModuleGraphFactsLive {
+            build_id: super::next_facts_build_id(),
             nodes: node_rows,
             adjacency: adjacency.clone(),
             selection: std::rc::Rc::new(super::ReferenceSelectionTier::supplied(adjacency)),
@@ -26592,9 +27303,19 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
     FunctionNotFound,
+    /// A file-grain row (`check_fns: []`) whose entry file carries no TEST MARKER: the sentinel
+    /// promises every marked declaration in the file, and a marked-empty file promises nothing,
+    /// so the row holds no witness. Its own cause, distinct from a named function going missing.
+    FileGrainEntryHasNoMarkedDeclarations,
+    /// A file-grain row whose entry file cannot be read to enumerate markers.
+    FileGrainEntryUnreadable,
 }
 
 #[derive(Debug, Clone)]
@@ -28482,6 +29203,7 @@ mod witness_layer_roots_compile_clean_tests {
         let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
             graph: None,
             diagnostics: Rc::new(im::Vector::new()),
+            provider_demands: Rc::new(im::Vector::new()),
             source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             complexity: empty_complexity_report(),
             ownership: Rc::new(im::Vector::new()),
@@ -28640,6 +29362,7 @@ mod witness_layer_roots_compile_clean_tests {
             let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
                 graph: compiled.graph.clone(),
                 diagnostics: Rc::new(diagnostics.into()),
+                provider_demands: compiled.provider_demands.clone(),
                 source_indices: compiled.source_indices.clone(),
                 complexity: compiled.complexity.clone(),
                 ownership: compiled.ownership.clone(),
@@ -29893,7 +30616,7 @@ pub fn parse_extdeps_module_items(
 /// inputs the operation itself declares (name + optional default expression).
 ///
 /// This is the single authority the generic argv materializer binds against
-/// (`v2.std.operation_argv`): the binding vocabulary is the operation's own
+/// (`std.operation_argv`): the binding vocabulary is the operation's own
 /// `input { .. }` block, never a fixed list the seed happens to know.
 pub struct OperationArgvDeclaration {
     pub argv: Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
@@ -29970,6 +30693,9 @@ pub struct ShellTransportOperationCensusRow {
     pub operation: String,
     pub declared_inputs: Vec<String>,
     pub argv_input_refs: Vec<String>,
+    /// Declared-input names (variables intersected with `declared_inputs`) read anywhere inside `argv[0]`, calls and field accesses
+    /// included. Empty means the executable position reads no input.
+    pub executable_input_refs: Vec<String>,
 }
 
 fn collect_argv_input_refs(
@@ -29993,6 +30719,34 @@ fn collect_argv_input_refs(
             }
         }
         _ => {}
+    }
+}
+
+/// Every variable read anywhere under `node` (call arguments, field accesses, interpolations),
+/// in first-seen order. Unlike `collect_argv_input_refs` it descends through every expression
+/// form, because its question is "can an input reach this position", not "which inputs does
+/// this element interpolate".
+fn collect_expression_var_reads(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<String>,
+) {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
+    if let ExprData::ExprVar { .. } = node.expr_data.as_ref() {
+        let name = expr_var_name_at(node.clone(), source_indices.clone());
+        if !name.is_empty() && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    if let ExprData::ExprStringInterp = node.expr_data.as_ref() {
+        for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+            if let StringPart::Interpolation { expr } = part.as_ref() {
+                collect_expression_var_reads(expr, source_indices, out);
+            }
+        }
+    }
+    for child in node.children.iter() {
+        collect_expression_var_reads(child, source_indices, out);
     }
 }
 
@@ -30070,6 +30824,20 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                 for argv_node in transport.children.iter() {
                     collect_argv_input_refs(argv_node, &source_indices, &mut argv_input_refs);
                 }
+                let mut executable_input_refs: Vec<String> = Vec::new();
+                if let Some(executable) = transport.children.iter().next() {
+                    collect_expression_var_reads(
+                        executable,
+                        &source_indices,
+                        &mut executable_input_refs,
+                    );
+                    let declared = operation_declared_inputs(op, &source_indices);
+                    executable_input_refs.retain(|name| {
+                        declared
+                            .iter()
+                            .any(|(declared_name, _)| declared_name == name)
+                    });
+                }
                 rows.push(ShellTransportOperationCensusRow {
                     path: rel.clone(),
                     service: item.name.clone(),
@@ -30079,6 +30847,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                         .map(|(name, _)| name)
                         .collect(),
                     argv_input_refs,
+                    executable_input_refs,
                 });
             }
         }
@@ -30111,7 +30880,7 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
 /// yet: `extdeps.git` `git.Core.DiffUnified0` argv[3] is an `ExprCall`, so a hard refusal
 /// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
 /// author who causes it -- the same seven operations are already typed and counted debt on
-/// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
+/// the MATERIALIZATION side (`std.operation_argv` `ArgvRowExpressionResidue`, pinned in
 /// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
 ///
 /// So the two readings of one corpus disagree and this comment is where that is recorded:
@@ -31347,7 +32116,7 @@ mod peel_alias_fixpoint_termination {
                 ),
             );
             // No files in this probe: the peel tree is synthetic, module_path is empty.
-            // file_modules / module_named_imports therefore come from empty_symbol_index,
+            // file_modules / module_named_imports / alias_cycles therefore come from empty_symbol_index,
             // the same constructor every other empty SymbolIndex uses.
             let empty_index = crate::v1_compiler_infer_env::empty_symbol_index();
             let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
@@ -31355,6 +32124,7 @@ mod peel_alias_fixpoint_termination {
                 global_bare,
                 services: empty_index.services.clone(),
                 transparent_alias_rep: empty_index.transparent_alias_rep.clone(),
+                alias_cycles: empty_index.alias_cycles.clone(),
                 type_head_exposures: empty_index.type_head_exposures.clone(),
                 file_modules: empty_index.file_modules.clone(),
                 module_named_imports: empty_index.module_named_imports.clone(),
@@ -31811,6 +32581,69 @@ mod exclusive_cost_partition_law {
             load,
             typecheck_compute: typecheck,
             ..ResolveStageNanos::default()
+        }
+    }
+
+    /// A stage add made outside every top-level span (the pool parse forced by the edge
+    /// index build) is in `resolve_stage_totals()` and in no span's parent, so the
+    /// partition over the totals refused OverAttributed by exactly that add.
+    /// RED WITHOUT THE FIX: the partition is drawn from the totals and refuses.
+    /// POSITIVE CONTROL: the same span with nothing outside it reconciles.
+    #[test]
+    fn a_stage_add_outside_every_span_is_not_a_row_of_the_partition() {
+        let in_span = |outside_pool_parse: u128| {
+            std::thread::spawn(move || {
+                resolve_stage_slot_add(|st| st.pool_parse += outside_pool_parse);
+                let depth = resolve_span_enter();
+                resolve_stage_slot_reset();
+                resolve_stage_slot_add(|st| st.typecheck_compute += 400);
+                resolve_span_exit(depth, "dag/probe.dag", 1_000);
+                exclusive_cost_partition()
+            })
+            .join()
+            .expect("partition thread")
+        };
+        assert!(
+            matches!(in_span(0).verdict, CostAccountingVerdict::Reconciled { .. }),
+            "control: a span with no outside add must reconcile"
+        );
+        let outside = in_span(5_000);
+        assert!(
+            matches!(outside.verdict, CostAccountingVerdict::Reconciled { .. }),
+            "a 5000ns pool parse outside the span must not enter the partition"
+        );
+        assert_eq!(
+            outside
+                .out_of_span
+                .iter()
+                .map(|r| (r.name, r.nanos))
+                .collect::<Vec<_>>(),
+            vec![("pool_parse", 5_000)],
+            "the out-of-span parse must be reported, typed, not dropped"
+        );
+        assert!(in_span(0).out_of_span.is_empty());
+    }
+
+    /// RED: a stage whose in-span total exceeds the thread total is two slot accounts
+    /// disagreeing; it refuses naming the stage instead of clamping to "no out-of-span cost".
+    /// POSITIVE CONTROL: the same rows with in-span <= thread yield the remainder.
+    #[test]
+    fn an_in_span_total_above_the_thread_total_refuses_naming_the_stage() {
+        let row = |name: &'static str, nanos: u128| CostPartitionRow { name, nanos };
+        let thread = [row("load", 100), row("pool_parse", 50)];
+        let rows = out_of_span_rows(&thread, &[row("load", 100), row("pool_parse", 20)])
+            .expect("in-span within thread totals");
+        assert_eq!(
+            rows.iter().map(|r| (r.name, r.nanos)).collect::<Vec<_>>(),
+            vec![("pool_parse", 30)]
+        );
+        match out_of_span_rows(&thread, &[row("load", 100), row("pool_parse", 51)]) {
+            Err(CostAccountingRefusal::InSpanExceedsThread {
+                stage,
+                in_span_nanos,
+                thread_nanos,
+            }) => assert_eq!((stage, in_span_nanos, thread_nanos), ("pool_parse", 51, 50)),
+            other => panic!("expected InSpanExceedsThread, got {other:?}"),
         }
     }
 
@@ -32599,7 +33432,6 @@ pub fn release_process_caches_at_exit() {
     MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
-    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(
         "[floor-teardown] released process caches without freeing them in {} ms (the residue after \
          this line is whatever main's return still drops)",
@@ -33197,6 +34029,7 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
         ItemKind::TypeItem => "type",
         ItemKind::DataItem => "data",
         ItemKind::ServiceItem => "service",
+        ItemKind::ResourceItem => "resource",
         ItemKind::OtherItem => "other",
     }
 }
@@ -34408,7 +35241,7 @@ fn witness_eval_verdict_from_claim_outcome(
         ClaimOutcome::HostEffectRefused { operation, ground } => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostEffectRefused {
                 operation: operation.clone(),
-                ground: hermetic_effect_ground_verdict(ground),
+                ground: effect_refusal_ground_verdict(ground),
             }
         }
         // THE WIRE VERDICT STILL CARRIES THE AXIS AS DATA, which is why `BudgetCompletion`

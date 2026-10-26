@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_ev
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data bare_exit_124_read_as_an_observed_timeout_event: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_exit_124_read_as_an_observed_timeout_event" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**A reported exit status of 124 does not establish that a wall-clock bound fired, and classifying it as an observed timeout kill asserts an observation the classifier does not hold** (INVALID STATE: GNU coreutils `timeout` returns 124 when it kills a command at its deadline AND otherwise returns the managed command's own status, so a child that simply exits 124 is indistinguishable from a deadline expiry. A classifier that receives only an exit code and a reason string has no timeout event to read, and rendering one is the fabricated-plausible-output failure DESIGN section 5 forbids.)",
     "EXECUTED COUNTEREXAMPLE, GNU coreutils 9.7, both arms run to completion: `timeout --kill-after=1s 5s sh -c 'exit 124'` returned 124 in about 6 ms with empty stdout and stderr and NO deadline expiry; `timeout --kill-after=1s 0.1s sleep 2` returned 124 in about 111 ms and is a genuine expiry. Identical status, identical empty output, two different events. Only elapsed time separates them here, and elapsed time is precisely the arm gunbc.host.memory_stall_refusal memory_stall_signal_choice_note refuses, because a timeout labelled pressure-detection refuses the honest slow case it exists to admit.",

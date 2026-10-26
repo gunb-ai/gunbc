@@ -1,0 +1,27 @@
+module test.claim.runner.runner_lost_boot_sweep_workflow_wording_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_dispatch_inputs }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISPATCH INPUT TELLS THE OPERATOR WHAT THE CAPTURE IS: a RECORDED boot, joined to an independent
+// current-boot observation, never itself the current boot (the HOLD at 3313f303). The permanent
+// description is user-facing documentation of a mode that refuses until that observation exists.
+test fn the_capture_input_describes_a_recorded_boot_that_needs_a_current_observation() -> Bool {
+  match first(filter(fleet_converge_dispatch_inputs, i => i.name == "host_capture_path")) {
+    Absent => false
+    Present { value: i } =>
+      match i.description {
+        Absent => false
+        Present { value: d } =>
+          string_contains(s: d, pattern: "records a boot but does not establish the current one")
+            && string_contains(s: d, pattern: "independent current-boot observation")
+            && string_contains(s: d, pattern: "refuses every dispatch")
+            && string_contains(s: d, pattern: "CURRENT kernel boot id is read") == false
+      }
+  }
+}

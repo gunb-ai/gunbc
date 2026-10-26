@@ -435,8 +435,8 @@ fn binary_built_elsewhere(binary: String, path: String) -> BinaryFreshness {
 fn assess_binary_freshness(observed: BinaryInputObservation) -> BinaryFreshness {
   match observed {
     DepInfoUnreadable { binary: b, reason: r } => BinaryFreshnessUndecided { binary: b, reason: r }
-    InputsObserved { binary: b, inputs: is } =>
-      fold(is, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
+    InputsObserved { binary: b, inputs: ins } =>
+      fold(ins, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
         binary_freshness_step(acc: acc, input: i)
       })
   }

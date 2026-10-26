@@ -1,0 +1,65 @@
+module std.removal_tombstone
+
+import std.types { Bool, List, NonEmptyStr, CommitSha }
+import std.optional { Optional, Present, Absent }
+import std.algebra { FreeSemigroup, Cons, Empty, non_empty_to_list }
+import v2.lens.module_impact_query { ModuleIdentity }
+
+// A GENERIC REMOVAL RECORD ANY LEDGER MAY CARRY. A fact that something no longer exists was prose
+// beside a Dissolved row; this is the typed form, and it holds no ledger's vocabulary: a consumer
+// names the modules that were deleted, the commit from which they are gone, and the citation of the
+// decision, and this module judges only whether the claim still holds at an observed tree.
+//
+// MODULES ARE NAMED BY IDENTITY, NEVER BY PATH (v2.lens.module_impact_query ModuleIdentity exists
+// so a path cannot pass for an identity). removed_at is a std.types CommitSha: extdeps.git.object_store
+// Commit is a commit's CONTENT (tree, parents, authors, message), not its identity, and GitObjectId
+// carries no kind, so neither says "this is a commit".
+type RemovalTombstone {
+  removed_modules: FreeSemigroup<ModuleIdentity>
+  removed_at: CommitSha
+  ruling: NonEmptyStr
+  decision_record: NonEmptyStr
+}
+
+// COULD NOT LOOK IS A THIRD ANSWER, for the module and for the commit alike. An observer that cannot
+// read the tree answers ModuleUnobservable, and that is never Holds.
+type ModuleObservation
+  = ModulePresent
+  | ModuleAbsent
+  | ModuleUnobservable
+
+type CommitObservation
+  = CommitResolves
+  | CommitDoesNotResolve
+  | CommitUnobservable
+
+type RemovalVerdict
+  = RemovalHolds
+  | RemovedModuleStillExists { module: ModuleIdentity }
+  | RemovedModuleUnobservable { module: ModuleIdentity }
+  | RemovalCommitDoesNotResolve
+  | RemovalCommitUnobservable
+
+fn removal_modules_with(tombstone: RemovalTombstone, observe_module: fn(ModuleIdentity) -> ModuleObservation, want: ModuleObservation) -> List<ModuleIdentity> {
+  filter(non_empty_to_list(xs: tombstone.removed_modules), m => observe_module(m) == want)
+}
+
+// The verdict is first-failure-wins in a fixed order (a module still present, a module unobserved,
+// the commit not resolving, the commit unobserved): a present module is the strongest refutation.
+fn removal_tombstone_verdict(
+  tombstone: RemovalTombstone,
+  observe_module: fn(ModuleIdentity) -> ModuleObservation,
+  observe_commit: fn(CommitSha) -> CommitObservation
+) -> RemovalVerdict {
+  match removal_modules_with(tombstone: tombstone, observe_module: observe_module, want: ModulePresent).first() {
+    Present { value: m } => RemovedModuleStillExists { module: m }
+    Absent => match removal_modules_with(tombstone: tombstone, observe_module: observe_module, want: ModuleUnobservable).first() {
+      Present { value: m } => RemovedModuleUnobservable { module: m }
+      Absent => match observe_commit(tombstone.removed_at) {
+        CommitResolves => RemovalHolds
+        CommitDoesNotResolve => RemovalCommitDoesNotResolve
+        CommitUnobservable => RemovalCommitUnobservable
+      }
+    }
+  }
+}

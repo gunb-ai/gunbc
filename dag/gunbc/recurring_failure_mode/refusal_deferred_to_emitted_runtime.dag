@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.refusal_deferred_to_emitted_runtime
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data refusal_deferred_to_emitted_runtime: RecurringFailureMode = RecurringFailureMode {
   identity: "refusal_deferred_to_emitted_runtime" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "refusal deferred to the emitted runtime (a compiler refusal expressed as a construct IN THE EMITTED PROGRAM rather than as a diagnostic in the COMPILING one, so the compile reports success and the line does not stop).",

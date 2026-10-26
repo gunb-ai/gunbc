@@ -9,6 +9,7 @@ import v2.std.compilers.cli_surface {
 }
 import extdeps.tools.env { env_path_resolved_program }
 import std.content_hash {
+  serialize_content_hash,
   sha512_hex_digest,
   Sha512Digest,
   as_content_hash_sha512,
@@ -244,7 +245,7 @@ test fn preflight_subject_carries_runtime_receipt_and_probe_key() -> Bool {
             match fixture_digest() {
               Absent => false
               Present { value: digest } =>
-                (id as String) == (as_content_hash_sha512(digest: digest) as String)
+                serialize_content_hash(hash: id) == serialize_content_hash(hash: as_content_hash_sha512(digest: digest))
             }
         }
         && count(codex_press_account_trip_methods()) == 3

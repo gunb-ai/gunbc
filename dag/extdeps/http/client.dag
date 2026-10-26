@@ -273,7 +273,7 @@ service http.Client {
   // pattern, the peer pair being GetWithin / http_client_get_argv -- where the argv ROWS are spelled
   // per transport but every VALUE in them resolves to one place. A probe's connect-deadline behaviour
   // no longer depends on which route ran (review on #14194: the two copies differed; they do not now).
-  // An argv ELEMENT expression is not used here because v2.std.operation_argv refuses to evaluate
+  // An argv ELEMENT expression is not used here because std.operation_argv refuses to evaluate
   // one (ArgvExpressionUnsupported, a pinned deficit) -- binding it as an input is the form that
   // carries the same fact without growing that deficit.
   operation GetWithinWithStatus {
@@ -356,6 +356,34 @@ service http.Client {
     exit {
       0 => Unit
       nonzero => String "curl POST from stdin did not complete"
+    }
+    mock_response {
+      0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
+    }
+  }
+
+  // PostStdinWithinRetryingRefused IS PostStdinWithin FOR A SERVER THAT MAY STILL BE BINDING: curl itself retries a REFUSED
+// connection (--retry-connrefused, curl(1)) once a second (--retry-delay 1) until the caller's startup window closes
+// (--retry-max-time) or the retry count, which is that same window in seconds, is spent. The window is the caller's input,
+// derived from the server's own declared startup bound, never a literal here; no caller-side sleep, and a refusal past the
+// window is still exit 7 for the caller to classify. curl retries only transient transfer errors besides the refusal, so
+// an ANSWER (any HTTP status the server gives) is not retried by this flag set except the transient statuses curl(1) lists.
+  operation PostStdinWithinRetryingRefused {
+    requires Network
+    input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr, startup_seconds: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      body: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["curl", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--retry-connrefused", "--retry", "{startup_seconds}", "--retry-delay", "1", "--retry-max-time", "{startup_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
+      stdin: request_body
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl POST from stdin did not complete within the startup window"
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"

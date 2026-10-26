@@ -72,6 +72,20 @@ data local_recursive_coproduct_eq_green_source: String = "module eq_probe_local_
 
 data structural_record_eq_green_source: String = "module eq_probe_structural_record\nimport std.types { String, List, Map }\ntype Point {\n  x: Int\n  label: String\n  tags: List<String>\n  attrs: Map<String, Int>\n}\nfn same(a: Point, b: Point) -> Bool { a == b }\n"
 
+data edge_eq_red_source: String = "module eq_probe_edge\nimport v2.std.node { Edge }\nfn same(a: Edge, b: Edge) -> Bool { a == b }\n"
+
+data edge_in_record_eq_red_source: String = "module eq_probe_edge_record\nimport v2.std.node { Edge }\ntype Holder {\n  e: Edge\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data node_eq_red_source: String = "module eq_probe_node\nimport v2.std.node { Node }\nfn same(a: Node, b: Node) -> Bool { a == b }\n"
+
+data node_erasure_route_green_source: String = "module eq_probe_node_route\nimport v2.std.node { Node, node_equal_ignoring_provenance, node_same_occurrence }\nfn same(a: Node, b: Node) -> Bool { node_equal_ignoring_provenance(a: a, b: b) || node_same_occurrence(a: a, b: b) }\n"
+
+data composite_reaching_node_unlisted_red_source: String = "module eq_probe_composite\nimport v2.std.node { Node }\ntype Wrap { n: Node }\nfn same(a: Wrap, b: Wrap) -> Bool { a == b }\n"
+
+data composite_reaching_node_listed_green_source: String = "module v2.lens.cost\nimport v2.std.node { Node }\ntype Wrap { n: Node }\nfn symbolic_max_rhs(a: Wrap, b: Wrap) -> Bool { a == b }\n"
+
+data bare_node_at_listed_site_red_source: String = "module v2.lens.cost\nimport v2.std.node { Node }\nfn symbolic_max_rhs(a: Node, b: Node) -> Bool { a == b }\n"
+
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
@@ -104,6 +118,40 @@ test fn local_recursive_coproduct_equality_stays_admitted() -> Bool {
 
 test fn structural_record_equality_stays_admitted() -> Bool {
   eq_admitted(source: structural_record_eq_green_source)
+}
+
+// An Edge carries provenance (Edge.declaration) that derived == compares and the erasure routes do not:
+// declared equality-inadmissible. The positive control is structural_record_equality_stays_admitted.
+test fn edge_equality_refuses_blocking() -> Bool {
+  eq_blocking_count(source: edge_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+}
+
+test fn edge_reached_through_a_record_refuses_blocking() -> Bool {
+  eq_blocking_count(source: edge_in_record_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+}
+
+// Node reaches Edge through its children: derived == on a Node compares occurrence ids and
+// Edge.declaration. The named erasure routes are the positive control.
+test fn node_equality_refuses_blocking() -> Bool {
+  eq_blocking_count(source: node_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+}
+
+test fn node_erasure_routes_stay_admitted() -> Bool {
+  eq_admitted(source: node_erasure_route_green_source)
+}
+
+// gunbc.rung_drop.node_reaching_composite_equality: a composite reaching Node is admitted ONLY at a listed
+// declaration; a new site outside the population refuses, and a bare Node operand refuses even at a listed one.
+test fn composite_reaching_node_outside_the_drop_refuses_blocking() -> Bool {
+  eq_blocking_count(source: composite_reaching_node_unlisted_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+}
+
+test fn composite_reaching_node_at_a_listed_declaration_is_admitted() -> Bool {
+  eq_admitted(source: composite_reaching_node_listed_green_source)
+}
+
+test fn bare_node_at_a_listed_declaration_still_refuses_blocking() -> Bool {
+  eq_blocking_count(source: bare_node_at_listed_site_red_source, wanted: "EqualityOnInadmissibleType") >= 1
 }
 
 test fn presence_test_stays_admitted() -> Bool {

@@ -7,6 +7,7 @@ import std.error_primitives { Ok, Err }
 import extdeps.dns.domain_name { HostName, DomainName, DomainNameParseError, domain_name_wire, parse_host_name }
 import extdeps.network.address { IpAddress, IpV4, IpV6, render_ip_address, ip_v4 }
 import extdeps.network.ipv4 { Ipv4Address, Ipv4ParseError, Ipv4Parsed, Ipv4ParseFailed, parse_ipv4_address }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

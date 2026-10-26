@@ -212,6 +212,227 @@ test fn kvn_contextual_pattern_binder_control_holds() -> Bool {
   }
 }
 
+// `none` IS RESERVED THROUGH THE SAME GUARD (dag_grammar_value_name_keyword_terminal reads it beside the
+// keyword token classes; the none_literal production owns the word). It is an identifier token, so these
+// subjects run the text route directly. A field LABEL named none and the name none_value stay legal.
+data kvn_none_param_source: String = "module m.t\nfn f(none: Int) -> Int {\n  0\n}\n"
+
+// a parameter named none refuses at the word: bytes 16..20 of kvn_none_param_source.
+test fn kvn_none_param_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_none_param_source, file: ^probe_kvn_none_param),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_none_param,
+    start: 16,
+    end: 20
+  )
+}
+
+data kvn_none_let_source: String = "module m.t\nfn f() -> Int {\n  let none = 1\n  0\n}\n"
+
+// a let binder named none refuses at the word: bytes 33..37 of kvn_none_let_source.
+test fn kvn_none_let_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_none_let_source, file: ^probe_kvn_none_let),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_none_let,
+    start: 33,
+    end: 37
+  )
+}
+
+data kvn_none_label_source: String = "module m.t\ndata d: R = R { none: 1 }\n"
+
+// Control: a record-init field LABEL named none is a label, not a value name, and stays legal.
+test fn kvn_none_label_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_label_source, file: ^probe_kvn_none_label) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_none_value_name_source: String = "module m.t\nfn f(none_value: Int) -> Int {\n  none_value\n}\n"
+
+// Control: none_value is a different word and stays declarable and referenceable.
+test fn kvn_none_value_name_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_value_name_source, file: ^probe_kvn_none_value_name) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_refuse_bare_assign_source: String = "module m.t\nfn f() -> Int {\n  none = 1\n  0\n}\n"
+
+// A none bare_assign binder refuses at the word through the shared value-name guard: bytes 29..33 of kvn_refuse_bare_assign_source.
+test fn kvn_none_bare_assign_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_refuse_bare_assign_source, file: ^probe_kvn_refuse_bare_assign),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_refuse_bare_assign,
+    start: 29,
+    end: 33
+  )
+}
+
+data kvn_accept_bare_assign_source: String = "module m.t\nfn f() -> Int {\n  none_value = 1\n  0\n}\n"
+
+// Control: none_value is a different word and stays a legal bare_assign binder.
+test fn kvn_none_value_bare_assign_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_accept_bare_assign_source, file: ^probe_kvn_accept_bare_assign) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_refuse_fn_literal_param_source: String = "module m.t\nfn f() -> Int {\n  g(fn(none) { 0 })\n}\n"
+
+// A none fn_literal_param binder refuses at the word through the shared value-name guard: bytes 34..38 of kvn_refuse_fn_literal_param_source.
+test fn kvn_none_fn_literal_param_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_refuse_fn_literal_param_source, file: ^probe_kvn_refuse_fn_literal_param),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_refuse_fn_literal_param,
+    start: 34,
+    end: 38
+  )
+}
+
+data kvn_accept_fn_literal_param_source: String = "module m.t\nfn f() -> Int {\n  g(fn(none_value) { 0 })\n}\n"
+
+// Control: none_value is a different word and stays a legal fn_literal_param binder.
+test fn kvn_none_value_fn_literal_param_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_accept_fn_literal_param_source, file: ^probe_kvn_accept_fn_literal_param) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_refuse_single_lambda_source: String = "module m.t\nfn f() -> Int {\n  g(none => 1)\n}\n"
+
+// A none single_lambda binder refuses at the word through the shared value-name guard: bytes 31..35 of kvn_refuse_single_lambda_source.
+test fn kvn_none_single_lambda_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_refuse_single_lambda_source, file: ^probe_kvn_refuse_single_lambda),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_refuse_single_lambda,
+    start: 31,
+    end: 35
+  )
+}
+
+data kvn_accept_single_lambda_source: String = "module m.t\nfn f() -> Int {\n  g(none_value => 1)\n}\n"
+
+// Control: none_value is a different word and stays a legal single_lambda binder.
+test fn kvn_none_value_single_lambda_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_accept_single_lambda_source, file: ^probe_kvn_accept_single_lambda) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_refuse_paren_lambda_source: String = "module m.t\nfn f() -> Int {\n  g((none, b) => 1)\n}\n"
+
+// A none paren_lambda binder refuses at the word through the shared value-name guard: bytes 32..36 of kvn_refuse_paren_lambda_source.
+test fn kvn_none_paren_lambda_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_refuse_paren_lambda_source, file: ^probe_kvn_refuse_paren_lambda),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_refuse_paren_lambda,
+    start: 32,
+    end: 36
+  )
+}
+
+data kvn_accept_paren_lambda_source: String = "module m.t\nfn f() -> Int {\n  g((none_value, b) => 1)\n}\n"
+
+// Control: none_value is a different word and stays a legal paren_lambda binder.
+test fn kvn_none_value_paren_lambda_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_accept_paren_lambda_source, file: ^probe_kvn_accept_paren_lambda) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_tail_if_block_tail_source: String = "module m.t\nfn f(b: Bool) -> Int? {\n  if b { none } else { Present { value: 1 } }\n}\n"
+
+// Control: a block whose tail is none after an identifier (if_block_tail) parses; the pun guard fires only on a field-ending none.
+test fn kvn_none_tail_if_block_tail_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_tail_if_block_tail_source, file: ^probe_kvn_tail_if_block_tail) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_tail_else_if_chain_tail_source: String = "module m.t\nfn f(b: Bool, c: Bool) -> Int? {\n  if b { Present { value: 1 } } else if c { none } else { none }\n}\n"
+
+// Control: a block whose tail is none after an identifier (else_if_chain_tail) parses; the pun guard fires only on a field-ending none.
+test fn kvn_none_tail_else_if_chain_tail_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_tail_else_if_chain_tail_source, file: ^probe_kvn_tail_else_if_chain_tail) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_tail_match_arm_block_body_source: String = "module m.t\nfn f(x: Int?) -> Int? {\n  match x {\n    Present { value } => Present { value: value }\n    Absent => { none }\n  }\n}\n"
+
+// Control: a block whose tail is none after an identifier (match_arm_block_body) parses; the pun guard fires only on a field-ending none.
+test fn kvn_none_tail_match_arm_block_body_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_tail_match_arm_block_body_source, file: ^probe_kvn_tail_match_arm_block_body) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_tail_match_bool_scrutinee_block_tail_source: String = "module m.t\nfn f(b: Bool) -> Int? {\n  match b {\n    true => { none }\n    false => { none }\n  }\n}\n"
+
+// Control: a block whose tail is none after an identifier (match_bool_scrutinee_block_tail) parses; the pun guard fires only on a field-ending none.
+test fn kvn_none_tail_match_bool_scrutinee_block_tail_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_tail_match_bool_scrutinee_block_tail_source, file: ^probe_kvn_tail_match_bool_scrutinee_block_tail) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_tail_loop_block_tail_source: String = "module m.t\nfn f() -> Int? {\n  loop { none }\n}\n"
+
+// Control: a block whose tail is none after an identifier (loop { none }) parses; the pun guard fires only on a field-ending none.
+test fn kvn_none_tail_loop_block_tail_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_tail_loop_block_tail_source, file: ^probe_kvn_tail_loop_block_tail) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+data kvn_none_arm_ident_source: String = "module m.t\nfn f(x: Int?) -> Int {\n  match x {\n    none => 1\n    Present { value } => value\n  }\n}\n"
+
+data kvn_none_arm_member_source: String = "module m.t\nfn f(x: R) -> Bool {\n  match x.y {\n    none => false\n    Present { value } => true\n  }\n}\n"
+
+data kvn_none_arm_data_source: String = "module m.t\ndata d: Int = match b {\n  none => 1\n}\n"
+
+// Control: `none` leading a match body is an arm head, not a binder, a pun or a lambda: the corpus
+// writes the absence arm first, and a binder reservation that refused it refused 10 modules.
+test fn kvn_none_first_arm_ident_scrutinee_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_arm_ident_source, file: ^probe_kvn_none_arm_ident) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn kvn_none_first_arm_member_scrutinee_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_arm_member_source, file: ^probe_kvn_none_arm_member) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn kvn_none_sole_arm_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_arm_data_source, file: ^probe_kvn_none_arm_data) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // THE INPUT IS SUPPLIED AT THE PARSE INTERFACE, AND THE TEXT ROUTE STILL RUNS ONCE. Every claim above
 // except kvn_param_refuses_at_the_keyword parses a SUPPLIED token stream (v2.test.claim.parse.supplied_token_stream_support
 // supplied_stream_parse), because its subject is the grammar's binder guard, not the tokenizer: deriving the
@@ -652,3 +873,56 @@ fn kvn_bool_label_stream() -> TokenStream {
   ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 56, gap_start: 55))
 }
 
+
+data kvn_omit_param_refuse_source: String = "module m.t\nfn f() -> Int {\n  g(fn(none x) { 0 })\n}\n"
+
+// Omitted comma, fn literal parameter list: a none that is not followed by a comma still refuses at the word (bytes 34..38).
+test fn kvn_none_omit_param_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_omit_param_refuse_source, file: ^probe_kvn_omit_param_refuse),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_omit_param_refuse,
+    start: 34,
+    end: 38
+  )
+}
+
+data kvn_omit_param_accept_source: String = "module m.t\nfn f() -> Int {\n  g(fn(none_value x) { 0 })\n}\n"
+
+// Control: none_value is a different word and stays legal in the same omitted-comma syntax.
+test fn kvn_none_value_omit_param_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_omit_param_accept_source, file: ^probe_kvn_omit_param_accept) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_pun_value_accept_source: String = "module m.t\ndata d: R = R { none_value x }\n"
+
+// Control: none_value is a different word and stays a record-init pun in the omitted-comma syntax.
+test fn kvn_none_value_omit_pun_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_pun_value_accept_source, file: ^probe_kvn_pun_value_accept) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_none_pun_parses_source: String = "module m.t\ndata d: R = R { none x }\n"
+
+// A pun named none PARSES: body lowering owns its refusal (v2.test.claim.compiler.optional_native_controls onc_none_pun_*), so a speculative record probe over a match body never hard-stops.
+test fn kvn_none_pun_parses_and_lowering_owns_the_refusal_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_pun_parses_source, file: ^probe_kvn_none_pun_parses) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_keyword_block_after_ident_source: String = "module m.t\nfn f(c: Bool) -> Int {\n  if c {\n    let y = 1\n    y\n  } else {\n    0\n  }\n}\n"
+
+// Control: a block that opens with a statement keyword after a lowercase identifier still parses as a block.
+test fn kvn_keyword_block_after_ident_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_keyword_block_after_ident_source, file: ^probe_kvn_keyword_block_after_ident) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

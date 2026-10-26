@@ -26,7 +26,7 @@ import extdeps.languages.c.emit {
 import v2.extdeps.languages.c_decl {
   c_semantic_decl_emission_bundle_node
 }
-import std.algebra { Empty, list_append, length, fold_list, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { Empty, list_append, length, fold_list, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
 import std.graph {
   CallGraph,
   GraphEdge,
@@ -41,11 +41,14 @@ import std.optional {
   optional_absent
 }
 import v2.std.compilers.lexing {
+  CharClassPattern,
+  DigitChar,
   LexRule,
   LexRuleSet,
   LexRules,
   LiteralPattern,
   ModeledLexRules,
+  OneOrMorePattern,
   TokenRule
 }
 import v2.std.grammar {
@@ -57,9 +60,10 @@ import v2.std.grammar {
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
-  IntLiteralUnwired,
+  ListIntroductionUnwired,
+  IntLiteralDecimal,
   InfixToken,
   canonical_operation_op_add,
   Prepend,
@@ -143,7 +147,9 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
+import std.host_text { chars }
 
 // C R3: CompilationUnit.interface renders to the unit .h (declarations only);
 // CompilationUnit.members renders to the unit .c (implementation). partition_fold_outcome is the
@@ -896,7 +902,7 @@ fn c_atom(id: Symbol) -> Node {
 }
 
 fn c_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn c_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -1112,7 +1118,8 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^c_token_kw_true,
       false_token: ^c_token_kw_false
     },
-    int_literal_form: IntLiteralUnwired,
+    int_literal_form: IntLiteralDecimal { literal_token: ^c_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: StatementSequenced {
       return_token: ^c_token_kw_return,
       statement_terminator: ^c_token_semicolon
@@ -1182,7 +1189,7 @@ fn c_binding_spellings_with_dag_fixture() -> Map<Symbol, String> {
 }
 
 fn c_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(text: text) } }
 }
 
 fn c_lex_rules() -> List<LexRule> {
@@ -1196,6 +1203,7 @@ fn c_lex_rules() -> List<LexRule> {
     c_lex_rule(token_class: ^c_token_plus, text: " + "),
     c_lex_rule(token_class: ^c_token_semicolon, text: ";"),
     c_lex_rule(token_class: ^c_token_rbrace, text: " }"),
+    TokenRule { token_class: ^c_token_int_literal, pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } } },
     c_lex_rule(token_class: ^c_token_kw_true, text: "true"),
     c_lex_rule(token_class: ^c_token_kw_false, text: "false"),
     c_lex_rule(token_class: ^c_token_ternary_nop, text: ""),
@@ -1314,6 +1322,7 @@ fn c_type_decl_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn c_type_decl_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: c_target_model_node(),
     lex: c_lex(),
@@ -1363,6 +1372,7 @@ fn c_produced_decl_support() -> ProducedDeclSupport {
 
 fn c_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: c_produced_decl_support(),
     bundle: c_target_model_node(),
     lex: c_lex(),

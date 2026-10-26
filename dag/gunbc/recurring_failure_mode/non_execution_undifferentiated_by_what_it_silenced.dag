@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.non_execution_undifferentiated_by_what_it_silenced
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data non_execution_undifferentiated_by_what_it_silenced: RecurringFailureMode = RecurringFailureMode {
   identity: "non_execution_undifferentiated_by_what_it_silenced" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a required row does not execute, and NOTHING DECLARES WHAT ITS EXECUTION ESTABLISHED, so every non-execution looks alike** (INVALID STATE: a row that is preempted, skipped or otherwise reaches no verdict is reported as undecided, and the report carries no fact separating a row whose absence merely leaves a question open from a row whose absence REMOVES A WALL.",

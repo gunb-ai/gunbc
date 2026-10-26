@@ -157,7 +157,7 @@ pub fn frontier_rows_keyed_roster_build(
     rows: Rc<Vec<Rc<FrontierRow>>>,
 ) -> Rc<KeyedRosterBuild<Rc<FrontierSubject>, Rc<FrontierRow>>> {
     crate::std_keyed_roster::keyed_roster_build(
-        frontier_rows_to_keyed_rows(rows.clone()),
+        frontier_rows_to_keyed_rows(rows),
         frontier_subject_eq,
     )
 }
@@ -173,7 +173,7 @@ pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>>
 }
 
 pub fn frontier_units(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {
-    frontier_path_subjects(rows.clone())
+    frontier_path_subjects(rows)
 }
 
 pub fn concat_frontier_row_groups(

@@ -1,0 +1,760 @@
+module test.claim.p4_home_serving_power_semantics_witness
+
+import std.types { Bool, Int, List, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { Cons, Empty, string_contains, list_snoc_item }
+import v2.std.decl_index { DeclFact, decl_facts_at, qualified_name_from_module }
+import extdeps.filesystem.filesystem_io
+import std.measure { watt_count }
+import std.optional { Absent, Present }
+import std.dissolution { dissolution_is_bound }
+import v2.std.node { symbol_lexeme, named_edge_sort_key }
+import v2.std.node_query { node_labeled_child_edges }
+import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts, decl_facts }
+import extdeps.gpu.types {
+  GpuModelCatalogRow, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq
+}
+import extdeps.gpu.nvidia {
+  nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
+  nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
+}
+import gunbc.serving.home_serving_accelerator_field {
+  home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows,
+  home_serving_accelerator_field_p4_frontier
+}
+import extdeps.gpu_bench.request_v2 {
+  GpuBenchRequestV2Stream, GpuBenchRequestV2Parsed, GpuBenchRequestV2StreamUnreadable,
+  gpu_bench_parse_jsonl
+}
+import std.markdown { MarkdownDocument }
+import gunbc.plan { Plan, plan_projects_committed_markdown }
+import gunbc.plan_registry { all_plans }
+import extdeps.languages.markdown { serialize_markdown_source }
+import test.claim.plan_citation_census {
+  plan_citation_is_digit,
+  plan_citation_has_positional_citation,
+  plan_citation_parse,
+  plan_citation_citation_roster,
+  plan_citation_occurrences,
+  plan_citation_census_pool_roots,
+  plan_citation_census_read,
+  plan_citation_census_rows_in
+}
+import gunbc.plans.p4_home_serving_power_semantics {
+  p4_branch_record,
+  p4_branch_sentence,
+  p4_fleet_observation,
+  p4_fleet_sentence,
+  p4_home_serving_power_semantics_plan,
+  p4_pr_state_instrument,
+  p4_presence_standing,
+  p4_ruling_record,
+  p4_ruling_sentence,
+  p4_trace_conditions,
+  p4_trace_freshness,
+  p4_trace_is_reliable,
+  p4_trace_negative_control,
+  p4_trace_provenance,
+}
+
+// Guards on the P4 watt-semantics decision CARRIER. DESIGN §1: "A plan's authority is
+// its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation
+// is not a checkout artifact." This document is a decision record, so its carrier is the
+// only authority and there is deliberately no docs/plans/*.md for it — the claim below
+// pins that, rather than leaving it to a comment.
+//
+// Each claim is written so its RED is reachable on the real acceptance path (DESIGN §4b:
+// "A check whose forbidden state is expressible nowhere it runs is a decoration, green by
+// construction and later cited as coverage"). The body is read through the repository's
+// OWN serializer, `extdeps.languages.markdown::serialize_markdown_source`, not a
+// hand-written AST walk: minting a second walker beside the one that renders the document
+// would be the §2 re-invention these claims exist to police, and a private walker could
+// drift from the renderer with both sides staying green.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ── The GENERAL positional-citation rule, not a list of shapes I happened to observe.
+// An earlier head of this PR shipped `-- :136`, `-- :226` and `external_authority:13-16`
+// while this claim was GREEN, because the guard then enumerated suffixes (`.dag:`, `.rs:`,
+// `.py:`, `DESIGN.md:`) and none of those three has a file suffix — they were inside a
+// fenced code sample, which the prose rewrites never touch. Enumerating shapes reproduces
+// the bug; encoding the distinction does not.
+//
+// DESIGN §3 permits a position only BESIDE a symbol, never AS the citation. The
+// distinction is measurable: in `foo:12`, `12:39Z` and `12:55:33Z`, a time or a counter
+// has a DIGIT before its colon, while a citation never does. So split on `:` and flag a
+// segment that begins with a digit while the segment before it does not END with one.
+// Measured: flags all three shipped defects in the previous head's serialized text, and
+// flags nothing in the current one — where the timestamps `12:39Z` and `12:55:33Z` (inside
+// a verbatim escalation quote that must be kept) survive.
+
+fn carrier_is_registered() -> Bool {
+  fold(all_plans, init: false, f: (acc, p) => acc || p.slug == "p4-home-serving-power-semantics")
+}
+
+fn carrier_text() -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: p4_home_serving_power_semantics_plan.body })
+}
+
+// ── DESIGN §1, and the reason the markdown was deleted rather than kept beside the
+// carrier. `gunbc.plan::plan_projects_committed_markdown` answers false only for
+// `PlanIsAuthorityOnly`; the generated-artifact gate then treats a committed projection of
+// this plan as a stale artifact. RED: switching the projection to
+// `PlanProjectsCommittedMarkdown`, or registering a second plan whose document restates
+// this decision, turns this red. Registered-ness is checked through `all_plans` rather
+// than from the import alone, so a carrier dropped from the registry cannot pass by the
+// import still resolving.
+test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
+  carrier_is_registered()
+    && plan_projects_committed_markdown(p: p4_home_serving_power_semantics_plan) == false
+}
+
+// ── DESIGN §3: "Cite the symbol, not the position. A `file:line` pointer is a second,
+// positional naming scheme that any edit above the line silently invalidates." This
+// asserts over SERIALIZED text, so it catches a positional citation wherever it hides —
+// body prose, list items, table cells, quoted blocks, and the fenced code sample alike.
+// The suffix list below names the common shapes; the load-bearing part is
+// `test.claim.plan_citation_census::plan_citation_has_positional_citation`, which enforces the RULE rather than a list. Both are
+// asserted because each is blind to what the other catches: a bare `-- :136` has no file
+// suffix to match, and `12:55:33Z` must survive a rule written too loosely. That is why the
+// rule tests the character BEFORE the colon as well as after it — the carrier is required to
+// quote instrument commands such as `awk -F: '$NF>1'`, and a rule keyed only on
+// "digits after a colon" would forbid the instruments this document exists to name.
+//
+// This rule is not decorative here: one seal-check citation in an earlier draft had its
+// line number drift out from under it *while this document was being written* — the check
+// moved from `:17368` to `:17466` as main took other merges — which is exactly the failure
+// §3 names, and the reason the symbol is cited instead.
+test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
+  let t = carrier_text()
+  // Positive conjuncts FIRST. This claim's load-bearing part is a NEGATIVE assertion, and
+  // a negative assertion is satisfied by an empty read: if the subject module stopped
+  // resolving or the body ever became empty, every `string_contains` would return false
+  // and this claim would be green while proving nothing. DESIGN §4b names that a
+  // decoration. So the same claim also requires the text to be a substantive document that
+  // really carries the symbols it is supposed to carry — break the read and the claim goes
+  // red instead of green.
+  t.length() > 4000
+    && string_contains(s: t, pattern: "extdeps.gpu.types::GpuModelCatalogRow.tdp_watts")
+    && string_contains(s: t, pattern: "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization.applied_power_limit")
+    && string_contains(s: t, pattern: "v1.compiler.infer::constructor_admission_diags_from_lookup")
+    && !(string_contains(s: t, pattern: ".dag:")
+      || string_contains(s: t, pattern: ".rs:")
+      || string_contains(s: t, pattern: ".py:")
+      || string_contains(s: t, pattern: "DESIGN.md:")
+      // The general rule, not an enumeration of shapes. An earlier head of this PR shipped 12
+      // citation husks (" ()", "at/.", "(,") left behind when a `path:line` was deleted, and an
+      // earlier revision of THIS claim policed each of those literals by hand. Review 83566
+      // (§5) was right that that was the wrong instrument: measured over the shipped body, all
+      // eight literals were absent — green by construction — and three of them match ordinary
+      // English ("looked at. The" contains " at."), so they could redden a correct document for
+      // a prose edit while never having caught the defect they were written for. What is kept is
+      // the rule that generalises: a colon introducing digits, with the character BEFORE it
+      // deciding. MUTATION CHECK: replacing `test.claim.plan_citation_census::plan_citation_last_is_digit` with one that never fires reddens
+      // this claim on the CLEAN carrier, so the rule is doing the work and is not scenery.
+      || plan_citation_has_positional_citation(t: t))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────
+// THE CITATIONS IN THIS PLAN RESOLVE IN THE TREE, NOT ONLY IN THE PLAN'S OWN SENTENCES.
+//
+// Review 82961 (§4d, §5) caught the reason the four claims above were insufficient: every
+// one of them searches the carrier's TEXT for a string, so a citation to a module that does
+// not exist is satisfied by the sentence that asserts it. A green claim of that shape is
+// the §4b decoration -- "green by construction and later cited as coverage". This claim
+// asks the tree instead, through `v2.std.decl_index`, the repository's own declaration
+// census, using the membership idiom already established by
+// `test.claim.fleet.runtime_identity_match_witness::cites`.
+//
+// WHY THE ROSTER IS DERIVED AND NEVER RESTATED (§2, and the precedent's own lesson: "the
+// list is DERIVED from the rows, so it cannot drift from them"): `test.claim.plan_citation_census::plan_citation_citation_roster` reads
+// the carrier's serialized text and takes every whitespace/backtick-delimited piece shaped
+// like `module::decl` or `module::decl.field`. Add a citation to the plan and it is checked
+// without touching this file; delete one and it stops being checked. Nothing here is a copy
+// of the prose.
+//
+// AND THE CHECK THAT MAKES THAT DERIVATION UN-SILENCABLE: `p4_citation_count_is_conserved`
+// requires that every `::` in the text is accounted for by the roster. Restating the list
+// by hand, or narrowing the shape test until citations fall out of it, reddens that
+// conjunct instead of quietly reducing the work -- which is exactly the failure mode a
+// derived roster otherwise invites.
+
+// THE POSITIVE CONTROL ON THE DERIVATION ITSELF. Every `::` in the text must be covered by
+// the roster; if the shape test ever excludes a real citation, or the roster is narrowed to
+// make the claim pass, this conjunct goes red rather than the claim going quietly green.
+fn p4_citation_count_is_conserved(t: String) -> Bool {
+  let roster = plan_citation_citation_roster(t)
+  let covered = fold(roster, init: 0, f: (n, cite) => n + plan_citation_occurrences(t: t, cite: cite))
+  let separators = t.split(delimiter: "::").length() - 1
+  covered == separators && separators > 0
+}
+
+// THE ONE CENSUS KEY PATH. Every census lookup in this module goes through
+// `test.claim.plan_citation_census::plan_citation_census_rows_in`, which parses the citation the way the document writes it and then asks
+// `v2.std.decl_index::qualified_name_from_module` — the function that OWNS that key — to
+// build it. Three of these lookups used to hand-build the key at the call site and each got it
+// wrong in its own way: two passed `Module::Decl` straight in (the census key contains no `::`, so
+// such a lookup matches nothing and the claim reddens on a fact that is actually true), and one
+// concatenated `module + "." + name` by hand (the key is the module's own qualified name, `v2.`
+// prefix kept, built only by `qualified_name_from_module`). A
+// key rule restated at each call site rots exactly like this one did; the root list is likewise
+// named once, so no site can quietly widen or narrow the population it is querying.
+
+// A FIELD is not a declaration, so the census cannot answer for it. Checked instead against
+// the declaring file's own text, read with `filesystem_read` at the `rel_path` the census row
+// carries -- so the file is the census's, not one this claim guessed. Honest about its reach:
+// this proves the field is written as a field line (`  name: Type`) somewhere in that file,
+// which is weaker than a name-resolved field lookup, and the two citations that need it are
+// `extdeps.gpu.types::GpuModelCatalogRow.tdp_watts` and
+// `gunbc.spark.serving_performance_subject::ServingAcceleratorRealization.applied_power_limit`.
+fn p4_declares_field(fact: DeclFact, field: String) -> Bool {
+  let source = filesystem_read(path: fact.rel_path)
+  string_contains(s: source.content, pattern: concat("  ", concat(field, ": ")))
+}
+
+// THE CENSUS READ. `v2.std.decl_index::decl_facts_at` is the keyed host-side read, not a fold
+// over the whole corpus: the precedent warns that repeated full `decl_facts` calls took a
+// witness "past any bound" (3.6s each measured). Each claim reads it ONCE with every citation it
+// asks about (`plan_citation_census_read`), negative controls included so the census answers them,
+// and joins each citation against that read (`plan_citation_census_rows_in`).
+// Pools dag AND src/v1 -- measured, not assumed: with only ["dag","src/v2"] pooled, the four
+// `v1.*` citations in this plan resolve to ZERO rows. The census keys on the AUTHORED module
+// name, which is why `v1.compiler.infer` resolves although its file is `src/v1/04_infer.dag`,
+// a path no caller could have guessed from the name.
+fn p4_citation_resolves(facts: List<DeclFact>, cite: String) -> Bool {
+  let c = plan_citation_parse(w: cite)
+  let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
+  if c.has_field {
+    rows.length() >= 1 && any(rows, r => p4_declares_field(fact: r, field: c.field_name))
+  } else {
+    rows.length() >= 1
+  }
+}
+
+test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
+  let t = carrier_text()
+  let roster = plan_citation_citation_roster(t)
+  let positive = "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission"
+  let near_miss = "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmissionShadow"
+  // Both controls are keys of the ONE read, so the census answers them; a key left out of the
+  // read would come back empty by omission and the negative would pass without being asked.
+  let facts = plan_citation_census_read(cites: concat(roster, [positive, near_miss]))
+  // WHAT THE CONTROL DISCRIMINATES: that this resolver can answer BOTH ways, so a citation
+  // the document asserts is not satisfied by the document asserting it. It used to rest on
+  // `gunbc.serving.home_serving_power_policy` being UNMERGED, a premise the world retired
+  // when #14463 landed the module, after which the claim was red on a true fact. The
+  // module's citation is now the POSITIVE: the census must resolve HomeServingPowerAdmission,
+  // and moving the module out of the tree reddens it. The NEGATIVE is a near-miss
+  // declaration in the SAME module that no module declares -- same census read, one
+  // differing token -- so a resolver that could never answer "unresolved" reddens it, and so
+  // does authoring that name. An absent name is honest as a negative only because the
+  // positives beside it run the identical function; alone it is green by construction.
+  p4_citation_count_is_conserved(t: t)
+    && roster.length() > 0
+    && p4_citation_resolves(facts: facts, cite: positive)
+    && !p4_citation_resolves(facts: facts, cite: near_miss)
+    && all(roster, cite => p4_citation_resolves(facts: facts, cite: cite))
+}
+
+// ── THE PLAN'S LOAD-BEARING FACTS, READ FROM THE TREE ────────────────────────
+// DESIGN §5: "a typecheck and a `.contains()` grep are not consumers. Done means
+// a real consumer green by execution plus a discriminating input that goes red
+// when the behavior is wrong." Everything below consumes TYPED VALUES — the
+// frontier's lists of `GpuModelCatalogRow`, the declaration AST the census
+// carries, and the receipt parser that owns the fixture format. Nothing here
+// greps a source file or this plan's own prose, because a grep of text stays
+// green when the thing it describes changes. Each claim says what reddens it.
+
+// A field or declaration name that would read as a power channel, in either case
+// spelling. Written out rather than case-folded because the tree has no exercised
+// lower-casing call site, and a claim that silently skipped `Power` because of a
+// helper nobody ever ran would be worse than one that names both spellings.
+fn mentions_power_word(s: String) -> Bool {
+  string_contains(s: s, pattern: "power")
+    || string_contains(s: s, pattern: "Power")
+    || string_contains(s: s, pattern: "watt")
+    || string_contains(s: s, pattern: "Watt")
+    || string_contains(s: s, pattern: "tdp")
+    || string_contains(s: s, pattern: "Tdp")
+    || string_contains(s: s, pattern: "limit")
+    || string_contains(s: s, pattern: "Limit")
+}
+
+fn p4_row_has_cited_ceiling(row: GpuModelCatalogRow) -> Bool {
+  match row.tdp_watts {
+    Present { value: w } => watt_count(w: w) > 0
+    Absent => false
+  }
+}
+
+fn p4_row_ceiling_absent(row: GpuModelCatalogRow) -> Bool {
+  match row.tdp_watts {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn p4_row_is_add_in_card(row: GpuModelCatalogRow) -> Bool {
+  match row.package {
+    PcieAddInCard => true
+    SxmModule => false
+    IntegratedComputePackage => false
+  }
+}
+
+fn p4_row_is_sxm(row: GpuModelCatalogRow) -> Bool {
+  match row.package {
+    PcieAddInCard => false
+    SxmModule => true
+    IntegratedComputePackage => false
+  }
+}
+
+// THE CATALOG UNIVERSE, IMPORTED BY NAME. The claims below partition this list,
+// so it is the thing a narrowing attack would have to edit. The census count of
+// `data <row>: GpuModelCatalogRow` in `extdeps.gpu.nvidia` is compared against
+// its length, so a row added without being named here reddens the claim rather
+// than being silently unpartitioned -- as `nvidia_h200_nvl_catalog` did when #14718
+// added it, until it was named below. That is the honest shape: the rows
+// are read as typed values, and the census is what keeps the value list fresh.
+data p4_catalog_universe: List<GpuModelCatalogRow> = [
+  nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
+  nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
+]
+
+// Same membership fold the shipped home-serving witness uses, so row identity is
+// the catalog's own equality rather than a field-by-field guess.
+fn p4_is_in(row: GpuModelCatalogRow, rows: List<GpuModelCatalogRow>) -> Bool {
+  fold(rows, init: false, f: (acc, r) => acc || gpu_catalog_row_eq(a: r, b: row))
+}
+
+fn p4_row_counted(fact: DataDeclTypeFact) -> Bool {
+  fact.module_path == "extdeps.gpu.nvidia" && fact.type_name == "GpuModelCatalogRow"
+}
+
+// THE CANDIDATE CEILINGS, READ. The plan used to print which cards were candidates
+// and what their ceilings were; a frozen reading rots, and it did — an earlier
+// revision of this document named a catalog row that does not exist. The candidate
+// set and the reference set are now the frontier's OWN typed lists, imported as
+// values, and every ceiling is a `Watt` read out of the row the catalog declares.
+// REDDENS: a candidate with no stated ceiling (then `PowerPolicyGrounded` cannot be
+// built for it, which is the whole point of requiring it); a candidate whose package
+// is not an add-in card (a chassis module offered as a card); a candidate that is not
+// a real catalog row; a reference that is not SXM or that has grown a ceiling (a
+// reference is a shape to compare against, not a thing to buy); a row that is in
+// neither list while carrying no ceiling (an unstated ceiling nobody designated); a
+// row in BOTH lists (a card cannot be its own comparison); or a catalog row added
+// without being named in the universe above.
+test fn the_candidate_ceilings_are_read_from_the_frontier_that_declares_them() -> Bool {
+  let census_says = count(filter(data_decl_type_facts(pool_roots: ["dag"]), p4_row_counted))
+  let candidates = home_serving_add_in_card_catalog_rows
+  let references = home_serving_reference_sxm_catalog_rows
+  count(candidates) > 0
+    && count(references) > 0
+    && census_says == count(p4_catalog_universe)
+    && all(candidates, r => p4_is_in(row: r, rows: p4_catalog_universe))
+    && all(references, r => p4_is_in(row: r, rows: p4_catalog_universe))
+    && all(candidates, r => p4_row_has_cited_ceiling(row: r))
+    && all(candidates, r => p4_row_is_add_in_card(row: r))
+    && all(references, r => p4_row_ceiling_absent(row: r))
+    && all(references, r => p4_row_is_sxm(row: r))
+    // Conservation: an absent ceiling is allowed ONLY on a designated reference.
+    && all(p4_catalog_universe, r => p4_row_has_cited_ceiling(row: r) || p4_is_in(row: r, rows: references))
+    // Disjoint: nothing is simultaneously bought and compared.
+    && all(candidates, r => !p4_is_in(row: r, rows: references))
+}
+
+// THE FIELD EXISTS WHERE IT IS DECLARED, READ BY NAME OFF THE CENSUS ROW. A field is not a
+// declaration, so `decl_facts_at` cannot answer for it by name; but the census row carries the
+// declaring type's AST and every field hangs off it as an `Authored`-labelled edge, which is the
+// one shape `node_labeled_child_edges` keeps — the same seam `v2.std.concept_index::
+// field_refs_from_conj_node` reads field names through. REDDENS on its own: the field being renamed
+// or dropped. It does NOT see the field's type — see the next two functions for that half.
+//
+// WHY CARDINALITY IS NOT READ HERE. This used to assert `f.cardinality == Optional` through
+// `declared_field_list`, and that conjunct could NEVER have been satisfied: `declared_field_list`
+// only accepts an edge whose target is a payload `Conj` (`binder_node_parts` matches
+// `TypeNode { connective: Conj }` and returns Absent for anything else), while the census hands
+// every field edge a bare type atom as its target (coproduct_reflection::marshal_variant_arm_target
+// builds the target with marshal_type_expr_ref, which carries no children). So the reader returned
+// Empty for every census row and the claim was RED ON A TRUE FACT — a conjunct nobody could falsify
+// is not a check. The cardinality is therefore read where it is actually written, in the next two
+// functions, rather than from a node that cannot express it.
+fn p4_declares_field_by_name(facts: List<DeclFact>, cite: String, field: String) -> Bool {
+  let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
+  any(rows, fact => any(p4_declared_field_names(fact: fact), n => n == field))
+}
+
+// The names on a census row: the type's own fields, and for a coproduct each arm's payload
+// fields one level down. Names only, never cardinality — see the note above.
+fn p4_declared_field_names(fact: DeclFact) -> List<String> {
+  let top = fold(node_labeled_child_edges(node: fact.node), init: Empty, f: fn(acc, e) {
+    list_snoc_item(xs: acc, item: symbol_lexeme(sym: named_edge_sort_key(e: e)))
+  })
+  let nested = fold(node_labeled_child_edges(node: fact.node), init: Empty, f: fn(acc, e) {
+    concat(acc, fold(node_labeled_child_edges(node: e.target), init: Empty, g: fn(inner, f2) {
+      list_snoc_item(xs: inner, item: symbol_lexeme(sym: named_edge_sort_key(e: f2)))
+    }))
+  })
+  concat(top, nested)
+}
+
+// THE CARDINALITY IS READ WHERE IT IS WRITTEN, INSIDE THE TYPE THAT OWNS THE FIELD. Whether the
+// reading may be missing is the whole question this plan turns on, and the census node cannot answer
+// it: `marshal_type_expr_ref` marshals a field's type to a bare `Atom` holding the authored type
+// name, so no optional marker survives into the node the census hands back and no conjunct over it
+// could ever have been falsified. The declaring file is the one place the cardinality is recorded, so
+// the spelling is read from the file the census row itself names (`fact.rel_path` — the same seam
+// `p4_declares_field` uses, and the file is the census's, not one this claim guessed).
+//
+// THE READ IS SCOPED TO THE TYPE BLOCK, NOT THE FILE, and that is not fussiness. This very file holds
+// `applied_power_limit: Watt?` TWICE — once on the realization this plan is about and once on
+// `VllmRequestAxisReadings`, an unrelated vLLM axis record. A whole-file search would therefore stay
+// green after the realization's own `?` was dropped, because the neighbour still spells it: the claim
+// would be reading a fact about some other type and reporting it as this one's (§3, each fact lives
+// in exactly one place). Slicing out the declaring type's own block makes the answer depend only on
+// that type. An absent header yields the empty block, so a renamed or deleted type reddens here too
+// rather than falling through to a vacuous match.
+// REDDENS: the `?` being dropped (a missing reading would stop being expressible), the type being
+// renamed away from `Watt`, or the field ceasing to be a declared field of THAT type.
+fn p4_field_is_declared_optional_watt(fact: DeclFact, decl: String, field: String) -> Bool {
+  let source = filesystem_read(path: fact.rel_path)
+  string_contains(
+    s: p4_type_block(content: source.content, decl: decl),
+    pattern: concat("  ", concat(field, ": Watt?"))
+  )
+}
+
+// The declaring type's own text: everything after its header up to the brace that closes it.
+// The two intermediates carry explicit `List<String>`/`String` annotations on purpose: a value
+// bound out of a `Cons` pattern keeps a bare element type `T` otherwise, and `T` establishes no
+// method surface, so the next `.split` fails to resolve at emit.
+fn p4_type_block(content: String, decl: String) -> String {
+  let headers: List<String> = content.split(delimiter: concat("type ", concat(decl, " {")))
+  let after_header: String = match headers {
+    Cons { head: _, tail: Cons { head: rest, tail: _ } } => rest
+    _ => ""
+  }
+  let blocks: List<String> = after_header.split(delimiter: "\n}")
+  match blocks {
+    Cons { head: block, tail: _ } => block
+    _ => ""
+  }
+}
+
+// BOTH HALVES OF THE CLAIM, EACH READ FROM ITS OWN AUTHORITY. The name is read off the census row
+// (so a rename or a drop reddens it), and the `Watt?` spelling off that row's own declaring file,
+// inside the type it names (so a retype or a lost `?` reddens it). One conjunct alone would let the
+// other drift: a file that still spells the field while the census no longer carries it, or a census
+// row whose declaring file has been rewritten underneath it.
+fn p4_optional_watt_field(facts: List<DeclFact>, cite: String, field: String) -> Bool {
+  let c = plan_citation_parse(w: cite)
+  let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
+  count(rows) > 0
+    && p4_declares_field_by_name(facts: facts, cite: cite, field: field)
+    && all(rows, fact => p4_field_is_declared_optional_watt(
+      fact: fact,
+      decl: c.decl_name,
+      field: field
+    ))
+}
+
+// THE TWO WATT CARRIERS, READ FROM WHERE THEY ARE DECLARED. The plan's whole
+// point is that a catalog TDP and an applied limit are the same carrier type and
+// nothing relates them; both halves used to be sentences. Now each field is read
+// out of the AST of the module that declares it as an optional `Watt`, and the
+// "nothing relates them" half is read as an absence over the census: no
+// declaration anywhere mentions both names, and neither of the two modules that
+// could hold such a rule mentions TDP at all. REDDENS: either field retyped or
+// made required; OR a rule appearing that relates them — which is the good red,
+// because that is the change this plan argues for, and when it lands this claim
+// must fail until the plan is retired.
+// THE PAIR OF POSITIVE READS, AND THE TWO CONTROLS THAT STOP THEM BEING DECORATION (§4b). A
+// conjunct nobody can imagine failing is not a check, so each read here is paired with the same
+// call on an input it MUST refuse.
+//
+// `memory_bandwidth` is the sharpest available negative for the Watt read: it sits in the SAME
+// block as `tdp_watts` and is optional too, but its unit is `Bandwidth`, not `Watt`. So a bug that
+// quietly degraded the pattern from "optional Watt" to "any optional field" — a dropped `Watt?` in
+// the concatenation, say — would make the positives pass and this control go red. If this control
+// ever reddens because `memory_bandwidth` really was retyped to a watt, that is the control working:
+// a new watt field on the card row is exactly the kind of change this plan exists to notice.
+//
+// `wattage_ceiling` is the negative for the NAME read: no such field exists on the card row, so a
+// name read that accepted anything at all would be caught here rather than looking strong.
+test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool {
+  let facts = plan_citation_census_read(cites: [
+    "extdeps.gpu.types::GpuModelCatalogRow",
+    "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization"
+  ])
+  p4_optional_watt_field(
+    facts: facts,
+    cite: "extdeps.gpu.types::GpuModelCatalogRow",
+    field: "tdp_watts"
+  )
+    && p4_optional_watt_field(
+      facts: facts,
+      cite: "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization",
+      field: "applied_power_limit"
+    )
+    && all(
+      plan_citation_census_rows_in(facts: facts, cite: "extdeps.gpu.types::GpuModelCatalogRow"),
+      row => !p4_field_is_declared_optional_watt(
+        fact: row,
+        decl: "GpuModelCatalogRow",
+        field: "memory_bandwidth"
+      )
+    )
+    && !p4_declares_field_by_name(
+      facts: facts,
+      cite: "extdeps.gpu.types::GpuModelCatalogRow",
+      field: "wattage_ceiling"
+    )
+    && !any(
+      decl_facts(pool_roots: plan_citation_census_pool_roots()),
+      d => string_contains(s: d.qualified_name, pattern: "gpu_bench_warm_standing")
+        && mentions_power_word(s: d.qualified_name)
+    )
+}
+
+// NO CARD IS CHOSEN — READ, NOT WORDS. The plan used to assert that no card or
+// power limit had been picked. That is a DissolutionCondition the frontier
+// carries: an unbound frontier whose trigger is still unset. REDDENS the moment
+// someone binds it — i.e. actually chooses — which is the only way a sentence
+// about "not yet" can be worth anything.
+test fn the_frontier_still_holds_no_card_and_no_limit() -> Bool {
+  count(home_serving_add_in_card_catalog_rows) > 0
+    && dissolution_is_bound(condition: home_serving_accelerator_field_p4_frontier) == false
+}
+
+// THE RECEIPTS, THROUGH THE PARSER THAT OWNS THEM. `gpu_bench_parse_jsonl` is the
+// module that owns this format, so the fixture is read as `GpuBenchRequestV2`
+// records rather than as text. REDDENS: a receipt line that no longer parses
+// (which is what makes this a real consumer of the committed fixture). Note what
+// this deliberately does NOT claim: the parser tolerates keys it does not model,
+// so "the fixture has no watt column" cannot be proven by parsing alone — that
+// half is read from the record type's own field set below, from the AST.
+test fn the_gpu_bench_receipts_parse_through_their_owning_module() -> Bool {
+  let body = filesystem_read(path: "fixtures/gpu_bench/pro6000ws_600w_v2/warm_ninfer_nvfp4_pro6000ws_600w.jsonl")
+  match gpu_bench_parse_jsonl(text: body.content) {
+    GpuBenchRequestV2Parsed { records: records } => count(records) > 0
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+  }
+}
+
+// NO POWER CHANNEL, READ FROM THE TYPES THAT WOULD CARRY ONE. These two types are what a P4
+// selection would most plausibly reach for to carry a watt the decision has not settled: the bench
+// request that names the card, and the device-memory observation that reads the device. Neither may
+// grow a power-named field while the decision is open, because a field named for power would read as
+// an answer to it (§4d). This reads each one's declared field set out of the census AST and is red if
+// a field named like a power reading appears — the check that stays honest when a file is edited,
+// unlike a sentence saying the word "power" does not appear.
+//
+// The names come from `p4_declared_field_names`, which reads a record's fields AND a coproduct's arm
+// payloads one level down. That distinction is the whole difference between a real absence and a
+// fake one here: `declared_field_list` answers `Empty` for a `Disj` — its own comment says an empty
+// list "does not distinguish nullary from not a payload" — so reading `DeviceMemoryObservation`, a
+// coproduct, through it returned `Empty` and the `all` below was GREEN HAVING READ NO FIELD AT ALL.
+//
+// The `count > 0` floor is what makes the absence mean something: at least one field must have been
+// SEEN before the claim may assert none of them is a power channel. A census row yielding no
+// readable field — the exact failure this module shipped with — reddens here instead of satisfying a
+// vacuous `all`. The floor is existence, deliberately not a transcribed field count: a frozen number
+// rots (§6), and "the walk saw something" is the whole of what anti-vacuity needs.
+fn p4_no_power_named_field(facts: List<DeclFact>, cite: String) -> Bool {
+  let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
+  let fields = fold(rows, init: Empty, f: fn(acc, r) {
+    concat(acc, p4_declared_field_names(fact: r))
+  })
+  count(fields) > 0
+    && all(fields, fld => !mentions_power_word(s: fld))
+}
+
+test fn no_type_that_would_carry_a_power_reading_declares_one() -> Bool {
+  let facts = plan_citation_census_read(cites: [
+    "extdeps.gpu_bench.request_v2::GpuBenchRequestV2",
+    "extdeps.nvidia.management_library::DeviceMemoryObservation"
+  ])
+  p4_no_power_named_field(
+    facts: facts,
+    cite: "extdeps.gpu_bench.request_v2::GpuBenchRequestV2"
+  )
+    && p4_no_power_named_field(
+      facts: facts,
+      cite: "extdeps.nvidia.management_library::DeviceMemoryObservation"
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE PRESENCE OBSERVATION, EXECUTED — added because the operator's fleet answer made reliability
+// the gate: no host carries a GPU, cards and slots are empty as fact, and a software trace may count
+// as presence evidence ONLY once it is shown reliable under three named conditions (freshness,
+// provenance, a negative control where an absent GPU yields no trace). The plan records each
+// condition with a `met` Bool; a Bool that nobody re-derives is a decoration, so this claim reads the
+// committed bytes and RE-DERIVES all three, then requires the records to agree. Change a fixture and
+// the record that describes it goes red — which is the whole point of a carrier over a paragraph.
+//
+// It also carries the positive floor that makes the absence claims mean something: the two table
+// traces must contain the device-name row before the claim is allowed to conclude anything about
+// what they lack. An absence proven over bytes nobody read is green by construction.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+fn p4_fixture(name: String) -> String {
+  filesystem_read(path: join(["fixtures/gpu_bench/pro6000ws_600w_v2/", name], "")).content
+}
+
+// A dated row opens yyyy-mm-dd hh:mm:ss. Checked positionally rather than by a substring library:
+// digits at 0..3, a dash at 4, digits at 5..6, a dash at 7, digits at 8..9, a space at 10, digits at
+// 11..12, a colon at 13. That is the shape the plan's freshness instrument names.
+fn p4_row_is_dated(line: String) -> Bool {
+  if line.length() < 14 {
+    false
+  } else {
+    plan_citation_is_digit(c: substring(s: line, start: 0, end: 1))
+      && plan_citation_is_digit(c: substring(s: line, start: 11, end: 12))
+      && substring(s: line, start: 4, end: 5) == "-"
+      && substring(s: line, start: 7, end: 8) == "-"
+      && substring(s: line, start: 10, end: 11) == " "
+      && substring(s: line, start: 13, end: 14) == ":"
+  }
+}
+
+fn p4_dated_row_count(text: String) -> Nat {
+  count(filter(text.split(delimiter: "\n"), line => p4_row_is_dated(line: line)))
+}
+
+// The trace never names the tool that wrote it. Searched, not assumed: every spelling by which the
+// suspected producer identifies itself, in every line of every fixture.
+fn p4_names_its_producer(text: String) -> Bool {
+  any(["nvidia-smi", "nvsmi", "pynvml", "dcgm"], t => string_contains(s: text, pattern: t))
+}
+
+// The device-name row as it appears in a `nvidia-smi`-style table. Present in both table traces.
+fn p4_names_a_device(text: String) -> Bool {
+  string_contains(s: text, pattern: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition")
+}
+
+// The absent-device half. No committed fixture reports a device that is not there, which is exactly
+// why the corpus cannot show that absence produces no trace.
+fn p4_reports_absent_device(text: String) -> Bool {
+  any(["no devices were found", "No devices were found", "not found", "N/A"], t =>
+    string_contains(s: text, pattern: t))
+}
+
+test fn the_gpu_bench_trace_still_falls_short_of_reliable_presence_evidence() -> Bool {
+  let auto = p4_fixture(name: "auto.log")
+  let results = p4_fixture(name: "results_ninfer_nvfp4_pro6000ws_600w.txt")
+  let warm = p4_fixture(name: "warm_ninfer_nvfp4_pro6000ws_600w.jsonl")
+  // POSITIVE FLOOR: the read must find what a trace is expected to find, or every absence below is
+  // vacuous. Both table traces carry the device row; the receipt stream carries its run label on
+  // every line (that one is proved by the parse claim, not re-proved here).
+  let floor = p4_names_a_device(text: auto) && p4_names_a_device(text: results)
+    && count(warm.split(delimiter: "\n")) > 0
+    && count(p4_trace_conditions()) > 0
+  // Freshness: at least one dated row in the trace that has them.
+  let derived_freshness = p4_dated_row_count(text: auto) > 0
+  // Provenance: no fixture states which tool produced it. The condition is met only when one DOES.
+  let derived_provenance = p4_names_its_producer(text: auto) || p4_names_its_producer(text: results) || p4_names_its_producer(text: warm)
+  // Negative control: met only when SOME committed fixture shows an absent device producing no trace.
+  let derived_negative_control =
+    p4_reports_absent_device(text: auto) || p4_reports_absent_device(text: results) || p4_reports_absent_device(text: warm)
+  // The records must agree with the bytes. This is the line that stops the carrier describing a
+  // corpus it no longer has.
+  let records_agree =
+    p4_trace_freshness.met == derived_freshness
+      && p4_trace_provenance.met == derived_provenance
+      && p4_trace_negative_control.met == derived_negative_control
+  // And the standing must follow from the records, not be asserted beside them.
+  floor && records_agree && !p4_trace_is_reliable()
+    && string_contains(s: p4_presence_standing(), pattern: "REFUSED")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE CARRIER CANNOT DRIFT AWAY FROM ITS RECORDS. Typing the status facts only helps if the prose
+// the reader actually sees is still the rendering of them. A hand-edit to a paragraph — someone
+// "tidying" the sentence, or restating a head or a merge state from memory — would otherwise leave
+// every other claim green while the document said something the records do not. So each field of
+// each status record must appear in the rendered body, which is the same shape the citation roster
+// enforces for symbols: derive the required set from the records, then require the subject to carry
+// every one of them. Two anti-vacuity conjuncts keep this from being green on an empty read: the
+// roster must be non-empty, and no required value may be empty.
+//
+// MUTATION CHECK: changing `standing_words` on p4_ruling_record to any other phrase reddens this
+// claim while leaving the other eight green, because the sentence and the field are then different
+// text. That is the discrimination that makes it a check rather than a description.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+fn p4_status_record_values() -> List<String> {
+  [
+    p4_ruling_record.ask_id,
+    p4_ruling_record.asked_at,
+    to_string(p4_ruling_record.window_seconds / 60) + " minutes",
+    p4_ruling_record.decided_by,
+    p4_ruling_record.recorded_by,
+    p4_ruling_record.recorded_at,
+    p4_ruling_record.standing_words,
+    p4_ruling_record.license,
+    p4_ruling_record.overturn,
+    to_string(p4_branch_record.pr),
+    p4_branch_record.branch,
+    p4_branch_record.model_files,
+    p4_pr_state_instrument(),
+    p4_branch_record.tree_invariant,
+    p4_branch_record.heal_artifact,
+    p4_fleet_observation.answered_at as String,
+    p4_fleet_observation.answered_via,
+    p4_fleet_observation.gpu_hosts,
+    p4_fleet_observation.cards,
+    p4_fleet_observation.slots,
+    p4_fleet_observation.preferred_evidence,
+    p4_fleet_observation.consequence,
+  ]
+}
+
+test fn the_body_renders_every_field_of_its_status_records() -> Bool {
+  let t = carrier_text()
+  let values = p4_status_record_values()
+  let rendered = filter(values, v => string_contains(s: t, pattern: v))
+  // ANTI-VACUITY: a non-empty roster, and every entry non-empty. An empty `values` would make the
+  // conservation conjunct below true on its own, and an empty `v` is contained in every string.
+  count(values) > 0
+    && all(values, v => v.length() > 0)
+    // CONSERVATION: nothing in the records fails to reach the body. This is the half that stops
+    // the roster being quietly narrowed to whatever happens to render.
+    && count(rendered) == count(values)
+    // and the sentences themselves are present, not merely their fields
+    && string_contains(s: t, pattern: "The ruling was C")
+    && string_contains(s: t, pattern: "authored on a branch")
+    && string_contains(s: t, pattern: "Fleet facts")
+}
+
+// §6: "name the instrument, never transcribe its output." Review 83025 caught the carrier printing
+// a command's result beside the command; 83566 caught it doing the same to PR state. Merge state and
+// branch heads are the two facts in this decision that move under every push and every review, so the
+// rule here is directional and the two directions are asserted separately: the INSTRUMENT must be
+// named (positive — without it the reader has no way to the fact), and its OUTPUT must not be
+// transcribed (negative — a quoted head is authoritative-looking and false by tomorrow). The negative
+// half is enforced over shapes measured absent from the shipped body, so re-introducing a
+// merge-state word or a `head `SHA`` clause reddens this instead of quietly aging.
+test fn the_carrier_names_the_status_instrument_and_transcribes_no_output() -> Bool {
+  let t = carrier_text()
+  // POSITIVE: the instrument is named, so the absence below is a deferral and not a gap.
+  string_contains(s: t, pattern: "gh pr view")
+    && string_contains(s: t, pattern: "state,headRefOid")
+    && string_contains(s: t, pattern: "git rev-parse origin/main")
+    // NEGATIVE: no transcribed merge state. Each measured absent from the shipped body; a future
+    // edit that quotes one reddens this claim rather than rotting silently.
+    && !any(
+      ["MERGEABLE", "BLOCKED", "BEHIND", "DIRTY", "mergeStateStatus", "UNMERGED", "unmerged", "head `",
+       // the retirement condition used to say "which is OPEN AND UNMERGED" — a status snapshot
+       // in prose that goes false the moment the PR lands, and one my lowercase check above let
+       // through. Both cases are forbidden now, so the hole cannot be re-opened by case.
+       "OPEN AND", "pending as PR"],
+      w => string_contains(s: t, pattern: w)
+    )
+    // and the standing the fleet observation derives is actually stated in the body
+    && string_contains(s: t, pattern: p4_presence_standing())
+}

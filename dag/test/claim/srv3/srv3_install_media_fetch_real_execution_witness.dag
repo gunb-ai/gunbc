@@ -1,10 +1,10 @@
 module test.claim.srv3.srv3_install_media_fetch_real_execution_witness
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr }
-import extdeps.provisioning.ubuntu_install_media_fetch { observe_install_media_fetch }
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.url_file_acquisition { observe_url_file }
 import gunbc.artifact_acquisition {
-  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
 }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
@@ -22,7 +22,7 @@ test fn install_media_hash_matches_true_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionVerified
+  let matched = observe_url_file(path: path, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionVerified
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && matched
 }
@@ -31,7 +31,7 @@ test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bo
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == AcquisitionDigestMismatch
+  let matched = observe_url_file(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == AcquisitionDigestMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && matched
 }
@@ -41,18 +41,42 @@ test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_
   let missing_path = concat(dir.path as String, "/does-not-exist") as NonEmptyStr
   let present_path = concat(dir.path as String, "/present") as NonEmptyStr
   let wrote = Filesystem.Write(path: present_path as String, content: install_media_fetch_fixture_content)
-  let absent_ok = observe_install_media_fetch(
+  let absent_ok = observe_url_file(
     path: missing_path,
     expected_hash: install_media_fetch_fixture_sha256,
   ) == AcquisitionAbsent
-  let verified_ok = observe_install_media_fetch(
+  let verified_ok = observe_url_file(
     path: present_path,
     expected_hash: install_media_fetch_fixture_sha256,
   ) == AcquisitionVerified
-  let mismatch_ok = observe_install_media_fetch(
+  let mismatch_ok = observe_url_file(
     path: present_path,
     expected_hash: install_media_fetch_fixture_wrong_sha256,
   ) == AcquisitionDigestMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && absent_ok && verified_ok && mismatch_ok
+}
+
+fn probe_failed(o: AcquisitionObservation) -> Bool {
+  match o {
+    AcquisitionProbeFailed { reason: _ } => true
+    AcquisitionAbsent => false
+    AcquisitionVerified => false
+    AcquisitionDigestMismatch => false
+  }
+}
+
+// RED: a directory at the install path is present, not absent. `test -f` is false for it, so the
+// observation read through that answer called it absent and authorized a download moved into it.
+// It must refuse before any attempt. And a path whose parent does not exist yet is absent, which is
+// the first-run case the parent listing alone could not establish.
+test fn a_non_regular_entry_refuses_and_a_missing_parent_is_absent_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let occupied = concat(dir.path as String, "/occupied") as NonEmptyStr
+  let made = shell.Mkdir.Parents(path: occupied as FilePath)
+  let refused = probe_failed(o: observe_url_file(path: occupied, expected_hash: install_media_fetch_fixture_sha256))
+  let nested = concat(dir.path as String, "/not-yet/fixture") as NonEmptyStr
+  let absent_ok = observe_url_file(path: nested, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionAbsent
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && made.success && refused && absent_ok
 }

@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.lambda_has_no_lowered_function_value_form
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data lambda_has_no_lowered_function_value_form: RecurringFailureMode = RecurringFailureMode {
   identity: "lambda_has_no_lowered_function_value_form" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed -- a lambda lowers to a function value whose parameters bind in its body and whose body's references reach the reference-site collector, or refuses at the lambda." as NonEmptyStr } },
 
   receipts: [
     "an inline lambda (`x => body`, `(x, y) => body`, a fn literal) has no lowered function-value form in v2 body lowering outside the fold-family seam (`v2.compiler.fold_lowering`): as a call argument it is not an operand and not a value `v2.compiler.body_lowering_fold` `body_lower_value_lowered` lowers, so before gunbc#12145 the operand reader answered `f => body` with `f` and the BODY WAS DISCARDED with no diagnostic, and after it the argument refused its whole module as `body_lowering_reason_call_argument_unread`",

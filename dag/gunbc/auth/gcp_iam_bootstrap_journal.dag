@@ -1,0 +1,175 @@
+module gunbc.auth.gcp_iam_bootstrap_journal
+
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.optional { Present, Absent }
+import std.list { distinct_by_key }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.content_hash { sha256_hex_digest, as_content_hash_cryptographic }
+import extdeps.crypto.sha2 { sha256_hex }
+import std.durable_compare_and_set {
+  CasExpectation, ExpectSlotAbsent, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableReadRefused, CasUnreadableMalformed,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasStoreFailure, CasSlotObservationRefused,
+  CasGenerationPublicationRefused, cas_generation, cas_unreadable_slot_detail,
+}
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cloud.gcp.storage
+import gunbc.auth.heal_publisher_provision { outcome_is_not_found, rest_refusal_text }
+
+// ── THE BOOTSTRAP JOURNAL: the durable authority for "never replay" (side chat on gunbc#14360,
+// blocker 2; operator ruling A, relayed by warm-crane-219 2026-10-19) ─────────────────────────────
+// A first publication of a pool's policy is unfenced, and a bare secret create whose outcome is unknown
+// cannot be re-proved absent by a later 404. Both are recorded BEFORE the effect as create-once objects
+// in one GCS bucket of gunbai-secrets (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_journal_bucket),
+// written through std.durable_compare_and_set's ExpectSlotAbsent and realized as objects.insert with
+// ifGenerationMatch=0 (extdeps.cloud.gcp.storage gcs_objects_insert_if_absent). The ceremony (operator
+// token) and the bootstrap delta (iam-bootstrap token) call this one implementation; nothing records in
+// the checkout.
+//
+// MARKS PER (SUBJECT, RESOURCE, CONSENT), FOUND BY RESOURCE. Each record is one create-once object named
+// `<subject>--<resource>--<consent>--<mark>`; the consent is the approved digest or the ceremony's
+// operation. A reader lists every mark of the RESOURCE, across consents, so an unresolved election under
+// any earlier consent blocks the effect, and a new tap cannot carry a new digest past it. The pure
+// decisions over those marks are the callers' own (gunbc.auth.gcp_iam_bootstrap custody_journal_of,
+// pool_initialization_decision); this module only names, lists and writes. Records hold resource keys,
+// digests and operations, never a value.
+type JournalSubject = JournalPoolFirstPublication | JournalBareSecretCreate
+
+fn journal_subject_wire(s: JournalSubject) -> String {
+  match s { JournalPoolFirstPublication => "pool-first-publication"  JournalBareSecretCreate => "bare-secret-create" }
+}
+
+type JournalMark = JournalElection | JournalClosure | JournalRefusal | JournalDisposal
+
+fn journal_mark_wire(m: JournalMark) -> String {
+  match m { JournalElection => "election"  JournalClosure => "closure"  JournalRefusal => "refusal"  JournalDisposal => "disposal" }
+}
+
+data journal_marks: List<JournalMark> = [JournalElection, JournalClosure, JournalRefusal, JournalDisposal]
+
+// A resource key's "/" becomes "__" so no part of an object name reads as a path separator.
+fn journal_segment(s: String) -> String {
+  join(split(s: s, delimiter: "/"), "__")
+}
+
+fn journal_resource_prefix(subject: JournalSubject, resource_key: String) -> String {
+  join([journal_subject_wire(s: subject), "--", journal_segment(s: resource_key), "--"], "")
+}
+
+fn journal_mark_suffix(m: JournalMark) -> String {
+  concat("--", journal_mark_wire(m: m))
+}
+
+fn journal_object_name(subject: JournalSubject, resource_key: String, consent: String, mark: JournalMark) -> NonEmptyStr {
+  join([journal_resource_prefix(subject: subject, resource_key: resource_key), journal_segment(s: consent), journal_mark_suffix(m: mark)], "") as NonEmptyStr
+}
+
+// THE CONSENTS THAT HAVE ANY MARK, discovered from a listing's names; no mark is believed from the
+// listing alone beyond its presence.
+fn journal_listed_consents(subject: JournalSubject, resource_key: String, names: List<String>) -> List<String> {
+  let prefix = journal_resource_prefix(subject: subject, resource_key: resource_key)
+  let found = flat_map(names, n => if !starts_with(s: n, prefix: prefix) { [] } else {
+    flat_map(journal_marks, m => {
+      let suffix = journal_mark_suffix(m: m)
+      if ends_with(s: n, suffix: suffix) { [substring(s: n, start: string_length(s: prefix), end: string_length(s: n) - string_length(s: suffix))] } else { [] }
+    })
+  })
+  distinct_by_key(xs: found, key: x => x)
+}
+
+fn journal_has(names: List<String>, subject: JournalSubject, resource_key: String, consent: String, mark: JournalMark) -> Bool {
+  let n = journal_object_name(subject: subject, resource_key: resource_key, consent: consent, mark: mark) as String
+  any(names, x => x == n)
+}
+
+// ── THE GCS REALIZATION (effectful) ──────────────────────────────────────────────────────────
+// THE BUCKET IS A PARAMETER, never a literal here: the declared row is the model's
+// (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_journal_bucket).
+type JournalListing = JournalListed { names: List<String> } | JournalListingUnreadable { cause: NonEmptyStr }
+
+fn journal_list(bucket: NonEmptyStr, subject: JournalSubject, resource_key: String, token: Secret) -> JournalListing {
+  match gcp.Storage.ListObjects(access_token: token, bucket: bucket, prefix: journal_resource_prefix(subject: subject, resource_key: resource_key) as NonEmptyStr) {
+    RestRefused { refusal } => JournalListingUnreadable { cause: concat("the journal could not be listed: ", rest_refusal_text(o: refusal)) as NonEmptyStr }
+    RestAnswered { answer: l } => match l.next_page_token {
+      Present { value: t } => if t != "" { JournalListingUnreadable { cause: "the journal listing has more than one page; refusing to decide on part of it" } } else { JournalListed { names: match l.items { Absent => []  Present { value: xs } => map(xs, x => x.name) } } }
+      Absent => JournalListed { names: match l.items { Absent => []  Present { value: xs } => map(xs, x => x.name) } }
+    }
+  }
+}
+
+fn status_is(o: RestRefusal, code: Int) -> Bool {
+  match o { RestStatusRefused { status, body: _ } => (status as Int) == code  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
+}
+
+fn journal_version(m_name: String, generation: String) -> CasSlotObservation<String> {
+  match parse_int(generation) {
+    Absent => CasObservedUnreadable { cause: CasUnreadableMalformed { detail: "the journal object's generation is not an integer" } }
+    Present { value: n } => match cas_generation(n: n) {
+      Absent => CasObservedUnreadable { cause: CasUnreadableMalformed { detail: "the journal object's generation is out of range" } }
+      Present { value: g } => match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: m_name)))) {
+        Absent => CasObservedUnreadable { cause: CasUnreadableMalformed { detail: "the journal object name did not hash" } }
+        Present { value: d } => CasObservedReadable { readable: CasReadablePresent { version: CasSlotVersion { generation: g, content: as_content_hash_cryptographic(digest: d), value: m_name } } }
+      }
+    }
+  }
+}
+
+// CREATE-ONCE, through the one primitive: the expectation is ExpectSlotAbsent and the store's own check
+// (ifGenerationMatch=0) decides it; 412 is the store observing the slot present. A record carries its
+// identity in its object name, so the slot version's content hash is of that name.
+fn journal_mark(bucket: NonEmptyStr, subject: JournalSubject, resource_key: String, consent: String, mark: JournalMark, token: Secret) -> CasOutcome<String> {
+  journal_mark_named(bucket: bucket, name: journal_object_name(subject: subject, resource_key: resource_key, consent: consent, mark: mark), subject: subject, resource_key: resource_key, consent: consent, token: token)
+}
+
+// THE WRITE TAKES ITS OBJECT NAME, it never rebuilds one: a caller whose record must be unique per
+// resource lifetime (a pool's first publication) passes the name its own tested function derives, and
+// the consent rides in the body, so the object written is the object the witness reads.
+fn journal_mark_named(bucket: NonEmptyStr, name: NonEmptyStr, subject: JournalSubject, resource_key: String, consent: String, token: Secret) -> CasOutcome<String> {
+  let expected: CasExpectation = ExpectSlotAbsent
+  match gcp.Storage.InsertObjectIfAbsent(access_token: token, bucket: bucket, object: name, kind: journal_subject_wire(s: subject), subject: resource_key, consent: consent) {
+    RestAnswered { answer: m } => if !journal_answer_names_request(requested_bucket: bucket, requested_object: name, answered_bucket: m.bucket, answered_object: m.name) {
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "the journal insert answered for another object or bucket" } }
+    } else { match journal_version(m_name: m.name, generation: m.generation) {
+      CasObservedReadable { readable: CasReadablePresent { version: v } } => CasCommitted { committed: v }
+      CasObservedReadable { readable: CasReadableAbsent } => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "the journal write answered without its object" } }
+      CasObservedUnreadable { cause } => CasStoreRefused { cause: CasSlotObservationRefused { cause: cause } }
+    } }
+    RestRefused { refusal } => if status_is(o: refusal, code: 412) {
+      match gcp.Storage.GetObjectMetadata(access_token: token, bucket: bucket, object: name) {
+        RestAnswered { answer: seen } => if !journal_answer_names_request(requested_bucket: bucket, requested_object: name, answered_bucket: seen.bucket, answered_object: seen.name) {
+          CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "the 412 readback answered for another object or bucket" } }
+        } else { match journal_version(m_name: seen.name, generation: seen.generation) {
+          CasObservedReadable { readable: r } => CasPreconditionFailed { expected: expected, observed: r }
+          CasObservedUnreadable { cause } => CasStoreRefused { cause: CasSlotObservationRefused { cause: cause } }
+        } }
+        RestRefused { refusal: again } => CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: rest_refusal_text(o: again) as NonEmptyStr } } }
+      }
+    } else { CasStoreRefused { cause: CasGenerationPublicationRefused { detail: rest_refusal_text(o: refusal) as NonEmptyStr } } }
+  }
+}
+
+// A STORE ANSWER COUNTS ONLY FOR THE SLOT IT WAS ASKED ABOUT: an insert answer or a 412 readback naming
+// another object or bucket is never Recorded or AlreadyPresent.
+fn journal_answer_names_request(requested_bucket: NonEmptyStr, requested_object: NonEmptyStr, answered_bucket: String, answered_object: String) -> Bool {
+  answered_bucket == (requested_bucket as String) && answered_object == (requested_object as String)
+}
+
+// WHAT A MARK WRITE MEANS to a caller: only a committed create-once write is "recorded"; finding the mark
+// already present is "already recorded" (a rerun closing what it closed); anything else refuses.
+type JournalMarkOutcome = JournalMarkRecorded | JournalMarkAlreadyPresent | JournalMarkRefused { cause: NonEmptyStr }
+
+fn journal_mark_outcome(o: CasOutcome<String>) -> JournalMarkOutcome {
+  match o {
+    CasCommitted { committed: _ } => JournalMarkRecorded
+    CasPreconditionFailed { expected: _, observed: _ } => JournalMarkAlreadyPresent
+    CasStoreRefused { cause } => JournalMarkRefused { cause: journal_store_failure_text(f: cause) as NonEmptyStr }
+  }
+}
+
+fn journal_store_failure_text(f: CasStoreFailure) -> String {
+  match f {
+    CasSlotObservationRefused { cause } => concat("the journal could not be observed: ", cas_unreadable_slot_detail(cause: cause))
+    CasGenerationPublicationRefused { detail } => concat("the journal write was refused: ", detail as String)
+    _ => "the journal refused the write"
+  }
+}

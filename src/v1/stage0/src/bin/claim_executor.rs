@@ -278,6 +278,19 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // it. Exiting zero here would make the producer's own entry point disagree with
                 // the phase that names it as the remedy.
                 let unresolved = outcome.divergent().len();
+                // THE TYPED REPORT, on stdout: callers read the drifted population from here and
+                // never from the diagnostic lines above.
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema": "gunbc.partition_boundary_report.v1",
+                        "divergent": outcome
+                            .divergent()
+                            .iter()
+                            .map(|f| f.path.clone())
+                            .collect::<Vec<_>>(),
+                    })
+                );
                 return if emit_partition_crates_write || unresolved == 0 {
                     Ok(ExitCode::SUCCESS)
                 } else {

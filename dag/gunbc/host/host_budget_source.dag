@@ -380,7 +380,7 @@ data host_budget_source_seed_mirror_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.host.host_budget_source",
-    decl_name: "host_budget_source_emitted_into_stage0",
+    decl_name: "HostBudgetSource",
     field: WholeDeclaration
   }
 }

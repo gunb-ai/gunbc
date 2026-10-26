@@ -1,0 +1,349 @@
+module v2.std.decl_ref_resolution_host
+
+// FROZEN, NO NEW ROWS. The host-census resolver (facts + modules from the v1 interpreter's declaration
+// index) that v2.std.decl_ref_resolution used to be. Every current importer (witnesses, lenses and
+// censuses that read decl_facts_at / module_declaration_facts_at_live) is a host-fact consumer: none
+// holds a native ResolutionContext, which exists only inside one native ingest. The native resolver's
+// consumer is the decl-ref-census verb (a follow-up PR on the same item), the only caller that runs
+// inside an ingest; migrating these importers waits on the host-builtin retirement below, when they
+// read native facts and this module is deleted. Its type names repeat the native module's: the arms
+// differ (Ambiguous, kind), so the two are different contracts sharing a spelling until deletion.
+// dissolve-on: the host-builtin retirement follow-up (decl_facts_at / module_declaration_facts_at_live
+// replaced by a native body) AND the native DeclarationIdentity carrying kind.
+import std.optional { Absent, Optional, Present }
+
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_at_live }
+import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, qualified_name_from_module }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
+
+// G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves
+// to exactly one declaration_identity in decl_facts over a declared module, or refuses with one of
+// five typed arms — module absent, declaration absent, field absent, ambiguous, or resolved.
+// Qualified-name join uses qualified_name_from_module — the same key (the module's own name, `v2.` included) as
+// decl_facts rows. Module membership reads module_declaration_facts — the containment-tree module
+// census, not text scan. Ambiguity is its own arm: two or more decl_facts rows for one logical
+// qualified name returns DeclarationRefAmbiguous with every candidate identity BEFORE any fact.node
+// field walk — bounded refusal by construction, never a divergent chase. Witness modules must not
+// name a test fn identically to an imported resolver helper (bare-name shadowing recurses to call
+// depth, not an ambiguous corpus row). dissolve-on: substrate construction refuses unresolvable
+// DeclarationRef literals at definition sites; this module remains the runtime resolution authority
+// for lens walks.
+
+type DeclarationIdentity {
+  qualified_name: String
+  name: String
+  rel_path: String
+  kind: ItemKind
+}
+
+type DeclarationRefResolution
+  = DeclarationRefResolved { declaration_identity: DeclarationIdentity }
+  | DeclarationRefModuleAbsent { reference: DeclarationRef }
+  | DeclarationRefDeclarationAbsent { reference: DeclarationRef }
+  | DeclarationRefFieldAbsent { reference: DeclarationRef }
+  | DeclarationRefAmbiguous { reference: DeclarationRef, candidates: List<DeclarationIdentity> }
+
+fn declaration_identity_from_fact(fact: DeclFact) -> DeclarationIdentity {
+  DeclarationIdentity {
+    qualified_name: fact.qualified_name,
+    name: fact.name,
+    rel_path: fact.rel_path,
+    kind: fact.kind
+  }
+}
+
+fn declaration_ref_target_qualified_name(ref: DeclarationRef) -> String {
+  qualified_name_from_module(
+    module_name: ref.module_path as String,
+    name: ref.decl_name as String
+  )
+}
+
+fn module_path_declared(module_path: String, modules: List<ModuleDeclarationFact>) -> Bool {
+  any(xs: modules, predicate: fn(m) { m.module == module_path })
+}
+
+fn declaration_identities_from_facts(facts: List<DeclFact>) -> List<DeclarationIdentity> {
+  list_map(xs: facts, f: fn(fact) { declaration_identity_from_fact(fact: fact) })
+}
+
+fn decl_ref_named_field_present(ref: DeclarationRef, fact: DeclFact) -> Bool {
+  match ref.field {
+    WholeDeclaration => true
+    NamedField { field_name: f } =>
+      any(
+        xs: node_labeled_child_edges(node: fact.node),
+        predicate: fn(e) { named_edge_sort_key(e: e) == f as String }
+      )
+    TypeParameter { name: _ } => false
+  }
+}
+
+// THE ARM DECISION, ONE AUTHORITY, TWO FEEDS. Every arm below is decided from two already-narrowed
+// inputs: the rows declaring the cited MODULE (none, or the one), and the rows declaring the cited
+// QUALIFIED NAME. Both entry points beneath supply exactly those, so the resolution law is written
+// once — a second copy for the keyed feed would be a fork of the five-arm refusal, which is the one
+// thing in this module that must not have two opinions.
+fn resolve_declaration_ref_over(
+  ref: DeclarationRef,
+  module_rows: List<ModuleDeclarationFact>,
+  matches: List<DeclFact>
+) -> DeclarationRefResolution {
+  if !module_path_declared(module_path: ref.module_path as String, modules: module_rows) {
+    DeclarationRefModuleAbsent { reference: ref }
+  } else {
+    let n = length(xs: matches)
+    if n == 0 {
+      DeclarationRefDeclarationAbsent { reference: ref }
+    } else if n > 1 {
+      DeclarationRefAmbiguous {
+        reference: ref,
+        candidates: declaration_identities_from_facts(facts: matches)
+      }
+    } else {
+      match list_head(xs: matches) {
+        Absent => DeclarationRefDeclarationAbsent { reference: ref }
+        Present { value: sole } =>
+          if decl_ref_named_field_present(ref: ref, fact: sole) {
+            DeclarationRefResolved {
+              declaration_identity: declaration_identity_from_fact(fact: sole)
+            }
+          } else {
+            DeclarationRefFieldAbsent { reference: ref }
+          }
+      }
+    }
+  }
+}
+
+fn resolve_declaration_ref(
+  ref: DeclarationRef,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> DeclarationRefResolution {
+  resolve_declaration_ref_over(
+    ref: ref,
+    module_rows: modules,
+    matches: decl_facts_matching_qualified_name(
+      qn: declaration_ref_target_qualified_name(ref: ref),
+      facts: facts
+    )
+  )
+}
+
+// THE KEYED ROUTE, for a caller whose subject is the live tree rather than a fixture population.
+// It differs from the fold above in WHERE the two narrowings happen and nowhere else: the host
+// index answers both by key, so asking about a set of citations costs one keyed read of the pool
+// instead of one whole corpus minted into interpreter values and then folded down to the same rows.
+//
+// A caller holding a FIXTURE population still uses the three-argument form — this one names the
+// live tree by its roots, which a fixture cannot be handed as.
+//
+// ONE READ PER FOLD, NOT PER REFERENCE. `live_facts` is the keyed read's answer for EVERY reference
+// the caller's fold holds, read once at that fold; each reference is then joined against it by its
+// own key (decl_facts_matching_qualified_name), which returns exactly the rows a one-key read would
+// have, multiplicity included. A fold that asked the pool once per reference re-walked it per
+// reference wherever no census provider was registered (DESIGN section 2: share the read at the
+// demands' common ancestor; never cache the later asks).
+fn resolve_declaration_ref_live_over(
+  ref: DeclarationRef,
+  pool_roots: List<String>,
+  live_facts: List<DeclFact>
+) -> DeclarationRefResolution {
+  resolve_declaration_ref_over(
+    ref: ref,
+    module_rows: module_declaration_facts_at_live(
+      pool_roots: pool_roots,
+      module_path: ref.module_path as String
+    ),
+    matches: decl_facts_matching_qualified_name(
+      qn: declaration_ref_target_qualified_name(ref: ref),
+      facts: live_facts
+    )
+  )
+}
+
+// The keyed read for a population of references: every row any of them names, read once.
+fn declaration_ref_live_facts(refs: List<DeclarationRef>, pool_roots: List<String>) -> List<DeclFact> {
+  decl_facts_at(
+    pool_roots: pool_roots,
+    qualified_names: list_map(xs: refs, f: fn(r) { declaration_ref_target_qualified_name(ref: r) }),
+    type_names: []
+  )
+}
+
+fn resolve_declaration_ref_live(
+  ref: DeclarationRef,
+  pool_roots: List<String>
+) -> DeclarationRefResolution {
+  resolve_declaration_ref_live_over(
+    ref: ref,
+    pool_roots: pool_roots,
+    live_facts: declaration_ref_live_facts(refs: [ref], pool_roots: pool_roots)
+  )
+}
+
+// The five arms reduced to the one bit a caller asks for. Extracted so the population route and
+// the keyed route below cannot drift on WHICH arms count as resolved: they share this, and the
+// resolution they hand it is produced by one law (resolve_declaration_ref_over).
+fn declaration_ref_resolution_is_resolved(resolution: DeclarationRefResolution) -> Bool {
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } => true
+    DeclarationRefModuleAbsent { reference: _ } => false
+    DeclarationRefDeclarationAbsent { reference: _ } => false
+    DeclarationRefFieldAbsent { reference: _ } => false
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+  }
+}
+
+// THE ONE SPELLING OF EACH ARM for a located diagnostic. Authored here, beside the coproduct,
+// so a consumer rendering a refusal (gunbc.generated_artifact's producer coverage is the first)
+// does not mint its own -- a second consumer would otherwise mint a second spelling.
+fn declaration_ref_resolution_arm_key(resolution: DeclarationRefResolution) -> String {
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } => "resolved"
+    DeclarationRefModuleAbsent { reference: _ } => "module-absent"
+    DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
+    DeclarationRefFieldAbsent { reference: _ } => "field-absent"
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => "ambiguous"
+  }
+}
+
+fn declaration_ref_resolves(
+  ref: DeclarationRef,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> Bool {
+  declaration_ref_resolution_is_resolved(
+    resolution: resolve_declaration_ref(ref: ref, facts: facts, modules: modules)
+  )
+}
+
+fn cited_declaration_ref_refusal_count(
+  refs: List<DeclarationRef>,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> Int {
+  count_where(
+    xs: refs,
+    predicate: fn(r) { !declaration_ref_resolves(ref: r, facts: facts, modules: modules) }
+  )
+}
+
+fn cited_declaration_ref_refusal_count_live(
+  refs: List<DeclarationRef>,
+  pool_roots: List<String>
+) -> Int {
+  let live_facts = declaration_ref_live_facts(refs: refs, pool_roots: pool_roots)
+  count_where(
+    xs: refs,
+    predicate: fn(r) {
+      !declaration_ref_resolution_is_resolved(
+        resolution: resolve_declaration_ref_live_over(ref: r, pool_roots: pool_roots, live_facts: live_facts)
+      )
+    }
+  )
+}
+
+type DeclarationRefResolutionCensus {
+  resolved_count: Int
+  module_absent_count: Int
+  declaration_absent_count: Int
+  field_absent_count: Int
+  ambiguous_count: Int
+}
+
+data empty_declaration_ref_resolution_census: DeclarationRefResolutionCensus = DeclarationRefResolutionCensus {
+  resolved_count: 0,
+  module_absent_count: 0,
+  declaration_absent_count: 0,
+  field_absent_count: 0,
+  ambiguous_count: 0
+}
+
+// One tally, five arms, shared by both routes — the counts are a projection of the resolution and
+// have nothing to do with how the resolution was obtained.
+fn declaration_ref_census_absorb(
+  acc: DeclarationRefResolutionCensus,
+  resolution: DeclarationRefResolution
+) -> DeclarationRefResolutionCensus {
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count + 1,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count,
+        ambiguous_count: acc.ambiguous_count
+      }
+    DeclarationRefModuleAbsent { reference: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count + 1,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count,
+        ambiguous_count: acc.ambiguous_count
+      }
+    DeclarationRefDeclarationAbsent { reference: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count + 1,
+        field_absent_count: acc.field_absent_count,
+        ambiguous_count: acc.ambiguous_count
+      }
+    DeclarationRefFieldAbsent { reference: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count + 1,
+        ambiguous_count: acc.ambiguous_count
+      }
+    DeclarationRefAmbiguous { reference: _, candidates: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count,
+        ambiguous_count: acc.ambiguous_count + 1
+      }
+  }
+}
+
+fn declaration_ref_resolution_census(
+  refs: List<DeclarationRef>,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> DeclarationRefResolutionCensus {
+  fold(
+    refs,
+    init: empty_declaration_ref_resolution_census,
+    f: fn(acc, ref) {
+      declaration_ref_census_absorb(
+        acc: acc,
+        resolution: resolve_declaration_ref(ref: ref, facts: facts, modules: modules)
+      )
+    }
+  )
+}
+
+fn declaration_ref_resolution_census_live(
+  refs: List<DeclarationRef>,
+  pool_roots: List<String>
+) -> DeclarationRefResolutionCensus {
+  let live_facts = declaration_ref_live_facts(refs: refs, pool_roots: pool_roots)
+  fold(
+    refs,
+    init: empty_declaration_ref_resolution_census,
+    f: fn(acc, ref) {
+      declaration_ref_census_absorb(
+        acc: acc,
+        resolution: resolve_declaration_ref_live_over(ref: ref, pool_roots: pool_roots, live_facts: live_facts)
+      )
+    }
+  )
+}

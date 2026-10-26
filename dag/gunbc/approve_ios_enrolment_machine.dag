@@ -1,96 +1,109 @@
 module gunbc.approve_ios_enrolment_machine
 
 import std.types { NonEmptyStr, List }
-import std.algebra { list_append }
-import gunbc.auth.approval_device_wire {
-  EnrolmentRefusalWire, EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired,
-  EnrolmentRefusalStoreUnreadable, EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes,
-  EnrolmentRefusalAndroidUnrealized, enrolment_refusal_kinds,
-}
 
-// THE APP'S DURABLE ENROLMENT STATE MACHINE, as the authority apps/approve-ios/Approve/EnrolmentMachine.swift
+// THE APP'S ENROLMENT STATE MACHINE, as the authority apps/approve-ios/Approve/EnrolmentMachine.swift
 // is printed from (gunbc.approve_ios_swift_enrolment_machine). The Swift EnrolmentState keeps the
-// payloads (keys, ids) and the persistence; WHICH PHASE FOLLOWS WHICH ANSWER is this module's, and
-// nothing hand-written in Swift decides it.
+// payloads (keys, ids) and the persistence; WHICH PHASE FOLLOWS WHICH ANSWER is this module's.
 //
-// WHY SubmissionUnknown HAS EXACTLY ONE TYPED EXIT BESIDE GRANT. A phone that POSTed its enrolment
-// and got no decodable answer cannot tell "the server never saw it" from "the server minted it and
-// the answer was lost", and the readback route cannot resolve it for an enrolment that never
-// existed. The enrol route can answer authoritatively because the request carries the code itself:
-// gunbc.auth.approval_device_redemption enrolment_admission reports code_not_issued / code_expired
-// only for a code that minted no enrolment and now never can. Every other refusal proves nothing
-// about the enrolment the phone was waiting on (code_already_used above all: it may have been spent
-// by THIS phone's lost first attempt), and a transport failure proves less, so those leave the phase
-// where it is and readback stays the only way forward. The sibling model for the planned two-step
-// handshake is gunbc.auth.approval_enrolment_handshake; this module models the phone as built.
+// ENROLMENT IS ONE GOOGLE SIGN-IN AND ONE IDEMPOTENT POST (ruling
+// gunbc.design_ruling approval_enrolment_is_google_sign_in; gunbc.auth.approval_google_enrolment).
+// The phone therefore has no state it must recover. An unanswered POST is resent byte-identical and
+// a refused or abandoned sign-in is "sign in again", so there is no phase between "not enrolled" and
+// "enrolled": the earlier Prepared and SubmissionUnknown phases, the answers keyed by code refusals
+// and the persist-before-effect ordering that existed only to resolve SubmissionUnknown are deleted.
 //
-// States are PHASES (payload-free): Prepared carries keys and a transcript, Enrolled a grant, in the
-// Swift; here only the transitions between kinds matter.
+// KEY-INVALIDATED IS NOT A PHASE. A key the enclave refuses is dead; the app discards it and the
+// phone reads as signed out. Nothing about the dead key can decide anything, so keeping it as a
+// phase would carry a state no transition leaves for a reason other than "sign in again".
+//
+// REVOKED IS THE ONE PHASE THAT REMEMBERS. The server reports an enrolment revoked; the phone may
+// leave that only by signing in with a NEW key. The same key signing in again would re-present a key
+// the server already revoked, so it stays revoked.
 type EnrolmentPhase
-  = PhaseUnenrolled
-  | PhasePrepared
-  | PhaseSubmissionUnknown
+  = PhaseSignedOut
   | PhaseEnrolled
-  | PhaseKeyInvalidated
   | PhaseRevoked
 
-// What the app learned from the enrol POST. Unanswered is a transport failure, an undecodable
-// body, an unrecognised refusal, or a failed persist of Enrolled: no answer it may act on.
+// Whether the key a sign-in registered is the one the phone already held.
+type SignInKey
+  = NewKey
+  | SameKey
+
+// What the app learned. Refused and Unanswered carry no payload: every refusal, a transport
+// failure, an undecodable body and an abandoned sign-in all mean the same thing to the phase.
 type EnrolmentAnswer
-  = AnswerGranted
-  | AnswerRefused { kind: EnrolmentRefusalWire }
+  = AnswerSignedIn { key: SignInKey }
+  | AnswerRefused
   | AnswerUnanswered
+  | AnswerServerReportsRevoked
 
 fn phase_name(p: EnrolmentPhase) -> NonEmptyStr {
   match p {
-    PhaseUnenrolled => "unenrolled" as NonEmptyStr
-    PhasePrepared => "prepared" as NonEmptyStr
-    PhaseSubmissionUnknown => "submissionUnknown" as NonEmptyStr
+    PhaseSignedOut => "signedOut" as NonEmptyStr
     PhaseEnrolled => "enrolled" as NonEmptyStr
-    PhaseKeyInvalidated => "keyInvalidated" as NonEmptyStr
     PhaseRevoked => "revoked" as NonEmptyStr
   }
 }
 
 fn enrolment_phases() -> List<EnrolmentPhase> {
-  [PhaseUnenrolled, PhasePrepared, PhaseSubmissionUnknown, PhaseEnrolled, PhaseKeyInvalidated, PhaseRevoked]
+  [PhaseSignedOut, PhaseEnrolled, PhaseRevoked]
 }
 
 fn enrolment_answers() -> List<EnrolmentAnswer> {
-  list_append(left: [AnswerGranted, AnswerUnanswered], right: map(enrolment_refusal_kinds(), k => AnswerRefused { kind: k }))
+  [
+    AnswerSignedIn { key: NewKey },
+    AnswerSignedIn { key: SameKey },
+    AnswerRefused,
+    AnswerUnanswered,
+    AnswerServerReportsRevoked,
+  ]
 }
 
-// THE TRANSITION FUNCTION, exhaustive over phase and, where a phase moves, over the answer: a new
-// phase, answer or refusal kind is a compile refusal here until someone says what it does. The
-// Swift table is printed by EVALUATING this over the closed phase x answer product
-// (gunbc.approve_ios_swift_enrolment_machine), so there is no second statement of it to drift.
+// THE TRANSITION FUNCTION, exhaustive over phase and answer: a new phase or answer is a compile
+// refusal here until someone says what it does. The Swift table is printed by EVALUATING this over
+// the closed phase x answer product (gunbc.approve_ios_swift_enrolment_machine).
+//
+// A refusal or no answer while Enrolled or Revoked leaves the phase: a failed re-sign-in does not
+// undo an enrolment the server still holds. From SignedOut they are the same phase, "sign in again".
 fn enrolment_next(from: EnrolmentPhase, answer: EnrolmentAnswer) -> EnrolmentPhase {
   match from {
-    PhaseUnenrolled => PhaseUnenrolled
-    PhasePrepared => PhasePrepared
-    PhaseSubmissionUnknown => submission_unknown_next(answer: answer)
-    PhaseEnrolled => PhaseEnrolled
-    PhaseKeyInvalidated => PhaseKeyInvalidated
-    PhaseRevoked => PhaseRevoked
+    PhaseSignedOut => signed_out_next(answer: answer)
+    PhaseEnrolled => enrolled_next(answer: answer)
+    PhaseRevoked => revoked_next(answer: answer)
   }
 }
 
-fn submission_unknown_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+fn signed_out_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
   match answer {
-    AnswerGranted => PhaseEnrolled
-    AnswerUnanswered => PhaseSubmissionUnknown
-    AnswerRefused { kind: k } => submission_unknown_after_refusal(kind: k)
+    AnswerSignedIn { key: _ } => PhaseEnrolled
+    AnswerRefused => PhaseSignedOut
+    AnswerUnanswered => PhaseSignedOut
+    AnswerServerReportsRevoked => PhaseSignedOut
   }
 }
 
-fn submission_unknown_after_refusal(kind: EnrolmentRefusalWire) -> EnrolmentPhase {
-  match kind {
-    EnrolmentRefusalCodeNotIssued => PhaseUnenrolled
-    EnrolmentRefusalCodeExpired => PhaseUnenrolled
-    EnrolmentRefusalCodeAlreadyUsed => PhaseSubmissionUnknown
-    EnrolmentRefusalStoreUnreadable => PhaseSubmissionUnknown
-    EnrolmentRefusalAttestationRefused => PhaseSubmissionUnknown
-    EnrolmentRefusalAttestationForOtherBytes => PhaseSubmissionUnknown
-    EnrolmentRefusalAndroidUnrealized => PhaseSubmissionUnknown
+fn enrolled_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match answer {
+    AnswerSignedIn { key: _ } => PhaseEnrolled
+    AnswerRefused => PhaseEnrolled
+    AnswerUnanswered => PhaseEnrolled
+    AnswerServerReportsRevoked => PhaseRevoked
+  }
+}
+
+fn revoked_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match answer {
+    AnswerSignedIn { key: k } => revoked_after_sign_in(key: k)
+    AnswerRefused => PhaseRevoked
+    AnswerUnanswered => PhaseRevoked
+    AnswerServerReportsRevoked => PhaseRevoked
+  }
+}
+
+fn revoked_after_sign_in(key: SignInKey) -> EnrolmentPhase {
+  match key {
+    NewKey => PhaseEnrolled
+    SameKey => PhaseRevoked
   }
 }

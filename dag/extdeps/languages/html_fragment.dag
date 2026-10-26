@@ -2,7 +2,7 @@ module extdeps.languages.html_fragment
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.markup { Fragment, serialize_fragment_with }
+import std.markup { Fragment, serialize_fragment_with, MarkupSerializeResult }
 import extdeps.languages.html { html_markup_medium }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -22,6 +22,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-fn serialize_fragment(frag: Fragment) -> String {
+// Returns the RESULT, not a String: the serializer refuses a comment that would end its own comment, and
+// handing back a String here meant inventing one for the refused case. Callers match (§5).
+fn serialize_fragment(frag: Fragment) -> MarkupSerializeResult {
   serialize_fragment_with(frag: frag, medium: html_markup_medium())
 }

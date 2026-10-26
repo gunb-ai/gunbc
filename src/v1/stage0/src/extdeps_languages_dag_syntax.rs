@@ -16,7 +16,7 @@ use crate::std_syntax::ItemFormKind::{
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
-    SyntaxSpec,
+    PostfixOperatorSpec, PrefixOperatorSpec, SyntaxSpec,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -315,6 +315,26 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
 }
 
+pub fn dag_prefix_operators() -> Rc<Vec<Rc<PrefixOperatorSpec>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<PrefixOperatorSpec>>> = {
+            serde_json::from_str("[{\"symbol\": \"-\", \"binding_power\": 18}, {\"symbol\": \"!\", \"binding_power\": 18}]")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<PrefixOperatorSpec>>>| c.clone())
+}
+
+pub fn dag_postfix_operators() -> Rc<Vec<Rc<PostfixOperatorSpec>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<PostfixOperatorSpec>>> = {
+            serde_json::from_str("[{\"symbol\": \"(\", \"binding_power\": 21}, {\"symbol\": \"[\", \"binding_power\": 21}, {\"symbol\": \"as\", \"binding_power\": 19}, {\"symbol\": \"{\", \"binding_power\": 18}]")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<PostfixOperatorSpec>>>| c.clone())
+}
+
 pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
@@ -345,6 +365,8 @@ pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
                 Rc::new(SyntaxSpec {
         item_forms: dag_item_forms(),
         operators: dag_operators(),
+        prefix_operators: dag_prefix_operators(),
+        postfix_operators: dag_postfix_operators(),
         keyword_literals: dag_keyword_literals(),
         keyword_set: dag_keyword_set(),
     })

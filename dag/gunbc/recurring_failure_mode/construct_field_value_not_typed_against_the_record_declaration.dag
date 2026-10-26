@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.construct_field_value_not_typed_against_the_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data construct_field_value_not_typed_against_the_record_declaration: RecurringFailureMode = RecurringFailureMode {
   identity: "construct_field_value_not_typed_against_the_record_declaration" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a record construct whose field value does not inhabit that field's declared type is ACCEPTED by v2.compiler.infer. `type ArB { n: Int, m: Int }` with `data ar_bad: ArB = ArB { n: true, m: 3 }`: `n` holds a Bool where the record declares an Int.",

@@ -1,4 +1,20 @@
 module test.claim.markdown_roundtrip
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.markdown {
+  MarkdownDocument, MarkdownInline, MarkdownBlock, MarkdownListItem, MarkdownTaskItem,
+  MarkdownTableCell, MarkdownTableRow, HeadingLevel,
+  H1, H2, H3, H4, H5, H6,
+  HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, TaskListBlock,
+  CodeBlock, BlockquoteBlock, TableBlock,
+  TextInline, EmphasisInline, StrongInline, CodeInline, LinkInline, ImageInline,
+  CheckboxState, Checked, Unchecked,
+  MarkdownAlignment, AlignNone, AlignLeft, AlignCenter, AlignRight,
+}
+import extdeps.languages.markdown {
+  MarkdownSpellings, commonmark_gfm_spellings,
+  ingest_markdown_source, ingest_markdown_source_with,
+  serialize_markdown_source, serialize_markdown_source_with,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

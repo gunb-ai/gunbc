@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.required_verdict_placed_only_on_the_merge_qu
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data required_verdict_placed_only_on_the_merge_queue: RecurringFailureMode = RecurringFailureMode {
   identity: "required_verdict_placed_only_on_the_merge_queue" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a merge-blocking verdict is computed on merge_group and on no pull-request run, so a pull request that fails it is green on its own run, is enqueued, and meets the verdict for the first time inside the queue (INVALID STATE: an enqueued head whose required verdict was never computed before enqueue; HARM: the queue pays for the red instead of the author -- under the ALLGREEN merge queue a failing entry fails every group built on top of it, and each of those is rebuilt and re-run in full once the entry is ejected, so one bad entry costs the queue its throughput for as long as the red takes to reach the required context, multiplied by the depth stacked behind it)",

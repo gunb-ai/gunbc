@@ -31,8 +31,7 @@ Blast radius is **one secret, two roles**. Nothing project-wide, no admin.
 
 ## One-command bootstrap (.dag-automated — preferred)
 
-The whole bootstrap (enable APIs → create SA → resource-level IAM binding → create WIF
-pool → create WIF provider) is one `.dag` orchestration over the proven v1 REST executor —
+The whole bootstrap (enable APIs → create SA → create WIF pool → create WIF provider) is one `.dag` orchestration over the proven v1 REST executor —
 the path Secret Manager runs on. The **only** manual input is one initial **admin** access
 token, acquired via the operator's existing `gcloud` login
 (`shell.GCloud.AuthPrintAccessToken()` — the "one button"), so with an admin `gcloud` session
@@ -51,11 +50,11 @@ gunbc run --source-root dag \
 The API set is **not** hand-typed: `bmc_required_gcp_apis` is *derived* from the
 `GcpService` dependencies the assimilate path declares (`bmc_assimilate_service_deps`) via
 `gcp_service_api_id` — enablement is a dependency of usage. Known first-run race: a freshly
-created service account takes a few seconds to propagate, so a cold run can fail at the
-binding step with *"service account does not exist"* — **re-run** once and it converges (the
+created service account takes a few seconds to propagate, so a cold run can fail at a
+later step with *"service account does not exist"* — **re-run** once and it converges (the
 SA already exists). Proven live against
 `gunbai-secrets` on 2026-06-24 (all five ops dispatched; SA minted, least-priv bound, WIF
-provider `ACTIVE`).
+provider `ACTIVE`; the secret-binding step that run included was cut on 2026-10-19).
 
 Authority: `dag/gunbc/assimilate/bmc_bootstrap_provision.dag` (sequencing) +
 `dag/gunbc/assimilate/bmc_token_federation.dag` (identity facts). Least-privilege and the
@@ -84,27 +83,16 @@ gcloud iam service-accounts create bmc-assimilator \
   --display-name="BMC assimilator (keyless, srv3 secret only)"
 ```
 
-## 2. Resource-level IAM on the single secret (least privilege)
+## 2. Resource-level IAM on the single secret: NOT bound here
 
-Grant **only** on `bmc-srv3-admin`, **only** these two predefined roles. One command per
-modeled binding row (`bmc_assimilator_bindings`):
-
-```bash
-# roles/secretmanager.secretAccessor — read the current rotated BMC admin secret
-gcloud secrets add-iam-policy-binding bmc-srv3-admin \
-  --project=gunbai-secrets \
-  --member="serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-
-# roles/secretmanager.secretVersionAdder — write the post-rotation secret version
-gcloud secrets add-iam-policy-binding bmc-srv3-admin \
-  --project=gunbai-secrets \
-  --member="serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretVersionAdder"
-```
-
-Do **not** grant `roles/secretmanager.admin`, project-level Secret Manager roles, or any
-`owner`/`editor`. The witness test fails closed if a broad role appears in the model.
+This runbook does **not** bind any secret IAM, and neither does `bmc_bootstrap_provision_srv3`.
+The assimilator's secret cells are declared in `gunbc.assimilate.bmc_wif_delegation_chain`, and
+only its **signed** grants (`bmc_wif_signed_grants`) are bound, by the GCP IAM converge
+(`gunbc.auth.gcp_iam_converge`, the "bmc assimilator cells" grant set) under one approval, with the
+bootstrap delta (`gunbc.auth.gcp_iam_bootstrap_delta_run`) binding the converge's own cells first.
+An Unsigned grant is a pending keep-or-retire decision: sign it in reviewed code, and the next
+converge binds it. Do not run `gcloud secrets add-iam-policy-binding` for these cells (writer
+census, gunbc#14360).
 
 ## 3. Create the Workload Identity Federation pool + provider
 

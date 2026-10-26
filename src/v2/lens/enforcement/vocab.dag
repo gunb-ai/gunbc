@@ -1,7 +1,9 @@
 module v2.lens.enforcement.vocab
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import std.algebra { contains }
 import v2.std.text { string_eq }
+import std.realization_schedule { ScheduleWitnessEntry }
 
 
 type SubjectRoster {

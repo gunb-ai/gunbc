@@ -39,7 +39,6 @@ import gunbc.workspace_allocation_operations { workspace_launch_operations, work
 import gunbc.workspace_allocation_store { WorkspaceReleased }
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
-import std.measure { byte_size_count }
 import std.algebra { trim, contains, skip, list_head, string_contains, length }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -189,20 +188,9 @@ import gunbc.host.host_axis_caps {
   CapMember,
   CapMemberAt,
   caps_reconcile,
-  desired_cap_member,
+  derived_runner_slot_cap_members,
   cap_upsert_script,
 }
-import gunbc.host.host_converge {
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-  gunbc_runner_per_slot_high_dropin_path,
-  gunbc_runner_per_slot_tasks_dropin_path,
-  systemd_memory_max_property,
-  systemd_memory_high_property,
-  systemd_memory_swap_max_property,
-  systemd_tasks_max_property,
-}
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
@@ -1944,7 +1932,7 @@ fn fleet_converge_cap_axis(host: NonEmptyStr, observed_caps: List<CapMember>) ->
         cause: "this host has no runner deploy row, so no per-slot cap population is derivable for it",
       }
     RunnerHostDeployFound { deploy: _ } =>
-      CapAxisPlanned { plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps) }
+      CapAxisPlanned { plan: caps_reconcile(desired: derived_runner_slot_cap_members(), observed: observed_caps) }
   }
 }
 
@@ -1961,32 +1949,6 @@ fn fleet_converge_cap_lines(host: NonEmptyStr, observed_caps: List<CapMember>) -
       [concat(concat("REFUSED-HOST-NOT-ADMITTED cap-axis host=", h as String), concat(" cause=", c))]
     CapAxisPlanned { plan: p } => membership_plan_lines_cap(plan: p)
   }
-}
-
-fn fleet_converge_desired_caps() -> List<CapMember> {
-  let slot = gunbc_runner_slot_desired()
-  [
-    desired_cap_member(
-      dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
-      property: systemd_memory_max_property,
-      bytes_value: to_string(byte_size_count(b: slot.memory_max)) as NonEmptyStr,
-    ),
-    desired_cap_member(
-      dropin_path: gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
-      property: systemd_memory_high_property,
-      bytes_value: to_string(byte_size_count(b: slot.memory_high)) as NonEmptyStr,
-    ),
-    desired_cap_member(
-      dropin_path: gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr,
-      property: systemd_memory_swap_max_property,
-      bytes_value: to_string(byte_size_count(b: slot.memory_swap_max)) as NonEmptyStr,
-    ),
-    desired_cap_member(
-      dropin_path: gunbc_runner_per_slot_tasks_dropin_path as NonEmptyStr,
-      property: systemd_tasks_max_property,
-      bytes_value: to_string(slot.tasks_max) as NonEmptyStr,
-    ),
-  ]
 }
 
 // AN UNREADABLE FABRIC POPULATION CONTRIBUTES A ROW, NOT AN ABSENCE OF ROWS, AND THAT IS THE POINT

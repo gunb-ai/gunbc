@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.located_refusal_renders_its_span_in_the_wrong_units
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data located_refusal_renders_its_span_in_the_wrong_units: RecurringFailureMode = RecurringFailureMode {
   identity: "located_refusal_renders_its_span_in_the_wrong_units" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "A located refusal renders a CORRECT span in units the reader cannot know, so the location is authoritative, specific, and points at nothing. DESIGN section 5 requires every failure to be a typed, LOCATED diagnostic; this row is about the location surviving the trip to the reader, which the typed-and-located requirement does not by itself secure.",

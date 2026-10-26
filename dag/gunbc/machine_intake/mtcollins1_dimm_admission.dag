@@ -1,0 +1,300 @@
+module gunbc.machine_intake.mtcollins1_dimm_admission
+
+import std.optional { Absent, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.algebra { trim }
+import extdeps.memory.types { DimmBuffering, Registered, LoadReduced, DramDieStacking, DramModuleClass, dram_module_class_eq }
+import extdeps.memory.micron { mta36asf2g72pz_2g1a2_catalog }
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
+import std.content_hash { Sha256Digest }
+import gunbc.machine_intake.ampere_dram_console_observation { AmpereDramTrainedDimm, nth_token, prefixed_int }
+import std.measure { ByteSize, MegatransfersPerSecond, gibibyte, gibibyte_to_byte_size, megatransfers_per_second }
+
+// THE PER-PLATFORM DIMM POPULATION ADMISSION ROW OF MT. COLLINS UNIT 1 (ruling
+// gunbc.design_ruling dimm_population_is_admitted_permissively, 2026-10-17). It lives in the observing
+// layer, not in extdeps.ampere.mt_collins_product_brief.memory_population: DESIGN section 3 keeps
+// observations this repository makes out of the observed upstream's module, and the Ampere brief models
+// the brief.
+//
+// STANDINGS, KEPT APART (DESIGN 4d):
+//  - POLICY (PolicyVerdict): the ruling's DEFAULT is a typed operator assumption, not a vendor fact: a
+//    nonempty population of one module type (DramModuleClass plus non-volatile backing, stacking known) and one rank is permitted
+//    to be attempted, whatever the speeds. Anything else is not covered unless an observed accepted
+//    population widens it, and an empty population is refused;
+//  - PLATFORM (PlatformPrediction): committed observations of this unit, each naming its run and capture,
+//    predicting only for the exact population observed; everything else is unestablished;
+//  - the AUTHORITY on what a unit accepted is the DRAM firmware's own training verdict on the booted
+//    population. This function predicts that verdict from the observations; a booted population's verdict
+//    outranks it.
+//
+// Evidence: artifacts/bmc/mtcollins1-boot-run-39005709187/mtcollins1-boot-sol.capture (sha256
+// 8de445625f62298a5d18d29531fb80ce50c32ac0a6d6f9775a2208fc8ba131e4): four NV-RDIMM 1R 2666 (MC0, MC4,
+// MC5, MC6) with four RDIMM 2R 2133, refused: "Non-identical DIMM mixture NOT supported!".
+// artifacts/bmc/mtcollins1-boot-run-39010930690/mtcollins1-boot-sol.capture (sha256
+// 10ec5eb02ed88559d448b3273efa1557b57e0de1ef3eb51866636d35b63bddc1): the same four RDIMM 2R 2133
+// with four RDIMM 1R 2666 in place of the NV-RDIMMs, accepted and trained at 2133. The two populations
+// differ in manufacturer, part, SPD and RCD as well as module type, so neither run isolates one cause.
+// Each run is therefore a verdict on its EXACT population only; every other population is unestablished.
+
+// CONSUMER (DESIGN 3c): consumed here by the witnesses only; NOTHING ON THE BOOT PATH READS THIS ROW YET, so it
+// protects no boot (a declared frontier). A named later change consumes it: the
+// boot-attempt admission join (gunbc.recurring_failure_mode attested_population_never_joined_to_the_firmware_reading),
+// which compares a receipt's declared population with the firmware DRAM-table reading and asks this fold
+// whether that population was expected to train. Trigger: that join landing.
+// Buffering is extdeps.memory.types DimmBuffering (the firmware's RDIMM and NV-RDIMM are both Registered);
+// non-volatile backing is the one fact the memory model does not yet carry, so it is declared here as the
+// observed unit's own field rather than minted as a second module-kind vocabulary.
+
+// One firmware DRAM-table line. `read` IS the reader's own observation identity (ampere_dram_console_observation
+// AmpereDramTrainedDimm: socket, memory controller, slot and the verbatim rendering), authored once and never
+// re-spelled; the witness joins it to the capture by that identity. The typed facts that follow are the
+// decoding of the rendering, which the witness re-renders and compares: SPD manufacturer id, part, RCD controller id, module class and the
+// trained-for rank and rate. Capacity is carried by the part. The firmware line does not state die
+// stacking, so it is the catalog row's fact where the part has one (extdeps.memory micron, sk_hynix) and
+// Absent where it has none (the NV-RDIMM part has no catalog row); an unknown stacking can never make two
+// modules the same class.
+type ObservedDimm {
+  read: AmpereDramTrainedDimm
+  stacking: DramDieStacking?
+}
+
+// The firmware's own spelling of the module class, bound to BOTH facts it states: buffering and whether the
+// module is non-volatile-backed. "RDIMM" and "NV-RDIMM" are the two spellings in the committed captures;
+// "LRDIMM" is the JEDEC term for load-reduced and appears in NO committed capture, so it is a declared row
+// for the decoder to refuse nothing by accident, not an observation. Any other spelling is undecodable.
+type DimmClassSpelling {
+  spelling: NonEmptyStr
+  buffering: DimmBuffering
+  non_volatile_backing: Bool
+}
+
+data dimm_class_spellings: List<DimmClassSpelling> = [DimmClassSpelling { spelling: "RDIMM", buffering: Registered, non_volatile_backing: false }, DimmClassSpelling { spelling: "NV-RDIMM", buffering: Registered, non_volatile_backing: true }, DimmClassSpelling { spelling: "LRDIMM", buffering: LoadReduced, non_volatile_backing: false }]
+
+// What one rendering states, decoded once: "<class>[<SPD id>] <n>GB <rate> ECC <n>R x4 RCD[<id>] <part>".
+type DimmFirmwareFacts {
+  buffering: DimmBuffering
+  non_volatile_backing: Bool
+  spd_manufacturer: NonEmptyStr
+  capacity: ByteSize
+  megatransfers: MegatransfersPerSecond
+  rank_count: Int
+  controller: NonEmptyStr
+  part_number: NonEmptyStr
+}
+
+// A rendering that does not fit the grammar is refused with the field that failed, never guessed.
+type DimmDecode
+  = DimmDecoded { facts: DimmFirmwareFacts }
+  | DimmUndecodable { field: NonEmptyStr }
+
+fn bracketed(token: String, open: String) -> String? {
+  if !starts_with(s: token, prefix: open) || !ends_with(s: token, suffix: "]") { none } else {
+    Present { value: join(split(s: join(split(s: token, delimiter: open), ""), delimiter: "]"), "") }
+  }
+}
+
+fn counted(token: String, suffix: String) -> Int? {
+  if !ends_with(s: token, suffix: suffix) { none } else { parse_int(s: join(split(s: token, delimiter: suffix), "")) }
+}
+
+// The firmware's "<n>GB" is the JEDEC binary gigabyte: n GiB, n * 2^30 bytes, converted here and not left implied.
+fn decode_fields(class: DimmClassSpelling, spd: String, tokens: List<String>) -> DimmDecode {
+  match counted(token: nth_token(tokens: tokens, n: 1), suffix: "GB") {
+    Absent => DimmUndecodable { field: "capacity" }
+    Present { value: capacity } => match parse_int(s: nth_token(tokens: tokens, n: 2)) {
+      Absent => DimmUndecodable { field: "rate" }
+      Present { value: rate } => match counted(token: nth_token(tokens: tokens, n: 4), suffix: "R") {
+        Absent => DimmUndecodable { field: "rank" }
+        Present { value: rank } => match bracketed(token: nth_token(tokens: tokens, n: 6), open: "RCD[") {
+          Absent => DimmUndecodable { field: "controller" }
+          Present { value: controller } => if spd == "" || controller == "" || nth_token(tokens: tokens, n: 7) == "" { DimmUndecodable { field: "empty-identity" } } else {
+            DimmDecoded { facts: DimmFirmwareFacts {
+              buffering: class.buffering, non_volatile_backing: class.non_volatile_backing, spd_manufacturer: spd as NonEmptyStr,
+              capacity: gibibyte_to_byte_size(g: gibibyte(count: capacity)), megatransfers: megatransfers_per_second(count: rate), rank_count: rank,
+              controller: controller as NonEmptyStr, part_number: nth_token(tokens: tokens, n: 7) as NonEmptyStr,
+            } }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn dimm_decode(rendering: String) -> DimmDecode {
+  let tokens = filter(split(s: trim(rendering), delimiter: " "), t => t != "")
+  let head = split(s: nth_token(tokens: tokens, n: 0), delimiter: "[")
+  let spelling = match head.first() { Absent => "" Present { value: h } => h }
+  let spd = if count(head) == 2 { bracketed(token: join(concat(["["], head.skip(n: 1)), ""), open: "[") } else { none }
+  if count(tokens) != 8 || nth_token(tokens: tokens, n: 3) != "ECC" || nth_token(tokens: tokens, n: 5) != "x4" { DimmUndecodable { field: "shape" } } else {
+    match spd {
+      Absent => DimmUndecodable { field: "spd" }
+      Present { value: spd_id } => match filter(dimm_class_spellings, c => c.spelling == spelling).first() {
+        Absent => DimmUndecodable { field: "class" }
+        Present { value: class } => decode_fields(class: class, spd: spd_id, tokens: tokens)
+      }
+    }
+  }
+}
+
+fn observed_dimm_facts(m: ObservedDimm) -> DimmDecode {
+  dimm_decode(rendering: m.read.rendering)
+}
+
+// Two separate facts. POLICY: may this population be attempted (the ruling's operator default, widened
+// by an observed accepted population). PLATFORM: does committed evidence predict how it trains.
+type PolicyBasis
+  = OperatorDefaultSameRankSameType
+  | WidenedByObservedPopulation { observation: DramTableObservation }
+
+type PolicyVerdict
+  = PolicyPermitsAttempt { basis: PolicyBasis }
+  | PolicyEmptyPopulationRefused
+  | PolicyDefaultDoesNotCover
+
+// EVIDENCE STANDING (DESIGN 4d). A verdict carries the observation it rests on, not a run string: the run,
+// the committed capture it was read from, that capture's recorded sha256 and the standing of the
+// transcription. The rows are a BOUNDARY TRANSCRIPTION of the capture: the substrate does not check the
+// recorded digest against the committed bytes, so the standing names the claim that re-reads the capture
+// and joins every row to it by the reader's identity. sole_constructor: only this module mints one.
+type DramTableObservationStanding
+  = TranscribedUnjoined { read_obligation: NonEmptyStr }
+  | ReadBackByWitness { claim: NonEmptyStr }
+
+type DramTableObservation sole_constructor {
+  run: NonEmptyStr
+  capture_path: NonEmptyStr
+  capture_sha256: Sha256Digest
+  standing: DramTableObservationStanding
+  population: List<ObservedDimm>
+}
+
+type PlatformPrediction
+  = PlatformTrainsObserved { observation: DramTableObservation }
+  | PlatformRefusesObserved { observation: DramTableObservation }
+  | PlatformUnestablished
+
+type DimmAdmissionReading {
+  policy: PolicyVerdict
+  platform: PlatformPrediction
+}
+
+fn micron_nv_rdimm_1r_2666(memory_controller: Int) -> ObservedDimm {
+  ObservedDimm { read: AmpereDramTrainedDimm { socket: 0, memory_controller: memory_controller, slot: 0, rendering: "NV-RDIMM[2c:80] 16GB 2666 ECC 1R x4 RCD[b3:80] 18ASF2G72XF12G6V21AB" }, stacking: Absent }
+}
+
+fn micron_rdimm_2r_2133(memory_controller: Int) -> ObservedDimm {
+  ObservedDimm { read: AmpereDramTrainedDimm { socket: 0, memory_controller: memory_controller, slot: 0, rendering: "RDIMM[2c:80] 16GB 2133 ECC 2R x4 RCD[b3:80] 36ASF2G72PZ-2G1A2" }, stacking: Present { value: mta36asf2g72pz_2g1a2_catalog.die_stacking } }
+}
+
+fn hynix_rdimm_1r_2666(memory_controller: Int, controller: NonEmptyStr) -> ObservedDimm {
+  ObservedDimm { read: AmpereDramTrainedDimm { socket: 0, memory_controller: memory_controller, slot: 0, rendering: concat(concat("RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[", controller as String), "] HMA82GR7AFR4N-VK") }, stacking: Present { value: hma82gr7afr4n_vk_catalog.die_stacking } }
+}
+
+// Run 39005709187 DRAM table, MC0..MC7 in order.
+data mtcollins1_run_39005709187_population: List<ObservedDimm> = [micron_nv_rdimm_1r_2666(memory_controller: 0), micron_rdimm_2r_2133(memory_controller: 1), micron_rdimm_2r_2133(memory_controller: 2), micron_rdimm_2r_2133(memory_controller: 3), micron_nv_rdimm_1r_2666(memory_controller: 4), micron_nv_rdimm_1r_2666(memory_controller: 5), micron_nv_rdimm_1r_2666(memory_controller: 6), micron_rdimm_2r_2133(memory_controller: 7)]
+
+// Run 39010930690 DRAM table; MC0 and MC4 report RCD 32:86, MC5 and MC6 report b3:80.
+data mtcollins1_run_39010930690_population: List<ObservedDimm> = [hynix_rdimm_1r_2666(memory_controller: 0, controller: "32:86"), micron_rdimm_2r_2133(memory_controller: 1), micron_rdimm_2r_2133(memory_controller: 2), micron_rdimm_2r_2133(memory_controller: 3), hynix_rdimm_1r_2666(memory_controller: 4, controller: "32:86"), hynix_rdimm_1r_2666(memory_controller: 5, controller: "b3:80"), hynix_rdimm_1r_2666(memory_controller: 6, controller: "b3:80"), micron_rdimm_2r_2133(memory_controller: 7)]
+
+data mtcollins1_refused_observation: DramTableObservation = DramTableObservation {
+  run: "39005709187"
+  capture_path: "artifacts/bmc/mtcollins1-boot-run-39005709187/mtcollins1-boot-sol.capture"
+  capture_sha256: Sha256Digest { hex: "8de445625f62298a5d18d29531fb80ce50c32ac0a6d6f9775a2208fc8ba131e4" }
+  standing: ReadBackByWitness { claim: "test.claim.machine_intake.mtcollins1_dimm_admission_witness mtcollins1_admission_populations_are_exactly_the_committed_firmware_tables" }
+  population: mtcollins1_run_39005709187_population
+}
+
+data mtcollins1_accepted_observation: DramTableObservation = DramTableObservation {
+  run: "39010930690"
+  capture_path: "artifacts/bmc/mtcollins1-boot-run-39010930690/mtcollins1-boot-sol.capture"
+  capture_sha256: Sha256Digest { hex: "10ec5eb02ed88559d448b3273efa1557b57e0de1ef3eb51866636d35b63bddc1" }
+  standing: ReadBackByWitness { claim: "test.claim.machine_intake.mtcollins1_dimm_admission_witness mtcollins1_admission_populations_are_exactly_the_committed_firmware_tables" }
+  population: mtcollins1_run_39010930690_population
+}
+
+fn dimm_facts_identical(a: DimmFirmwareFacts, b: DimmFirmwareFacts) -> Bool {
+  a.buffering == b.buffering && a.non_volatile_backing == b.non_volatile_backing && a.spd_manufacturer == b.spd_manufacturer && a.capacity == b.capacity
+    && a.megatransfers == b.megatransfers && a.rank_count == b.rank_count && a.controller == b.controller && a.part_number == b.part_number
+}
+
+// Same position (socket, memory controller, slot as the reader keys them), the same die stacking and the same
+// decoded firmware facts. An undecodable rendering is identical to nothing.
+fn dimm_identical(a: ObservedDimm, b: ObservedDimm) -> Bool {
+  a.read.socket == b.read.socket && a.read.memory_controller == b.read.memory_controller && a.read.slot == b.read.slot && a.stacking == b.stacking
+    && match observed_dimm_facts(m: a) {
+      DimmUndecodable { field: _ } => false
+      DimmDecoded { facts: fa } => match observed_dimm_facts(m: b) {
+        DimmUndecodable { field: _ } => false
+        DimmDecoded { facts: fb } => dimm_facts_identical(a: fa, b: fb)
+      }
+    }
+}
+
+fn dimm_population_covers(whole: List<ObservedDimm>, part: List<ObservedDimm>) -> Bool {
+  !any(part, p => !any(whole, w => dimm_identical(a: w, b: p)))
+}
+
+// Positions are distinct within a firmware table, so mutual cover at equal length is multiset equality.
+fn dimm_population_identical(a: List<ObservedDimm>, b: List<ObservedDimm>) -> Bool {
+  list_length(a) == list_length(b) && dimm_population_covers(whole: a, part: b) && dimm_population_covers(whole: b, part: a)
+}
+
+// Same type means the same DramModuleClass (dram_module_class_eq) and the same non-volatile backing, with
+// stacking KNOWN for both; an unknown stacking cannot be shown the same, nor can an undecodable rendering.
+fn dimm_same_type(a: ObservedDimm, b: ObservedDimm) -> Bool {
+  match observed_dimm_facts(m: a) {
+    DimmUndecodable { field: _ } => false
+    DimmDecoded { facts: fa } => match observed_dimm_facts(m: b) {
+      DimmUndecodable { field: _ } => false
+      DimmDecoded { facts: fb } => fa.non_volatile_backing == fb.non_volatile_backing && match a.stacking {
+        Absent => false
+        Present { value: sa } => match b.stacking {
+          Absent => false
+          Present { value: sb } => dram_module_class_eq(a: DramModuleClass { buffering: fa.buffering, stacking: sa }, b: DramModuleClass { buffering: fb.buffering, stacking: sb })
+        }
+      }
+    }
+  }
+}
+
+fn dimm_same_rank(a: ObservedDimm, b: ObservedDimm) -> Bool {
+  match observed_dimm_facts(m: a) {
+    DimmUndecodable { field: _ } => false
+    DimmDecoded { facts: fa } => match observed_dimm_facts(m: b) {
+      DimmUndecodable { field: _ } => false
+      DimmDecoded { facts: fb } => fa.rank_count == fb.rank_count
+    }
+  }
+}
+
+fn dimm_population_is_uniform(modules: List<ObservedDimm>) -> Bool {
+  !any(modules, a => any(modules, b => !dimm_same_type(a: a, b: b) || !dimm_same_rank(a: a, b: b)))
+}
+
+fn mtcollins1_platform_prediction(modules: List<ObservedDimm>) -> PlatformPrediction {
+  if dimm_population_identical(a: modules, b: mtcollins1_accepted_observation.population) {
+    PlatformTrainsObserved { observation: mtcollins1_accepted_observation }
+  } else if dimm_population_identical(a: modules, b: mtcollins1_refused_observation.population) {
+    PlatformRefusesObserved { observation: mtcollins1_refused_observation }
+  } else {
+    PlatformUnestablished
+  }
+}
+
+fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmissionReading {
+  let platform = mtcollins1_platform_prediction(modules: modules)
+  DimmAdmissionReading {
+    platform: platform
+    policy: if list_length(modules) == 0 {
+      PolicyEmptyPopulationRefused
+    } else if dimm_population_is_uniform(modules: modules) {
+      PolicyPermitsAttempt { basis: OperatorDefaultSameRankSameType }
+    } else {
+      match platform {
+        PlatformTrainsObserved { observation: o } => PolicyPermitsAttempt { basis: WidenedByObservedPopulation { observation: o } }
+        PlatformRefusesObserved { observation: _ } => PolicyDefaultDoesNotCover
+        PlatformUnestablished => PolicyDefaultDoesNotCover
+      }
+    }
+  }
+}

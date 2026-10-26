@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data upstream_non_affirmation_consumed_as_permission: RecurringFailureMode = RecurringFailureMode {
   identity: "upstream_non_affirmation_consumed_as_permission" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an upstream authority's DECLARED NON-AFFIRMATION -- TBD, Not Preferred, Under Evaluation, a blank cell -- is consumed as permission, because the consumer's carrier admits only two states** (INVALID STATE: a specification answers a compatibility or support question over a vocabulary RICHER THAN YES/NO, and the model that consumes it stores a Bool. Every state that is not an explicit prohibition then reads as allowed. The upstream said `I decline to state`; the corpus records `permitted`, and no arm lies at any single step -- the ingestion faithfully recorded `not No`, and the consumer faithfully read `not No` as admissible. DISTINGUISHING FACTS, which separate this from an ordinary missing check: the authority is CITED, CURRENT and CORRECTLY READ; the defect is entirely in the ARITY of the carrier, so a reviewer asking `is this cited?` and `does it match the source?` finds yes twice. It is also NOT the ordinary absence of upstream modelling -- an unmodelled rule REFUSES loudly in a fail-closed substrate, while this one resolves, and resolves to the permissive arm.",

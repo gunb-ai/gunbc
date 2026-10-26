@@ -2,6 +2,7 @@ module gunbc.approve_ios_app
 
 import std.types { NonEmptyStr, Timestamp, Int, List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_path }
 import std.optional { Optional, Present, Absent }
 import extdeps.apple.xcode { XcodeRelease }
 
@@ -30,20 +31,65 @@ import extdeps.apple.xcode { XcodeRelease }
 // constants and shapes are still transcribed rather than derived from gunbc.auth.approval_device_wire
 // (approve_ios_transcribed_swift_frontier), except the tests' surface-name set, which is generated
 // from the fixture's own rows. The other five files are still hand-authored text
-// (approve_ios_hand_authored_swift_frontier).
+// (approve_ios_retained_swift_rows).
 // The vector check's own next-rung trigger, separate from the hand-authoring trigger below because
 // the two dissolve differently: this one ends when the check EXECUTES on the merge path, which can
 // happen while the Swift is still hand-authored. Either arm of the trigger is sufficient.
 data approve_ios_vector_check_unenrolled_frontier: DissolutionCondition = unbound_dissolution(
-  description: "ApproveTests (apps/approve-ios/ApproveTests/ProtocolVectorTests.swift) checks the app's byte builders and wire envelopes against dag/test/fixture/approval_device_redemption/vectors.json but is executed by no lane: the witness_floor_workflow job roster is closed to growth and has no macOS runner, so the check runs only when an operator presses run on a MacBook. DISSOLVES WHEN either (a) an operator-admitted lane on a macOS runner compiles apps/approve-ios and runs ApproveTests on every pull request, SUFFICIENT FOR a drifted builder or envelope to red the merge path, or (b) the Swift target's emit transforms land and the emitter's own equivalence evidence covers the protocol layer, retiring approve_ios_hand_authored_swift_frontier and this row together",
+  description: "ApproveTests (apps/approve-ios/ApproveTests/ProtocolVectorTests.swift) checks the app's byte builders and wire envelopes against dag/test/fixture/approval_device_redemption/vectors.json but is executed by no lane: the witness_floor_workflow job roster is closed to growth and has no macOS runner, so the check runs only when an operator presses run on a MacBook. DISSOLVES WHEN either (a) an operator-admitted lane on a macOS runner compiles apps/approve-ios and runs ApproveTests on every pull request, SUFFICIENT FOR a drifted builder or envelope to red the merge path, or (b) the Swift target's emit transforms land and the emitter's own equivalence evidence covers the protocol layer, retiring approve_ios_retained_swift_rows and this row together",
 )
 
-data approve_ios_hand_authored_swift_frontier: DissolutionCondition = unbound_dissolution(
-  description: "apps/approve-ios/Approve/ApproveApp.swift, AppState.swift, DeviceKeys.swift, EnrolmentState.swift and Views.swift are hand-authored Swift text: nothing refuses an edit to them and no model holds their structure. DISSOLVES WHEN each is a v2.extdeps.languages.swift.syntax tree printed by v2.extdeps.languages.swift.print and registered in gunbc.generated_artifact, SUFFICIENT FOR the drift gate to refuse a hand edit to every .swift file under apps/approve-ios, at which point only approve_ios_transcribed_swift_frontier remains",
+// THE HAND-AUTHORED SWIFT, AS TYPED ROWS (std.roster_frontier FrontierRow, the existing retained-row
+// shape: subject, reason, dissolution). It replaces one prose condition naming five files. Every .swift
+// file under apps/approve-ios is joined to EXACTLY ONE of a registered generated artifact or one of
+// these rows by gunbc.approve_ios_swift_join; a file in neither is a finding (the live read of the real tree is an operator instrument, gunbc.guarantee_stall approve_ios_swift_join_live_off_the_merge_path_stall).
+//
+// PLATFORM GLUE: the file is a call-shape realization of an Apple framework. Its trigger names the
+// CAPABILITY that would move it, not the file.
+data approve_ios_views_retained: FrontierRow = frontier_row_path(
+  path: "apps/approve-ios/Approve/Views.swift",
+  reason: "SwiftUI view composition: layout, navigation and bindings of the approval screens are expressed in SwiftUI's own view builder, which no model in this repository describes",
+  dissolution: unbound_dissolution(description: "DISSOLVES WHEN extdeps.apple holds a SwiftUI view model (view, modifier and binding shapes with their builder semantics) and the Swift target prints views from it, SUFFICIENT FOR a drifted view declaration to be refused by the drift gate"),
+)
+
+data approve_ios_app_entry_retained: FrontierRow = frontier_row_path(
+  path: "apps/approve-ios/Approve/ApproveApp.swift",
+  reason: "process entry glue: the SwiftUI App, the UIApplicationDelegate APNs registration callbacks and the UNUserNotificationCenter delegate are platform lifecycle entry points whose call shapes are Apple's",
+  dissolution: unbound_dissolution(description: "DISSOLVES WHEN extdeps.apple models the App, UIApplicationDelegate and UNUserNotificationCenter call shapes (extdeps.apple.apns is the server side only) and the Swift target prints the entry point from them, SUFFICIENT FOR a drifted lifecycle callback to be refused by the drift gate"),
+)
+
+data approve_ios_device_keys_retained: FrontierRow = frontier_row_path(
+  path: "apps/approve-ios/Approve/DeviceKeys.swift",
+  reason: "device key custody glue: CryptoKit Secure Enclave key generation and signing, DCAppAttestService attestation and assertion, and Keychain storage are Apple call shapes executed on the phone",
+  dissolution: unbound_dissolution(description: "DISSOLVES WHEN extdeps.apple binds the CryptoKit Secure Enclave, DCAppAttestService and Keychain call shapes (extdeps.apple.secure_enclave and app_attest model the verified artifacts, not the calling API) and the Swift target prints the custody calls from them, SUFFICIENT FOR a drifted call shape to be refused by the drift gate"),
+)
+
+// NOT GLUE: these hold the enrolment payload and UI state, which is a model fact still hand-written.
+// The trigger is the enrolment payload model (Charter 5 L4, session smart-lark-63), not an Apple capability.
+data approve_ios_enrolment_state_frontier: List<FrontierRow> = [
+  frontier_row_path(
+    path: "apps/approve-ios/Approve/EnrolmentState.swift",
+    reason: "enrolment payload persistence is hand-written because the enrolment payload is not yet a model the Swift target can print",
+    dissolution: unbound_dissolution(description: "DISSOLVES WHEN the enrolment payload model of Charter 5 L4 (session smart-lark-63) lands and this file is printed from it, SUFFICIENT FOR a drifted payload field to be refused by the drift gate"),
+  ),
+  frontier_row_path(
+    path: "apps/approve-ios/Approve/AppState.swift",
+    reason: "app state glues the printed enrolment machine to the UI and payload persistence, and its payload half is the same unmodeled enrolment payload",
+    dissolution: unbound_dissolution(description: "DISSOLVES WHEN the enrolment payload model of Charter 5 L4 (session smart-lark-63) lands and this file is printed from it, SUFFICIENT FOR a drifted payload field to be refused by the drift gate"),
+  ),
+]
+
+data approve_ios_retained_swift_rows: List<FrontierRow> = concat(
+  [approve_ios_views_retained, approve_ios_app_entry_retained, approve_ios_device_keys_retained],
+  approve_ios_enrolment_state_frontier
 )
 
 data approve_ios_transcribed_swift_frontier: DissolutionCondition = unbound_dissolution(
-  description: "the Swift syntax trees for apps/approve-ios (gunbc.approve_ios_swift_protocol, gunbc.approve_ios_swift_wire, gunbc.approve_ios_swift_protocol_vector_tests) are transcribed: their protocol strings, wire member names, sum arms, routes and record fields restate gunbc.auth.approval_device_wire rather than being derived from it, so a wire change is caught only by the XCTest vectors on an operator's Mac. DISSOLVES WHEN the v2 emit route renders a module's records, coproducts and folds into Swift (the swift_decl rows through the closure-emit door, gunbc#12218) SUFFICIENT FOR the protocol layer's constants, record shapes and byte builders to be emitted from approval_device_wire, so that no approve-ios tree names a wire fact the .dag does not supply",
+  description: "the Swift syntax trees for apps/approve-ios (gunbc.approve_ios_swift_protocol, gunbc.approve_ios_swift_wire, gunbc.approve_ios_swift_protocol_vector_tests) are transcribed: their wire member names, sum arms, routes and record fields restate gunbc.auth.approval_device_wire rather than being derived from it (the protocol strings and the suite/encoding spellings of gunbc.approve_ios_swift_protocol are READ from it), so a wire change is caught only by the XCTest vectors on an operator's Mac. DISSOLVES WHEN the v2 emit route renders a module's records, coproducts and folds into Swift (the swift_decl rows through the closure-emit door, gunbc#12218) SUFFICIENT FOR the protocol layer's constants, record shapes and byte builders to be emitted from approval_device_wire, so that no approve-ios tree names a wire fact the .dag does not supply",
+)
+
+data approve_ios_bodied_member_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.approve_ios_swift_protocol prints the byte builders (Protocol.framedField, Protocol.framed, the transcript and client-data functions, Base64Url.encode) from AUTHORED SwiftDecl/SwiftExpr trees through the Swift rows, not through the decl door, because the decl door has no bodied member kind and so no member-gap rule (a blank line between members when either has a body, swl_gap_items in v2.extdeps.languages.swift.rows). DISSOLVES WHEN (a) the SwiftExpr/SwiftStmt families that Protocol.swift uses (string interpolation, map/joined, member access, .utf8, replacingOccurrences, array literals) are printed through swift.dag productions (migration steps 3-4 under ruling A, after the swift_expr_door of gunbc#14458 lands), and (b) the shared decl surface gains a bodied-member kind with a typed member-gap column in v2.std.compilers.semantic_decl_emission, SUFFICIENT FOR Protocol.swift's enum and struct bodies to print byte-identically through the door with the gap rule as rows and a RED that drops the gap row and reds the drift gate. Not blocked on Charter 6",
 )
 
 // WHAT IS DERIVED AND WHAT IS HAND-AUTHORED, at file grain (operator ruling 2026-09-24: model it durably):
@@ -59,8 +105,12 @@ data approve_ios_transcribed_swift_frontier: DissolutionCondition = unbound_diss
 //     transition table) and ApproveTests/EnrolmentMachineTests.swift, both from
 //     gunbc.approve_ios_swift_enrolment_machine over gunbc.approve_ios_enrolment_machine. AppState.swift
 //     and EnrolmentState.swift keep only the UI glue and payload persistence, and call that table.
+//     Likewise Approve/OperationErrors.swift (the error lifetime: one current error per operation,
+//     cleared by its next success or by leaving the phases it is relevant in) and
+//     ApproveTests/OperationErrorsTests.swift, from gunbc.approve_ios_swift_operation_errors over
+//     gunbc.approve_ios_operation_errors; AppState.swift and Views.swift record every outcome into it.
 //   HAND-AUTHORED REALIZATION: the other .swift files under apps/approve-ios/Approve, named by
-//     approve_ios_hand_authored_swift_frontier above, and the operator-local Config/Team.xcconfig,
+//     approve_ios_retained_swift_rows above, and the operator-local Config/Team.xcconfig,
 //     which is operator identity, not a model fact.
 //
 // THE iOS BUILD'S STANDING. The derived settings make warnings errors (SWIFT_TREAT_WARNINGS_AS_ERRORS,

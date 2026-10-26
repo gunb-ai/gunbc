@@ -61,7 +61,7 @@ type JitRunnerConfigRequest {
 // opaque to its consumers but a caller can still render `encoded` into a String, so the class sits
 // at mitigatable. Its next-rung trigger is the one gunbc.credential_argv_exposure already declares
 // for itself and does not need restating here: the declared input TYPE carried on
-// v2.std.operation_argv ShellTransportOperationRow, which is what makes a secret-into-argv refusal
+// std.operation_argv ShellTransportOperationRow, which is what makes a secret-into-argv refusal
 // expressible at all. Until that lands, no wall here would be anything but a second opinion.
 type EncodedJitConfig sole_constructor {
   encoded: NonEmptyStr

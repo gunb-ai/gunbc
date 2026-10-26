@@ -1,0 +1,231 @@
+module v2.test.claim.emit.list_introduction_form_unwired_located
+
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.compiler.emit_produced { emit_produced_decl_inner_arrow, produced_decl_conjs_in_tree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest_located }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
+import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.dag { dag_language_model, dag_pick_target_model, dag_value_expression_projection }
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.target_model {
+  TargetModel,
+  render_target_text,
+  target_project_arrow_body_to_value_expression,
+  target_value_expression_projection_from_target,
+  target_value_expression_tokens_from_target
+}
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
+import v2.std.node { Node, Symbol }
+import v2.std.provenance { SpanIndex }
+import v2.std.text { String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS WHERE A TARGET THAT HAS NOT DECLARED `list_introduction_form` REFUSES A LIST INTRODUCTION.
+// `v2.std.compilers.target_model` renders a list introduction through the target's declared literal
+// token class; C, TypeScript and dag declare `ListIntroductionUnwired`, so their token fold refuses
+// `target_value_expr_list_introduction_form_unwired`. The refusal is only useful if it names the authored
+// literal, so each row asserts the reason AND that the locus is the literal's bytes in this source --
+// `[1, 2]` sits at bytes 107..108 of the text below. A wire node built with a synthetic occurrence
+// renders a synthetic locus and makes every locus row false.
+//
+// THE DAG ROW USES A BODIED-FUNCTION dag TARGET (`dag_pick_target_model`), because the bare
+// `dag_target_model` carries no value-expression projection at all and refuses before any literal is
+// reached; every dag target that renders a body shares the one `dag_value_expression_projection`, so
+// its `ListIntroductionUnwired` is the one read here.
+//
+// ONE NULLARY PRODUCER, FORCED ONCE AND ENROLLED WARM (v2.workflow.floor_pure_producer_share): the
+// front end is paid once, and the three targets project the same inferred member arrow. It publishes
+// only the reason and locus text per target.
+data list_introduction_probe_source: String = "module list_introduction_probe\n\nimport std.types { List }\n\ndata list_introduction_probe_value: List<Int> = [1, 2]\n"
+
+data list_introduction_types_source: String = "module std.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = FreeMonoid<T>\n"
+
+data list_introduction_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+fn list_introduction_witness(source: String, id: Symbol, path: String, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+data list_introduction_probe_ingest: SourceRootIngest = Cons {
+  head: list_introduction_witness(source: list_introduction_probe_source, id: ^list_introduction_probe_artifact, path: "src/v2/list_introduction_probe.dag", cu: ^list_introduction_probe_cu),
+  tail: Cons {
+    head: list_introduction_witness(source: list_introduction_types_source, id: ^list_introduction_types_artifact, path: "src/v2/std/types.dag", cu: ^list_introduction_types_cu),
+    tail: Cons {
+      head: list_introduction_witness(source: list_introduction_algebra_source, id: ^list_introduction_algebra_artifact, path: "src/v2/std/algebra.dag", cu: ^list_introduction_algebra_cu),
+      tail: Empty
+    }
+  }
+}
+
+type ListIntroductionTargetVerdict
+  = ListIntroductionTokensAccepted
+  | ListIntroductionRefused { reason: Symbol, locus: String }
+  | ListIntroductionProbeUnreached { reason: Symbol }
+
+type ListIntroductionProbeTable {
+  c: ListIntroductionTargetVerdict,
+  typescript: ListIntroductionTargetVerdict,
+  dag: ListIntroductionTargetVerdict
+}
+
+fn list_introduction_target_verdict(arrow: Node, target: TargetModel, spans: SpanIndex) -> ListIntroductionTargetVerdict {
+  let tokens = bind_outcome(
+    o: target_project_arrow_body_to_value_expression(
+      arrow: arrow,
+      target: target,
+      source_bool_form: dag_value_expression_projection().bool_literal_form,
+      handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+    ),
+    f: fn(expr) {
+      bind_outcome(
+        o: target_value_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          target_value_expression_tokens_from_target(expr: expr, target: target, projection: projection)
+        }
+      )
+    }
+  )
+  match tokens {
+    Accepted { value: _, diagnostics: _ } => ListIntroductionTokensAccepted
+    Rejected { diagnostics: d } =>
+      ListIntroductionRefused {
+        reason: diagnostics_fatal_reason(d: d),
+        locus: lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: d), index: spans)
+      }
+  }
+}
+
+fn list_introduction_unreached_table(reason: Symbol) -> ListIntroductionProbeTable {
+  ListIntroductionProbeTable {
+    c: ListIntroductionProbeUnreached { reason: reason },
+    typescript: ListIntroductionProbeUnreached { reason: reason },
+    dag: ListIntroductionProbeUnreached { reason: reason }
+  }
+}
+
+fn list_introduction_probe_table() -> ListIntroductionProbeTable {
+  let assembled = assemble_program_from_ingest_located(
+    ingest: list_introduction_probe_ingest,
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^list_introduction_probe, tail: Empty } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+  match bind_outcome(o: assembled.program, f: fn(p) { infer_and_discharge(tree: p) }) {
+    Rejected { diagnostics: d } => list_introduction_unreached_table(reason: diagnostics_fatal_reason(d: d))
+    Accepted { value: inferred, diagnostics: _ } =>
+      match produced_decl_conjs_in_tree(root: inferred.root) {
+        Empty => list_introduction_unreached_table(reason: ^list_introduction_probe_no_declaration)
+        Cons { head: decl, tail: _ } =>
+          match emit_produced_decl_inner_arrow(decl: decl) {
+            Rejected { diagnostics: d } => list_introduction_unreached_table(reason: diagnostics_fatal_reason(d: d))
+            Accepted { value: arrow, diagnostics: _ } =>
+              ListIntroductionProbeTable {
+                c: list_introduction_target_verdict(arrow: arrow, target: c_target_model(), spans: assembled.spans),
+                typescript: list_introduction_target_verdict(arrow: arrow, target: ts_target_model(), spans: assembled.spans),
+                dag: list_introduction_target_verdict(arrow: arrow, target: dag_pick_target_model(), spans: assembled.spans)
+              }
+          }
+      }
+  }
+}
+
+fn list_introduction_refused_unwired_at_the_literal(v: ListIntroductionTargetVerdict) -> Bool {
+  match v {
+    ListIntroductionRefused { reason: reason, locus: locus } =>
+      (reason == ^target_value_expr_list_introduction_form_unwired)
+        && string_contains(s: locus, pattern: "list_introduction_probe_cu bytes 107..108")
+    _ => false
+  }
+}
+
+test fn c_refuses_a_list_introduction_at_the_authored_literal_holds() -> Bool {
+  list_introduction_refused_unwired_at_the_literal(v: list_introduction_probe_table().c)
+}
+
+test fn typescript_refuses_a_list_introduction_at_the_authored_literal_holds() -> Bool {
+  list_introduction_refused_unwired_at_the_literal(v: list_introduction_probe_table().typescript)
+}
+
+test fn dag_refuses_a_list_introduction_at_the_authored_literal_holds() -> Bool {
+  list_introduction_refused_unwired_at_the_literal(v: list_introduction_probe_table().dag)
+}
+
+type ListIntroductionRustVerdict
+  = ListIntroductionRustText { text: String }
+  | ListIntroductionRustUnreached
+
+fn list_introduction_rust_text(arrow: Node) -> ListIntroductionRustVerdict {
+  let target = rust_target_model()
+  let tokens = bind_outcome(
+    o: target_project_arrow_body_to_value_expression(
+      arrow: arrow,
+      target: target,
+      source_bool_form: dag_value_expression_projection().bool_literal_form,
+      handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+    ),
+    f: fn(expr) {
+      bind_outcome(
+        o: target_value_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          target_value_expression_tokens_from_target(expr: expr, target: target, projection: projection)
+        }
+      )
+    }
+  )
+  match bind_outcome(o: tokens, f: fn(ts) { serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: ts) }) {
+    Accepted { value: t, diagnostics: _ } => ListIntroductionRustText { text: render_target_text(t: t) }
+    Rejected { diagnostics: _ } => ListIntroductionRustUnreached
+  }
+}
+
+fn list_introduction_rust_probe() -> ListIntroductionRustVerdict {
+  let assembled = assemble_program_from_ingest_located(
+    ingest: list_introduction_probe_ingest,
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^list_introduction_probe, tail: Empty } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+  match bind_outcome(o: assembled.program, f: fn(p) { infer_and_discharge(tree: p) }) {
+    Rejected { diagnostics: _ } => ListIntroductionRustUnreached
+    Accepted { value: inferred, diagnostics: _ } =>
+      match produced_decl_conjs_in_tree(root: inferred.root) {
+        Empty => ListIntroductionRustUnreached
+        Cons { head: decl, tail: _ } =>
+          match emit_produced_decl_inner_arrow(decl: decl) {
+            Rejected { diagnostics: _ } => ListIntroductionRustUnreached
+            Accepted { value: arrow, diagnostics: _ } => list_introduction_rust_text(arrow: arrow)
+          }
+      }
+  }
+}
+
+// THE POSITIVE CONTROL: the Rust row renders the same list literal as its existing FreeMonoid
+// realization (`Vec`) literal -- delimiters and separator only: an element's own spelling is its
+// literal binding's, supplied by the emit pipeline and not by the target, which the executed proof covers -- so the refusals above are the missing row and not a broken probe.
+test fn rust_renders_a_list_introduction_as_a_vec_literal_holds() -> Bool {
+  match list_introduction_rust_probe() {
+    ListIntroductionRustText { text: text } =>
+      string_contains(s: text, pattern: "vec![") && string_contains(s: text, pattern: ", ") && string_contains(s: text, pattern: "]")
+    ListIntroductionRustUnreached => false
+  }
+}

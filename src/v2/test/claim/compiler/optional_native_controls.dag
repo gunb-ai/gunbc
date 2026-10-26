@@ -1,0 +1,237 @@
+module v2.test.claim.compiler.optional_native_controls
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.types { Bool, String }
+import v2.std.node { Symbol }
+import v2.compiler.infer { infer }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data onc_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_native_controls_artifact, file_path: "src/v2/pilot/onc_pilot.dag" }
+data onc_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_native_controls_std_artifact, file_path: "src/v2/pilot/onc_std_pilot.dag" }
+
+// The cut's executed controls on the SUBSTITUTE route assemble_program_from_ingest -> infer (`none` lowers to the marked reference to the Absent variant, T1.0). `T?` reaches infer as the std.optional Instantiation only.
+fn onc_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^optional_native_controls_cu,
+    source_root: V2Tree
+  }
+}
+
+fn onc_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      onc_witness(src: concat("module p\n\nimport std.optional { Absent, Optional, Present }\n\n", body), artifact: onc_artifact),
+      onc_witness(src: osd_std_optional(), artifact: onc_std_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn onc_infer_accepted(body: String) -> Bool {
+  match onc_assemble(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn onc_assembles(body: String) -> Bool {
+  match onc_assemble(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn onc_absent_at_int_optional_accepts() -> Bool {
+  onc_infer_accepted(body: "fn mk() -> Int? { Absent }\n")
+}
+
+test fn onc_present_int_at_int_optional_accepts() -> Bool {
+  onc_infer_accepted(body: "fn mk() -> Int? { Present { value: 1 } }\n")
+}
+
+test fn onc_present_string_at_int_optional_refuses_at_the_payload() -> Bool {
+  onc_assembles(body: "fn mk() -> Int? { Present { value: \"s\" } }\n") && !onc_infer_accepted(body: "fn mk() -> Int? { Present { value: \"s\" } }\n")
+}
+
+test fn onc_nested_optional_keeps_its_depth() -> Bool {
+  onc_infer_accepted(body: "fn n(x: Optional<Int>?) -> Optional<Int>? { x }\n") && onc_assembles(body: "fn n(x: Optional<Int>?) -> Int? { x }\n") && !onc_infer_accepted(body: "fn n(x: Optional<Int>?) -> Int? { x }\n")
+}
+
+test fn onc_planted_error_refuses() -> Bool {
+  onc_assembles(body: "fn bad() -> Bool { 1 }\n") && !onc_infer_accepted(body: "fn bad() -> Bool { 1 }\n")
+}
+
+fn onc_assemble_without_optional(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [onc_witness(src: concat("module p\n\n", body), artifact: onc_artifact)],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn onc_none_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      onc_witness(src: concat("module p\n\n", body), artifact: onc_artifact),
+      onc_witness(src: osd_std_optional(), artifact: onc_std_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn onc_none_infer_accepted(body: String) -> Bool {
+  match onc_none_assemble(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn onc_none_assembles(body: String) -> Bool {
+  match onc_none_assemble(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+// `none` needs no import: the generated reference is answered by declaration identity.
+test fn onc_none_at_int_optional_accepts() -> Bool {
+  onc_none_infer_accepted(body: "fn mk() -> Int? { none }\n")
+}
+
+test fn onc_none_in_optional_record_field_accepts() -> Bool {
+  onc_none_infer_accepted(body: "type R { x: Int? }\n\nfn mk() -> R { R { x: none } }\n")
+}
+
+test fn onc_none_as_optional_call_argument_accepts() -> Bool {
+  onc_none_infer_accepted(body: "fn take(x: Int?) -> Int? { x }\n\nfn mk() -> Int? { take(x: none) }\n")
+}
+
+test fn onc_none_unsolved_let_agrees_with_bare_absent() -> Bool {
+  onc_none_assembles(body: "fn mk() -> Int { let x = none\n 1 }\n") && onc_none_infer_accepted(body: "fn mk() -> Int { let x = none\n 1 }\n") == onc_infer_accepted(body: "fn mk() -> Int { let x = Absent\n 1 }\n")
+}
+
+fn onc_infer_refusal_reason_is_unsolved(assembled: Outcome<ResolvedTree>) -> Bool {
+  match assembled {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_unsolved_constructor_type_variable
+      }
+  }
+}
+
+test fn onc_let_none_is_the_unsolved_constructor_refusal() -> Bool {
+  onc_infer_refusal_reason_is_unsolved(assembled: onc_none_assemble(body: "fn mk() -> Int { let x = none\n 1 }\n"))
+}
+
+test fn onc_let_absent_is_the_unsolved_constructor_refusal() -> Bool {
+  onc_infer_refusal_reason_is_unsolved(assembled: onc_assemble(body: "fn mk() -> Int { let x = Absent\n 1 }\n"))
+}
+
+// RFM v1_elaborates_bare_none_to_optional_unit_and_lets_unit_inhabit_bool: the native route's answer to the two seed floor breaks, on the real acceptance path. The module declares its own bodyless Unit (std.types is not natively ingestible yet), so these read the route, not the kernel Unit.
+test fn onc_unit_value_at_a_bool_annotation_refuses() -> Bool {
+  onc_none_assembles(body: "type Unit\n\nfn f(u: Unit) -> Bool {\n  let z: Bool = u\n  z\n}\n") && !onc_none_infer_accepted(body: "type Unit\n\nfn f(u: Unit) -> Bool {\n  let z: Bool = u\n  z\n}\n")
+}
+
+// Mutation control: the same source with the parameter declared Bool accepts, so the RED above is the Unit and not the shape.
+test fn onc_bool_value_at_a_bool_annotation_accepts() -> Bool {
+  onc_none_infer_accepted(body: "fn f(b: Bool) -> Bool {\n  let z: Bool = b\n  z\n}\n")
+}
+
+// Positive control: a declared Optional position closes the same none, so it is the unsolved variable that refuses and not the generic.
+test fn onc_none_through_a_generic_at_a_declared_optional_accepts() -> Bool {
+  onc_none_infer_accepted(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Int? { id(x: none) }\n")
+}
+
+test fn onc_typed_none_binder_read_as_bool_refuses() -> Bool {
+  onc_none_assembles(body: "fn f() -> Bool {\n  let c: Int? = none\n  let z: Bool = c\n  z\n}\n") && !onc_none_infer_accepted(body: "fn f() -> Bool {\n  let c: Int? = none\n  let z: Bool = c\n  z\n}\n")
+}
+
+test fn onc_unit_at_unit_accepts() -> Bool {
+  onc_none_infer_accepted(body: "type Unit\n\nfn f(u: Unit) -> Unit {\n  let z: Unit = u\n  z\n}\n")
+}
+
+fn onc_none_fatal_reason(body: String) -> Symbol {
+  match onc_none_assemble(body: body) {
+    Rejected { diagnostics: _ } => ^assemble_rejected
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => ^infer_accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+// Derived: the Bool use closes the generic's T at Bool, so the refusal is none at a non-optional position, the same reason as `fn mk() -> Int { none }`; the open variable is not what refuses.
+test fn onc_generic_none_read_as_bool_refuses_as_none_at_a_non_optional_position() -> Bool {
+  onc_none_fatal_reason(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n") == onc_none_fatal_reason(body: "fn mk() -> Int { none }\n") && onc_none_fatal_reason(body: "fn mk() -> Int { none }\n") != ^infer_accepted
+}
+
+// Not laundered: with no use to close T, the open variable survives the generic and the unannotated let is refused at its value.
+test fn onc_generic_none_in_an_unused_let_is_the_unsolved_refusal() -> Bool {
+  onc_infer_refusal_reason_is_unsolved(assembled: onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Int {\n  let c = id(x: none)\n  1\n}\n"))
+}
+
+test fn onc_none_at_a_non_optional_position_refuses() -> Bool {
+  onc_none_assembles(body: "fn mk() -> Int { none }\n") && !onc_none_infer_accepted(body: "fn mk() -> Int { none }\n")
+}
+
+test fn onc_none_without_std_optional_in_the_closure_refuses_at_resolve() -> Bool {
+  match onc_assemble_without_optional(body: "fn mk() -> Int { none }\n") {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_generated_reference_declaration_absent
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn onc_none_pun_refused_by_lowering(body: String) -> Bool {
+  match onc_none_assemble(body: body) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_reserved_value_name_pun
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// A pun named none refuses in body lowering, located at the parsed pun field (single authority): a closing brace, an omitted comma and an explicit comma.
+test fn onc_none_pun_closing_brace_refuses_in_lowering() -> Bool {
+  onc_none_pun_refused_by_lowering(body: "data d: R = R { none }\n")
+}
+
+test fn onc_none_pun_omitted_comma_refuses_in_lowering() -> Bool {
+  onc_none_pun_refused_by_lowering(body: "data d: R = R { none x }\n")
+}
+
+test fn onc_none_pun_explicit_comma_refuses_in_lowering() -> Bool {
+  onc_none_pun_refused_by_lowering(body: "data d: R = R { none, x }\n")
+}
+
+// `loop b { none }` reads as the record pun `b { none }` (the declared residual, analog `b { x }`): it refuses, but as a record construction of a non-type, not in pun lowering.
+test fn onc_none_pun_after_lowercase_head_refuses() -> Bool {
+  match onc_none_assemble(body: "fn f(b: Bool) -> Int? {\n  loop b { none }\n}\n") {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

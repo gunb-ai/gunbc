@@ -4,6 +4,7 @@ import std.types { Bool, FilePath, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.rust.cargo_build
 import gunbc.self_host_artifact_materialization
 import v2.compiler.self_host.generation {
@@ -59,7 +60,7 @@ fn build_fixture_from_source(target_name: String, main_source: String) -> BuiltF
         outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
           workdir: root,
           manifest_path: manifest,
-          target_dir: "{root}/target",
+          target_dir: cargo_default_target_dir(build_root: root),
           target_name: target_name,
           extra_args: []
         )
@@ -138,7 +139,7 @@ test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> B
       match o {
         ArtifactMaterializationObserved { executable: exe, digest: d } =>
           match sha512sum_observe_file(path: exe) {
-            Sha512FileObserved { digest: again } => (d as String) == (again as String)
+            Sha512FileObserved { digest: again } => d.hex == again.hex
             Sha512FileObservationRefused { cause: _ } => false
           }
         ArtifactMaterializationBuildFailed { target_name: _ } => false
@@ -199,7 +200,7 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
     } else {
       let first = gunbc.self_host_artifact_materialization.artifact_identity_of(
         outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
-          workdir: root, manifest_path: manifest, target_dir: "{root}/target",
+          workdir: root, manifest_path: manifest, target_dir: cargo_default_target_dir(build_root: root),
           target_name: fixture_target_name, extra_args: []
         )
       )
@@ -211,7 +212,7 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
           first: first,
           second: gunbc.self_host_artifact_materialization.artifact_identity_of(
             outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
-              workdir: root, manifest_path: manifest, target_dir: "{root}/target",
+              workdir: root, manifest_path: manifest, target_dir: cargo_default_target_dir(build_root: root),
               target_name: fixture_target_name, extra_args: []
             )
           )
@@ -240,21 +241,13 @@ fn axis_identity(artifact: GeneratedArtifactIdentity) -> GenerationIdentity {
   }
 }
 
-fn moved_axis_count(both: TwoBuilds) -> Int {
-  match both {
-    TwoBuildsSetupRefused { cause: _ } => 0 - 1
-    TwoBuilds { first: f, second: s } =>
-      if !axis_is_materialized(a: f) || !axis_is_materialized(a: s) {
-        0 - 1
-      } else {
-        length(
-          xs: generation_identity_mismatched_axes(
-            left: axis_identity(artifact: f),
-            right: axis_identity(artifact: s)
-          )
-        )
-      }
-  }
+fn moved_axis_count(first: GeneratedArtifactIdentity, second: GeneratedArtifactIdentity) -> Int {
+  length(
+    xs: generation_identity_mismatched_axes(
+      left: axis_identity(artifact: first),
+      right: axis_identity(artifact: second)
+    )
+  )
 }
 
 test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool {
@@ -267,7 +260,7 @@ test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool
     TwoBuilds { first: f, second: s } =>
       axis_is_materialized(a: f)
         && axis_is_materialized(a: s)
-        && moved_axis_count(both: both) == 1
+        && moved_axis_count(first: f, second: s) == 1
         && for_all(
           xs: generation_identity_mismatched_axes(
             left: axis_identity(artifact: f),
@@ -291,6 +284,6 @@ test fn rebuilding_identical_source_in_place_moves_no_axis() -> Bool {
     TwoBuilds { first: f, second: s } =>
       axis_is_materialized(a: f)
         && axis_is_materialized(a: s)
-        && moved_axis_count(both: both) == 0
+        && moved_axis_count(first: f, second: s) == 0
   }
 }

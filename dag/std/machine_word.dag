@@ -2,12 +2,14 @@ module std.machine_word
 
 import std.induction { int_pow_bounded }
 import std.power_of_two { bitwise_pow2 }
+import std.machine_width_range { machine_width_admits }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
-import std.integer { UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
+import std.integer { Unsigned, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
+import std.algebra { list_push }
 
 // THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
 //
@@ -19,10 +21,9 @@ import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEnd
 // authority -- a width that std.integer cannot spell must not appear here, and one it can spell but
 // this substrate cannot realize refuses by name rather than being omitted (Width64 below).
 //
-// std.bit's Word8..Word128 are a different concept again and are deliberately not reused: they are
-// bit-RECORDS (List<Byte> of List<Bit>) with no cardinality refinement, consumed as type vocabulary
-// by extdeps.languages.rust.primitives and v2.std.machine to NAME a width. They carry no value a
-// fold can compute with. Reusing the name for a computational carrier would be a meaning fork.
+// std.bit declared no word carriers once Word8..Word128 (bit-records with no consumer) were deleted:
+// the octet encoding of a Word is word_to_octets / word_from_octets below, byte order an explicit
+// Endianness argument.
 //
 // ENDIANNESS IS NOT DECLARED HERE. extdeps.toolchain.architecture_profile already owns it, and byte
 // order is one concept whether it is read off an architecture profile or supplied to a conversion.
@@ -75,6 +76,9 @@ type WordRefusal
   | WordWidthMismatch { left: WordWidth, right: WordWidth }
   | ShiftAmountOutOfRange { width: WordWidth, amount: Int }
   | OctetCountMismatch { width: WordWidth, expected: Int, observed: Int }
+  | WordOverflow { width: WordWidth }
+  | WordNegativeResult { width: WordWidth }
+  | WordDividesByZero { width: WordWidth }
   | IntegerDoesNotFitOctets { value: Int, octets: Int }
   | OctetCountOutOfRange { observed: Int }
 
@@ -161,8 +165,8 @@ fn word_half_radix(w: WordWidth) -> Int? {
 fn word_of_int(width: WordWidth, value: Int) -> WordResult {
   match word_modulus(w: width) {
     Absent => WordRefused { cause: WordWidthUnrealizable { width: width } }
-    Present { value: m } =>
-      if value < 0 || value >= m {
+    Present { value: _ } =>
+      if !machine_width_admits(signedness: Unsigned, bits: word_bit_width(w: width), value: value) {
         WordRefused { cause: WordValueOutOfRange { width: width, value: value } }
       } else {
         WordReady { word: Word { width: width, value: value } }
@@ -554,6 +558,115 @@ fn word_wrapping_multiply(a: Word, b: Word) -> WordResult {
               let high_term = (((xv / half) * yv) % half) * half
               word_of_int(width: r.width, value: (low_term + high_term) % r.modulus)
             }
+          }
+      }
+  }
+}
+
+// CHECKED ARITHMETIC: THE CROSSING IS A TYPED REFUSAL, NOT A WRAP. The operator ruling (CHECKED) makes a
+// width a refinement on Int: wrapping exists only under its own name (word_wrapping_*, above) and every
+// other operation either answers inside [0, 2^bits) or says which edge it crossed -- WordOverflow above the
+// top, WordNegativeResult below zero, WordDividesByZero for a zero divisor. These are the arms the retired
+// std.bounded_nat family answered (BoundedNatArith); that family had no production consumer, so its carrier
+// was deleted rather than kept beside this one (DESIGN 3: one value-level width carrier), and its witnesses
+// moved to test.claim.machine_word_witness as the controls of THESE operations.
+// The range is std.machine_width_range machine_width_admits via word_of_int, the one range authority.
+// The checked product never forms the product: x * y overflows exactly when x > (modulus - 1) / y, so a
+// width whose full product exceeds the host Int is decided without it.
+// THE RANGE IS ANSWERED ONCE, BY word_of_int; THE CHECKED OPERATIONS ONLY NAME WHICH EDGE WAS CROSSED. The
+// result is computed unreduced, handed to word_of_int, and only its WordValueOutOfRange is translated into
+// the edge this operation crosses (above the top for a sum, below zero for a difference). Any other
+// refusal passes through unchanged, so no checked operation carries its own copy of the range test.
+fn word_checked_crossing(result: WordResult, crossing: WordRefusal) -> WordResult {
+  match result {
+    WordRefused { cause: WordValueOutOfRange { width: _, value: _ } } => WordRefused { cause: crossing }
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: w } => WordReady { word: w }
+  }
+}
+
+fn word_checked_add(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          word_checked_crossing(
+            result: word_of_int(width: r.width, value: qualified_word_value(q: x) + qualified_word_value(q: y)),
+            crossing: WordOverflow { width: r.width }
+          )
+      }
+  }
+}
+
+fn word_checked_subtract(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          word_checked_crossing(
+            result: word_of_int(width: r.width, value: qualified_word_value(q: x) - qualified_word_value(q: y)),
+            crossing: WordNegativeResult { width: r.width }
+          )
+      }
+  }
+}
+
+// The guard is a division-based width-overflow preflight: x > (modulus - 1) / y decides overflow of
+// the WIDTH without forming x * y, so it refuses a product that fits the host Int but not the width
+// (Width8 16 x 16) and also keeps an unrepresentable host product from ever being formed. When the
+// guard passes the product is in range and word_of_int still answers it.
+fn word_checked_multiply(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if qualified_word_value(q: y) == 0 {
+            word_of_int(width: r.width, value: 0)
+          } else if qualified_word_value(q: x) > (r.modulus - 1) / qualified_word_value(q: y) {
+            WordRefused { cause: WordOverflow { width: r.width } }
+          } else {
+            word_checked_crossing(
+              result: word_of_int(width: r.width, value: qualified_word_value(q: x) * qualified_word_value(q: y)),
+              crossing: WordOverflow { width: r.width }
+            )
+          }
+      }
+  }
+}
+
+fn word_checked_divide(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if qualified_word_value(q: y) == 0 {
+            WordRefused { cause: WordDividesByZero { width: r.width } }
+          } else {
+            word_of_int(width: r.width, value: qualified_word_value(q: x) / qualified_word_value(q: y))
+          }
+      }
+  }
+}
+
+fn word_checked_remainder(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if qualified_word_value(q: y) == 0 {
+            WordRefused { cause: WordDividesByZero { width: r.width } }
+          } else {
+            word_of_int(width: r.width, value: qualified_word_value(q: x) % qualified_word_value(q: y))
           }
       }
   }

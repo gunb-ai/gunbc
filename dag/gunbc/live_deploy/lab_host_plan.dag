@@ -3,7 +3,7 @@ module gunbc.live_deploy.lab_host_plan
 import std.types { Int, NonEmptyStr, String, FilePath }
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.decl_ref { decl_ref }
-import std.optional { Absent, Present }
+import std.optional { Optional, Absent, Present }
 import std.os.types { OsPackageManager }
 import gunbc.host.host_software_surface {
   HostSoftwareSurface,
@@ -34,7 +34,7 @@ import extdeps.tailscale.serve { TailscaleServeCapability }
 // plan that claims user-manager confinement (sysctl 1 → system-manager launcher). Sysctl 0 is a
 // bet that the user manager would enforce, not an observation of confinement, so the plan refuses
 // rather than minting ProtectHome (DESIGN 4d). The selected identity is SystemManagerLauncherSelected.
-// live_deploy.emit apply_selected_worker_sandbox_steps is that realization on the applying path.
+// gunbc.live_deploy.apply_legs deploy_apply_worker_sandbox_plan is that realization on the applying path.
 
 type WorkerSandboxChoice
   = | SystemManagerLauncherSelected
@@ -59,6 +59,18 @@ type LabDeployPlan
       worker_sandbox: WorkerSandboxChoice
     }
   | LabPlanRefused { cause: LabDeployPlanRefusal }
+
+// THE ONE READ OF THE PLAN'S WORKER-SANDBOX CHOICE. It returns the choice itself, Absent for a refused
+// plan, so each reader (live_deploy.spec roster, live_deploy.emit applying path) matches on
+// WorkerSandboxChoice and a second sandbox choice is a non-exhaustive match at every call site, not
+// a value silently read as true.
+fn lab_plan_worker_sandbox_choice(plan: LabDeployPlan) -> Optional<WorkerSandboxChoice> {
+  match plan {
+    LabPlanRefused { cause: _ } => Absent
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      Present { value: choice }
+  }
+}
 
 fn select_worker_sandbox(surface: HostSoftwareSurface) -> WorkerSandboxSelection {
   match user_manager_sandbox_enforcement(surface: surface) {
@@ -123,7 +135,7 @@ fn srv1_lab_deploy_plan() -> LabDeployPlan {
 }
 
 data system_manager_launcher_wiring_frontier: DissolutionCondition = bound_dissolution(
-  ref: decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "apply_selected_worker_sandbox_steps"),
+  ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_worker_sandbox_plan"),
 )
 
 fn lab_plan_refusal_reason(cause: LabDeployPlanRefusal) -> NonEmptyStr {
@@ -139,19 +151,6 @@ fn lab_plan_refusal_reason(cause: LabDeployPlanRefusal) -> NonEmptyStr {
           join(["apparmor userns sysctl unreadable: ", to_string(n)], "") as NonEmptyStr
       }
   }
-}
-
-fn lab_plan_refused_emit_line(cause: LabDeployPlanRefusal, fold_label: String) -> String {
-  concat(
-    "__GUNBC_DEPLOY_REFUSED__ live-deploy ",
-    concat(
-      fold_label,
-      concat(
-        " NOT EMITTED: lab plan refused (",
-        concat(lab_plan_refusal_reason(cause: cause) as String, ") (DESIGN 5: refuse, never widen)"),
-      ),
-    ),
-  )
 }
 
 // WHY DispatchHostEnvironment SUBSTRING PROBES ARE NOT REPLACED HERE. Those probes are a live

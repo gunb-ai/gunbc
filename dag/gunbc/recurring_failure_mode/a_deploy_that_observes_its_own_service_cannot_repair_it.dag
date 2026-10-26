@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_deploy_that_observes_its_own_service_canno
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data a_deploy_that_observes_its_own_service_cannot_repair_it: RecurringFailureMode = RecurringFailureMode {
   identity: "a_deploy_that_observes_its_own_service_cannot_repair_it" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: the modeled deploy route (fleet-converge dashboard_deploy, gunbc.live_deploy) derives its plan by observing the running service, and a running service whose /healthz answers non-2xx makes that observation REFUSE -- so the only sanctioned route to replace a broken release requires the release not to be broken. The route can install a release that breaks the service and then cannot install any release at all, rollback included.",

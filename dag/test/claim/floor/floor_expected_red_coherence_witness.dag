@@ -1,7 +1,20 @@
 module test.claim.floor.floor_expected_red_coherence_witness
 
-import std.algebra { count_where, length }
+import std.algebra { count_where, length, list_flat_map }
+import std.types { Bool, Int, List, String }
 import v2.std.decl_index { DeclFact, decl_facts }
+import v2.workflow.floor_expected_red {
+  floor_expected_red_chunk_pair_serving_authority_wet_red,
+  floor_expected_red_chunk_cursor_dispatch_credential_wet_red,
+  floor_expected_red_roster,
+}
+import v2.workflow.floor_route_gap { floor_route_gap_roster }
+import v2.workflow.v2_native_route {
+  FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal, native_route_reference_for,
+}
+import v2.workflow.floor_terminal_ledger { ExpectedToHold, ExpectedRed }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
+import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
 import v2.workflow.floor_expected_red_coherence {
   AuthoredIdentityMissingFromRoster,
   ChunkCoherenceCoherent,
@@ -126,4 +139,135 @@ test fn w_severed_fixture_linked_chunks_only_is_coherent() -> Bool {
       checked_chunk_count == 2 && checked_identity_count == 3
     ChunkCoherenceRefused { causes: _ } => false
   }
+}
+
+// ─────────── THE WET REAL-EXECUTION REDS THIS ROSTER NOW CARRIES (#14464's Group C) ───────────
+//
+// WHY THE CLAIMS LIVE HERE. `floor_expected_red_coherence.dag`'s own header records the gap these
+// close: the chunk/roster join has never been run against the REAL roster, only against a fixture,
+// because the live join needs the same whole-module `decl_facts` parse as verifying roster content.
+// These two claims do not re-implement that join (they would be a second copy of it, and DESIGN
+// prices exactly that); they assert the two properties that a row relabelled to a name the schedule
+// does not carry would silently break, and they do it over the live carriers rather than a fixture.
+// What they do NOT do is cover the population from the other side -- see the note under the first claim.
+//
+// WHY NOT A NEW WITNESS FILE. The live-join check the header asks for pays a whole-module `decl_facts`
+// parse over `src/v2/workflow` -- its own comment gives the measured cost and is the place to read it.
+// The module says that cost dissolves with a preparation-time consumer, not with a per-PR claim, so
+// claiming it here would put a full-tree parse in the hermetic lane per PR to buy what the fleet
+// instrument already proves by executing the claims. So
+// these two are pure data over functions that are already evaluated, and the expensive join is left
+// where the module asked for it, not fabricated cheaper.
+
+data wet_red_chunks_under_test: List<List<String>> = [
+  floor_expected_red_chunk_pair_serving_authority_wet_red(),
+  floor_expected_red_chunk_cursor_dispatch_credential_wet_red(),
+]
+
+data wet_reds_under_test: List<String> = list_flat_map(
+  xs: wet_red_chunks_under_test,
+  f: fn(chunk) { chunk }
+)
+
+// THE ENROLMENT IS TIED TO A REAL SCHEDULE ROW, AND TO A ROW THAT EXPECTS THE CLAIM TO HOLD. This is
+// the join that makes an enrolment mean something: `local_repo_wet_schedule()` is the subject
+// enumeration (one row per executed claim, and the same one #14368's census reads), so an identity in
+// this roster that is not a schedule row is a name nobody runs -- a red written down and never
+// observed. And the row must carry `ExpectedToHold`: enrolling a claim the schedule already marks
+// `ExpectedRed` would be excusing it twice, and enrolling one the schedule does not carry at all would
+// be accounting for a claim that does not exist. Every half is derived by joining the two authorities;
+// no identity string appears in this claim, so a leaf RENAMING one of its chunk's rows turns this red
+// instead of quietly shrinking a list nobody was reading.
+//
+// WHAT THIS CLAIM DOES NOT CHECK, STATED BECAUSE IT WAS ONCE CLAIMED. It checks that every row of the
+// chunks under test is a schedule claim the schedule still expects to hold. It does NOT check the
+// chunks cover the executed-failed population: the population is derived FROM the chunks, so deleting
+// one enrolled identity shrinks the population and every property still holds over the remainder --
+// measured, not reasoned: nimble-badger-800's M4 mutation deleted one enrolled identity and left all
+// 7 claims in this file green. The reverse coverage, an
+// executed-and-failed claim that carries no enrolment here, is the disposition
+// `UnaccountedRedWithoutEnrolment` in `gunbc.instruments.known_red_derivation` (#14464): PENDING,
+// because that instrument has not landed and run on the fleet yet. Do not read this claim as the
+// roster's completeness check; when #14464 runs, that instrument is.
+test fn each_enrolled_wet_red_is_a_scheduled_claim_the_schedule_still_expects_to_hold() -> Bool {
+  let schedule_qualified = list_flat_map(
+    xs: local_repo_wet_schedule(),
+    f: fn(row) { Cons { head: witness_identity_qualified_name(identity: row.identity), tail: Empty } }
+  )
+  let scheduled_holds = list_flat_map(
+    xs: local_repo_wet_schedule(),
+    f: fn(row) {
+      match row.expectation {
+        ExpectedToHold => Cons { head: witness_identity_qualified_name(identity: row.identity), tail: Empty }
+        ExpectedRed => Empty
+      }
+    }
+  )
+  let roster = floor_expected_red_roster()
+  // the chunks are disjoint and together are what this roster added: no identity may appear in
+  // two of them, or two owners' fixes would disagree about one row. Asserted over the chunks
+  // themselves, which is where a duplicate could be introduced.
+  (count_where(xs: wet_reds_under_test, predicate: fn(q) {
+     count_where(xs: wet_reds_under_test, predicate: fn(o) { o == q }) > 1
+   }) == 0)
+    // every identity is a schedule row AND a row that expects the claim to hold. Membership is tested
+    // as `== 0` on the two absences rather than `== 1` over the schedule: the schedule can legitimately
+    // carry the same identity on more than one row, and a per-name count of exactly one over it would be
+    // a claim about a number `local_repo_wet_schedule` does not promise. Membership is the property; how
+    // many rows the schedule gives a name is the schedule's business, not this claim's.
+    && (count_where(xs: wet_reds_under_test, predicate: fn(q) {
+         count_where(xs: schedule_qualified, predicate: fn(o) { o == q }) == 0
+           || count_where(xs: scheduled_holds, predicate: fn(o) { o == q }) == 0
+       }) == 0)
+    // and the roster really carries each of them -- the enrolment took effect. Compared against the
+    // length of the population under test rather than a number typed here: if a leaf deletes its
+    // chunk, the chunk functions imported above stop existing and the module refuses to compile,
+    // which is the refusal that should fire. A literal 7 here would instead be a fact about the roster
+    // that nobody owns, and it would go red for the wrong reason when the roster legitimately grows.
+    && (count_where(xs: wet_reds_under_test, predicate: fn(q) {
+         count_where(xs: roster, predicate: fn(o) { o == q }) == 1
+       }) == length(xs: wet_reds_under_test))
+}
+
+// THE DRY-LANE HOLD STILL WINS, AND THE ENROLMENT IS LOAD-BEARING WHERE IT SHOULD BE. Some of the
+// enrolled identities also hold a `FloorRouteGapExpectation` (the hermetic route has no arm for the `Dir`
+// operation, so on that lane the claim refuses before it can run). `native_route_reference_for` checks
+// `route_gap` FIRST, and that order is the whole reason adding these rows does not change one reading
+// on the dry lane: a claim that has not run there must be reported as refused, not excused. Flip the
+// order and the dry lane would start reading a never-executed claim as "expected red" -- a green
+// manufactured out of a roster. The second half is the other direction: an identity with no dry-lane
+// hold must now read `FloorExpectedRed`, which is what makes this enrolment observable instead of
+// decorative. Both halves count over the live rosters, so neither can be satisfied by editing this
+// file.
+test fn the_dry_lane_hold_still_wins_and_the_wet_enrolment_is_load_bearing() -> Bool {
+  let route_gap = floor_route_gap_roster()
+  let reading_of = fn(q) {
+    native_route_reference_for(
+      qualified: q,
+      expected_red: floor_expected_red_roster(),
+      route_gap: route_gap
+    )
+  }
+  let in_gap = count_where(xs: wet_reds_under_test, predicate: fn(q) {
+    count_where(xs: route_gap, predicate: fn(o) { o == q }) > 0
+  })
+  let gap_reads_refusal = count_where(xs: wet_reds_under_test, predicate: fn(q) {
+    count_where(xs: route_gap, predicate: fn(o) { o == q }) > 0
+      && reading_of(q) == FloorRouteGapRefusal
+  })
+  let not_in_gap = count_where(xs: wet_reds_under_test, predicate: fn(q) {
+    count_where(xs: route_gap, predicate: fn(o) { o == q }) == 0
+  })
+  let wet_reads_expected_red = count_where(xs: wet_reds_under_test, predicate: fn(q) {
+    count_where(xs: route_gap, predicate: fn(o) { o == q }) == 0
+      && reading_of(q) == FloorExpectedRed
+  })
+  // both populations must be non-empty or the claim is vacuous, and each must read its own way
+  in_gap > 0
+    && not_in_gap > 0
+    && (in_gap + not_in_gap == length(xs: wet_reds_under_test))
+    && gap_reads_refusal == in_gap
+    && wet_reads_expected_red == not_in_gap
+    // and no enrolled red may ever read as an expected PASS on either lane
+    && (count_where(xs: wet_reds_under_test, predicate: fn(q) { reading_of(q) == FloorExpectedPass }) == 0)
 }

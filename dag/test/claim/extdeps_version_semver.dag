@@ -1,5 +1,9 @@
 module test.claim.extdeps_version_semver
 
+import std.host_text { chars }
+import extdeps.version.semver { semver_compare, semver_compare_identifier, semver_numeric_field, semver_scheme, semver_to_version_identity, semver_version_label, semver_version_parse }
+import gunbc.compile_diagnostic_census { census_total_count }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn semver_identity_1_2_3() -> SemVerIdentity { "1.2.3" }
@@ -14,23 +18,23 @@ fn semver_constraint_one() -> SemVerConstraint { "1" }
 // Absent, and every consumer turns Absent into a failed witness rather than a fabricated
 // order.
 fn semver_1_0_0() -> SemVerVersion? {
-  semver_version_parse(cps: chars(s: "1.0.0" as String))
+  semver_version_parse(cps: chars(text: "1.0.0" as String))
 }
 
 fn semver_1_0_0_alpha() -> SemVerVersion? {
-  semver_version_parse(cps: chars(s: "1.0.0-alpha" as String))
+  semver_version_parse(cps: chars(text: "1.0.0-alpha" as String))
 }
 
 fn semver_1_0_0_alpha_1() -> SemVerVersion? {
-  semver_version_parse(cps: chars(s: "1.0.0-alpha.1" as String))
+  semver_version_parse(cps: chars(text: "1.0.0-alpha.1" as String))
 }
 
 fn semver_1_0_0_alpha_0() -> SemVerVersion? {
-  semver_version_parse(cps: chars(s: "1.0.0-0.alpha.1" as String))
+  semver_version_parse(cps: chars(text: "1.0.0-0.alpha.1" as String))
 }
 
 fn semver_1_0_0_build_1() -> SemVerVersion? {
-  semver_version_parse(cps: chars(s: "1.0.0+1" as String))
+  semver_version_parse(cps: chars(text: "1.0.0+1" as String))
 }
 
 test fn w_semver_identity_inhabits_version_identity() -> Bool {
@@ -62,7 +66,7 @@ test fn w_semver_scheme_wire_label_ordering() -> Bool {
 // The identifier field arrives through the confined constructor: semver_numeric_field admits
 // "1" or refuses, and the admitted record is what the direct comparator consumes.
 test fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
-  match semver_numeric_field(cps: chars(s: "1" as String)) {
+  match semver_numeric_field(cps: chars(text: "1" as String)) {
     Absent => false
     Present { value: digits } =>
       match semver_compare_identifier(
@@ -137,10 +141,10 @@ test fn w_semver_compare_pre_release_longer_set_greater() -> Bool {
 }
 
 test fn w_semver_compare_major_minor_patch() -> Bool {
-  match semver_version_parse(cps: chars(s: "1.2.3" as String)) {
+  match semver_version_parse(cps: chars(text: "1.2.3" as String)) {
     Absent => false
     Present { value: older } =>
-      match semver_version_parse(cps: chars(s: "1.2.4" as String)) {
+      match semver_version_parse(cps: chars(text: "1.2.4" as String)) {
         Absent => false
         Present { value: newer } =>
           match semver_compare(a: older, b: newer) {
@@ -344,9 +348,9 @@ test fn w_build_wide_numeric_identifier_is_valid_and_ignored() -> Bool {
 // digits 48..57, and a leading zero (unless the single digit 0) are refused.
 test fn w_numeric_field_constructor_refuses_forged_sequences() -> Bool {
   match semver_numeric_field(cps: []) {
-    Absent => match semver_numeric_field(cps: chars(s: "A")) {
-      Absent => match semver_numeric_field(cps: chars(s: "01")) {
-        Absent => match semver_numeric_field(cps: chars(s: "0")) {
+    Absent => match semver_numeric_field(cps: chars(text: "A")) {
+      Absent => match semver_numeric_field(cps: chars(text: "01")) {
+        Absent => match semver_numeric_field(cps: chars(text: "0")) {
           Present { value: _ } => true
           Absent => false
         }

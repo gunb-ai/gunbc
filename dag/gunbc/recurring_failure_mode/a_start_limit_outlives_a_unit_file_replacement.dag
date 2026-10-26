@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_start_limit_outlives_a_unit_file_replacement
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_start_limit_outlives_a_unit_file_replacement: RecurringFailureMode = RecurringFailureMode {
   identity: "a_start_limit_outlives_a_unit_file_replacement" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "A START LIMIT OUTLIVED A UNIT-FILE REPLACEMENT AND REFUSED THE TRANSACTION'S OWN ROLLBACK. systemd keys StartLimitBurst / StartLimitIntervalSec on the unit NAME, not on the unit file's contents, so a transaction that applies a successor unit and then restores the incumbent under the same name has spent the counter on the apply's start. The bounded-experiment unit renders StartLimitBurst=1 over 600 s (retired gunbc.spark.native_serving_realization (deleted #13779) arm_unit_directives ArmBoundedExperiment) to mean 'one attempt per launch'; the rollback's `systemctl restart` was a second start inside the window, systemd refused it ('Start request repeated too quickly'), and under `set -e` the rollback stopped with the fence still held: the arm was left down with its disposition unestablished, the outcome rollback exists to prevent.",

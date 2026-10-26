@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_value_position_block_re_lowered_through_the_walker
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data a_value_position_block_re_lowered_through_the_walker: RecurringFailureMode = RecurringFailureMode {
   identity: "a_value_position_block_re_lowered_through_the_walker" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**a value-position block re-lowered through the walker** (body lowering reads a `{ }` block in value position, such as a match arm body, first through the bottom-up fold and then again through the top-down walker, so nested arms cost three reads per level and the whole is exponential in nesting depth).",

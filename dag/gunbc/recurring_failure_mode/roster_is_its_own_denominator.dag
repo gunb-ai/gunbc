@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.roster_is_its_own_denominator
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data roster_is_its_own_denominator: RecurringFailureMode = RecurringFailureMode {
   identity: "roster_is_its_own_denominator" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a roster is its own denominator, so the instrument reading it cannot notice the roster is short** (INVALID STATE: a report enumerates the rows a hand-authored roster happens to hold, renders a verdict per row, and presents the result as an answer ABOUT THE SUBJECT -- while no independent authority states how many identities that subject should have, so a subject missing rows renders as a complete block and reads as a complete answer.",

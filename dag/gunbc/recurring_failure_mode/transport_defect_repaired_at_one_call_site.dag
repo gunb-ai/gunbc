@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.transport_defect_repaired_at_one_call_site
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data transport_defect_repaired_at_one_call_site: RecurringFailureMode = RecurringFailureMode {
   identity: "transport_defect_repaired_at_one_call_site" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "transport defect repaired at one call site: a request fails for a reason that belongs to the TRANSPORT REALIZATION -- a missing header, an encoding, a redirect rule -- and the repair is made in the one operation that hit it, by adding a field whose only purpose is to provoke correct transport behaviour. The operation now works and the class stays alive: the next operation written in the same shape fails the same way, and the fix is invisible as a fix because it reads as ordinary request content.",

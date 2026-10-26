@@ -1,6 +1,6 @@
 module gunbc.runner.runner_registration_labels
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
@@ -8,6 +8,8 @@ import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_job_role { RunnerSlotJobRole, CiJobSlot, DeployJobSlot, runner_slot_job_role }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
 
 // ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
 // the one place that owns it:
@@ -27,6 +29,16 @@ type RunnerRegistrationLabelsResolution
   | RegistrationLabelsRefused { host: HostIdentity, cause: NonEmptyStr }
 
 fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
+  runner_registration_labels_of_class(host: host, class_labels: gunbc_runner_slot_desired().labels.github_labels)
+}
+
+// THE CLASS HALF OF THE COMPOSITION IS THE ONLY PART A ROLE CHANGES. A CI slot carries the class
+// label the floor selects on (gunbc-heavy); the deploy slot carries the label of its restricted
+// runner group (gunbc.ci.deploy_slot_tenancy deploy_slot_runner_group_name) and NOT gunbc-heavy, so
+// a job that selects the CI class can never be satisfied by it. The group, not this label, is the
+// wall -- a label is set membership and any workflow can name one -- which is why the label is
+// necessary for fleet-converge to reach the slot and not sufficient to keep anything else off it.
+fn runner_registration_labels_of_class(host: HostIdentity, class_labels: List<String>) -> RunnerRegistrationLabelsResolution {
   match fleet_compute_offer_for(host: host) {
     Absent =>
       RegistrationLabelsRefused {
@@ -38,13 +50,21 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
         SelfHosted { labels: platform } =>
           RegistrationLabelsResolved {
             labels: runner_label_set_union(
-              a: runner_label_set_union(a: platform, b: gunbc_runner_slot_desired().labels.github_labels),
+              a: runner_label_set_union(a: platform, b: class_labels),
               b: [runner_host_label(host: host)],
             ),
           }
         HostedRunner { label: _ } => registration_labels_refused_not_self_hosted(host: host)
         RunsOnExpression { expression: _ } => registration_labels_refused_not_self_hosted(host: host)
       }
+  }
+}
+
+// ONE SLOT'S LABELS: the host's, with the class its role gives it.
+fn runner_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerRegistrationLabelsResolution {
+  match runner_slot_job_role(slot: slot) {
+    CiJobSlot => runner_registration_labels(host: slot.host)
+    DeployJobSlot => runner_registration_labels_of_class(host: slot.host, class_labels: [deploy_slot_runner_group_name as String])
   }
 }
 
@@ -76,12 +96,22 @@ type RegistrationLabelsConformance
   | RegistrationLabelsDiverge
   | RegistrationLabelsUnjudged { host: HostIdentity, cause: NonEmptyStr }
 
+// THE READINESS LABEL IS THE FLOOR'S, so only a slot the floor can run on may carry it; the deploy
+// slot's label set is exactly its own, and a readiness label on it is a divergence.
+fn runner_slot_carries_browser_ready(slot: RunnerSlotIdentity) -> Bool {
+  match runner_slot_job_role(slot: slot) {
+    CiJobSlot => true
+    DeployJobSlot => false
+  }
+}
+
 fn runner_slot_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> RegistrationLabelsConformance {
-  match runner_registration_labels(host: slot.host) {
+  match runner_slot_registration_labels(slot: slot) {
     RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsUnjudged { host: h, cause: c }
     RegistrationLabelsResolved { labels: host_labels } =>
       if runner_label_sets_equal(a: observed, b: host_labels)
-        || runner_label_sets_equal(a: observed, b: runner_label_set_union(a: host_labels, b: [gunbc_browser_ready_label])) {
+        || (runner_slot_carries_browser_ready(slot: slot)
+          && runner_label_sets_equal(a: observed, b: runner_label_set_union(a: host_labels, b: [gunbc_browser_ready_label]))) {
         RegistrationLabelsConform
       } else {
         RegistrationLabelsDiverge

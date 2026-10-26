@@ -19,6 +19,8 @@ import v2.workflow.floor_route_gap {
 }
 import v2.workflow.floor_terminal_ledger {
   PublishedCommit,
+  EntryMissing,
+  ResolveInfrastructure,
   RepositorySnapshot,
   UnpublishedWorkingTree,
   BudgetRefusedBeforeVerdict,
@@ -31,6 +33,8 @@ import v2.workflow.floor_terminal_ledger {
   KnownRedHeld,
   KnownRedNowPassing,
   ObservationUnreadableBeforeVerdict,
+  SubjectUnresolvedBeforeVerdict,
+  SubjectUnresolved,
   NotAttempted,
   NotAttemptedAfterAbort,
   Panicked,
@@ -259,6 +263,7 @@ fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
       }
     HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
     RouteGap { operation: _, ground: g } => render_route_gap_ground_tag(ground: g)
+    SubjectUnresolved { entry: _, cause: _ } => "subject-unresolved"
   }
 }
 
@@ -303,6 +308,11 @@ fn render_terminal_detail(terminal: ClaimAttemptTerminal) -> String {
     BudgetRefused { safety: s } => render_safety_detail(safety: s)
     HostToolUnresolved { name: n, probed: _ } => n
     RouteGap { operation: o, ground: _ } => o
+    SubjectUnresolved { entry: e, cause: c } =>
+      match c {
+        EntryMissing {} => join([e, ": entry is not a file"], "")
+        ResolveInfrastructure { detail: d } => join([e, ": ", d], "")
+      }
   }
 }
 
@@ -777,6 +787,9 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == "returned-unreadable" {
     Present { value: ObservationUnreadableBeforeVerdict }
   } else {
+  if row.terminal_tag == "subject-unresolved" {
+    Present { value: SubjectUnresolvedBeforeVerdict }
+  } else {
   if row.terminal_tag == "returned-true" {
     match row.expectation {
       ExpectedToHold => Present { value: Passed }
@@ -796,7 +809,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
     }
   } else {
     none
-  }}}}}}}}}}}}}}
+  }}}}}}}}}}}}}}}
 }
 
 // ── THE SEED-FACING SURFACE, AND THE MIRROR COMPARATOR THAT COMES WITH IT ──────────────────
@@ -845,6 +858,7 @@ fn render_disposition(disposition: ClaimDisposition) -> String {
     PanickedBeforeVerdict => "panicked-before-verdict"
     NotAttemptedAfterAbort => "not-attempted-after-abort"
     ObservationUnreadableBeforeVerdict => "observation-unreadable-before-verdict"
+    SubjectUnresolvedBeforeVerdict => "subject-unresolved-before-verdict"
   }
 }
 

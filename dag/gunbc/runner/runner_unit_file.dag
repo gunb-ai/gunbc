@@ -64,7 +64,13 @@ import gunbc.ci.ci_runner_placement {
 }
 import gunbc.runner.runner_registration_labels {
   runner_registration_labels, runner_browser_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_slot_registration_labels,
 }
+import gunbc.runner.runner_slot_job_role {
+  CiJobSlot, DeployJobSlot, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers,
+}
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_unit { runner_slot_unit_dropin_path }
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.build_cache.build_cache_unit {
   sccache_endpoint_env_assignment,
@@ -496,6 +502,51 @@ fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity) -> RunnerUni
         RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
           RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
       }
+  }
+}
+
+// THE DEPLOY SLOT'S ROLE REACHES ITS UNIT AS AN INSTANCE DROP-IN, never a change to the template
+// one. systemd applies actions-runner@.service.d first and actions-runner@<instance>.service.d after
+// it, and a later Environment= of the same name wins, so this file replaces exactly three values for
+// exactly one instance: the job user, the label set, and DOCKER_HOST -- cleared, because the template
+// value is the CI job user's rootless socket and inheriting it would hand the deploy account a path
+// into the CI account's daemon (gunbc.runner.runner_slot_job_role runner_slot_job_role_runs_containers).
+// A CI slot has no such file: Absent is its answer, so the CI population renders byte-for-byte what it
+// did before.
+data runner_unit_slot_role_dropin_file_name: NonEmptyStr = "20-slot-role.conf" as NonEmptyStr
+
+fn runner_unit_slot_role_dropin_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_slot_unit_dropin_path(slot: slot, file_name: runner_unit_slot_role_dropin_file_name)
+}
+
+fn runner_unit_slot_role_dropin_text(deploy: RunnerHostDeploy, slot: RunnerSlotIdentity) -> RunnerUnitTextRendering? {
+  let role = runner_slot_job_role(slot: slot)
+  match role {
+    CiJobSlot => Absent
+    DeployJobSlot =>
+      Present { value: match runner_slot_registration_labels(slot: slot) {
+        RegistrationLabelsRefused { host: _, cause: c } =>
+          RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
+        RegistrationLabelsResolved { labels: labels } =>
+          match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
+            RunnerUnitLabels { json_text: labels_json } =>
+              RunnerUnitText {
+                text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
+                  sections: [DropInServiceSection { directives: concat(
+                    [
+                      runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: deploy.job_user) as String),
+                      runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
+                    ],
+                    if runner_slot_job_role_runs_containers(role: role) { [] } else { [runner_unit_environment(name: docker_host_env_var, value: "")] },
+                  ) }],
+                }),
+              }
+            RunnerUnitLabelsHostedRunner =>
+              RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
+            RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
+              RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
+          }
+      } }
   }
 }
 

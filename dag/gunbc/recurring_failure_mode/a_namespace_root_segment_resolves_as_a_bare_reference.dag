@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_namespace_root_segment_resolves_as_a_bare_reference
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_namespace_root_segment_resolves_as_a_bare_reference: RecurringFailureMode = RecurringFailureMode {
   identity: "a_namespace_root_segment_resolves_as_a_bare_reference" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a namespace root segment resolves as a bare reference: the first segment of a qualified module path -- `v2` in `v2.std.node.Node` -- is classified as a free value reference, and because the pool happens to declare something with that spelling it resolves to that declaration. The reference-derived dependency producer then publishes an edge from the reading module into a module it never names. Nothing refuses: the edge is well formed, the closure it widens still resolves, and every consumer of the closure reads a larger population as the true one.",

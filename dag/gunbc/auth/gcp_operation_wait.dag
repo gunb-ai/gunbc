@@ -62,6 +62,7 @@ type OperationWaitOutcome
   | OperationWaitUnreadable { operation_name: String, refusal: RestRefusal }
   | OperationWaitIdentityMismatch { operation_name: String, returned_name: String }
   | OperationWaitPacingRefused { operation_name: String }
+  | OperationWaitNameUnparsed { reason: String }
 
 type OperationWaitStep
   = OperationWaitReturn { outcome: OperationWaitOutcome }
@@ -112,6 +113,7 @@ fn operation_wait_refusal(outcome: OperationWaitOutcome, render_refusal: fn(Rest
       join([n, " was polled but the answer names a different operation, ", rn, "; the create is not reissued and a rerun observes before writing"], "")
     OperationWaitPacingRefused { operation_name: n } =>
       join([n, " could not be paced (the ", to_string(second_count(s: gcp_operation_poll_cadence)), "-second sleep failed), so no interval elapsed; the create is not reissued -- rerun once it is done"], "")
+    OperationWaitNameUnparsed { reason: r } => r
   }
 }
 
@@ -151,14 +153,21 @@ fn wif_operation_wait_ticks(remaining: Int, token: Secret, subject: WifOperation
 // already failed) skips the poll.
 fn wif_create_operation_wait(token: Secret, subject: WifOperationSubject, operation_name: String, done: Bool?, error: GoogleRpcStatus?, render_refusal: fn(RestRefusal) -> String) -> String
 {
+  operation_wait_refusal(outcome: wif_create_operation_outcome(token: token, subject: subject, operation_name: operation_name, done: done, error: error), render_refusal: render_refusal)
+}
+
+// THE SAME WAIT, TYPED: a caller that must not read success from an empty string (the bootstrap delta's
+// privileged write path, review 82849) matches OperationWaitDone and nothing else.
+fn wif_create_operation_outcome(token: Secret, subject: WifOperationSubject, operation_name: String, done: Bool?, error: GoogleRpcStatus?) -> OperationWaitOutcome
+{
   match gcp_operation_standing(done: done, error: error) {
-    OperationDone => ""
-    OperationFailed { code: c, message: m } => operation_wait_refusal(outcome: OperationWaitFailed { operation_name: operation_name, code: c, message: m }, render_refusal: render_refusal)
+    OperationDone => OperationWaitDone
+    OperationFailed { code: c, message: m } => OperationWaitFailed { operation_name: operation_name, code: c, message: m }
     OperationRunning =>
       match wif_operation_name_parse(name: operation_name, project_number: fleet_secrets_project_number, subject: subject) {
-        WifOperationNameMismatch { reason: r } => r
+        WifOperationNameMismatch { reason: r } => OperationWaitNameUnparsed { reason: r }
         WifOperationNamed { operation_id: id } =>
-          operation_wait_refusal(outcome: wif_operation_wait_ticks(remaining: gcp_operation_poll_ticks(), token: token, subject: subject, operation_id: id, operation_name: operation_name), render_refusal: render_refusal)
+          wif_operation_wait_ticks(remaining: gcp_operation_poll_ticks(), token: token, subject: subject, operation_id: id, operation_name: operation_name)
       }
   }
 }

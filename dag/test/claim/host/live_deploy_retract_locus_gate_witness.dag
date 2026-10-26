@@ -2,8 +2,8 @@
 // live_deploy_retract_candidate_locus_refusal), consumed by realize_live_deploy_retract_on_host.
 // FleetSsh is NOT exercised: its FleetSshExecutionContext is sole_constructor (sealed behind the
 // effectful known-hosts materialization), so no witness can supply one; its arm is covered only by
-// the closed-coproduct exhaustiveness of the match. The retract script is not dissolved here (its retained_srvn row stays until PB2's typed
-// preamble); the gate only narrows: the local locus proceeds, every remote locus refuses typed.
+// the closed-coproduct exhaustiveness of the match. The retract route is typed legs run after this gate;
+// the gate only narrows: the local locus proceeds, every remote locus refuses typed.
 module test.claim.host.live_deploy_retract_locus_gate_witness
 
 import std.types { String, Bool }

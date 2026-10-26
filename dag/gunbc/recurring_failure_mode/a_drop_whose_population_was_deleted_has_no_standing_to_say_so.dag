@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_drop_whose_population_was_deleted_has_no_s
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_drop_whose_population_was_deleted_has_no_standing_to_say_so: RecurringFailureMode = RecurringFailureMode {
   identity: "a_drop_whose_population_was_deleted_has_no_standing_to_say_so" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a rung drop whose covered population was deleted has no honest standing, so it is written as Superseded with a prose loss holder that names nobody.** (INVALID STATE: a Superseded row whose loss_holder is the prose 'none: ...' rather than a rostered Standing drop. The trigger did not fire, so Retired is false; no drop holds the loss, so Superseded is false; the row is ended by deleting its subject, which no standing arm said until Dissolved.)",

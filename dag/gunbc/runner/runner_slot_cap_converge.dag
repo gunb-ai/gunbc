@@ -1,0 +1,505 @@
+module gunbc.runner.runner_slot_cap_converge
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.algebra { trim, FreeSemigroup, non_empty_to_list }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup, systemd_unit_property_wire, SystemdUnitProperty }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv, SystemctlStep, ManagerReloadedImplicitly, ManagerReloadedExplicitly, ManagerNotReloaded, systemctl_mask_step, systemctl_unmask_step, systemctl_enable_step, systemctl_start_step, systemctl_stop_step, systemctl_daemon_reload_step }
+import extdeps.tools.grep { grep_nonempty_lines_in_tree_argv }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import extdeps.linux.cgroup_v2_memory {
+  parse_cgroup_memory_limit,
+  CgroupMemoryLimited,
+  CgroupMemoryUnlimited,
+  CgroupMemoryLimitUnparseable,
+}
+import gunbc.runner.runner_slot_desired { RunnerSlotDesired }
+import gunbc.runner.runner_slot_retirement { retirement_cgroup_unescaped_root }
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationOutcome,
+  SlotRead,
+  SlotReadRefused,
+  read_slot_over,
+  read_slot_worker_over,
+  drain_and_mask_runner_slot_over,
+  activate_runner_slot_over,
+  slot_actuation_settled,
+  slot_actuation_outcome_wire,
+  slot_state_active,
+}
+import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+
+// THE LIVE SLOT CAPS, CONVERGED SLOT BY SLOT, ON THE ACTUATOR THE ROUTE ALREADY HAS. The cap drop-ins
+// (20-fleet-width, 30-fleet-swap, 40-fleet-high, 50-fleet-tasks) are TEMPLATE-LEVEL: they sit under
+// actions-runner@.service.d, so one write reaches every slot, and a running slot keeps the cgroup it
+// started with until it is restarted. Writing the file is therefore not convergence. Convergence is the
+// slot's LIVE cgroup showing the desired memory.max and memory.swap.max (the files the memory-envelope
+// check reads, gunbc.host.memory_envelope), which only a restarted slot shows.
+//
+// TWO READBACKS, BOTH KEPT. `systemctl show` is the unit's view of its caps; the cgroup files are the
+// kernel's. After a reload the unit's view moves at once while a running slot's cgroup does not, so
+// "unit at desired, cgroup old" is the ordinary pre-restart state (NeedsRestart). The reverse -- the
+// cgroup at desired while the unit says otherwise -- is a disagreement no restart explains, and it
+// refuses.
+//
+// A BUSY SLOT IS NEVER RESTARTED. Idleness is read from the slot's own process listing before anything
+// is changed (read_slot_worker_over); a slot with a live Runner.Worker keeps the old shape, the refusal
+// is typed and names the slot, and the other slots still converge. Only an idle slot is drained
+// (drain_and_mask_runner_slot_over) and then activated (activate_runner_slot_over) -- the same two
+// effects gunbc.runner.runner_host_file_converge sequences for the width, with no second actuator.
+
+type SlotCapLive {
+  unit_memory_max: String
+  unit_swap_max: String
+  unit_memory_high: String
+  unit_tasks_max: String
+  control_group: String
+  cgroup_memory_max: String?
+  cgroup_swap_max: String?
+}
+
+type SlotCapStanding
+  = SlotCapsAtDesired
+  | SlotCapsNeedRestart { detail: String }
+  | SlotCapsReadingsDisagree { detail: String }
+  | SlotCapsUnread { cause: String }
+  | SlotCapsStopped
+
+// systemd prints an unbounded memory property as `infinity`; the cgroup file prints `max`. Either is
+// "no limit", and neither equals a byte count.
+fn slot_cap_unit_value_is(reading: String, bytes: ByteSize) -> Bool {
+  trim(s: reading) == to_string(byte_size_count(b: bytes))
+}
+
+fn slot_cap_cgroup_value_is(reading: String?, bytes: ByteSize) -> Bool {
+  match reading {
+    Absent => false
+    Present { value: body } =>
+      match parse_cgroup_memory_limit(body: body) {
+        CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == byte_size_count(b: bytes)
+        CgroupMemoryUnlimited => false
+        CgroupMemoryLimitUnparseable { body: _ } => false
+      }
+  }
+}
+
+fn slot_cap_unit_view_at_desired(live: SlotCapLive, desired: RunnerSlotDesired) -> Bool {
+  slot_cap_unit_value_is(reading: live.unit_memory_max, bytes: desired.memory_max)
+    && slot_cap_unit_value_is(reading: live.unit_swap_max, bytes: desired.memory_swap_max)
+    && slot_cap_unit_value_is(reading: live.unit_memory_high, bytes: desired.memory_high)
+    && trim(s: live.unit_tasks_max) == to_string(desired.tasks_max)
+}
+
+fn slot_cap_cgroup_view_at_desired(live: SlotCapLive, desired: RunnerSlotDesired) -> Bool {
+  slot_cap_cgroup_value_is(reading: live.cgroup_memory_max, bytes: desired.memory_max)
+    && slot_cap_cgroup_value_is(reading: live.cgroup_swap_max, bytes: desired.memory_swap_max)
+}
+
+// A PRESENT, PARSEABLE cgroup reading: `max` or a byte count. Missing and malformed are the same
+// refusal, never a "differs": an unread value must not authorise a drain, write and reload.
+fn slot_cap_cgroup_value_readable(reading: String?) -> Bool {
+  match reading {
+    Absent => false
+    Present { value: body } =>
+      match parse_cgroup_memory_limit(body: body) {
+        CgroupMemoryLimited { bytes: _ } => true
+        CgroupMemoryUnlimited => true
+        CgroupMemoryLimitUnparseable { body: _ } => false
+      }
+  }
+}
+
+// ONLY an empty ControlGroup (a unit with no cgroup: stopped) is a separately established no-cgroup
+// state, and a stopped unit whose LOADED caps are stale is NeedRestart (its next start would run them). A unit that HAS a cgroup owes complete, parseable readings of both files.
+fn slot_cap_standing(live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapStanding {
+  if trim(s: live.control_group) == "" {
+    if slot_cap_unit_view_at_desired(live: live, desired: desired) { SlotCapsStopped } else {
+      SlotCapsNeedRestart { detail: join(["stopped, and the unit's loaded caps are not the desired ones: MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max, " MemoryHigh=", live.unit_memory_high, " TasksMax=", live.unit_tasks_max], "") }
+    }
+  } else if !slot_cap_cgroup_value_readable(reading: live.cgroup_memory_max) || !slot_cap_cgroup_value_readable(reading: live.cgroup_swap_max) {
+    SlotCapsUnread { cause: join(["the unit has cgroup ", live.control_group, " but memory.max/memory.swap.max are missing or malformed: memory.max=", match live.cgroup_memory_max { Absent => "<missing>" Present { value: v } => trim(s: v) }, " memory.swap.max=", match live.cgroup_swap_max { Absent => "<missing>" Present { value: v } => trim(s: v) }], "") }
+  } else {
+    slot_cap_standing_readable(live: live, desired: desired)
+  }
+}
+
+fn slot_cap_standing_readable(live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapStanding {
+  let unit_ok = slot_cap_unit_view_at_desired(live: live, desired: desired)
+  let cgroup_ok = slot_cap_cgroup_view_at_desired(live: live, desired: desired)
+  if cgroup_ok && unit_ok {
+    SlotCapsAtDesired
+  } else if cgroup_ok {
+    SlotCapsReadingsDisagree {
+      detail: join(["the cgroup shows memory.max/memory.swap.max at the desired caps while systemctl show reports MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max, " MemoryHigh=", live.unit_memory_high, " TasksMax=", live.unit_tasks_max], ""),
+    }
+  } else {
+    SlotCapsNeedRestart {
+      detail: join(["cgroup memory.max=", match live.cgroup_memory_max { Absent => "<unread>" Present { value: v } => trim(s: v) }, " memory.swap.max=", match live.cgroup_swap_max { Absent => "<unread>" Present { value: v } => trim(s: v) }, "; unit view MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max], ""),
+    }
+  }
+}
+
+// WHICH UNITS OWE A RELOAD, AND WHY WE KNOW (or do not). Owed: the unit's own NeedDaemonReload is not no.
+// Unobserved: no complete show block came back for it, which proves nothing about what a reload would load.
+// A population that could not be listed at all is its own arm, never a unit.
+type PendingReloadKind = PendingReloadOwed | PendingReloadUnobserved
+
+type UnitPendingReload {
+  unit: NonEmptyStr
+  kind: PendingReloadKind
+}
+
+type HostPendingReloads
+  = HostNoReloadPending
+  | HostReloadsPending { units: FreeSemigroup<UnitPendingReload> }
+  | HostPopulationUnobserved { reason: String }
+
+fn host_pending_reloads_owed(p: HostPendingReloads) -> Bool {
+  match p {
+    HostNoReloadPending => false
+    HostReloadsPending { units: _ } => true
+    HostPopulationUnobserved { reason: _ } => true
+  }
+}
+
+fn host_pending_reloads_wire(p: HostPendingReloads) -> String {
+  match p {
+    HostNoReloadPending => "none"
+    HostReloadsPending { units: us } => join(map(non_empty_to_list(xs: us), u => join([u.unit as String, match u.kind { PendingReloadOwed => " reload=owed (NeedDaemonReload is not no)" PendingReloadUnobserved => " reload=unobserved (systemctl show returned no complete block for it)" }], "")), "; ")
+    HostPopulationUnobserved { reason: r } => concat("the slot population was not observed: ", r)
+  }
+}
+
+// THE HOST PLAN, PURE: one decision for the whole host from every slot's standing and the idle gate.
+// Unread or disagreeing readings withhold (nothing is known well enough to touch); all at desired leaves
+// the caps in place; a differing cap runs only when every slot is idle, and the write+reload is then
+// bracketed by drain_and_mask and activate on every slot.
+type HostCapPlan
+  = HostCapsLeaveInPlace
+  | HostCapsDrainWriteRestart
+  | HostCapsWithheld { cause: String }
+
+fn host_cap_standing_problem(unit: NonEmptyStr, s: SlotCapStanding) -> String? {
+  match s {
+    SlotCapsAtDesired => none
+    SlotCapsNeedRestart { detail: _ } => none
+    SlotCapsReadingsDisagree { detail: d } => Present { value: join([unit as String, ": the unit and the cgroup disagree: ", d], "") }
+    SlotCapsUnread { cause: c } => Present { value: join([unit as String, ": the live caps were not read: ", c], "") }
+    SlotCapsStopped => none
+  }
+}
+
+fn host_cap_standing_differs(s: SlotCapStanding) -> Bool {
+  match s {
+    SlotCapsNeedRestart { detail: _ } => true
+    SlotCapsAtDesired => false
+    SlotCapsReadingsDisagree { detail: _ } => false
+    SlotCapsUnread { cause: _ } => false
+    SlotCapsStopped => false
+  }
+}
+
+type SlotCapUnitStanding {
+  unit: NonEmptyStr
+  standing: SlotCapStanding
+}
+
+// THE CAP FILES' OWN STANDING, observed through the existing file route. A file plan that could not be
+// made (HostFileActionRefused) is Unreadable, never a difference: an unread file must not authorise a
+// drain, write and reload.
+type CapFilesState
+  = CapFilesSettled
+  | CapFilesDiffer
+  | CapFilesUnreadable { cause: String }
+
+// THE STEPS THE BRACKET SENDS, as typed steps from the same constructors the actuator renders its argv
+// from: the drain's mask and stop, the activation's unmask, enable and start, and the route's one
+// daemon-reload. Whether a step reloads the manager is the effect its constructor declares, so a pending
+// unit-file change is a hazard exactly when a step in the bracket would load it.
+fn host_cap_bracket_steps(unit: NonEmptyStr) -> List<SystemctlStep> {
+  [systemctl_mask_step(unit: unit), systemctl_stop_step(unit: unit), systemctl_unmask_step(unit: unit), systemctl_enable_step(unit: unit), systemctl_start_step(unit: unit), systemctl_daemon_reload_step()]
+}
+
+fn host_cap_step_reloads(step: SystemctlStep) -> Bool {
+  match step.effect {
+    ManagerReloadedImplicitly => true
+    ManagerReloadedExplicitly => true
+    ManagerNotReloaded => false
+  }
+}
+
+fn host_cap_bracket_reloads(unit: NonEmptyStr) -> Bool {
+  any(host_cap_bracket_steps(unit: unit), step => host_cap_step_reloads(step: step))
+}
+
+// WHEN THE PHASE PROCEEDS (ruling of clever-crane-830, narrow scope): a cap differs AND every
+// precondition holds -- every cap-file observation readable, no incomplete retiree, no loaded extra, no
+// pending unit-file change (NeedDaemonReload on any observed instance; an instance reports the template's
+// drop-ins), the host is then drained by gunbc.runner.runner_host_cap_bracket (admission closed first, live jobs waited out inside a declared bound), never judged idle with admission open. Then one bracket drains every slot (the mask reloads are harmless
+// because nothing is pending), writes, reloads once, activates and reads back. Everything else that is
+// not already at desired is Withheld, typed and named, and a withheld host BARS every other reload site:
+// a stale or hand-placed lower-cap file would otherwise load through an unrelated reload.
+// `pending_reloads` locates every instance that owes a reload or was not read, as a typed carrier rendered only into the Withheld cause.
+fn host_cap_plan(standings: List<SlotCapUnitStanding>, files: CapFilesState, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
+  let problems = filter(map(standings, x => match host_cap_standing_problem(unit: x.unit, s: x.standing) { Present { value: v } => v Absent => "" }), v => v != "")
+  if length(problems) > 0 {
+    HostCapsWithheld { cause: join(problems, "; ") }
+  } else {
+    match files {
+      CapFilesUnreadable { cause: c } => HostCapsWithheld { cause: concat("the cap files could not be observed: ", c) }
+      CapFilesSettled => host_cap_plan_settled_files(standings: standings, files_differ: false, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
+      CapFilesDiffer => host_cap_plan_settled_files(standings: standings, files_differ: true, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
+    }
+  }
+}
+
+fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, files_differ: Bool, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
+  // PENDING IS CHECKED FIRST, BEFORE ANY ARM THAT OPENS A RELOAD OR AN ACTIVATION, THE LEAVE-IN-PLACE ARM
+  // INCLUDED. "Nothing differs" covers only the managed files and the current values; a reload applies
+  // every source the manager has pending (a hand-placed instance drop-in with a lower MemoryMax among
+  // them), so a pending or unknown reload withholds whatever the managed files say.
+  if host_pending_reloads_owed(p: pending_reloads) && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
+    HostCapsWithheld { cause: join(["a unit-file change is pending reload (or an instance could not be read), and a reload applies every pending source to every running slot, undrained: the managed cap files settling does not cover it. pending: ", host_pending_reloads_wire(p: pending_reloads)], "") }
+  } else if !files_differ && !any(standings, x => host_cap_standing_differs(s: x.standing)) {
+    HostCapsLeaveInPlace
+  } else {
+    match retirement_cause {
+      Present { value: why } => HostCapsWithheld { cause: concat("a surplus slot has not retired, so the host is not quiescent: ", why) }
+      Absent =>
+        if length(extras) > 0 {
+          HostCapsWithheld { cause: concat("loaded runner instances outside the declared sets would receive the template reload and are not drained or activated by this route: ", join(map(extras, x => x as String), " ")) }
+        } else {
+          HostCapsDrainWriteRestart
+        }
+    }
+  }
+}
+
+type SlotCapOutcome
+  = SlotCapsLeftInPlace { unit: NonEmptyStr }
+  | SlotCapsRestartedAndRead { unit: NonEmptyStr }
+  | SlotCapsRefused { unit: NonEmptyStr, step: String, reason: String }
+
+fn slot_cap_outcome_settled(o: SlotCapOutcome) -> Bool {
+  match o {
+    SlotCapsLeftInPlace { unit: _ } => true
+    SlotCapsRestartedAndRead { unit: _ } => true
+    SlotCapsRefused { unit: _, step: _, reason: _ } => false
+  }
+}
+
+fn slot_cap_outcome_wire(o: SlotCapOutcome) -> String {
+  match o {
+    SlotCapsLeftInPlace { unit: u } => join(["caps ", u as String, " at-desired-left-in-place"], "")
+    SlotCapsRestartedAndRead { unit: u } => join(["caps ", u as String, " restarted-and-live-cgroup-read-back"], "")
+    SlotCapsRefused { unit: u, step: st, reason: r } => join(["caps ", u as String, " REFUSED step=", st, " ", r], "")
+  }
+}
+
+// THE OBSERVED STANDING'S WIRE. Observe mode reports what a read FOUND, never what a mode decided:
+// this renders the live standing of one unit (AtDesired / the owed detail / the readings disagree /
+// unread with its cause / stopped) directly from SlotCapStanding, so an unread cap never renders as a
+// settled no. It exists because the apply outcomes above answer "what did the phase DO"; observe does
+// nothing, and its answer is the standing itself.
+fn slot_cap_standing_wire(unit: NonEmptyStr, s: SlotCapStanding) -> String {
+  match s {
+    SlotCapsAtDesired => join(["caps ", unit as String, " observed-at-desired"], "")
+    SlotCapsNeedRestart { detail: d } => join(["caps ", unit as String, " OBSERVED-OWED ", d], "")
+    SlotCapsReadingsDisagree { detail: d } => join(["caps ", unit as String, " OBSERVED-DISAGREE ", d], "")
+    SlotCapsUnread { cause: c } => join(["caps ", unit as String, " OBSERVED-UNREAD ", c], "")
+    SlotCapsStopped => join(["caps ", unit as String, " observed-stopped-no-control-group"], "")
+  }
+}
+
+// ── The live reading ────────────────────────────────────────────────────────────────────────────
+
+data slot_cap_show_properties: List<SystemdUnitProperty> = [MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup]
+
+data slot_cap_cgroup_files: List<NonEmptyStr> = ["memory.max" as NonEmptyStr, "memory.swap.max" as NonEmptyStr]
+
+fn slot_cap_show_value(lines: List<String>, property: SystemdUnitProperty) -> String? {
+  let key = concat(systemd_unit_property_wire(property: property) as String, "=")
+  fold(lines, init: none, f: (acc, l) =>
+    if starts_with(s: l, prefix: key) {
+      Present { value: substring(s: l, start: string_length(s: key), end: string_length(s: l)) }
+    } else {
+      acc
+    })
+}
+
+// A grep row is `<path>:<value>`; the row for one file is the one whose path is exactly the slot's
+// cgroup directory plus the file name, so a job's descendant cgroup can never answer for the slot.
+fn slot_cap_cgroup_file_value(stdout: String, control_group: String, file_name: String) -> String? {
+  let prefix = join([cgroup_v2_mount_point as String, control_group, "/", file_name, ":"], "")
+  fold(split(s: stdout, delimiter: "\n"), init: none, f: (acc, l) =>
+    if starts_with(s: l, prefix: prefix) {
+      Present { value: substring(s: l, start: string_length(s: prefix), end: string_length(s: l)) }
+    } else {
+      acc
+    })
+}
+
+fn slot_cap_live_of_show(show_stdout: String, cgroup_stdout: String) -> SlotCapLive? {
+  let lines = map(split(s: show_stdout, delimiter: "\n"), l => trim(s: l))
+  match slot_cap_show_value(lines: lines, property: MemoryMax) {
+    Absent => none
+    Present { value: mm } =>
+      match slot_cap_show_value(lines: lines, property: MemorySwapMax) {
+        Absent => none
+        Present { value: sw } =>
+          match slot_cap_show_value(lines: lines, property: MemoryHigh) {
+            Absent => none
+            Present { value: hi } =>
+              match slot_cap_show_value(lines: lines, property: TasksMax) {
+                Absent => none
+                Present { value: tk } =>
+                  match slot_cap_show_value(lines: lines, property: ControlGroup) {
+                    Absent => none
+                    Present { value: cg } =>
+                      Present {
+                        value: SlotCapLive {
+                          unit_memory_max: mm,
+                          unit_swap_max: sw,
+                          unit_memory_high: hi,
+                          unit_tasks_max: tk,
+                          control_group: cg,
+                          cgroup_memory_max: slot_cap_cgroup_file_value(stdout: cgroup_stdout, control_group: cg, file_name: "memory.max"),
+                          cgroup_swap_max: slot_cap_cgroup_file_value(stdout: cgroup_stdout, control_group: cg, file_name: "memory.swap.max"),
+                        },
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type SlotCapRead
+  = SlotCapReadOk { live: SlotCapLive }
+  | SlotCapReadRefused { reason: String }
+
+// THE EXEC BOUNDARY AS A TYPED ARGUMENT (the machine_intake readback exemplar's RemoteAnswer shape):
+// what the exec EFFECT answers -- refused (never attempted), or a result. Splitting exec from judgement
+// is what makes the REAL route controllable: read_slot_cap_live_over and the scripted controls both
+// pass their exec answers through slot_cap_read_of_answers -- ONE decision core -- so a scripted
+// control and the live route cannot drift apart (§6b: script the world the route reads, never the
+// judgement it makes).
+type SlotCapExecAnswer
+  = SlotCapExecRefused { reason: String }
+  | SlotCapExecRan { success: Bool, exit_code: Int, stdout: String, stderr: String }
+
+fn slot_cap_exec_answer_of(outcome: TypedArgvExecOutcome) -> SlotCapExecAnswer {
+  match outcome {
+    TypedArgvExecRefused { reason: r } => SlotCapExecRefused { reason: r }
+    TypedArgvExecConverged { result: r } => SlotCapExecRan { success: r.success, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+  }
+}
+
+// THE DECISION CORE both routes run: it resolves every refusal with a NAMED cause BEFORE stdout is
+// looked at (a leg that printed and then failed can never read as a standing), honours the "no
+// ControlGroup means no cgroup directory was read" rule, and hands the bytes to slot_cap_live_of_show.
+// `cgroup` is Absent exactly when the unit has no ControlGroup and the leg was (correctly) not fired; a
+// non-empty ControlGroup whose leg is Absent is a typed refusal, never a silent gap.
+fn slot_cap_read_of_answers(show: SlotCapExecAnswer, cgroup: SlotCapExecAnswer?) -> SlotCapRead {
+  match show {
+    SlotCapExecRefused { reason: why } => SlotCapReadRefused { reason: why }
+    SlotCapExecRan { success: ok, exit_code: ec, stdout: sout, stderr: serr } =>
+      if !ok {
+        SlotCapReadRefused { reason: join(["systemctl show exit=", to_string(ec), " ", trim(s: serr)], "") }
+      } else {
+        let cg = match slot_cap_show_value(lines: map(split(s: sout, delimiter: "\n"), l => trim(s: l)), property: ControlGroup) {
+          Absent => ""
+          Present { value: v } => v
+        }
+        if trim(s: cg) == "" {
+          match slot_cap_live_of_show(show_stdout: sout, cgroup_stdout: "") {
+            Absent => SlotCapReadRefused { reason: "systemctl show returned no complete cap block for the unit" }
+            Present { value: live } => SlotCapReadOk { live: live }
+          }
+        } else {
+          match cgroup {
+            Absent => SlotCapReadRefused { reason: join(["the unit has cgroup ", cg, " but no cgroup leg was attempted"], "") }
+            Present { value: SlotCapExecRefused { reason: why } } => SlotCapReadRefused { reason: why }
+            Present { value: SlotCapExecRan { success: gok, exit_code: gec, stdout: gout, stderr: gerr } } =>
+              if !gok {
+                SlotCapReadRefused { reason: join(["cgroup grep exit=", to_string(gec), " ", trim(s: gerr)], "") }
+              } else {
+                match slot_cap_live_of_show(show_stdout: sout, cgroup_stdout: gout) {
+                  Absent => SlotCapReadRefused { reason: "systemctl show returned no complete cap block for the unit" }
+                  Present { value: live } => SlotCapReadOk { live: live }
+                }
+              }
+          }
+        }
+      }
+  }
+}
+
+// THE LIVE READ: both exec legs fire through typed_argv_exec_over_fleet_ssh (admission at the exec
+// boundary, §4b); the cgroup leg fires only when the show leg reached a non-empty ControlGroup, exactly
+// as before. The judgement is the shared core below.
+fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotCapRead
+{
+  let show = slot_cap_exec_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_cap_show_properties)))
+  // An inactive unit has an empty ControlGroup and no cgroup directory: nothing to read, and its
+  // cgroup readings stay absent, which is NeedsRestart rather than a fabricated value.
+  let cgroup = match show {
+    SlotCapExecRan { success: true, exit_code: _, stdout: sout, stderr: _ } =>
+      match slot_cap_show_value(lines: map(split(s: sout, delimiter: "\n"), l => trim(s: l)), property: ControlGroup) {
+        Absent => none
+        Present { value: cg } =>
+          if trim(s: cg) == "" {
+            none
+          } else {
+            Present { value: slot_cap_exec_answer_of(outcome: typed_argv_exec_over_fleet_ssh(
+              target: target,
+              context: context,
+              argv: grep_nonempty_lines_in_tree_argv(file_names: slot_cap_cgroup_files, root: retirement_cgroup_unescaped_root(control_group: cg) as NonEmptyStr),
+            )) }
+          }
+      }
+    _ => none
+  }
+  slot_cap_read_of_answers(show: show, cgroup: cgroup)
+}
+
+fn slot_cap_standing_over_from_read(read: SlotCapRead, desired: RunnerSlotDesired) -> SlotCapStanding {
+  match read {
+    SlotCapReadRefused { reason: why } => SlotCapsUnread { cause: why }
+    SlotCapReadOk { live: live } => slot_cap_standing(live: live, desired: desired)
+  }
+}
+
+fn slot_cap_standing_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapStanding
+{
+  slot_cap_standing_over_from_read(read: read_slot_cap_live_over(target: target, context: context, unit: unit), desired: desired)
+}
+
+// ── The effects ─────────────────────────────────────────────────────────────────────────────────
+
+// AFTER THE WRITE AND RELOAD: activate the drained slot (the existing activate effect), then converge on
+// its LIVE cgroup. A slot that comes back without both cgroup files at the desired caps and the unit view
+// agreeing refuses, typed.
+fn activate_and_read_back_slot_caps_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapOutcome
+{
+  let activated = activate_runner_slot_over(target: target, context: context, unit: unit)
+  if !slot_actuation_settled(o: activated) {
+    SlotCapsRefused { unit: unit, step: "activate", reason: slot_actuation_outcome_wire(o: activated) }
+  } else {
+    match slot_cap_standing_over(target: target, context: context, unit: unit, desired: desired) {
+      SlotCapsAtDesired => SlotCapsRestartedAndRead { unit: unit }
+      SlotCapsNeedRestart { detail: d } => SlotCapsRefused { unit: unit, step: "live-readback", reason: concat("the restarted slot's cgroup does not show the desired caps: ", d) }
+      SlotCapsReadingsDisagree { detail: d } => SlotCapsRefused { unit: unit, step: "live-readback", reason: d }
+      SlotCapsUnread { cause: c } => SlotCapsRefused { unit: unit, step: "live-readback", reason: c }
+      SlotCapsStopped => SlotCapsRefused { unit: unit, step: "live-readback", reason: "the unit has no cgroup after activation" }
+    }
+  }
+}
+
+fn read_host_cap_standings_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, desired: RunnerSlotDesired) -> List<SlotCapUnitStanding>
+{
+  map(units, u => SlotCapUnitStanding { unit: u, standing: slot_cap_standing_over(target: target, context: context, unit: u, desired: desired) })
+}

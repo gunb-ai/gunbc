@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.nested_optional_collapsed_by_infer_carried_by_emission
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data nested_optional_collapsed_by_infer_carried_by_emission: RecurringFailureMode = RecurringFailureMode {
   identity: "nested_optional_collapsed_by_infer_carried_by_emission" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "Infer carries optionality as one CardOptional flag on a node: join_optional_cardinality merges levels by design and with_required_cardinality strips the flag from a Present payload. So first() over a List<T?> is typed T? and the Present payload binding is typed bare T, while the Rust emission carries two levels (Option<Option<T>> and Option<T>). Specimen: gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle first_member_mismatch.",

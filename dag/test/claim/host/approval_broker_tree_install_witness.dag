@@ -20,7 +20,7 @@ import gunbc.host.host_effect_realize {
   TreeStepSourceObserve,
   TreeStepRevision,
 }
-import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -88,6 +88,7 @@ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> 
     base_root: "/nonexistent-w6-base",
     source_root: "/nonexistent-w6-source",
     revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
+    executables: approval_broker_release_locus_executables,
     transport: LocalShell,
   ), at: TreeStepSourceObserve)
 }
@@ -98,6 +99,7 @@ test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
     base_root: "/nonexistent-w6-base",
     source_root: "/nonexistent-w6-source",
     revision: RevisionNotInstalled,
+    executables: approval_broker_release_locus_executables,
     transport: LocalShell,
   ), at: TreeStepRevision)
 }

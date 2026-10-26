@@ -96,7 +96,7 @@ work such as inspecting a different finished part.
 `std.goal_assessment` deliberately owns no planner, actuator or post-actuation
 cycle. DESIGN §3d and that module name the fleet admission spine as the first
 consumer of the future shared effectful cycle. Bind cassette assessment now and
-keep `gunbc.fleet.printer_batch` as the existing actuator; do not introduce a
+keep `gunbc.fleet.printer_actuation` as the only actuator; do not introduce a
 cassette-local generic cycle. Before the cycle implementation, inspect
 `gunbc.fleet.fleet_converge_plan` at `dag/gunbc/fleet/fleet_converge_plan.dag`. The shared
 cycle lands with that spine as its required consuming integration, then the

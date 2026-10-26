@@ -276,7 +276,7 @@ fn wrap_envelope_args(
 ) -> Option<(u64, Option<u64>)> {
     let max = match tighter_bound(caller.memory_max, MemoryBound::Capped(install.memory_max)) {
         MemoryBound::Unbounded => return None,
-        MemoryBound::Capped(n) if n == 0 => return None,
+        MemoryBound::Capped(0) => return None,
         MemoryBound::Capped(n) => n,
     };
     let high = match tighter_bound(caller.memory_high, install.memory_high) {
@@ -338,7 +338,7 @@ fn wrap_now() {
 fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
     text.split(['/', '\n'])
         .map(str::trim)
-        .filter(|seg| {
+        .rfind(|seg| {
             if seg.is_empty() {
                 return false;
             }
@@ -346,7 +346,6 @@ fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
             let last = parts.next().unwrap_or("");
             parts.next().is_some() && format!(".{last}") == suffix
         })
-        .last()
         .map(str::to_string)
 }
 
@@ -402,8 +401,7 @@ fn live_modeled_slice_standing(
 fn innermost_modeled_capped_slice(text: &str) -> Option<String> {
     text.split(['/', '\n'])
         .map(str::trim)
-        .filter(|seg| RECOGNIZED_SYSTEM_SLICES.contains(seg))
-        .last()
+        .rfind(|seg| RECOGNIZED_SYSTEM_SLICES.contains(seg))
         .map(str::to_string)
 }
 

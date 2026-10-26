@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.refusal_producer_lands_without_its_ownership
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data refusal_producer_lands_without_its_ownership_row: RecurringFailureMode = RecurringFailureMode {
   identity: "refusal_producer_lands_without_its_ownership_row" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a front-end stage gains a producer of a fatal refusal reason (a new `^..._reason_...` symbol, or an old one newly reachable) while `v2.workflow.compile_door_cause_ownership` `known_frontier_causes` carries no row for it. The producer and its ownership are two facts in two files, and the only join between them is `v2.workflow.v2_native_route` `native_route_exclusions_all_classified` / `native_route_file_refusals_attributed`, executed by the native route, which is off the merge path (gunbc.rung_drop v2_native_route_off_the_merge_path).",

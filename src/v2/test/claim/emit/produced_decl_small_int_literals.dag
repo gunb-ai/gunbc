@@ -1,0 +1,65 @@
+module v2.test.claim.emit.produced_decl_small_int_literals
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.emit_produced { emit_produced_decl }
+import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_node,
+  dag_int_type_binding
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Authored, Conj, Edge, Node, NotADeclaration, Symbol, TypeNode, node_synthetic }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS HOW A SMALL INTEGER LITERAL (0, 1, 2, 7) IS PRINTED. Magnitudes 1 and 2 used to be
+// special-cased to the pick-table binding atoms `dag_binding_pick_lit_one/two`, so a produced
+// declaration returning 1 printed the binder's name instead of `1`. Every target that renders an
+// integer literal now declares `int_literal_form`, so 1 and 2 take the same path as 0, 7 and 606060.
+// The goldens are the text each target prints; a pick-lit spelling anywhere fails them.
+
+fn sil_decl(lexeme: String, name: Symbol) -> Node {
+  match dag_int_literal_fixture_node(lexeme: lexeme) {
+    Accepted { value: literal, diagnostics: _ } =>
+      node_synthetic(
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Authored { name: name },
+            target: dag_arrow_with_body_node(
+              domain: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic },
+              return_type_binding: dag_int_type_binding(),
+              body: literal
+            ),
+            declaration: NotADeclaration
+          }
+        ]
+      )
+    Rejected { diagnostics: _ } => Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+  }
+}
+
+fn sil_text(target: TargetModel, lexeme: String, name: Symbol) -> String {
+  match emit_produced_decl(decl: sil_decl(lexeme: lexeme, name: name), target: target) {
+    Accepted { value: medium, diagnostics: _ } => medium.carried
+    Rejected { diagnostics: _ } => "REJECTED"
+  }
+}
+
+test fn rust_prints_small_integer_literals_as_digits_holds() -> Bool {
+  sil_text(target: rust_target_model(), lexeme: "0", name: ^rust_binding_fn_add) == "fn add() -> i32 { 0 }"
+    && sil_text(target: rust_target_model(), lexeme: "1", name: ^rust_binding_fn_add) == "fn add() -> i32 { 1 }"
+    && sil_text(target: rust_target_model(), lexeme: "2", name: ^rust_binding_fn_add) == "fn add() -> i32 { 2 }"
+    && sil_text(target: rust_target_model(), lexeme: "7", name: ^rust_binding_fn_add) == "fn add() -> i32 { 7 }"
+}
+
+test fn c_prints_small_integer_literals_as_digits_holds() -> Bool {
+  sil_text(target: c_target_model(), lexeme: "1", name: ^c_binding_fn_add) == "int add() { return 1; }"
+    && sil_text(target: c_target_model(), lexeme: "2", name: ^c_binding_fn_add) == "int add() { return 2; }"
+}

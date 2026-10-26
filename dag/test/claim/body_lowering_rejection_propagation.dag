@@ -4,7 +4,7 @@ import std.types { List }
 import v2.std.text { String }
 import std.algebra { fold_list }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, None }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, NotADeclaration }
 import v2.compiler.body_lowering_fold {
   BodyLowered,
   BodyLowering,
@@ -42,7 +42,8 @@ fn emitted_shell(id: Symbol) -> Node {
     children: [
       Edge {
         label: Authored { name: ^grammar_production_identity_node_projection },
-        target: atom_node(id: id)
+        target: atom_node(id: id),
+        declaration: NotADeclaration
       }
     ]
   )

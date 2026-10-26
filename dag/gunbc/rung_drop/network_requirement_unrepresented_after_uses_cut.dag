@@ -1,7 +1,8 @@
 module gunbc.rung_drop.network_requirement_unrepresented_after_uses_cut
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
@@ -30,17 +31,11 @@ data network_requirement_unrepresented_after_uses_cut: RungDrop = RungDrop {
 
   declared: "2026-09-23",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: LostAsPassenger { carrier: "the authored uses rows whose alias bound std.resources.Network, deleted by D13 cut (c) under a nonempty-derived-demand criterion that never checked per-resource coverage; the requirement rode on the row, and the derived carrier has no Network entry to replace it" },
-    population: [
-      "every `net: Network` uses identity deleted by D13 cut (c) in gunbc#11993 (landed 4716b4c9954; 312 identities across 82 modules at that diff)",
-      "every `net: Network` uses identity deleted by the final-base census in gunbc#12125 (landed 1b2f64fd495; 165 identities across 31 modules at that diff)",
-      "every function called by or calling those functions whose resource contract is read from authored uses, which after the deletion sees no Network requirement where one was declared",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "every `net: Network` uses identity deleted by D13 cut (c) in gunbc#11993 (landed 4716b4c9954; 312 identities across 82 modules at that diff)", tail: ["every `net: Network` uses identity deleted by the final-base census in gunbc#12125 (landed 1b2f64fd495; 165 identities across 31 modules at that diff)", "every function called by or calling those functions whose resource contract is read from authored uses, which after the deletion sees no Network requirement where one was declared"] } },
     restoration_trigger: "D13's DependencyDemand carrier derives each RESOURCE requirement keyed on the resource DECLARATION's identity (std.resources.Network, not a service that uses it), sufficient that for every identity in this population the derived demand of its function names Network, established by a census over the deleted identities of both diffs and not by the nonempty-demand criterion that caused the loss. Restoring authored uses rows does NOT discharge it; widening service_names to add Network by spelling does NOT discharge it.",
-  }
+  } }
 }

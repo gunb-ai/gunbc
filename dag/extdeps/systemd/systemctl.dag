@@ -134,6 +134,13 @@ fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
 
+// `reload UNIT`: systemctl(1) asks the unit to reload its service-specific configuration (for sshd, the
+// SIGHUP that makes it re-read sshd_config) -- not the unit file, which is daemon-reload, and not a
+// restart, which would end the process. A unit that is not active refuses the reload.
+fn systemctl_reload_unit_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "reload", unit as String]
+}
+
 // THE USER MANAGER IS A DIFFERENT MANAGER, AND DAEMON-RELOAD IS PER MANAGER. `systemctl daemon-reload`
 // reloads ONLY the system manager. Units under /etc/systemd/user/ are loaded by user@UID.service;
 // --user transients look up Slice= there (gunbc.live_deploy.spec gunbc_user_work_slice_unit_path).
@@ -197,6 +204,13 @@ fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_start_verb as String, unit as String]
 }
 
+// `reset-failed` drops a failed unit's failed state, including a path unit that hit its trigger limit,
+// so a following `start` can re-arm it. The modeled operation is the transport row below; this is its
+// argv authority for the belt-exit stall release (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_rearm_at).
+fn systemctl_reset_failed_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "reset-failed", unit as String]
+}
+
 fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_restart_verb as String, unit as String]
 }
@@ -224,8 +238,10 @@ data systemctl_mask_verb: NonEmptyStr = "mask" as NonEmptyStr
 
 data systemctl_unmask_verb: NonEmptyStr = "unmask" as NonEmptyStr
 
+data systemctl_now_flag: NonEmptyStr = "--now" as NonEmptyStr
+
 fn systemctl_mask_now_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", systemctl_mask_verb as String, "--now", unit as String]
+  ["systemctl", systemctl_mask_verb as String, systemctl_now_flag as String, unit as String]
 }
 
 // MASK WITHOUT --now IS THE INHIBIT ALONE: the unit can no longer be started or restarted, and a
@@ -998,4 +1014,45 @@ fn systemctl_start_command(unit: NonEmptyStr) -> ArgvCommand {
       items: [unit as String],
     ),
   )
+}
+
+// WHICH SYSTEMCTL CALLS RELOAD THE MANAGER, DECLARED ON THE COMMAND'S OWN CONSTRUCTOR. systemctl(1):
+// `mask`, `unmask`, `enable` and `disable` reload the manager's configuration implicitly after changing
+// the unit files unless `--no-reload` is given, so a drain's mask is itself a daemon-reload and loads
+// every unit-file change pending on disk at that moment. The reload is also what makes a mask INHIBIT
+// (the manager does not see the symlink until it reloads), so `--no-reload` would not establish the
+// inhibition the drain exists for. A SystemctlStep pairs the argv with the effect its constructor
+// declares once; the argv is only ever rendered from it, never parsed back.
+type SystemctlManagerEffect
+  = ManagerReloadedImplicitly
+  | ManagerReloadedExplicitly
+  | ManagerNotReloaded
+
+type SystemctlStep {
+  argv: List<String>
+  effect: SystemctlManagerEffect
+}
+
+fn systemctl_mask_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_mask_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_unmask_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_unmask_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_enable_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_enable_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_start_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_start_argv(unit: unit), effect: ManagerNotReloaded }
+}
+
+fn systemctl_stop_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_stop_argv(unit: unit), effect: ManagerNotReloaded }
+}
+
+fn systemctl_daemon_reload_step() -> SystemctlStep {
+  SystemctlStep { argv: systemctl_daemon_reload_argv(), effect: ManagerReloadedExplicitly }
 }

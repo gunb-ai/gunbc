@@ -9,7 +9,7 @@ test fn netrc_content_shape_holds() -> Bool {
 }
 
 test fn account_password_body_shape_holds() -> Bool {
-  let got = account_password_body(new_password: "NEWPW")
+  let got = account_password_body(new_password: "NEWPW" as Secret) as String
   got == "{\"Password\": \"NEWPW\"}"
 }
 

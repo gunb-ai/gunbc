@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.emitter_catch_all_match_binding_drops_the_rc
 
 import std.types { NonEmptyStr }
 import std.decl_ref { decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data emitter_catch_all_match_binding_drops_the_rc_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "emitter_catch_all_match_binding_drops_the_rc_carrier" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a catch-all match binding drops the Rc carrier: the Rust emitter lowers a match over a coproduct to a match on the dereferenced carrier, so a catch-all arm that BINDS the scrutinee (`other => ...`) binds a borrow of the enum, and the emitter clones that borrow wherever the binding is used. Where the use is a position whose Rust type is the Rc carrier -- a record field of that coproduct type -- `other.clone()` is the enum and rustc refuses (E0308, expected Rc<T>, found T). INVALID STATE: an accepted .dag match whose emission is not a Rust program.",

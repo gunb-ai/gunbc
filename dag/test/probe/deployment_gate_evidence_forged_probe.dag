@@ -1,0 +1,413 @@
+module test.probe.deployment_gate_evidence_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. gunbc.auth.deployment_gate_authorization's claim is that removing a
+// required reviewer from srv1-production requires BOTH arms of the gate to have been WITNESSED on real
+// dispatches -- one released by the rule, one refused by it. A seal is worth exactly what the compiler
+// refuses, so this module attempts the REAL forgery rather than a caricature of it: a foreign module
+// handing FABRICATED INPUTS to the producers, which is the route an actual caller would take.
+//
+// THE FORGERIES BELOW, ONE PER ROUTE THAT WOULD WORK IF THE SEAL WERE ONLY A COMMENT. (a)-(d) were the
+// original four; (e)-(h) came from the side-chat round and (i)-(j) from the clock ruling -- the count is
+// deliberately not in this sentence, because a numbered header goes stale every time a door is added and
+// a stale count in a security claim is worse than none. The test names in
+// test.claim.deployment_gate_evidence_forged_probe_witness are the authority on what is claimed.
+//
+// (a) THE ACCEPTED REVIEW. A receipt is the primary evidence that GitHub accepted a rule review for a
+// run, on an environment, under an installation. Its producer, mint_accepted_rule_review, is the only
+// door; a foreign call refuses as ConstructorCallAdmissionRefused keyed by that callee. The inputs are
+// deliberately WELL-FORMED -- the 204, the path built from the run, the body naming the environment --
+// because a refusal that only fired on malformed inputs would not be a seal, it would be a parse error.
+//
+// (b) THE OBSERVED INSTALLATION. GateInstallationClaim is a configuration claim by design; what makes an
+// installation an IDENTITY is observe_gate_installation, which reads GitHub's answer for that repository
+// and joins it with the claim. Called from here it refuses the same way, so no module outside the
+// admitted few can mint the identity the token is later minted from.
+//
+// (c) THE OWNERSHIP. observe_rule_ownership turns a read rule plus the observed identity into "this rule
+// is ours". It used to take a caller-supplied App id outright, which is precisely the forgery its
+// admission now refuses.
+//
+// (d) THE CARRIERS THEMSELVES, written rather than obtained. Each sealed record below is declared at the
+// TOP LEVEL of this file and refuses as SoleConstructorViolation at the record, the check that still
+// bites if someone ever widens an admit_callers list.
+//
+// The witness test.claim.deployment_gate_evidence_forged_probe_witness enrols this probe and asserts each
+// refusal class at its subject by name, against a control that only names the module. dag/test/probe/
+// sits under the whole-tree strict-resolve exclusion, so this source reaches the compiler only through
+// that witness.
+
+import std.types { Int, Bool, NonEmptyStr, Timestamp }
+import std.optional { Present, Optional, optional_present }
+import std.scoped_authorization { AttemptIdentity }
+import gunbc.auth.deployment_gate_authorization {
+  AcceptedRuleReviewReceipt,
+  AcceptedReviewOutcome,
+  GateInstallationClaim,
+  InstallationObservation,
+  ObservedGateInstallation,
+  EnvironmentRuleOwnership,
+  OwnedByGateApp,
+  DeploymentGateTrialEvidence,
+  mint_accepted_rule_review,
+  observe_gate_installation,
+  observe_rule_ownership,
+  admit_reviewer_removal,
+  reviewer_removal_obstacle,
+  srv1_deployment_gate_boundary,
+  RemovalAdmitted,
+  RemovalRefused,
+  observe_removal_boundary_standing,
+  RemovalBoundaryStandingObservation,
+  ProtectionOwnershipJoin,
+  standing_from_join,
+  DeploymentGateBoundary,
+  ObservedInstant,
+  read_observed_instant,
+}
+// THE ACT BUILDER LIVES IN THE STEPS MODULE, which is the point: the confined producer is the module
+// that owns the act, and this probe is foreign to it.
+import gunbc.auth.deployment_gate_operator_steps { build_reviewer_removal_act,
+  ReviewerRemovalStepDecision,
+  ReviewerRemovalReady,
+  AdmittedReviewerRemovalAct }
+import std.human_intervention { HumanIntervention, HumanInterventionIdentity, FleetOnce, DischargedAt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }
+// THE WITNESS HELPERS ARE MODULES LIKE ANY OTHER, and that is the point of blocker 2: a witness proxy
+// that forwards to a sealed mint is a door, and a door has to be confined too or the mint's confine is
+// decor. This probe is foreign to the witness module, so every call below must be refused at the callee.
+import test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }
+import extdeps.github.deployment_protection_rule {
+  Approved,
+  Rejected,
+  DeploymentProtectionRuleReview,
+  EnabledDeploymentProtectionRule,
+  RuleOwningApp,
+  InstallationWireFields,
+  // THE RULE-ID CARRIER (review 83825). The forgeries below must stay WELL-FORMED apart from the one
+  // axis each forgery is about -- a forged receipt refused because its rule field is the wrong TYPE would
+  // prove nothing about the SEAL. So every rule field here carries the carrier; the single deliberate
+  // type error is the cross-axis forgery in forge_an_accepted_review, where a RUN id reaches a rule slot.
+  GitHubDeploymentProtectionRuleId,
+}
+import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+
+data forged_run_id: Int = 35447067113
+data forged_run: GitHubWorkflowRunId = GitHubWorkflowRunId { value: forged_run_id }
+data forged_environment: NonEmptyStr = "srv1-production"
+data forged_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 888800001 }
+data forged_app_id: GitHubAppId = GitHubAppId { value: 1900000001 }
+data forged_app_slug: NonEmptyStr = "gunbc-deployment-gate"
+
+// (d') THE FORGED IDENTITY, written instead of read. Declared at top level so the refusal is a row about
+// the RECORD and not a side effect of some enclosing expression.
+data forged_identity: ObservedGateInstallation = ObservedGateInstallation {
+  installation_id: forged_installation_id,
+  app_id: forged_app_id,
+  app_slug: forged_app_slug,
+  owner: "gunb-ai",
+  repo: "gunbc",
+}
+
+// (d'') THE FORGED RECEIPTS. The state, run id, rule, installation and repository pair are fields a
+// caller would love to choose; the type exists so it cannot. Every field is filled on purpose: a literal
+// refused for MISSING fields would prove nothing about the seal, so what remains to refuse it is the
+// seal.
+data forged_approved_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewReceipt {
+  run_id: forged_run,
+  environment_name: forged_environment,
+  state: Approved,
+  rule_id: GitHubDeploymentProtectionRuleId { value: 900000001 },
+  installation_id: forged_installation_id,
+  owner: "gunb-ai",
+  repo: "gunbc",
+}
+
+data forged_rejected_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewReceipt {
+  run_id: 35447067114,
+  environment_name: forged_environment,
+  state: Rejected,
+  rule_id: GitHubDeploymentProtectionRuleId { value: 900000001 },
+  installation_id: forged_installation_id,
+  owner: "gunb-ai",
+  repo: "gunbc",
+}
+
+// (d''') THE FORGED TRIAL PAIR: two receipts chosen to satisfy every check the removal mint performs,
+// which is exactly why the pair must not be writable either.
+data forged_pair: DeploymentGateTrialEvidence = DeploymentGateTrialEvidence {
+  approved: forged_approved_receipt,
+  rejected: forged_rejected_receipt,
+  // THE SUBJECT IS ALSO FORGED, and that is the point of the seal: with the boundary as a field, a
+  // caller could previously have paired receipts witnessed on one subject with a claim about another.
+  boundary: srv1_deployment_gate_boundary,
+}
+
+// (e) THE FORGED OWNERSHIP, assembled from the forged identity. OwnedByGateApp's payload is the sealed
+// observation, so this line is refused twice over: at the identity above and, if that were widened, at
+// the fold below.
+data forged_ownership: EnvironmentRuleOwnership = OwnedByGateApp {
+  observation: forged_identity
+}
+
+// (a) THE FORGED ACCEPTED REVIEW. Every input is one the caller wrote down: the run id, the environment,
+// the state it wants on the record, the repository it hopes the call addressed, the 204 it hopes GitHub
+// sent, and an ownership it asserts. The path is no longer one of its arguments at all: the mint builds
+// that route itself, which is the difference between checking a path and being unable to lie about one. If this resolved, the removal admission downstream would be a
+// formality -- which is precisely the defect this probe keeps closed.
+fn forge_an_accepted_review() -> AcceptedReviewOutcome {
+  mint_accepted_rule_review(
+    owner: "gunb-ai",
+    repo: "gunbc",
+    run_id: forged_run,
+    environment_name: forged_environment,
+    intended: Approved,
+    review: DeploymentProtectionRuleReview {
+      environment_name: forged_environment,
+      state: Approved,
+      comment: Present { value: "wanted it to look like a tap" },
+    },
+    status: 204,
+    ownership: forged_ownership,
+    // WELL-FORMED ON PURPOSE. This mint is admit_callers-confined: a foreign call is refused by the
+    // ADMISSION GATE before any argument is ever type-checked (that refusal is the probe's own claim
+    // a_foreign_call_to_the_... family), so a wrong TYPE here would be hidden behind the admission
+    // refusal and the census would see nothing. The cross-axis type refusal is witnessed instead at
+    // forged_rule_row_from_run_digits -- the readback row, whose id every consumer of this mint
+    // (RuleIsNotTheOneRequested first) compares against. The digits here are the run's, wrapped: the
+    // carrier guards the AXIS, and this line shows it accepting anything already on the rule axis,
+    // which is why the mint still has to re-check the digits against the readback's own attribution.
+    requested_rule_id: GitHubDeploymentProtectionRuleId { value: forged_run_id },
+  )
+}
+
+// (b) THE FORGED IDENTITY, obtained through the read rather than written. A claim plus a GitHub-shaped
+// body, handed to the observation route from outside. Nothing here is malformed, and it is still
+// refused, because the observation is a READ and this module has not read.
+fn forge_an_observed_installation() -> InstallationObservation {
+  observe_gate_installation(
+    owner: "gunb-ai",
+    repo: "gunbc",
+    status: 200,
+    wire: InstallationWireFields {
+      id: Present { value: 888800001 },
+      app_id: Present { value: 1900000001 },
+      app_slug: Present { value: forged_app_slug },
+    },
+    claim: GateInstallationClaim {
+      installation_id: forged_installation_id,
+      app_id: forged_app_id,
+    },
+  )
+}
+
+// (c) THE FORGED OWNERSHIP, obtained through the fold. This is the call the model used to allow with a
+// caller-supplied App id; the admission is what closed it.
+// THE CROSS-AXIS FORGERY (review 83825): a RUN ID fed to a RULE-ID slot. This is the line the review
+// asked to make unwritable, and the line that PROVES the carrier works. Before the carrier `id` was Int
+// and this exact call compiled -- GitHub's own readback type accepted the run's digits as a rule's id,
+// and the mint downstream compared them against the caller's claimed rule digit-for-digit, two different
+// upstream objects answering as one. Now `id: forged_run_id` (an Int datum) meets a field that demands
+// GitHubDeploymentProtectionRuleId and the compiler refuses the record literal on type. A plain record
+// (NOT sole_constructor -- GitHub's readback response carries the digits, so a reader of the wire must
+// be able to build it, exactly like GitHubAppInstallationId), so there is no seal in front of this
+// refusal and the census can see the type wall directly. The witness claim
+// a_run_id_where_a_rule_id_belongs_is_refused_at_the_row reads the row out of the census KEYED --
+// TypeMismatch at subject "Primitive(Int)", the measured rendering of a named Int reference at a
+// record-literal field -- against the same key at the control, which builds this row correctly; delete
+// the carrier and the row disappears and the claim goes red.
+data forged_rule_row_from_run_digits: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule {
+  id: forged_run_id,
+  node_id: "DPPR_forged",
+  enabled: true,
+  app: RuleOwningApp { id: forged_app_id, slug: forged_app_slug },
+}
+
+
+fn forge_an_ownership() -> EnvironmentRuleOwnership {
+  observe_rule_ownership(
+    rules: [
+      EnabledDeploymentProtectionRule {
+        id: GitHubDeploymentProtectionRuleId { value: 900000001 },
+        node_id: "DPPR_1",
+        enabled: true,
+        app: RuleOwningApp { id: forged_app_id, slug: forged_app_slug },
+      }
+    ],
+    environment_name: forged_environment,
+    observed: forged_identity,
+  )
+}
+
+// Whether the forged pair would read as admitted. The obstacle names the missing trial, so a forgery
+// that made it through would report NO obstacle -- that is what this returns true for.
+fn forged_removal_looks_admitted() -> Bool {
+  match reviewer_removal_obstacle(
+    admission: admit_reviewer_removal(
+      approved: Present { value: forged_approved_receipt },
+      rejected: Present { value: forged_rejected_receipt },
+      // THE SUBJECT IS THE HONEST ONE, on purpose. The forged receipts claim this repository and this
+      // environment, so a boundary mismatch could not be what refuses them; the only thing that can refuse
+      // them is HOW they were obtained. If this were the sibling boundary the test would pass for the
+      // wrong reason.
+      boundary: srv1_deployment_gate_boundary,
+    )
+  ) {
+    none => true
+    Present { value: _ } => false
+  }
+}
+
+// (e) THE REMOVAL ACT ITSELF, OBTAINED FROM OUTSIDE (side chat, blocker 3). `HumanIntervention` is an
+// ordinary record and is deliberately NOT sealed — the four instruction rows are harmless. What must not be
+// obtainable is THIS one act, the one an operator performs in the GitHub UI to take srv1's human reviewer
+// out. It is built only by build_reviewer_removal_act, which this module confines to
+// reviewer_removal_act_for. So the forgery is a direct call to the builder: well-formed arguments, foreign
+// caller. Before blocker 3 there was no call to make — the act was a public `data` row, readable by
+// importing the module, which is why no probe of this shape existed.
+fn forge_the_removal_act() -> HumanIntervention? {
+  // the arguments are the honest ones on purpose: a refusal here is about WHO is asking, not about what
+  // was passed. A forged boundary would refuse for the wrong reason and the red would be decor.
+  match admit_reviewer_removal(
+    approved: Present { value: forged_approved_receipt },
+    rejected: Present { value: forged_rejected_receipt },
+    boundary: srv1_deployment_gate_boundary,
+  ) {
+    RemovalAdmitted { evidence: e } =>
+      Present { value: build_reviewer_removal_act(boundary: srv1_deployment_gate_boundary) }
+    RemovalRefused { missing: _ } => none
+  }
+}
+
+// (f)-(h) THE CHAIN, END TO END, FROM OUTSIDE (side chat, blockers 1 and 2). The forgery the side chat
+// spelled out was: proxy receipts -> admitted trial -> HAND-BUILT Ready -> arbitrary intervention.
+//
+// ONE FORGERY PER FUNCTION, on purpose. This repository has already measured that a sealed-literal
+// diagnostic can fail to be emitted when an unadmitted CALL shares the function: a file that mixed them
+// could report the call and silently drop the literal, and the red would be cited as covering both.
+// So the sealed literals below take their sealed inputs as PARAMETERS (no call in sight), and the
+// proxy/mint calls live in functions of their own with no literals at all.
+
+// (f) THE HAND-BUILT READY DECISION (blocker 1). ReviewerRemovalStepDecision is a public sum, so the
+// variant is nameable by anyone; what confines it is that its payload is a SEALED RECORD, so the
+// literal below is refused at the record and a Ready decision cannot be written without the mint this
+// module does not own. The intervention is a plain HumanIntervention literal on purpose -- that record
+// is open by design (four of the five acts are harmless instructions, and sealing them would be
+// re-invention), so the test proves the intervention alone buys nothing: it cannot reach Ready.
+fn forge_the_admitted_act(evidence: DeploymentGateTrialEvidence) -> ReviewerRemovalStepDecision {
+  ReviewerRemovalReady {
+    admitted: AdmittedReviewerRemovalAct {
+      intervention: HumanIntervention {
+        identity: "forged.by.a.foreign.module" as HumanInterventionIdentity,
+        frequency: FleetOnce,
+        subject: "forged" as NonEmptyStr,
+        instruction: "forged by a module that never called the gate" as NonEmptyStr,
+        completion_evidence: DischargedAt {
+          evidence: DeclarationRef {
+            module_path: "gunbc.auth.deployment_gate_authorization",
+            decl_name: "admit_reviewer_removal",
+            field: WholeDeclaration,
+          },
+        }
+      },
+      evidence: evidence,
+      boundary: srv1_deployment_gate_boundary,
+    },
+  }
+}
+
+// (g) THE WITNESS PROXIES, CALLED FROM OUTSIDE (blocker 2). receipt_for and ready_act forward to sealed
+// mints, so while they were OPEN the mints' confine was unreachable by accusation: a foreign module
+// never had to call a mint, so nothing refused. Each call is its own function for the same
+// one-forger-per-function reason, and each is counted at ITS OWN subject.
+fn forge_through_the_receipt_proxy() -> Int {
+  match receipt_for(
+    run_id: 35447067113,
+    state: Approved,
+    owner: "gunb-ai",
+    repo: "gunbc",
+    environment: "srv1-production",
+    owned_environment: "srv1-production",
+    expected: 204,
+    installation_id: 888800001,
+    identity_repo: "gunbc",
+    rule_id: 900000001,
+  ) {
+    Present { value: _ } => 1
+    none => 0
+  }
+}
+
+fn forge_through_the_trial_proxy() -> Int {
+  match admitted_pair() {
+    RemovalAdmitted { evidence: _ } => 1
+    RemovalRefused { missing: _ } => 0
+  }
+}
+
+fn forge_through_the_act_proxy() -> Int {
+  match ready_act() {
+    Present { value: _ } => 1
+    none => 0
+  }
+}
+
+// (h) THE STANDING'S OWN DOOR, FROM OUTSIDE (blocker 3's mint). A standing is what turns historical
+// evidence into a licence, so it must be as hard to obtain as the receipts. Inputs are parameters: this
+// FUNCTION contains a call to a confined mint and writes no sealed value. The instant argument is a
+// PARAMETER, not something written here: this function must not hand over an instant, because its job is
+// to show the DOOR is closed, not to invent a way through it. The file as a whole does contain one
+// ObservedInstant -- data forged_instant, (j) below -- and that one exists precisely to be refused.
+fn forge_the_standing(
+  joined: ProtectionOwnershipJoin,
+  boundary: DeploymentGateBoundary,
+  attempt: AttemptIdentity,
+  observed_at: ObservedInstant,
+) -> RemovalBoundaryStandingObservation {
+  observe_removal_boundary_standing(
+    joined: joined,
+    boundary: boundary,
+    attempt: attempt,
+    observed_at: optional_present(value: observed_at),
+  )
+}
+
+// (i) THE CLOCK'S DOOR, FROM OUTSIDE (the ruling's clock seal). A standing whose instant came from a
+// foreign reading is a stale observation wearing a fresh stamp: the bound in blocker 2 only bites if the
+// instant it measures against is the one the clock returned. The door admits the stage-5 read and named
+// fixtures and nobody else, so the only thing left to check is that a foreign module cannot reach it.
+// The argument is a parameter, not a literal: what is being tested is the DOOR, not the string.
+fn forge_the_instant(reading: NonEmptyStr?) -> Optional<ObservedInstant> {
+  read_observed_instant(reading: reading)
+}
+
+data forged_instant_text: Timestamp = "2026-10-19T12:00:00Z"
+
+// (j) THE FORGED INSTANT, written instead of read (the ruling's clock RED). This is the (d) family, and
+// it is the check the whole seal comes down to: if a foreign module can write the instant an observation
+// is stamped with, then blocker 2's freshness bound measures a number the caller chose. The text beside it
+// is a well-formed UTC instant -- a shape check is not what is being refused here.
+data forged_instant: ObservedInstant = ObservedInstant { instant: forged_instant_text }
+
+// (k) THE STANDING HELPER, FROM OUTSIDE (round-6 blocker 2). `standing_from_join` consumed the join and
+// stamped the standing, so for four rounds it was the door the census never looked at: a foreign module
+// holding a valid ProtectionOwnershipJoin could call the HELPER and obtain a standing, bypassing the
+// confined mint and the clock door together. A mint with an open proxy beside it is a mint with the confine
+// painted on the wall. The instant here is a PARAMETER again: what is under test is whether a stranger can
+// reach the helper at all, not whether it can write a time. GREEN took the RED phase's `.instant`
+// projection out: the helper now takes the sealed value, so a caller that cannot author one cannot call it
+// even if it could reach it -- and it cannot, which is what this function and its census claim are for.
+fn forge_the_standing_via_the_helper(
+  joined: ProtectionOwnershipJoin,
+  boundary: DeploymentGateBoundary,
+  attempt: AttemptIdentity,
+  observed_at: ObservedInstant,
+) -> RemovalBoundaryStandingObservation {
+  standing_from_join(
+    joined: joined,
+    boundary: boundary,
+    attempt: attempt,
+    observed_at: observed_at,
+  )
+}

@@ -24,7 +24,7 @@ import v2.extdeps.languages.dag { dag_grammar_root }
 import std.algebra { Empty, fold_list, length, list_snoc_item, map_lookup }
 
 import std.optional { Absent, Present }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, TypeNode, node_with_occurrence_id, symbol_intern_lexeme }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, TypeNode, node_with_occurrence_id, symbol_intern_lexeme, NotADeclaration }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarProduction, GrammarRoot, grammar_atom, grammar_expr_terminal_lexeme }
@@ -181,8 +181,8 @@ fn planted_unreadable_fn_decl() -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: grammar_atom(identity: ^dag_surface_fn_decl) },
-      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: grammar_atom(identity: ^occurrence_role_planted_not_a_spine) }
+      Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: grammar_atom(identity: ^dag_surface_fn_decl), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: grammar_atom(identity: ^occurrence_role_planted_not_a_spine), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   )
@@ -267,7 +267,7 @@ fn plant_unreadable_binder(n: Node) -> Node {
   }
   node_with_occurrence_id(
     kind: kind,
-    children: fold(n.children, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: e.label, target: plant_unreadable_binder(n: e.target) }) }),
+    children: fold(n.children, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: e.label, target: plant_unreadable_binder(n: e.target), declaration: e.declaration }) }),
     occurrence_id: n.occurrence_id
   )
 }

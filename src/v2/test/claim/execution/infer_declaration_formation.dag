@@ -77,7 +77,7 @@ fn formation_verdict_of(src: String, name: Symbol) -> FormationVerdict {
               Present { value: f } =>
                 match f.grounding {
                   DerivedGrounding { grounding: _ } => acc
-                  GroundingNotDerived { node: _ } => acc + 1
+                  GroundingNotDerived { node: _, site: _ } => acc + 1
                 }
             }
           })

@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.type_parameter_kind_deferral_never_collected
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, CeilingAmbiguous }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// A DEFERRED JUDGMENT THAT WAS NEVER COLLECTED, AND SHIPPED AS IF IT WERE A VERDICT. v2's kinded-slot
+// wall carried an arm that admitted ANY type argument merely because it was a bound type parameter.
+// The arm was introduced as a DECLARED DEFERRAL -- the binder was to collect the forwarded parameter's
+// kind later and the arm was then to become a judgment -- and the collector never arrived, so a
+// temporary became permanent behaviour with no owner and no observation. HARM: a parameter forwarded
+// into a slot declared with a kind passed the slot whether it was declared with that kind, with a
+// different kind, or with no kind at all, so "this position was kind-checked" was false for every
+// forwarded parameter in the corpus while the wall's own name and type said otherwise.
+data type_parameter_kind_deferral_never_collected: RecurringFailureMode = RecurringFailureMode {
+  identity: "type_parameter_kind_deferral_never_collected" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingAmbiguous },
+
+  receipts: [
+    "RUNG FOUND AT: admitted silently, at the front end -- the worst rung on the ladder, an error class that never surfaces. Before this PR an argument that was a bound type parameter answered ArgumentTypeParameterUnjudged and the fold mapped that arm to acc, i.e. no judgment at all, so a parameter of any kind or of none passed every kinded slot in the corpus. CEILING: structurally reachable by declaration identity, which is where it now sits: both kinds are resolved to their declaring paths and compared as declarations, and every unresolved, contested or unkinded link refuses. NEXT-RUNG TRIGGER, at capability grain: not needed for this class -- the arm is deleted, so no future producer can restore the admit without a compile error, and the witness file holds the three named decisions. What remains open is the v1 counterpart, recorded separately as gunbc.recurring_failure_mode kind_wall_receives_a_de_identified_type_argument."
+
+    "THE DEFERRAL, AND WHAT IT FAILED TO PAY. v2.compiler.resolve resolve_kind_inhabitance answered an argument that resolves to a bound type parameter with the one arm v2.std.type_binder KindInhabitance reserves for exactly that case, and v2.std.type_binder type_application_conformance folds that arm to CONFORMANCE -- an admit. Its documentation framed the missing judgment as pending, to be collected by the binder. Nothing in the tree ever collected it: the arm had no path to a judgment and no diagnostic named its absence, so the wall could not distinguish 'deferred' from 'verified'.",
+
+    "PROVENANCE, from git log -S over the arm. a21a9014dae (#13038) introduced it as the declared deferral. f10cf27fc28 (#13293) reverted that change. 86cbb993b35 (#13309) re-landed it. The re-land carried the arm and its framing forward and still carried no collector, which is the failure this row names: the revert-and-reland cycle moved the deferral without ever paying it, and no claim or census observed the difference between the three states.",
+
+    "WHY A NAMED, TYPED, DOCUMENTED ARM IS STILL NOT A WALL. The arm was reachable by ordinary code -- a generic forwarding one of its own parameters into a kinded slot is routine -- so this was not a dead branch waiting for an unusual input. It was live, and it decided nothing. A reader inspecting the wall saw a kinded-slot check with a type-parameter case handled and a named diagnostic class (TypeApplicationKindNotInhabited) sitting beside it; the class was real and reachable for a NAMED non-inhabitant, which is precisely what made the parameter case look covered. The guarantee was false only where the argument was a parameter, which is where forwarding puts it.",
+
+    "WHAT CLOSED IT, and the rule that made the closure admissible. The arm now routes to a judgment over declarations: the parameter's own declared kind, read through the index at the declaration that binds it, compared against the kind the position asks for -- which the wall had already resolved from the APPLIED declaration. No identity-to-spelling fallback and no ambient admission (the 2026-10-15 ruling): a parameter declared without a kind, or with another kind, refuses, because a name that stands for an unknown set of inhabitants establishes nothing about them. THE ARM IS DELETED, NOT LEFT UNPRODUCED: DESIGN section 4b meta-obligation 4 requires a climb to delete the lower-rung production machinery it obsoletes, and section 3 makes a surviving arm an attractor -- a fold arm that answers acc would hand any future producer the silent admit back, with nothing watching. Its refusals are named separately instead (KindInhabitance ArgumentForwardedUnkinded / ArgumentForwardedKindDiffers / ArgumentForwardedUnresolved, each with its own resolve reason), so the three ways a forward can fail stay distinguishable at the diagnostic instead of collapsing into the named-argument wall's single reason. ArgumentLiteralUnjudged is KEPT and still admits: the Nat literal rule is a language-level admission rather than lower-rung machinery for this climb, and it is observed by a claim.",
+
+    "THE ASYMMETRY THIS ROW RECORDS FOR THE OTHER FRONT END. The same position in v1 (v1.compiler.infer_resolve type_arg_kind_inhabitance, its two unconditional admits) is NOT closed by this row's fix and cannot be closed there: the v1 wall is handed the argument as a de-identified leaf, so no predicate at that site can be grounded. That is its own class with its own measurement, recorded in kind_wall_receives_a_de_identified_type_argument. Filing them together would hide the difference that matters: v2's arm could judge and did not; v1's cannot judge yet, and the repair belongs above it."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_kind_inhabitance", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.type_binder", decl_name: "type_application_conformance", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.type_binder", decl_name: "KindInhabitance", field: WholeDeclaration }
+  ]
+}

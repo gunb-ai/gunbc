@@ -65,6 +65,7 @@ type Expression
   | LogicalAnd { left: Expression, right: Expression }
   | Equals { left: Expression, right: Expression }
   | NotEquals { left: Expression, right: Expression }
+  | LogicalNot { operand: Expression }
 
 type TemplateSegment
   = LiteralText { text: String }
@@ -118,6 +119,7 @@ type ExpressionSpellings {
   and_op: String
   eq_op: String
   neq_op: String
+  not_op: String
   interp_open: String
   interp_close: String
   index_open: String
@@ -136,6 +138,7 @@ data default_expression_spellings: ExpressionSpellings = {
   and_op: " && ",
   eq_op: " == ",
   neq_op: " != ",
+  not_op: "!",
   interp_open: "${{ ",
   interp_close: " }}",
   index_open: "['",
@@ -234,6 +237,8 @@ fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) ->
       join([serialize_operand_with(operand: l, parent: ComparisonPrecedence, sp: sp), serialize_operand_with(operand: r, parent: ComparisonPrecedence, sp: sp)], sp.eq_op)
     NotEquals { left: l, right: r } =>
       join([serialize_operand_with(operand: l, parent: ComparisonPrecedence, sp: sp), serialize_operand_with(operand: r, parent: ComparisonPrecedence, sp: sp)], sp.neq_op)
+    LogicalNot { operand: o } =>
+      concat(sp.not_op, serialize_operand_with(operand: o, parent: NotPrecedence, sp: sp))
   }
 }
 
@@ -246,14 +251,17 @@ fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) ->
 // nested a looser operator under a tighter one renders byte-for-byte as before. The tree needs no
 // Group node: grouping is determined by the tree's shape, and a second representation of it would
 // let the two disagree.
-type ExpressionPrecedence = OrPrecedence | AndPrecedence | ComparisonPrecedence | AtomPrecedence
+// `!` is the unary operator that binds tighter than comparison in the same operator list, so its
+// operand is grouped unless it is an atom (`!cancelled()`, `!(a == b)`).
+type ExpressionPrecedence = OrPrecedence | AndPrecedence | ComparisonPrecedence | NotPrecedence | AtomPrecedence
 
 fn expression_precedence_rank(p: ExpressionPrecedence) -> Int {
   match p {
     OrPrecedence => 1
     AndPrecedence => 2
     ComparisonPrecedence => 3
-    AtomPrecedence => 4
+    NotPrecedence => 4
+    AtomPrecedence => 5
   }
 }
 
@@ -263,6 +271,7 @@ fn expression_precedence(expression: Expression) -> ExpressionPrecedence {
     LogicalAnd { left: _, right: _ } => AndPrecedence
     Equals { left: _, right: _ } => ComparisonPrecedence
     NotEquals { left: _, right: _ } => ComparisonPrecedence
+    LogicalNot { operand: _ } => NotPrecedence
     ContextAccess { context: _, path: _ } => AtomPrecedence
     FunctionCall { function: _, args: _ } => AtomPrecedence
     StringLiteral { value: _ } => AtomPrecedence
@@ -549,6 +558,7 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
     NotEquals { left: l, right: r } =>
       expression_accesses_runner_var_via_env(expression: l) ||
         expression_accesses_runner_var_via_env(expression: r)
+    LogicalNot { operand: o } => expression_accesses_runner_var_via_env(expression: o)
     StringLiteral { value: _ } => false
   }
 }
@@ -570,6 +580,7 @@ fn expression_uses_context(expression: Expression, target: ExpressionContext) ->
     NotEquals { left: l, right: r } =>
       expression_uses_context(expression: l, target: target) ||
         expression_uses_context(expression: r, target: target)
+    LogicalNot { operand: o } => expression_uses_context(expression: o, target: target)
     StringLiteral { value: _ } => false
   }
 }
@@ -710,6 +721,8 @@ fn eval_format_args(args: List<Expression>, github_path: fn(List<String>) -> Git
             ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
           NotEquals { left: _, right: _ } =>
             ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          LogicalNot { operand: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
         }
     }
   }
@@ -775,6 +788,11 @@ fn evaluate_expression(expression: Expression, github_path: fn(List<String>) -> 
                 ExpressionValue { value: "true" }
               }
           }
+      }
+    LogicalNot { operand: o } =>
+      match evaluate_expression(expression: o, github_path: github_path) {
+        ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
+        ExpressionValue { value: v } => if gha_value_is_truthy(s: v) { ExpressionValue { value: "" } } else { ExpressionValue { value: "true" } }
       }
   }
 }

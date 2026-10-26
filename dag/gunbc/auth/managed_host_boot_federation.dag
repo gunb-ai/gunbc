@@ -13,12 +13,15 @@ import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.bmc_secure { BmcSecured, BmcSecureRefused }
 import gunbc.host.managed_host {
-  ManagedHost, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured,
-  ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, ManagedHostMembership, managed_host_binding,
+  ManagedHost, OrdinaryMember, MemberUnderDeclaredDrop, ManagedHostMembership,
   managed_host_memberships, managed_membership_for,
 }
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch,
+  bmc_control_binding,
+}
 import gunbc.machine_intake.subject { MachineIntakeSubject }
-import std.decl_ref { DeclarationRef }
+import gunbc.rung_drop { RungDrop }
 
 // ── THE BOOT'S FEDERATION IS POLICY FOR THE PAIR (MANAGED HOST, BOOT), NOT HOST IDENTITY ───────
 // (docs/plans/managed-host-untangle.md, cut 4c; operator ruling (b), 2026-10-03.) A boot of a
@@ -98,14 +101,14 @@ type ManagedHostBootFederation sole_constructor {
 
 type BootFederationUnprovisionedCause
   = BootFederationHostNotManaged
-  | BootFederationHostUnbound { standing: ManagedHostBindingStanding }
+  | BootFederationHostUnbound { standing: BmcControlStanding }
   | BootFederationNoPolicy
 
 type ManagedHostBootFederationStanding
   = BootFederationProvisioned { federation: ManagedHostBootFederation }
   | BootFederationProvisionedUnderDeclaredDrop {
       federation: ManagedHostBootFederation
-      drop: DeclarationRef
+      drop: RungDrop
       standing_subject: MachineIntakeSubject
       current_subject: MachineIntakeSubject
     }
@@ -146,17 +149,17 @@ fn boot_federation_standing_of(m: ManagedHostMembership) -> ManagedHostBootFeder
 
 // THE PAIR'S ADMISSION INCLUDES ITS POLICY, and its cells are the ROW's values. The BMC credential
 // cell is the version the row's secure standing published (gunbc.machine_intake.bmc_secure
-// ManagedCredentialReference secret), read through managed_host_binding so it is never a secured
+// ManagedCredentialReference secret), read through the bound control route so it is never a secured
 // account beside some other controller's access; the fleet key cell is the census medium readback
 // on the store host, which runs over fleet ssh. The approval submission MAC key is NOT a cell: the
 // boot no longer signs an approval filing. Each cell is conditioned on its one version resource, so a
 // rotation is refused until the pin and the cell move together.
 fn admit_boot_federation(host: ManagedHost) -> ManagedHostBootFederationStanding {
-  match managed_host_binding(host: host) {
-    ManagedHostBound { binding: _ } =>
+  match bmc_control_binding(observed: host.access, secured: host.secure) {
+    BmcControlBound { route: _ } =>
       match host.secure.outcome {
         BmcSecureRefused { cause: c } =>
-          BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: ManagedHostNotSecured { cause: c } } }
+          BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: BmcControlNotSecured { cause: c } } }
         BmcSecured { endpoint: _, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
           match boot_federation_names(host: host.host) {
             Absent => BootFederationUnprovisioned { host: host.host, cause: BootFederationNoPolicy }
@@ -172,12 +175,12 @@ fn admit_boot_federation(host: ManagedHost) -> ManagedHostBootFederationStanding
               } }
           }
       }
-    ManagedHostAccessUnobserved { endpoint: e } =>
-      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: ManagedHostAccessUnobserved { endpoint: e } } }
-    ManagedHostNotSecured { cause: c } =>
-      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: ManagedHostNotSecured { cause: c } } }
-    ManagedHostEndpointMismatch { observed: o, secured: s } =>
-      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: ManagedHostEndpointMismatch { observed: o, secured: s } } }
+    BmcControlAccessUnobserved { endpoint: e } =>
+      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: BmcControlAccessUnobserved { endpoint: e } } }
+    BmcControlNotSecured { cause: c } =>
+      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: BmcControlNotSecured { cause: c } } }
+    BmcControlEndpointMismatch { observed: o, secured: s } =>
+      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: BmcControlEndpointMismatch { observed: o, secured: s } } }
   }
 }
 

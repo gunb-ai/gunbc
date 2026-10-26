@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.green_floor_executes_no_claim_whose_verdict_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data green_floor_executes_no_claim_whose_verdict_a_body_change_can_move: RecurringFailureMode = RecurringFailureMode {
   identity: "green_floor_executes_no_claim_whose_verdict_a_body_change_can_move" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a green required floor is population-bounded: a change to a declaration's BODY moves the verdict of claims whose evaluation reaches it, and the floor executes none of them unless they sit in its static gate roster or their own lines were edited** (THE INVALID STATE is a change approved and enqueued over a green floor while claims that were true at its base are false at its head. The floor holds two populations and neither is the affected set. The EXECUTED population is the static gate selectors (`v2.workflow.required_floor` `required_gate_prefixes` and `required_gate_authored_modules`) plus changed witnesses, the test fns whose own line range the diff edits. The COMPILED population adds the touched modules and the readers of every declaration whose INTERFACE changed (`changed_declaration_signature_consumer_unplanned`). No relation executes a claim because a body its evaluation runs has changed.)",

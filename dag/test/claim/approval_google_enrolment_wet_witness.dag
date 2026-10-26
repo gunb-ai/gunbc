@@ -1,0 +1,78 @@
+module test.claim.approval_google_enrolment_wet_witness
+
+import extdeps.shell
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import gunbc.auth.approval_google_enrolment {
+  GoogleEnrolmentSlot, GoogleEnrolmentAbsent, GoogleEnrolmentActive, GoogleEnrolmentRevoked,
+  GoogleEnrolmentWrites, GoogleEnrolmentReplays, GoogleEnrolmentRefused, GoogleEnrolmentRevokedKey,
+  SubjectPinCreatedForPresented, SubjectPinReread, google_enrollment_id,
+}
+import gunbc.auth.approval_device_redemption {
+  observe_google_enrolment, commit_google_enrolment, revoke_google_enrolment, create_or_read_subject_pin,
+  DeviceStoreWritten, DeviceStoreSlotOccupied,
+}
+import test.claim.approval_google_enrolment_witness { first_write, again, key_a, fx_subject, fx_email }
+
+// THE ENROL INHABITANCE CLAIM: the real model fold (first_write / again run google_enrolment_admission
+// over the real stages) against the REAL enrolment store under a throwaway /tmp root, asserting the
+// route's own sequence: absent -> Writes -> committed -> Active -> Replays -> second create occupied ->
+// revoke -> Revoked -> RevokedKey. device_enrol_admit calls exactly these store functions with
+// approval_device_store_root, so deleting the store or the fold makes this fail. Hermetic fold
+// claims live in test.claim.approval_google_enrolment_witness. Effects: shell.Mktemp.DirWithTemplate,
+// the CAS store's Filesystem reads and create-new writes, shell.Remove.RecursiveForce. Enrolled on
+// the local-repo wet lane.
+
+fn fresh_enrolment_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_google_enrolment.XXXXXX").path
+}
+
+fn is_absent(s: GoogleEnrolmentSlot) -> Bool {
+  match s { GoogleEnrolmentAbsent => true  _ => false }
+}
+
+test fn a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store() -> Bool {
+  let path = fresh_enrolment_root()
+  let root = path as NonEmptyStr
+  let id = google_enrollment_id(subject: fx_subject, decision_key: key_a)
+  let before = observe_google_enrolment(root: root, enrollment_id: id)
+  let ok = match first_write() {
+    GoogleEnrolmentWrites { enrollment: e } =>
+      is_absent(s: before)
+        && (match commit_google_enrolment(root: root, enrollment: e) { DeviceStoreWritten => true  _ => false })
+        && (match commit_google_enrolment(root: root, enrollment: e) { DeviceStoreSlotOccupied => true  _ => false })
+        && (match observe_google_enrolment(root: root, enrollment_id: id) {
+          GoogleEnrolmentActive { enrollment: stored } =>
+            (match again(slot: GoogleEnrolmentActive { enrollment: stored }) {
+              GoogleEnrolmentReplays { enrollment: r } => (r.enrollment_id as String) == (e.enrollment_id as String)
+              _ => false
+            })
+              && (match revoke_google_enrolment(root: root, slot: GoogleEnrolmentActive { enrollment: stored }, revoked_at: "2026-09-17T11:00:00Z") { DeviceStoreWritten => true  _ => false })
+              && (match observe_google_enrolment(root: root, enrollment_id: id) {
+                GoogleEnrolmentRevoked { enrollment: r, revoked_at: _ } =>
+                  match again(slot: GoogleEnrolmentRevoked { enrollment: r, revoked_at: "2026-09-17T11:00:00Z" }) {
+                    GoogleEnrolmentRefused { cause: GoogleEnrolmentRevokedKey } => true
+                    _ => false
+                  }
+                _ => false
+              })
+          _ => false
+        })
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: path)
+  ok && removed.success
+}
+
+// THE SUBJECT PIN THROUGH THE REAL STORE: the first sign-in creates the pin for its subject; another
+// account's create under the same address loses the CAS and rereads the FIRST subject.
+test fn the_subject_pin_create_or_read_rereads_the_first_subject_after_a_lost_cas() -> Bool {
+  let path = fresh_enrolment_root()
+  let root = path as NonEmptyStr
+  let first = create_or_read_subject_pin(root: root, email: fx_email, subject: fx_subject)
+  let second = create_or_read_subject_pin(root: root, email: fx_email, subject: "google-sub-other" as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: path)
+  (match first { SubjectPinCreatedForPresented => true  _ => false })
+    && (match second { SubjectPinReread { subject: s } => (s as String) == (fx_subject as String)  _ => false })
+    && removed.success
+}

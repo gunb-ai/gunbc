@@ -1,0 +1,29 @@
+module gunbc.rung_drop.gcp_iam_bootstrap_project_reach_residual
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, Enumerated }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
+
+// THE RESIDUAL OF STANDING PROJECT REACH (DESIGN 4b(3)). iam-bootstrap holds setIamPolicy on every
+// secret, account and pool in the fleet project (gunbc.auth.gcp_iam_bootstrap_model
+// iam_bootstrap_delta_role_permissions); the deny set keeps it from payloads, tokens, keys, the
+// project policy and roles, but neither deny nor allow conditions can name resources for these types,
+// so the GRANTEE of a write is constrained only by the executor (approved cells, exactly). A merged main
+// change could make the tapped job grant any fleet secret's accessor to an arbitrary principal, which
+// iam-converge's resource-local reach could not. The ceremony's operator token held this reach before.
+// iam.allowedPolicyMemberDomains is a DECLARED candidate, not applied: the project sits under
+// organizations/266638272282 (gunbc.auth.gcp_iam_bootstrap_authority, observed 2026-09-28), so the
+// constraint is applicable there and would bound grantees to the organization's domains.
+data gcp_iam_bootstrap_project_reach_residual: RungDrop = RungDrop {
+  identity: "gcp_iam_bootstrap_project_reach_residual" as NonEmptyStr,
+  subject: "which principals a tapped bootstrap delta run can grant fleet-secret access to",
+  declared: "2026-10-18",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "the organization policy constraint iam.allowedPolicyMemberDomains on organizations/266638272282, or a GCP-side grant mechanism that admits only the approved cells" },
+    population: Enumerated { members: FreeSemigroup { head: "every secret, service account and workload identity pool in project gunbai-secrets", tail: [] } },
+    restoration_trigger: "a credential-layer bound on grantees of iam-bootstrap's writes holds -- iam.allowedPolicyMemberDomains enforced on the fleet project's organization and observed refusing an out-of-domain member, or a platform grant mechanism (e.g. Privileged Access Manager with service-account approvers at GA) that issues only the approved cells -- at which point this row retires"
+  } }
+}

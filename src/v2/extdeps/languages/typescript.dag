@@ -45,7 +45,7 @@ import v2.std.compilers.lexing {
   LexRuleSet,
   LexRules,
   LiteralPattern,
-  lex_rule_set_token_class_member,
+  lex_rule_set_token_class_map,
   ModeledLexRules,
   OneOrMorePattern,
   RepeatPattern,
@@ -93,9 +93,10 @@ import v2.std.grounding {
   insert_per_language_fact_bundle_entry
 }
 import v2.std.node_query { find_named_child }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
-  IntLiteralUnwired,
+  ListIntroductionUnwired,
+  IntLiteralDecimal,
   ProducedDeclParamSegment,
   ProducedDeclRenderRows,
   ProducedDeclSupport,
@@ -195,6 +196,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.host_transport {
   HostBuildEnvironment,
@@ -213,9 +215,10 @@ import v2.std.host_transport {
   target_emit_host_runtime_row_unconfigured
 }
 import v2.std.logic { bool_boolean_algebra, bool_node }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert, collection_concat_shape }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert, collection_concat_shape, map_contains_key }
 import v2.std.algebra_structure_signature { algebra_binary_fn_node, approximate_field_type_node, boolean_algebra_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
+import std.host_text { chars }
 
 type TsNumberPrimitiveFacts {
   surface_spelling: Symbol
@@ -283,7 +286,7 @@ fn ts_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn ts_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn ts_primitive_algebra_witness_node(
@@ -681,7 +684,8 @@ fn ts_value_expression_projection_full(
       true_token: ^ts_token_kw_true,
       false_token: ^ts_token_kw_false
     },
-    int_literal_form: IntLiteralUnwired,
+    int_literal_form: IntLiteralDecimal { literal_token: ^ts_token_num_lit },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: block_evaluation_mode
   }
 }
@@ -887,7 +891,7 @@ fn ts_type_annotation_name_emitted(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: binding) }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: binding), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -897,8 +901,8 @@ fn ts_record_field_emitted(field_binding: Symbol, type_child: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding) },
-      Edge { label: Positional, target: type_child }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding), declaration: NotADeclaration },
+      Edge { label: Positional, target: type_child, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -908,7 +912,7 @@ fn ts_record_fields_single_emitted(field: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: field }
+      Edge { label: Positional, target: field, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -918,8 +922,8 @@ fn ts_record_fields_pair_emitted(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -948,7 +952,8 @@ fn ts_record_type_task_emitted() -> Node {
             field_binding: ^ts_binding_field_status,
             type_child: ts_type_annotation_name_emitted(binding: ^ts_binding_type_task_status)
           )
-        )
+        ),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -959,7 +964,7 @@ fn ts_type_annotation_task_record_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_record_type_task_emitted() }
+      Edge { label: Positional, target: ts_record_type_task_emitted(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -969,8 +974,8 @@ fn ts_type_alias_decl_emitted(name_binding: Symbol, type_child: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: name_binding) },
-      Edge { label: Positional, target: type_child }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: name_binding), declaration: NotADeclaration },
+      Edge { label: Positional, target: type_child, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1097,8 +1102,8 @@ fn ts_pr3_identity_typed_param_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
-      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1108,7 +1113,7 @@ fn ts_pr3_identity_typed_params_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted() }
+      Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1118,7 +1123,7 @@ fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted() }
+      Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1128,10 +1133,10 @@ fn ts_pr3_identity_typed_fn_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_pr3_identity) },
-      Edge { label: Positional, target: ts_pr3_identity_typed_params_opt_emitted() },
-      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_pr3_identity), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_pr3_identity_typed_params_opt_emitted(), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted(), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1354,6 +1359,7 @@ fn ts_pr3_identity_target_model_witness() -> Witness<TargetModel> {
     Holds { value: bundle } =>
       Holds {
         value: TargetModel {
+          primitive_realizations: PrimitiveRealizationsUnwired,
           produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
@@ -1465,6 +1471,7 @@ fn ts_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ts_produced_decl_support(),
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
@@ -1566,13 +1573,14 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       param_type_separator: ^ts_token_colon,
       param_list_separator: ^ts_token_comma
     },
-    occupancy_form: TargetGenericApply {
-      surface: ^ts_surface_type_occupancy,
+    optional_instantiation_form: TargetGenericApply {
+      surface: ^ts_surface_type_optional_instantiation,
       open: ^ts_token_lt,
       separator: ^ts_token_comma,
       field_label_separator: optional_absent(),
       close: ^ts_token_gt
     },
+    optional_head: ^Optional,
     instantiation_form: TargetGenericApply {
       surface: ^ts_surface_type_generic_apply,
       open: ^ts_token_lt,
@@ -1702,6 +1710,7 @@ fn ts_sg2_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_sg2_type_expr_target_model_node(),
     lex: ts_sg2_type_expr_lex(),
@@ -1742,7 +1751,8 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_foobar } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -1750,7 +1760,8 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_x } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -1758,7 +1769,8 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -1848,8 +1860,8 @@ fn ts_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
+      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1953,6 +1965,7 @@ fn ts_task_target_model_witness() -> Witness<TargetModel> {
     Holds { value: bundle } =>
       Holds {
         value: TargetModel {
+          primitive_realizations: PrimitiveRealizationsUnwired,
           produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
@@ -1973,7 +1986,7 @@ fn ts_fn_add_target_model() -> Node {
 fn ts_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 
@@ -2385,8 +2398,14 @@ fn ts_lex() -> LexRules {
   ModeledLexRules { root: ts_lex_rules() }
 }
 
+// The token-class membership map for ts_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data ts_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: ts_lex_rules())
+
 fn ts_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(rules: ts_lex_rules(), token_class: sym)
+  map_contains_key(m: ts_lex_token_class_membership, key: sym)
 }
 
 fn ts_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.upstream_carrier_substituted_for_the_consumer_selected_subject
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data upstream_carrier_substituted_for_the_consumer_selected_subject: RecurringFailureMode = RecurringFailureMode {
   identity: "upstream_carrier_substituted_for_the_consumer_selected_subject" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**the producer's countable artifact is not necessarily the consumer's subject** (INVALID STATE: a claim about a downstream consumer's behaviour, coverage or resource use is derived from an UPSTREAM CARRIER because that carrier is easy to inspect or count, while no receipt binds the carrier to the exact subject or event the consumer actually processed -- and the carrier-to-consumer mapping may transform, suppress, coalesce, repeat or fan out. HARM: every measurement of the carrier can be perfectly pinned and perfectly correct, and the conclusion about the consumer still false, because the two name different objects. The error survives arbitrary care applied to the wrong side of the boundary.)",

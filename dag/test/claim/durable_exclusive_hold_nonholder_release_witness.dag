@@ -1,0 +1,195 @@
+module test.claim.durable_exclusive_hold_nonholder_release_witness
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set { CasGeneration, CasUnreadableReadRefused, cas_generation_count }
+import std.effect_grant { Write, NamespacePosition, FilesystemPathTree }
+import std.scoped_authorization {
+  AuthorizationScope, AuthorizedAction, AttemptIdentity, OperatorGrant,
+  AuthorizationPermitted, AuthorizationRefused, AuthorizationNotGranted,
+}
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+  DurableHoldRef, DurableHoldSubject, DurableHoldCompletionReport, SectionObservedComplete, SectionObservedIncomplete,
+  SectionCompletionUnobservable, DurableHoldNonHolderRelease, ReleasedOnEvidence, ReleasedByOperator,
+  DurableHoldNonHolderReleaseAssessment, NonHolderReleaseEligible, NonHolderReleaseRefused,
+  NonHolderReleaseNothingHeld, NonHolderReleaseForAnotherHold, NonHolderReleaseForAnotherHolder, NonHolderReleaseSlotMoved,
+  NonHolderReleaseSectionIncomplete, NonHolderReleaseCompletionUnobservable, NonHolderReleaseNotAuthorized,
+  NonHolderReleaseSlotUndecodable, NonHolderReleaseObservationUnavailable,
+  NonHolderReleasedOnEvidence, NonHolderReleasedByOperator,
+  durable_hold_nonholder_release_assess,
+}
+import std.decl_ref { decl_ref }
+import std.roster_frontier { fold_frontier_expiry, frontier_rows_well_formed }
+import gunbc.durable_exclusive_hold_file_store { durable_hold_nonholder_release_consumer_frontier_rows }
+
+// THE PURE ARM TABLE OF THE NON-HOLDER RELEASE. Every row decides from a supplied hold observation and
+// a supplied release, over std.durable_exclusive_hold durable_hold_nonholder_release_assess alone.
+// The route through the real store, the authorization decided by `authorize`, the write and the
+// read-back are test.claim.durable_exclusive_hold_nonholder_release_wet_witness -- the inhabitance
+// half of this table, which supplies nothing at the store boundary.
+
+type NrpObservation {
+  observed_head: NonEmptyStr
+}
+
+data nrp_holder: String = "converge:4242"
+
+fn nrp_owner(text: String) -> DurableHoldOwnerRef {
+  text as DurableHoldOwnerRef
+}
+
+fn nrp_held(owner: String, generation: CasGeneration) -> DurableHoldObservation {
+  HoldSlotHeld { generation: generation, owner: nrp_owner(text: owner) }
+}
+
+data nrp_hold: DurableHoldRef = "/var/lib/gunbc/leases/cell" as DurableHoldRef
+
+data nrp_other_hold: DurableHoldRef = "/var/lib/gunbc/leases/cell-b" as DurableHoldRef
+
+fn nrp_subject(holder: String, generation: CasGeneration) -> DurableHoldSubject {
+  DurableHoldSubject { hold: nrp_hold, holder: nrp_owner(text: holder), generation: generation }
+}
+
+fn nrp_on_evidence(holder: String, generation: CasGeneration, verdict: Int) -> DurableHoldNonHolderRelease<NrpObservation> {
+  ReleasedOnEvidence {
+    evidence: DurableHoldCompletionReport {
+      hold: nrp_subject(holder: holder, generation: generation),
+      completion: if verdict == 0 { SectionObservedComplete { observation: NrpObservation { observed_head: "c0ffee1" as NonEmptyStr } } }
+        else if verdict == 1 { SectionObservedIncomplete { observation: NrpObservation { observed_head: "0ld4ead" as NonEmptyStr } } }
+        else { SectionCompletionUnobservable { cause: "git rev-parse HEAD exited 128" as NonEmptyStr } },
+    },
+  }
+}
+
+fn nrp_grant(subject: DurableHoldSubject) -> OperatorGrant<DurableHoldSubject> {
+  OperatorGrant {
+    escalation_id: "esc-hold-release-1" as NonEmptyStr,
+    scopes: [AuthorizationScope {
+      verb: Write,
+      resource: NamespacePosition { tree: FilesystemPathTree, path: ["hold", "cell"] },
+      action: "hold.release-non-holder" as AuthorizedAction,
+    }],
+    subject: subject,
+    purpose: "witness: free an abandoned lease" as NonEmptyStr,
+    attempt: ("clear-lease-1" as NonEmptyStr) as AttemptIdentity,
+    intent_hash: content_hash_of_value(value: "nonholder-release-intent-v1" as NonEmptyStr),
+    granted_by: "operator" as NonEmptyStr,
+    granted_at: "2026-10-24T10:00:00Z",
+    expires_at: "2026-10-24T12:00:00Z",
+  }
+}
+
+fn nrp_permitted(holder: String, generation: CasGeneration) -> DurableHoldNonHolderRelease<NrpObservation> {
+  ReleasedByOperator { authorization: AuthorizationPermitted { grant: nrp_grant(subject: nrp_subject(holder: holder, generation: generation)) } }
+}
+
+data nrp_not_granted: DurableHoldNonHolderRelease<NrpObservation> = ReleasedByOperator {
+  authorization: AuthorizationRefused { cause: AuthorizationNotGranted { escalation_id: "esc-hold-release-1" as NonEmptyStr } },
+}
+
+fn nrp_label(a: DurableHoldNonHolderReleaseAssessment<NrpObservation>) -> String {
+  match a {
+    NonHolderReleaseEligible { generation: _, released_holder: _, basis: NonHolderReleasedOnEvidence { observation: _ } } => "eligible-evidence"
+    NonHolderReleaseEligible { generation: _, released_holder: _, basis: NonHolderReleasedByOperator { grant: _ } } => "eligible-operator"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseNothingHeld } => "nothing-held"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseForAnotherHold { hold: _, subject: _ } } => "another-hold"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseForAnotherHolder { holder: _, subject: _ } } => "another-holder"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseSlotMoved { subject: _, observed: _ } } => "slot-moved"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseSectionIncomplete { generation: _, holder: _, observation: _ } } => "section-incomplete"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseCompletionUnobservable { generation: _, holder: _, cause: _ } } => "completion-unobservable"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseNotAuthorized { generation: _, holder: _, cause: _ } } => "not-authorized"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseSlotUndecodable { generation: _, detail: _ } } => "undecodable"
+    NonHolderReleaseRefused { refusal: NonHolderReleaseObservationUnavailable { cause: _ } } => "unavailable"
+  }
+}
+
+fn nrp_at(hold: DurableHoldRef, observed: DurableHoldObservation, request: DurableHoldNonHolderRelease<NrpObservation>) -> String {
+  nrp_label(a: durable_hold_nonholder_release_assess(hold: hold, observed: observed, request: request))
+}
+
+fn nrp(observed: DurableHoldObservation, request: DurableHoldNonHolderRelease<NrpObservation>) -> String {
+  nrp_at(hold: nrp_hold, observed: observed, request: request)
+}
+
+// ONE HOLD, ONE GENERATION, THREE COMPLETION VERDICTS: only an observed-complete section is
+// eligible, and it is eligible at the generation both the read and the evidence name, for the holder
+// the slot names, carrying the observation it was read from.
+test fn only_an_observed_complete_section_releases_and_an_unobserved_one_refuses() -> Bool {
+  let held = nrp_held(owner: nrp_holder, generation: 3)
+  nrp(observed: held, request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 1)) == "section-incomplete"
+    && nrp(observed: held, request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 2)) == "completion-unobservable"
+    && (match durable_hold_nonholder_release_assess(hold: nrp_hold, observed: held, request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 0)) {
+      NonHolderReleaseEligible { generation: g, released_holder: h, basis: NonHolderReleasedOnEvidence { observation: o } } =>
+        cas_generation_count(g: g) == 3 && (h as String) == nrp_holder && (o.observed_head as String) == "c0ffee1"
+      _ => false
+    })
+}
+
+// EVIDENCE RELEASES ONLY THE HOLD IT WAS TAKEN OF, AND THE SUBJECT CHECK DOMINATES THE VERDICT: a
+// complete verdict taken of the hold at 3 refuses against the slot at 5 and against another holder at
+// 3, and an unobservable verdict for another holder reports the binding, not the look.
+test fn evidence_releases_only_the_hold_it_was_taken_of() -> Bool {
+  let complete_at_3 = nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 0)
+  nrp(observed: nrp_held(owner: nrp_holder, generation: 5), request: complete_at_3) == "slot-moved"
+    && nrp(observed: nrp_held(owner: "converge:9999", generation: 3), request: complete_at_3) == "another-holder"
+    && nrp(observed: nrp_held(owner: "converge:9999", generation: 3), request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 2)) == "another-holder"
+}
+
+// THE OPERATOR ARM: a refused decision refuses as not-authorized; a permitted grant releases only the
+// hold its Subject names; a permitted grant naming this hold is eligible and carries the grant.
+test fn an_operator_grant_releases_only_when_permitted_and_naming_this_hold() -> Bool {
+  let held = nrp_held(owner: nrp_holder, generation: 3)
+  nrp(observed: held, request: nrp_not_granted) == "not-authorized"
+    && nrp(observed: held, request: nrp_permitted(holder: nrp_holder, generation: 4)) == "slot-moved"
+    && nrp(observed: held, request: nrp_permitted(holder: "converge:9999", generation: 3)) == "another-holder"
+    && (match durable_hold_nonholder_release_assess(hold: nrp_hold, observed: held, request: nrp_permitted(holder: nrp_holder, generation: 3)) {
+      NonHolderReleaseEligible { generation: g, released_holder: h, basis: NonHolderReleasedByOperator { grant: grant } } =>
+        cas_generation_count(g: g) == 3 && (h as String) == nrp_holder && (grant.granted_by as String) == "operator"
+      _ => false
+    })
+}
+
+// NOTHING HELD, OR A SLOT NOBODY CAN READ, RELEASES NOTHING ON EITHER BASIS. Absent and free are
+// nothing-held; an undecodable slot and an unavailable observation keep their own arms, so a caller
+// is sent to the store rather than told the slot is free.
+test fn a_slot_that_is_not_observed_held_releases_nothing_on_either_basis() -> Bool {
+  let evidence = nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 0)
+  let operator = nrp_permitted(holder: nrp_holder, generation: 3)
+  let free = HoldSlotFree { generation: 3, released_by: "done" as DurableHoldReleaseRef }
+  let undecodable = HoldSlotUndecodable { generation: 3, detail: "no recognised tag" as NonEmptyStr }
+  let unavailable = HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: "store unreachable" } }
+  nrp(observed: HoldSlotAbsent, request: evidence) == "nothing-held"
+    && nrp(observed: HoldSlotAbsent, request: operator) == "nothing-held"
+    && nrp(observed: free, request: evidence) == "nothing-held"
+    && nrp(observed: free, request: operator) == "nothing-held"
+    && nrp(observed: undecodable, request: evidence) == "undecodable"
+    && nrp(observed: undecodable, request: nrp_not_granted) == "undecodable"
+    && nrp(observed: unavailable, request: evidence) == "unavailable"
+    && nrp(observed: unavailable, request: operator) == "unavailable"
+}
+
+
+// THE CONSUMER FRONTIER'S TRIGGER DISCRIMINATES. With deploy_transition's exclusive-create outcome
+// present the row is pending; with it retired the row has fired, so the census refuses a row left
+// standing after the lease migrates. The live-tree reading is the dissolution census's own.
+test fn the_consumer_frontier_is_pending_while_the_exclusive_create_lease_stands_and_fires_when_it_retires() -> Bool {
+  let rows = durable_hold_nonholder_release_consumer_frontier_rows
+  let standing = fold_frontier_expiry(rows: rows, present_decls: [decl_ref(module_path: "gunbc.deploy_transition", decl_name: "LeaseCreateOutcome")])
+  let retired = fold_frontier_expiry(rows: rows, present_decls: [])
+  frontier_rows_well_formed(rows: rows)
+    && standing.pending_count == 1 && standing.fired_still_present_count == 0 && standing.unbound_count == 0
+    && retired.pending_count == 0 && retired.fired_still_present_count == 1
+}
+
+// HOLDER AND GENERATION DO NOT IDENTIFY A HOLD. Another slot held by the same holder at the same
+// generation is a different hold: evidence and a permitted grant taken of one refuse against the other
+// as another-hold, and the hold check dominates the holder, generation and verdict checks.
+test fn a_release_for_one_hold_refuses_against_another_hold_at_the_same_holder_and_generation() -> Bool {
+  let held = nrp_held(owner: nrp_holder, generation: 3)
+  nrp_at(hold: nrp_other_hold, observed: held, request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 0)) == "another-hold"
+    && nrp_at(hold: nrp_other_hold, observed: held, request: nrp_permitted(holder: nrp_holder, generation: 3)) == "another-hold"
+    && nrp_at(hold: nrp_other_hold, observed: held, request: nrp_on_evidence(holder: "converge:9999", generation: 5, verdict: 2)) == "another-hold"
+    && nrp_at(hold: nrp_hold, observed: held, request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 0)) == "eligible-evidence"
+}

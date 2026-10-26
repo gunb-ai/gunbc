@@ -3,9 +3,11 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
+import extdeps.exec.command { ArgvCommand, argv_command, shell_quote, env_prefixed_command }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
+import std.env_binding { EnvBinding, EnvSet }
+import extdeps.tools.env { env_bindings_argv }
 import std.algebra { length, skip, trim }
 import std.resources { Network }
 
@@ -17,29 +19,232 @@ import std.resources { Network }
 // the operation, so host and worker config never reach the publication principal.
 // GIT_CONFIG_GLOBAL=/dev/null is git's override of ~/.gitconfig and $XDG_CONFIG_HOME/git/config.
 // GIT_TERMINAL_PROMPT=0 refuses a prompt if the netrc is missing instead of hanging.
-data git_config_global_null_env: String = "GIT_CONFIG_GLOBAL=/dev/null"
-data git_config_nosystem_env: String = "GIT_CONFIG_NOSYSTEM=1"
-data git_terminal_prompt_disabled_env: String = "GIT_TERMINAL_PROMPT=0"
+// THE THREE REFUSALS, EACH IN ONE PLACE. A binding is the fact (an env entry an operation is run with);
+// `NAME=value` is how that fact RENDERS, and rendering is not a second place to state it -- so there is
+// no word row here at all. Callers that delegate the prefix compose through extdeps.exec.command's
+// env_prefixed_command over these bindings; callers that own the env program themselves (the belt's
+// commit runs program "/usr/bin/env" and splices the assignments into its OWN argv) take the words from
+// git_untrusted_config_env_words / git_isolated_home_env_argv below, which RENDER them with the one
+// renderer in extdeps.tools.env rather than re-spelling them. An earlier cut of this file kept both
+// spellings as literals beside each other and claimed that sitting together "cannot drift" -- it could:
+// nothing made the second change when the first was edited, and the drift it would have produced is a
+// the nightly repack reading a user's global config after every config writer had stopped doing so.
+data git_config_global_env_binding: EnvBinding = EnvSet { name: "GIT_CONFIG_GLOBAL", value: "/dev/null" }
+data git_config_nosystem_env_binding: EnvBinding = EnvSet { name: "GIT_CONFIG_NOSYSTEM", value: "1" }
+data git_terminal_prompt_disabled_env_binding: EnvBinding = EnvSet { name: "GIT_TERMINAL_PROMPT", value: "0" }
+
+fn git_home_env_binding(home: FilePath) -> EnvBinding {
+  EnvSet { name: "HOME", value: home as String }
+}
+
+// core.sharedRepository is git's OWN answer to "this repository has more than one POSIX identity
+// writing it" (WORKER-ROOT-EQUIVALENT-3). `group` makes git create everything group-shareable: a
+// loose object 0444, a ref/reflog/HEAD/index file 0664, a directory it creates 2775 — the setgid
+// bit INCLUDED. Without it git creates under the process umask (0644 files, 0755 directories), and a
+// second writer reaching the repository through its group cannot create a reflog entry, an index or
+// a fan-out directory at all: git's own shared-repository behaviour is the mechanism, and the
+// declared group grants in gunbc.roadmap.roadmap_dashboard_instance are the enforcement of what it
+// assumes. This is the ONLY config key this roadmap writes into a managed repository's .git/config:
+// the file stays read-only to the worker (section 6b confinement), so the key must be set by the
+// instance principal's step, never by the worker through `git config`.
+data git_core_shared_repository_config_key: String = "core.sharedRepository"
+data git_core_shared_repository_group_value: String = "group"
+data git_gc_auto_config_key: String = "gc.auto"
+data git_disabled_config_value: String = "0"
+
+// THE BOOLEAN KEY'S OFF VALUE, spelled `false` rather than reusing gc.auto's "0". THE TWO KEYS ARE
+// DIFFERENT TYPES in git's own parser: gc.auto is an INTEGER (0 disables the repack threshold) while
+// maintenance.auto is a BOOLEAN read with git_config_bool. "0" parses as false for the boolean too,
+// so both spellings work -- but a receipt that reads the file back with `git config --get` gets "0"
+// for one and "false" for the other, and the model's own claim must compare against what the
+// repository will actually say. Spelled as the type git documents, and asserted as read.
+data git_disabled_maintenance_config_value: String = "false"
+data git_maintenance_auto_config_key: String = "maintenance.auto"
+
+// THE ENVIRONMENT THE CONFIG WRITES RUN UNDER, as TYPED BINDINGS (std.env_binding EnvBinding), not
+// as spelled argv words: `GIT_CONFIG_GLOBAL=/dev/null` is git's override of ~/.gitconfig and
+// $XDG_CONFIG_HOME/git/config, `GIT_CONFIG_NOSYSTEM=1` refuses /etc/gitconfig (extdeps/git, top of
+// module). Typed bindings mean the ONE env composition route (extdeps.exec.command
+// env_prefixed_command) owns the `env` program and its flag order -- a builder that spelled the words
+// itself was the defect bright-moth-475 caught at 2dc2b8de: argv_words is [program] ++ arguments, so
+// an argv beginning with "env" under program=git rendered `git env GIT_CONFIG_GLOBAL=... git config`,
+// which exits 1 with "git: 'env' is not a git command". Every one of the five builders here was
+// unrunnable that way.
+fn git_untrusted_config_env_bindings() -> List<EnvBinding> {
+  [git_config_global_env_binding, git_config_nosystem_env_binding]
+}
+
+// THE TAIL of the ONE local write this roadmap's shared-repository posture needs: `git -C <repo>
+// config --local --replace-all core.sharedRepository group`. `--replace-all` makes the owner's step
+// idempotent (it runs on every attempt, and an earlier line for the same key is replaced rather than
+// duplicated). The environment is NOT here; it is bound by the sealed builder below.
+fn git_shared_repository_group_config_tail(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "config", "--local", "--replace-all",
+   git_core_shared_repository_config_key, git_core_shared_repository_group_value]
+}
+
+// THE TAILS of the two keys that hand the automatic repack to the maintenance job (see
+// gunbc.roadmap.roadmap_dashboard_instance dashboard_git_maintenance_exec_commands). `git commit`
+// spawns `git maintenance run --auto`, and the automatic sweep reaches for packed-refs.lock IN .git
+// ITSELF -- a path #13942 keeps out of the worker's reach. Measured: the commit still lands (exit 0, the child's
+// failure is stderr noise), which is exactly the kind of noise that teaches an operator to ignore a
+// confined write. The keys are written by the same owner-side step and read by the maintenance unit.
+fn git_gc_auto_disabled_config_tail(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "config", "--local", "--replace-all",
+   git_gc_auto_config_key, git_disabled_config_value]
+}
+
+fn git_maintenance_auto_disabled_config_tail(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "config", "--local", "--replace-all",
+   git_maintenance_auto_config_key, git_disabled_maintenance_config_value]
+}
+
+// THE FIVE SEALED BUILDERS for the shared-repository posture and the maintenance it defers to.
+// They live HERE, beside git's other argv builders, because the mint of extdeps.exec.command
+// ArgvCommand admits only named builders homed in the tool's own module: which program runs and with
+// what flags is one row, cited, and a roadmap may not spell git's flags for git.
+// THE ROUTE IS env_prefixed_command OVER A PLAIN GIT TAIL: the env prefix, the `env` program and its
+// flag order are composed once by extdeps.exec.command over typed EnvBindings, so this module spells
+// git's flags and nothing else. The three config commands write the repo's OWN .git/config as the
+// instance principal, which is why they take no HOME: its global config is refused by
+// GIT_CONFIG_GLOBAL=/dev/null, and a HOME pointed at the repository would invite git to read a
+// .gitconfig out of the tree it is configuring.
+fn git_shared_repository_group_config_command(repo: FilePath) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: git_untrusted_config_env_bindings(),
+    command: argv_command(program: git_program(), arguments: git_shared_repository_group_config_tail(repo: repo)),
+  )
+}
+
+fn git_gc_auto_disabled_config_command(repo: FilePath) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: git_untrusted_config_env_bindings(),
+    command: argv_command(program: git_program(), arguments: git_gc_auto_disabled_config_tail(repo: repo)),
+  )
+}
+
+// WHAT THE POSTURE MUST READ BACK, as (key, expected) pairs -- built from THE SAME rows the three
+// config tails above are built from, which is the only reason this can be trusted: rename a key in the
+// model and the write and its readback move together. A readback that named its keys as literals would
+// keep checking the old one after such a rename, and a green readback would then mean nothing.
+type GitLocalConfigExpectation {
+  key: NonEmptyStr
+  expected: String
+}
+
+data git_shared_repository_posture_readbacks: List<GitLocalConfigExpectation> = [
+  GitLocalConfigExpectation {
+    key: git_core_shared_repository_config_key,
+    expected: git_core_shared_repository_group_value,
+  },
+  GitLocalConfigExpectation {
+    key: git_gc_auto_config_key,
+    expected: git_disabled_config_value,
+  },
+  GitLocalConfigExpectation {
+    key: git_maintenance_auto_config_key,
+    expected: git_disabled_maintenance_config_value,
+  },
+] as List<GitLocalConfigExpectation>
+
+fn git_maintenance_auto_disabled_config_command(repo: FilePath) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: git_untrusted_config_env_bindings(),
+    command: argv_command(program: git_program(), arguments: git_maintenance_auto_disabled_config_tail(repo: repo)),
+  )
+}
+
+// THE REPACK PAIR, the argv of the maintenance unit
+// (gunbc.roadmap.roadmap_dashboard_instance dashboard_git_maintenance_exec_commands). THESE RUN AS THE
+// INSTANCE PRINCIPAL (dashboard_git_maintenance_principal), which is what makes them safe to give HOME:
+// HOME must sit inside the repository so git's credential helper looks in <repo>/.git (the gitdir of a
+// bare repo is itself) and finds the publish token in .netrc, and it can be the repository precisely
+// because only that account can write there -- the confined worker has no write to .git itself
+// (#13942), so it cannot plant a netrc for the maintenance job to read.
+// `gc` WITHOUT --auto and WITHOUT a `-c gc.auto=...` word: the nightly job is the unconditional sweep,
+// because the automatic trigger -- which `git commit` spawns from inside a confined attempt -- is
+// switched off for the repository by the two keys above. A `-c` was also once spelled as FOUR argv
+// words ("-c","gc.auto","=","0"), which runs as `git -c gc.auto = 0 gc` and dies with "git: '=' is not
+// a git command"; the key=value is ONE word, or absent, and here it is absent.
+fn git_repack_quiet_command(repo: FilePath) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: git_maintenance_env_bindings(home: repo),
+    command: argv_command(program: git_program(), arguments: ["-C", repo as String, "gc", "--quiet"]),
+  )
+}
+
+// THE REF PACKER. This is the ONLY principal that may rewrite packed-refs: it runs as the instance
+// principal, outside the worker's confinement, which is what the worker lacks -- an update of
+// packed-refs takes packed-refs.lock IN .git ITSELF (#13942 keeps .git itself out of the worker's
+// reach), so no grant of the FILE can let the worker rewrite it.
+fn git_pack_refs_all_command(repo: FilePath) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: git_maintenance_env_bindings(home: repo),
+    command: argv_command(program: git_program(), arguments: ["-C", repo as String, "pack-refs", "--all"]),
+  )
+}
+
+// THE MAINTENANCE ENVIRONMENT: the isolated HOME inside the repository plus the two config refusals
+// and the prompt refusal, as TYPED BINDINGS. See git_repack_quiet_command for why the maintenance
+// principal may own a HOME here and the worker may not.
+// The environment a maintenance or repack runs in: the SAME untrusted-config bindings every other
+// git builder in this module uses -- so the two can never disagree about whether a repack reads a
+// user's global config -- plus HOME pinned at the repository (git reads $HOME/.gitconfig, and the
+// nightly unit has no home to fall back to) and the terminal prompt closed. A maintenance job that
+// inherited a HOME with a gitconfig in it would repack under someone's aliases and hooks;
+// that is the whole reason this function exists rather than passing no environment at all.
+fn git_maintenance_env_bindings(home: FilePath) -> List<EnvBinding> {
+  git_isolated_home_env_bindings(home: home)
+}
+
 data git_worktree_commondir_relative: String = "../.."
 data git_dir_flag_prefix: String = "--git-dir="
 data git_work_tree_flag_prefix: String = "--work-tree="
 
+// THE SAME TWO REFUSALS AS WORDS, for the one caller that owns its env program: the belt's commit runs
+// program "/usr/bin/env" and splices these after it, which is why this returns the assignments ALONE and
+// MUST NOT prepend "env" itself -- or the belt's argv becomes `/usr/bin/env env git ...` (the runner's PATH lookup is what makes it so,
+// item 1, is what caught that). These are RENDERED from git_untrusted_config_env_bindings() by the one
+// renderer in extdeps.tools.env, so the word form and the binding form cannot disagree by construction
+// rather than by comment.
 fn git_untrusted_config_env_words() -> List<String> {
-  [git_config_global_null_env, git_config_nosystem_env]
+  env_bindings_argv(bindings: git_untrusted_config_env_bindings())
 }
 
 fn git_isolated_home_netrc_path(home: FilePath) -> FilePath {
   concat(home as String, "/.netrc") as FilePath
 }
 
+// THE PUBLICATION ENVIRONMENT AS AN `env`-prefixed argv: the same bindings the typed route composes,
+// rendered by the one renderer, with the `env` program word FIRST because this argv carries its own
+// program (the caller execs it directly). HOME is the binding from git_home_env_binding, so the .netrc
+// this path depends on and the environment that sets it are one row, not two.
 fn git_isolated_home_env_argv(home: FilePath) -> List<String> {
-  ["env", concat("HOME=", home as String), git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env]
+  concat(
+    ["env"],
+    env_bindings_argv(bindings: git_isolated_home_env_bindings(home: home)),
+  )
+}
+
+// THE BINDINGS BEHIND IT, exposed so a claim can pin the rendered words against the git the host has
+// without restating them, and so the maintenance route (which delegates its prefix) and this route
+// (which carries it) are reading one list.
+// HOME FIRST, then the two config refusals, then the prompt -- THE ORDER THE PUBLICATION CLAIM PINS.
+// Order is functionally irrelevant to `env` (last write wins and no key repeats), so this is pinned for
+// the claim rather than for the tool: roadmap_publish_actuate_witness compares the whole prefix as a
+// list, which is the strictest thing it can check about an argv it cannot run. Reordering here is a
+// claim failure, not a behavior change, and that is the right way round for a spelling.
+fn git_isolated_home_env_bindings(home: FilePath) -> List<EnvBinding> {
+  concat(
+    [git_home_env_binding(home: home)],
+    concat(git_untrusted_config_env_bindings(), [git_terminal_prompt_disabled_env_binding]),
+  )
 }
 
 fn git_push_ref_in_repo_argv(repo: FilePath, remote: String, refspec: String, home: FilePath) -> List<String> {
   concat(
     git_isolated_home_env_argv(home: home),
-    ["git", "-C", repo as String, "push", "--quiet", remote, refspec],
+    git_argv_of_args(args: ["-C", repo as String, "push", "--quiet", remote, refspec]),
   )
 }
 
@@ -691,7 +896,7 @@ fn git_shell_join_argv(argv: List<String>) -> String {
 }
 
 fn shape_git_toplevel_argv() -> List<String> {
-  ["git", "rev-parse", "--show-toplevel"]
+  git_argv_of_args(args: ["rev-parse", "--show-toplevel"])
 }
 
 fn git_toplevel_shell_subexpr_with_fallback() -> String {
@@ -705,7 +910,7 @@ fn git_toplevel_shell_subexpr() -> String {
 }
 
 fn shape_git_fetch_no_tags_argv(remote: String, ref_name: String) -> List<String> {
-  ["git", "fetch", "--no-tags", remote, ref_name]
+  git_argv_of_args(args: ["fetch", "--no-tags", remote, ref_name])
 }
 
 fn git_fetch_no_tags_shell(remote: String, ref_name: String, ignore_failure: Bool) -> String {
@@ -718,7 +923,7 @@ fn git_fetch_no_tags_shell(remote: String, ref_name: String, ignore_failure: Boo
 }
 
 fn shape_git_fetch_prune_argv(remote: String) -> List<String> {
-  ["git", "fetch", "--prune", remote]
+  git_argv_of_args(args: ["fetch", "--prune", remote])
 }
 
 fn git_fetch_prune_shell(remote: String) -> String {
@@ -726,19 +931,19 @@ fn git_fetch_prune_shell(remote: String) -> String {
 }
 
 fn shape_git_show_tree_argv(ref: GitRef) -> List<String> {
-  ["git", "show", "-s", "--format=%T", ref as String]
+  git_argv_of_args(args: ["show", "-s", "--format=%T", ref as String])
 }
 
 fn shape_git_head_commit_short_argv() -> List<String> {
-  ["git", "rev-parse", "--short", "HEAD"]
+  git_argv_of_args(args: ["rev-parse", "--short", "HEAD"])
 }
 
 fn shape_git_current_branch_argv() -> List<String> {
-  ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+  git_argv_of_args(args: ["rev-parse", "--abbrev-ref", "HEAD"])
 }
 
 fn shape_git_branch_show_current_argv() -> List<String> {
-  ["git", "branch", "--show-current"]
+  git_argv_of_args(args: ["branch", "--show-current"])
 }
 
 // PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (DESIGN §3 (a)/(c) split).
@@ -774,7 +979,7 @@ fn git_pathspec_literal(path: String) -> String {
 
 // Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step.
 fn git_argv_of_args(args: List<String>) -> List<String> {
-  concat(["git"], args)
+  concat([git_program_word], args)
 }
 
 fn shape_git_diff_unmerged_args() -> List<String> {
@@ -794,29 +999,47 @@ fn shape_git_rev_list_ahead_path_limited_args(target: String, path: String) -> L
 }
 
 fn shape_git_merge_no_edit_argv(ref: String) -> List<String> {
-  ["git", "merge", "--no-edit", ref]
+  git_argv_of_args(args: ["merge", "--no-edit", ref])
 }
 
 fn shape_git_merge_abort_argv() -> List<String> {
-  ["git", "merge", "--abort"]
+  git_argv_of_args(args: ["merge", "--abort"])
 }
 
 fn shape_git_checkout_ours_argv() -> List<String> {
-  ["git", "checkout", "--ours", "--"]
+  git_argv_of_args(args: ["checkout", "--ours", "--"])
 }
 
 fn shape_git_add_argv() -> List<String> {
-  ["git", "add"]
+  git_argv_of_args(args: ["add"])
 }
 
-fn git_program() -> ProgramIdentity = uncataloged_program(invocation: "git")
+// THE PROGRAM WORD, ONCE -- WITH ITS CENSUS STATED. Every shaper in this module that builds a `List<String>`
+// argv takes the word from here, through git_argv_of_args (the `_argv` projection) or directly; a host that
+// needs /usr/local/bin/git changes THIS line and every one of those shapes moves together. That is the whole
+// population of shapers the row can reach, and the rest is named rather than left to be discovered:
+//   - the `transport shell { argv: [...] }` blocks in the `operation` declarations below (and in
+//     extdeps/git/inspect.dag, extdeps/git/plumbing.dag, extdeps/git/publication_transport.dag) hold their
+//     own `"git"` word, because that argv is the transport's declaration -- a template whose `{placeholder}`
+//     strings the transport resolves -- not a list this module assembles. Migrating them means deciding
+//     whether a declared transport may read a data row at all; it is a change to every git operation's
+//     declaration, so it belongs in its own PR with the transport's own witnesses behind it, not folded into
+//     a change about a worktree's file modes.
+//   - the witnesses that spell `["git", ...]` spell the EXPECTATION, which is the other side of the
+//     authority: a claim that re-derived the program from the row could not catch the row moving.
+// If the transport blocks are ever migrated, the trigger is the same as this row's reason for existing: some
+// host needs a git that is not on PATH, and at that point leaving any spelling behind is a bug, not a
+// deferral.
+data git_program_word: String = "git"
+
+fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_program_word as NonEmptyStr)
 
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
-  ["git", "commit", "--no-verify", "--no-edit"]
+  git_argv_of_args(args: ["commit", "--no-verify", "--no-edit"])
 }
 
 fn shape_git_config_argv(key: String, value: String) -> List<String> {
-  ["git", "config", key, value]
+  git_argv_of_args(args: ["config", key, value])
 }
 
 // THE PROGRAM AND ITS OPERANDS, NAMED SEPARATELY, so the two addressings of one fact derive from
@@ -1026,11 +1249,11 @@ fn git_diff_binary_head_command(repository_dir: String) -> ArgvCommand {
 }
 
 fn shape_git_config_get_argv(key: String) -> List<String> {
-  ["git", "config", "--get", key]
+  git_argv_of_args(args: ["config", "--get", key])
 }
 
 fn shape_git_config_local_get_argv(key: String) -> List<String> {
-  ["git", "config", "--local", "--get", key]
+  git_argv_of_args(args: ["config", "--local", "--get", key])
 }
 
 // git-config(1) safe.directory: the configuration git consults before operating in a repository its
@@ -1072,11 +1295,89 @@ fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
   ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]
 }
 
+// THE SAME GRANT CARRIED BY THE ENVIRONMENT (git-config(1) ENVIRONMENT: GIT_CONFIG_COUNT, GIT_CONFIG_KEY_<n>,
+// GIT_CONFIG_VALUE_<n>). These set configuration in the COMMAND scope exactly as `-c` does, and command scope is
+// protected configuration, so safe.directory is honoured from it; unlike `-c`, they reach every git a process and
+// its children run -- which is what a confined session needs, since most of its git calls are its own tools', not
+// argv this repository spells. Still exactly one path, never the wildcard. Measured on srv1 (git 2.43.0,
+// 2026-10-24): as the dedicated worker account in a worktree the service user owns, `rev-parse HEAD` refused with
+// dubious ownership without it and answered with it. A local-fetch source is the documented exception below:
+// upload-pack scrubs these variables, so that trust rides inside --upload-pack instead.
+type GitEnvironmentSetting {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+data git_config_count_env_name: String = "GIT_CONFIG_COUNT"
+
+data git_config_key_env_prefix: String = "GIT_CONFIG_KEY_"
+
+data git_config_value_env_prefix: String = "GIT_CONFIG_VALUE_"
+
+fn git_safe_directory_environment(grant: SafeDirectoryGrant) -> List<GitEnvironmentSetting> {
+  [
+    GitEnvironmentSetting { name: git_config_count_env_name as NonEmptyStr, value: "1" as NonEmptyStr },
+    GitEnvironmentSetting { name: concat(git_config_key_env_prefix, "0") as NonEmptyStr, value: git_safe_directory_key as NonEmptyStr },
+    GitEnvironmentSetting { name: concat(git_config_value_env_prefix, "0") as NonEmptyStr, value: grant.path },
+  ]
+}
+
 // A CALL INTO A REPOSITORY TRUSTS EXACTLY THAT REPOSITORY. The grant is derived from the same path
 // `-C` names, so a caller cannot trust one directory while operating in another, and cannot pass the
 // wildcard: the narrowest grant is the only one this shape can spell.
 fn git_in_trusted_repository_args(repo: NonEmptyStr) -> List<String> {
   append(git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }), items: ["-C", repo as String])
+}
+
+// A FULL TRUSTED CALL: `git -c safe.directory=<repo> -C <repo> <verbs...>`, PROGRAM WORD FIRST. This
+// composes the two single-owner builders rather than laying argv out by hand at each call site: the
+// program word comes from git_argv_of_args (the one place that decides where `git` sits) and the trusted
+// `safe.directory`/`-C` shape comes from git_in_trusted_repository_args (the one place that decides what
+// those words look like). Hand-concatenating them is where the order silently goes wrong -- putting the
+// `-c safe.directory=... -C <repo>` words BEFORE the program word runs `-c` as the program, which prints
+// nothing and exits, so a caller comparing the captured output sees the empty string and mis-decides.
+// The program word cannot drift to the back of the list at a second site, because there is no second site.
+fn git_in_trusted_repository_argv(repo: NonEmptyStr, verbs: List<String>) -> List<String> {
+  git_argv_of_args(args: concat(git_in_trusted_repository_args(repo: repo), items: verbs))
+}
+
+// THE REPOSITORY PREMISE AS AN EXIT STATUS (WORKER-ROOT-EQUIVALENT-3, typed legs).
+// `git -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir` exits 0 exactly when
+// <repo>/.git IS a git directory -- and nonzero when it is a skeleton without a valid HEAD, a plain
+// directory, or a .git that would only resolve by discovering UPWARD into some outer repository, because
+// an explicit --git-dir disables discovery entirely. Measured on srv1, git 2.43.0 at uid 1000 (parent,
+// 2026-10-23): committed repository 0, unborn branch 0, detached HEAD 0, HEAD-less skeleton 128, plain
+// directory 128, a .git nested inside another repository 128 ("not a git repository: <repo>/.git").
+// THE EXIT STATUS IS THE PREMISE: no capture, no comparison, no printf, no shell around it. An earlier
+// cut ran the three reads inside a bash `[ ]` with a command substitution; that construction died in a
+// word-order defect (the program word landed after its own args, so bash ran `-c` as a program, the
+// substitution printed nothing, and the collapsed `[ ]` turned a TEST ERROR into a silent "not a
+// repository"), and the fix is not to quote the substitution better but to delete the shell -- a verdict
+// that survives how its text was rendered is not a verdict, it is a rendering.
+// THE safe.directory GRANT RIDES ALONG for the same reason every untrusted-principal call takes it:
+// without it git 2.43 refuses ownership of a tree the caller does not own BEFORE resolving anything,
+// which would make a real repository look like a refusal. It is the one-path grant derived from the same
+// repo the --git-dir names; the narrowest grant is the only shape this can spell.
+// THE ARGS LIST IS ARGS-ONLY, EXACTLY LIKE git_config_local_set_args AND EVERY SIBLING THAT FEEDS
+// argv_command(program: git_program(), arguments: _). It must NOT carry the program word: the ArgvCommand
+// that executes it already supplies program: git_program(), so a list that began with "git" would run
+// `git git -c ...` and git would answer "'git' is not a git command" (exit 1) -- which is what a
+// git_argv_of_args wrapper here did, and srv1 caught (job r14328p3t2, 96f6c467ab9c): the premise halted at
+// git-worker-subtree-premise on EVERY repository, committed ones included, because the program word was
+// doubled. git_argv_of_args is for the shape_*_argv LIST form that carries its own program word (it is a
+// whole command line, not the arguments field of an ArgvCommand); this is the arguments field, so it is
+// args-only and the program word has ONE home -- the ArgvCommand's program. A claim pins the executing
+// shape directly: the ArgvCommand's program (git) and its arguments (safe.directory override, then
+// --git-dir <repo>/.git, then rev-parse --absolute-git-dir), NOT a list that contains the program word.
+fn git_absolute_git_dir_premise_args(repo: NonEmptyStr) -> List<String> {
+  concat(
+    git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }),
+    items: ["--git-dir", join([repo as String, "/.git"], ""), "rev-parse", "--absolute-git-dir"],
+  )
+}
+
+fn git_absolute_git_dir_premise_argv(repo: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: git_absolute_git_dir_premise_args(repo: repo))
 }
 
 // gitrepository-layout(5): a non-bare repository keeps its GIT_DIR in the `.git` directory at the
@@ -1153,19 +1454,58 @@ fn git_dir_fetch_source_grant(git_dir: NonEmptyStr) -> SafeDirectoryGrant {
 // spliced -- the whole `safe.directory=<path>` word goes through extdeps.exec.command shell_quote
 // (POSIX single quoting), which is total, so no path is refused and no metacharacter is live.
 fn git_local_fetch_upload_pack_command(grant: SafeDirectoryGrant) -> String {
-  join(["git", "-c", shell_quote(arg: join([git_safe_directory_key, "=", grant.path as String], "")), "upload-pack"], " ")
+  join(git_argv_of_args(args: ["-c", shell_quote(arg: join([git_safe_directory_key, "=", grant.path as String], "")), "upload-pack"]), " ")
 }
 
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
-  ["git", "-C", repo as String, "config", "--local", key, value]
+  git_argv_of_args(args: ["-C", repo as String, "config", "--local", key, value])
+}
+
+// THE READBACK OF THE THREE POSTURE KEYS, as a command rather than as a service operation, so a
+// witness can run it through the SAME route the writers run and ask the repository what it now says.
+// `--local` on BOTH sides, and it is not decoration: the writers refuse the global and system files, and
+// a read that consulted them could be satisfied by a developer's own ~/.gitconfig -- the claim would
+// then pass while the repository said nothing. A missing key prints nothing and exits 1, which the
+// caller reads as Refused, and an empty answer is not `group`.
+fn git_local_config_get_command(repo: FilePath, key: String) -> ArgvCommand {
+  argv_command(
+    program: git_program(),
+    arguments: git_config_local_get_words(repo: repo, key: key)
+  )
+}
+
+// A BRANCH POINTING WHERE HEAD POINTS, the seed a pack-refs witness needs: `git branch <name>` mints a
+// LOOSE ref under refs/heads/, which is what makes a packed-refs file afterwards the packer's doing and
+// not the clone's or the init's.
+fn git_branch_command(repository_dir: String, branch: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "branch", branch as String])
+}
+
+// IS THE REF STILL REACHABLE, asked of git itself. `--verify --quiet` exits non-zero when the ref does
+// not name an object, so the ANSWER IS THE EXIT CODE and there is nothing to parse -- which is the point
+// after a pack-refs: a packer that wrote a packed-refs git itself cannot resolve must not be able to
+// pass. `-C` is carried because a ref query without it answers about whatever directory the process
+// happens to sit in.
+fn git_show_ref_verify_quiet_command(repository_dir: String, target: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "show-ref", "--verify", "--quiet", target])
+}
+
+// THE READBACK, IN BOTH REALIZATIONS. `--local` on BOTH sides is not decoration: the writers refuse the
+// global and system files, and a read that consulted them could be satisfied by a developer's own
+// ~/.gitconfig -- the claim would pass while the repository said nothing. A missing key prints nothing
+// and exits 1, which the caller reads as Refused, and an empty answer is not `group`.
+data git_config_local_get_option_words: List<String> = ["config", "--local", "--get"]
+
+fn git_config_local_get_words(repo: FilePath, key: String) -> List<String> {
+  concat(concat(["-C", repo as String], git_config_local_get_option_words), [key])
 }
 
 fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<String> {
-  ["git", "-C", repo as String, "config", "--local", "--get", key]
+  concat([git_program_word], git_config_local_get_words(repo: repo, key: key))
 }
 
 fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
-  ["git", "rev-parse", "--verify", "--quiet", target]
+  git_argv_of_args(args: ["rev-parse", "--verify", "--quiet", target])
 }
 
 fn shape_git_rev_parse_head_args() -> List<String> {
@@ -1399,6 +1739,22 @@ service git.Core {
     }
     readonly
     transport shell { argv: ["git", "-C", "{repository_path}", "diff", "--name-only", "-z", "{treeish}", "--"] }
+  }
+
+  // git grep's fixed-string search over the tracked tree (git-grep(1): -n prefixes each match with
+  // its path and 1-based line number, -F takes the pattern literally, -I skips binary files). Like
+  // LsRemoteHeads it declares no exit block: git grep exits 1 when nothing matches, which is a
+  // reading rather than a failure, so the caller reads exit_code and stderr itself.
+  operation GrepFixedLinesInRepo {
+    requires opaque
+    input { repository_path: String, pattern: String, pathspec: String }
+    output {
+      lines: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "grep", "-n", "-I", "-F", "-e", "{pattern}", "--", "{pathspec}"] }
   }
 
   operation LsFiles {
@@ -2002,7 +2358,7 @@ fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
 }
 
 fn shape_git_init_in_repo_argv(repo: FilePath) -> List<String> {
-  ["git", "-C", repo as String, "init", "-q"]
+  git_argv_of_args(args: ["-C", repo as String, "init", "-q"])
 }
 
 fn shape_git_bare_fetch_argv(

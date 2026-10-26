@@ -5,7 +5,8 @@ import std.integer { QualifiedOctets, qualified_octets, qualified_octet_members 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.optional { Absent, Present }
-import std.algebra { collection_concat_shape, collection_map_shape, collection_join_shape }
+import std.algebra { collection_concat_shape, collection_map_shape, collection_join_shape, list_push }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

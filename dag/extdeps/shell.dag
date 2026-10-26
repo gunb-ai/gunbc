@@ -345,6 +345,63 @@ service shell.Id {
   }
 }
 
+// THE PASSWD ENTRY TWO WAYS, as argv with no shell between: getent answers through NSS (getent(1)); awk reads the
+// passwd file itself (passwd(5): seven colon-separated fields, the seventh the login shell). Two producers, so one can
+// stand as an independent oracle for a parser of the other.
+service shell.Passwd {
+  operation Entry {
+    requires none
+    input { name: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["getent", "passwd", "{name}"] }
+    exit {
+      0 => Unit "the principal's passwd entry, as NSS answers it, is on stdout"
+      nonzero => String "NSS has no passwd entry for this name"
+    }
+  }
+
+  operation FileShellField {
+    requires none
+    input { name: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["awk", "-F:", "-v", "u={name}", "$1 == u { print $7 }", "/etc/passwd"] }
+    exit {
+      0 => Unit "the seventh field of each /etc/passwd line naming the principal is on stdout"
+      nonzero => String "awk could not read /etc/passwd"
+    }
+  }
+}
+
+// ONE POSIX sh RE-PARSE OF A COMMAND STRING, the command carried as ONE argv word (sh(1) -c): no quoting wraps it, so
+// what the shell parses is exactly the string handed over.
+service shell.Sh {
+  // A re-parse under a NAMED shell (the user's login shell, as sshd runs a remote command: shell -c command).
+  operation ReparseWith {
+    requires none
+    input { shell: NonEmptyStr, command: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["{shell}", "-c", "{command}"] }
+    exit {
+      0 => Unit "the command ran"
+      nonzero => String "the command exited non-zero"
+    }
+  }
+}
+
 service shell.Uname {
   operation KernelName {
     requires none

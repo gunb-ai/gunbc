@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.declaration_reference_recognised_by_a_shape_a_literal_also_has
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data declaration_reference_recognised_by_a_shape_a_literal_also_has: RecurringFailureMode = RecurringFailureMode {
   identity: "declaration_reference_recognised_by_a_shape_a_literal_also_has" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a declaration reference is recognised by a shape a literal also has** (INVALID STATE: v2.std.qualified_name declaration_reference_path_optional answered 'this node is a resolved reference to a corpus declaration' from the SHAPE of the node alone -- a TypeNode Conj in the fold_list head/tail spine -- and that shape is not owned by references. An integer literal lowers to the same cons list of digit atoms (v2.std.integer FreeMonoid<DecimalDigit>, grounded by #12197), so the literal 606060 read as the declaration path integer_tag_digit_6.integer_tag_digit_0.integer_tag_digit_6... on fixtures/native_cli_door.",

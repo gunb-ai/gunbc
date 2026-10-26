@@ -1,0 +1,22 @@
+module test.claim.host_text_crossing_entry_witness
+
+import v2.std.text { string_is_empty }
+
+// THE GENERATED CROSSING ON THE ENTRY-RESOLVE SURFACE (claim runs, claim_batch, demand-acquired `gunbc
+// run`). A host-text value meets a v2.std.text.String formal, so the compiler generates a call to the
+// conversion plan's route, std.coercion unicode_scalar_unfold. This module imports only v2.std.text:
+// its authored closure does not hold std.coercion, so these claims compile and run only because the
+// crossing demands the route and the entry-resolve loop acquires its module. With the acquisition
+// bypassed the closure refuses GeneratedProviderUnavailable before any claim runs.
+
+fn host_is_empty(s: String) -> Bool {
+  string_is_empty(s: s)
+}
+
+test fn an_empty_host_text_crosses_to_an_empty_sequence() -> Bool {
+  host_is_empty(s: "")
+}
+
+test fn a_nonempty_host_text_crosses_to_a_nonempty_sequence() -> Bool {
+  !host_is_empty(s: "a")
+}

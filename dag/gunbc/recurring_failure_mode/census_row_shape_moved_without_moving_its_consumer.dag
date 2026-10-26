@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.census_row_shape_moved_without_moving_its_consumer
+
+import std.types { String, NonEmptyStr }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+// REGISTERED BY PR #14574'S REVIEW (review 83899): the PR narrowed a real-route control to the b-side
+// because the a-side member no longer exists on the route, and recorded that fact in `//`. A status in
+// a comment is a status nobody can read (DESIGN 4c: a status belongs in a typed carrier), and a class
+// below the ceiling must name its next-rung trigger (DESIGN 4b meta-obligation 2). This row is the
+// carrier for that dropped rung, with the trigger.
+
+data census_row_shape_moved_without_moving_its_consumer: RecurringFailureMode = RecurringFailureMode {
+  identity: "census_row_shape_moved_without_moving_its_consumer" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "a census row's shape or stage moved and its consumer was left reading the old fact: the native census classifies each refused module into a cause-group member keyed by (path, reason, stage), attributed to a root by import-reachability. A move to where a refusal is FILED -- which stage owns it, which module heads the chain, whether a module is a root at all -- silently changes what every downstream claim sees, because the claims assert on the SHAPE (which members exist, which stage, what fan-out), not on a contract. Nothing refuses a shape move: no migration, no consumer census, no typed notice. The consumer keeps asserting against a fact that is no longer produced, and reads red. Claiming 'moved' requires an OBSERVED prior green: with one, the move is demonstrated; without one, the state is an unresolved producer-versus-expectation mismatch -- a state this carrier also holds (its specimen below), and it must be recorded as such, never inflated into a demonstrated move.",
+
+    "THE TELL: a cascade or fan-out claim fails with a member MISSING or a STAGE changed while the fixture text is unchanged. If a prior green was observed, the behavior moved out from under the claim -- the claim is not wrong about the behavior it was written against, and the reader who takes the failure at face value 'fixes' a compiler that is behaving correctly under its current law, or 'corrects' an expectation that was never wrong. If no prior green was ever observed, the same failure reads as an unresolved producer-versus-expectation mismatch: one of the two sides is wrong and neither has been adjudicated. The row MUST record which reading its specimen carries; this row's specimen carries the second.",
+
+    "DISTINGUISHING FACTS: a fixture whose TEXT drifted is not this class (that is drift in the subject, and the diff shows it); a shape move WITH a consumer sweep that updates every consumer in the same change is not this class either -- that is the repair this row's trigger asks for. DEBT TYPES, kept distinct: ActiveFillDebt in v2.workflow.floor_pure_producer_share's ledger is EXECUTION-COST debt -- the claim is measured and registered as a cost of the lane -- and it is NOT a disposition for a failing assertion. A failing assertion is correctness debt: it stays open until adjudicated (the producer fixed, or the expectation corrected WITH A REASON). Registration never closes a correctness question.",
+
+    "SPECIMEN, measured 2026-10-21 on runner cells (binary BUILT at each cell's tree, claims run from the same tree): the three claims test.claim.native_census.infer_cascade / census_infer_provider_cascade_is_one_root_with_fan_out_one_holds, test.claim.native_census.cascade_root_fan_out / census_linear_cascade_is_one_wall_with_fan_out_two_holds and ... / census_diamond_cascade_counts_modules_not_paths_holds fail on every sampled runnable tree, from #13929 (51b71cbaec9f, 2026-10-16 06:09) through main (RC=1 at 9e9982624a69, 4201736f30f6, d91fa539524c, 5258ccad6a8d, 5f0af440c7bb; the cell at #13850 itself, 983dcb58d5cc, RC=101 on a loader panic at cli_run/entry_resolve.rs:1679, a different defect fixed by #13929). PRIOR GREEN AND HISTORICAL MOVEMENT: UNOBSERVED -- no passing predecessor was found on any sampled tree, including the claims' own registration commit, so it is NOT demonstrated that any row shape ever moved. What IS observed: the fixture sources are byte-identical across the window, and the probe readouts show the PRODUCER files the b-side refusal at the FRONT END as FileRefusalAtUnresolvedNode (own fan-out 2) where the claim asserts a RESOLVE root with a fan-out member, and files a's refusal at resolve where the claim asserts an infer-fold member. The specimen therefore carries an unresolved producer-versus-expectation mismatch; the shape-move reading is a hypothesis the observed divergence makes plausible but the unobserved prior green does not establish. Two of the three (provider_cascade, diamond) are registered ActiveFillDebt -- execution-COST debt, not a disposition of these failing assertions; the linear claim is not even registered.",
+
+    "THE NEXT-RUNG TRIGGER: the three named claims go green -- executed on the runner with their a-side members present, which requires the census stage/fold authority (v2.compiler.source_root_eval's classification of unresolvable-import refusals: resolve root vs front-end FileRefusalAtUnresolvedNode, and the one-hop import-target attribution) to be adjudicated against the claims' intent: either the producer returns to the shape the claims assert (the b-side refusal filed at resolve with a fan-out member; the a-side member kept in the infer fold), or the expectations are corrected WITH A REASON and the move is then no longer this class. Dissolution condition: every one of the three claims green, or replaced by claims that name the current shape and say why it is right. Until adjudicated they remain FAILING ASSERTIONS (correctness debt); the two ActiveFillDebt registrations cover only their execution cost, and registering the linear claim -- part of the same repair -- would do the same for it, without disposing of the assertion.",
+
+    "THE COST OF THE MISSING NOTICE, one sentence: three sessions spent runner-hours bisecting a 'regression' with no observed prior green and no consumer notice, while the claim text -- the only surviving statement of the intended shape -- sat unchanged and red, indistinguishable from a real defect report.",
+  ],
+
+  evidence: [],
+}

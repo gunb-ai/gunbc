@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.non_fold_residue_diff_scope_misses_an_untouched_flip
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data non_fold_residue_diff_scope_misses_an_untouched_flip: RecurringFailureMode = RecurringFailureMode {
   identity: "non_fold_residue_diff_scope_misses_an_untouched_flip" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a wildcard arm whose scrutinee's INFERRED type is a closed coproduct, in a module no required lane typed, carries no row in gunbc.non_fold_residue non_fold_residue_frontier -- or a row there names a site that no longer carries one -- and every required lane is green. The merge-path check WAS the required floor's DIFF-SCOPED typed verdict (v1_compiler.cli_run.non_fold_residue non_fold_residue_diff_verdict, run in run_required_floor as phase non-fold-residue-diff). That runner and verdict were deleted; the class is now outside every required lane (rung honesty: no enrolled mechanical preventer remains).",

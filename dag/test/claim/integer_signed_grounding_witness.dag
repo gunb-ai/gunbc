@@ -1,0 +1,258 @@
+module test.claim.integer_signed_grounding_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat, Zero, Succ }
+import std.algebra { GroupCompletion, Ordering, Less, Equal, Greater }
+import std.integer { NonNegative, Negative, int_compare, int_add, int_sub, int_of_group_completion, group_completion_of_int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.literal_elaboration {
+  KernelGroundingArm, GroundedConstructorShape, GroundedFieldShape, FieldAtGroundedNatural, FieldNotAtGroundedNatural,
+  SignedViewReading, SignedViewAgrees, SignedViewDisagrees, SignedArity, SignedArmsCoincide, SignedArmNotDeclared, SignedArmPayloadNotSole,
+  SignedPayloadNotNatural, SignedPayloadsDiffer, SignedCarrierNotACoproduct, DeclaredCoproduct, DeclaredNotACoproduct,
+  signed_view_reading, declaration_is_grounded_natural
+}
+import gunbc.structural_realization_bindings { kernel_grounding_rows }
+
+// THE SIGNED CARRIER std.integer Int, EXECUTED (operator ruling 2026-10-19). Int is declared
+// NonNegative { n: Nat } | Negative { pred: Nat }, Negative { pred: p } denoting -(p + 1), and realized as
+// the kernel integer by the SIGNED KernelGrounding row in gunbc.structural_realization_bindings, which
+// names which arm is which; v1.compiler.infer ground_kernel_views folds both constructors and their
+// patterns into kernel-integer form before any realizer reads the tree. Every test here runs that fold
+// on the real path: the constructors, matches and mappings below are std.integer's own.
+//
+// The same-shape control -- a foreign type spelled exactly like Int, with no grounding row, staying
+// structural -- lives with the fold's emitted-bytes witness, test.claim.integer_signed_grounding_emit_witness,
+// because only the emitted bytes can tell a folded value from a constructor value: the fold preserves
+// meaning, so an interpreter-level control would be green whether or not it fired. The declared-view
+// agreement check (std.literal_elaboration signed_view_reading) is a pure function and is driven
+// directly below, in both directions.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Constructs are written in a TYPED position (these returns). In an importing module a bare construct
+// in an untyped position -- an `==` operand, a call argument -- still reads its variant's parent by the
+// spelling `Int`, which the kernel name captures, and refuses as a union-named record literal (located,
+// typed). That capture is the bare-Int import migration's, std.integer Int delivery 2; it is not this fold.
+fn nonnegative_of(x: Nat) -> std.integer.Int { NonNegative { n: x } }
+fn negative_of(x: Nat) -> std.integer.Int { Negative { pred: x } }
+
+fn is_negative(i: std.integer.Int) -> Bool {
+  match i {
+    NonNegative { n: _ } => false
+    Negative { pred: _ } => true
+  }
+}
+
+// The same test with its arms in the other order: the fold reads each arm by the constructor it names,
+// so the order the arms are written in cannot change which values select them.
+fn is_negative_arms_reversed(i: std.integer.Int) -> Bool {
+  match i {
+    Negative { pred: _ } => true
+    NonNegative { n: _ } => false
+  }
+}
+
+fn payload_of(i: std.integer.Int) -> Nat {
+  match i {
+    NonNegative { n: v } => v
+    Negative { pred: p } => p
+  }
+}
+
+fn payload_of_arms_reversed(i: std.integer.Int) -> Nat {
+  match i {
+    Negative { pred: p } => p
+    NonNegative { n: v } => v
+  }
+}
+
+// Payload patterns read as patterns over the natural: an exact numeral, and a successor of a binder.
+fn describe(i: std.integer.Int) -> String {
+  match i {
+    NonNegative { n: Zero } => "zero"
+    NonNegative { n: Succ { prev: k } } => if k == 0 { "one" } else { "above one" }
+    Negative { pred: Zero } => "minus one"
+    Negative { pred: Succ { prev: k } } => if k == 0 { "minus two" } else { "below minus two" }
+  }
+}
+
+data machine_max: std.integer.Int = 9223372036854775807
+data machine_min: std.integer.Int = 0 - 9223372036854775807 - 1
+
+// A numeral construct IS the integer it denotes; a non-numeral payload denotes the same.
+test fn signed_constructors_are_the_integers_they_denote() -> Bool {
+  nonnegative_of(x: 0) == 0
+    && nonnegative_of(x: 3) == 3
+    && negative_of(x: 0) == 0 - 1
+    && negative_of(x: 2) == 0 - 3
+    && nonnegative_of(x: 5) == 5
+    && negative_of(x: 0) == 0 - 1
+    && negative_of(x: 6) == 0 - 7
+}
+
+// There is one zero: the only construct denoting 0 is nonnegative_of(x: 0), and no Negative value is 0.
+test fn negative_arm_cannot_spell_zero() -> Bool {
+  !is_negative(i: 0) && is_negative(i: 0 - 1) && negative_of(x: 0) != nonnegative_of(x: 0)
+}
+
+// Construction followed by matching recovers the arm and the payload.
+test fn match_recovers_sign_and_payload() -> Bool {
+  !is_negative(i: nonnegative_of(x: 7)) && payload_of(i: nonnegative_of(x: 7)) == 7
+    && is_negative(i: negative_of(x: 7)) && payload_of(i: negative_of(x: 7)) == 7
+    && is_negative(i: 0 - 8) && payload_of(i: 0 - 8) == 7
+    && !is_negative(i: 0) && payload_of(i: 0) == 0
+}
+
+test fn arm_order_cannot_change_an_arms_meaning() -> Bool {
+  is_negative_arms_reversed(i: 0 - 1) && !is_negative_arms_reversed(i: 0) && !is_negative_arms_reversed(i: 4)
+    && payload_of_arms_reversed(i: 0 - 5) == 4 && payload_of_arms_reversed(i: 5) == 5
+}
+
+test fn payload_patterns_select_by_natural() -> Bool {
+  describe(i: 0) == "zero" && describe(i: 1) == "one" && describe(i: 9) == "above one"
+    && describe(i: 0 - 1) == "minus one" && describe(i: 0 - 2) == "minus two" && describe(i: 0 - 40) == "below minus two"
+}
+
+// The machine endpoints round-trip with no intermediate overflow: the negative encoding is -1 - p, so
+// Negative { pred: MAX } is MIN, and decoding MIN gives pred MAX without computing -(MIN).
+test fn machine_endpoints_round_trip() -> Bool {
+  negative_of(x: 9223372036854775807) == machine_min
+    && is_negative(i: machine_min) && payload_of(i: machine_min) == 9223372036854775807
+    && nonnegative_of(x: 9223372036854775807) == machine_max
+    && !is_negative(i: machine_max) && payload_of(i: machine_max) == 9223372036854775807
+}
+
+// INTEGER ORDER IS BY VALUE: -3 < -2 < 0, whatever order the arms are declared in.
+test fn order_is_by_denoted_value() -> Bool {
+  int_compare(a: negative_of(x: 2), b: negative_of(x: 1)) == Less
+    && int_compare(a: negative_of(x: 1), b: nonnegative_of(x: 0)) == Less
+    && int_compare(a: nonnegative_of(x: 0), b: negative_of(x: 0)) == Greater
+    && int_compare(a: negative_of(x: 4), b: 0 - 5) == Equal
+}
+
+// SUBTRACTION REFUSES ONLY WHERE ITS ANSWER IS NOT REPRESENTABLE. MIN - MIN and -1 - MIN have the
+// representable answers 0 and MAX; computing them as a + (-b) would negate MIN first and refuse.
+test fn subtraction_at_the_machine_endpoints_is_exact() -> Bool {
+  int_sub(a: machine_min, b: machine_min) == 0
+    && int_sub(a: 0 - 1, b: machine_min) == machine_max
+    && int_sub(a: 0, b: machine_max) == machine_min + 1
+    && int_sub(a: machine_max, b: machine_max) == 0
+}
+
+test fn ring_operations_cross_zero() -> Bool {
+  int_add(a: negative_of(x: 2), b: nonnegative_of(x: 5)) == 2
+    && int_sub(a: nonnegative_of(x: 1), b: nonnegative_of(x: 4)) == negative_of(x: 2)
+}
+
+// THE MAPPINGS ARE NORMALIZATION, NOT RAW INVERSES: f(g(i)) = i, and g(f(pair)) = normalize(pair).
+// (2, 0) and (4, 2) denote one integer and map to one value; g gives the canonical pair back.
+test fn group_completion_normalizes_onto_the_carrier() -> Bool {
+  let two = int_of_group_completion(g: GroupCompletion { pos: 2, neg: 0 })
+  let also_two = int_of_group_completion(g: GroupCompletion { pos: 4, neg: 2 })
+  let minus_three = int_of_group_completion(g: GroupCompletion { pos: 1, neg: 4 })
+  let canonical = group_completion_of_int(i: also_two)
+  let canonical_negative = group_completion_of_int(i: minus_three)
+  two == nonnegative_of(x: 2) && also_two == two
+    && minus_three == negative_of(x: 2)
+    && canonical.pos == 2 && canonical.neg == 0
+    && canonical_negative.pos == 0 && canonical_negative.neg == 3
+    && int_of_group_completion(g: group_completion_of_int(i: 0 - 9)) == 0 - 9
+    && int_of_group_completion(g: group_completion_of_int(i: 0)) == 0
+    && int_of_group_completion(g: GroupCompletion { pos: 0, neg: 1 }) == negative_of(x: 0)
+}
+
+// The largest negative pair the machine natural can carry: MIN + 1 has pair (0, MAX).
+test fn group_completion_at_the_largest_representable_negative() -> Bool {
+  let g = group_completion_of_int(i: machine_min + 1)
+  g.pos == 0 && g.neg == 9223372036854775807 && int_of_group_completion(g: g) == machine_min + 1
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DECLARED VIEW, CHECKED AGAINST A DECLARATION (std.literal_elaboration signed_view_reading). The
+// fold consumes this verdict and nothing else, so its refusals are this function's.
+// ---------------------------------------------------------------------------------------------
+
+fn nat_ref() -> DeclarationRef { decl_ref(module_path: "std.nat", decl_name: "Nat") }
+fn arm(constructor: String, payload: String) -> KernelGroundingArm { KernelGroundingArm { constructor: constructor as NonEmptyStr, payload: payload as NonEmptyStr } }
+fn natural_field(name: String) -> GroundedFieldShape { GroundedFieldShape { field: name, declared_at: FieldAtGroundedNatural { natural: nat_ref() } } }
+fn ctor(name: String, fields: List<GroundedFieldShape>) -> GroundedConstructorShape { GroundedConstructorShape { constructor: name, fields: fields } }
+
+fn agrees(r: SignedViewReading) -> Bool {
+  match r {
+    SignedViewAgrees { natural: n } => declaration_ref_eq(a: n, b: nat_ref())
+    SignedViewDisagrees { reason: _ } => false
+  }
+}
+
+fn int_arms_over(constructors: List<GroundedConstructorShape>) -> SignedViewReading {
+  signed_view_reading(nonnegative: arm(constructor: "NonNegative", payload: "n"), negative: arm(constructor: "Negative", payload: "pred"), declared: DeclaredCoproduct { constructors: constructors })
+}
+
+// The positive control, over std.integer Int's own shape -- in either declaration order: the check
+// finds each arm by the name the row gives it, so reordering the declaration's constructors cannot
+// swap which arm is negative.
+test fn the_declared_view_agrees_with_int_in_either_order() -> Bool {
+  agrees(r: int_arms_over(constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [natural_field(name: "pred")])]))
+    && agrees(r: int_arms_over(constructors: [ctor(name: "Negative", fields: [natural_field(name: "pred")]), ctor(name: "NonNegative", fields: [natural_field(name: "n")])]))
+    && declaration_is_grounded_natural(rows: kernel_grounding_rows, d: nat_ref())
+    && !declaration_is_grounded_natural(rows: kernel_grounding_rows, d: decl_ref(module_path: "std.integer", decl_name: "Int"))
+}
+
+test fn a_view_naming_one_constructor_twice_refuses() -> Bool {
+  match signed_view_reading(nonnegative: arm(constructor: "NonNegative", payload: "n"), negative: arm(constructor: "NonNegative", payload: "n"), declared: DeclaredCoproduct { constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [natural_field(name: "pred")])] }) {
+    SignedViewDisagrees { reason: SignedArmsCoincide { constructor: c } } => c == "NonNegative"
+    _ => false
+  }
+}
+
+test fn a_view_naming_an_undeclared_constructor_refuses() -> Bool {
+  match int_arms_over(constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Minus", fields: [natural_field(name: "pred")])]) {
+    SignedViewDisagrees { reason: SignedArmNotDeclared { constructor: c } } => c == "Negative"
+    _ => false
+  }
+}
+
+test fn a_view_naming_the_wrong_payload_refuses() -> Bool {
+  let renamed = match int_arms_over(constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [natural_field(name: "p")])]) {
+    SignedViewDisagrees { reason: SignedArmPayloadNotSole { constructor: c, payload: f } } => c == "Negative" && f == "pred"
+    _ => false
+  }
+  let two_fields = match int_arms_over(constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n"), natural_field(name: "m")]), ctor(name: "Negative", fields: [natural_field(name: "pred")])]) {
+    SignedViewDisagrees { reason: SignedArmPayloadNotSole { constructor: c, payload: _ } } => c == "NonNegative"
+    _ => false
+  }
+  renamed && two_fields
+}
+
+test fn a_payload_not_at_a_grounded_natural_refuses() -> Bool {
+  match int_arms_over(constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [GroundedFieldShape { field: "pred", declared_at: FieldNotAtGroundedNatural }])]) {
+    SignedViewDisagrees { reason: SignedPayloadNotNatural { constructor: c, payload: _ } } => c == "Negative"
+    _ => false
+  }
+}
+
+test fn payloads_at_different_naturals_refuse() -> Bool {
+  let other = GroundedFieldShape { field: "pred", declared_at: FieldAtGroundedNatural { natural: decl_ref(module_path: "test.fixture.elsewhere", decl_name: "Nat") } }
+  match int_arms_over(constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [other])]) {
+    SignedViewDisagrees { reason: SignedPayloadsDiffer } => true
+    _ => false
+  }
+}
+
+// A declaration that is not a coproduct cannot implement two named constructors: it refuses, never
+// "nothing to fold". The real adapter's branch is driven through compilation in
+// test.claim.integer_signed_grounding_adapter_witness.
+test fn a_declaration_that_is_not_a_coproduct_refuses() -> Bool {
+  match signed_view_reading(nonnegative: arm(constructor: "NonNegative", payload: "n"), negative: arm(constructor: "Negative", payload: "pred"), declared: DeclaredNotACoproduct) {
+    SignedViewDisagrees { reason: SignedCarrierNotACoproduct } => true
+    _ => false
+  }
+}
+
+test fn a_third_constructor_refuses() -> Bool {
+  match int_arms_over(constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [natural_field(name: "pred")]), ctor(name: "Infinity", fields: [])]) {
+    SignedViewDisagrees { reason: SignedArity { constructor_count: c } } => c == 3
+    _ => false
+  }
+}

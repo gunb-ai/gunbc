@@ -1,5 +1,6 @@
 module gunbc.host.host_reset_return
 
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
 import std.algebra { trim }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
@@ -419,6 +420,9 @@ type ResetPreflightRefusal
   | SubjectHasNoRosterRow { subject: NonEmptyStr }
   | UnitHoldStoreNotOnObserver { subject: NonEmptyStr, observer: NonEmptyStr, store_host: NonEmptyStr }
   | UnitHeldForMaintenance { subject: NonEmptyStr, reason: NonEmptyStr }
+  // The subject has no unit hold decision at all (gunbc.host.managed_host_unit_hold UnitHoldUndecided):
+  // never driven as if it needed no hold.
+  | SubjectHoldUndecided { subject: NonEmptyStr }
 
 fn reset_preflight_refusal_wire(refusal: ResetPreflightRefusal) -> String {
   match refusal {
@@ -436,6 +440,8 @@ fn reset_preflight_refusal_wire(refusal: ResetPreflightRefusal) -> String {
       join(["unit-hold-store-not-on-observer subject=", sj as String, " observer=", o as String, " store_host=", h as String], "")
     UnitHeldForMaintenance { subject: sj, reason: r } =>
       join(["unit-held subject=", sj as String, " reason=", r as String], "")
+    SubjectHoldUndecided { subject: sj } =>
+      join(["subject-hold-undecided subject=", sj as String], "")
   }
 }
 
@@ -554,6 +560,11 @@ type ResetAttemptObservation sole_constructor {
   self_identity: ObserverSelfIdentity
   acknowledgement: ResetCommandAcknowledgement
   observation: HostReturnObservation
+  // WHICH RELEASE THE EXECUTED HANDOFF CONSULTED, carried out of the route's own outcome by
+  // acknowledgement_of_handoff -- the acknowledgement's only mint. none when no control was ever
+  // issued, including every preflight refusal. A claim cannot supply it, so it can answer the pairing
+  // question the fold alone cannot: did the ROUTE read the release the boot was admitted on.
+  admitted: BmcFirmwareReleaseIdentity?
 }
 
 // THE COMMITTED RECEIPT: one run's observation, plus the artifact that holds its bytes. Two attempts
@@ -581,6 +592,7 @@ fn mint_reset_attempt_receipt(
   self_identity: ObserverSelfIdentity,
   acknowledgement: ResetCommandAcknowledgement,
   observation: HostReturnObservation,
+  admitted: BmcFirmwareReleaseIdentity?,
 ) -> ResetAttemptMint {
   match selection {
     ObserverSelectionRefused { cause: c } => AttemptReceiptPairingRefused { cause: c }
@@ -593,6 +605,7 @@ fn mint_reset_attempt_receipt(
           self_identity: self_identity,
           acknowledgement: acknowledgement,
           observation: observation,
+          admitted: admitted,
         },
       }
   }
@@ -1008,6 +1021,15 @@ data host_reset_return_receipt_path: NonEmptyStr = "target/host-reset-return.txt
 // answer; but nothing outside this module can hold a receipt except by minting one, so these two
 // wrappers are what a consumer's code looks like. An unminted pairing becomes a REFUSAL carrying its
 // own cause rather than an absence the caller has to remember to handle.
+// WHICH RELEASE THE EXECUTED HANDOFF ANSWERED FROM, read out of the mint. A pairing that was never
+// minted consumed no row; a minted receipt carries the identity the route itself handed out.
+fn consumed_release_of_mint(mint: ResetAttemptMint) -> BmcFirmwareReleaseIdentity? {
+  match mint {
+    AttemptReceiptMinted { observed: o } => o.admitted
+    AttemptReceiptPairingRefused { cause: _ } => none
+  }
+}
+
 fn reset_return_verdict_of_mint(mint: ResetAttemptMint) -> ResetReturnVerdict {
   match mint {
     AttemptReceiptPairingRefused { cause: c } => ResetReturnRefused { cause: PairingNotMinted { cause: c } }

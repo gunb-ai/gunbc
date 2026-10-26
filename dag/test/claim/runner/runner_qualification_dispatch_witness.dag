@@ -1,5 +1,6 @@
 module test.claim.runner.runner_qualification_dispatch_witness
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
 import std.bytes { utf8_encode_bytes }
 import std.algebra { Cons, Empty }
@@ -16,7 +17,8 @@ import extdeps.github.effect { DispatchWorkflow, GitHubOrganizationRef }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowJobRun, WorkflowJobRunList, Completed, InProgress, Success, Failure,
 }
-import gunbc.host.managed_host { managed_hosts, managed_host_binding }
+import gunbc.host.managed_host { managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.host_control_route { bmc_controlled_host }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_for, AttemptSlot, HostUnitSlot, HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
@@ -163,11 +165,11 @@ fn workflow_with(declares_input: Bool, runs_on: RunnerSpec) -> Workflow {
 test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>
-      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(standing: managed_host_binding(host: h)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))) {
+      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))) {
       Absent => false
       Present { value: slot } =>
       match dispatch_jit_mint(
-        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(standing: managed_host_binding(host: h)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))),
+        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))),
         authority: app_credential,
         control_plane: observed_grant(perms: runner_grant),
         organization: gunbai_org_ref,
@@ -196,24 +198,24 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
                 && token_names_registration(token_app: s.registration.app, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: gunbai_ci_declared, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: s.registration.app, token_installation: other_installation_id, subject: s)
-                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77))) == 0
-                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: s.registration.app, token_installation: other_installation_id, floor_job_id: 501, run_id: 77))) == 0
-                && (match collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77) {
+                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }))) == 0
+                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: s.registration.app, token_installation: other_installation_id, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }))) == 0
+                && (match collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }) {
                   CollectReadsRefused { token_app: _, token_installation: _ } => true
                   CollectReadsPlanned { job_id: _, run_id: _ } => false
                 })
-                && (match collect_read_plan(subject: s, token_app: s.registration.app, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77) {
-                  CollectReadsPlanned { job_id: 501, run_id: 77 } => true
+                && (match collect_read_plan(subject: s, token_app: s.registration.app, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }) {
+                  CollectReadsPlanned { job_id: 501, run_id: GitHubWorkflowRunId { value: 77 } } => true
                   _ => false
                 })
-                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: gunbai_ci_declared, token_installation: s.registration.installation))) == 0
-                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: s.registration.app, token_installation: other_installation_id))) == 0
-                && (match plan_qualification_collection(subject: s, run_id: 77, token_app: gunbai_ci_declared, token_installation: s.registration.installation) {
+                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: gunbai_ci_declared, token_installation: s.registration.installation))) == 0
+                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: s.registration.app, token_installation: other_installation_id))) == 0
+                && (match plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: gunbai_ci_declared, token_installation: s.registration.installation) {
                   CollectionRefusedBeforeAnyRead { refusal: RunCollectedUnderAnotherInstallation { token_app: a, token_installation: _ } } => a == gunbai_ci_declared
                   _ => false
                 })
-                && (match planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: s.registration.app, token_installation: s.registration.installation)) {
-                  Cons { head: ReadQualificationRun { run_id: 77 }, tail: Cons { head: ReadQualificationAttemptJobs { run_id: 77, attempt: 1 }, tail: Empty {} } } => true
+                && (match planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: s.registration.app, token_installation: s.registration.installation)) {
+                  Cons { head: ReadQualificationRun { run_id: GitHubWorkflowRunId { value: 77 } }, tail: Cons { head: ReadQualificationAttemptJobs { run_id: GitHubWorkflowRunId { value: 77 }, attempt: 1 }, tail: Empty {} } } => true
                   _ => false
                 })
                 && (s.host as String) == (h.host as String)
@@ -254,11 +256,11 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
 test fn the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>
-      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(standing: managed_host_binding(host: h)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))) {
+      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))) {
       Absent => false
       Present { value: slot } =>
       match dispatch_jit_mint(
-        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(standing: managed_host_binding(host: h)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))),
+        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))),
         authority: app_credential,
         control_plane: observed_grant(perms: runner_grant),
         organization: gunbai_org_ref,
@@ -404,7 +406,7 @@ test fn the_dispatch_authority_must_name_the_tokens_installation() -> Bool {
 test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => {
-      let standing = host_unit_slot_for(host: bmc_controlled_host(standing: managed_host_binding(host: h)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))
+      let standing = host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))
       let group = group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch))
       match unit_slot_of(standing: standing) {
       Absent => false
@@ -550,7 +552,7 @@ fn jobs(js: List<WorkflowJobRun>) -> WorkflowJobRunList {
 }
 
 fn decide_run(r: WorkflowRun, js: WorkflowJobRunList) -> QualificationRunVerdict {
-  decide_qualification_run(subject: expect, run_id: 77, run_read: RestAnswered { answer: r }, jobs_read: RestAnswered { answer: js })
+  decide_qualification_run(subject: expect, run_id: GitHubWorkflowRunId { value: 77 }, run_read: RestAnswered { answer: r }, jobs_read: RestAnswered { answer: js })
 }
 
 fn decide_jobs(js: WorkflowJobRunList) -> QualificationRunVerdict {
@@ -637,11 +639,11 @@ test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
       RunVerdictRefused { refusal: RunJobsTruncated { returned: rt, total: t } } => rt == 1 && t == 2
       _ => false
     })
-    && (match decide_qualification_run(subject: expect, run_id: 77, run_read: RestRefused { refusal: RestTransportRefused { cause: "fixture" } }, jobs_read: RestAnswered { answer: floor }) {
+    && (match decide_qualification_run(subject: expect, run_id: GitHubWorkflowRunId { value: 77 }, run_read: RestRefused { refusal: RestTransportRefused { cause: "fixture" } }, jobs_read: RestAnswered { answer: floor }) {
       RunVerdictRefused { refusal: RunReadUnreadable { refusal: _ } } => true
       _ => false
     })
-    && (match decide_qualification_run(subject: expect, run_id: 77, run_read: RestAnswered { answer: dispatched_run(attempt_n: 1) }, jobs_read: RestRefused { refusal: RestStatusRefused { status: 404, body: "fixture" } }) {
+    && (match decide_qualification_run(subject: expect, run_id: GitHubWorkflowRunId { value: 77 }, run_read: RestAnswered { answer: dispatched_run(attempt_n: 1) }, jobs_read: RestRefused { refusal: RestStatusRefused { status: 404, body: "fixture" } }) {
       RunVerdictRefused { refusal: RunJobsUnreadable { refusal: _ } } => true
       _ => false
     })

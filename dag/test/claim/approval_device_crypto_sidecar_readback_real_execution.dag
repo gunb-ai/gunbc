@@ -1,0 +1,114 @@
+module test.claim.approval_device_crypto_sidecar_readback_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Int, List }
+import std.measure { second }
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, operation_argv_bind_text }
+import std.materialization_ladder { string_list_contains }
+import extdeps.exec.command { LocalExec }
+import extdeps.languages.bash.invocation { bash_program_command }
+import extdeps.http.client { http_client_max_time_flag }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.native_serve { native_serve_startup_deadline }
+import gunbc.auth.approval_device_crypto_client {
+  device_crypto_sidecar_startup_bound, approval_device_crypto_connect_bound, approval_device_crypto_request_bound,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SIDECAR READBACK RACES THE SIDECAR'S STARTUP, BY REAL EXECUTION OF THE DECLARED COMMAND. The failure (srv1 dark install,
+// run 39848098809) was curl exit 7 eight milliseconds after `systemctl restart` returned, while the sidecar was still in its
+// startup self-check. The fact is what curl does with the argv that extdeps.http.client PostStdinWithinRetryingRefused
+// declares, so this materializes that argv from the declaration (the same route the readback's operation takes) and runs it
+// against a loopback port where a real listener appears only after a delay. Nothing here spells a retry flag. The harness
+// picks a free port, starts the listener after DELAY seconds, runs the command once, and prints its exit status.
+//   inside the bound   -> the listener appears at 1 s, the bound is 6 s: the command completes (exit 0, HTTP 200).
+//   past the bound     -> the listener appears at 12 s, the bound is 2 s: exit 7, the typed unreachable the readback refuses on.
+//   never              -> no listener: exit 7 at the bound, not a hang.
+//   CONTROL, old code  -> PostStdinWithin (the command the readback used) on the inside-the-bound case: exit 7, RED.
+// The production window is not restated: it is gunbc.native_serve native_serve_startup_deadline through
+// device_crypto_sidecar_startup_bound, checked below.
+data client_file: String = "dag/extdeps/http/client.dag"
+
+data listener_source: String = "import http.server as h\nimport sys\nclass H(h.BaseHTTPRequestHandler):\n  def do_POST(self):\n    self.rfile.read(int(self.headers.get(\"content-length\", 0)))\n    self.send_response(200)\n    self.send_header(\"content-length\", \"2\")\n    self.end_headers()\n    self.wfile.write(b\"ok\")\nh.HTTPServer((\"127.0.0.1\", int(sys.argv[1])), H).handle_request()\n"
+
+fn quoted(word: String) -> String {
+  join(["'", replace(word, "'", "'\\''"), "'"], "")
+}
+
+fn command_text(argv: List<String>) -> String {
+  join(map(argv, w => if w == "URL_HERE" { "\"$url\"" } else { quoted(word: w) }), " ")
+}
+
+// delay < 0: no listener at all. The listener is killed on the way out whatever happened.
+fn run_against_listener(argv: List<String>, delay: Int) -> String {
+  join([
+    "d=$(mktemp -d); trap 'kill $lpid 2>/dev/null; rm -rf \"$d\"' EXIT; ",
+    "port=$(python3 -c 'import socket;s=socket.socket();s.bind((\"127.0.0.1\",0));print(s.getsockname()[1])'); ",
+    "url=\"http://127.0.0.1:$port/x\"; ",
+    "printf '%b' '", replace(listener_source, "\n", "\\n"), "' > \"$d/l.py\"; ",
+    if delay < 0 { "lpid=; " } else { join(["( sleep ", to_string(delay), "; exec python3 \"$d/l.py\" \"$port\" ) & lpid=$!; "], "") },
+    "printf 'ping' | ", command_text(argv: argv), " > \"$d/out\" 2>/dev/null; echo \"EXIT=$?\"; cat \"$d/out\"",
+  ], "")
+}
+
+fn retrying_argv(startup_seconds: Int) -> List<String> {
+  match shell_materialize_operation_argv(
+    client_file, "http.Client", "PostStdinWithinRetryingRefused",
+    [
+      operation_argv_bind_text(name: "url", text: "URL_HERE"),
+      operation_argv_bind_text(name: "request_body", text: ""),
+      operation_argv_bind_text(name: "connect_seconds", text: http_client_max_time_flag(max_time: approval_device_crypto_connect_bound) as String),
+      operation_argv_bind_text(name: "max_seconds", text: http_client_max_time_flag(max_time: approval_device_crypto_request_bound) as String),
+      operation_argv_bind_text(name: "startup_seconds", text: to_string(startup_seconds)),
+    ]
+  ) {
+    ArgvMaterialized { argv: a } => a
+    ArgvMaterializationRefused { at: _, cause: _ } => []
+  }
+}
+
+fn old_argv() -> List<String> {
+  match shell_materialize_operation_argv(
+    client_file, "http.Client", "PostStdinWithin",
+    [
+      operation_argv_bind_text(name: "url", text: "URL_HERE"),
+      operation_argv_bind_text(name: "request_body", text: ""),
+      operation_argv_bind_text(name: "connect_seconds", text: http_client_max_time_flag(max_time: approval_device_crypto_connect_bound) as String),
+      operation_argv_bind_text(name: "max_seconds", text: http_client_max_time_flag(max_time: approval_device_crypto_request_bound) as String),
+    ]
+  ) {
+    ArgvMaterialized { argv: a } => a
+    ArgvMaterializationRefused { at: _, cause: _ } => []
+  }
+}
+
+fn observed(argv: List<String>, delay: Int) -> String {
+  run_shell_command_observe(command: bash_program_command(script: run_against_listener(argv: argv, delay: delay)), transport: LocalExec).stdout
+}
+
+test fn a_listener_appearing_inside_the_startup_bound_is_reached() -> Bool {
+  let out = observed(argv: retrying_argv(startup_seconds: 6), delay: 1)
+  string_contains(s: out, pattern: "EXIT=0") && string_contains(s: out, pattern: "ok")
+}
+
+test fn a_listener_appearing_past_the_startup_bound_is_refused_unreachable() -> Bool {
+  string_contains(s: observed(argv: retrying_argv(startup_seconds: 2), delay: 12), pattern: "EXIT=7")
+}
+
+test fn a_listener_that_never_appears_is_refused_unreachable_at_the_bound() -> Bool {
+  string_contains(s: observed(argv: retrying_argv(startup_seconds: 2), delay: -1), pattern: "EXIT=7")
+}
+
+// CONTROL: the command the readback used before goes RED on the very case the retrying command passes.
+test fn the_old_single_shot_command_is_refused_on_a_listener_inside_the_bound() -> Bool {
+  let argv = old_argv()
+  (argv |> count) > 0 && !string_list_contains(xs: argv, wanted: "--retry-connrefused")
+    && string_contains(s: observed(argv: argv, delay: 1), pattern: "EXIT=7")
+}
+
+// THE WINDOW IS THE SIDECAR'S OWN BOUND, not a literal: the readback's bound is the startup deadline the sidecar's main waits.
+test fn the_readback_window_is_the_native_serve_startup_deadline() -> Bool {
+  device_crypto_sidecar_startup_bound() == native_serve_startup_deadline
+}

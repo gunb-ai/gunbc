@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data regen_candidate_reverts_hand_authored_mirror: RecurringFailureMode = RecurringFailureMode {
   identity: "regen_candidate_reverts_hand_authored_mirror" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a regeneration installs over a hand-authored file and reports success (THE CANDIDATE TREE CARRIES EVERY MIRROR FILE, INCLUDING THE ONES REGENERATION DOES NOT AUTHOR, so installing the candidate wholesale reverts hand edits to those files while every figure the run prints stays green.",

@@ -10,6 +10,7 @@ import v2.compiler.parse { parse_module_prepared, prepare_grammar, ParseArtifact
 import v2.compiler.normalize { normalize }
 import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import std.host_text { chars }
 
 // Native lowering of the committed depth-14 value-position block nests (RFM
 // a_value_position_block_re_lowered_through_the_walker). The child reads the measurement fixtures
@@ -46,7 +47,7 @@ fn lowering_observed(source: String) -> String {
   match prepare_grammar(grammar: dag_grammar()) {
     Rejected { diagnostics: _ } => "prepare_grammar_refused"
     Accepted { value: prepared, diagnostics: _ } =>
-      match lex_walk_artifact(source: chars(s: source), file: ^nest_fixture, rules: dag_lex_rules()) {
+      match lex_walk_artifact(source: chars(text: source), file: ^nest_fixture, rules: dag_lex_rules()) {
         Rejected { diagnostics: _ } => "lex_refused"
         Accepted { value: lexed, diagnostics: _ } =>
           match parse_module_prepared(tokens: lex_artifact_semantic_tokens(artifact: lexed), prepared: prepared) {

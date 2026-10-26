@@ -2,7 +2,9 @@ module test.claim.algebra_receiver_alias_witness
 
 import std.types { Bool, Int, String, List }
 import std.optional { Present, Absent }
-import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+import std.algebra { string_contains }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved}
 
 // These are deliberately source fixtures: the alias spelling is expected to
 // refuse until owner identity is carried to variant_reference_inferred_node.
@@ -13,18 +15,57 @@ data alias_return_source: String = "module alias_return\nimport std.types { Int,
 data alias_field_source: String = "module alias_field\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\ntype Box { values: List<Int> }\nfn asks() -> List<Int> { let b = Box { values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }; b.values }\n"
 data alias_initializer_source: String = "module alias_initializer\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { let initial: FreeMonoid<Int> = Empty; [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) }\n"
 
-test fn nominal_return_is_an_acceptance_fixture() -> Bool {
-  total_blocking_count_for(source: nominal_return_source) == 0
+test fn nominal_return_is_an_acceptance_fixture() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: nominal_return_source), holds: fn(n) { n == 0 }))
 }
 
-test fn alias_return_is_a_refusal_fixture() -> Bool {
-  blocking_subject_count_for(source: alias_return_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)") >= 1
+test fn alias_return_is_a_refusal_fixture() -> ProcessExit {
+  census_exit(census_verdict(
+    census: blocking_subject_census(source: alias_return_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"),
+    holds: fn(n) { n >= 1 }
+  ))
 }
 
-test fn alias_field_is_a_refusal_fixture() -> Bool {
-  blocking_subject_count_for(source: alias_field_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)") >= 1
+test fn alias_field_is_a_refusal_fixture() -> ProcessExit {
+  census_exit(census_verdict(
+    census: blocking_subject_census(source: alias_field_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"),
+    holds: fn(n) { n >= 1 }
+  ))
 }
 
-test fn explicit_initializer_is_an_acceptance_fixture() -> Bool {
-  total_blocking_count_for(source: alias_initializer_source) == 0
+test fn explicit_initializer_is_an_acceptance_fixture() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: alias_initializer_source), holds: fn(n) { n == 0 }))
+}
+
+// THE NO-OBSERVATION CONTRACT, ASSERTED AS A CLAIM. Two cells of this witness answer the census
+// question through a route the census builtin cannot arm, and the OLD Int probe made that look
+// EXACTLY like a finding: a census that never ran answered -1, the comparison `>= 1` failed, and the
+// harness printed FAIL -- indistinguishable from `alias_return`, which really did observe zero
+// refusal diagnostics. The typed probe answers with the refusal itself, and this claim pins what the
+// refusal must look like so the two classes cannot collapse again: the code must be the contract's
+// "no observation" code (2), and the reason must carry the census's OWN cause rather than a
+// restated one. The cause is matched by the stable fragment of its refusal, never by the figures
+// inside it, so a fixture that grows a module does not rot this claim.
+//
+// When the route is armed (the defect the parent routed to #14152 PR-2, and the census seam), this
+// claim goes RED naming itself: alias_field would then OBSERVE, so the run must be re-read, not the
+// claim re-tuned. The harness text of this claim's red is "FAIL"; once #14539 lands it prints
+// UNOBSERVED, which is the same exit code this claim asserts.
+test fn alias_field_refusal_is_a_no_observation_with_its_own_cause() -> ProcessExit {
+  // THE VERDICT IS READ AS ITS TYPE, not as a rendered exit code. An Unobserved carries the builtin's
+  // cause; the claim checks the cause names the real refusal ("render selection refused") rather than
+  // matching on the integer 2 -- the code is `census_exit`'s business at the boundary, not a claim's.
+  let verdict = census_verdict(census: blocking_subject_census(source: alias_field_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"), holds: fn(n) { n >= 1 })
+  match verdict {
+    CensusUnobserved { cause: cause } =>
+      if string_contains(s: cause, pattern: "render selection refused") {
+        ExitSuccess
+      } else {
+        ExitFailure { code: 1, reason: concat("refused as no-observation but the cause does not name the expected refusal; cause carried: ", cause) }
+      }
+    CensusDisagreed { reason: reason } =>
+      ExitFailure { code: 1, reason: concat("alias_field OBSERVED a refusal diagnostic where this tree's census route is known not to be runnable; the seam has been armed and the two cells here must be re-read; disagreement carried: ", reason) }
+    CensusHeld {} =>
+      ExitFailure { code: 1, reason: "alias_field held where this tree's census route is known not to be runnable; the seam has been armed and the two cells here must be re-read" }
+  }
 }

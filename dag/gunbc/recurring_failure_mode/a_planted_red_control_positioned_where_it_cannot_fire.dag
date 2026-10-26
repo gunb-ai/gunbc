@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_planted_red_control_positioned_where_it_cannot_fire
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_planted_red_control_positioned_where_it_cannot_fire: RecurringFailureMode = RecurringFailureMode {
   identity: "a_planted_red_control_positioned_where_it_cannot_fire" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a planted red control positioned where it cannot fire** (an instrument folds a verdict into an accumulator -- `failures=0; for ...; failures=$((failures+1))` -- and the author splices the planted red control ABOVE the line that resets the accumulator, or before the fold's first read, so the control's contribution is discarded before the verdict is taken. The instrument then reports green on the control and on the subject alike, and the control is cited as proof the instrument can go red.",

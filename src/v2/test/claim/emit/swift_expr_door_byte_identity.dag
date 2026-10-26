@@ -1,0 +1,77 @@
+module v2.test.claim.emit.swift_expr_door_byte_identity
+
+import std.types { List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.extdeps.languages.swift_expr_door { swift_expr_door_outside_specimens, swift_expr_door_print }
+import v2.extdeps.languages.swift.rows { SwiftRowEmitted, swift_rows_emit_source_file }
+import v2.extdeps.languages.swift.syntax { SwiftExpr, SwiftSourceFile, sw_add, sw_arg, sw_bool, sw_call, sw_calln, sw_id, sw_int, sw_let_decl, sw_pos, sw_path, sw_str }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// One expression printed both ways: the door projection of the lowered nodes and the rows printer
+// over the same expression authored as SwiftExpr. The rows text is `let v = <expr>` plus a newline.
+fn sed_rows_text(e: SwiftExpr) -> String {
+  match swift_rows_emit_source_file(f: SwiftSourceFile { declarations: [sw_let_decl(n: "v", e: e)] }) {
+    SwiftRowEmitted { source: s } => s
+    _ => "ROWS_REFUSED"
+  }
+}
+
+fn sed_door_text(e: SwiftExpr) -> String {
+  match swift_expr_door_print(e: e) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "DOOR_REFUSED"
+  }
+}
+
+fn sed_joins(e: SwiftExpr, golden: String) -> Bool {
+  sed_door_text(e: e) == golden && sed_rows_text(e: e) == "let v = " + golden + "\n"
+}
+
+test fn identifier_prints_identically_both_ways_holds() -> Bool { sed_joins(e: sw_id(n: "ident"), golden: "ident") }
+test fn bool_literal_prints_identically_both_ways_holds() -> Bool { sed_joins(e: sw_bool(b: true), golden: "true") }
+test fn int_literal_prints_identically_both_ways_holds() -> Bool { sed_joins(e: sw_int(n: 7), golden: "7") }
+test fn member_access_prints_identically_both_ways_holds() -> Bool { sed_joins(e: sw_path(b: "base", m: "field"), golden: "base.field") }
+test fn positional_call_prints_identically_both_ways_holds() -> Bool {
+  sed_joins(e: sw_calln(f: "callee", a: [sw_pos(v: sw_id(n: "a")), sw_pos(v: sw_bool(b: true))]), golden: "callee(a, true)")
+}
+test fn memberwise_init_prints_identically_both_ways_holds() -> Bool {
+  sed_joins(e: sw_calln(f: "Wire", a: [sw_arg(l: "tag", v: sw_id(n: "a")), sw_arg(l: "on", v: sw_bool(b: false))]), golden: "Wire(tag: a, on: false)")
+}
+
+// RED: a form outside the projection refuses on the door path (it is spelled by the swift.dag
+// productions, not silently approximated), while the rows printer still prints it.
+test fn form_outside_projection_refuses_on_the_door_path_holds() -> Bool {
+  sed_door_text(e: sw_add(l: sw_id(n: "a"), r: sw_id(n: "b"))) == "DOOR_REFUSED"
+    && sed_rows_text(e: sw_add(l: sw_id(n: "a"), r: sw_id(n: "b"))) == "let v = a + b\n"
+}
+
+// A nested int literal reifies since C5-G (#14424) added the int-literal arm to
+// target_value_expression_reify_from_wire, so a call argument can be one.
+test fn nested_int_literal_argument_prints_identically_both_ways_holds() -> Bool {
+  sed_joins(e: sw_calln(f: "callee", a: [sw_pos(v: sw_id(n: "a")), sw_pos(v: sw_int(n: 2))]), golden: "callee(a, 2)")
+}
+
+// The frontier row's typed roster is CONSUMED here: every form it lists refuses on the door path, and
+// a roster that lists a form the door does spell fails. Two pins so neither direction is vacuous:
+// the roster is nonempty, and the RED roster (a spellable identifier among the listed forms) reds.
+fn sed_all_refuse(xs: List<SwiftExpr>) -> Bool {
+  all(xs, x => sed_door_text(e: x) == "DOOR_REFUSED")
+}
+
+test fn every_form_the_frontier_row_lists_refuses_on_the_door_path_holds() -> Bool {
+  count(swift_expr_door_outside_specimens) > 0 && sed_all_refuse(xs: swift_expr_door_outside_specimens)
+}
+
+test fn a_frontier_roster_listing_a_form_the_door_spells_is_caught_holds() -> Bool {
+  !sed_all_refuse(xs: [sw_add(l: sw_id(n: "a"), r: sw_id(n: "b")), sw_id(n: "ident")])
+}
+
+// Found by the frontier-roster control: a call nested as a call argument is spelled by the projection,
+// so the frontier row no longer lists it.
+test fn nested_call_argument_prints_identically_both_ways_holds() -> Bool {
+  sed_joins(e: sw_calln(f: "callee", a: [sw_pos(v: sw_calln(f: "inner", a: []))]), golden: "callee(inner())")
+}

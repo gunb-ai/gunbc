@@ -71,7 +71,7 @@ pub fn service_receiver_resolved_name(
         } => match (*bk.clone()).clone() {
             VarBindingKind::ServiceValueBinding => Some(crate::v1_std_core::expr_var_name_at(
                 receiver.clone(),
-                source_indices.clone(),
+                source_indices,
             )),
             _ => std::option::Option::None,
         },
@@ -83,7 +83,7 @@ pub fn is_typed_service_call_receiver(
     receiver: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match service_receiver_resolved_name(receiver.clone(), source_indices.clone()) {
+    match service_receiver_resolved_name(receiver, source_indices) {
         Some(_) => true,
         std::option::Option::None => false,
     }
@@ -93,7 +93,7 @@ pub fn extract_typed_service_name(
     receiver: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    service_receiver_resolved_name(receiver.clone(), source_indices.clone())
+    service_receiver_resolved_name(receiver, source_indices)
 }
 
 pub fn collect_typed_service_calls(
@@ -102,12 +102,12 @@ pub fn collect_typed_service_calls(
 ) -> Rc<Vec<String>> {
     {
         let result = collect_typed_service_calls_into(
-            texpr.clone(),
+            texpr,
             Rc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            source_indices.clone(),
+            source_indices,
         );
         result.result.clone()
     }
@@ -341,12 +341,12 @@ pub fn collect_callee_edges(
 ) -> Rc<Vec<Rc<CalleeEdge>>> {
     {
         let result = collect_callee_edges_into(
-            texpr.clone(),
+            texpr,
             Rc::new(CalleeAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            source_indices.clone(),
+            source_indices,
         );
         result.result.clone()
     }
@@ -486,25 +486,43 @@ pub fn expand_transitive_services_once(
                                         }
                                         __result
                                     });
-                                    let merged = extra.iter().cloned().fold(
-                                        info.service_names.clone(),
-                                        |svc_list: Rc<Vec<String>>, svc: String| {
-                                            if {
-                                                let mut __found = false;
-                                                for s in svc_list.iter().cloned() {
-                                                    if (s.clone() == svc.clone()) {
-                                                        __found = true;
-                                                        break;
-                                                    }
+                                    let seeded = Rc::new(UniqueAccum {
+                                        seen: info.service_names.clone().iter().cloned().fold(
+                                            v1_rt::rc_empty_map::<String, bool>(),
+                                            |seen: Rc<HashMap<String, bool>>, svc: String| {
+                                                v1_rt::rc_map_insert(seen, svc.clone(), true)
+                                            },
+                                        ),
+                                        result: info.service_names.clone(),
+                                    });
+                                    let merged = extra
+                                        .iter()
+                                        .cloned()
+                                        .fold(
+                                            seeded.clone(),
+                                            |acc: Rc<UniqueAccum>, svc: String| {
+                                                if crate::v1_compiler_infer_types::emit_map_has(
+                                                    acc.seen.clone(),
+                                                    svc.clone(),
+                                                ) {
+                                                    acc.clone()
+                                                } else {
+                                                    Rc::new(UniqueAccum {
+                                                        seen: v1_rt::rc_map_insert(
+                                                            acc.seen.clone(),
+                                                            svc.clone(),
+                                                            true,
+                                                        ),
+                                                        result: v1_rt::rc_list_push(
+                                                            acc.result.clone(),
+                                                            svc.clone(),
+                                                        ),
+                                                    })
                                                 }
-                                                __found
-                                            } {
-                                                svc_list.clone()
-                                            } else {
-                                                v1_rt::rc_list_push(svc_list.clone(), svc.clone())
-                                            }
-                                        },
-                                    );
+                                            },
+                                        )
+                                        .result
+                                        .clone();
                                     let same_count = ((merged.clone().len() as i64)
                                         == (info.service_names.clone().len() as i64));
                                     if same_count.clone() {
@@ -691,40 +709,46 @@ pub fn expand_transitive_services_loop(
     mut __tco_loop_module_callees: Rc<Vec<Rc<ModuleCallees>>>,
     mut __tco_loop_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut __tco_loop_remaining_passes: i64,
+    mut __tco_loop_before: i64,
 ) -> Rc<ServiceEffectAnalysis> {
-    loop {
-        #[allow(unused_mut)]
-        let mut module_callees = __tco_loop_module_callees;
-        #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry;
-        #[allow(unused_mut)]
-        let mut remaining_passes = __tco_loop_remaining_passes;
-        let before = total_service_count(registry.clone());
-        let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
-        let after = total_service_count(next.clone());
-        if (before.clone() == after.clone()) {
-            break Rc::new(ServiceEffectAnalysis::EffectsComplete {
-                registry: registry.clone(),
-            });
-        } else {
-            if (remaining_passes.clone() <= 1) {
-                break Rc::new(ServiceEffectAnalysis::EffectsIncomplete {
-                    partial: next.clone(),
-                    causes: Rc::new(vec![Rc::new(
-                        EffectIncompleteness::ExpansionBudgetExhausted {
-                            remaining_delta: v1_rt::int_sub(after.clone(), before.clone()),
-                        },
-                    )]),
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut module_callees = __tco_loop_module_callees;
+            #[allow(unused_mut)]
+            let mut registry = __tco_loop_registry;
+            #[allow(unused_mut)]
+            let mut remaining_passes = __tco_loop_remaining_passes;
+            #[allow(unused_mut)]
+            let mut before = __tco_loop_before;
+            let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
+            let after = total_service_count(next.clone());
+            if (before.clone() == after.clone()) {
+                break Rc::new(ServiceEffectAnalysis::EffectsComplete {
+                    registry: registry.clone(),
                 });
             } else {
-                {
-                    let __tco_0 = module_callees;
-                    let __tco_1 = next.clone();
-                    let __tco_2 = v1_rt::int_sub(remaining_passes, 1);
-                    __tco_loop_module_callees = __tco_0;
-                    __tco_loop_registry = __tco_1;
-                    __tco_loop_remaining_passes = __tco_2;
-                    continue;
+                if (remaining_passes.clone() <= 1) {
+                    break Rc::new(ServiceEffectAnalysis::EffectsIncomplete {
+                        partial: next.clone(),
+                        causes: Rc::new(vec![Rc::new(
+                            EffectIncompleteness::ExpansionBudgetExhausted {
+                                remaining_delta: v1_rt::int_sub(after.clone(), before.clone()),
+                            },
+                        )]),
+                    });
+                } else {
+                    {
+                        let __tco_0 = module_callees;
+                        let __tco_1 = next.clone();
+                        let __tco_2 = v1_rt::int_sub(remaining_passes, 1);
+                        let __tco_3 = after.clone();
+                        __tco_loop_module_callees = __tco_0;
+                        __tco_loop_registry = __tco_1;
+                        __tco_loop_remaining_passes = __tco_2;
+                        __tco_loop_before = __tco_3;
+                        continue;
+                    }
                 }
             }
         }
@@ -764,7 +788,7 @@ pub fn expand_transitive_services(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<ServiceEffectAnalysis> {
     {
-        let module_callees = build_module_callees(modules.clone());
+        let module_callees = build_module_callees(modules);
         let unresolved = v1_rt::concat(
             unresolved_callee_edges(module_callees.clone()),
             unjoinable_callee_edges(module_callees.clone(), registry.clone()),
@@ -773,6 +797,7 @@ pub fn expand_transitive_services(
             module_callees.clone(),
             registry.clone(),
             expansion_pass_bound(registry.clone()),
+            total_service_count(registry.clone()),
         );
         match (*closed.clone()).clone() {
             ServiceEffectAnalysis::EffectsComplete {
@@ -812,7 +837,7 @@ pub fn check_service_field_access_node(
         {
             let path = v1_rt::concat(
                 v1_rt::concat(
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), base_type.clone()),
+                    crate::v1_std_core::authored_name_at(source_indices, base_type.clone()),
                     ".".to_string(),
                 ),
                 field.clone(),
@@ -840,7 +865,7 @@ pub fn check_service_method_call_node(
     {
         match v1_rt::map_get(
             &service_registry,
-            crate::v1_std_core::authored_name_at(source_indices.clone(), receiver_type.clone()),
+            crate::v1_std_core::authored_name_at(source_indices, receiver_type.clone()),
         ) {
             Some(ops) => {
                 let matching = Rc::new({
@@ -966,6 +991,6 @@ pub fn service_op_entry(
             source_indices.clone(),
         ),
         params: child.params.clone(),
-        rest: service_operation_is_rest(child.clone(), service.clone(), source_indices.clone()),
+        rest: service_operation_is_rest(child.clone(), service, source_indices.clone()),
     })
 }

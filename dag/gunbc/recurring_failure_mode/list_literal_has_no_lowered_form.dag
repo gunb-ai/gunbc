@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.list_literal_has_no_lowered_form
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data list_literal_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
   identity: "list_literal_has_no_lowered_form" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "a list literal `[e1, .., en]` has no lowered form in v2 body lowering, on ANY route: `v2.compiler.body_lowering_fold` `body_lower_primary_expr` answered it with `body_lower_pattern_first_atom_optional`, its first atom, the `[` token, so every element reached no reference site -- a silent drop in data initializers, let values, and call arguments alike (DESIGN section 5)",

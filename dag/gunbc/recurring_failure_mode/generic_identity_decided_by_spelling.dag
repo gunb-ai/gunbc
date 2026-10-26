@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.generic_identity_decided_by_spelling
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data generic_identity_decided_by_spelling: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_identity_decided_by_spelling" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: `v1.compiler.infer` decides whether a type node IS a generic parameter by its SPELLING at three sites -- `unify_generics` binds a bare formal leaf by its label, `substitute_generics_apply` replaces any bare node whose label is a substitution key, and that function's self-binding guard compares the bound node's label with the variable's id. A node that merely spells a parameter's name is taken for the parameter.",

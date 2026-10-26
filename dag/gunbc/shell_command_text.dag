@@ -7,7 +7,7 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node, bash_fold_serialize_stmts_semi }
 import v2.std.node { Node }
-import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.std.diagnostic { Accepted, Rejected, None, Some, NonEmptyDiagnostics, diagnostics_reason_lexemes }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 
 // One authority for "an argv this repository intends to run" becoming shell text. The argv is built
@@ -18,6 +18,13 @@ import extdeps.sudo.elevation { sudo_elevate_argv }
 // emitted text. The host-axis cap scripts and the live-deploy operation spellings reached for this
 // construction independently; a second spelling would be the §3 fork.
 data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a command intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the consuming step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
+
+// THE MARKER NAMES WHY THE SERIALIZER REFUSED. A refusal swallowed into a constant marker leaves the
+// operator holding "a command intent was rejected" with no reason, which is a located refusal turned
+// into an unlocated one (DESIGN section 5); the reasons ride behind the marker on its one line.
+fn shell_command_text_refused_with_cause(diagnostics: NonEmptyDiagnostics) -> String {
+  join([shell_command_text_refused_poison, " reasons: ", diagnostics_reason_lexemes(diagnostics: diagnostics)], "")
+}
 
 fn shell_literal_words(words: List<String>) -> List<Node> {
   map(words, w => bash_build_word_lit(text: w))
@@ -43,9 +50,9 @@ fn shell_command_text_of_node(stmt: Node) -> String {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => source
-        Some { diagnostics: _ } => shell_command_text_refused_poison
+        Some { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
       }
-    Rejected { diagnostics: _ } => shell_command_text_refused_poison
+    Rejected { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
   }
 }
 
@@ -54,9 +61,9 @@ fn shell_command_text_of_stmts(stmts: List<Node>) -> String {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => source
-        Some { diagnostics: _ } => shell_command_text_refused_poison
+        Some { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
       }
-    Rejected { diagnostics: _ } => shell_command_text_refused_poison
+    Rejected { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
   }
 }
 

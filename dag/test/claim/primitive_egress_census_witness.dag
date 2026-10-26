@@ -33,7 +33,7 @@ import gunbc.primitive_egress.category { TextOps, SeedQuery }
 import gunbc.primitive_egress.census_live { live_declaration_resolver, live_surface_facts }
 import gunbc.primitive_egress.dispositions_text { dispositions_text_rows }
 import gunbc.primitive_egress.receipt { census_receipt_lines }
-import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefResolved, DeclarationRefDeclarationAbsent, DeclarationIdentity }
+import v2.std.decl_ref_resolution_host { DeclarationRefResolution, DeclarationRefResolved, DeclarationRefDeclarationAbsent, DeclarationIdentity }
 import v2.std.decl_index { FnItem, ServiceItem }
 import gunbc.v1.v1_interpreter_primitive_surface { InterpreterPrimitiveDispatchArm, InterpreterPrimitiveArmId, ServiceDispatch, EvalServiceCallCarveOutSite, AuthoredInRoster }
 

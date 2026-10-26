@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.a_dispatch_is_gated_on_main_not_its_admitted
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data a_dispatch_is_gated_on_main_not_its_admitted_candidate: RecurringFailureMode = RecurringFailureMode {
   identity: "a_dispatch_is_gated_on_main_not_its_admitted_candidate" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a lab or development dispatch is admitted or refused against origin/main (or refs/heads/main) rather than against the instance's own admitted candidate identity. HARM: a lab cannot run the revision it was admitted to serve, or it mutates from a trunk it did not select; restoring universal main-only does not discharge the declared restoration (gunbc.rung_drop fleet_converge_named_revision_and_branch). DESIGN section 3d: selection of the candidate must be consumed at use.",
@@ -17,6 +19,7 @@ data a_dispatch_is_gated_on_main_not_its_admitted_candidate: RecurringFailureMod
     "DISTINGUISHING FACTS: this is not privileged WIF remaining equality-pinned at reviewed main (explicitly not the rung-drop population). It is not a FreshFromBase continuation. The class is lab/dev dispatch keyed to trunk instead of the instance's admitted ref. RUNG FOUND AT: mitigatable (dispatch refuses or runs the wrong tree, loudly if noticed). CEILING: structurally guaranteed -- dispatch_base_ref vs admitted ref is a modeled pair. NEXT TRIGGER: a lab instance whose admitted candidate is not main dispatches against that candidate, and a red is a lab whose dispatch_base_ref is still origin/main while its admitted ref is not.",
 
     "INVENTORY, 2026-10-11, valiant-gull-69 census of entry wrappers that pin srv1_live_dashboard_instance although their core is already for_instance (cited as source; not re-derived). roadmap_belt_actuate 16 sites (belt_claude/codex_preflight, belt_attempts_observe, tick and spawn entries; belt_dispatch_instance_named keeps the srv1-live/srv2-deploy name map), roadmap_serve 10 (serve_attempts/workflow/sessions and related response entries), roadmap_dispatch_actuator 5 plus dispatch_worktree_root and dispatch_codex_home data pinned to srv1 layout, roadmap_dashboard_instance_apply 2 (lab peer), roadmap_launch_deployment_cli 1, dispatch_preflight 1, dispatch_selection 1 (fixed in gunbc#13720). Cause F instance/target binding; roadmap leaves cc-path-census and cc-selection-to-use consume this census as inventory.",
+    "REPAIR OF THE INVENTORY, 2026-10-24, gunb-ai/gunbc#14970 (quick-eagle-339). Every zero-argument wrapper the INVENTORY row names is deleted rather than kept beside its for_instance core, and every downstream function on those routes takes the instance from its caller; entries (serve entry functions, the CLI env and workdir channels, named wet entries) resolve once. The live occurrence on this route: belt_tick_for_instance resolved its instance and belt_actuate_spawn re-picked srv1-live, so a lab tick spawned against srv1-live; the spawn chain now carries the tick's instance. The srv1-layout data pins dispatch_worktree_root and dispatch_codex_home are deleted. Executed evidence: test.claim.roadmap.belt_spawn_instance_wet_witness passes at 3cf2b6ff152a and fails under a re-pick at belt_actuate_spawn_member's call to belt_actuate_spawn. This repairs the instance-binding half of the class only; the dispatch_base_ref half above is unchanged.",
   ],
 
   evidence: [

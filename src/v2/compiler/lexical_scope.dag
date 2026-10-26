@@ -28,8 +28,16 @@ import v2.std.node {
   arrow_first_positional_target,
   arrow_named_edge_is_metadata,
   edge_is_core,
-  positional_child_count,
-  positional_edges
+  BindBinderSlot,
+  BindBodySlot,
+  BindSlot,
+  BindValueSlot,
+  MatchArmSlot,
+  MatchScrutineeSlot,
+  bind_positional_slot,
+  bind_slot_target,
+  match_positional_slot,
+  positional_child_count
 }
 import v2.std.node_query { construct_field_edges, construct_tag_optional, find_core_child, is_wildcard_pattern }
 import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params }
@@ -147,6 +155,21 @@ type ArrowSlotScope
   | SlotScopeParamsOverTypeParams
   | SlotScopeParamsOverOuter
 
+// WHETHER RESOLVE CARRIES THE SLOT'S TARGET UNCHANGED AND NEVER WALKS IT: the declared order and the
+// contract metadata. Nothing under it is resolved, so nothing under it is a mention; the reference-site
+// collector asks this and keeps no list of such edges.
+fn arrow_slot_is_carried(slot: ArrowSlot) -> Bool {
+  match slot {
+    ArrowTypeParamsSlot => false
+    ArrowCarriedSlot => true
+    ArrowResourceRequirementsSlot => false
+    ArrowDomainSlot => false
+    ArrowCodomainSlot => false
+    ArrowBodyOrNamedSlot => false
+    ArrowAuthoredSlot => false
+  }
+}
+
 fn arrow_slot_scope(slot: ArrowSlot) -> ArrowSlotScope {
   match slot {
     ArrowTypeParamsSlot => SlotScopeOuter
@@ -181,10 +204,10 @@ fn bind_binder(n: Node) -> Optional<BindBinder> {
   match n.kind {
     ComputationNode { behavior: Bind } =>
       if positional_child_count(children: n.children) == 3 {
-        match first(positional_edges(children: n.children)) {
-          Present { value: e0 } =>
-            match e0.target.kind {
-              TypeNode { connective: Atom { identity: sym } } => optional_present(value: BindBinder { name: sym, atom: e0.target })
+        match bind_slot_target(n: n, slot: BindBinderSlot) {
+          Present { value: binder } =>
+            match binder.kind {
+              TypeNode { connective: Atom { identity: sym } } => optional_present(value: BindBinder { name: sym, atom: binder })
               TypeNode { connective: _ } => optional_absent()
               ComputationNode { behavior: _ } => optional_absent()
             }
@@ -198,24 +221,15 @@ fn bind_binder(n: Node) -> Optional<BindBinder> {
   }
 }
 
-// THE SLOT A BIND'S POSITIONAL CHILD OCCUPIES, by its ordinal among the POSITIONAL children only: the
-// type-annotation edge may stand anywhere among the children, so counting it would shift the value into
-// the binder's inner scope. The binder is visible in the body and nowhere else.
-type BindSlot
-  = BindBinderSlot
-  | BindValueSlot
-  | BindBodySlot
-
-fn bind_positional_slot(ordinal: Int) -> BindSlot {
-  if ordinal == 0 {
-    BindBinderSlot
-  } else if ordinal == 1 {
-    BindValueSlot
-  } else {
-    BindBodySlot
-  }
+// A `let`'s VALUE: its second positional child, the node resolve records as the binding's LexicalValued
+// value (v2.compiler.resolve bind_frame_binders) and the one a reader of the resolved tree takes as the
+// value a use of the binder waits on (v2.compiler.value_use_dependency).
+fn bind_value(n: Node) -> Optional<Node> {
+  bind_slot_target(n: n, slot: BindValueSlot)
 }
 
+// THE SLOT A BIND'S POSITIONAL CHILD OCCUPIES is v2.std.node bind_positional_slot, the one table every stage
+// reads. The binder is visible in the body and nowhere else.
 fn bind_slot_sees_binder(slot: BindSlot) -> Bool {
   match slot {
     BindBinderSlot => false
@@ -325,9 +339,10 @@ type ChildValueScope
 // A TYPE-ROLE EDGE is resolved in the type scope, which holds type parameters and no value binder
 // (v2.compiler.resolve resolve_type_role_target), so a child on one sees no value at all. The Arrow's
 // ordinal counts ALL of its children and the Bind's counts its POSITIONAL children only, exactly as the
-// slot tables above are keyed. A Match's counts all of its children too, as resolution's walk does
-// (v2.compiler.resolve resolve_match_node_walk): child 0 is the scrutinee, which sees the enclosing scope,
-// and every later child is an arm, which sees the candidates of its own pattern. A `let` that ends its arm's
+// slot tables are keyed. A Match's counts its POSITIONAL children too (v2.std.node match_positional_slot),
+// as resolution's walk does (v2.compiler.resolve resolve_match_node_walk): positional 0 is the scrutinee,
+// which sees the enclosing scope, every later positional child is an arm, which sees the candidates of its
+// own pattern, and a labeled child sees the enclosing scope. A `let` that ends its arm's
 // binders (bind_carries_arm_scope_exit) sees them in its value only: its binder and body leave the current arm.
 fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ordinal: Int) -> ChildValueScope {
   if edge_is_cast_target(e: edge) || edge_is_type_annotation(e: edge) {
@@ -336,10 +351,14 @@ fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ord
     match frame {
       NoValueFrame => ChildSeesParentValues
       MatchValueFrame =>
-        if ordinal == 0 {
-          ChildSeesParentValues
-        } else {
-          ChildSeesParentValuesAndUndecided { names: match_arm_candidate_names(arm: edge.target) }
+        match edge.label {
+          Positional =>
+            match match_positional_slot(ordinal: positional_ordinal) {
+              MatchScrutineeSlot => ChildSeesParentValues
+              MatchArmSlot => ChildSeesParentValuesAndUndecided { names: match_arm_candidate_names(arm: edge.target) }
+            }
+          Authored { name: _ } => ChildSeesParentValues
+          StructuralLabel { label: _ } => ChildSeesParentValues
         }
       ArrowValueFrame { params: ps } =>
         if arrow_slot_scope_binds_value_params(scope: arrow_slot_scope(slot: arrow_slot(e: edge, ordinal: ordinal))) {
@@ -354,6 +373,25 @@ fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ord
           StructuralLabel { label: _ } => ChildSeesParentValues
         }
     }
+  }
+}
+
+// A DECLARING OCCURRENCE IS NOT A MENTION: the atom a `let` binds is where the name is introduced, so a walk that lists the
+// mentions of a spelling must not list it (a sweep read it as a free call of the spelling it declares). Decided from the same
+// slot table child_value_scope reads, as a fact of the syntax. An Arrow's parameters are already carried
+// (arrow_slot_is_carried) and a match arm's pattern atoms are UNDECIDED, not declared, until resolution has the symbol
+// index, so the `let` binder is the only declaring occurrence a walk can name here.
+fn child_is_declaring_occurrence(frame: ValueFrame, edge: Edge, positional_ordinal: Int) -> Bool {
+  match frame {
+    BindValueFrame { binder: _, exits_arm: _ } =>
+      match edge.label {
+        Positional => bind_positional_slot(ordinal: positional_ordinal) == BindBinderSlot
+        Authored { name: _ } => false
+        StructuralLabel { label: _ } => false
+      }
+    NoValueFrame => false
+    ArrowValueFrame { params: _ } => false
+    MatchValueFrame => false
   }
 }
 

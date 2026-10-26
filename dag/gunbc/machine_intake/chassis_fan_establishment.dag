@@ -1,0 +1,223 @@
+module gunbc.machine_intake.chassis_fan_establishment
+
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { rpm_count, sdr_undecoded_line_count_value }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
+import extdeps.bmc.ipmi_sdr { SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrEmptyReadingRow, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
+import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable, fan_failure_sensor_name }
+
+// WHETHER THE CHASSIS FANS SPIN, JUDGED OVER THE FANS THE UNIT IS FITTED WITH AND NO OTHER.
+//
+// The verdict population is the EXPECTED fitted headers, never "every header the controller lists": a
+// unit with an unpopulated socket has headers that will always read nothing, and a rule over every
+// header would refuse every boot. A fitted header that reads zero, nothing, a duty or an unrecognised
+// text is Refused. A header NOT in the fitted set that reads a spinning speed is neither a pass nor a
+// refusal here and is not carried by the verdict (nothing consumes it): the fan observation receipt
+// already lists every header's reading, so the contradiction is visible there to the operator.
+//
+// THE FITTED SET IS A STANDING FACT, NOT A DEFAULT. Until it is established the only honest verdict is
+// a refusal that names what would establish it (the fan-policy standing's TranscribedUncited move,
+// extdeps.external_authority CitedFigureStanding), so an empty or unestablished set can never read as
+// "all fitted fans spin".
+type FittedFanSet
+  = FittedFanSetNotEstablished { read_obligation: NonEmptyStr }
+  | FittedFanSetEstablished { first: NonEmptyStr, rest: List<NonEmptyStr>, standing: CitedFigureStanding }
+  | FittedFanSetOperatorAssumed { first: NonEmptyStr, rest: List<NonEmptyStr>, assumption: NonEmptyStr }
+
+// THE VERDICT CONSUMES THE STANDING (operator ruling via the side chat, 2026-10-17). FittedFanSetEstablished admits
+// only when its standing is cited to an authority or observed by a receipt; a TranscribedUncited standing is a bet
+// and refuses as FittedSetUnestablished. The ONE arm that admits on an operator's say-so is FittedFanSetOperatorAssumed,
+// whose `assumption` states what the verdict rests on and is read into every stop text, so the admission is never
+// hidden inside Established.
+//
+// THE CLOSED REFUSAL SET. The first refusal in this order is the cause (the observation receipt keeps every row):
+// fitted set, chassis, thermal, fan read, undecoded rows, then each fitted header in set order. The chassis arms carry a
+// PostPower prefix because extdeps.bmc.ipmi_chassis_control already declares ChassisUnreadable and
+// ChassisStatusUndecodable: a homonym variant resolves to the wrong declaration
+// (gunbc.recurring_failure_mode a_local_variant_resolves_to_another_modules_homonym_type).
+type PostPowerFanRefusal
+  = FittedSetUnestablished { read_obligation: NonEmptyStr }
+  | PostPowerChassisNotOn
+  | PostPowerChassisUnreadable
+  | PostPowerChassisUndecodable { cause: NonEmptyStr }
+  | PostPowerThermalUnreadable
+  | PostPowerThermalNotPublished { publication: SdrTemperaturePublication }
+  | PostPowerThermalRowsUndecoded { undecoded_line_count: Int }
+  | PostPowerThermalReadingUnrecognised { texts: List<String> }
+  | FanReadUnreadable
+  | FanRowsUndecoded { texts: List<String> }
+  // A FANn_Failure discrete sensor row that is not observed in a NOT-asserted shape. The asserted spelling has not been observed on this
+  // controller, so this arm refuses ANYTHING it cannot read as not-asserted (an empty reading with status ok);
+  // when an asserted row is seen, it gets its own constructor and this arm keeps the remainder.
+  | FanFailureSensorNotNominal { text: String }
+  // A FANn_Failure row reading `No Reading` while the chassis is on: the sensor is not reporting, a missing observation. The only observed `ns` / `No Reading` shape is a HOST-OFF capture (run 39053311400), and this gate requires power on.
+  | FanFailureSensorNoReading { text: String }
+  | FittedHeaderMissing { header: NonEmptyStr }
+  | FittedHeaderDuplicated { header: NonEmptyStr }
+  | FittedHeaderStatusRefused { header: NonEmptyStr, status: NonEmptyStr }
+  | FittedHeaderZeroRpm { header: NonEmptyStr }
+  | FittedHeaderNoReading { header: NonEmptyStr }
+  | FittedHeaderDutyOnly { header: NonEmptyStr }
+  | FittedHeaderReadingUnrecognised { header: NonEmptyStr, text: NonEmptyStr }
+
+type PostPowerFanVerdict
+  = PostPowerFanVerdictEstablished
+  | PostPowerFanVerdictRefused { cause: PostPowerFanRefusal }
+
+// A LOOKUP THAT CANNOT BE WON BY ORDER: absent, unique or duplicate, never first-match.
+type FanHeaderLookup
+  = FanHeaderAbsent
+  | FanHeaderUnique { line: SdrTypeLine }
+  | FanHeaderDuplicate
+
+// ONE INDEX PER READ, THEN A LOOKUP PER HEADER: each line is folded into a name-keyed map exactly once, and a second row
+// under a name makes its entry Duplicate whatever order the rows arrive in. Judging N headers is then N lookups, not N scans.
+fn fan_header_index(lines: List<SdrTypeLine>) -> Map<String, FanHeaderLookup> {
+  fold(lines, init: empty_map(), f: (acc, line) => map_insert(acc, line.name as String, match map_get(acc, line.name as String) {
+    Present { value: _ } => FanHeaderDuplicate
+    Absent => FanHeaderUnique { line: line }
+  }))
+}
+
+fn fan_header_lookup(index: Map<String, FanHeaderLookup>, header: NonEmptyStr) -> FanHeaderLookup {
+  match map_get(index, header as String) {
+    Present { value: found } => found
+    Absent => FanHeaderAbsent
+  }
+}
+
+data fan_row_status_ok: String = "ok"
+
+fn fitted_header_refusal(index: Map<String, FanHeaderLookup>, header: NonEmptyStr) -> PostPowerFanRefusal? {
+  match fan_header_lookup(index: index, header: header) {
+    FanHeaderAbsent => Present { value: FittedHeaderMissing { header: header } }
+    FanHeaderDuplicate => Present { value: FittedHeaderDuplicated { header: header } }
+    FanHeaderUnique { line: line } =>
+      if (line.status as String) != fan_row_status_ok {
+        Present { value: FittedHeaderStatusRefused { header: header, status: line.status } }
+      } else {
+        match sdr_fan_reading(reading_text: line.reading_text) {
+          SdrFanRpm { speed: s } => if (rpm_count(r: s) as Int) > 0 { Absent } else { Present { value: FittedHeaderZeroRpm { header: header } } }
+          SdrFanDuty { duty: _ } => Present { value: FittedHeaderDutyOnly { header: header } }
+          SdrFanNoReading => Present { value: FittedHeaderNoReading { header: header } }
+          SdrFanReadingUnrecognised { text: _ } => Present { value: FittedHeaderReadingUnrecognised { header: header, text: line.reading_text } }
+        }
+      }
+  }
+}
+
+// NONEMPTY BY CONSTRUCTION: the set is a head and a tail, so "established as empty" has no constructor.
+fn fitted_headers(first: NonEmptyStr, rest: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(rest, init: [first], f: (acc, h) => acc.append(h))
+}
+
+fn first_fitted_header_refusal(lines: List<SdrTypeLine>, headers: List<NonEmptyStr>) -> PostPowerFanRefusal? {
+  let index = fan_header_index(lines: lines)
+  fold(headers, init: Absent, f: (acc, h) => match acc {
+    Present { value: r } => Present { value: r }
+    Absent => fitted_header_refusal(index: index, header: h)
+  })
+}
+
+fn fitted_set_refusal(fitted: FittedFanSet) -> PostPowerFanRefusal? {
+  match fitted {
+    FittedFanSetNotEstablished { read_obligation: o } => Present { value: FittedSetUnestablished { read_obligation: o } }
+    FittedFanSetOperatorAssumed { first: _, rest: _, assumption: _ } => Absent
+    FittedFanSetEstablished { first: _, rest: _, standing: st } => match st {
+      CitedToAuthority { authority: _ } => Absent
+      ObservedByReceipt { observed: _ } => Absent
+      TranscribedUncited { read_obligation: o } => Present { value: FittedSetUnestablished { read_obligation: o } }
+    }
+  }
+}
+
+fn fitted_set_headers(fitted: FittedFanSet) -> List<NonEmptyStr> {
+  match fitted {
+    FittedFanSetNotEstablished { read_obligation: _ } => []
+    FittedFanSetEstablished { first: f, rest: r, standing: _ } => fitted_headers(first: f, rest: r)
+    FittedFanSetOperatorAssumed { first: f, rest: r, assumption: _ } => fitted_headers(first: f, rest: r)
+  }
+}
+
+fn chassis_refusal(chassis: ChassisPowerObservation) -> PostPowerFanRefusal? {
+  match chassis {
+    ChassisPowerRead { power_on: on } => if on { Absent } else { Present { value: PostPowerChassisNotOn } }
+    ChassisStatusUndecodable { cause: c } => Present { value: PostPowerChassisUndecodable { cause: c } }
+    ChassisUnreadable => Present { value: PostPowerChassisUnreadable }
+  }
+}
+
+// A FAILURE SENSOR ADMITS ONLY AS OBSERVED NOT-ASSERTED WHILE POWERED: an empty reading cell with status ok (the powered shape of
+// artifacts/bmc/mtcollins1-32dimm/06-sdr.txt). A reading in the upstream no-reading sort (`sdr_fan_reading` -> `SdrFanNoReading`: `No Reading`, `Disabled`, `ns`, under any status) means the sensor is not reporting, so it refuses with its own arm: its only observed `ns` shape is the HOST-OFF capture of run 39053311400, and this gate runs with the chassis on.
+fn fan_reading_is_no_reading(reading_text: NonEmptyStr) -> Bool {
+  match sdr_fan_reading(reading_text: reading_text) {
+    SdrFanNoReading => true
+    _ => false
+  }
+}
+
+fn first_failure_sensor_refusal(lines: List<SdrTypeLine>, failure_rows: List<SdrEmptyReadingRow>) -> PostPowerFanRefusal? {
+  match failure_rows.filter(r => (r.status as String) != fan_row_status_ok).first() {
+    Present { value: r } => Present { value: FanFailureSensorNotNominal { text: r.text } }
+    Absent => match lines.filter(l => fan_failure_sensor_name(name: l.name as String) && fan_reading_is_no_reading(reading_text: l.reading_text)).first() {
+      Present { value: l } => Present { value: FanFailureSensorNoReading { text: join([l.name as String, " | ", l.status as String, " | ", l.reading_text as String], "") } }
+      Absent => match lines.filter(l => fan_failure_sensor_name(name: l.name as String)).first() {
+        Present { value: l } => Present { value: FanFailureSensorNotNominal { text: join([l.name as String, " | ", l.status as String, " | ", l.reading_text as String], "") } }
+        Absent => Absent
+      }
+    }
+  }
+}
+
+// THE THERMAL STANDING IS CONSUMED, NOT DISCARDED (side-chat hold 2026-10-19). Thermal is established only by a read that
+// published at least one decoded temperature AND left no undecoded row. A silent pre-POST sensor list
+// (TemperatureSensorsSilent), an undecodable or empty one, an unreadable read, and any undecoded row refuse: none acquires a
+// healthy reading by omission, and a published temperature does not excuse an undecoded row beside it (ThermalRead folds both).
+fn thermal_refusal(thermal: ThermalObservation) -> PostPowerFanRefusal? {
+  match thermal {
+    ThermalUnreadable => Present { value: PostPowerThermalUnreadable }
+    ThermalRead { publication: p, undecoded_line_count: u, unrecognised_readings: r } => match p {
+      TemperaturePublished => if (sdr_undecoded_line_count_value(c: u) as Int) > 0 {
+        Present { value: PostPowerThermalRowsUndecoded { undecoded_line_count: sdr_undecoded_line_count_value(c: u) as Int } }
+      } else if r.length() > 0 {
+        Present { value: PostPowerThermalReadingUnrecognised { texts: r } }
+      } else { Absent }
+      TemperatureSensorsSilent => Present { value: PostPowerThermalNotPublished { publication: p } }
+      TemperatureUndecodable => Present { value: PostPowerThermalNotPublished { publication: p } }
+      TemperatureNoSensorRows => Present { value: PostPowerThermalNotPublished { publication: p } }
+    }
+  }
+}
+
+fn fan_read_refusal(fans: FanSensorObservation, fitted: FittedFanSet) -> PostPowerFanRefusal? {
+  match fans {
+    FanSensorsUnreadable => Present { value: FanReadUnreadable }
+    FanSensorsRead { lines: lines, undecoded_lines: u, failure_rows: f } =>
+      if u.length() > 0 {
+        Present { value: FanRowsUndecoded { texts: u } }
+      } else {
+        match first_failure_sensor_refusal(lines: lines, failure_rows: f) {
+          Present { value: r } => Present { value: r }
+          Absent => first_fitted_header_refusal(lines: lines, headers: fitted_set_headers(fitted: fitted))
+        }
+      }
+  }
+}
+
+fn post_power_fan_verdict(fitted: FittedFanSet, chassis: ChassisPowerObservation, thermal: ThermalObservation, fans: FanSensorObservation) -> PostPowerFanVerdict {
+  match fitted_set_refusal(fitted: fitted) {
+    Present { value: r } => PostPowerFanVerdictRefused { cause: r }
+    Absent => match chassis_refusal(chassis: chassis) {
+      Present { value: r } => PostPowerFanVerdictRefused { cause: r }
+      Absent => match thermal_refusal(thermal: thermal) {
+        Present { value: r } => PostPowerFanVerdictRefused { cause: r }
+        Absent => match fan_read_refusal(fans: fans, fitted: fitted) {
+          Present { value: r } => PostPowerFanVerdictRefused { cause: r }
+          Absent => PostPowerFanVerdictEstablished
+        }
+      }
+    }
+  }
+}
