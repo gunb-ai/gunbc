@@ -3,6 +3,7 @@ module gunbc.host.user_session_runtime
 import std.types { String, Int, List, FilePath, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.env_binding { EnvSet, EnvBinding }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.systemd.systemd_run { SystemdSetenvBinding }
 
