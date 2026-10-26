@@ -5,6 +5,7 @@ import v2.std.text { String }
 import v2.std.integer { Int }
 import std.algebra { length, count_where }
 import v2.std.decl_index { DeclFact, decl_facts }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
@@ -406,11 +407,16 @@ test fn the_real_schedule_has_no_duplicated_identity() -> Bool {
 // test_axis_table_citations_resolve_against_the_declaration_census) bound one census and folded it
 // after an unbound per-row read cost ~3.6s per call and looked like a hang.
 //
-// THE ROOT IS THE ONE THE ENTRIES ACTUALLY RESOLVE UNDER. Every entry of local_repo_wet_schedule
-// is a file under `dag/test/claim`, so that root is the whole population the fold can consult for
-// these rows -- and deliberately NOT `src`: adding src/v1 as a census root poisons census-style
-// claims (CensusNotRunnable under --source-root src, keen-owl-704). Widening the pool buys facts no
-// row can cite, paid for on every run.
+// THE ROOTS ARE THE ONES THE ENTRIES ACTUALLY RESOLVE UNDER: the fleet's own witness-layer pair,
+// gunbc.ci.ci_layer_roots.witness_layer_roots -- the same authority the required lanes and every
+// fleet invocation pass, so the census can never see a narrower population than the fleet runs.
+// Schedule entries live under `dag` (the claim modules) and since the lowered-call enrolment also
+// under `src/v2`'s own test directory; a census root set narrower than the entry population makes
+// this control red for reasons the schedule cannot satisfy (observed on main when a src/v2 entry
+// was enrolled while this census still named only `dag/test/claim`). Deliberately NOT `src`:
+// adding src/v1 as a census root poisons census-style claims (CensusNotRunnable under
+// --source-root src, keen-owl-704). Widening the pool buys facts no row can cite, paid for on
+// every run.
 //
 // NON-VACUITY IS ASSERTED, NOT ASSUMED, in both directions: the census must be non-empty (an empty
 // population would refuse EVERY row, turning this claim into a permanent red the schedule cannot
@@ -419,7 +425,7 @@ test fn the_real_schedule_has_no_duplicated_identity() -> Bool {
 // that the real schedule hangs together; its row and fact counts are measured and printed in the
 // PR, not restated here).
 test fn the_real_schedule_declares_every_scheduled_function() -> Bool {
-  let declared = decl_facts(pool_roots: ["dag/test/claim"])
+  let declared = decl_facts(pool_roots: witness_layer_roots)
   length(xs: declared) > 0
     && length(xs: wet_scheduled_function_declared_causes(
       scheduled: local_repo_wet_schedule(),
