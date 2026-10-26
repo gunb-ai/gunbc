@@ -1,0 +1,16 @@
+module tprobe.c_fold_field_read
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key, list_map }
+import std.algebra { fold, list_push }
+import std.io { filesystem_listing_entry_names }
+
+type probe_point {
+  name: NonEmptyStr
+  weight: Int
+}
+
+fn probe_case(points: List<probe_point>) -> List<probe_point> {
+  let kept = fold(points, init: [], f: (acc, p) => acc |> list_push(p))
+  duplicated_by_key(xs: kept, key: fn(p) { p.name as String })
+}

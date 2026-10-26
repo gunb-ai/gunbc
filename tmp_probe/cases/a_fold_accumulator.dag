@@ -1,0 +1,11 @@
+module tprobe.a_fold_accumulator
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key, list_map }
+import std.algebra { fold, list_push }
+import std.io { filesystem_listing_entry_names }
+
+fn probe_case(names: List<String>) -> List<NonEmptyStr> {
+  let keys = fold(names, init: [], f: (acc, n) => acc |> list_push(n as NonEmptyStr))
+  distinct_by_key(xs: keys, key: fn(k) { k as String })
+}

@@ -1,0 +1,11 @@
+module tprobe.e_fold_literal_seed_typed
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key, list_map }
+import std.algebra { fold, list_push }
+import std.io { filesystem_listing_entry_names }
+
+fn probe_case() -> List<NonEmptyStr> {
+  let keys = fold(["a", "b"] |> list_map(f: fn(s) { s as NonEmptyStr }), init: [], f: (acc, n) => acc |> list_push(n))
+  distinct_by_key(xs: keys, key: fn(k) { k as String })
+}
