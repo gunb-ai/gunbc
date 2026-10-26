@@ -344,16 +344,6 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "list_push", import_name: "list_push", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     // sha256_hex_of_text: UTF-8 encode, SHA-256, lowercase hex; one declared home beside sha256_hex_digest (sleek-owl-397).
     RosterHeadRow { call: "sha256_hex_of_text", import_name: "sha256_hex_of_text", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead },
-    // Names whose one declared home already exists (tidy-ant-251, 2026-10-25: rows for declared homes are not home
-    // choices). Map is std.types' declared type; empty_map, map_insert, length and Empty are std.algebra's declarations.
-    RosterHeadRow { call: "Map", import_name: "Map", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "empty_map", import_name: "empty_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "map_insert", import_name: "map_insert", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "length", import_name: "length", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "Empty", import_name: "Empty", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    // first and flat_map follow the ruled collection-shape pattern of concat/count/map/join (tidy-ant-251, 2026-10-25).
-    RosterHeadRow { call: "first", import_name: "collection_first_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "flat_map", import_name: "collection_flat_map_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     // NAMESPACE-XL wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars has one declared home.
     RosterHeadRow {
       call: "chars",
