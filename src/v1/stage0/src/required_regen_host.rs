@@ -7162,7 +7162,7 @@ mod heal_round_one_base_mirror_tests {
     /// to author; a base byte there would undo the repair under review.
     #[test]
     fn hand_maintained_files_and_directories_survive_the_bootstrap() {
-        let (root, stage0, _) = base_mirror_fixture();
+        let (root, stage0, base_commit) = base_mirror_fixture();
         bootstrap_round_one_from_base_mirror(
             &root,
             &stage0,
@@ -7201,7 +7201,7 @@ mod heal_round_one_base_mirror_tests {
     /// first, so no base byte can reach an install, a candidate, or a publication.
     #[test]
     fn the_one_journal_snapshots_head_and_returns_it_after_the_bootstrap() {
-        let (root, stage0, _) = base_mirror_fixture();
+        let (root, stage0, base_commit) = base_mirror_fixture();
         let subject = fixture_subject(&root);
         bootstrap_round_one_from_base_mirror(&root, &stage0, Some(&base_commit), &subject)
             .expect("the round-1 bootstrap runs");
