@@ -417,6 +417,7 @@ test fn the_main_written_marker_bytes_are_read_by_the_sealed_store() -> ProcessE
         ])
       }
     }
+  }
   cleaned(test: t, dir: dir, verdict: verdict)
 }
 
