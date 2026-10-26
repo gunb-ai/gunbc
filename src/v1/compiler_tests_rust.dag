@@ -4635,6 +4635,7 @@ fn ct_seed_build_reproducibility_falsifier_test() -> String {
     "                .env_remove(\"RUSTC_WRAPPER\")\n",
     "                .env_remove(\"RUSTFLAGS\")\n",
     "                .env_remove(\"GUNBC_MATERIALIZED_TREE_IDENTITY\")\n",
+    "                .env(\"CARGO_NET_OFFLINE\", \"false\")\n",
     "                .status()\n",
     "                .expect(\"seed build\");\n",
     "            assert!(status.success(), \"seed build {tag} failed\");\n",
