@@ -4,7 +4,7 @@ import std.optional { Present, Absent }
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, FreeMonoid }  // PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): FreeMonoid added; unicode_scalar_unfold/fold name the free-monoid carrier in their signatures (589/593). Same-spelled binding as the Map direction (warm-crane-888); std.types itself imports FreeMonoid from std.algebra.
 import std.host_text { chars, text_of_chars }
 
 type TypeCheckpoint {

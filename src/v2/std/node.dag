@@ -3,7 +3,7 @@ module v2.std.node
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, zip_eq, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { Cons, Empty, FreeMonoid, zip_eq, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape, list_sort_by_key, TotalOrder, Ordering, Less, Equal, Greater }  // PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): the list_sort_by_key/TotalOrder/Ordering names added for the sort_by piece. Union with main, which added zip_eq since the la-2 base.
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -1333,6 +1333,19 @@ fn arrow_domain_binds_a_name(children: List<Edge>) -> Bool {
   }
 }
 
+// PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS; tidy-ant-251: sort_by is 'declared with a
+// signature gap', the modeled authority is std.algebra list_sort_by_key + an explicit TotalOrder, so
+// these call sites pass one instead of resting on the ambient sort_by). The lexeme order reads the one
+// Symbol spelling authority (symbol_lexeme); the compare form follows the corpus precedent
+// tree_path_compare (gunbc.host.host_effect_realize:6024).
+fn n7la_lexeme_compare(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+fn n7la_lexeme_order() -> TotalOrder<String> {
+  TotalOrder { compare: n7la_lexeme_compare }
+}
+
 type SortedSymbolWalk {
   rest: List<Symbol>
   previous: List<Symbol>
@@ -1344,7 +1357,7 @@ fn symbols_are_one_distinct_set(a: List<Symbol>, b: List<Symbol>) -> Bool {
   if count(a) != count(b) {
     false
   } else {
-    let walk = fold(sort_by(a, fn(x) { x }), init: SortedSymbolWalk { rest: sort_by(b, fn(x) { x }), previous: [], ok: true }, f: fn(acc, x) {
+    let walk = fold(list_sort_by_key(xs: a, key: fn(x) { symbol_lexeme(sym: x) }, order: n7la_lexeme_order()), init: SortedSymbolWalk { rest: list_sort_by_key(xs: b, key: fn(x) { symbol_lexeme(sym: x) }, order: n7la_lexeme_order()), previous: [], ok: true }, f: fn(acc, x) {
       match acc.rest {
         Empty => SortedSymbolWalk { rest: Empty, previous: [x], ok: false }
         Cons { head: y, tail: more } =>
@@ -2213,8 +2226,8 @@ fn labeled_sort_classes<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> Labe
 fn sort_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
   let classes = labeled_sort_classes(items: items, label_of: label_of)
   concat(
-    sort_by(classes.structural, fn(x) { label_sort_key(label: label_of(x)) }),
-    sort_by(classes.other, fn(x) { label_sort_key(label: label_of(x)) })
+    list_sort_by_key(xs: classes.structural, key: fn(x) { symbol_lexeme(sym: label_sort_key(label: label_of(x))) }, order: n7la_lexeme_order()),
+    list_sort_by_key(xs: classes.other, key: fn(x) { symbol_lexeme(sym: label_sort_key(label: label_of(x))) }, order: n7la_lexeme_order())
   )
 }
 
@@ -3162,9 +3175,17 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
   }
 }
 
+// PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): the digest key is a NAMED function, not an
+// inline closure, because the inline form types its parameter as list_sort_by_key's generic T and
+// emit refuses 'no field digest on type T' (source_root_eval census diagnostic at 3129:44). The
+// named form follows the infer_pairing_position_key precedent (v2.compiler.infer:3999).
+fn n7la_hash_digest_key(h: Hash) -> String {
+  h.digest as String
+}
+
 fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   fold(
-    sort_by(xs, fn(h) { h.digest }),
+    list_sort_by_key(xs: xs, key: n7la_hash_digest_key, order: n7la_lexeme_order()),
     init: empty,
     f: fn(acc, h) {
       combine_hash(a: acc, b: h)
