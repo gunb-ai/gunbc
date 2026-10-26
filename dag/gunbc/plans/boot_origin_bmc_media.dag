@@ -16,7 +16,7 @@ fn opening() -> List<MarkdownBlock> {
     h2(text: "1. Target"),
     ul(items: [
       li(text: "Boot images are in R2, content-addressed and public, behind a gunb.ai custom domain."),
-      li(text: "Controllers with Redfish HTTPS virtual media read R2 directly. NFS-only controllers read through the segment's selected holder, which fetches by digest, checks the hash and exports over NFS. srv2 fills that role in the lab."),
+      li(text: "Each controller's media route is selected from an observation, never assumed: a controller whose Redfish VirtualMedia admits HTTPS reads R2 directly; an NFS-only controller reads through the segment's selected holder, which fetches by digest, checks the hash and exports over NFS. srv2 fills that role in the lab."),
       li(text: "mtcollins1 is the first test subject, since it network-boots."),
     ]),
     p(text: "**Operator precondition:** the operator moves the gunb.ai nameservers to Cloudflare (2026-10-25). gunbc.plans.fleet_naming_reach_access needs the same move for its fleet zone."),
@@ -39,11 +39,11 @@ fn phases() -> List<MarkdownBlock> {
   [
     h2(text: "3. Phases"),
     ul(items: [
-      li(text: "**B0. Settle the mtcollins1 media route.** An authenticated read of its VirtualMedia TransferProtocolType allowable values decides whether HTTPS is accepted (work item adhoc-9e4ea90a-fd0). The NFS leg needs a LAN name, not the pinned 192.168.1.201 (work item adhoc-37e2c372-ad5, through the endpoint authority)."),
+      li(text: "**B0. Settle the mtcollins1 media route.** An authenticated read of its VirtualMedia TransferProtocolType allowable values selects the route: DirectRedfishHttps when HTTPS is listed, otherwise NfsRelayThroughHolder; an unread value selects neither (work item adhoc-9e4ea90a-fd0). B3 is built only when B0 selects the relay. The NFS leg needs a LAN name, not the pinned 192.168.1.201 (work item adhoc-37e2c372-ad5, through the endpoint authority)."),
       li(text: "**B1. The custom domain**, after gunbc.namecheap.account gunb_ai_nameserver_delegation reads DelegationObservedInParent: the BootOriginHostnameAllocated arm, with every existing gunb.ai record, which gunbc.namecheap observes today, copied before the move."),
       li(text: "**B2. Publication and readback** of the runner ISO by digest."),
-      li(text: "**B3. The NFS relay** on the segment's selected holder, with the share address resolved through the endpoint authority instead of srv2_lan_ipv4."),
-      li(text: "**B4. A boot of mtcollins1** through the relay, with the digest checked."),
+      li(text: "**B3. The NFS relay, only when B0 selected NfsRelayThroughHolder,** on the segment's selected holder, with the share address resolved through the endpoint authority instead of srv2_lan_ipv4."),
+      li(text: "**B4. A boot of mtcollins1** through the route B0 selected (Redfish InsertMedia of the R2 URL, or the relay's NFS share), with the digest checked."),
     ]),
     h2(text: "4. Open items"),
     ul(items: [
@@ -56,9 +56,9 @@ fn phases() -> List<MarkdownBlock> {
 data boot_origin_bmc_media_plan: Plan = Plan {
   projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "boot-origin-bmc-media",
-  title: "Boot origin and BMC media: content-addressed R2 images behind gunb.ai, relayed to NFS-only controllers by the segment holder",
+  title: "Boot origin and BMC media: content-addressed R2 images behind gunb.ai, read directly over Redfish HTTPS or relayed to NFS-only controllers by the segment holder",
   body: concat(concat(opening(), survey()), phases()),
   retirement: PlanRetiresWhen {
-    condition: unbound_dissolution(description: "Retire when the boot origin's gunb.ai hostname is allocated and read back, the runner ISO is published by digest and read back, and mtcollins1 has booted that ISO through the segment holder's NFS relay with the digest checked."),
+    condition: unbound_dissolution(description: "Retire when the boot origin's gunb.ai hostname is allocated and read back, the runner ISO is published by digest and read back, and mtcollins1 has booted that ISO through the media route its B0 observation selected (direct Redfish HTTPS, or the segment holder's NFS relay) with the digest checked."),
   },
 }

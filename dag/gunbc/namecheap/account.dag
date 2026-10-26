@@ -39,7 +39,10 @@ type NameserverDelegationStanding
   | DelegationObservedInParent { setting: RegistrarNameserverSetting, source: String }
 
 // The operator's report is transcribed text; each name reaches HostName only through the DNS
-// authority's parser, and a name it refuses is a typed reading, never a dropped row.
+// authority's parser, and a name it refuses is a typed reading, never a dropped row. An NS target
+// is an absolute domain name (RFC 1035 section 3.3.11), and the console omits the root dot, so the
+// raw string is kept as evidence and parsed in its absolute form: the reading is FullyQualified and
+// compares equal (host_name_eq) to a parent-zone NS answer for the same server.
 type NameserverNameRefusal {
   raw: NonEmptyStr
   cause: DomainNameParseError
@@ -53,10 +56,14 @@ data gunb_ai_reported_nameservers: List<NonEmptyStr> = ["alexandra.ns.cloudflare
 
 data gunb_ai_nameserver_report_source: String = "operator Namecheap console report 2026-10-26: Custom DNS set to the two Cloudflare nameservers; parent-zone propagation pending"
 
+fn absolute_ns_spelling(raw: String) -> String {
+  if ends_with(s: raw, suffix: ".") { raw } else { concat(raw, ".") }
+}
+
 fn parse_nameservers(raws: List<NonEmptyStr>) -> Result<List<HostName>, NameserverNameRefusal> {
   fold(raws, init: Ok { value: [] }, f: (acc, raw) => match acc {
     Err { value: refusal } => Err { value: refusal }
-    Ok { value: hs } => match parse_host_name(raw: raw as String) {
+    Ok { value: hs } => match parse_host_name(raw: absolute_ns_spelling(raw: raw as String)) {
       Err { value: cause } => Err { value: NameserverNameRefusal { raw: raw, cause: cause } }
       Ok { value: host } => Ok { value: concat(hs, [host]) }
     }
