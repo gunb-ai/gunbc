@@ -396,7 +396,7 @@ pub fn emitted_workspace_red(
 ) -> Option<Rc<EmittedWorkspaceRedDrop>> {
     edges.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, edge: Rc<EmittedEdge>| match acc.clone() {
+        |acc: Option<Rc<EmittedWorkspaceRedDrop>>, edge: Rc<EmittedEdge>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => match edge.provenance.clone() {
                 EmittedEdgeProvenance::SemanticSourceReference => {

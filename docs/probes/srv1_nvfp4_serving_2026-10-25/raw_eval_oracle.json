@@ -1,0 +1,85 @@
+{
+ "arm": "fp8_kv_flash_attn",
+ "oracle": "referents fixed pre-run (algebra/hand-derived); full answers retained for independent re-check",
+ "date_utc": "2026-10-25T08:35:23Z",
+ "rows": [
+  {
+   "phase": "eval-oracle",
+   "arm": "fp8_kv_flash_attn",
+   "id": "code-rot13",
+   "error": null,
+   "answer_sha_full": "59620dd3d3d0e488",
+   "oracle_pass": true,
+   "answer_full": "def rot13(s):\n    result = []\n    for ch in s:\n        if 'a' <= ch <= 'z':\n            result.append(chr((ord(ch) - ord('a') + 13) % 26 + ord('a')))\n        elif 'A' <= ch <= 'Z':\n            result.append(chr((ord(ch) - ord('A') + 13) % 26 + ord('A')))\n        else:\n            result.append(ch)\n    return ''.join(result)",
+   "prompt_tokens": 84,
+   "completion_tokens": 332,
+   "ttft_s": 0.329,
+   "total_s": 1.576
+  },
+  {
+   "phase": "eval-oracle",
+   "arm": "fp8_kv_flash_attn",
+   "id": "code-bugfix",
+   "error": null,
+   "answer_sha_full": "01916ab9749acb44",
+   "oracle_pass": true,
+   "answer_full": "The function incorrectly subtracts 1 from the computed mean.\n\n```python\n    return sum(xs) / len(xs)\n```",
+   "prompt_tokens": 92,
+   "completion_tokens": 89,
+   "ttft_s": 0.347,
+   "total_s": 0.594
+  },
+  {
+   "phase": "eval-oracle",
+   "arm": "fp8_kv_flash_attn",
+   "id": "reason-train",
+   "error": null,
+   "answer_sha_full": "7f21770479d657f6",
+   "oracle_pass": true,
+   "answer_full": "By 10:00, the first train has gone \\(80\\) km, so the remaining distance is:\n\n\\[\n400 - 80 = 320 \\text{ km}\n\\]\n\nTheir combined speed is:\n\n\\[\n80 + 120 = 200 \\text{ km/h}\n\\]\n\nTime to meet after 10:00:\n\n\\[\n320 \\div 200 = 1.6 \\text{ hours} = 1 \\text{ hour } 36 \\text{ minutes}\n\\]\n\nThey meet at **11:36**.",
+   "prompt_tokens": 116,
+   "completion_tokens": 349,
+   "ttft_s": 0.339,
+   "total_s": 1.71
+  },
+  {
+   "phase": "eval-oracle",
+   "arm": "fp8_kv_flash_attn",
+   "id": "recall-facts",
+   "error": null,
+   "answer_sha_full": "8241649609f88ccd",
+   "oracle_pass": true,
+   "answer_full": "92",
+   "prompt_tokens": 85,
+   "completion_tokens": 69,
+   "ttft_s": 0.341,
+   "total_s": 0.425
+  },
+  {
+   "phase": "eval-oracle",
+   "arm": "fp8_kv_flash_attn",
+   "id": "json-struct",
+   "error": null,
+   "answer_sha_full": "cd3caf64295a3d10",
+   "oracle_pass": true,
+   "answer_full": "{\n  \"planets\": [\n    \"Mercury\",\n    \"Venus\",\n    \"Earth\",\n    \"Mars\"\n  ],\n  \"count\": 4\n}",
+   "prompt_tokens": 92,
+   "completion_tokens": 119,
+   "ttft_s": 0.329,
+   "total_s": 0.62
+  },
+  {
+   "phase": "eval-oracle",
+   "arm": "fp8_kv_flash_attn",
+   "id": "code-tests",
+   "error": null,
+   "answer_sha_full": "113d37622994f257",
+   "oracle_pass": false,
+   "answer_full": "import pytest\n\n\n@pytest.mark.parametrize(\n    \"s, expected\",\n    [\n        (\"\", True),\n        (\"a\", True),\n        (\"racecar\", True),\n        (\"hello\", False),\n    ],\n)\ndef test_is_palindrome(s, expected):\n    assert is_palindrome(s) == expected",
+   "prompt_tokens": 84,
+   "completion_tokens": 352,
+   "ttft_s": 0.33,
+   "total_s": 2.16
+  }
+ ]
+}
