@@ -97,9 +97,10 @@ type RosterHeadRow {
 // KeepHead is every row whose call spelling IS the home's name, so the rows that predate this field are unchanged by
 // construction. RenameHead rewrites each selected call head to `to`; its `positional` is the other half of the same
 // fact, so it lives in the arm and a KeepHead row cannot carry one: the home declaration's parameter labels, in order, given to a call's positional arguments, because the home's
-// callable is called by label where the ambient spelling was called by position. A call that does not have exactly that
-// many positional arguments, or that names any argument, refuses: the row cannot know which parameter a named or
-// surplus argument meant.
+// callable is called by label where the ambient spelling was called by position. EXACT ARITY IS REQUIRED: a call that does
+// not have exactly that many positional arguments refuses. An argument already named with the label this row declares AT
+// ITS POSITION is retained as authored; a mismatched or reordered label refuses, because the rewrite never reorders
+// arguments -- reordering an argument list reorders its evaluation.
 type RosterHeadRewrite
   = KeepHead
   | RenameHead { to: String, positional: List<String> }
@@ -186,9 +187,10 @@ type RosterRefusalReason
   // misspelled call or a wrong home would otherwise sweep nothing and report converged. Located by home and selection.
   | RefusalScopeSelectsNoRow { home: String, selection: String }
   | RefusalScopeSelectsSeveralRows { home: String, call: String, count: Int }
-  // A RenameHead row's call whose arguments the row's positional labels cannot place: a different number of positional
-  // arguments than the row declares, a named argument (the row cannot tell which parameter it meant), or a bare
-  // reference with no call. The file is left untouched and the cause names the call spelling.
+  // A RenameHead row's call whose arguments the row's positional labels cannot place: EXACT ARITY is required (a different
+  // number of positional arguments than the row declares refuses); an argument already named with the label the row declares
+  // AT ITS POSITION is retained as authored, while a mismatched or reordered label refuses (the rewrite never reorders
+  // arguments); or a bare reference with no call. The file is left untouched and the cause names the call spelling.
   | RefusalRenameCallArity { call: String }
   | RefusalRenameCallNamedArgument { call: String }
   // A `|>` whose right operand starts at the renamed call but extends past it: the call is not the pipe's target, so its
