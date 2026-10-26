@@ -28,7 +28,13 @@ data ambient_name_census_carried_refusals: RungDrop = RungDrop {
 
 // THE CLOSED IDENTITY LIST of modules this change adds that import gunbc.rung_drop, a declarer the base already refuses at
 // resolve. A module absent at the base has no base import edge to compare, so the census would call it newly refused; these
-// two are admitted as cascades by identity and by nothing wider: any other new module on a carried declarer is newly refused.
+// two are admitted as cascades by identity and by nothing wider: any other new module on a carried declarer is newly refused,
+// and an existing module that GAINS an edge still fails (neither name here was observed at the merge base).
+//
+// THE APPROVAL, outside the diff as DESIGN.md §5 requires: operator approval 2026-10-26, dashboard escalation
+// msg_3bd137d1-94e0-4153-9254-1c1ce6465b24, recorded at https://github.com/gunb-ai/gunbc/pull/14868#issuecomment-6410170804.
+// The approved scope is exactly this PR's 2 new modules, with trigger gunbc.rung_drop resolving natively -- the population
+// list and the restoration_trigger below carry that scope and nothing beyond it.
 data ambient_census_listed_new_modules: List<String> = [
   "gunbc.rung_drop.ambient_name_census_carried_refusals",
   "v2.test.claim.ambient_name_census_standing_witness"
@@ -45,6 +51,6 @@ data ambient_name_census_new_modules_on_carried_declarer: RungDrop = RungDrop {
       replacement: "judging a module absent at the base by a base import edge that cannot exist; the closed list is printed as refused_by_carried_dependency rows and counted on every run, and any other new module on a carried declarer exits 1"
     },
     population: population_from_list(xs: ambient_census_listed_new_modules),
-    restoration_trigger: "THE CAPABILITY: gunbc.rung_drop (and std.removal_tombstone, the declarer it names) resolves natively under the native compiler, so these modules resolve and are judged at occurrence grain rather than classified by dependency. The drop retires when refused_by_carried_dependency_count is zero; the native-unbound join root belongs to the import-wave program of tidy-ant-251."
+    restoration_trigger: "THE CAPABILITY: gunbc.rung_drop resolves natively under the native compiler, so these modules resolve and are judged at occurrence grain rather than classified by dependency. The drop retires when refused_by_carried_dependency_count is zero; the native-unbound join root belongs to the import-wave program of tidy-ant-251."
   } }
 }
