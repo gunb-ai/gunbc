@@ -173,7 +173,7 @@ fn lil_serve_launch_argv(launch: LilServeLaunch) -> List<String> {
     "--ssl-certfile" as String,
     launch.ssl_certfile as String,
     "--api-key" as String,
-    join(["$(cat ", launch.api_key_file as String, ")"], "") as String,
+    join(["\x24(cat ", launch.api_key_file as String, ")"], "") as String,
   ]
   let served = match launch.engine.served_model_name {
     Absent => []

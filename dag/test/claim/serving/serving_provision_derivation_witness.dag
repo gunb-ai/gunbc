@@ -13,13 +13,15 @@ import gunbc.serving.serving_launch {
   ServingServeNotListening, ServingServeKeyUnbound, serving_startup_program, serving_startup_program_text,
 }
 import gunbc.serving.serving_provision_derivation {
-  ServingProvisionDerived, ServingProvisionRefusedEngineVllm, ServingProvisionRefusedStartSource, ServingProvisionRefusedNoServedModelId,
+  ServingProvisionDerived, ServingProvisionDerivedVllm, ServingProvisionRefusedStartSource, ServingProvisionRefusedNoServedModelId,
   serving_provision_derive,
 }
 import product.fabric.serving_recipe {
   ServingRecipe, ServingModelArtifact, ServingStartRoute, WeightsNamedUnpinned, StartRouteUnread, StartFromObjectStoreObserved,
   SettingOperatorPolicy, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
 }
+import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -115,11 +117,50 @@ test fn the_launch_model_id_follows_the_recipe() -> Bool {
     })
 }
 
-test fn a_vllm_recipe_refuses_typed_and_never_falls_back() -> Bool {
+// 2026-10-25: ServingProvisionRefusedEngineVllm is DISSOLVED — the vllm launch is modeled
+// (gunbc.serving.srv1_serving_launch), so the flash recipe now DERIVES. What still must hold: the
+// derived inputs read their one authority each (the release's own image pin, the recipe's Hub pin, the
+// modeled launch at the recipe's port), and nothing fell back to the ninfer arm.
+test fn a_vllm_recipe_derives_from_the_modeled_launch_and_never_falls_back() -> Bool {
   match serving_provision_derive(recipe: serving_recipe_flash_next_lab_vllm) {
-    ServingProvisionRefusedEngineVllm => true
+    ServingProvisionDerivedVllm { inputs: i } =>
+      (i.image.digest_sha256 as String) == (local_inference_lab_vllm_image.digest_sha256 as String)
+        && (i.weights.revision as String) == (qwen3_8_flash_next_manifest.revision as String)
+        && i.listen_port == serving_recipe_flash_next_lab_vllm.published_tcp_port
+        && (match i.launch.engine.max_model_len { Absent => true, _ => false })
+        && (match i.launch.engine.kv_cache_dtype { Absent => true, _ => false })
+        && (match i.launch.engine.served_model_name { Absent => true, _ => false })
     _ => false
   }
+}
+
+// The refusal side keeps its teeth: a vllm recipe on an OBSERVED object-store start refuses with its
+// cause instead of borrowing the Hub route, and an unpinned-weights recipe cannot start at all.
+test fn a_vllm_recipe_on_an_unread_or_observed_start_refuses_with_its_cause() -> Bool {
+  let flash = serving_recipe_flash_next_lab_vllm
+  let observed = ServingRecipe {
+    id: flash.id, model: flash.model, engine: flash.engine, catalog_unit: flash.catalog_unit,
+    published_tcp_port: flash.published_tcp_port, cards: flash.cards, driver_floor: flash.driver_floor,
+    disk: flash.disk, cache: flash.cache,
+    start: StartFromObjectStoreObserved { store: "r2://weights" as NonEmptyStr, hub_fallback: true, standing: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next") } },
+    throughput: flash.throughput,
+  }
+  let unpinned = ServingRecipe {
+    id: flash.id,
+    model: ServingModelArtifact { source: WeightsNamedUnpinned { weights: "unpinned" as NonEmptyStr, quantization: Absent }, served_model_id: flash.model.served_model_id },
+    engine: flash.engine, catalog_unit: flash.catalog_unit,
+    published_tcp_port: flash.published_tcp_port, cards: flash.cards, driver_floor: flash.driver_floor,
+    disk: flash.disk, cache: flash.cache,
+    start: flash.start, throughput: flash.throughput,
+  }
+  (match serving_provision_derive(recipe: observed) {
+    ServingProvisionRefusedStartSource { cause: _ } => true
+    _ => false
+  })
+    && (match serving_provision_derive(recipe: unpinned) {
+      ServingProvisionRefusedStartSource { cause: _ } => true
+      _ => false
+    })
 }
 
 test fn an_unread_or_unplaced_start_source_refuses_typed() -> Bool {

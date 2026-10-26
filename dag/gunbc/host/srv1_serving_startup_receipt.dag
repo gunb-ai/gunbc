@@ -1,0 +1,133 @@
+module gunbc.host.srv1_serving_startup_receipt
+
+import std.types { String, NonEmptyStr, Int, Bool, List, Port }
+import std.optional { Present, Absent }
+import std.measure { TokenCount, token_count }
+import std.decl_ref { decl_ref }
+import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, observed_receipt }
+
+// A RECEIPT OF WHAT THE SERVING ENGINE ON srv1 REPORTED ABOUT ITSELF AT STARTUP, 2026-10-25.
+//
+// WHY A RECEIPT AND NOT A CONFIG READING (DESIGN 4d): the brief's rule is that the weight format is
+// what the ENGINE reported loading, not what a config intends. Every field below is a line the vLLM
+// engine printed about itself in its own startup log inside the running container, or a `docker
+// inspect` reading of that container — read on srv1 (100.69.18.126) on 2026-10-25 while it was
+// serving. Nothing here is deduced from a flag, a profile name or a repository name.
+//
+// WHERE IT LIVES, and why not in extdeps.vllm: DESIGN section 3 — "Observations this repository makes
+// are receipts in the observing layer, not facts of the observed upstream." This is OUR reading of
+// THEIR engine, so it sits in the observing layer (gunbc.host, beside srv1_software_inhabitance_receipt,
+// the same host's OS-level receipt) and is NOT written into extdeps.vllm.* or product.fabric.serving_recipe
+// as if it were the upstream's own fact. The consumer that reads it is gunbc.serving.srv1_serving_launch
+// (the launch model), which holds its standing through srv1_serving_startup_ground().
+//
+// THE FULL PROSE RECEIPT, with the measurement matrix this same reading accompanied, is the retained
+// document docs/probes/srv1_nvfp4_serving_2026-10-25/srv1_nvfp4_serving_verification_2026-10-25.md and
+// its six raw JSON/JSONL files (PR #15121). This row is the typed pointer into that directory: the
+// numbers below are the fields the serving model needs; the benchmark arms, the eval oracle and the
+// refusals live in the document, and neither restates the other (DESIGN 6: name the instrument — the
+// harness is srv1:/home/briansrls/lil/srv1_serving_bench.py, deliberately NOT committed: the repo-wide
+// `*.py` exclusion in .gitignore keeps local dev tooling out of the substrate).
+
+type Srv1ServingStartupReading {
+  // ── what the container is ────────────────────────────────────────────────────────────────────
+  container_name: NonEmptyStr
+  image_digest_sha256: NonEmptyStr
+  host: NonEmptyStr
+  // ── the engine's own identity ────────────────────────────────────────────────────────────────
+  engine_version: NonEmptyStr
+  // ── the weights, as the engine reported LOADING them ─────────────────────────────────────────
+  checkpoint_repository: NonEmptyStr
+  checkpoint_revision: NonEmptyStr
+  weight_load_format: NonEmptyStr
+  weight_quantization: NonEmptyStr
+  served_model_name: NonEmptyStr
+  // ── the context and the cache, as the engine reported them ───────────────────────────────────
+  max_model_len: TokenCount
+  max_num_batched_tokens: TokenCount
+  max_num_seqs: Int
+  gpu_memory_utilization_percent: Int
+  block_size: Int
+  kv_cache_dtype_reported: NonEmptyStr
+  // The engine's KV-cache dtype line reads "fp8" (log spelling kv_cache_dtype=fp8); the e4m3 subtype
+  // is the engine's default for that spelling and was NOT separately reported — recorded as
+  // unconfirmed rather than asserted (4d).
+  kv_cache_fp8_subtype_confirmed: Bool
+  // ── the attention and the connector, as the engine reported them ─────────────────────────────
+  attention_backend: NonEmptyStr
+  gdn_backend: NonEmptyStr
+  kv_connector: NonEmptyStr
+  kv_connector_role: NonEmptyStr
+  // speculative decoding, as the engine reported it: method (log: speculative_method=mtp), draft
+  // tokens (num_speculative_tokens=3), and the average acceptance length the engine logged as
+  // spec_decode_acceptance_length=2.778 — kept exactly as the log spelled it (a decimal String).
+  speculative_method: NonEmptyStr
+  speculative_num_draft_tokens: Int
+  speculative_acceptance_length: NonEmptyStr
+  // ── the host the engine saw ──────────────────────────────────────────────────────────────────
+  nvidia_driver: NonEmptyStr
+  // ── the launcher wrapper the container was started from ──────────────────────────────────────
+  // The wrapper script body is RETAINED VERBATIM in gunbc.serving.srv1_serving_launch
+  // (RetainedShellScript). Its identity is pinned here so the retained copy is decidable against
+  // what srv1 actually runs: the host copy of this path was sha256'd on 2026-10-25 while the
+  // container was running from it, and the container's .Config.Cmd is the same script's inner
+  // bash -lc one-liner (docker inspect).
+  wrapper_path: NonEmptyStr
+  wrapper_sha256_hex: NonEmptyStr
+  // ── when and how this was read ───────────────────────────────────────────────────────────────
+  observed_on: NonEmptyStr
+  // The exact commands the reading came from, so the receipt is re-runnable without this file's prose.
+  probes: List<String>
+}
+
+data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartupReading {
+  container_name: "lil-flash-next" as NonEmptyStr,
+  // `docker inspect --format {{.Image}} lil-flash-next` — the digest the RUNNING container resolves
+  // to, not the mutable tag. The tag the operator's launcher pulls is
+  // karmic-kraken-beta-spark-20261007-d071fb3dde0ba979; the digest is the identity.
+  image_digest_sha256: "af14f1a90e141ad7a1b4951f0fd37d695101ebd5887fcddb499f2f427eff5319" as NonEmptyStr,
+  host: "srv1 (100.69.18.126)" as NonEmptyStr,
+  // The engine's own version banner in its startup log.
+  engine_version: "0.1.dev22105+g5009fa56b" as NonEmptyStr,
+  checkpoint_repository: "local-inference-lab/Qwen3.8-Flash-Next" as NonEmptyStr,
+  // The revision the engine's model line named, and the revision the checkpoint manifest row is read
+  // at (extdeps.local_inference_lab.qwen3_8_flash_next).
+  checkpoint_revision: "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2" as NonEmptyStr,
+  // THE POINT OF THE OPERATOR'S REQUEST: the engine reported its load format and quantization. Both
+  // say NVFP4 — the serving IS on FP4 weights. Restated from the log lines, not from the model name.
+  weight_load_format: "nvfp4" as NonEmptyStr,
+  weight_quantization: "nvfp4_csf" as NonEmptyStr,
+  served_model_name: "Qwen3.8-Flash-Next" as NonEmptyStr,
+  max_model_len: token_count(n: 262144),
+  max_num_batched_tokens: token_count(n: 6019),
+  max_num_seqs: 16,
+  gpu_memory_utilization_percent: 96,
+  block_size: 64,
+  kv_cache_dtype_reported: "fp8" as NonEmptyStr,
+  kv_cache_fp8_subtype_confirmed: false,
+  attention_backend: "FLASH_ATTN" as NonEmptyStr,
+  gdn_backend: "gdn_auto" as NonEmptyStr,
+  kv_connector: "LMCacheRecurrentCheckpointConnector" as NonEmptyStr,
+  kv_connector_role: "kv_both" as NonEmptyStr,
+  speculative_method: "mtp" as NonEmptyStr,
+  speculative_num_draft_tokens: 3,
+  speculative_acceptance_length: "2.778" as NonEmptyStr,
+  nvidia_driver: "580.178.04" as NonEmptyStr,
+  wrapper_path: "/home/briansrls/strata-test/srv1_lil_serve.sh" as NonEmptyStr,
+  wrapper_sha256_hex: "90f5c43d826e0d98f229360f7ebc46e00a96a245829a18003919e49b94967959" as NonEmptyStr,
+  observed_on: "2026-10-25" as NonEmptyStr,
+  probes: [
+    "docker inspect --format {{.Image}} lil-flash-next",
+    "docker inspect --format {{.Config.Cmd}} lil-flash-next",
+    "docker inspect --format {{.HostConfig.Memory}} --format {{.HostConfig.MemorySwap}} lil-flash-next",
+    "docker logs lil-flash-next  (the engine's own startup banner and arg dump)",
+    "nvidia-smi --query-gpu=driver_version,memory.total --format=csv",
+  ],
+}
+
+// THE STANDING OF THIS READING, and the ONLY place this module mints an observation. The seal
+// (extdeps.external_authority observed_receipt admit_callers) names this function, so the receipt
+// cannot be re-minted somewhere else with different fields.
+fn srv1_serving_startup_ground() -> CitedFigureStanding {
+  ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.host.srv1_serving_startup_receipt", decl_name: "srv1_serving_startup_reading")) }
+}

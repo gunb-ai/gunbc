@@ -7,12 +7,16 @@ import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import gunbc.serving.rented_ninfer_source { RentedArtifactSource, NinferEngineRelease }
+import extdeps.vllm.local_inference_lab_build { VllmEngineRelease, VllmServingImage }
+import extdeps.vllm.lil_serve { LilServeLaunch }
+import extdeps.huggingface.hub { HubCheckpointManifest }
+import gunbc.serving.srv1_serving_launch { srv1_serving_launch_for_port }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import product.fabric.serving_recipe {
   ServingRecipe, ServingEngine, EngineNinfer, EngineVllm, ServingStartSource, StartSourcePlaced, StartSourceObserved,
-  StartSourcePlacementMissing, StartSourceUnread, ServingWeightsSource, WeightsPlacedOnObjectStore, WeightsNamedUnpinned,
-  serving_start_source,
+  StartSourceHubPinned, StartSourcePlacementMissing, StartSourceUnread, ServingWeightsSource, WeightsPlacedOnObjectStore,
+  WeightsNamedUnpinned, WeightsPinnedAtHub, serving_start_source,
 }
 
 // THE RECIPE IS THE ONE AUTHORITY FOR WHAT A SERVING HOST INSTALLS AND STARTS. This derivation reads a
@@ -31,12 +35,27 @@ type ServingProvisionInputs {
   listen_port: Port
 }
 
-// EVERY REFUSAL IS TYPED AND NONE FALLS BACK. A vllm engine has no modeled launch argv, so deriving ninfer
-// inputs for it, or defaulting to the ninfer arm, would start the wrong engine; a start source that is not a
-// placed object is a route this phase has not read, so it is named and not guessed.
+// The inputs a vLLM provision takes, derived from the recipe: the build is the recipe's, the image is
+// the build's own pin (extdeps.vllm.local_inference_lab_build VllmServingImage), the checkpoint is the
+// recipe's Hub pin, and the launch is the modeled srv1 lil-serve launch (gunbc.serving.srv1_serving_launch)
+// at the recipe's published port. As with ServingProvisionInputs, this keeps no copies: every field
+// reads its one authority.
+type VllmServingProvisionInputs {
+  build: VllmEngineRelease
+  image: VllmServingImage
+  weights: HubCheckpointManifest
+  launch: LilServeLaunch
+  listen_port: Port
+}
+
+// EVERY REFUSAL IS TYPED AND NONE FALLS BACK. A vllm engine whose start route is not the pinned-Hub one
+// is refused rather than defaulted to the ninfer arm (which would start the wrong engine); a start
+// source that names no route this phase has read is named and not guessed. The vllm refusal by engine
+// (ServingProvisionRefusedEngineVllm) is DISSOLVED (2026-10-25): the launch argv is modeled, so the
+// engine arm derives.
 type ServingProvisionDerivation
   = ServingProvisionDerived { inputs: ServingProvisionInputs }
-  | ServingProvisionRefusedEngineVllm
+  | ServingProvisionDerivedVllm { inputs: VllmServingProvisionInputs }
   | ServingProvisionRefusedStartSource { cause: NonEmptyStr }
   | ServingProvisionRefusedNoServedModelId
 
@@ -86,18 +105,52 @@ fn serving_provision_from_ninfer(recipe: ServingRecipe, build: NinferEngineRelea
   }
 }
 
+// The vLLM arm: the recipe must START from its Hub-pinned checkpoint (StartFromHubPinned) and carry that
+// pin as its weights (WeightsPinnedAtHub) — anything else names a route this phase has not read, and is
+// refused with its cause rather than defaulted. The launch is the modeled srv1 launch at the recipe's
+// published port; nothing here re-pins an image, a digest or a flag.
+fn serving_provision_from_vllm(recipe: ServingRecipe, build: VllmEngineRelease) -> ServingProvisionDerivation {
+  match serving_start_source(recipe: recipe) {
+    StartSourceHubPinned { hub_fallback: _, standing: _ } =>
+      match recipe.model.source {
+        WeightsPinnedAtHub { checkpoint: c, quantization: _ } =>
+          ServingProvisionDerivedVllm {
+            inputs: VllmServingProvisionInputs {
+              build: build,
+              image: build.image,
+              weights: c,
+              launch: srv1_serving_launch_for_port(port: recipe.published_tcp_port),
+              listen_port: recipe.published_tcp_port,
+            },
+          }
+        WeightsNamedUnpinned { weights: _, quantization: _ } =>
+          ServingProvisionRefusedStartSource { cause: "the recipe's weights are named and unpinned, so there is no checkpoint digest to start from" as NonEmptyStr }
+        WeightsPlacedOnObjectStore { placement: _ } =>
+          ServingProvisionRefusedStartSource { cause: "the recipe's weights are placed on an object store while its start route is the pinned Hub; the two disagree" as NonEmptyStr }
+      }
+    StartSourceObserved { store: _, hub_fallback: _, standing: _ } =>
+      ServingProvisionRefusedStartSource { cause: "the start source is an observed object store, not a pinned Hub revision; its fetch route is unmodeled for vllm" as NonEmptyStr }
+    StartSourcePlaced { source: _ } =>
+      ServingProvisionRefusedStartSource { cause: "the recipe starts from placed weights; the vllm phase reads only Hub-pinned starts" as NonEmptyStr }
+    StartSourcePlacementMissing =>
+      ServingProvisionRefusedStartSource { cause: "the recipe starts from placed weights but names none" as NonEmptyStr }
+    StartSourceUnread =>
+      ServingProvisionRefusedStartSource { cause: "the recipe's start route is unread" as NonEmptyStr }
+  }
+}
+
 fn serving_provision_derive(recipe: ServingRecipe) -> ServingProvisionDerivation {
   match recipe.engine {
     EngineNinfer { build: b } => serving_provision_from_ninfer(recipe: recipe, build: b)
-    EngineVllm { build: _ } => ServingProvisionRefusedEngineVllm
+    EngineVllm { build: b } => serving_provision_from_vllm(recipe: recipe, build: b)
   }
 }
 
 data serving_provision_derivation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.serving_provision_derivation", decl_name: "ServingProvisionDerivation"),
-    reason: "an EngineVllm recipe refuses typed: no vllm launch argv is modeled, so the provision phase can neither verify, install nor start the lab vLLM build (extdeps.vllm.local_inference_lab_build local_inference_lab_vllm_release), and it never falls back to the ninfer arm",
-    dissolution: unbound_dissolution(description: "a vllm launch argv is modeled — sufficient for serving_provision_derive to yield vllm inputs for the lab release row and for ServingProvisionRefusedEngineVllm to be deleted"),
+    reason: "the vllm arm derives (2026-10-25): the launch argv is modeled (gunbc.serving.srv1_serving_launch, dissolving what was ServingProvisionRefusedEngineVllm), but nothing EXECUTES the derived inputs — verify/install/start of the lab vLLM build on a host is still unmodeled, and the arm never falls back to ninfer",
+    dissolution: unbound_dissolution(description: "a host-convergence step executes ServingProvisionDerivedVllm on srv1 and reads the container inspect and engine banner back against it — the same trigger gunbc.serving.srv1_serving_launch srv1_serving_unmodeled_frontier_rows carries for the relaunch route"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.serving_provision_derivation", decl_name: "serving_provision_derive"),
