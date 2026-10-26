@@ -202,6 +202,7 @@ fn layout_namespaces() -> List<String> {
     "extdeps.safetensors",
     "extdeps.sec",
     "extdeps.sec.issuer",
+    "extdeps.shadow",
     "extdeps.shell",
     "extdeps.simulators.icarus_verilog",
     "extdeps.simulators.ngspice",
