@@ -1,0 +1,35 @@
+module tprobe.lambda_hof_param_red_probe
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key, list_map }
+import std.algebra { fold, list_push }
+
+// THE RED SHAPE, verbatim in kind from gunbc.durable_cas_file_store cas_slot_keys: a fold
+// ACCUMULATOR whose element type is fixed only by the fold's seed and update is passed as the
+// element-list argument of a GENERIC HIGHER-ORDER FUNCTION whose lambda casts its parameter.
+fn red_cast_through_fold_accumulator(names: List<String>) -> List<NonEmptyStr> {
+  let keys = fold(names, init: [], f: (acc, n) => acc |> list_push(n as NonEmptyStr))
+  distinct_by_key(xs: keys, key: fn(k) { k as String })
+}
+
+// THE CONTROL: same call, same lambda, element list carried by a declared parameter.
+fn control_cast_through_declared_param(xs: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: xs, key: fn(k) { k as String })
+}
+
+data probe_point {
+  name: NonEmptyStr
+  weight: Int
+}
+
+// FIELD-READ SIBLING on the fold-accumulator shape.
+fn red_field_read_through_fold_accumulator(points: List<probe_point>) -> List<probe_point> {
+  let kept = fold(points, init: [], f: (acc, p) => acc |> list_push(p))
+  duplicated_by_key(xs: kept, key: fn(p) { p.name as String })
+}
+
+// A THIRD CAST SITE ON A DIFFERENT HOF.
+fn red_map_through_fold_accumulator(names: List<String>) -> List<String> {
+  let keys = fold(names, init: [], f: (acc, n) => acc |> list_push(n as NonEmptyStr))
+  list_map(xs: keys, f: fn(k) { k as String })
+}
