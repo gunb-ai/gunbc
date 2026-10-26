@@ -19,9 +19,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // THE SEVEN GAPS AND THE SYMBOLS CHECKED:
 //
 // G1 x86 Ubuntu autoinstall seed/IMAGE. Exists: gunbc.provisioning.ubuntu_autoinstall_seed
-//    (autoinstall/v1 user-data) and gunbc.provisioning.provisioning_arm, both Aarch64-bound --
-//    admit_provisioning_target refuses a target whose architecture is not Aarch64
-//    (PlatformUnsupported). For x86: none exists.
+//    (autoinstall/v1 user-data), which admits X86_64 as rows as of the 2b-seed generalization
+//    (admit_provisioning_target answers ProvisioningTargetStanding for an architecture whose rows exist
+//    and refuses one whose rows do not), and gunbc.provisioning.provisioning_arm, which is the ARM
+//    INSTANCE of that seed rather than its definition. For x86: the seed exists and renders; the IMAGE
+//    route (the extdeps.provisioning seeded-remaster chain in its x86 instance) does not.
 //
 // G2 install-to-disk route for THIS board. Exists: gunbc.srv3.srv3_os_install_actuate
 //    (srv3_os_install_actuator_plan_refuses_on_unestablished_path; the bmcweb + srv3_nbd_proxy_serve
@@ -197,7 +199,7 @@ data h11ssl_x86_autoinstall_seed_dissolution: DissolutionCondition = unbound_dis
 
 data h11ssl_x86_autoinstall_seed_frontier: FrontierRow = frontier_row_decl(
   ref: h11ssl_x86_bringup_seed_gap_subject,
-  reason: "the autoinstall seed is ARM-only by construction: admit_provisioning_target refuses any non-Aarch64 target with PlatformUnsupported, so no x86 unit can be seeded today",
+  reason: "the seed side is DONE as of the 2b-seed generalization: gunbc.provisioning.ubuntu_autoinstall_seed admits X86_64 as rows (admit_provisioning_target answers ProvisioningTargetStanding for it and refuses an architecture with no admitted package rows), one board profile row per board gives the H11SSL its igb/ahci/nvme/usb/BMC modules, the silence receipts are per architecture, the credential posture is key-only with no password at all, and test.claim.ubuntu_autoinstall_seed_witness renders the seed for a named x86 target. STILL OPEN, and the reason this row stays: the IMAGE route — the extdeps.provisioning seeded-remaster chain has no x86 instance, so nothing takes this rendered user-data and produces a bootable amd64 image; and seed serving belongs to gunbc.fleet.site_pxe_edge, not here",
   dissolution: h11ssl_x86_autoinstall_seed_dissolution,
 )
 
