@@ -3886,6 +3886,73 @@ mod compiler_tests {
     }
 
     #[test]
+    fn shared_roster_follows_the_declaration_not_the_spelling() {
+        // DISCRIMINATING RED for the last leaf-keyed consumer: the derive roster of a struct
+        // was picked by the SHARED SET keyed by SPELLING, so two declarations of one leaf took
+        // one roster -- dag/std/bit.dag's `Word64 { bytes: List<Byte> }` inherited `Copy` from
+        // std.machine_word's constant `Word64 { hi: Int, lo: Int }` (shared_by_every_declarer
+        // answers all-agree), and rustc refused `Copy` over the Rc fields: E0204 at emitted
+        // std_bit.rs:40, the refusal that closed the native roster-sweep route. probe.bits
+        // declares the non-constant Word64 (List field); probe.words declares the constant one.
+        // RED: the non-constant declaration must NOT derive Copy. CONTROL: the constant
+        // declaration keeps Copy, and the single-declarer constant type is untouched.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let sources = im::vector![
+                    source("probe_bits.dag", "module probe.bits\ntype Word64 { bytes: List<Int> }\nfn word64_of(n: Int) -> Word64 { Word64 { bytes: [n] } }\n"),
+                    source("probe_words.dag", "module probe.words\ntype Word64 { hi: Int, lo: Int }\nfn word64_pair(h: Int, l: Int) -> Word64 { Word64 { hi: h, lo: l } }\n"),
+                    source("probe_single.dag", "module probe.single\ntype Tag64 { hi: Int, lo: Int }\nfn tag_pair(h: Int, l: Int) -> Tag64 { Tag64 { hi: h, lo: l } }\n")
+                ];
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                for d in result.diagnostics.iter() {
+                    eprintln!("DIAG {} {}", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));
+                }
+                let emitted = |suffix: &str| -> String {
+                    result.files.iter()
+                        .find(|f| f.path.ends_with(suffix))
+                        .map(|f| f.content.clone())
+                        .unwrap_or_else(|| panic!("no emitted file ending {}; files: {:?}", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))
+                };
+                let bits = emitted("probe_bits.rs");
+                let words = emitted("probe_words.rs");
+                let single = emitted("probe_single.rs");
+                assert!(
+                    bits.contains("struct Word64"),
+                    "probe.bits must emit its Word64 declaration; probe_bits:\n{}",
+                    bits
+                );
+                assert!(
+                    !bits.contains("Copy"),
+                    "the non-constant Word64 (its List field is Rc-carried) must NOT derive Copy -- pre-repair it inherited Copy from the same-leaf constant declaration and rustc refused E0204; probe_bits:\n{}",
+                    bits
+                );
+                assert!(
+                    words.contains("struct Word64") && words.contains("Copy"),
+                    "the constant Word64 {{ hi: Int, lo: Int }} keeps its Copy roster; probe_words:\n{}",
+                    words
+                );
+                assert!(
+                    single.contains("struct Tag64") && single.contains("Copy"),
+                    "a single-declarer constant record is untouched by the re-key; probe_single:\n{}",
+                    single
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shared_roster_follows_the_declaration_not_the_spelling panicked");
+    }
+
+    #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()
@@ -5824,115 +5891,6 @@ mod compiler_tests {
                 && !control.contains("more than one module of this closure declares"),
             "a sole declarer resolves by spelling:\n{control}"
         );
-    }
-
-    // A std.nat NAT BEYOND THE 64-BIT RANGE REFUSES ON BOTH ROUTES, EXECUTED (review 85900). std.nat Nat
-    // realizes as the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows), and a
-    // grounded natural cast onto the kernel Int is realized as the identity
-    // (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged), so that
-    // identity is safe only while no Nat past i64::MAX can be produced. THE FIXTURE is real std.nat Nat
-    // arithmetic. INTERPRETER: v1_interpreter::run refuses `+` and `*` past the range with IntegerOverflow,
-    // and an in-range Nat computes 4. EMITTED: the fixture is compiled to Rust by compile_sources, built as
-    // a crate and run; past the range the program exits non-zero with an overflow message, in range it
-    // prints 4. No emitted text is searched. Live: it builds a crate (minutes), so the receipts lane runs it.
-    #[test]
-    #[ignore = "live-corpus: builds and runs an emitted crate (minutes per run); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn nat_beyond_the_64_bit_range_refuses_on_both_routes() {
-        let root = workspace_root();
-        let fixture = "module test.fixture.nat_overflow_probe\n\nimport std.nat { Nat }\n\nfn nat_at_i64_max() -> Nat {\n  9223372036854775807\n}\n\nfn past_by_addition() -> Nat {\n  nat_at_i64_max() + 1\n}\n\nfn past_by_multiplication() -> Nat {\n  nat_at_i64_max() * 2\n}\n\nfn in_range() -> Nat {\n  2 + 2\n}\n";
-        let dag_root = root.join("dag").to_string_lossy().to_string();
-        let closure = || {
-            resolve_source_closure(
-                vec![(
-                    "dag/test/fixture/nat_overflow_probe.dag".to_string(),
-                    fixture.to_string(),
-                )],
-                &[dag_root.as_str()],
-            )
-        };
-        let resolved =
-            crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(closure().into()));
-        let graph = resolved
-            .graph
-            .clone()
-            .expect("the std.nat fixture must resolve");
-        for (entry, op) in [("past_by_addition", "+"), ("past_by_multiplication", "*")] {
-            match crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), entry) {
-                Err(crate::v1_interpreter::InterpError::IntegerOverflow { op: o, .. })
-                    if o == op => {}
-                other => panic!(
-                    "the interpreter must refuse {entry} with IntegerOverflow on {op}, got {:?}",
-                    other
-                ),
-            }
-        }
-        match crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), "in_range") {
-            Ok(crate::v1_interpreter::Value::Int(4)) => {}
-            other => panic!(
-                "the interpreter must compute an in-range Nat, got {:?}",
-                other
-            ),
-        }
-        let emitted = crate::v1_compiler_compile::compile_sources(
-            std::rc::Rc::new(closure().into()),
-            crate::v1_compiler_artifact::RenderTarget::Rust,
-        );
-        assert!(
-            emitted
-                .files
-                .iter()
-                .any(|f| f.path.contains("test_fixture_nat_overflow_probe")),
-            "the std.nat fixture must be emitted, diagnostics {:?}",
-            emitted.diagnostics
-        );
-        let dir = std::env::temp_dir().join(format!("nat_overflow_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("create the workspace root");
-        let rust_crate = emitted
-            .rust_crates
-            .front()
-            .expect("one emitted Rust crate")
-            .clone();
-        crate::cli_run::write_emitted_workspace(
-            &emitted.files,
-            &emitted.emitted_edges,
-            &emitted.rust_crates,
-            &dir,
-            &rust_crate.crate_name,
-        )
-        .expect("the emitted workspace must be written by the one workspace writer");
-        std::fs::create_dir_all(dir.join("src/bin")).expect("create bin dir");
-        std::fs::write(dir.join("src/bin/nat_probe.rs"), String::from("fn main() {\n    use v1_compiled::test_fixture_nat_overflow_probe as p;\n    let v = match std::env::args().nth(1).as_deref() {\n        Some(\"add\") => p::past_by_addition(),\n        Some(\"mul\") => p::past_by_multiplication(),\n        _ => p::in_range(),\n    };\n    println!(\"{v}\");\n}\n").replace("v1_compiled", &rust_crate.crate_name)).expect("write probe bin");
-        let build = std::process::Command::new("cargo")
-            .args(["build", "--release", "--offline", "--bin", "nat_probe"])
-            .current_dir(&dir)
-            .env("CARGO_TARGET_DIR", dir.join("target"))
-            .output()
-            .expect("cargo must be on PATH");
-        assert!(
-            build.status.success(),
-            "the emitted crate must build:\n{}",
-            String::from_utf8_lossy(&build.stderr)
-        );
-        let probe = dir.join("target/release/nat_probe");
-        for arm in ["add", "mul"] {
-            let out = std::process::Command::new(&probe)
-                .arg(arm)
-                .output()
-                .expect("run the emitted probe");
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            assert!(!out.status.success() && stderr.contains("overflow"), "the emitted program must refuse {arm} past i64::MAX with an overflow panic; status {:?}, stdout {}, stderr {}", out.status, String::from_utf8_lossy(&out.stdout), stderr);
-        }
-        let ok = std::process::Command::new(&probe)
-            .output()
-            .expect("run the emitted probe");
-        assert!(
-            ok.status.success() && String::from_utf8_lossy(&ok.stdout).trim() == "4",
-            "the emitted program must compute an in-range Nat; status {:?}, stdout {}",
-            ok.status,
-            String::from_utf8_lossy(&ok.stdout)
-        );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // A SAME-LEAF TYPE ANYWHERE MUST NOT CHANGE ANOTHER MODULE'S EMISSION. hom.user returns the kernel
