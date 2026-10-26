@@ -507,25 +507,28 @@ type LeaseAcquisition
 // question to answer with it, so the success path has no field in which to invent one -- the state
 // is unwritable rather than merely unread (section 4b, construction over validation).
 //
-// AND THE GUARD MINT STAYS IN ONE FOLD. Splitting this into a public "admitted" constructor would
-// have made `TransitionGuard` forgeable by any caller willing to assert success, which is the whole
-// property the sole_constructor wall exists to hold.
+// AND THE GUARD MINT STAYS IN ONE FOLD, WITH NOTHING TO HAND IT. An earlier shape of this file folded
+// a `LeaseCreateOutcome` passed as a PARAMETER of the public `lease_acquisition_from_create`, and
+// `LeaseCreateSucceeded` carries no evidence of a create -- so any module, needing no access this file
+// withholds, could author the success arm and receive a sealed `TransitionGuard` although no exclusive
+// create had ever happened. That is the sole_constructor wall bypassed by a call rather than by a
+// literal, which the wall's own REDs (test.claim.transition_inhibition_store_seal_witness) do not cover.
+// The fold is therefore GONE, not narrowed: `acquire_transition_lease` destructures the create's own
+// answer beside the `Filesystem.WriteOwnerOnly` that produced it, and mints the guard there. What
+// remains callable is `lease_acquisition_refused`, which cannot construct a guard -- which is why it
+// may stay public. The RED that hands the removed route a success arm is
+// test.claim.transition_inhibition_store_seal_witness no_authored_create_outcome_mints_a_guard.
+//
+// WHY THIS TYPE STILL EXISTS AND HAS NO CALL SITE HERE: `.dag` has no visibility modifier, so no
+// wording could make it private -- what makes the bypass gone is that no function takes it. The type is
+// kept only as the declared dissolution trigger of
+// gunbc.durable_exclusive_hold_file_store durable_hold_nonholder_release_consumer_frontier_rows, whose
+// trigger is this type's RETIREMENT when the lease moves onto that hold library; deleting it here would
+// silently defuse that frontier row. Its named consumers are that ledger and the frontier witness's
+// present_decls, and it is deliberately not consumed by production code.
 type LeaseCreateOutcome
   = LeaseCreateSucceeded
   | LeaseCreateRefused { error: String, observed: TransitionFileObservation }
-
-fn lease_acquisition_from_create(
-  context: TransitionContext,
-  subject: TransitionSubject,
-  holder: TransitionActor,
-  outcome: LeaseCreateOutcome,
-) -> LeaseAcquisition {
-  match outcome {
-    LeaseCreateSucceeded =>
-      LeaseAcquired(TransitionGuard { context: context, subject: subject, holder: holder })
-    LeaseCreateRefused { error: e, observed: o } => lease_acquisition_refused(error: e, observed: o)
-  }
-}
 
 // THE THREE REFUSED ARMS, which need no context: a refused create mints no guard, so this fold
 // cannot construct one and is decided by the create's error and the follow-up observation alone.
@@ -564,19 +567,17 @@ fn acquire_transition_lease(
     path: path,
     content: transition_record_json(record: record),
   )
-  lease_acquisition_from_create(
-    context: context,
-    subject: subject,
-    holder: holder,
-    outcome: if created.success {
-      LeaseCreateSucceeded
-    } else {
-      LeaseCreateRefused {
-        error: created.error,
-        observed: observe_transition_lease(context: context),
-      }
-    },
-  )
+  // THE CREATE'S OWN ANSWER, DESTRUCTURED AT THE SITE THAT PRODUCED IT. The guard mint has exactly one
+  // call site, here, and no function anywhere takes an outcome that would let another module reach it
+  // (the note on `LeaseCreateOutcome`, above).
+  if created.success {
+    LeaseAcquired(TransitionGuard { context: context, subject: subject, holder: holder })
+  } else {
+    lease_acquisition_refused(
+      error: created.error,
+      observed: observe_transition_lease(context: context),
+    )
+  }
 }
 
 type TransitionActuation
