@@ -3657,6 +3657,110 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "a_nonexistent_entry_exits_2_with_a_located_refusal",
       expectation: ExpectedToHold {}
     },
+    // THE THREE PERMANENT CONTROLS THE #14545 RETIREMENT MOVED HERE, one row per identity, so each keeps
+    // an EXECUTING lane. All three greened while enrolled in `gunbc.workflow.floor_expected_red` as
+    // ExpectedRed, and DESIGN §4b meta-obligation 4 says a greened expecting-red probe becomes a
+    // PERMANENT regression control that STAYS ENROLLED — not deleted. Deleting their roster rows alone
+    // would have left them with no executing route (none is wet-scheduled; no job runs the whole
+    // discovered corpus), which is review 83648's blocking finding. The typed receipts per row (what
+    // closed each claim, and why its red cannot re-fire) live in `floor_expected_red` as
+    // `floor_expected_red_retired_rows`; this list is the dispatch fact, that list is the history.
+    // Their `manual/` standing changes for these two identities: they were hand-run only, and a lane
+    // that runs them on every dispatch is the point of moving them (PR #14545, disclosed).
+    // THE FOURTH identity this PR had retired, doc_graph_registered_plan_roots_all_admitted, is NOT here:
+    // its green was never observed (it runs in neither lane), so calling it a greened permanent control
+    // would inflate its rung (§4b(1)). It is restored to `floor_expected_red`'s ExpectedRed roster, on an
+    // open NeedsOperatorRuling disposition, and runs nowhere on this dispatch.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.direct_call_argument_type_witness", function: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch" },
+      entry: "dag/test/claim/direct_call_argument_type_witness.dag",
+      function: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_canonical_holds" },
+      entry: "src/v2/test/claim/manual/bootstrap_footprint_anchor.dag",
+      function: "bootstrap_footprint_canonical_holds",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.manual.ingest_bridge", function: "ingest_identity_coercion_accepts_source_present_in_authored_roster" },
+      entry: "src/v2/test/claim/manual/ingest_bridge.dag",
+      function: "ingest_identity_coercion_accepts_source_present_in_authored_roster",
+      expectation: ExpectedToHold {}
+    },
+    // THE READER OF THAT CARRIER, on the same lane so the join runs on every dispatch (a carrier no
+    // executing lane folds is data nobody reads). `retired_rows_are_accounted_for` joins the live
+    // populations — the roster's own chunks, this schedule, the carrier's rows — and refuses when a
+    // retired identity is still enrolled, when a retired control is missing from this list or carries
+    // the wrong expectation, or when a retirement has no receipt. Its controls run the same
+    // join on synthetic populations, so each refusal arm is itself discriminated.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "retired_rows_are_accounted_for" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "retired_rows_are_accounted_for",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_enrolment_arm_refuses_a_still_enrolled_identity" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_enrolment_arm_refuses_a_still_enrolled_identity",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_control_row_refuses_nothing" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_control_row_refuses_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_schedule_arms_distinguish_missing_from_mis_expectationed" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_schedule_arms_distinguish_missing_from_mis_expectationed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_enrolment_date_arms_separate_absence_from_fabrication" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_enrolment_date_arms_separate_absence_from_fabrication",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_durable_account_arm_refuses_a_phantom_ref" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_durable_account_arm_refuses_a_phantom_ref",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_instrument_arm_refuses_a_credit_to_another_claim" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_instrument_arm_refuses_a_credit_to_another_claim",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_receipt_shape_arm_refuses_a_bad_head" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_receipt_shape_arm_refuses_a_bad_head",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_trigger_arm_refuses_a_named_discharge_that_does_not_exist" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_trigger_arm_refuses_a_named_discharge_that_does_not_exist",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_emptiness_arm_refuses_a_carrier_with_nothing_in_it" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_emptiness_arm_refuses_a_carrier_with_nothing_in_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_carrier_is_not_silently_empty" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_carrier_is_not_silently_empty",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.record_emission_candidate_set_witness", function: "single_field_ambiguous_literal_emits_the_refusal" },
       entry: "dag/test/claim/record_emission_candidate_set_witness.dag",

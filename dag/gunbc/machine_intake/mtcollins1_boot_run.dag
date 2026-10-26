@@ -1,5 +1,6 @@
 module gunbc.machine_intake.mtcollins1_boot_run
 
+import std.nat { nat_to_decimal_string }
 import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import std.types { Bool, FilePath, Int, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
@@ -956,7 +957,7 @@ fn edac_qualification(envelope: BoundHostCaptureEnvelope, name: String) -> Termi
 // the capture line; the observed side stays the raw text the host printed.
 fn nproc_judge(expected: HardwareThreadCount, out: List<String>) -> MtCollins1BootTerminalCause? {
   let observed = fold(out, init: "", f: (acc, l) => if l == "" { acc } else { l })
-  if observed == (hardware_thread_count_value(t: expected) as String) { none } else { Present { value: HardwareThreadCountMismatch { expected: expected, observed: observed } } }
+  if observed == (nat_to_decimal_string(value: hardware_thread_count_value(t: expected))) { none } else { Present { value: HardwareThreadCountMismatch { expected: expected, observed: observed } } }
 }
 
 fn boot_media_judge(label: NonEmptyStr, out: List<String>) -> MtCollins1BootTerminalCause? {
@@ -1001,7 +1002,7 @@ fn workload_byte_reading(out: List<String>, token: String) -> WorkloadByteReadin
 
 fn workload_byte_reading_text(r: WorkloadByteReading) -> String {
   match r {
-    WorkloadBytesReported { bytes: b } => byte_size_count(b: b) as String
+    WorkloadBytesReported { bytes: b } => nat_to_decimal_string(value: byte_size_count(b: b))
     WorkloadBytesUnreported => "unreported"
     WorkloadBytesUnparsed { spelling: sp } => concat("unparsed '", sp, "'")
   }
@@ -1298,14 +1299,14 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     TerminalSectionUnterminatedAtRefusal { name: n } => concat(n, " section opened but had not printed its EXIT line when the open envelope refused; unqualified")
     TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)
     TerminalSectionMalformed { name: _, reason: r } => r
-    HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", hardware_thread_count_value(t: e) as String)
-    SocketPlacementMismatch { expected: e, observed: o } => concat("numa placement ", o, ", milestone expects ", hardware_thread_count_value(t: e.threads) as String, " CPUs on socket ", to_string(e.socket as Int), " and none elsewhere")
+    HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", nat_to_decimal_string(value: hardware_thread_count_value(t: e)))
+    SocketPlacementMismatch { expected: e, observed: o } => concat("numa placement ", o, ", milestone expects ", nat_to_decimal_string(value: hardware_thread_count_value(t: e.threads)), " CPUs on socket ", to_string(e.socket as Int), " and none elsewhere")
     SocketPlacementUnread => "numa section carries no node cpus line; socket placement is not read"
     BootMediaLabelAbsent { label: l } => concat("boot-media does not name the census volume ", l as String)
     EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
     WorkloadPreflightRefused { declared: d, shm_avail: sh, mem_available: ma } =>
-      concat("workload preflight refused: declared ", byte_size_count(b: d) as String, " bytes, /dev/shm free ", workload_byte_reading_text(r: sh), ", MemAvailable ", workload_byte_reading_text(r: ma))
-    WorkloadFootprintMismatch { declared: d, observed: o } => concat("workload footprint ", workload_byte_reading_text(r: o), " bytes, profile declares ", byte_size_count(b: d) as String)
+      concat("workload preflight refused: declared ", nat_to_decimal_string(value: byte_size_count(b: d)), " bytes, /dev/shm free ", workload_byte_reading_text(r: sh), ", MemAvailable ", workload_byte_reading_text(r: ma))
+    WorkloadFootprintMismatch { declared: d, observed: o } => concat("workload footprint ", workload_byte_reading_text(r: o), " bytes, profile declares ", nat_to_decimal_string(value: byte_size_count(b: d)))
     WorkloadWriteFailed { rc: rc } => concat("workload write rc=", rc)
     WorkloadDigestUnstable => "workload digest not stable across passes"
     PreOsFirmwareRefusal { statement: st, locus: locus } =>
