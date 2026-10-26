@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_revision_pinned_reading_cites_a_declaration_without_its_revision
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_revision_pinned_reading_cites_a_declaration_without_its_revision: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_revision_pinned_reading_cites_a_declaration_without_its_revision" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "a declaration citation inside a revision-pinned observation carries the revision it was read at, so a reference resolves against the tree it describes and a revision-free citation cannot be constructed in such a reading" } },
+
+  receipts: [
+    "INVALID STATE: an observation of the repository at a pinned revision (gunbc.realization_census_rows, pinned by realization_census_pin, an inhabitant of gunbc.repository_census_observation) cites its evidence as EvidenceDeclaration { ref: DeclarationRef }, and DeclarationRef names a module and declaration but no revision. The reading is true of the pin, while its citation resolves against whatever tree it is read in.",
+
+    "HARM: a later, correct deletion of a cited declaration leaves the pinned reading citing a symbol that does not exist at HEAD. The specimen: #14432 deletes gunbc.owned_process owned_process_launch_script, which the 1dd3eda5 census cites from one module row and one finding row. Nothing refused; review read the citation as stale and asked for the observation to be amended, which would make it assert that the pinned revision lacked a finding it had (DESIGN 4d).",
+
+    "DISTINGUISHING FACT: the reading is not stale and the deletion is not wrong; the defect is the citation's missing coordinate. Regenerating the rows from their receipt reproduces the same citation, so no edit to the generated rows or the deleting change is the repair.",
+
+    "DISTINCT FROM unlanded_citation_indistinguishable_at_the_citing_end, its mirror: there the citation is AHEAD of the tree it lands in (it names a symbol not yet merged); here the reading is BEHIND it (it names a symbol later deleted). Both are one missing coordinate, the revision a citation is resolved at.",
+
+    "RECOGNITION RULE: a carrier that records a fact at a revision (a pin, a receipt, a measurement revision) and cites declarations by a revision-free DeclarationRef; test by deleting a cited declaration at HEAD and asking what refuses.",
+
+    "RUNG FOUND AT: below the ladder, a dangling citation nothing refuses. CEILING: structurally impossible, once a pinned reading's citation type carries its revision. NEXT TRIGGER: the capability named in the rung reading; not this change's to build.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.realization_census", decl_name: "EvidenceCitation", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.realization_census_rows", decl_name: "realization_census_pin", field: WholeDeclaration },
+  ],
+}

@@ -1,7 +1,19 @@
 module extdeps.gpu.nvidia_a16
 
-import std.measure { Micrometer, micrometer }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Micrometer, micrometer, watt, hertz, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import std.optional { Present }
+import std.types { NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.gpu.types {
+  GpuModelCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, GpuBoardPower, GpuNamedPowerPoint,
+  GpuOnMultiGpuBoard, ZeroPowerNotSupported, PassiveThermalSolution, Cuda,
+}
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { PcieLink, Gen4 }
+import extdeps.pci.identity { PciDeviceId }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.external_authority { FactCitation }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -9,8 +21,23 @@ import extdeps.uri { Uri, Https }
 // Table 1 states SKU PG171 (NVPN 699-2G171-0200-xxx), passive thermal solution, and mechanical form
 // factor "Full-height, full-length (FHFL) 10.5", dual-slot". It publishes no dimension drawing, no
 // thickness and no airflow requirement; "Airflow Direction Support" states only that the heat sink
-// is bidirectional. The A16 is ONE board carrying FOUR GA107 GPUs, so it is deliberately not a
-// GpuModelCatalogRow, whose fields describe a single GPU.
+// is bidirectional. The A16 is ONE board carrying FOUR GA107 GPUs, so it is a GpuBoardCatalogRow
+// whose `gpu` is one GA107: board power, thermal and host link are the card's, and no GPU of it has
+// them alone.
+//
+// Table 1 (Product Specifications) and Table 2 (Memory Specifications), pages 3 and 4, read
+// 2026-10-26 from the PDF text layer of a held copy, sha256
+// 832cb47e79bdf23fd4ba49407d18504666869d19e7bfa97412918291da7bbeff:
+//   Total board power: 250 W default, 250 W maximum, 235 W MaxQ (maximum performance per watt),
+//     195 W minimum. Thermal solution: Passive. GPU SKU: GA107-890 (quantity four). Zero Power: Not
+//     supported.
+//   Board PCI Device ID 0x25B6 (recorded in extdeps.pci.identity's spelling, "25b6"). GPU clocks: base 1312 MHz, boost 1755 MHz.
+//   PCI Express interface: physical x16, PCIe Gen4 x16 or Gen3 x16 supported.
+//   Memory: GDDR6, 64 GB (16 GB per GPU), 6.25 GHz, 128-bit bus, peak bandwidth "up to 4x 200 GB/sec".
+// The bandwidth is an "up to" ceiling, so `memory_bandwidth` stays absent (extdeps.gpu.types rule).
+// How the driver divides the board range among the four GPUs is a device reading, not a brief fact:
+// 595.91.07 reports 48.75 to 62.50 W per GPU, which is the board range over four, and that reading is
+// the receipt's to carry.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -33,3 +60,61 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
+
+data nvidia_a16_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "GA107-890",
+  microarchitecture: "Ampere",
+  package: GpuOnMultiGpuBoard,
+  execution_lane_count: none,
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: none,
+  boost_clock: Present { value: hertz(count: 1755000000) },
+  tdp_watts: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_gpu_catalog", field_name: "memory"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_gpu_catalog", field_name: "boost_clock"), authority: extdeps_external_authority_anchor },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "A16",
+  gpu: nvidia_a16_gpu_catalog,
+  gpu_count: 4,
+  board_power: GpuBoardPower {
+    default: watt(count: 250),
+    minimum: watt(count: 195),
+    maximum: watt(count: 250),
+    named_points: [GpuNamedPowerPoint { name: "MaxQ (maximum performance per watt)", power: watt(count: 235) }],
+  },
+  zero_power: ZeroPowerNotSupported,
+  thermal: PassiveThermalSolution,
+  host_link: PcieLink { generation: Gen4, lane_count: 16 },
+  pci_device_id: "25b6" as PciDeviceId,
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "gpu_count"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "board_power"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "zero_power"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "thermal"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "host_link"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "pci_device_id"), authority: extdeps_external_authority_anchor },
+  ],
+}
+
+// The row a consumer reads is the admitted one; the facts above are what the brief states.
+data nvidia_a16_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_a16_board_facts)
+
+// DESIGN section 3c declared frontier.
+data nvidia_a16_board_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a fleet card census binds each installed A16 to nvidia_a16_board_catalog, and a power policy reads board_power to bound the cap it selects, thermal to decide that the card needs a fan zone that follows it, and zero_power so a park policy cannot select a state the board does not have. SUFFICIENT FOR: the board row has a production consumer; until then only test.claim.gpu_board_catalog_witness reads it, which exercises admission and is not a consumer." as NonEmptyStr
+)

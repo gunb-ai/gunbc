@@ -1,0 +1,226 @@
+module test.claim.provisioning.public_nocloud_seed_witness
+
+import std.types { Bool, List, String }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
+import gunbc.os_install_emit { autoinstall_user_data_document, cloud_config_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
+import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
+import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
+import extdeps.ssh.keys { ssh_public_key_canonical_line, ssh_public_key_line }
+import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, parse_mac_address }
+import gunbc.provisioning.public_nocloud_seed {
+  admit_public_nocloud_seed,
+  PublicSeedAdmission,
+  PublicSeedAdmitted,
+  PublicSeedRefused,
+  PublicSeedFinding,
+  SeedCredentialField,
+  SeedKeyNotAdmitted,
+  SeedValueNotAdmitted,
+  SeedPasswordSshEnabled,
+  SeedAuthorizedKeyNotPublic,
+  SeedCredentialShapedValue,
+  SeedRenderRefused,
+  SeedUserData,
+  SeedMetaData,
+  public_nocloud_seed_user_data,
+  public_nocloud_seed_meta_data,
+  public_nocloud_seed_client_mac,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data public_key_line: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8g"
+
+fn with_mac(claim: fn(Eui48Address) -> Bool) -> Bool {
+  match parse_mac_address(text: "ac:1f:6b:e3:f7:fe") {
+    MacParsed { address: m } => claim(m)
+    MacParseFailed { error: _ } => false
+  }
+}
+
+fn ssh_section(allow_pw: Bool, keys: List<YamlValue>) -> YamlKeyValue {
+  kv(key: "ssh", value: yaml_mapping(entries: [
+    kv(key: "install-server", value: yaml_bool(b: true)),
+    kv(key: "authorized-keys", value: yaml_sequence(elements: keys)),
+    kv(key: "allow-pw", value: yaml_bool(b: allow_pw)),
+  ]))
+}
+
+fn key_only_user() -> YamlValue {
+  yaml_mapping(entries: [
+    kv(key: "name", value: yaml_string(s: "ubuntu")),
+    kv(key: "lock_passwd", value: yaml_bool(b: true)),
+    kv(key: "ssh_authorized_keys", value: yaml_sequence(elements: [yaml_string(s: public_key_line)])),
+    kv(key: "shell", value: yaml_string(s: "/bin/bash")),
+    kv(key: "sudo", value: yaml_string(s: "ALL=(ALL) NOPASSWD:ALL")),
+  ])
+}
+
+fn user_data_with(extra: List<YamlKeyValue>) -> YamlValue {
+  yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: concat([
+    kv(key: "version", value: yaml_int(n: 1)),
+    kv(key: "locale", value: yaml_string(s: "en_US.UTF-8")),
+    kv(key: "keyboard", value: yaml_mapping(entries: [kv(key: "layout", value: yaml_string(s: "us"))])),
+    ssh_section(allow_pw: false, keys: [yaml_string(s: public_key_line)]),
+    kv(key: "storage", value: yaml_mapping(entries: [kv(key: "layout", value: yaml_mapping(entries: [kv(key: "name", value: yaml_string(s: "direct"))]))])),
+    kv(key: "user-data", value: yaml_mapping(entries: [kv(key: "users", value: yaml_sequence(elements: [key_only_user()]))])),
+  ], extra)))])
+}
+
+fn findings_of(a: PublicSeedAdmission) -> List<PublicSeedFinding> {
+  match a {
+    PublicSeedAdmitted { seed: _ } => []
+    PublicSeedRefused { findings: fs } => concat([fs.head], fs.tail)
+  }
+}
+
+fn refused_with(a: PublicSeedAdmission, finding: PublicSeedFinding) -> Bool {
+  any(findings_of(a: a), f => f == finding)
+}
+
+fn admit(extra: List<YamlKeyValue>, claim: fn(PublicSeedAdmission) -> Bool) -> Bool {
+  with_mac(claim: m => claim(admit_public_nocloud_seed(client_mac: m, user_data: user_data_with(extra: extra))))
+}
+
+// CONTROL: the amd64 key-only seed is admitted; its user-data is the one #cloud-config renderer's rendering of the very
+// tree that was audited, and its meta-data is built from the client MAC alone (instance-id iid-<mac>).
+test fn a_key_only_seed_is_admitted_as_the_rendering_of_its_audited_tree() -> Bool {
+  let doc = user_data_with(extra: [])
+  with_mac(claim: m => match admit_public_nocloud_seed(client_mac: m, user_data: doc) {
+    PublicSeedRefused { findings: _ } => false
+    PublicSeedAdmitted { seed: sd } =>
+      match cloud_config_user_data(document: doc) {
+        AutoinstallUserDataRefused { reason: _ } => false
+        AutoinstallUserDataRendered { content: c } =>
+          public_nocloud_seed_user_data(seed: sd) == c
+            && public_nocloud_seed_client_mac(seed: sd) == m
+            && public_nocloud_seed_meta_data(seed: sd) == "instance-id: iid-ac-1f-6b-e3-f7-fe\n"
+      }
+  })
+}
+
+// INHABITANCE OF THE REAL PRODUCER, AS A RED: the seed renderer's own document for the committed srv4 payload carries
+// a sha512crypt hash in identity.password. The closed schema refuses the identity section, and names the credential
+// field beneath it.
+test fn the_real_renderers_password_bearing_document_is_refused_on_its_password_field() -> Bool {
+  with_mac(claim: m => {
+    let a = admit_public_nocloud_seed(client_mac: m, user_data: autoinstall_user_data_document(payload: srv4_ubuntu_autoinstall_on_iso))
+    refused_with(a: a, finding: SeedKeyNotAdmitted { document: SeedUserData, path: "autoinstall.identity" })
+      && refused_with(a: a, finding: SeedCredentialField { document: SeedUserData, path: "autoinstall.identity.password" })
+  })
+}
+
+// RED, ONE PER CREDENTIAL FIELD of the two schemas, named wherever it appears.
+test fn every_credential_field_refuses_by_name() -> Bool {
+  let user = yaml_mapping(entries: [
+    kv(key: "name", value: yaml_string(s: "ubuntu")),
+    kv(key: "passwd", value: yaml_string(s: "x")),
+    kv(key: "hashed_passwd", value: yaml_string(s: "x")),
+    kv(key: "plain_text_passwd", value: yaml_string(s: "x")),
+  ])
+  with_mac(claim: m => {
+    let a = admit_public_nocloud_seed(client_mac: m, user_data: yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [
+      kv(key: "user-data", value: yaml_mapping(entries: [
+        kv(key: "users", value: yaml_sequence(elements: [user])),
+        kv(key: "chpasswd", value: yaml_mapping(entries: [])),
+        kv(key: "ssh_keys", value: yaml_mapping(entries: [])),
+      ])),
+    ]))]))
+    refused_with(a: a, finding: SeedCredentialField { document: SeedUserData, path: "autoinstall.user-data.users.passwd" })
+      && refused_with(a: a, finding: SeedCredentialField { document: SeedUserData, path: "autoinstall.user-data.users.hashed_passwd" })
+      && refused_with(a: a, finding: SeedCredentialField { document: SeedUserData, path: "autoinstall.user-data.users.plain_text_passwd" })
+      && refused_with(a: a, finding: SeedCredentialField { document: SeedUserData, path: "autoinstall.user-data.chpasswd" })
+      && refused_with(a: a, finding: SeedCredentialField { document: SeedUserData, path: "autoinstall.user-data.ssh_keys" })
+  })
+}
+
+// RED: password SSH is refused (key-only); an authorized "key" that is not a public key line refuses, and a PEM
+// private key there is also credential-shaped.
+test fn password_ssh_and_non_public_keys_refuse() -> Bool {
+  let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----"
+  with_mac(claim: m => {
+    let pw = admit_public_nocloud_seed(client_mac: m, user_data: yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [ssh_section(allow_pw: true, keys: [yaml_string(s: public_key_line)])]))]))
+    let priv = admit_public_nocloud_seed(client_mac: m, user_data: yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [ssh_section(allow_pw: false, keys: [yaml_string(s: pem)])]))]))
+    refused_with(a: pw, finding: SeedPasswordSshEnabled { document: SeedUserData, path: "autoinstall.ssh.allow-pw" })
+      && refused_with(a: priv, finding: SeedAuthorizedKeyNotPublic { document: SeedUserData, path: "autoinstall.ssh.authorized-keys" })
+      && refused_with(a: priv, finding: SeedCredentialShapedValue { document: SeedUserData, path: "autoinstall.ssh.authorized-keys" })
+  })
+}
+
+// RED: EVERY FREE-TEXT FIELD HAS NO WAY IN (merry-fox-82, hold at 7dd8eb19). The command lists, a uri and packages
+// refuse at their path, whatever they hold -- a bearer token of no recognisable shape included -- and so does any key
+// at a path the schema does not list.
+test fn free_text_fields_refuse_at_their_path_whatever_they_hold() -> Bool {
+  let token = "glpat-Zx8kQ2pV9mT4rW7yB1nC"
+  admit(extra: [
+    kv(key: "late-commands", value: yaml_sequence(elements: [yaml_string(s: concat("curl -H 'Authorization: Bearer ", concat(token, "' https://x"))) ])),
+    kv(key: "early-commands", value: yaml_sequence(elements: [yaml_string(s: "true")])),
+    kv(key: "error-commands", value: yaml_sequence(elements: [yaml_string(s: "true")])),
+    kv(key: "packages", value: yaml_sequence(elements: [yaml_string(s: "ipmitool")])),
+    kv(key: "apt", value: yaml_mapping(entries: [kv(key: "primary", value: yaml_sequence(elements: [yaml_mapping(entries: [kv(key: "uri", value: yaml_string(s: concat("https://u:", concat(token, "@mirror"))))])]))])),
+    kv(key: "api_token", value: yaml_string(s: token)),
+  ], claim: a =>
+    refused_with(a: a, finding: SeedKeyNotAdmitted { document: SeedUserData, path: "autoinstall.late-commands" })
+      && refused_with(a: a, finding: SeedKeyNotAdmitted { document: SeedUserData, path: "autoinstall.early-commands" })
+      && refused_with(a: a, finding: SeedKeyNotAdmitted { document: SeedUserData, path: "autoinstall.error-commands" })
+      && refused_with(a: a, finding: SeedKeyNotAdmitted { document: SeedUserData, path: "autoinstall.packages" })
+      && refused_with(a: a, finding: SeedKeyNotAdmitted { document: SeedUserData, path: "autoinstall.apt" })
+      && refused_with(a: a, finding: SeedKeyNotAdmitted { document: SeedUserData, path: "autoinstall.api_token" }))
+}
+
+// RED: AN ADMITTED PATH TAKES ONLY ITS TYPED LEAF. A locale, shell or sudo rule outside its closed list, a user name
+// that is not a POSIX name, a locked password set false, and a version other than 1 each refuse at their path; a
+// crypt-shaped value there is also named as credential-shaped.
+test fn admitted_paths_take_only_their_typed_leaf() -> Bool {
+  let odd_user = yaml_mapping(entries: [
+    kv(key: "name", value: yaml_string(s: "u; curl x")),
+    kv(key: "lock_passwd", value: yaml_bool(b: false)),
+    kv(key: "shell", value: yaml_string(s: "/usr/bin/zsh")),
+    kv(key: "sudo", value: yaml_string(s: "ALL=(ALL) ALL")),
+  ])
+  with_mac(claim: m => {
+    let a = admit_public_nocloud_seed(client_mac: m, user_data: yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [
+      kv(key: "version", value: yaml_int(n: 2)),
+      kv(key: "locale", value: yaml_string(s: "$6$saltsalt$0123456789abcdefghijABCDEFGHIJ./0123456789abcdefghijABCDEFGHIJ./0123456789abcdefghij")),
+      kv(key: "user-data", value: yaml_mapping(entries: [kv(key: "users", value: yaml_sequence(elements: [odd_user]))])),
+    ]))]))
+    refused_with(a: a, finding: SeedValueNotAdmitted { document: SeedUserData, path: "autoinstall.version" })
+      && refused_with(a: a, finding: SeedValueNotAdmitted { document: SeedUserData, path: "autoinstall.locale" })
+      && refused_with(a: a, finding: SeedCredentialShapedValue { document: SeedUserData, path: "autoinstall.locale" })
+      && refused_with(a: a, finding: SeedValueNotAdmitted { document: SeedUserData, path: "autoinstall.user-data.users.name" })
+      && refused_with(a: a, finding: SeedValueNotAdmitted { document: SeedUserData, path: "autoinstall.user-data.users.lock_passwd" })
+      && refused_with(a: a, finding: SeedValueNotAdmitted { document: SeedUserData, path: "autoinstall.user-data.users.shell" })
+      && refused_with(a: a, finding: SeedValueNotAdmitted { document: SeedUserData, path: "autoinstall.user-data.users.sudo" })
+  })
+}
+
+fn keys_seed(m: Eui48Address, lines: List<String>) -> PublicSeedAdmission {
+  admit_public_nocloud_seed(client_mac: m, user_data: yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [ssh_section(allow_pw: false, keys: map(lines, l => yaml_string(s: l)))]))]))
+}
+
+// RED: AN AUTHORIZED KEY IS CANONICAL OR IT REFUSES (merry-fox-82, hold at 0dd912cd). A comment can carry any text, so a
+// key line with a comment -- here a shapeless token -- refuses; so does a blob that decodes to another keytype than
+// the line names (an ssh-rsa blob under ssh-ed25519, RFC 4253 section 6.6), and an option field before the keytype.
+test fn a_commented_or_mismatched_key_refuses() -> Bool {
+  let commented = concat(public_key_line, " glpat-Zx8kQ2pV9mT4rW7yB1nC")
+  let mismatched = "ssh-ed25519 AAAAB3NzaC1yc2EAAAAgAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+  let optioned = concat("restrict ", public_key_line)
+  with_mac(claim: m => {
+    refused_with(a: keys_seed(m: m, lines: [commented]), finding: SeedAuthorizedKeyNotPublic { document: SeedUserData, path: "autoinstall.ssh.authorized-keys" })
+      && refused_with(a: keys_seed(m: m, lines: [mismatched]), finding: SeedAuthorizedKeyNotPublic { document: SeedUserData, path: "autoinstall.ssh.authorized-keys" })
+      && refused_with(a: keys_seed(m: m, lines: [optioned]), finding: SeedAuthorizedKeyNotPublic { document: SeedUserData, path: "autoinstall.ssh.authorized-keys" })
+      && (match keys_seed(m: m, lines: [public_key_line]) { PublicSeedAdmitted { seed: _ } => true PublicSeedRefused { findings: _ } => false })
+  })
+}
+
+// INHABITANCE OF THE REAL KEYS: the fleet's committed public keys, rendered canonically, are admitted; the same keys
+// rendered with their comments (ssh_public_key_line, the renderer the seed must NOT use) refuse.
+test fn the_fleets_real_keys_admit_canonically_and_refuse_with_their_comments() -> Bool {
+  with_mac(claim: m => {
+    count(fleet_authorized_keys) > 0
+      && (match keys_seed(m: m, lines: map(fleet_authorized_keys, k => ssh_public_key_canonical_line(k: k))) { PublicSeedAdmitted { seed: _ } => true PublicSeedRefused { findings: _ } => false })
+      && refused_with(a: keys_seed(m: m, lines: map(fleet_authorized_keys, k => ssh_public_key_line(k: k))), finding: SeedAuthorizedKeyNotPublic { document: SeedUserData, path: "autoinstall.ssh.authorized-keys" })
+  })
+}

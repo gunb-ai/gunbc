@@ -126,7 +126,7 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
 // TWO SPELLINGS, TWO ARMS, ONE TERMINATOR EACH. A trigger with no period gets one appended; a
 // trigger already ending in exactly one period gets nothing appended. Both arms are asserted
 // because they fail differently: unconditional appending (the defect that put 21 double periods
-// into docs/design-rung-drops.md) reds the terminated arm, and never appending reds the
+// into `gunbc.design_ledgers` `expected_design_rung_drops_md`) reds the terminated arm, and never appending reds the
 // unterminated arm. The exact single-period suffix is the whole check -- a rendering ending
 // "trigger.." does not carry the suffix "trigger." -- so no separate double-period clause is
 // needed. This establishes NOTHING about a trigger authored with ".." or "..."; the projector

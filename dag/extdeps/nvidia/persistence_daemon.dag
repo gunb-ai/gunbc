@@ -1,0 +1,70 @@
+module extdeps.nvidia.persistence_daemon
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// ── nvidia-persistenced, THE DAEMON'S OWN STARTUP CONTRACT. What persistence mode the daemon puts
+// every device in when it starts is decided by its argv, and that is the fact a host converge needs:
+// a running daemon says nothing about whether persistence is on.
+//
+// AUTHORITY. NVIDIA's Driver Persistence guide, "Persistence Daemon" page (last updated 2026-09-09),
+// documents --user and --verbose and defers the mode flags to nvidia-persistenced(1). The man page and
+// `--help` shipped with driver 595.91.07 state, verbatim: "By default, nvidia-persistenced starts with
+// persistence mode enabled for all devices. Use '--no-persistence-mode' to force persistence mode off
+// for all devices on startup." Read on the H11 host 2026-10-26.
+//
+// NOT THIS MODULE'S FACT: what a distribution's packaged unit passes. Ubuntu's
+// nvidia-compute-utils-595-server ships a static unit whose ExecStart carries --no-persistence-mode;
+// that is Canonical's packaging and an observation of one host, so it belongs to the observing layer
+// (the GPU-card converge leg reads the unit it finds), not to NVIDIA's interface here. So is turning a
+// unit's ExecStart line into argv words: that is systemd's command-line syntax, owned by
+// extdeps.systemd.service_exec, and this module takes argv already split.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/deploy/driver-persistence/persistence-daemon.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.persistence_daemon",
+      decl_name: "PersistenceDaemonStartupMode",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Both flags at once is not given a meaning by the man page, so it is its own arm rather than a
+// guessed precedence.
+type PersistenceDaemonStartupMode
+  = DaemonStartsPersistenceEnabled
+  | DaemonStartsPersistenceDisabled
+  | DaemonStartupModeAmbiguous
+
+data persistence_mode_on_flag: String = "--persistence-mode"
+data persistence_mode_off_flag: String = "--no-persistence-mode"
+
+// The startup mode an argv selects: no flag is the documented default (enabled).
+fn persistence_daemon_startup_mode(argv: List<String>) -> PersistenceDaemonStartupMode {
+  let words = map(argv, a => trim(s: a))
+  let on = any(words, w => w == persistence_mode_on_flag)
+  let off = any(words, w => w == persistence_mode_off_flag)
+  if on && off { DaemonStartupModeAmbiguous } else {
+    if off { DaemonStartsPersistenceDisabled } else { DaemonStartsPersistenceEnabled }
+  }
+}
+
+// DESIGN section 3c declared frontier. TRIGGER: a host converge leg imports
+// persistence_daemon_startup_mode to judge the ExecStart it observes, reading that line through
+// extdeps.systemd.service_exec, and refuses a host whose daemon would start with persistence off.
+data persistence_daemon_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a host converge leg imports persistence_daemon_startup_mode to judge the nvidia-persistenced ExecStart it observes (read into argv through extdeps.systemd.service_exec) and refuses a host whose daemon would start with persistence off. SUFFICIENT FOR: the startup mode has a production consumer. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness reads the argv captured from the H11's packaged unit, but no enrolled claim reads a live unit; that read runs host-side in the converge leg." as NonEmptyStr
+)
