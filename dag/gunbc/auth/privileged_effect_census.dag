@@ -11,6 +11,8 @@ import gunbc.auth.mtjade1_arrival_federation {
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
+import std.scoped_authorization { AuthorizationScope, AuthorizedAction }
+import std.effect_grant { Write, Execute, filesystem_position }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
   DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
@@ -54,9 +56,10 @@ import gunbc.auth.authorization_pattern_selection {
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence, BillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
+  EntailedByApprovedConvergence, ConvergenceRoot, convergence_lineage_root,
   InterlockPending, InterlockedBy, StandingRulingInterlock,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
-  OperatorOwnSession, AdministratorEdge,
+  OperatorOwnSession, AdministratorEdge, ApprovedConvergenceGrant,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   select_authorization_pattern,
@@ -92,6 +95,10 @@ import gunbc.auth.authorization_pattern_selection {
 //   RealizedUnauthorized -- the site performs the effect under no credential that names it: the
 //     write reaches its store on the executor's host access alone. It matches no pattern, so a row
 //     realizing it is red unless it states why and what retires the reason.
+//   RealizedUnderApprovedConvergence -- the site performs the effect inside the attempt that claimed
+//     the operator's approval of its lineage root, and only after std.scoped_authorization authorize
+//     admits the effect's own scopes against that grant. No site realizes it yet; the first is the
+//     srv1 host-root adapter registered against gunbc.auth.approval_broker redeem_capability.
 type OperatorSessionArm
   = GcloudInteractive
   | OperatorTokenFile
@@ -104,6 +111,7 @@ type RealizedAuthorization
   | RealizedAdministratorEdge
   | RealizedOperatorSession { arm: OperatorSessionArm }
   | RealizedUnauthorized
+  | RealizedUnderApprovedConvergence
 
 // A REASON IS A STATEMENT PLUS THE CONDITION UNDER WHICH IT STOPS BEING ONE. A bare string moved a
 // site out of the debt roster for as long as anyone left it there (review 68720): no bound, no
@@ -149,6 +157,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
         RealizedAdministratorEdge => false
+        RealizedUnderApprovedConvergence => false
       }
     OperatorApprovedCapability =>
       match realized {
@@ -159,6 +168,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
         RealizedAdministratorEdge => false
+        RealizedUnderApprovedConvergence => false
       }
     HumanOnlyStep { step: _ } =>
       match realized {
@@ -169,6 +179,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
         RealizedAdministratorEdge => false
+        RealizedUnderApprovedConvergence => false
       }
     AdministratorEdge =>
       match realized {
@@ -179,6 +190,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
+        RealizedUnderApprovedConvergence => false
       }
     OperatorOwnSession =>
       match realized {
@@ -187,6 +199,18 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedRunSelected => false
         RealizedApprovalCapability => false
         RealizedHumanStep => false
+        RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
+        RealizedUnderApprovedConvergence => false
+      }
+    ApprovedConvergenceGrant =>
+      match realized {
+        RealizedUnderApprovedConvergence => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedApprovalCapability => false
+        RealizedHumanStep => false
+        RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
         RealizedAdministratorEdge => false
       }
@@ -700,6 +724,7 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
   flat_map(privileged_effect_census, row =>
     match row.effect.witness_discharge {
       NoWitnessDischarge => []
+      EntailedByApprovedConvergence { root: _, required_scopes: _ } => []
       StandingRulingUnderInterlock { ruling: r } =>
         match ruling_discharge_interlock_defect(site_ref: row.site, ruling: r) {
           Absent => []
@@ -713,6 +738,7 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
 fn discharged_by_ruling(v: PrivilegedEffectSite) -> Bool {
   match v.effect.witness_discharge {
     NoWitnessDischarge => false
+    EntailedByApprovedConvergence { root: _, required_scopes: _ } => false
     StandingRulingUnderInterlock { ruling: r } => (r.ruling_text as String) == (mtcollins1_operator_ruling.ruling_text as String)
   }
 }
@@ -729,6 +755,22 @@ fn census_sites_outside_ruling_roots() -> List<DeclarationRef> {
 fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {
   let rostered = map(privileged_effect_census, row => row.site)
   filter(map(privileged_effect_interlocks, i => i.site), s => !declaration_ref_in_list(target: s, refs: rostered))
+}
+
+// AN APPROVAL IS INHERITED ONLY FROM A ROSTERED ROW (operator ruling 2026-10-25,
+// gunbc.design_ruling the_initial_convergence_is_the_only_approval). That the root is something the
+// operator approves -- its own selection is OperatorApprovedCapability and it inherits nothing itself --
+// is decided by the selection (authorization_pattern_selection inheritance_admission) and refused there.
+// What only the census can see is that the root's site is one of its rows, so a root that names no
+// rostered site is a defect at the inheriting row. The census is a parameter so a fixture roster can
+// author the red.
+fn convergence_lineage_defects(census: List<PrivilegedEffectSite>) -> List<DeclarationRef> {
+  flat_map(census, row =>
+    match convergence_lineage_root(e: row.effect) {
+      Absent => []
+      Present { value: root } =>
+        if any(census, r => declaration_ref_eq(a: r.site, b: root.site)) { [] } else { [row.site] }
+    })
 }
 
 // THE DIVERGENCE REASONS THAT RECUR, each stated once with its dissolution.
@@ -946,7 +988,7 @@ fn ruling_discharge_for(scope: OperatorScopeRuling, site_ref: DeclarationRef) ->
 // transition retires them all.
 data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
   statement: "the effect runs under the CI job user's path-only whole-binary sudo grant, which is root-equivalent and held by the account every srv1 job runs as, so the effect is authorized by no credential that names it (rung drop the_job_user_holds_a_path_unrestricted_root_grant)" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy route runs its host-root effects under the administrator edge from a main-pinned dispatch and the whole-binary rows are deleted from ci_runner_sudo_binaries (plan stage 2), gated by deploy_route_switch_admitted. SUFFICIENT FOR overlaying these rows as RealizedAdministratorEdge (host-root rows) or RealizedFederatedGrant (the argv-pinned systemctl row)" as NonEmptyStr),
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy's host-root effects run inside the attempt that claimed the operator's approval of the srv1 root-mutation job, through an authority adapter registered against gunbc.auth.approval_broker redeem_capability that admits each effect's scopes with std.scoped_authorization authorize before writing and reads it back (operator ruling 2026-10-25, gunbc.design_ruling the_initial_convergence_is_the_only_approval), and the whole-binary rows are deleted from ci_runner_sudo_binaries. SUFFICIENT FOR overlaying the host-root rows as RealizedUnderApprovedConvergence and the argv-pinned per-unit rows as RealizedFederatedGrant. For the host-root rows it is sufficient ONLY once their lineage root, fleet_converge_srv1_root_mutation_environment, itself realizes RealizedApprovalCapability (its github_environment_gate_is_not_the_approval_route reason retired): until then the approval they would inherit is a GitHub environment click, not a broker approval" as NonEmptyStr),
 }
 
 // THE CONTROLLER INSTALL HAS NO GRANT AT ALL, which is not the whole-binary case: dd and install into
@@ -955,10 +997,57 @@ data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
 // run 39284886844). Granting it to the job user would make that account root-equivalent.
 data controller_install_holds_no_grant: DivergenceReason = DivergenceReason {
   statement: "the effect's root writes (dd/install into /etc/systemd/system and /usr/local) are authorized by no grant, so the apply is refused at its first privileged line; the only realization that exists is the operator running it locally" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the controller install runs its host-root writes under the administrator edge from the main-pinned deploy slot, gated by deploy_route_switch_admitted (plan gunbc.plans.srv1_deploy_principal_split, controller-install scope addition). Sufficient only when the install's argv are emitted through the edge and no job-user sudoers line names them." as NonEmptyStr),
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the controller install's host-root writes run inside the attempt that claimed the operator's approval of the srv1 root-mutation job, through an authority adapter registered against gunbc.auth.approval_broker redeem_capability that admits the install's scopes and bundle identity with std.scoped_authorization authorize before writing and reads the installed release back (operator ruling 2026-10-25, gunbc.design_ruling the_initial_convergence_is_the_only_approval). Sufficient only when no job-user sudoers line names those writes AND the lineage root, fleet_converge_srv1_root_mutation_environment, itself realizes RealizedApprovalCapability (its github_environment_gate_is_not_the_approval_route reason retired): until then the approval the install would inherit is a GitHub environment click, not a broker approval. NOT satisfied by a grant to the job user, nor by the administrator edge" as NonEmptyStr),
 }
 
-fn srv1_host_root_effect(subject: NonEmptyStr) -> PrivilegedEffect {
+// THE srv1 ROOT WRITES ARE ENTAILED BY THE ROOT-MUTATION JOB THE OPERATOR APPROVES. They recur on every
+// provision, so they cannot each ask for a tap, and before the 2026-10-25 ruling that left only the
+// administrator edge. Under the ruling the operator approves the job's convergence once and each of these
+// writes inherits that approval when it is sufficient, so the lineage root is the per-dispatch approval
+// row, fleet_converge_srv1_root_mutation_environment, which selects OperatorApprovedCapability.
+//
+// The per-dispatch gate: each fleet-converge dispatch of a srv1 root-mutation job waits on a reviewer
+// click in the srv1-production environment. A human attends it, so it recurs per operator request. The
+// row is ONE value, rostered in the census and carried as the root, so the root's characteristics are
+// the row's by construction rather than by a comparison.
+data srv1_root_mutation_approval_row: PrivilegedEffectSite = PrivilegedEffectSite {
+  site: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_srv1_root_mutation_environment"),
+  effect: PrivilegedEffect {
+    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), a required reviewer approves the whole job in the srv1-production GitHub environment" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+    minted_reach: MintsHostRootReach,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  },
+  realized: RealizedHumanStep,
+  divergence_reason: Present { value: github_environment_gate_is_not_the_approval_route },
+}
+
+// WHAT THE ROOT-MUTATION APPROVAL GRANTS, as the scopes its access request asks for: writes under /etc and
+// /usr/local (units, slices, release files, sudoers drop-ins) and the apt-get package install. Each
+// inheriting write states the narrower scopes it exercises, and admission refuses one this set does not
+// cover, so a write outside these trees cannot inherit the approval by declaring the root.
+data srv1_root_install_action: AuthorizedAction = "install" as AuthorizedAction
+data srv1_root_package_action: AuthorizedAction = "install-package" as AuthorizedAction
+
+fn srv1_root_write_scope(path: List<String>) -> AuthorizationScope {
+  AuthorizationScope { verb: Write, resource: filesystem_position(path: path), action: srv1_root_install_action }
+}
+
+data srv1_root_apt_get_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute, resource: filesystem_position(path: ["usr", "bin", "apt-get"]), action: srv1_root_package_action,
+}
+
+data srv1_root_mutation_approval_root: ConvergenceRoot = ConvergenceRoot {
+  site: srv1_root_mutation_approval_row.site,
+  effect: srv1_root_mutation_approval_row.effect,
+  approved_scopes: [srv1_root_write_scope(path: ["etc"]), srv1_root_write_scope(path: ["usr", "local"]), srv1_root_apt_get_scope],
+}
+
+fn srv1_host_root_effect(subject: NonEmptyStr, required: List<AuthorizationScope>) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: subject,
     frequency: EveryProvision,
@@ -967,7 +1056,7 @@ fn srv1_host_root_effect(subject: NonEmptyStr) -> PrivilegedEffect {
     workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
     minted_reach: MintsHostRootReach,
     billing: NoBillingConsequence,
-    witness_discharge: NoWitnessDischarge,
+    witness_discharge: EntailedByApprovedConvergence { root: srv1_root_mutation_approval_root, required_scopes: required },
   }
 }
 
@@ -1111,23 +1200,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedHumanStep,
     divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
   },
-  // The per-dispatch gate: each fleet-converge dispatch of a srv1 root-mutation job waits on a reviewer
-  // click in the srv1-production environment. A human attends it, so it recurs per operator request.
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_srv1_root_mutation_environment"),
-    effect: PrivilegedEffect {
-      subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), a required reviewer approves the whole job in the srv1-production GitHub environment" as NonEmptyStr,
-      frequency: EveryOperatorRequest,
-      reversibility: ReversibleByReapply,
-      surface: ApiSurface,
-      workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
-      minted_reach: MintsHostRootReach,
-      billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
-    },
-    realized: RealizedHumanStep,
-    divergence_reason: Present { value: github_environment_gate_is_not_the_approval_route },
-  },
+  srv1_root_mutation_approval_row,
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
@@ -1180,25 +1253,25 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_install_command"),
-    effect: srv1_host_root_effect(subject: "install a staged unit or file under /etc or /usr/local as root (live_deploy preamble, dashboard_deploy, approval_broker_dark_install)" as NonEmptyStr),
+    effect: srv1_host_root_effect(subject: "install a staged unit or file under /etc or /usr/local as root (live_deploy preamble, dashboard_deploy, approval_broker_dark_install)" as NonEmptyStr, required: [srv1_root_write_scope(path: ["etc"]), srv1_root_write_scope(path: ["usr", "local"])]),
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: interim_job_user_whole_binary_grants },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "microvm_controller_staged_write_steps"),
-    effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice and release files under /etc/systemd/system and /usr/local as root (host_effect_apply MicrovmControllerInstall, run 39284886844 refused at 'controller slice unit (stage)')" as NonEmptyStr),
+    effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice and release files under /etc/systemd/system and /usr/local as root (host_effect_apply MicrovmControllerInstall, run 39284886844 refused at 'controller slice unit (stage)')" as NonEmptyStr, required: [srv1_root_write_scope(path: ["etc", "systemd", "system"]), srv1_root_write_scope(path: ["usr", "local"])]),
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: controller_install_holds_no_grant },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_visudo_check_command"),
-    effect: srv1_host_root_effect(subject: "validate and install a sudoers drop-in as root, including the grant that authorizes the installer (visudo -cf, install into /etc/sudoers.d)" as NonEmptyStr),
+    effect: srv1_host_root_effect(subject: "validate and install a sudoers drop-in as root, including the grant that authorizes the installer (visudo -cf, install into /etc/sudoers.d)" as NonEmptyStr, required: [srv1_root_write_scope(path: ["etc", "sudoers.d"])]),
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: interim_job_user_whole_binary_grants },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.ci.ci_deploy_access", decl_name: "deploy_access_apt_get_privileged_command"),
-    effect: srv1_host_root_effect(subject: "install host packages as root (apt-get)" as NonEmptyStr),
+    effect: srv1_host_root_effect(subject: "install host packages as root (apt-get)" as NonEmptyStr, required: [srv1_root_apt_get_scope]),
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: interim_job_user_whole_binary_grants },
   },
