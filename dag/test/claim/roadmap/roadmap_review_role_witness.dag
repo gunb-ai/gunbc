@@ -248,15 +248,20 @@ test fn conformance_reader_text_does_not_affect_plan_revision() -> Bool {
 // of every conformance criterion enters the identity as its structural digest and never as its rendered
 // spelling, so changing std.decl_ref declaration_ref_display_key leaves review_criterion_identity_text,
 // and the ReviewPlan revision hashed from it, unchanged. Red if a home is hashed by its spelling again.
+// The fabric row's question quotes two of its homes by name, so a spelling may reach the identity
+// through the criterion's own prose; it may not reach it through the homes.
 test fn a_home_enters_the_criterion_identity_by_structure_not_by_spelling() -> Bool {
   let conformance = filter(review_criteria, c => match c.answer { ConformanceThreeValued => true  YesIsADefect => false })
   count(conformance) > 0
     && all(conformance, c => {
       let id = review_criterion_identity_text(c: c)
+      let prose = join([c.question, join(c.tells, "|")], "|")
       count(c.homes) > 0
-        && all(c.homes, h =>
+        && all(c.homes, h => {
+          let spelling = declaration_ref_display_key(ref: h)
           string_contains(s: id, pattern: declaration_ref_digest(ref: h).digest as String)
-            && !string_contains(s: id, pattern: declaration_ref_display_key(ref: h)))
+            && (!string_contains(s: id, pattern: spelling) || string_contains(s: prose, pattern: spelling))
+        })
     })
 }
 

@@ -313,7 +313,7 @@ fn an_unrostered_seed_link_site_is_an_undecided_consumer_that_blocks() -> Bool {
   !minted_manifest_join_is_clean(j: j)
     && count(v1_join_uncitable_consumers(j: j)) == 2
     && (v1_join_uncitable_consumers(j: j) |> all(u => consumer_disposition_blocks(d: u.disposition)))
-    && (v1_join_uncitable_consumers(j: j) |> any(u => u.item_key == "v1_compiler.planted_extra::another_minted_manifest"))
+    && (v1_join_uncitable_consumers(j: j) |> any(u => u.item_key == "v1_compiler.planted_extra another_minted_manifest"))
 }
 
 // A STALE ROW SUBTRACTS A CONSUMER ROW ONLY BY ADDING A BLOCKING ONE THAT NAMES IT: the consumer
