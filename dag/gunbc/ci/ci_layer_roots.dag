@@ -1859,7 +1859,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/host/host_build_cache_provision_real_execution_witness.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag", f: "witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag", f: "witness_write_owner_only_refuses_when_path_already_exists"),
-  bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag", f: "ssh_key_mode_probe_distinguishes_unobservable_from_wrong_mode"),
   bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_netrc_is_owner_only_and_gone_after_a_call_that_succeeded"),
   bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_netrc_is_owner_only_and_gone_after_a_call_that_failed"),
   bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_srv3_login_body_is_owner_only_and_gone_after_a_login_that_succeeded"),
