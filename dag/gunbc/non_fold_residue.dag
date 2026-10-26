@@ -240,6 +240,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::holder_ledger_after_verdict" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_slot_cap_converge.dag::slot_cap_outcome_host_settled" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
       subject: PathSubject { path: "dag/gunbc/host/verified_archive_install.dag::run_archive_commands" },
       reason: nfr_reason_wildcard_found_by_native_census,
       dissolution: nfr_dissolve_owning_fold,
