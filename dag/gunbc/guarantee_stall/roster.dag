@@ -20,6 +20,7 @@ import gunbc.guarantee_stall.emit_returns_medium_not_contribution_stall { emit_r
 import gunbc.guarantee_stall.emission_apply_generic_r_uninstantiated_stall { emission_apply_generic_r_uninstantiated_stall }
 import gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall { pre_resolve_entry_closure_module_identity_stall }
 import gunbc.guarantee_stall.merge_admission_terminal_verdict_stall { merge_admission_terminal_verdict_stall }
+import gunbc.guarantee_stall.nginx_token_validator_not_constructor { nginx_token_validator_not_constructor_stall }
 import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { generated_artifact_registry_membership_stall }
 import gunbc.guarantee_stall.authority_target_same_expression_equivalence_stall { authority_target_same_expression_equivalence_stall }
 import gunbc.guarantee_stall.import_eligibility_resolution_stall { import_eligibility_resolution_stall }
@@ -58,6 +59,7 @@ import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption
 import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_basis_boundedness_stall }
 import gunbc.guarantee_stall.complexity_incomplete_assessment_stall { complexity_incomplete_assessment_stall }
 import gunbc.guarantee_stall.accumulator_copy_untyped_combiner_refusals_stall { accumulator_copy_untyped_combiner_refusals_stall }
+import gunbc.guarantee_stall.accumulator_copy_roster_gate_bool_names_no_suspect_stall { accumulator_copy_roster_gate_bool_names_no_suspect_stall }
 import gunbc.guarantee_stall.keyed_apply_patch_rebuilds_rows_per_hunk_stall { keyed_apply_patch_rebuilds_rows_per_hunk_stall }
 import gunbc.guarantee_stall.grounding_extract_closed_set_stall { grounding_extract_closed_set_stall }
 import gunbc.guarantee_stall.grounding_ledger_residue_uninhabited_stall { grounding_ledger_residue_uninhabited_stall }
@@ -73,6 +75,7 @@ import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { 
 import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall { argument_shape_undecided_at_a_declared_position_stall }
 import gunbc.guarantee_stall.v2_lens_witnesses_unreachable_stall { v2_lens_witnesses_unreachable_stall }
 import gunbc.guarantee_stall.infer_checking_mode_expected_red_pair_stall { infer_checking_mode_expected_red_pair_stall }
+import gunbc.guarantee_stall.per_file_emission_owner_unmodeled_stall { per_file_emission_owner_unmodeled_stall }
 import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall { information_retrieval_transport_cannot_report_status_stall }
 import gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall { module_cited_only_in_annotation_prose_stall }
 import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { joint_claim_join_private_corpus_unindexed_stall }
@@ -87,7 +90,7 @@ import gunbc.guarantee_stall.authored_record_field_list_standing_for_type_popula
 import gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall { native_step_trip_awaits_fleet_job_cgroup_stall }
 import gunbc.guarantee_stall.census_live_routes_interpreted_only_stall { census_live_routes_interpreted_only_stall }
 import gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall { compute_cold_reserve_durable_commit_stall }
-import gunbc.guarantee_stall.enrolment_commit_evidence_remains_caller_authored_stall { enrolment_commit_evidence_remains_caller_authored_stall }
+import gunbc.guarantee_stall.swift_source_to_text_door_walk_stall { swift_source_to_text_door_walk_stall }
 import gunbc.guarantee_stall.rust_primitive_rows_hand_spelled_from_the_seed_stall { rust_primitive_rows_hand_spelled_from_the_seed_stall }
 import gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_stall { local_repo_wet_lane_per_row_wall_budget_unarmed_stall }
 
@@ -198,6 +201,7 @@ import gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_sta
 data all_guarantee_stalls: List<GuaranteeStall> = [
   pre_resolve_entry_closure_module_identity_stall,
   merge_admission_terminal_verdict_stall,
+  nginx_token_validator_not_constructor_stall,
   generated_artifact_registry_membership_stall,
   authority_target_same_expression_equivalence_stall,
   import_eligibility_resolution_stall,
@@ -263,6 +267,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   grammar_change_parses_no_real_corpus_file_stall,
   browser_ready_labels_fleet_route_stall,
   accumulator_copy_untyped_combiner_refusals_stall,
+  accumulator_copy_roster_gate_bool_names_no_suspect_stall,
   keyed_apply_patch_rebuilds_rows_per_hunk_stall,
   member_kind_door_binding_executed_by_no_claim_stall,
   filesystem_read_outcome_node_grain_census_stall,
@@ -270,10 +275,11 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   native_step_trip_awaits_fleet_job_cgroup_stall,
   census_live_routes_interpreted_only_stall,
   compute_cold_reserve_durable_commit_stall,
+  swift_source_to_text_door_walk_stall,
   approve_ios_swift_join_live_off_the_merge_path_stall,
-  enrolment_commit_evidence_remains_caller_authored_stall,
   infer_checking_mode_expected_red_pair_stall,
   rust_primitive_rows_hand_spelled_from_the_seed_stall,
+  per_file_emission_owner_unmodeled_stall,
   local_repo_wet_lane_per_row_wall_budget_unarmed_stall,
 ]
 

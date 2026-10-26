@@ -1,0 +1,32 @@
+module gunbc.rung_drop.retired_contract_cost_facts_drop
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Retired, RetiredTypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
+
+// DECLARED BY OPERATOR DECISION (option A, relayed by tidy-ant-251) on review 85291 of PR #14751. A std.primitives
+// PrimitiveContract row carried two facts under one name: the ambient resolution authority for a bare spelling, and that
+// spelling's cost contract. Retiring the ambient authority (the chars precedent, #14520) deleted the row, and with it the cost
+// fact, because no carrier keyed by declaration exists for the declared home to receive it. The values, so they are not lost:
+// list_push work 1, output_size n + 1, Amortized, CarrierSensitive { ephemeral_work: n, persistent_work: log n };
+// chars work n, output_size n, Proven, CarrierInsensitive. No executing consumer priced either name from its row (the
+// roster's readers check names and spellings; only concat_contract's cost is read), so what was lost is a modeled fact a
+// reviewer could cite, which is mitigation at most (the accumulator-copy lens prices list_snoc_item from v2.lens.cost
+// copied_port_citations, not from these rows). The restoration is a separate change (zesty-ibex-193).
+
+data retired_contract_cost_facts_drop: RungDrop = RungDrop {
+  identity: "retired_contract_cost_facts" as NonEmptyStr,
+
+  subject: "cost facts of ambient std.primitives contract rows retired when their name gained a declared home",
+
+  declared: "2026-10-24",
+
+  standing: Retired { trigger_fired: "2026-10-25 -- std.primitive_identity primitive_list_push_cost and primitive_chars_cost re-home both facts onto PrimitiveCostFact, read by declaration through primitive_modeled_cost_for_declaration. std.primitive_projection binds std.algebra list_push and std.host_text chars to their primitives, and the lookup refuses a projection whose primitive the declared population does not carry (DeclarationProjectsUndeclaredPrimitive). Both identities are declared: list_push is primitive_list_push_definition, grounded on FreeMonoidCollectionProfile, and chars is a projection-target canonical name; each carries a traversal-order fact. list_push is CarrierSensitiveCost: ephemeral worst case linear, persistent worst case log n with amortized constant, which is the im 15.1.0 Vector push_back both running realizations use. chars is a structured linear bound. A FIRST RETIREMENT AT 9c6fcefce85 WAS PREMATURE (side-chat REQUEST_CHANGES, relayed by sleek-owl-397, 2026-10-25): list_push was not in primitive_declared_definitions, so its projection was ProjectionNamesUnknownPrimitive and the cost route keyed through a row the projection validator refuses. EXECUTED on the corrected tree (remote amd64, claim_batch sha256 2dedf0832f73, zesty-ibex-193 tree on 9c6fcefce85): test.claim.primitive_modeled_cost_witness 26 of 26 PASS, test.claim.realization_cost_fidelity_witness 44 of 44 PASS, test.claim.primitive_projection_authority_witness 26 of 26 PASS including w_projection_roster_carries_no_violations, and v2.test.lens_determinism.reach_witness 22 of 22 PASS including determinism_denominator_is_closed_on_declared_primitives. REDS, each run against a mutated tree, with the unaffected positive control PASS in each arm: removing the list_push definition FAILS w_projection_roster_carries_no_violations, both_re_homed_primitives_are_declared and list_push_declaration_reads_its_carrier_sensitive_cost; deleting the list_push cost row FAILS list_push_declaration_reads_its_carrier_sensitive_cost and the_roster_joins_every_cost_row_by_identity; deleting the chars row FAILS chars_declaration_reads_its_linear_cost; making the persistent worst case linear FAILS list_push_declaration_reads_its_carrier_sensitive_cost. Enrolled refusals: a declaration with no row, a duplicated row, a homonym declaration and a projection onto an undeclared primitive each refuse (list_push_without_its_row_refuses_as_unmodeled, a_duplicated_row_refuses_instead_of_answering_with_either, a_homonym_declaration_is_not_priced_by_the_primitive_row, list_push_projected_onto_an_undeclared_primitive_refuses). NOT RESTORED BY THIS, and never part of the loss: no lens priced either name. The accumulator-copy lens prices list_snoc_item from a hand citation that contradicts these facts, gunbc.recurring_failure_mode a_hand_cost_citation_contradicts_the_realization_it_prices." as NonEmptyStr, declaration: RetiredTypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: DeletedWithoutReplacement,
+    population_at_retirement: Enumerated { members: FreeSemigroup { head: "std.primitives list_push_contract (retired by #14751, declared home std.algebra list_push)", tail: ["std.primitives chars_contract (retired by #14520, declared home std.host_text chars)"] } },
+    restoration_trigger: "a modeled cost fact for each declaration (std.algebra list_push, std.host_text chars), read by an executing declaration-keyed lookup, with a RED -- the existing modeled home is std.primitive_identity PrimitiveCostFact joined through std.primitive_projection; sufficient when that lookup returns each declaration's cost fact on an executed path and a RED refuses a declaration with none"
+  } }
+}

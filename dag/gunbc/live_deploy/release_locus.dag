@@ -1,18 +1,6 @@
 module gunbc.live_deploy.release_locus
 
 import std.types { String, List, NonEmptyStr, CommitSha }
-import extdeps.exec.command { ArgvCommand }
-import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation,
-  RunGunbcEntryAs,
-  executor_privileged_operation_elevated_argv,
-  executor_privileged_operation_elevated_command,
-}
-import gunbc.auth.approval_ntfy_runtime_observe {
-  approval_ntfy_runtime_observe_entry_rel,
-  approval_ntfy_runtime_observe_function,
-  approval_ntfy_runtime_observe_run_as,
-}
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 
@@ -111,8 +99,6 @@ data release_locus_tree_subdirs: List<String> = ["dag", "src/v2"]
 
 data approval_broker_helper_root_principal: NonEmptyStr = "root"
 
-data approval_broker_helper_snapshot_base: String = "/opt/gunbc/approval-broker-helpers"
-
 // WHERE A HELPER RUNS FROM, AND WHO CAN WRITE IT. The owner is the principal that owns every entry in
 // the locus (the install makes it so, and the snapshot readback checks it).
 type HelperLocus {
@@ -120,57 +106,9 @@ type HelperLocus {
   owner: NonEmptyStr
 }
 
-// A ROOT-OWNED HELPER GRANT'S SITE: the snapshot locus and the parents it is installed under, and the
-// sudoers file that grants it, with its staged and readback names. One shape for every grant the
-// snapshot-then-sudoers sequence installs (the approval broker's helpers), so
-// the sequence is written once and each grant is a row.
-type HelperGrantSite {
-  locus: HelperLocus
-  spine: List<String>
-  sudoers_content: String
-  sudoers_mode: NonEmptyStr
-  sudoers_temp_path: String
-  sudoers_path: String
-  stage_name: String
-  readback_name: String
-}
-
-fn approval_broker_helper_snapshot_locus() -> HelperLocus {
-  HelperLocus { base: approval_broker_helper_snapshot_base, owner: approval_broker_helper_root_principal }
-}
-
 fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> String {
   match revision {
     RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
     RevisionNotInstalled => release_locus_dir_unbound_poison
   }
-}
-
-fn approval_broker_ntfy_runtime_observe_operation_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
-  let dir = helper_locus_dir(locus: locus, revision: revision)
-  RunGunbcEntryAs {
-    run_as: approval_ntfy_runtime_observe_run_as(),
-    workspace_root: dir as NonEmptyStr,
-    binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
-    source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
-    entry: join([dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,
-    function: approval_ntfy_runtime_observe_function,
-  }
-}
-
-fn approval_broker_ntfy_runtime_observe_operation(revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
-  approval_broker_ntfy_runtime_observe_operation_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
-}
-
-// THE ARGV THE VERB RUNS: `sudo -n -u gunbc-ntfy /opt/gunbc/approval-broker-helpers/<sha>/gunbc run ...`.
-// It is pure and exported so the verb (#12077) builds its invocation from this value, and a claim can
-// pin it.
-fn approval_ntfy_runtime_observe_helper_argv(revision: ReleaseRevisionBinding) -> List<String> {
-  executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
-}
-
-// The same invocation as the command the verb runs (gunbc.auth.approval_ntfy_access_readback
-// approval_ntfy_runtime_reading), from the same operation.
-fn approval_ntfy_runtime_observe_helper_command(revision: ReleaseRevisionBinding) -> ArgvCommand {
-  executor_privileged_operation_elevated_command(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
 }

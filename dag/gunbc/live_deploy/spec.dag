@@ -1310,12 +1310,14 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
       path: srv1_devboot_artifact_store_root,
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
+      group_adoption: ForeignOwnershipRefuses,
     },
     OwnedDirectoryDeclared {
       member: "codex-runtime-release" as NonEmptyStr,
       path: srv1_codex_runtime_release_root,
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
+      group_adoption: ForeignOwnershipRefuses,
     },
   ]
   match srv1_live_dashboard_instance().materialization_store_root {
@@ -1326,12 +1328,14 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
         path: materialization_store_root_path(root: store) as NonEmptyStr,
         owner: owner,
         mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
       },
       OwnedDirectoryDeclared {
         member: "materialization-store-staging" as NonEmptyStr,
         path: materialization_store_staging_root_path(root: store) as NonEmptyStr,
         owner: owner,
         mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
       },
     ])
   }

@@ -1,45 +1,60 @@
-# Checked preparation and fleet print queues
+# Print requests: preparation, bed-clear, start and completion
 
-The entrypoint is `product.printed_chassis.print_workflow.run`. One invocation accepts
-multiple printer queues, each containing multiple plate attempts. It owns CAD execution,
-named-object realization, pinned Orca execution, sliced-file readback, approval filing,
-start publication, acknowledgement reconciliation, and completion observation.
+A print is a **request converged over passes**, not one operation. `fleet-converge` with
+`printer_request` `{"operation":"converge","request_id":…,"root":…,"recipe":…}` runs
+`gunbc.fleet.printer_workflow_run` `run`, which calls `gunbc.fleet.print_converge`
+`converge_print`. Each pass derives the request's standing from evidence it reads
+(`gunbc.fleet.print_request` `PrintEvidence` → `PrintStanding` → `PrintAction`) and takes one action:
 
-This is the explicit-plate execution foundation of CAS-8. It is **not** the completed
-arbitrary desired-set optimizer, accepted-part inventory, or automatic crash recovery
-specified in [print-batch-orchestration.md](print-batch-orchestration.md).
+1. **No request record → prepare.** The root's committed plate plan
+   (`artifacts/printing/<root>/plate.json`), the named print recipe
+   (`product.printing.print_recipe`) and the source revision are prepared by
+   `product.printed_chassis.print_workflow` `prepare_request_plate`. The pass writes the
+   request record (`gunbc.print-request-record.v2`: request, source revision, artifact
+   location, artifact sha256, attempt id) create-new and returns. It needs no credential and
+   never contacts the printer.
+2. **Recorded, unclaimed, printer ready → bed-clear, then start once.** The recorded artifact is
+   copied and re-hashed against its recorded digest. The signed ntfy approval
+   (`gunbc.fleet.printer_operator_approval`) is the human bed-clear acknowledgement; its subject
+   binds the attempt, the artifact digest, the credential version resolved from the printer
+   registry, and the observed printer-state fingerprint. `gunbc.fleet.printer_actuation`
+   `start_authorized` is the only start authority: it re-reads the live report, re-derives the
+   subject, writes the **attempt-keyed** start claim, uploads under an attempt-derived remote
+   name, re-checks the state, and starts once.
+3. **Claimed → observe the job.** Running is observed; a paused, failed or unidentifiable job
+   stops for a person and is never resent. A finished job (`gcode_file`, else `subtask_name`,
+   equal to the attempt's remote name, `FINISH`) is recorded once (`gunbc.print-completion.v2`)
+   with the **same report that derived the standing**; a later pass accepts that record only if
+   its identity fields match and its retained report still decodes as this job finished.
+   Anything else is `CompletionRecordMismatched` and stops.
 
-## Inputs and execution
+One request is one physical copy: a second copy, or a replacement, is a new request id.
 
-[The exercised two-printer plan](../../artifacts/printing/workflow-integration-2026-10-05/prepare-plan.json)
-is the input format. Each printer row has its fleet identity, numeric credential version,
-and a list of plates. A plate has a stable `attempt`, named component placements in
-integer micrometres, orthogonal rotations in degrees, and explicit support-free parts.
-Attempt identities are unique across the entire fleet request. Keep those identities
-when changing output directories or assigning work to another printer.
+Preparation recomputes on every request; there is no prepared-project store (DESIGN §2,
+materialization ladder: no reuse obligation is declared). The Orca AppImage is acquired by
+digest (`product.printing.slicer_acquisition`) and the recipe's machine, filament and process
+profiles are flattened from that archive (`product.printed_chassis.print_preparation`
+`stage_recipe_profiles`); no path or profile is caller-supplied.
 
-The CLI entry takes `plan_file`, `output`, `appimage`, `machine`, `filament`, `process`,
-`mode` and `root`. Paths are explicit tool/artifact inputs, not shell fragments. `root` is
-the wire spelling of a `product.printed_chassis.printable_assembly` `PrintedAssemblyRoot`
-(`residential-cassette`, `cassette-rack-review`, `a16-plug-duct`, `a16-sleeve-duct`,
-`a16-plug-fit-ring`, `a16-sleeve-fit-ring`); an unknown spelling
-refuses. `product.printed_chassis.printable_assembly_selection` `select_printable_assembly`
-is the one place a root becomes parts, keep-outs and assembly membership.
+**Physical limit of the bed-clear fingerprint.** The printer-state fingerprint is a state
+digest, not a monotonic generation: it cannot see an ABA cycle back to an identical report (for
+example, manually reprinting the identical last file during the approval window). Until the
+printer exposes a stronger generation identifier, nobody operates the printer manually while an
+approval is pending.
 
-- `mode=prepare` performs all preparation and writes `prepared-queues.json`; it does
-  not acquire credentials, file approvals, contact printers, or start anything.
-- `mode=print` performs the same preparation, initializes one pinned credential
-  session per printer, acquires the fleet controller hold, then drives all queues.
-  It currently uses the existing operator-token route on the modeled printer LAN host.
-- Use a fresh absolute output directory. Existing realization/script/project outputs refuse;
-  preparation does not silently reuse a possibly stale success file.
+## Plate plans
 
-The pinned Orca artifact and the three slicer profiles are caller-supplied and verified,
-not acquired. Host packages are converged by `provision_and_run`; the CadQuery Python
-environment is observed but not yet converged (see "Declared runtime dependencies"). The existing short-lived Actions
-single-printer dispatch is not a supervisor for this day-long controller. Deploying a
-supervised fleet entry and migrating that dispatch remain deployment work; do not run
-this controller under that job's 15-minute step timeout.
+A request plate plan is placements and support policy only: named component placements in
+integer micrometres, orthogonal rotations in degrees, and explicit support-free parts. It has no
+printer, credential version or attempt; the attempt is derived from request, artifact digest and
+printer (`gunbc.fleet.print_request` `print_attempt_id`), and a plate plan that authors an
+`attempt` is refused. `root` is the wire spelling of a
+`product.printed_chassis.printable_assembly` `PrintedAssemblyRoot`; an unknown spelling refuses.
+`product.printed_chassis.printable_assembly_selection` `select_printable_assembly` is the one
+place a root becomes parts, keep-outs and assembly membership.
+
+The older multi-plate queue entry (`print_workflow` `run`, plans with printer rows and per-plate
+attempts) still prepares only and writes `prepared-queues.json`; it starts nothing.
 
 ## Required preparation stages
 
@@ -70,49 +85,16 @@ The current process policy is the unpowered PLA prototype: A1 mini/0.4 mm, 220 �
 65 °C textured bed, four walls, 20% infill, by-layer printing, AMS slot 1. Geometric
 admission does not qualify loaded joints, creep, powered operation, or thermal behavior.
 
-## One fleet controller, independent printer progress
+## Starting a print
 
-A fleet pass first files **all** ready approval requests, then advances each lane once.
-Pending approval on one printer does not create a polling sleep before the other request
-is sent. Publication returns to the controller; exact-file reconciliation happens on
-later passes instead of holding up the second printer through a retry loop. The fold is
-paced once per fleet pass, with a bounded observation budget.
-
-The underlying upload/publish/read operations remain bounded synchronous operations.
-This is overlapping printer lifetimes and interleaved observations, not parallel threads
-for every network call or simultaneous CPU-heavy slicing.
-
-The controller retains the initialized LAN credentials in memory. It does not fetch
-Secret Manager again on each observation or require a fresh GCP token for every plate.
-Every physical start still consumes a new job-bound approval and a fresh readiness
-observation. FINISH neither accepts parts into inventory nor clears the bed. Completion
-queues the next bed-clear approval for that printer; another printer can continue running.
-Approval expiry/denial, pause/failure, or repeated unresolved observations place that lane
-in attention. Existing 15-minute approval windows are retained.
-
-There are three durable boundaries:
-
-- The existing compare-and-set exclusive hold prevents competing fleet controllers.
-  Single-printer starts also acquire it, so an old entrypoint cannot race the batch.
-- A stable batch-attempt slot is independent of printer, output directory and sliced
-  digest. Reassigning or re-slicing the same attempt cannot admit another physical start.
-- The existing approval-derived start claim remains bound to the exact printer, bytes,
-  credential version, feed and approval identity. No lost acknowledgement causes a resend.
-
-Per-start receipts and observations live beside their claim under
-`/var/lib/gunbc/printer-starts`. The timestamped fleet projection is
-`batch-state.json`. The old single-printer receipt filename remains a
-compatibility projection; the batch consumes the per-start records instead.
-
-On uncertainty or process death, holds/claims remain. Same-owner text does not prove the
-old process is dead and cannot reacquire its hold. Dead-holder recovery and resuming the
-remaining inventory are still separate work; do not delete claims or invent new attempt
-IDs to get past a refusal. Partial acceptance and replacement demands remain CAS-8 work.
+See the request passes above: `gunbc.fleet.printer_actuation` `start_authorized` is the only
+boundary that uploads to or starts a printer, holding the fleet controller hold and the
+attempt-keyed claim under `/var/lib/gunbc/printer-starts`. No lost acknowledgement causes a resend.
 
 ## Validation
 
 `test.claim.printer_batch_workflow_validation.validate_preparation` first checks real approval-request construction (including SHA-256, input binding and the durable claim path), executes the archive/G-code positive and negative controls, and calls
-the production entrypoint with `mode=prepare`. It cannot start a printer. The controls
+the production entrypoint. It cannot start a printer. The controls
 include extra plates, wrong membership, scaled objects, bad checksums, out-of-bed XY/Z,
 forbidden support, leading-dot motion words and full-circle arcs.
 
@@ -132,11 +114,11 @@ those interfaces. The real cryptographic construction is retained in
 Plan admission rules each have their own counterexample and witness. This keeps
 all rejection cases while avoiding one cumulative budget for unrelated cases.
 
-## Printer workflow review status
+## Start authority
 
-The printer start paths share one approval and claim implementation. Dispatch input validation
+There is one start path. Dispatch input validation
 is not authorization: the common path verifies an unexpired ntfy grant, observes an explicit
-IDLE or FINISH report with zero or the vendor-confirmed spurious 0500C011 code, and acquires a durable claim for the approved escalation ID before any
+IDLE or FINISH report with zero or the vendor-confirmed spurious 0500C011 code, and acquires a durable claim keyed by the print attempt before any
 upload/start. Active/paused/unknown states, partial reports and other error codes refuse. Approval text requires the operator to
 check the actual bed when approving. A second readiness observation and approval-expiry check occur
 immediately before publishing the start.
@@ -144,20 +126,18 @@ immediately before publishing the start.
 Claims live in `/var/lib/gunbc/printer-starts` on the separately modeled printer LAN host. The
 host check precedes the gate. The service account needs an owner-controlled, persistent directory
 there before this path can operate; missing/unwritable storage refuses. Do not delete a claim to
-retry an uncertain start. This review has not provisioned that directory or performed a live print.
+retry an uncertain start.
 
 One exact-version credential session covers preflight, upload, post-upload observation and start.
 It is evidence of an existing-secret read, never PrinterCredentialProvisioned. Receipt source is
 projected from the selected token source. The observed setup report is informational only.
 
 The census distinguishes separately initiated operator requests from unattended provisioning.
-Physical print starts select operator approval. Current code-enforced approval under a federated
-read and the operator-token compatibility entry have explicit, bounded divergences; neither is
-presented as a broker-minted printer credential. Token-file input does not establish credential
-custody and is not authorization to relay tokens through chat.
-
-Local approval, census and workflow-binding witnesses pass. CI is required and the PR remains
-draft. CAD and slicer preparation are split out; approval-client cutover is prerequisite #13218.
+Physical print starts select operator approval: the credential is read through the printer
+federation (`gunbc.fleet.printer_federation`, pinned to `fleet-converge` at `main` in the
+`printer-lan` environment) and the start is authorized only by the signed ntfy grant. No
+operator-token or token-file entry exists; the token-file `mode=print` and the batch controller
+were deleted (#14945).
 
 Vendor-readiness correction (2026-10-04): Bambu Studio treats FINISH as a completed
 job eligible for another print, not a cooling state. The bed may still hold a part in
@@ -170,15 +150,15 @@ readiness/approval-expiry checks remain unchanged.
 
 ### Automatic post-start reconciliation
 
-Both the Actions and operator routes now enter the same read-only reconciliation after
-an acknowledged or uncertain publish. The publisher is bounded by GNU timeout at 20 seconds
+The start path enters a read-only reconciliation after an acknowledged or uncertain
+publish. The publisher is bounded by GNU timeout at 20 seconds
 with a 2-second kill grace; every nonzero outcome remains uncertain, never permission to
 republish. The cause of the observed connection drops is not established or claimed fixed.
 
 Reconciliation reuses the credential session and makes at most eight fresh single-response
 MQTT observations, each with the existing 15-second wait, separated by 5 seconds. It retains
-each raw response (including incomplete responses) beside the durable escalation claim.
-A report confirms running only if it contains the exact digest-derived `gcode_file`,
+each raw response (including incomplete responses) beside the attempt's durable start claim.
+A report confirms running only if it contains the exact attempt-derived `gcode_file`,
 `gcode_state: RUNNING`, and a nonblocking numeric `print_error` in the same JSON object.
 No display-name fallback, cached report, merged delta, FINISH or unknown state can confirm.
 The same project's pause/failure/blocking error stops reconciliation; wrong-file and partial
@@ -190,14 +170,6 @@ cleanup failure returns success. Failure/uncertainty retains the claim and forbi
 The MQTT wait budget excludes CA acquisition and local filesystem runtime. This change
 handles acknowledgement loss without manual telemetry checks; it does not promise that the
 LAN or firmware cannot fail or that MQTT provides application-level exactly-once printing.
-
-The two wave-three jobs were confirmed through the previous manual report route before this
-change: both exact digest filenames RUNNING. No physical start was issued to test this change.
-
-Validation for this change: five reconciliation witnesses, six approval/readiness witnesses,
-and 24 publisher/no-replay witnesses passed locally. Both shared entry paths typecheck through
-the common approval implementation. Live execution of the new post-start path remains for the
-next authorized print; the current jobs used the previous revision.
 
 ## Functional geometry, support geometry and print stability
 

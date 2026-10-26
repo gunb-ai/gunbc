@@ -2,6 +2,7 @@ module gunbc.fleet.fleet_enrollment
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.decl_ref { decl_ref }
+import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
 import extdeps.cloud.hetzner { cax41_catalog }
 import product.supplier.hetzner { hetzner_nuremberg_route, hetzner_helsinki_route }

@@ -1,6 +1,6 @@
 module v2.test.claim.manual.emit_ingest_same_language_row_fold
 
-import v2.std.node { NotADeclaration }
+import v2.std.node { node_same_occurrence, NotADeclaration }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -72,15 +72,15 @@ fn emit_ingest_fold_row_selector_bijectivity_holds(row: Node, rules: Node) -> Bo
     Accepted { value: emitted, diagnostics: _ } =>
       match grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
         Accepted { value: selected_row, diagnostics: _ } =>
-          selected_row == row
+          node_same_occurrence(a: selected_row, b: row)
             && match emit_ingest_fold_row_token_spine_classes(row: row) {
               Accepted { value: frontier, diagnostics: _ } =>
                 match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
                   Accepted { value: recovered, diagnostics: _ } =>
-                    recovered == emitted
+                    node_same_occurrence(a: recovered, b: emitted)
                       && match grammar_relation_row_for_emitted(rules: rules, emitted: recovered) {
                         Accepted { value: roundtrip_row, diagnostics: _ } =>
-                          roundtrip_row == row
+                          node_same_occurrence(a: roundtrip_row, b: row)
                         Rejected { diagnostics: _ } => false
                       }
                   Rejected { diagnostics: _ } => false

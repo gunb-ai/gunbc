@@ -18,8 +18,8 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int, integer_int_type_node }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
-import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
-import std.optional { Absent, Present }
+import v2.std.node { node_same_occurrence, Atom, Node, TypeNode, node_subtree_nodes }
+import std.optional { optional_eq, Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -69,7 +69,7 @@ fn int_binding_atom_derived(inferred: InferredTree, n: Node) -> Bool {
       match facts.grounding {
         GroundingNotDerived { node: _, site: _ } => false
         DerivedGrounding { grounding: g } =>
-          g.witness.structural.evidence == kind_node(kind: TypeDenotationKind)
+          node_same_occurrence(a: g.witness.structural.evidence, b: kind_node(kind: TypeDenotationKind))
       }
   }
 }
@@ -145,6 +145,6 @@ test fn dag_binding_denotation_declares_no_denotation_for_operand_bindings_holds
 }
 
 test fn dag_binding_denotation_rows_point_at_std_authorities_holds() -> Bool {
-  (dag_binding_denotation(sym: dag_int_type_binding()) == Present { value: integer_int_type_node() })
-    && (dag_binding_denotation(sym: ^bool_node_symbol) == Present { value: bool_node() })
+  (optional_eq(a: dag_binding_denotation(sym: dag_int_type_binding()), b: Present { value: integer_int_type_node() }, eq: fn(p, q) { node_same_occurrence(a: p, b: q) }))
+    && (optional_eq(a: dag_binding_denotation(sym: ^bool_node_symbol), b: Present { value: bool_node() }, eq: fn(p, q) { node_same_occurrence(a: p, b: q) }))
 }

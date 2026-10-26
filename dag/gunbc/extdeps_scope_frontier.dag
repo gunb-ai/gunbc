@@ -213,8 +213,13 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/firmware/ami_aptio_status_codes.dag",
+  "dag/extdeps/firmware/supermicro_ami_aptio_v_post_codes_guide.dag",
+  "dag/extdeps/qwen/qwen3_8_flash_next.dag",
   "dag/extdeps/gpu_bench/kit_log.dag",
   "dag/extdeps/gpu_bench/request_v2.dag",
+  "dag/extdeps/gpu_bench/request_v4.dag",
+  "dag/extdeps/strata/serve_flags.dag",
   "dag/extdeps/ninfer/ninfer_serve.dag",
   "dag/extdeps/ninfer/qwen3_8_27b_nvfp4.dag",
   "dag/extdeps/ninfer/replayed_tokens_total.dag",
@@ -408,6 +413,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/linux/efi_stub.dag",
   "dag/extdeps/linux/boot_console.dag",
   "dag/extdeps/linux/mlx5_core.dag",
+  "dag/extdeps/linux/proc_cpuinfo.dag",
   "dag/extdeps/linux/proc_self_cgroup.dag",
   "dag/extdeps/os/debian.dag",
   "dag/extdeps/physics/bach_et_al_2013_double_slit.dag",

@@ -29,7 +29,7 @@ import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary
 import v2.compiler.trait_derive_completeness { repr_grounding_derive_elem_shape }
 import std.trait_derive_shape { ReprDeriveElemNullaryEnumCopy }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   ComputationNode,
   Conj,
@@ -906,7 +906,7 @@ fn tpb_index_descends(target: Node) -> Bool {
 test fn tpb_index_declares_no_member_under_an_alias() -> Bool {
   let alias_value = type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T))
   !tpb_index_descends(target: alias_value)
-    && (symbol_index_declared(target: alias_value).bound == alias_value)
+    && (node_same_occurrence(a: symbol_index_declared(target: alias_value).bound, b: alias_value))
     && !tpb_index_descends(target: type_opaque_wrapper(binders: tpb_t_binders()))
     && tpb_index_descends(target: tpb_box_member(with_params: true))
 }

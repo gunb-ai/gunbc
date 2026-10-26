@@ -23,7 +23,7 @@ import gunbc.auth.approval_google_enrolment {
   admit_google_approver_on_roster, admit_google_approver,
   SubjectPinCreateOrRead, SubjectPinCreatedForPresented, SubjectPinReread,
   SubjectPinJoined, SubjectPinRefused, join_subject_pin,
-  GoogleEnrolmentSlot, GoogleEnrolmentAbsent, GoogleEnrolmentActive, GoogleEnrolmentRevoked,
+  GoogleDeviceEnrollment, GoogleEnrolmentSlot, GoogleEnrolmentAbsent, GoogleEnrolmentActive, GoogleEnrolmentRevoked,
   GoogleEnrolmentAdmission, GoogleEnrolmentWrites, GoogleEnrolmentReplays, GoogleEnrolmentRefused,
   GoogleEnrolmentTokenRefused, GoogleEnrolmentAudienceNotExact, GoogleEnrolmentAuthorizedPartyNotAdmitted,
   GoogleEnrolmentNotAnApprover, GoogleEnrolmentSubjectMismatch,
@@ -91,6 +91,7 @@ fn fx_approver_admission(claims: OidcIdTokenClaims, submitted: VerifyingKey) -> 
 
 fn fx_production_approver_admission(claims: OidcIdTokenClaims, submitted: VerifyingKey) -> GoogleApproverAdmission
   admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "fx_brian_enrolment"),
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "the_production_roster_refuses_an_address_it_does_not_name"),
   ]
 {
@@ -100,6 +101,7 @@ fn fx_production_approver_admission(claims: OidcIdTokenClaims, submitted: Verify
 fn fx_attestation(attested_for: VerifyingKey) -> AttestationVerification
   admit_callers: [
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "enrol"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "fx_brian_enrolment"),
   ]
 {
   attestation_verification_from_implementation(key_id: fx_attest_key_id, public_key_point_b64url: "BATTEST", receipt_b64: "RECEIPT", environment: AppAttestProduction, client_data: google_enrolment_transcript(platform: MobileIos, decision_key: attested_for, attest_key_id: fx_attest_key_id), refusal: none)
@@ -145,6 +147,8 @@ fn fresh(claims: OidcIdTokenClaims, k: VerifyingKey) -> GoogleEnrolmentAdmission
 
 fn first_write() -> GoogleEnrolmentAdmission
   admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_wet_witness", decl_name: "a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_device_admission_refuses_an_enrollment_for_an_email_off_the_roster"),
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_first_sign_in_writes_the_enrolment_and_notifies"),
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_resent_sign_in_replays_its_own_record_and_does_not_notify"),
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_revoked_key_cannot_re_enrol"),
@@ -157,6 +161,7 @@ fn first_write() -> GoogleEnrolmentAdmission
 // The same request against a stored slot (the pin already holds this subject).
 fn again(slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission
   admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_wet_witness", decl_name: "a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store"),
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_lost_pin_cas_whose_reread_is_this_subject_proceeds"),
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_resent_sign_in_replays_its_own_record_and_does_not_notify"),
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_revoked_key_cannot_re_enrol"),
@@ -165,6 +170,27 @@ fn again(slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission
   ]
 {
   enrol(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_a), submitted: key_a, attested_for: key_a, pin: SubjectPinReread { subject: fx_subject }, slot: slot)
+}
+
+// An enrolment for the PRODUCTION roster's approver, minted by the real fold, for the redemption
+// witness's fixtures.
+fn fx_brian_enrolment() -> GoogleDeviceEnrollment?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "fx_admitted_enrollment"),
+  ]
+{
+  match fx_production_approver_admission(claims: claims_as(email: "brian@gunb.ai", subject: fx_subject, signed_for: key_a), submitted: key_a) {
+    GoogleApproverRefused { cause: _ } => none
+    GoogleApproverAdmitted { approver: a } =>
+      match join_subject_pin(approver: a, observed: SubjectPinCreatedForPresented) {
+        SubjectPinRefused { cause: _ } => none
+        SubjectPinJoined { pinned: p } =>
+          match google_enrolment_admission(pinned: p, attestation: fx_attestation(attested_for: key_a), slot: GoogleEnrolmentAbsent, observed_at: fx_now) {
+            GoogleEnrolmentWrites { enrollment: e } => Present { value: e }
+            _ => none
+          }
+      }
+  }
 }
 
 fn writes(a: GoogleEnrolmentAdmission) -> Bool {

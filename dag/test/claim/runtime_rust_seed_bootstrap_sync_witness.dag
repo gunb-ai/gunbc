@@ -48,3 +48,30 @@ test fn generated_runtime_carries_the_symbol_the_hand_seed_calls() -> Bool {
 test fn w_RED_seed_carries_the_mirror_doc_comment_beside_the_fn() -> Bool {
   file_contains(path: runtime_rust_seed_path, pattern: "\"/// Mirror of `gunbc.observation_ci_render.ci_human_elapsed`.\\n\"")
 }
+
+// THE APPEND RULE IS PINNED IN ALL THREE FILES (from #14997, calm-ferret-416): the dag authority, the
+// checked-in seed and the generated runtime each carry the one rule and both entry points that call it,
+// so reverting any one mirror reds here. Each pattern is spelled without a brace, which the dag
+// authority escapes.
+fn append_rule_in(path: String) -> Bool {
+  file_contains(path: path, pattern: "pub const LIST_CONCAT_ELEMENTWISE_MAX: usize = 4096;")
+    && file_contains(path: path, pattern: "pub fn append_persistent<T: Clone>(a: &mut Vec<T>, b: Vec<T>)")
+    && file_contains(path: path, pattern: "a.extend(b);")
+    && file_contains(path: path, pattern: "append_persistent(&mut a, b);")
+    && file_contains(path: path, pattern: "let owned = match Rc::try_unwrap(b)")
+    && file_contains(path: path, pattern: "append_persistent(Rc::make_mut(&mut result), owned);")
+    && !file_contains(path: path, pattern: "RC_LIST_CONCAT_ELEMENTWISE_MAX")
+    && !file_contains(path: path, pattern: "out.push_back(item.clone());")
+}
+
+test fn dag_authority_pins_the_append_rule() -> Bool {
+  append_rule_in(path: runtime_rust_dag_path)
+}
+
+test fn checked_in_seed_pins_the_append_rule() -> Bool {
+  append_rule_in(path: runtime_rust_seed_path)
+}
+
+test fn generated_runtime_pins_the_append_rule() -> Bool {
+  append_rule_in(path: v1_rt_generated_path)
+}

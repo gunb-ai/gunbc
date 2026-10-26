@@ -9,6 +9,7 @@ import extdeps.cooling.types { CpuCoolerCatalogRow }
 import extdeps.cpu.types {
   SocketedLandGrid, CpuSocket, LandGridArray }
 import extdeps.vendor.dynatron { dynatron }
+import extdeps.cpu.ampere { ampere_lga4926_socket }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
@@ -23,7 +24,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data dynatron_w1_catalog: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
   model: "W1",
   manufacturer: dynatron,
-  socket: CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4926, cooling_mount: ampere_lga4926_cooling_mount },
+  socket: ampere_lga4926_socket,
   active_passive_switchable: true,
   minimum_rack_units: rack_unit(2),
   max_design_power: watt(250),

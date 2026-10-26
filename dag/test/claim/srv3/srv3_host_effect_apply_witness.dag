@@ -79,17 +79,21 @@ test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
 // never-falsifiable "surface does not mention serialize_bash" arm, vacuous over a word list)
 // retired with the raw flag lists. No secret reaches argv in either form: the body path does,
 // the password bytes stay in the file.
+// The body path is a supplied value: production passes the file its private bracket created
+// (gunbc.auth.private_secret_file), whose name is not known until the bracket runs.
+data witness_private_login_body_path: NonEmptyStr = "/tmp/tmp.witness/bmcweb_login_body.json" as NonEmptyStr
+
 test fn witness_bmcweb_session_login_command_uses_curl_authority() -> Bool {
   let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    request_body_file: witness_private_login_body_path,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
   login.program.invocation == curl_cli_tool.program.invocation
     && fold(login.arguments, init: false, f: (acc, w) => acc || w == "-X")
     && fold(login.arguments, init: false, f: (acc, w) => acc || w == "POST")
     && fold(login.arguments, init: false, f: (acc, w) => acc || w == "--data")
-    && fold(login.arguments, init: false, f: (acc, w) => acc || w == concat("@", srv3_bmcweb_login_body_path as String))
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == concat("@", witness_private_login_body_path as String))
     && fold(login.arguments, init: false, f: (acc, w) => acc || w == "-o")
     && fold(login.arguments, init: false, f: (acc, w) => acc || w == (srv3_bmcweb_login_response_path as String))
 }

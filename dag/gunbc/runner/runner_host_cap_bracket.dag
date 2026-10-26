@@ -46,6 +46,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation,
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import gunbc.fleet.fleet_workflow_steps { gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound }
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
 //
@@ -107,19 +108,25 @@ type ReregistrationTrigger
   | LongLivedSlotReregistrationRoute
 
 // the readings after the last of which the window opens; the wire renders them, so the residual's population is data
+// CurrentRegistrationReading is the fourth decay: #14877 joined the roster on the slot's CURRENT JIT identity
+// (read from the host's .runner file), and that reading decays like the other three -- between its read and the
+// stop the slot's registration identity can change (a re-registration replaces .runner), which makes the roster
+// evidence pertain to an identity the host no longer carries. It is taken inside the same pass and re-read with
+// it immediately before the stop, so it narrows, never closes -- exactly the residual's shape.
 type ResidualReading
   = MaskReading
   | RosterBusyFalseReading
   | NoRunnerWorkerReading
+  | CurrentRegistrationReading
 
 type ListenerRestartResidual {
   window_opens_after: List<ResidualReading>
 }
 
-data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { window_opens_after: [MaskReading, RosterBusyFalseReading, NoRunnerWorkerReading] }
+data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { window_opens_after: [MaskReading, RosterBusyFalseReading, NoRunnerWorkerReading, CurrentRegistrationReading] }
 
 fn residual_reading_wire(r: ResidualReading) -> String {
-  match r { MaskReading => "mask" RosterBusyFalseReading => "roster busy=false" NoRunnerWorkerReading => "no Runner.Worker" }
+  match r { MaskReading => "mask" RosterBusyFalseReading => "roster busy=false" NoRunnerWorkerReading => "no Runner.Worker" CurrentRegistrationReading => "current registration" }
 }
 
 type ListenerReregistrationFrontier {
@@ -143,11 +150,32 @@ fn listener_restart_residual_wire() -> String {
   ], "")
 }
 
-// THE WAIT BOUND IS A POLICY ROW (ratified by the operator: 2700s wait, 15s poll). It must exceed the
-// longest expected job on a runner slot, so a drain does not refuse on normal work; the cost is up to
-// 45 minutes of a host's slots out of admission per cap change, a rare event. The figure is a policy
-// choice, not a measurement: the generated workflows' step timeouts reach 30 minutes, which it exceeds,
-// but no source declares the longest job. The number changes here and nowhere else.
+// THE WAIT BOUND IS DERIVED, NOT RATIFIED AS A NUMBER (operator ruling, 2026-10-23, relayed by
+// sleek-owl-397). It must exceed the longest expected job on a runner slot, so a drain does not
+// refuse on normal work — and the population of 'expected jobs' HAS an authority: the declared
+// job-level timeouts of the fleet-targeted generated workflows. wait_bound is that fold — the
+// maximum declared timeout over the jobs whose runner selects the fleet pool AND whose workflow
+// carries an autonomous trigger (gunbc.runner.runner_fleet_job_timeout_census
+// fleet_targeted_wait_bound), plus one poll interval (the wait is quantized to ticks; the last tick
+// can sample up to a full interval early). It REPLACES the 2700s literal, whose row rested on the
+// premise 'no source declares the longest job' — a premise falsified by
+// gunbc.witness.compiler_gate_workflow compiler_gate_emit_build_timeout_minutes (90), which is why
+// srv3 cap converge run 39961292233 withheld every cap: a v2-bootstrap job runs ~55 minutes under a
+// 90-minute declaration, and a 2700s drain bound refused it mid-flight. Today the fold yields
+// 90 min (v2-bootstrap), so the bound is 90*60 + poll, and the cost of a cap change is that long of
+// a host's slots out of admission — a rare event bounded by the fleet's own declared worst job.
+//
+// THE DISPATCH-ONLY RESIDUAL IS DECLARED, NOT IMPLIED (ruled by clever-crane-830, 2026-10-23): jobs
+// whose workflows are workflow_dispatch-only — instrument-dispatch's census job
+// (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_timeout_minutes) and
+// fleet-converge's build job (gunbc.fleet.fleet_converge_workflow
+// gunbc_fleet_converge_build_job_backstop_timeout_minutes) — are outside the population: GitHub
+// cannot park them on a slot unprompted. If one is running when a drain starts it can exceed the
+// bound (both are long census/release builds by design); the bracket then refuses TYPED (caps
+// withheld, drain_bound_exceeded). That is fail-closed, and the operator who dispatches both owns
+// the sequencing. The control test.claim.runner.runner_fleet_job_timeout_bound_witness goes red if
+// any population member's declared timeout exceeds the bound, so a new autonomous fleet job cannot
+// silently outlive the drain; the bound grows with the declaration by derivation.
 type HostCapDrainPolicy {
   wait_bound: Second
   poll_interval: Second
@@ -162,9 +190,14 @@ type HostCapDrainPolicy {
 // re-admission with its readback (release). They are generous against a handful of ssh round trips per
 // slot over 19 slots. The enclosing workflow step's timeout is a fold over exactly these three figures
 // (host_cap_bracket_budget), so no second literal can disagree with the bracket.
+// THE POLL INTERVAL IS THE POLICY'S, AND THE BOUND FOLDS OVER IT (see fleet_targeted_wait_bound):
+// it is defined first so the derived wait bound reads the same field the drain loop ticks on, and no
+// second literal can disagree with the bracket.
+data runner_host_cap_drain_poll_interval: Second = second(count: 15)
+
 data runner_host_cap_drain_policy: HostCapDrainPolicy = HostCapDrainPolicy {
-  wait_bound: second(count: 2700),
-  poll_interval: second(count: 15),
+  wait_bound: fleet_targeted_wait_bound(policy_poll_interval: runner_host_cap_drain_poll_interval),
+  poll_interval: runner_host_cap_drain_poll_interval,
   operations_allowance: second(count: 600),
   release_allowance: second(count: 240),
   cancellation_envelope: cancelled_job_always_step_timeout,

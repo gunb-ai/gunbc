@@ -27,6 +27,9 @@ pub use crate::gunbc_rust_crate_package_ident::{
     PackageIdentBinding, PackageIdentRefusalCause, PackageIdentSetOutcome,
 };
 pub use crate::gunbc_rust_emitted_crate::EmittedCrateDependencyDemand;
+pub use crate::gunbc_stage0_stage0_cargo_manifest::{
+    stage0_package_root, stage0_source_dir_relative_to_package,
+};
 use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedEmitCoreCrate, GeneratedFacadeCrate, GeneratedFoundationCrate,
     GeneratedLayeredCoreCrate,
@@ -110,7 +113,16 @@ pub fn stage0_foundation_header_doc() -> String {
         "//!".to_string(),
         "//! Foundation crate for the derived ~8-crate stage0 partition.".to_string(),
         "//!".to_string(),
-        "//! Module bodies remain generated into `src/v1/stage0/src`. The root".to_string(),
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "//! Module bodies remain generated into `".to_string(),
+                    stage0_package_root(),
+                ),
+                stage0_source_dir_relative_to_package(),
+            ),
+            "`. The root".to_string(),
+        ),
         "//! `NonEmpty*` wrappers are mirrored here because generated modules address".to_string(),
         "//! them as `crate::NonEmptyVec` and `crate::NonEmptyBTreeSet`.".to_string(),
     ])
@@ -316,7 +328,7 @@ pub fn stage0_lookup_module_owner_package_name(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
-        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows.clone()).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
+        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
             pkg.clone()
         } else {
             acc.clone()
@@ -698,7 +710,7 @@ pub fn stage0_partition_row_to_spec_outcome(
     match (*stage0_partition_row_dependencies_outcome(
         row.clone(),
         rows.clone(),
-        registry_dependencies.clone(),
+        registry_dependencies,
     ))
     .clone()
     {
@@ -1232,7 +1244,7 @@ pub fn partition_crate_plan_outcome_over(
         } => stage0_crate_plan_from_admitted_rows(
             bindings.clone(),
             rows.clone(),
-            registry_dependencies.clone(),
+            registry_dependencies,
         ),
     }
 }
@@ -1324,7 +1336,7 @@ pub fn partition_crate_boundary_emit_outcome_over(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
     registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0CrateBoundaryEmitOutcome> {
-    match (*partition_crate_plan_outcome_over(rows.clone(), registry_dependencies.clone())).clone() {
+    match (*partition_crate_plan_outcome_over(rows, registry_dependencies)).clone() {
     Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
     cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
 }),

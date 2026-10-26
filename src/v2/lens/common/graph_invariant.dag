@@ -18,7 +18,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Conj,
   Edge,
   Edit,
@@ -62,7 +62,7 @@ type GraphInvariant<Projection> {
 }
 
 fn graph_node_eq(a: Node, b: Node) -> Bool {
-  a == b
+  node_same_occurrence(a: a, b: b)
 }
 
 fn graph_reach_contains(reached: List<Node>, n: Node) -> Bool {
