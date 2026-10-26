@@ -91,7 +91,9 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
       - name: Converge the stage0 mirrors to the seed's own fixed point
-        run: target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2
+        run: target/release/claim_executor --regen-round-cost --base-mirror --source-root dag --source-root src/v2
+        env:
+          HEAL_BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
       - name: Refuse when the stage0 round wrote a file the seed-build writer owns
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
