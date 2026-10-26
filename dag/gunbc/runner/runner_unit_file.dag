@@ -62,8 +62,10 @@ import gunbc.ci.ci_runner_placement {
   host_deployment_refusal_text,
   CapacityQuota, NoCpuCeiling,
 }
+import gunbc.runner.runner_capability_labels { runner_gpu_docker_ready_registration_labels }
 import gunbc.runner.runner_registration_labels {
-  runner_registration_labels, runner_browser_ready_registration_labels, runner_gpu_docker_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  HostCapabilityWitness,
+  runner_registration_labels, runner_browser_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
   runner_slot_registration_labels,
 }
 import gunbc.runner.runner_slot_job_role {
@@ -519,8 +521,14 @@ fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity) -> RunnerUni
 // gunbc.runner.runner_gpu_container_toolchain gpu_docker_labels_converge_wet, which removes this file
 // when the readback does not hold; removal is self-healing in the other direction too, because with
 // 86- gone the 85- file is what applies again.
-fn runner_host_gpu_docker_labels_dropin_text(host: HostIdentity, browser_ready_granted: Bool) -> RunnerUnitTextRendering {
-  match runner_gpu_docker_ready_registration_labels(host: host, browser_ready_granted: browser_ready_granted) {
+// THE GPU CAPABILITY DROP-IN, RENDERED FROM OBSERVATIONS RATHER THAN FROM A FLAG. The sibling half of the
+// set arrives as witness records (gunbc.runner.runner_capability_labels HostCapabilityWitness), and this
+// function has no idea what those capabilities ARE — it hands them to one fold and serializes what comes
+// back. There is no Bool here to pass `true` to because it looked likely: a capability enters the set only
+// if some caller read the owning converge's own drop-in and found the token in it, and an unreadable one
+// makes the fold refuse, which arrives here as a refused render and fails the converge.
+fn runner_host_gpu_docker_labels_dropin_text(host: HostIdentity, witnesses: List<HostCapabilityWitness>) -> RunnerUnitTextRendering {
+  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses) {
     RegistrationLabelsRefused { host: _, cause: c } =>
       RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
     RegistrationLabelsResolved { labels: labels } =>

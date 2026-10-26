@@ -47,7 +47,7 @@ import gunbc.runner.runner_gpu_container_toolchain {
   GpuDockerLabelsOutcome,
   GpuDockerLabelsGranted, GpuDockerLabelsRevoked, GpuDockerLabelsFailed,
   gpu_docker_labels_outcome_holds,
-  gpu_container_provision_nvidia_actions_for,
+  gpu_container_provision_repo_actions_for,
   gpu_container_provision_plan_has_refusal,
   gpu_container_provision_plan_step_names,
   gpu_container_provision_plan_check_count,
@@ -60,15 +60,15 @@ import gunbc.runner.runner_gpu_container_toolchain {
   gpu_container_subordinate_integrity_holds,
   gpu_container_provision_subuid_verify_step,
   gpu_container_provision_subgid_verify_step,
-  GpuBrowserReadyObservation,
-  BrowserReadyHeld, BrowserReadyAbsent, BrowserReadyUnobservable,
-  gpu_docker_labels_resolve_browser_grant,
-  GpuBrowserReadyGrant,
-  BrowserGrantAllowed, BrowserGrantUndetermined,
 }
 
-import gunbc.runner.runner_registration_labels {
+import gunbc.runner.runner_capability_labels {
   runner_gpu_docker_ready_registration_labels,
+  host_capability_rows, host_capability_rows_to_observe, host_capability_row_label,
+  host_capability_label_is_declared,
+}
+import gunbc.runner.runner_registration_labels {
+  HostCapabilityWitness, HostCapabilityRow, CapabilityHeld, CapabilityAbsent, CapabilityUnobservable,
   RunnerRegistrationLabelsResolution,
   RegistrationLabelsResolved, RegistrationLabelsRefused,
   gunbc_gpu_docker_label,
@@ -361,14 +361,16 @@ test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
   }
 }
 
-// ── THE NVIDIA REPO INSTALL IS NEVER FABRICATED ──────────────────────────────────────────────
+// ── NEITHER REPO INSTALL IS EVER FABRICATED ──────────────────────────────────────────────────
 //
-// Review 86284 caught a hole of the kind a comment cannot prevent, and review 86305/86314 then removed the
+// Review 86284 caught a hole of the kind a comment cannot prevent, and reviews 86305/86314 then removed the
 // shell it lived in. The first version assembled the installer as a String and returned the empty string
 // for a host with no declared row — and an empty file is a VALID shell script, `sh` reads it, runs nothing,
-// exits 0, so the converge reported "nvidia repo install: ok". The fix was three-layered: the host row is
-// read as typed data, absence becomes a refusal naming the host, and the executor independently refuses an
-// empty body at the choke point where a body becomes a file.
+// exits 0, so the converge reported "nvidia repo install: ok". The fix was three-layered at the time: the
+// host row is read as typed data, absence becomes a refusal naming the host, and the executor refused an
+// empty body where a body became a file. That third layer is now GONE along with the variant that had a
+// body at all (review 86503 took the last staged script out of this plan), so the two layers left standing
+// are the ones this section actually tests: a host with no row refuses, and an empty action list refuses.
 //
 // THE PROPERTY OUTLIVES BOTH FIXES, so it is claimed here rather than commented, and it now has a stricter
 // form: an action list can be fabricated too. An empty list would reach the fold as "nothing needed doing"
@@ -385,8 +387,8 @@ test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
 // THE POSITIVE HALF: each host that declares the toolchain gets a real plan, and that plan contains the
 // verification the trust argument rests on plus the sources file whose content is the model's own rendering.
 test fn a_desired_host_gets_repo_actions_including_the_keyring_check() -> Bool {
-  let a1 = gpu_container_provision_nvidia_actions_for(host: operator_host_srv1)
-  let a3 = gpu_container_provision_nvidia_actions_for(host: operator_host_srv3)
+  let a1 = gpu_container_provision_repo_actions_for(host: operator_host_srv1)
+  let a3 = gpu_container_provision_repo_actions_for(host: operator_host_srv3)
   if length(a1) == 0 || length(a3) == 0 {
     false
   } else {
@@ -401,6 +403,14 @@ test fn a_desired_host_gets_repo_actions_including_the_keyring_check() -> Bool {
       && gpu_container_provision_step_names_include(names: steps3, wanted: "nvidia keyring fingerprint verified")
       && gpu_container_provision_step_names_include(names: steps1, wanted: "nvidia apt sources")
       && gpu_container_provision_step_names_include(names: steps3, wanted: "apt index refresh")
+      // AND THE DOCKER HALF OF THE SAME PLAN, checked with the same seriousness. Review 86503's defect was
+      // precisely that this repo's install existed only as an opaque shell string, so the claim here is not
+      // "docker appears" but "docker's fingerprint check and sources file are modelled steps", which is what
+      // an implementation that regressed to a staged script would fail.
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "docker keyring fingerprint verified")
+      && gpu_container_provision_step_names_include(names: steps3, wanted: "docker keyring fingerprint verified")
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "docker apt sources")
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "apt keyring directory")
   }
 }
 
@@ -441,7 +451,7 @@ test fn an_uncertified_host_is_refused_by_every_non_desired_arm() -> Bool {
 // action of type ProvisionRefusal; anything else (an empty list, or a list carrying a leg alongside the
 // refusal) is the fabrication in a different form, because the fold would then run something.
 fn refusal_cause_for(host: HostIdentity) -> String? {
-  let actions = gpu_container_provision_nvidia_actions_for(host: host)
+  let actions = gpu_container_provision_repo_actions_for(host: host)
   match actions.first() {
     Absent => Absent
     Present { value: ProvisionRefusal { step: _, cause: c } } =>
@@ -601,6 +611,72 @@ test fn only_one_range_verified_is_never_ready() -> Bool {
     ) == false
 }
 
+// DUPLICATE RECORDS FOR ONE FILE CANNOT ANSWER FOR THE OTHER — review 5644178843's remaining fail-open,
+// and the counterexample the 33-claim run did not contain. The first version of the predicate filtered
+// steps whose name was either of the two and required `length(proven) == 2`, which is a statement about a
+// COMBINED POPULATION, not about two files. Two successful "subuid verified" records and no "subgid
+// verified" record at all is a population of two matching records: the old predicate returned true, and
+// with all four capability arms green the label was grantable on a host whose /etc/subgid had never been
+// read. The answer was not to tighten the count to three or add a distinctness count on records; it was to
+// stop counting and ask ONE QUESTION PER FILE, which is what gpu_container_subordinate_range_verification_
+// proven does. These claims are red for the per-file predicate and would be GREEN for the counting one,
+// which is what makes them discriminating rather than decorative.
+test fn duplicate_uid_verifications_without_any_gid_verification_are_never_ready() -> Bool {
+  let dup = [
+    prov(gpu_container_provision_subuid_verify_step),
+    prov(gpu_container_provision_subuid_verify_step),
+  ]
+  // The predicate itself, in isolation: two matching records, one file answered, so it must refuse.
+  !gpu_container_subordinate_integrity_holds(steps: dup)
+    // And the gate it feeds, with every other arm green: this is the grantable-label shape the old
+    // predicate admitted, so it is the one that has to be proven unreachable.
+    && runner_gpu_container_toolchain_host_ready(
+      ensure_ok: true,
+      cdi_ok: true,
+      readback: all_four_ok(),
+      provision_steps: dup,
+    ) == false
+    // The mirror image: two gid records, no uid record.
+    && !gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subgid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ])
+    && runner_gpu_container_toolchain_host_ready(
+      ensure_ok: true,
+      cdi_ok: true,
+      readback: all_four_ok(),
+      provision_steps: [
+        prov(gpu_container_provision_subgid_verify_step),
+        prov(gpu_container_provision_subgid_verify_step),
+      ],
+    ) == false
+}
+
+// A REFUSAL UNDER ONE NAME IS NOT OUTVOTED BY A SUCCESS UNDER THE SAME NAME. If a population ever carries
+// both a pass and a refusal for one file, the module does not take a vote: these two names are emitted by
+// exactly one planning site each, so a contradiction means the plan or the executor is not what this module
+// believes, and the conservative answer is to withhold the capability. Without this claim, a future edit
+// that counted only successes would pass every other witness here while letting a poisoned file through.
+test fn a_refusal_under_a_name_is_not_hidden_by_a_duplicate_success() -> Bool {
+  !gpu_container_subordinate_integrity_holds(steps: [
+    prov(gpu_container_provision_subuid_verify_step),
+    refused(gpu_container_provision_subuid_verify_step),
+    prov(gpu_container_provision_subgid_verify_step),
+  ])
+    && !gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+      skipped(gpu_container_provision_subgid_verify_step),
+    ])
+    // Positive control, so the two claims above are not red because the predicate refuses everything:
+    // the same population minus the contradicting record is proven.
+    && gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ])
+}
+
 // A REFUSAL CAN ONLY BE SEEN AS A REFUSAL IF THE NAMES AGREE. The predicate matches on the step names,
 // and the plan emits those same names from the same two rows; if a future edit renamed the row the plan
 // emits while the predicate still asked for the old string, every host would fail forever (safe) — but if
@@ -640,19 +716,38 @@ test fn the_two_range_verifications_are_distinct_and_both_required() -> Bool {
 //   ABSENT must not carry the browser label — that is the fabricated capability;
 //   HELD must carry it — dropping it would silently revoke a capability from a host that legitimately has
 //     it, because the 86- file REPLACES the 85-'s LABELS_JSON rather than adding to it;
-//   UNDETERMINED must produce no label set at all — "could not look" may not be answered either way.
+//   ABSENT must not carry it;
+//   UNOBSERVABLE must produce no label set at all — "could not look" may not be answered either way.
+//
+// THE ARGUMENT IS A LIST OF WITNESSES, NOT A FLAG, and that is the shape review 86550 asked for. The first
+// version took `browser_ready_granted: Bool`, whose comment admitted a caller could simply pass true. Now a
+// capability reaches the set only as a record of a read someone actually performed, the set is produced by
+// one fold over the capability table (gunbc.runner.runner_capability_labels), and this witness file never
+// names the browser capability as a branch — it names it as a row it chose to observe.
 
-fn gpu_labels_for(host: HostIdentity, browser_ready_granted: Bool) -> List<String> {
-  match runner_gpu_docker_ready_registration_labels(host: host, browser_ready_granted: browser_ready_granted) {
+fn gpu_labels_for_witnesses(host: HostIdentity, witnesses: List<HostCapabilityWitness>) -> List<String> {
+  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses) {
     RegistrationLabelsResolved { labels: ls } => ls
     RegistrationLabelsRefused { host: _, cause: _ } => []
   }
 }
 
-// THE HOST THAT NEVER EARNED IT: srv1 has no browser drop-in, so the observed answer is ABSENT and the
-// GPU label set must contain the host label and gunbc-gpu-docker and NOTHING browser-shaped.
+fn browser_held() -> HostCapabilityWitness {
+  CapabilityHeld { label: gunbc_browser_ready_label }
+}
+
+fn browser_absent() -> HostCapabilityWitness {
+  CapabilityAbsent { label: gunbc_browser_ready_label }
+}
+
+fn browser_unreadable() -> HostCapabilityWitness {
+  CapabilityUnobservable { label: gunbc_browser_ready_label, cause: "elevated cat exited 255: ssh refused" }
+}
+
+// THE HOST THAT NEVER EARNED IT: srv1 has no browser drop-in, so the observed answer is ABSENT and the GPU
+// label set must contain the host label and gunbc-gpu-docker and NOTHING browser-shaped.
 test fn an_unearned_browser_label_is_never_restated_by_the_gpu_set() -> Bool {
-  let ls = gpu_labels_for(host: operator_host_srv1, browser_ready_granted: false)
+  let ls = gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_absent()])
   length(ls) > 0
     && ls.any(l => l == gunbc_gpu_docker_label)
     && !ls.any(l => l == gunbc_browser_ready_label)
@@ -660,48 +755,87 @@ test fn an_unearned_browser_label_is_never_restated_by_the_gpu_set() -> Bool {
 }
 
 // THE HOST THAT DID EARN IT: with the 85- drop-in read back carrying the token, the set must restate the
-// browser label. This is not a nicety — systemd lets the later drop-in's Environment= replace the
-// earlier one wholesale, so a GPU converge that omitted the browser label would revoke it from a host that
-// has both toolchains, and the browser floor would stop scheduling there with nothing broken to find.
+// browser label. This is not a nicety — systemd lets the later drop-in's Environment= replace the earlier
+// one wholesale, so a GPU converge that omitted the browser label would revoke it from a host that has both
+// toolchains, and the browser floor would stop scheduling there with nothing broken to find.
 test fn an_observed_browser_label_is_restated_so_it_is_not_silently_revoked() -> Bool {
-  let ls = gpu_labels_for(host: operator_host_srv1, browser_ready_granted: true)
+  let ls = gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_held()])
   ls.any(l => l == gunbc_gpu_docker_label)
     && ls.any(l => l == gunbc_browser_ready_label)
 }
 
-// THE GRANT DECISION, ALL THREE ARMS. Held grants, absent declines, and an observation that could not be
-// made yields NO Bool at all — so no caller can pass a guess down the same path a read would take.
-test fn an_unobservable_browser_read_grants_nothing_and_offers_no_bool() -> Bool {
-  match gpu_docker_labels_resolve_browser_grant(o: BrowserReadyHeld) {
-    BrowserGrantAllowed { granted: g1, observed: _ } =>
-      if g1 != true {
-        false
-      } else {
-        match gpu_docker_labels_resolve_browser_grant(o: BrowserReadyAbsent) {
-          BrowserGrantAllowed { granted: g2, observed: _ } =>
-            if g2 != false {
-              false
-            } else {
-              match gpu_docker_labels_resolve_browser_grant(o: BrowserReadyUnobservable { cause: "ssh refused" }) {
-                BrowserGrantUndetermined { cause: c } =>
-                  string_contains(s: c, pattern: "browser-ready observation failed")
-                    && string_contains(s: c, pattern: "refusing to grant")
-                BrowserGrantAllowed { granted: _, observed: _ } => false
-              }
-            }
-          BrowserGrantUndetermined { cause: _ } => false
-        }
-      }
-    BrowserGrantUndetermined { cause: _ } => false
-  }
+// COULD-NOT-LOOK IS NOT "NOT HELD". An unreadable row must refuse the WHOLE SET — not drop the sibling
+// label, and not emit a set at all. The distinction is the entire safety property of the three-arm
+// observation: defaulting a failed read to absent would strip a capability a host legitimately holds on
+// any ssh blip, while every check on the owning side stayed green.
+test fn an_unreadable_sibling_row_refuses_the_whole_set_rather_than_dropping_a_label() -> Bool {
+  let ls = gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_unreadable()])
+  // Refused renders resolve to nothing at all here, which is what makes the converge fail rather than write.
+  length(ls) == 0
+    // And a refusal is not the same as an ABSENT row, which does resolve — the pair of claims is what stops
+    // this test passing because the fold always refuses.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_absent()])) > 0
+    // A held row beside an unreadable one is still refused: one bad read blocks the whole write, because
+    // the set is written as one file and a partial set is a revocation.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_held(), browser_unreadable()])) == 0
+}
+
+// THE TABLE, NOT A HARDCODED PAIR — the claim that makes the generalization real rather than cosmetic, in
+// BOTH DIRECTIONS.
+//
+// INWARD: the fold takes whatever the rows declare. Every declared row except the gpu converge's own must
+// be restatable from a held witness, obtained by iterating host_capability_rows rather than by naming
+// capabilities here. If the fold still carried a browser branch, the loop would still pass today and fail
+// the day a third row lands — which is exactly the property a row-per-capability design is supposed to buy,
+// and the reason this claim iterates instead of enumerating.
+//
+// OUTWARD: a witness for a label the table does NOT declare is refused, so the table is the only authority
+// on what can be advertised. Without this half, the fold is an open door: CapabilityHeld is a value, and any
+// caller could mint a capability the model has never heard of. Both halves are needed — iterate-only would
+// pass on a fold that trusted caller-supplied labels, and refuse-undeclared-only would pass on a fold that
+// hardcodes the two it knows.
+test fn the_capability_table_is_the_only_authority_on_what_can_be_advertised() -> Bool {
+  let rows = host_capability_rows
+  // Every declared row except gpu's own is restatable, WITHOUT this file naming it.
+  rows.any(r => {
+    let lab = host_capability_row_label(row: r)
+    lab != gunbc_gpu_docker_label
+      && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [CapabilityHeld { label: lab }]).any(l => l == lab)
+  })
+    // The gpu label is still granted from its own read-back, never from a witness.
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: []).any(l => l == gunbc_gpu_docker_label)
+    // UNDECLARED IS REFUSED, and refusal means no set at all rather than a set missing one label.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [CapabilityHeld { label: "gunbc-invented-capability" }])) == 0
+    && !host_capability_label_is_declared(label: "gunbc-invented-capability")
+    // A declared label beside an undeclared one does not smuggle through: the whole write is refused.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [browser_held(), CapabilityHeld { label: "gunbc-invented-capability" }])) == 0
+    // Positive control for the last claim: the same declared witness alone does resolve.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [browser_held()])) > 0
+}
+
+// THE OBSERVATION SET IS DERIVED, NOT ENUMERATED. The gpu converge must observe every row that is not its
+// own and must not observe its own: reading back the file it is about to write would make the answer depend
+// on write ordering instead of on the read-back, which is the kind of ordering dependence that survives
+// review and breaks on a retry.
+test fn the_gpu_converge_observes_every_row_except_its_own() -> Bool {
+  let observed = host_capability_rows_to_observe(own_label: gunbc_gpu_docker_label)
+  length(observed) > 0
+    // no self-observation
+    && !observed.any(r => host_capability_row_label(row: r) == gunbc_gpu_docker_label)
+    // and everything else is there, counted rather than named
+    && length(observed) == length(rows_declared_excluding_gpu())
+}
+
+fn rows_declared_excluding_gpu() -> List<HostCapabilityRow> {
+  filter(host_capability_rows, r => host_capability_row_label(row: r) != gunbc_gpu_docker_label)
 }
 
 // THE LABEL SET IS NEVER EMPTY ON A GRANT, for either observation. An empty resolved set would reach the
 // drop-in as a LABELS_JSON with no capability in it — the runner would start, register, and take nothing,
 // which is the "green host, zero capacity" shape this module keeps being asked to make unrepresentable.
 test fn the_gpu_label_set_always_carries_the_gpu_capability() -> Bool {
-  gpu_labels_for(host: operator_host_srv1, browser_ready_granted: true).any(l => l == gunbc_gpu_docker_label)
-    && gpu_labels_for(host: operator_host_srv1, browser_ready_granted: false).any(l => l == gunbc_gpu_docker_label)
-    && gpu_labels_for(host: operator_host_srv3, browser_ready_granted: true).any(l => l == gunbc_gpu_docker_label)
-    && gpu_labels_for(host: operator_host_srv3, browser_ready_granted: false).any(l => l == gunbc_gpu_docker_label)
+  gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_held()]).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: []).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [browser_held()]).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: []).any(l => l == gunbc_gpu_docker_label)
 }
