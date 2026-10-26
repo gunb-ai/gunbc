@@ -1,6 +1,8 @@
 module test.claim.supermicro_oem_fan_witness
 
 import std.types { Bool, String }
+import extdeps.external_authority { CitedFigureStanding, cited_figure_read_obligation }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text }
 import std.optional { Present, Absent }
 import std.measure { percent, percent_count }
 import extdeps.bmc.supermicro_oem_fan {
@@ -24,6 +26,10 @@ data h11_get_fan_mode_capture: String = " 01\n"
 data h11_get_zone0_duty_capture: String = " 1d\n"
 data h11_get_zone1_duty_capture: String = " 64\n"
 
+fn is_uncited(s: CitedFigureStanding) -> Bool {
+  match cited_figure_read_obligation(standing: s) { Present { value: _ } => true  Absent => false }
+}
+
 fn duty_of(stdout: String) -> Int {
   match supermicro_zone_duty_answer(stdout: stdout) {
     Present { value } => percent_count(value) as Int
@@ -34,7 +40,10 @@ fn duty_of(stdout: String) -> Int {
 test fn the_captured_answers_parse() -> Bool {
   match supermicro_fan_mode_answer(stdout: h11_get_fan_mode_capture) {
     Absent => false
-    Present { value: m } => m.code == 1 && match supermicro_fan_mode_name(mode: m) { Present { value: n } => (n as String) == "Full"  Absent => false }
+    Present { value: m } => m.code == 1 && match supermicro_fan_mode_name(mode: m) {
+      Present { value: n } => (n.name as String) == "Full" && is_uncited(s: n.standing)
+      Absent => false
+    }
   }
     && duty_of(stdout: h11_get_zone0_duty_capture) == 29
     && duty_of(stdout: h11_get_zone1_duty_capture) == 100
@@ -72,4 +81,13 @@ test fn the_set_arguments_are_constructed_and_read_back() -> Bool {
       Absent => false
       Present { value: m } => match supermicro_fan_mode_argument(mode: m) { Present { value: a } => (supermicro_fan_mode_argument_wire(a: a) as String) == "0x01"  Absent => false }
     }
+}
+
+// The shared request-byte formatter's own domain: zero and 255 are bytes, -1 and 256 are not, and a
+// value that is not a byte has no spelling at all.
+test fn the_raw_byte_formatter_spells_only_a_byte() -> Bool {
+  match ipmitool_raw_byte_text(n: 0) { Present { value: t } => t == "0x00"  Absent => false }
+    && match ipmitool_raw_byte_text(n: 255) { Present { value: t } => t == "0xff"  Absent => false }
+    && match ipmitool_raw_byte_text(n: -1) { Absent => true  Present { value: _ } => false }
+    && match ipmitool_raw_byte_text(n: 256) { Absent => true  Present { value: _ } => false }
 }

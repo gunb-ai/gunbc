@@ -3,10 +3,10 @@ module gunbc.machine_intake.ampere_smpro_observation
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.measure { Second }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import extdeps.bmc.ipmi
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
-import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_reply_bytes }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_byte_report, ipmitool_raw_reply_bytes }
 import extdeps.bmc.ipmi_master_write_read {
   MasterWriteReadBus, PrivateBus, PublicBus, MasterWriteReadCompletion,
   master_write_read_bus_byte, master_write_read_slave_byte,
@@ -127,7 +127,7 @@ fn smpro_site_refusal_text(c: SmproSiteRefusal) -> String {
     SiteControlNotATarget { socket: s } => concat("the control socket ", to_string(s), " is not one of the site's targets")
     SiteControlAmbiguous { socket: s, matches: n } => concat("the control socket ", to_string(s), " matches ", to_string(n), " targets")
     SiteSocketRepeated { socket: s } => concat("socket ", to_string(s), " appears more than once")
-    SiteAddressRepeated { seven_bit_address: a } => concat("7-bit address ", ipmitool_raw_byte_text(n: a), " appears more than once")
+    SiteAddressRepeated { seven_bit_address: a } => concat("7-bit address ", ipmitool_raw_byte_report(n: a), " appears more than once")
   }
 }
 
@@ -273,9 +273,20 @@ fn smpro_outcome_word(o: SmproProbeOutcome) -> Int? {
   }
 }
 
+// A word read is two bytes, high first. A value outside sixteen bits is named as such, not spelled.
+fn smpro_word_text(w: Int) -> String {
+  match ipmitool_raw_byte_text(n: w / 256) {
+    Absent => concat(to_string(w), " (not a 16-bit word)")
+    Present { value: high } => match ipmitool_raw_byte_text(n: w % 256) {
+      Absent => concat(to_string(w), " (not a 16-bit word)")
+      Present { value: low } => concat("0x", substring(s: high, start: 2, end: 4), substring(s: low, start: 2, end: 4))
+    }
+  }
+}
+
 fn smpro_outcome_text(o: SmproProbeOutcome) -> String {
   match o {
-    SmproWordRead { raw: _, word: w } => concat("read 0x", substring(s: ipmitool_raw_byte_text(n: w / 256), start: 2, end: 4), substring(s: ipmitool_raw_byte_text(n: w % 256), start: 2, end: 4))
+    SmproWordRead { raw: _, word: w } => concat("read ", smpro_word_text(w: w))
     SmproControllerRefused { raw: _, completion: c } => concat("REFUSED by the BMC: ", master_write_read_completion_text(c: c))
     SmproTransportFailed { raw: r, timed_out: t } => concat("TRANSPORT FAILED (exit ", to_string(r.exit_code), if t { ", deadline" } else { "" }, "): ", trim(r.stderr))
     SmproResponseMalformed { raw: _, detail: d } => concat("MALFORMED: ", d as String)
@@ -300,8 +311,33 @@ fn smpro_control_refusal(o: SmproProbeOutcome) -> String? {
 
 // ── the reads (effects) ─────────────────────────────────────────────────────────────────────────
 
-fn smpro_request_text(bus: Int, slave: Int, reg: Int) -> NonEmptyStr {
-  concat("raw 0x06 0x52 ", ipmitool_raw_byte_text(n: bus), " ", ipmitool_raw_byte_text(n: slave), " ", ipmitool_raw_byte_text(n: smpro_value_size_bytes), " ", ipmitool_raw_byte_text(n: reg), " ", ipmitool_raw_byte_text(n: smpro_value_size_bytes)) as NonEmptyStr
+// The request's variable bytes, each spelled through the shared byte formatter, so a value that is not
+// a byte leaves the request unencodable instead of misrendering on the wire.
+type SmproRequestWire {
+  bus: NonEmptyStr
+  slave: NonEmptyStr
+  read_count: NonEmptyStr
+  register: NonEmptyStr
+}
+
+fn smpro_request_wire(bus: Int, slave: Int, reg: Int) -> SmproRequestWire? {
+  match ipmitool_raw_byte_text(n: bus) {
+    Absent => none
+    Present { value: b } => match ipmitool_raw_byte_text(n: slave) {
+      Absent => none
+      Present { value: s } => match ipmitool_raw_byte_text(n: smpro_value_size_bytes) {
+        Absent => none
+        Present { value: c } => match ipmitool_raw_byte_text(n: reg) {
+          Absent => none
+          Present { value: r } => Present { value: SmproRequestWire { bus: b as NonEmptyStr, slave: s as NonEmptyStr, read_count: c as NonEmptyStr, register: r as NonEmptyStr } }
+        }
+      }
+    }
+  }
+}
+
+fn smpro_request_text(w: SmproRequestWire) -> NonEmptyStr {
+  concat("raw 0x06 0x52 ", w.bus as String, " ", w.slave as String, " ", w.read_count as String, " ", w.register as String, " ", w.read_count as String) as NonEmptyStr
 }
 
 fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second) -> SmproProbeOutcome
@@ -310,24 +346,27 @@ fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: Non
     Absent => SmproRequestUnencodable { socket: target.socket, register: reg.name, detail: "the bus fields do not fit the request's byte 1" }
     Present { value: bus_byte } => match master_write_read_slave_byte(seven_bit_address: target.seven_bit_address) {
       Absent => SmproRequestUnencodable { socket: target.socket, register: reg.name, detail: "the address is not a 7-bit address" }
-      Present { value: slave } => {
-        let at = clock_now_probed_at_or_unknown()
-        let r = diagnostic.ipmi.Tool.MasterWriteReadAuthenticated(
-          bmc_host: bmc_host,
-          username: username,
-          password_file: password_file,
-          bus: ipmitool_raw_byte_text(n: bus_byte) as NonEmptyStr,
-          slave_address: ipmitool_raw_byte_text(n: slave) as NonEmptyStr,
-          read_count: ipmitool_raw_byte_text(n: smpro_value_size_bytes) as NonEmptyStr,
-          write_first: ipmitool_raw_byte_text(n: reg.offset) as NonEmptyStr,
-          write_second: ipmitool_raw_byte_text(n: smpro_value_size_bytes) as NonEmptyStr,
-          deadline: coreutils_duration_operand(d: deadline) as NonEmptyStr,
-          kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
-        )
-        smpro_probe_outcome(raw: SmproProbeRaw {
-          sequence: sequence, socket: target.socket, register: reg.name, request: smpro_request_text(bus: bus_byte, slave: slave, reg: reg.offset),
-          at: at, exit_code: r.exit_code, stdout: r.stdout, stderr: r.transport_stderr,
-        })
+      Present { value: slave } => match smpro_request_wire(bus: bus_byte, slave: slave, reg: reg.offset) {
+        Absent => SmproRequestUnencodable { socket: target.socket, register: reg.name, detail: "a request byte is not a byte" }
+        Present { value: wire } => {
+          let at = clock_now_probed_at_or_unknown()
+          let r = diagnostic.ipmi.Tool.MasterWriteReadAuthenticated(
+            bmc_host: bmc_host,
+            username: username,
+            password_file: password_file,
+            bus: wire.bus,
+            slave_address: wire.slave,
+            read_count: wire.read_count,
+            write_first: wire.register,
+            write_second: wire.read_count,
+            deadline: coreutils_duration_operand(d: deadline) as NonEmptyStr,
+            kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
+          )
+          smpro_probe_outcome(raw: SmproProbeRaw {
+            sequence: sequence, socket: target.socket, register: reg.name, request: smpro_request_text(w: wire),
+            at: at, exit_code: r.exit_code, stdout: r.stdout, stderr: r.transport_stderr,
+          })
+        }
       }
     }
   }
@@ -620,7 +659,7 @@ fn smpro_pass_dossier_text(obs: SmproPassObservation) -> String {
   let site = obs.subject.site
   let outcomes = obs.outcomes
   join([
-    concat("location: ", obs.subject.host as String, " via controller ", obs.subject.endpoint.host as String, ", bus ", to_string(site.bus.bus_id), " ", match site.bus.bus_type { PrivateBus => "private" PublicBus => "public" }, ", ", smpro_site_evidence_text(e: site.evidence), "; control socket ", to_string(site.control.socket), "; ", join(map(smpro_site_targets(site: site), t => concat("socket ", to_string(t.socket), " at 7-bit ", ipmitool_raw_byte_text(n: t.seven_bit_address))), ", ")),
+    concat("location: ", obs.subject.host as String, " via controller ", obs.subject.endpoint.host as String, ", bus ", to_string(site.bus.bus_id), " ", match site.bus.bus_type { PrivateBus => "private" PublicBus => "public" }, ", ", smpro_site_evidence_text(e: site.evidence), "; control socket ", to_string(site.control.socket), "; ", join(map(smpro_site_targets(site: site), t => concat("socket ", to_string(t.socket), " at 7-bit ", ipmitool_raw_byte_report(n: t.seven_bit_address))), ", ")),
     join(map(smpro_site_targets(site: site), t => smpro_socket_stage_text(s: smpro_socket_stage(outcomes: outcomes, socket: t.socket))), "\n"),
     join(map(smpro_site_targets(site: site), t => smpro_socket_records_text(r: smpro_socket_records(outcomes: outcomes, socket: t.socket))), "\n"),
     "probes, in the order sent:",

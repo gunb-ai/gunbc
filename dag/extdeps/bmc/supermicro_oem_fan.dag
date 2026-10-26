@@ -136,10 +136,17 @@ data supermicro_unwritten_duty_standing: CitedFigureStanding = TranscribedUncite
   read_obligation: "Supermicro documentation, or a controlled reading on a host whose controller is stopped, of the duty each zone holds in each fan mode when no host has written duty since the mode was set.",
 }
 
-fn supermicro_fan_mode_name(mode: SupermicroFanMode) -> NonEmptyStr? {
+// A name is returned with the table's standing, so a consumer cannot read "Full" as Supermicro's word
+// without also holding that nobody has cited it.
+type SupermicroFanModeNameReading {
+  name: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+fn supermicro_fan_mode_name(mode: SupermicroFanMode) -> SupermicroFanModeNameReading? {
   match first(filter(supermicro_fan_mode_names, n => n.code == mode.code)) {
     Absent => none
-    Present { value: n } => Present { value: n.name }
+    Present { value: n } => Present { value: SupermicroFanModeNameReading { name: n.name, standing: supermicro_fan_mode_names_standing } }
   }
 }
 
@@ -172,47 +179,55 @@ fn supermicro_zone_duty_answer(stdout: String) -> Percent? {
 
 // ── WHAT A SET MAY WRITE. Each argv byte a set takes is built only through a checked constructor, so
 // an out-of-range byte has no constructor rather than a later check (DESIGN section 5). The records are
-// sole_constructor, the same pattern extdeps.systemd uses for SystemdUnitName, and each has one wire
-// function that spells its byte.
+// sole_constructor, the same pattern extdeps.systemd uses for SystemdUnitName. Each constructor spells
+// its byte once, through the shared formatter, and keeps the spelling: a value that is not a byte has
+// no spelling, so it has no argument, and no later wire function can misspell it.
 //
 // THE RESIDUAL, STATED. The operations above take their argv as NonEmptyStr, as every operation in the
 // corpus does: an operation's input is the argv template's text, and no operation takes a record. So a
 // caller can still hand SetZoneDuty a string it built itself. Closing that is a change to how operation
 // inputs are typed (a record input whose wire function fills the template), which is a substrate change,
 // not this module's; until then a consumer calls the operations only with the wire of these records.
-type SupermicroDutyArgument sole_constructor { duty: Percent }
-type SupermicroFanZone sole_constructor { index: Nat }
-type SupermicroFanModeArgument sole_constructor { mode: SupermicroFanMode }
+type SupermicroDutyArgument sole_constructor { duty: Percent, wire: NonEmptyStr }
+type SupermicroFanZone sole_constructor { index: Nat, wire: NonEmptyStr }
+type SupermicroFanModeArgument sole_constructor { mode: SupermicroFanMode, wire: NonEmptyStr }
 
 // A duty above 100 is not a percent, so it has no argument rather than a wrapped byte.
 fn supermicro_duty_argument(duty: Percent) -> SupermicroDutyArgument? {
-  if percent_count(duty) > 100 { none } else { Present { value: SupermicroDutyArgument { duty: duty } } }
+  if percent_count(duty) > 100 { none } else {
+    match ipmitool_raw_byte_text(n: percent_count(duty) as Int) {
+      Absent => none
+      Present { value: w } => Present { value: SupermicroDutyArgument { duty: duty, wire: w as NonEmptyStr } }
+    }
+  }
 }
 
 // A zone is one byte on the wire. Which zones a board has is the board's fact (its cooling-zone count),
-// so this constructor bounds only the byte.
+// so this constructor bounds only the byte, and the formatter is what bounds it.
 fn supermicro_fan_zone(index: Nat) -> SupermicroFanZone? {
-  if index > 255 { none } else { Present { value: SupermicroFanZone { index: index } } }
+  match ipmitool_raw_byte_text(n: index as Int) {
+    Absent => none
+    Present { value: w } => Present { value: SupermicroFanZone { index: index, wire: w as NonEmptyStr } }
+  }
 }
 
 fn supermicro_fan_mode_argument(mode: SupermicroFanMode) -> SupermicroFanModeArgument? {
-  if mode.code > 255 { none } else { Present { value: SupermicroFanModeArgument { mode: mode } } }
-}
-
-fn supermicro_byte_wire(n: Nat) -> NonEmptyStr {
-  ipmitool_raw_byte_text(n: n as Int) as NonEmptyStr
+  match ipmitool_raw_byte_text(n: mode.code as Int) {
+    Absent => none
+    Present { value: w } => Present { value: SupermicroFanModeArgument { mode: mode, wire: w as NonEmptyStr } }
+  }
 }
 
 fn supermicro_duty_argument_wire(a: SupermicroDutyArgument) -> NonEmptyStr {
-  supermicro_byte_wire(n: percent_count(a.duty))
+  a.wire
 }
 
 fn supermicro_fan_zone_wire(z: SupermicroFanZone) -> NonEmptyStr {
-  supermicro_byte_wire(n: z.index)
+  z.wire
 }
 
 fn supermicro_fan_mode_argument_wire(a: SupermicroFanModeArgument) -> NonEmptyStr {
-  supermicro_byte_wire(n: a.mode.code)
+  a.wire
 }
 
 // DESIGN section 3c declared frontier.

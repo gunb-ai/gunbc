@@ -6,6 +6,7 @@ import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.numeric.base16 { base16_word_value }
+import std.integer { uint8_of_int, UInt8Ready, UInt8OutOfRange }
 import extdeps.uri { Uri, Https }
 
 // ── HOW ipmitool `raw` SPELLS BYTES, BOTH WAYS. ipmitool prints a raw response as two-digit hex bytes
@@ -48,8 +49,24 @@ fn ipmitool_raw_reply_bytes(stdout: String, expected: Int) -> List<Int>? {
   }
 }
 
-// One request byte as ipmitool takes it: "0x" and two lowercase hex digits.
-fn ipmitool_raw_byte_text(n: Int) -> String {
-  let digits = "0123456789abcdef"
-  concat("0x", char_at(s: digits, pos: n / 16), char_at(s: digits, pos: n % 16))
+// One request byte as ipmitool takes it: "0x" and two lowercase hex digits. A value that is not a
+// byte has no spelling, so it is refused here through std.integer's byte admission rather than
+// indexed into the alphabet; every caller that writes argv goes through this refusal.
+fn ipmitool_raw_byte_text(n: Int) -> String? {
+  match uint8_of_int(value: n) {
+    UInt8OutOfRange { observed: _ } => none
+    UInt8Ready { value: b } => {
+      let digits = "0123456789abcdef"
+      Present { value: concat("0x", char_at(s: digits, pos: b / 16), char_at(s: digits, pos: b % 16)) }
+    }
+  }
+}
+
+// The same byte in a report, never on a wire: a value that is not a byte is named as such rather
+// than given a spelling it does not have.
+fn ipmitool_raw_byte_report(n: Int) -> String {
+  match ipmitool_raw_byte_text(n: n) {
+    Present { value: t } => t
+    Absent => concat(to_string(n), " (not a byte)")
+  }
 }

@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_byte_value }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_report, ipmitool_raw_byte_value }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -98,7 +98,7 @@ fn master_write_read_completion_text(c: MasterWriteReadCompletion) -> String {
     CompletionBusError => "82h bus error"
     CompletionNakOnWrite => "83h NAK on write (no device acknowledged the address or the data)"
     CompletionTruncatedRead => "84h truncated read"
-    CompletionOtherCode { code: n } => concat("completion code ", ipmitool_raw_byte_text(n: n))
+    CompletionOtherCode { code: n } => concat("completion code ", ipmitool_raw_byte_report(n: n))
   }
 }
 
