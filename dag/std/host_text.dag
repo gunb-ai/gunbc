@@ -39,7 +39,10 @@ fn chars(text: HostText) -> List<Char> {
 // broken representation invariant, which the realization refuses rather than dropping or substituting.
 //
 // NOT A SEAM, BY DECISION (tidy-ant-251, 2026-10-25): the body is the kernel's linear slice writer over
-// the WHOLE list. Its window [0, count) is always inside [0, count), so the writer's clamp of an
+// the WHOLE list. That is a realization binding at one window, NOT an identity: chars_to_string is a
+// different, windowed operation that production callers use at arbitrary windows, it clamps an
+// out-of-range window and panics on a non-scalar Int, and its own authority is unestablished
+// (gunbc.primitive_egress.dispositions_text, row chars_to_string). Its window [0, count) is always inside [0, count), so the writer's clamp of an
 // out-of-range window never fires here, and this declaration does not rely on it. A .dag fold over
 // from_code_point and concat would copy its accumulator, quadratic in the text length (DESIGN section
 // 6, bare minimum cost), so the kernel writer stays the realization. It keeps its ambient name for the

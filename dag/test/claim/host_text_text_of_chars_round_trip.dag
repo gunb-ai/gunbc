@@ -48,3 +48,18 @@ test fn mixed_widths_round_trip_in_order_holds() -> Bool {
 test fn chars_of_written_text_is_the_scalar_list_holds() -> Bool {
   chars(text: text_of_chars(scalars: [97, 128512, 101, 769])) == [97, 128512, 101, 769]
 }
+
+// THE WHOLE-LIST WINDOW IS A SPECIALIZATION OF THE WINDOWED KERNEL WRITER, NOT THE SAME OPERATION: at
+// [0, count) the two agree; a nonzero start or a shortened end writes a different text, which text_of_chars
+// never does.
+test fn the_whole_list_window_is_text_of_chars_holds() -> Bool {
+  text_of_chars(scalars: [97, 128512, 99]) == chars_to_string(chars: [97, 128512, 99], start: 0, end: 3)
+}
+
+test fn a_nonzero_start_window_is_not_text_of_chars_holds() -> Bool {
+  chars_to_string(chars: [97, 128512, 99], start: 1, end: 3) == "😀c" && !(chars_to_string(chars: [97, 128512, 99], start: 1, end: 3) == text_of_chars(scalars: [97, 128512, 99]))
+}
+
+test fn a_shortened_end_window_is_not_text_of_chars_holds() -> Bool {
+  chars_to_string(chars: [97, 128512, 99], start: 0, end: 2) == "a😀" && !(chars_to_string(chars: [97, 128512, 99], start: 0, end: 2) == text_of_chars(scalars: [97, 128512, 99]))
+}
