@@ -1,0 +1,43 @@
+module test.claim.ambient_name_census_kit_unobserved
+
+import std.types { Bool }
+import std.process { ExitSuccess, ExitFailure }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.cli_wire { CliWirePrintable }
+import gunbc.instruments.ambient_name_census_reading { ambient_census_kit_standing }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A DECLARED KIT THE CENSUS DID NOT OBSERVE REFUSES 2, NEVER HOLDS (gunbc#15209; RFM empty_observation_narrow). The
+// base standing and the kit run's stdout are SUPPLIED at the reader's one interface. The real producer emitting
+// kit_fixture rows is the label's own receipt: `gunbc test //gunbc/instruments:ambient-name-census` at the overlay
+// head observes them, and over a kit tree passed as a second dag root it observes none.
+
+test fn r_held_base_with_no_kit_row_refuses_2_naming_the_kit_root() -> Bool {
+  match ambient_census_kit_standing(base: CliWirePrintable { bytes: "", exit: ExitSuccess }, kit_stdout: "", kit_root: "target/ambient-name-census/kit/dag") {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: c, reason: r } } =>
+      c == 2 && starts_with(s: r, prefix: "kit_unobserved: ") && contains(s: r, pattern: "target/ambient-name-census/kit/dag")
+    _ => false
+  }
+}
+
+test fn r_kit_stdout_with_only_non_binding_lines_still_refuses_2() -> Bool {
+  match ambient_census_kit_standing(base: CliWirePrintable { bytes: "", exit: ExitSuccess }, kit_stdout: "module_subjects\tx\ty\n", kit_root: "k/dag") {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: c, reason: _ } } => c == 2
+    _ => false
+  }
+}
+
+test fn c_held_base_with_a_kit_row_holds_and_prints_it() -> Bool {
+  match ambient_census_kit_standing(base: CliWirePrintable { bytes: "", exit: ExitSuccess }, kit_stdout: "binding_unbound\texamples.kit_chars_unimported\tchars\t5:42\n", kit_root: "k/dag") {
+    CliWirePrintable { bytes: b, exit: ExitSuccess } => contains(s: b, pattern: "kit_fixture\tbinding_unbound\texamples.kit_chars_unimported")
+    _ => false
+  }
+}
+
+test fn c_a_base_already_refused_keeps_its_own_cause() -> Bool {
+  match ambient_census_kit_standing(base: CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "fixture control: x" } }, kit_stdout: "", kit_root: "k/dag") {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: c, reason: r } } => c == 1 && r == "fixture control: x"
+    _ => false
+  }
+}

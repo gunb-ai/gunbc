@@ -437,6 +437,12 @@ fn ambient_name_census_standing_with_kit(
   kit_root: String
 ) -> CliWireResponse {
   let base = ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten)
+  ambient_census_kit_standing(base: base, kit_stdout: kit_stdout, kit_root: kit_root)
+}
+
+// THE KIT'S JUDGMENT OVER AN ALREADY-READ BASE STANDING, apart from the runs that feed it so a claim can supply both
+// (test.claim.ambient_name_census_kit_unobserved).
+fn ambient_census_kit_standing(base: CliWireResponse, kit_stdout: String, kit_root: String) -> CliWireResponse {
   let kit_lines = split(s: kit_stdout, delimiter: "\n")
     |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unreached\t") || starts_with(s: l, prefix: "binding_module\t"))
     |> map(l => "kit_fixture\t" + l)
