@@ -1658,7 +1658,7 @@ fn run_extreme_census(runs: List<RunCost>, envelopes: List<IdentityEnvelope>) ->
 }
 
 // THE WORST BETWEEN-RUN INFLATION OBSERVED, which is the input the attention constant in
-// `docs/design-rung-drops.md` is derived from. That row states its own revision condition -- the
+// `gunbc.design_ledgers` `expected_design_rung_drops_md` is derived from. That row states its own revision condition -- the
 // constant MUST be re-derived the moment a larger inflation floor is measured -- so this is the
 // producer that decides whether it has been, and a caller re-runs it rather than trusting the
 // digits in that prose.

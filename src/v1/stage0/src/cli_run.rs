@@ -124,8 +124,9 @@ mod required_lane_resolution_census;
 pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
 pub use required_lane_resolution_census::{
-    entry_closure_module_identities, required_floor_nominal_subject_module_identities,
-    source_root_ingest_module_identities, ModuleIdentityPopulation,
+    entry_closure_module_identities, module_admission,
+    required_floor_nominal_subject_module_identities, source_root_ingest_module_identities,
+    ModuleAdmission, ModuleIdentityPopulation,
 };
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
@@ -146,9 +147,9 @@ pub fn source_root_ingest_module_identities_for_ci(
     Ok(identities)
 }
 pub use entry_resolve::{
-    load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_entry_with_index_typed, resolve_seeded_compile_closure, resolve_stage_totals,
-    whole_tree_resolved_ctx, EntryResolveRefusal,
+    load_sources_for_entry, process_shared_index_or_refuse, resolve_entry_graph,
+    resolve_entry_with_index, resolve_entry_with_index_typed, resolve_seeded_compile_closure,
+    resolve_stage_totals, whole_tree_resolved_ctx, EntryResolveRefusal,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -322,35 +323,75 @@ pub(crate) fn is_cargo_target_output_dir(
         && parent.join("Cargo.toml").is_file()
 }
 
-pub(crate) fn collect_dag_files_result(
+/// Why the `.dag` listing of a root cannot be taken. Typed so the module-index walk can name the
+/// cause (`ModuleIndexRefusal`); every other caller reads it as the located string it renders to.
+pub(crate) enum DagCollectError {
+    Unreadable(String),
+    /// A directory whose name ends in `.dag`: a source path that cannot be read as a source, and
+    /// that listing would otherwise recurse into, reading as an empty source (green).
+    DirectoryNamedDag(PathBuf),
+}
+
+impl DagCollectError {
+    fn rendered(&self) -> String {
+        match self {
+            Self::Unreadable(m) => m.clone(),
+            Self::DirectoryNamedDag(p) => format!(
+                "{}: a directory named like a .dag source; a source path is a file",
+                p.display()
+            ),
+        }
+    }
+}
+
+impl From<DagCollectError> for String {
+    fn from(e: DagCollectError) -> String {
+        e.rendered()
+    }
+}
+
+pub(crate) fn collect_dag_files_typed(
     dir: &std::path::Path,
     files: &mut Vec<derived_row_roster::AcquiredDag>,
-) -> Result<(), String> {
+) -> Result<(), DagCollectError> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
-        .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
-        .collect::<Result<Vec<_>, String>>()?;
+        .map_err(|e| DagCollectError::Unreadable(format!("failed to read dir {:?}: {}", dir, e)))?
+        .map(|e| {
+            e.map_err(|e| {
+                DagCollectError::Unreadable(format!("failed to read dir entry in {:?}: {}", dir, e))
+            })
+        })
+        .collect::<Result<Vec<_>, DagCollectError>>()?;
     entries.sort_by_key(|e| e.file_name());
     // This directory's own `.dag` files are admitted as one listing, so a ledger row directory
     // contributes its derived roster from the same bytes (`derived_row_roster::acquire_dir_files`).
     let mut here = Vec::new();
     for entry in entries {
         let path = entry.path();
+        let named_dag = path.extension().map(|e| e == "dag").unwrap_or(false);
         if path.is_dir() {
+            if named_dag {
+                return Err(DagCollectError::DirectoryNamedDag(path));
+            }
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files_result(&path, files)?;
-        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            collect_dag_files_typed(&path, files)?;
+        } else if named_dag {
             here.push(path);
         }
     }
-    files.extend(derived_row_roster::acquire_dir_files(dir, here)?);
+    files.extend(
+        derived_row_roster::acquire_dir_files(dir, here).map_err(DagCollectError::Unreadable)?,
+    );
     Ok(())
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<derived_row_roster::AcquiredDag>) {
-    collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
+pub(crate) fn collect_dag_files_result(
+    dir: &std::path::Path,
+    files: &mut Vec<derived_row_roster::AcquiredDag>,
+) -> Result<(), String> {
+    collect_dag_files_typed(dir, files).map_err(String::from)
 }
 
 pub(crate) fn extract_module_path(content: &str) -> Option<String> {
@@ -3715,80 +3756,166 @@ fn module_path_collision_panic_message(
     )
 }
 
-fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, rel: String) {
-    if let Some(existing) = index.get(module_path) {
-        if existing != &rel && !same_canonical_file(existing, &rel) {
-            panic!(
-                "{}",
-                module_path_collision_panic_message(module_path, existing, &rel)
-            );
-        }
-        return;
-    }
-    index.insert(module_path.to_string(), rel);
-}
-
 /// Walks every `.dag` under `source_roots`, visiting each module-bound file.
 ///
-/// Parse failures do not panic and are not skipped: each becomes a typed located
-/// `ModuleBindingRefusal`, all of them are collected, and the walk refuses as a
-/// counted set at the end.
+/// Nothing here exits or panics: every file the walk cannot bind returns as a typed, located
+/// `ModuleIndexRefusal`, all of them collected so one run names every offender, and each CALLER
+/// chooses its exit class. The infallible index consumers stop the process with exit 1
+/// (`refuse_module_index`); the `gunbc test` claim route reports them as no observation (exit 2)
+/// through `try_with_module_path_index`, so the corpus is walked once for both.
 fn for_each_parsed_module_binding(
     source_roots: &[String],
     mut visit: impl FnMut(usize, &Path, ParsedModuleBinding),
-) {
-    let mut refusals: Vec<ModuleBindingRefusal> = Vec::new();
+) -> Vec<ModuleIndexRefusal> {
+    let mut refusals: Vec<ModuleIndexRefusal> = Vec::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
-        collect_dag_files(root_path, &mut dag_files);
+        match collect_dag_files_typed(root_path, &mut dag_files) {
+            Ok(()) => {}
+            Err(DagCollectError::DirectoryNamedDag(dir)) => {
+                refusals.push(ModuleIndexRefusal::DirectoryNamedDag {
+                    path: claim_source_location(&dir),
+                });
+                continue;
+            }
+            Err(DagCollectError::Unreadable(reason)) => {
+                refusals.push(ModuleIndexRefusal::RootUnreadable {
+                    path: anchored_root.clone(),
+                    reason,
+                });
+                continue;
+            }
+        }
         for source in dag_files {
             let path = source.path();
-            let content = source.read().unwrap_or_else(|e| {
-                panic!(
-                    "for_each_parsed_module_binding: failed to read {:?}: {}",
-                    path, e
-                )
-            });
+            let content = match source.read() {
+                Ok(c) => c,
+                Err(e) => {
+                    refusals.push(ModuleIndexRefusal::Unreadable {
+                        path: claim_source_location(path),
+                        reason: e.to_string(),
+                    });
+                    continue;
+                }
+            };
             let binding = match parse_module_binding(path, &content) {
                 Ok(ModuleBindingOutcome::Bound(binding)) => binding,
-                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => continue,
-                // Fail-closed, but the line stops with a TYPED, LOCATED refusal
-                // rather than an untyped panic that discarded the span. Siblings
-                // continue so the report is COUNTED and complete: one run names
-                // every unparseable file, not just the first (§5 factory model —
-                // a stopped-line audit ledgers every deficit before restart).
+                // A fragment elsewhere stays unclassified. Under the claim root a file that
+                // declares no module can never be named by a claim label (paths follow names),
+                // so it refuses instead of being dropped.
+                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => {
+                    if path.starts_with(claim_root_of(&anchored_root)) {
+                        refusals.push(ModuleIndexRefusal::HeaderAbsent {
+                            path: claim_source_location(path),
+                        });
+                    }
+                    continue;
+                }
+                // Typed and located, with the parser's own span; siblings continue so the report
+                // is COUNTED and complete (§5 factory model).
                 Err(refusal) => {
-                    refusals.push(refusal);
+                    refusals.push(ModuleIndexRefusal::Unparseable(refusal));
                     continue;
                 }
             };
             visit(root_idx, path, binding);
         }
     }
-    refuse_unparseable_module_sources(&refusals);
+    refusals
 }
 
-/// The refusal arm of the module-index walk: typed (each carries the parser's own
-/// `CompilerDiagnostic`), located (path + span), counted (every offender named, with a total).
-/// Replaces a `panic!` with a formatted string, which stopped the line but discarded the span
-/// and reported only the first offender.
-///
-/// RUNG, stated exactly: the PER-FILE refusal is typed and located; the AGGREGATE is retained
-/// structurally until rendering; the OPERATION-LEVEL outcome is still a process exit, NOT a
-/// typed result returned to a caller. So an in-process observer cannot witness this arm; a run
-/// receipt must come from an EXTERNAL observer until the exit moves to the command boundary.
-fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
+/// One file the module-index walk cannot bind. `rendered` is the single wording of each cause:
+/// the three non-parse causes render through `claim_source_refusal_rendered`, the Rust mirror of
+/// `gunbc.target_invocation` `ClaimSourceRefusalCause`; a parse failure keeps its own located
+/// rendering as the `Unparseable` payload.
+pub(crate) enum ModuleIndexRefusal {
+    Unparseable(ModuleBindingRefusal),
+    HeaderAbsent { path: String },
+    Unreadable { path: String, reason: String },
+    RootUnreadable { path: String, reason: String },
+    DirectoryNamedDag { path: String },
+    ModuleCollision { path: String, other: String },
+}
+
+impl ModuleIndexRefusal {
+    pub(crate) fn rendered(&self) -> String {
+        match self {
+            Self::Unparseable(r) => claim_source_refusal_rendered(
+                &r.source_path,
+                &ClaimSourceRefusalCause::Unparseable {
+                    diagnostic: r.rendered(),
+                },
+            ),
+            Self::HeaderAbsent { path } => {
+                claim_source_refusal_rendered(path, &ClaimSourceRefusalCause::ModuleHeaderAbsent)
+            }
+            Self::Unreadable { path, reason } => claim_source_refusal_rendered(
+                path,
+                &ClaimSourceRefusalCause::Unreadable {
+                    reason: reason.clone(),
+                },
+            ),
+            Self::DirectoryNamedDag { path } => {
+                claim_source_refusal_rendered(path, &ClaimSourceRefusalCause::DirectoryNamedDag)
+            }
+            Self::ModuleCollision { path, other } => claim_source_refusal_rendered(
+                path,
+                &ClaimSourceRefusalCause::ModuleCollision {
+                    other: other.clone(),
+                },
+            ),
+            Self::RootUnreadable { path, reason } => claim_source_refusal_rendered(
+                path,
+                &ClaimSourceRefusalCause::RootUnreadable {
+                    reason: reason.clone(),
+                },
+            ),
+        }
+    }
+}
+
+/// The exit arm for the INFALLIBLE index consumers (floor, `claim_batch`, `claim_executor`,
+/// census, compile): a refusal set stops the line with exit 1, counted and located, exactly as the
+/// unparseable arm always did; the header-less and unreadable causes join it. The exit class is
+/// those consumers' standing contract and is not changed here. A caller that answers "what did
+/// this observe" (`gunbc test`) takes the typed set from `try_with_module_path_index` instead.
+fn refuse_module_index(refusals: &[ModuleIndexRefusal]) {
     if refusals.is_empty() {
         return;
     }
-    eprintln!(
-        "module index refused: {} unparseable .dag source(s)",
-        refusals.len()
-    );
-    for refusal in refusals {
-        eprintln!("  {}", refusal.rendered());
+    // The unparseable header and line keep the exact wording this exit has always printed
+    // (the failure-mode ledger and the replacement-migration plan cite it); the other causes
+    // follow under their own counted header.
+    let unparseable: Vec<&ModuleBindingRefusal> = refusals
+        .iter()
+        .filter_map(|r| match r {
+            ModuleIndexRefusal::Unparseable(u) => Some(u),
+            _ => None,
+        })
+        .collect();
+    if !unparseable.is_empty() {
+        eprintln!(
+            "module index refused: {} unparseable .dag source(s)",
+            unparseable.len()
+        );
+        for refusal in &unparseable {
+            eprintln!("  {}", refusal.rendered());
+        }
+    }
+    let others: Vec<&ModuleIndexRefusal> = refusals
+        .iter()
+        .filter(|r| !matches!(r, ModuleIndexRefusal::Unparseable(_)))
+        .collect();
+    if !others.is_empty() {
+        eprintln!(
+            "module index refused: {} unreadable or module-less claim-root .dag source(s)",
+            others.len()
+        );
+        for refusal in others {
+            eprintln!("  {}", refusal.rendered());
+        }
     }
     std::process::exit(1);
 }
@@ -3954,6 +4081,24 @@ pub(crate) fn resolve_virtual_source_with_imports(
     Ok(sources)
 }
 
+/// The rendered `(expected, got)` pair of a census group, projected from the host fold.
+/// The pair-bearing population is closed by construction:
+/// `compile_clean_diagnostic_rendered_pair` is a TOTAL match over `CompilerDiagnostic` (the
+/// same shape and home as `compile_clean_diagnostic_histogram_key` / the fold already consults),
+/// so a class outside its pair arms yields `None` (the model's `Absent`) — never a pair-shaped
+/// stand-in for "the pair was equal": an equal pair is `Uniform` with `expected == got`
+/// (DESIGN §5, fail-open). `Uniform` is the group's single rendered pair; `Varied` counts the
+/// distinct pairs the group folded (`distinct_pair_count > 1`; a count below two never reaches
+/// this arm — the fold only opens `Varied` once a second distinct pair exists, so it is
+/// unreachable by construction rather than refused). The pair TEXT is the producer
+/// node_type_shape's output (authority src/v1/04_types.dag) as already carried by the diagnostic
+/// — a witness names the producer, it never transcribes its output (§6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RenderedPair {
+    Uniform { expected: String, got: String },
+    Varied { distinct_pair_count: i64 },
+}
+
 /// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`
 /// key and how many times the compile produced it. `diagnostic_class` and `subject_name` are
 /// exactly the two halves of [`compile_clean_diagnostic_histogram_key`], whose total match over
@@ -3965,6 +4110,9 @@ pub struct CompileDiagnosticCensusRow {
     pub subject_name: String,
     pub blocking: bool,
     pub count: i64,
+    /// The rendered pair the group folded to; `None` (model `Absent`) exactly when the
+    /// diagnostic class carries none (the extractor's total match decides).
+    pub rendered_pair: Option<RenderedPair>,
 }
 
 /// Result of [`compile_dag_diagnostic_census`]. `NotRunnable` is a distinct arm rather than an
@@ -4304,25 +4452,50 @@ fn multi_module_fixture_source_digest(sources: &[MultiModuleFixtureSource], entr
 fn compile_diagnostic_census_rows(
     diagnostics: &im::Vector<Rc<ErrorNode>>,
 ) -> Vec<CompileDiagnosticCensusRow> {
+    // Per-group distinct rendered pairs, first-seen order preserved. Whether a group carries a
+    // pair at all is a property of the diagnostic CLASS (the extractor's total match), so one
+    // group is never mixed: pairless and pair-carrying observations cannot share a key.
     let mut order: Vec<(String, String, bool)> = Vec::new();
     let mut counts: HashMap<(String, String, bool), i64> = HashMap::new();
+    let mut pairs: HashMap<(String, String, bool), Vec<(String, String)>> = HashMap::new();
     for d in diagnostics.iter() {
         let (class, name) = compile_clean_diagnostic_histogram_key(d);
         let blocking = compile_clean_diagnostic_is_hard(d);
         let key = (class, name, blocking);
         let entry = counts.entry(key.clone()).or_insert(0);
         if *entry == 0 {
-            order.push(key);
+            order.push(key.clone());
         }
         *entry += 1;
+        if let Some(pair) = compile_clean_diagnostic_rendered_pair(d) {
+            let seen = pairs.entry(key).or_default();
+            if !seen.contains(&pair) {
+                seen.push(pair);
+            }
+        }
     }
     order
         .into_iter()
-        .map(|key| CompileDiagnosticCensusRow {
-            diagnostic_class: key.0.clone(),
-            subject_name: key.1.clone(),
-            blocking: key.2,
-            count: counts.get(&key).copied().unwrap_or(0),
+        .map(|key| {
+            let rendered_pair = match pairs.get(&key) {
+                None => None,
+                Some(seen) => match seen.as_slice() {
+                    [only] => Some(RenderedPair::Uniform {
+                        expected: only.0.clone(),
+                        got: only.1.clone(),
+                    }),
+                    many => Some(RenderedPair::Varied {
+                        distinct_pair_count: many.len() as i64,
+                    }),
+                },
+            };
+            CompileDiagnosticCensusRow {
+                diagnostic_class: key.0.clone(),
+                subject_name: key.1.clone(),
+                blocking: key.2,
+                count: counts.get(&key).copied().unwrap_or(0),
+                rendered_pair,
+            }
         })
         .collect()
 }
@@ -4336,7 +4509,7 @@ pub struct DeclaredImportClosureBindingObserved {
     pub blocking_hard_diagnostic_count: i64,
 }
 
-/// Result of [`observe_declared_import_closure_symbol_binding`]. `NotRunnable` is distinct from
+/// Result of [`declared_import_closure_binding_observation_from_resolved`]. `NotRunnable` is distinct from
 /// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclaredImportClosureBindingObservation {
@@ -4374,40 +4547,6 @@ const CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS: &[(&str, &str)] = &[
     ),
     ("src/v2/std/grounding.dag", "v2.std.verdict.VerdictTally"),
 ];
-
-/// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
-/// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
-/// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
-///
-/// MEASUREMENT ONLY — binding-source classification (`ListedImport` vs `PoolCoincidence`) is
-/// carried as data for Class B (#6985) controls; callers judge acceptance.
-pub fn observe_declared_import_closure_symbol_binding(
-    pool_roots: &[String],
-    entry_path: &str,
-    consumer_module: &str,
-    symbol: &str,
-) -> DeclaredImportClosureBindingObservation {
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compile_declared_import_closure_only_with_pool(pool_roots, entry_path, None)
-    }));
-    let resolved = match compiled {
-        Ok(Ok(r)) => r,
-        Ok(Err(cause)) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(cause);
-        }
-        Err(_) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(
-                "observe_declared_import_closure_symbol_binding: compile panicked before producing a graph"
-                    .to_string(),
-            );
-        }
-    };
-    declared_import_closure_binding_observation_from_resolved(
-        resolved.as_ref(),
-        consumer_module,
-        symbol,
-    )
-}
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
@@ -5153,7 +5292,7 @@ fn load_compile_clean_entry_sources(
     let mut entry_files = Vec::new();
     if first_root.is_dir() {
         let mut dag_paths = Vec::new();
-        collect_dag_files(first_root, &mut dag_paths);
+        collect_dag_files_result(first_root, &mut dag_paths)?;
         for source in dag_paths {
             let path = source.path();
             let rel = workspace_relative_repo_path(&path.to_string_lossy());
@@ -5164,7 +5303,7 @@ fn load_compile_clean_entry_sources(
             }
             let content = source
                 .read()
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             entry_files.push((path.to_string_lossy().to_string(), content));
         }
     }
@@ -5621,7 +5760,7 @@ fn dag_module_index(
             return Err(format!("source root does not exist: {}", root.display()));
         }
         let mut dag_paths = Vec::new();
-        collect_dag_files(root, &mut dag_paths);
+        collect_dag_files_result(root, &mut dag_paths)?;
         for source in dag_paths {
             let content = source
                 .read()
@@ -8953,7 +9092,7 @@ mod closure_edge_demand_tests {
                 .is_some_and(|f| f.contains("bypassed")),
             "no producer run recorded must fail as a bypass"
         );
-        let index = process_shared_index(&bad_roots);
+        let index = process_shared_index_or_refuse(&bad_roots);
         assert!(load_sources_for_entry_with_pool(
             &index,
             &bad.0.join("clean.dag").to_string_lossy()
@@ -11784,7 +11923,7 @@ pub struct MultiEntryIndex {
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    new_multi_entry_index_shell(build_module_index(source_roots), source_roots)
+    new_multi_entry_index_shell(build_module_index_or_refuse(source_roots), source_roots)
 }
 
 /// Primary-precedence `MultiEntryIndex` — the index shape the compile-clean gate
@@ -11798,7 +11937,7 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     #[cfg(test)]
     yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence(source_roots),
+        build_module_index_primary_precedence_or_refuse(source_roots),
         source_roots,
     )
 }
@@ -12481,7 +12620,10 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v2".to_string(),
         "src/v1".to_string(),
     ];
-    new_multi_entry_index_shell(build_module_index_primary_precedence(&roots), &roots)
+    new_multi_entry_index_shell(
+        build_module_index_primary_precedence_or_refuse(&roots),
+        &roots,
+    )
 }
 
 /// Per-entry stage attribution for the one-lump `resolve_nanos` (run-stability
@@ -16352,7 +16494,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let t2a = std::time::Instant::now();
-    let index = build_module_index(&dag_roots);
+    let index = build_module_index_or_refuse(&dag_roots);
     eprintln!(
         "[floor-phase] phase=module-index state=completed wall_ms={} modules={}",
         t2a.elapsed().as_millis(),
@@ -18108,7 +18250,7 @@ pub fn handle_serve(
         );
         std::process::exit(1);
     }
-    let index = process_shared_index(&source_roots);
+    let index = process_shared_index_or_refuse(&source_roots);
     let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
         Ok(sources) => sources,
         Err(msg) => {
@@ -21634,6 +21776,56 @@ pub struct ClaimRouteMember {
     pub cpu_ms: u128,
 }
 
+/// `<root>/test/claim`: the claim route's universe, where module `test.claim.x` is stored.
+fn claim_root_of(anchored_root: &str) -> PathBuf {
+    Path::new(anchored_root).join("test").join("claim")
+}
+
+/// Repo-relative where the path sits under the workspace root, so the refusal is located and
+/// host-independent (the module index keys sources the same way).
+fn claim_source_location(path: &Path) -> String {
+    path.strip_prefix(workspace_root())
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// `gunbc.target_invocation` `ClaimSourceRefusalCause`, mirrored arm for arm. Hand-written beside
+/// the carrier like `target_invocation_host`; `tests/claim_route_unreadable_source.rs` pins the
+/// rendered text of every arm against the same literals the `.dag` witness
+/// `a_claim_source_refusal_names_the_file_and_its_cause` pins, so either side drifting reds one.
+pub enum ClaimSourceRefusalCause {
+    Unparseable { diagnostic: String },
+    ModuleHeaderAbsent,
+    Unreadable { reason: String },
+    RootUnreadable { reason: String },
+    DirectoryNamedDag,
+    ModuleCollision { other: String },
+}
+
+/// `gunbc.target_invocation` `claim_source_refusal_rendered`, mirrored.
+pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause) -> String {
+    let tail = match cause {
+        ClaimSourceRefusalCause::Unparseable { diagnostic } => {
+            format!(": the file does not parse: {diagnostic}")
+        }
+        ClaimSourceRefusalCause::ModuleHeaderAbsent => ": a .dag under the claim root declares no \
+             module, so no claim label can name it (paths follow names)"
+            .to_string(),
+        ClaimSourceRefusalCause::Unreadable { reason } => format!(": unreadable: {reason}"),
+        ClaimSourceRefusalCause::DirectoryNamedDag => {
+            ": a directory named like a .dag source; a source path is a file".to_string()
+        }
+        ClaimSourceRefusalCause::RootUnreadable { reason } => {
+            format!(": unreadable source root: {reason}")
+        }
+        ClaimSourceRefusalCause::ModuleCollision { other } => format!(
+            ": declares a module also declared by {other}; one module, one authority (DESIGN section 3), so de-fork or rename one side"
+        ),
+    };
+    format!("claim source refused: {path}{tail}")
+}
+
 /// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
 /// reach, then the floor's claim evaluation over the claims it selects.
 ///
@@ -21655,7 +21847,21 @@ pub fn run_claim_route(
     module_selected: &dyn Fn(&str) -> bool,
     claim_selected: &dyn Fn(&str, &str) -> bool,
 ) -> Result<Vec<ClaimRouteMember>, String> {
-    let index = process_shared_index(source_roots);
+    // The ONE module-index walk, taken fallibly: an unreadable source is no observation, not a
+    // wrong label and not a failed claim. The walk fills the shared path-index cache on success,
+    // so the resolves below read it instead of walking again.
+    if let Err(refusals) = entry_resolve::try_with_module_path_index(source_roots) {
+        return Err(format!(
+            "{} unreadable claim source(s) — no observation:\n  {}",
+            refusals.len(),
+            refusals
+                .iter()
+                .map(ModuleIndexRefusal::rendered)
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        ));
+    }
+    let index = entry_resolve::try_process_shared_index(source_roots)?;
     let mut selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> = index
         .source_files
         .iter()
@@ -27450,7 +27656,7 @@ fn schedule_witness_pairs_from_value(
 
 fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
     let roots = witness_layer_roots();
-    let index = process_shared_index(&roots);
+    let index = process_shared_index_or_refuse(&roots);
     let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
     let ctx = make_eval_context(
         &graph,
@@ -30253,20 +30459,18 @@ mod module_path_index_tests {
             root_a.to_string_lossy().into_owned(),
             root_b.to_string_lossy().into_owned(),
         ];
-        // RED control: same module declared in two files refuses loudly.
-        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index(&roots)
-        }))
-        .is_err();
+        // RED control: same module declared in two files refuses with a located Err.
+        let refusal = super::try_build_module_index(&roots);
         // GREEN control: distinct modules build fine.
         std::fs::write(root_b.join("m.dag"), "module collision.other\n").unwrap();
-        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index(&roots)
-        }))
-        .is_ok();
+        let built = super::try_build_module_index(&roots);
         std::fs::remove_dir_all(&dir).ok();
-        assert!(refused, "collision must refuse loudly, not shadow silently");
-        assert!(built, "distinct modules must still index");
+        let cause = refusal.expect_err("collision must refuse loudly, not shadow silently");
+        assert!(
+            cause.contains("collision.example"),
+            "refusal must name the module: {cause}"
+        );
+        assert!(built.is_ok(), "distinct modules must still index");
     }
 
     #[test]
@@ -30283,16 +30487,11 @@ mod module_path_index_tests {
         // copy is skipped and the source file indexes alone (the CI regression:
         // target/func_env_semantic_baseline_corpus tripped the collision wall).
         std::fs::write(root.join("Cargo.toml"), "[package]\n").unwrap();
-        let indexed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index(&roots)
-        }));
+        let indexed = super::try_build_module_index(&roots);
         // RED control: without Cargo.toml the same layout is two source files
         // declaring one module — the wall must still refuse.
         std::fs::remove_file(root.join("Cargo.toml")).unwrap();
-        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index(&roots)
-        }))
-        .is_err();
+        let refused = super::try_build_module_index(&roots);
         std::fs::remove_dir_all(&dir).ok();
         let index = indexed.expect("cargo target output must be excluded, not collide");
         assert!(
@@ -30300,7 +30499,7 @@ mod module_path_index_tests {
             "the source-tree declaration must still index"
         );
         assert!(
-            refused,
+            refused.is_err(),
             "a plain (non-cargo) target dir is source like any other — collision must refuse"
         );
     }
@@ -32092,7 +32291,7 @@ fn serialize_untagged_variant(
 #[cfg(test)]
 mod import_closure_equivalence_tests {
     use super::{
-        build_module_graph_facts_live, build_module_index, build_multi_entry_index,
+        build_module_graph_facts_live, build_module_index_or_refuse, build_multi_entry_index,
         closure_subject_for_entry, default_source_roots, import_closure_live_paths,
         load_sources_for_entry_with_index, module_graph_facts_build_count_for_test,
         reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
@@ -32159,7 +32358,7 @@ mod import_closure_equivalence_tests {
     }
 
     fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
-        let index = build_module_index(pool_roots);
+        let index = build_module_index_or_refuse(pool_roots);
         let facts = super::build_module_graph_facts_live(pool_roots);
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
     }
@@ -33681,7 +33880,7 @@ pub struct SourceCorpusRead {
 }
 
 pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
-    let index = build_module_index(source_roots);
+    let index = build_module_index_or_refuse(source_roots);
     let inventory = floor_source_inventory(&index);
     SourceCorpusRead { index, inventory }
 }
