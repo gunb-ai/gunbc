@@ -11,8 +11,9 @@ module gunbc.host.physical_machine_binding
 // the physical unit:
 //   axis 1  physical identity  = UnitKey + current MachineIntakeSubject
 //                                (gunbc.machine_intake.subject)
-//   axis 2  fleet binding      = HostEnrollmentIntent?
-//                                (gunbc.fleet.fleet_enrollment; Absent before enrollment is valid)
+//   axis 2  fleet binding      = PhysicalMachineFleetAxis? (the HostEnrollmentIntent and the
+//                                allocation standing it sealed with; gunbc.fleet.fleet_enrollment;
+//                                Absent before enrollment is valid)
 //   axis 3  control standing   = BmcControlStanding?
 //                                (gunbc.host.bmc_control_binding; the secured route keyed by
 //                                controller endpoint + unit, never by host label)
@@ -37,13 +38,16 @@ import gunbc.machine_intake.subject {
   UnitKeyRefusalCause,
   MachineIntakeSubject,
   compare_qualification_subject,
+  SubjectCurrent,
   SubjectStale,
 }
+import gunbc.guarantee_stall { NextRungTrigger }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
 import gunbc.fleet.fleet_host_backing {
   HostUnitResolved,
   HostUnitRefused,
   HostUnitNotOwned,
+  HostUnitUnobserved,
   resolve_host_unit,
 }
 import gunbc.host.bmc_control_binding { BmcControlStanding, BmcControlBound }
@@ -53,18 +57,41 @@ type PhysicalMachineBinding sole_constructor {
   // axis 1: the physical unit + the CURRENT intake subject (the subject an effect must match).
   unit_key: UnitKey
   subject: MachineIntakeSubject
-  // axis 2: the fleet enrollment for this host, when present. Absent is a valid sealed state for
-  // an unenrolled machine (arrival, mtcollins1/mtjade1) -- RED3.
-  fleet: HostEnrollmentIntent?
+  // axis 2: the fleet enrollment for this host AND what its allocation check established, when
+  // enrolled. Absent has ONE meaning: the machine is unenrolled (arrival, mtcollins1/mtjade1) --
+  // RED3 -- so there is no allocation to check. An enrolled axis cannot be written without its
+  // allocation standing, and an allocation standing cannot be written without an enrollment.
+  fleet: PhysicalMachineFleetAxis?
   // axis 3: the control standing, when observed. Its presence needs no HostIdentity, and a
   // refusal-stance standing (NotSecured, AccessUnobserved, EndpointMismatch) is a HONEST observation
   // distinct from Absent (no observation taken) -- per dag_absence_is_one_meaning.
   control: BmcControlStanding?
 }
 
+// AXIS 2 AS ONE FACT: the enrollment and the allocation standing it sealed with travel together, so
+// "enrolled" never reads as "allocation checked".
+type PhysicalMachineFleetAxis {
+  enrollment: HostEnrollmentIntent
+  allocation: PhysicalMachineAllocationStanding
+}
+
+// WHAT RED2 ESTABLISHED FOR A SEALED, ENROLLED HOST. Only the two standings that seal are arms: a
+// refused, not-owned or mismatched allocation refuses the join and never reaches a binding.
+//   Verified    the allocation was read and resolved to THIS unit: RED2 ran and passed.
+//   Unobserved  no board-serial observation yet: the seal stands (the frontier is not a
+//               disagreement) and the DESIGN section 4b next-rung trigger travels inside the sealed
+//               subject, so a consumer can report "admitted, allocation unverified until this read
+//               lands" instead of mistaking the seal for a passed allocation check.
+type PhysicalMachineAllocationStanding
+  = PhysicalMachineAllocationVerified
+  | PhysicalMachineAllocationUnobserved { trigger: NextRungTrigger }
+
 // WHY THE JOIN WILL NOT SEAL. Each cause names the axis and the disagreement, so a consumer can
-// report the exact refusal rather than a bare "no binding."
-//   PhysicalMachineUnitKeyAbsent          axis 1: no board-serial observation taken; no unit at all.
+// report the exact refusal rather than a bare "no binding." NO ABSENT-UNIT CAUSE LIVES HERE, on
+// purpose: UnitKeyStanding is the closed coproduct Bound|Refused, so "no unit at all" is not a
+// fourth standing the fold could branch on -- the never-read state lives WHERE IT IS OBSERVED, as
+// the Absent of HostBacking.unit (gunbc.fleet.fleet_host_backing), and it surfaces to this fold as
+// PhysicalMachineAllocationUnobserved (the allocation frontier), not as a unit-key refusal.
 //   PhysicalMachineUnitKeyRefused         axis 1: the unit was read but bind_unit_key refused it.
 //   PhysicalMachineCurrentSubjectAbsent   axis 1: the unit is known but the subject was not observed.
 //   PhysicalMachineSubjectUnitMismatch    axis 1: the supplied subject was built for another unit.
@@ -74,8 +101,7 @@ type PhysicalMachineBinding sole_constructor {
 //   PhysicalMachineHostAllocationMismatch axis 2: THE ALLOCATION POINTS AT ANOTHER UNIT (RED2).
 //   PhysicalMachineControlSubjectMismatch axis 3: the bound control route secured another unit's credential.
 type PhysicalMachineRefusalCause
-  = PhysicalMachineUnitKeyAbsent
-  | PhysicalMachineUnitKeyRefused { cause: UnitKeyRefusalCause }
+  = PhysicalMachineUnitKeyRefused { cause: UnitKeyRefusalCause }
   | PhysicalMachineCurrentSubjectAbsent
   | PhysicalMachineSubjectUnitMismatch { physical_unit: UnitKey, subject_unit: UnitKey }
   | PhysicalMachineHostEnrollmentMismatch { supplied_host: HostIdentity, enrollment_host: HostIdentity }
@@ -127,10 +153,10 @@ fn physical_machine_fleet(
   control: BmcControlStanding?,
 ) -> PhysicalMachineAdmission {
   match fleet {
-    Absent => physical_machine_axis3(unit: unit, subject: subject, fleet: fleet, control: control)
+    Absent => physical_machine_axis3(unit: unit, subject: subject, fleet: Absent, control: control)
     Present { value: enrollment } =>
       match (host_identity_eq(a: host, b: enrollment.host)) {
-        true => physical_machine_allocation(unit: unit, subject: subject, fleet: fleet, control: control, enrollment: enrollment)
+        true => physical_machine_allocation(unit: unit, subject: subject, control: control, enrollment: enrollment)
         false =>
           PhysicalMachineRefused {
             cause: PhysicalMachineHostEnrollmentMismatch { supplied_host: host, enrollment_host: enrollment.host }
@@ -144,18 +170,35 @@ fn physical_machine_fleet(
 fn physical_machine_allocation(
   unit: UnitKey,
   subject: MachineIntakeSubject,
-  fleet: HostEnrollmentIntent?,
   control: BmcControlStanding?,
   enrollment: HostEnrollmentIntent,
 ) -> PhysicalMachineAdmission {
   match resolve_host_unit(backing: enrollment.backing) {
     HostUnitNotOwned => PhysicalMachineRefused { cause: PhysicalMachineHostAllocationNotOwned }
     HostUnitRefused { cause } => PhysicalMachineRefused { cause: PhysicalMachineHostAllocationRefused { cause } }
-    HostUnitUnobserved { read_obligation: _ } =>
-      physical_machine_axis3(unit: unit, subject: subject, fleet: fleet, control: control)
+    HostUnitUnobserved { trigger } =>
+      physical_machine_axis3(
+        unit: unit,
+        subject: subject,
+        fleet: Present {
+          value: PhysicalMachineFleetAxis {
+            enrollment,
+            allocation: PhysicalMachineAllocationUnobserved { trigger },
+          }
+        },
+        control: control,
+      )
     HostUnitResolved { unit: allocated } =>
       match (allocated == unit) {
-        true => physical_machine_axis3(unit: unit, subject: subject, fleet: fleet, control: control)
+        true =>
+          physical_machine_axis3(
+            unit: unit,
+            subject: subject,
+            fleet: Present {
+              value: PhysicalMachineFleetAxis { enrollment, allocation: PhysicalMachineAllocationVerified }
+            },
+            control: control,
+          )
         false =>
           PhysicalMachineRefused {
             cause: PhysicalMachineHostAllocationMismatch { physical_unit: unit, allocated_unit: allocated }
@@ -171,13 +214,18 @@ fn physical_machine_allocation(
 fn physical_machine_axis3(
   unit: UnitKey,
   subject: MachineIntakeSubject,
-  fleet: HostEnrollmentIntent?,
+  fleet: PhysicalMachineFleetAxis?,
   control: BmcControlStanding?,
 ) -> PhysicalMachineAdmission {
   match control {
     Absent =>
       PhysicalMachineAdmitted {
-        binding: PhysicalMachineBinding { unit_key: unit, subject, fleet, control: Absent }
+        binding: PhysicalMachineBinding {
+          unit_key: unit,
+          subject,
+          fleet,
+          control: Absent,
+        }
       }
     Present { value: BmcControlBound { route } } =>
       match (route.binding.unit == unit) {
@@ -200,7 +248,12 @@ fn physical_machine_axis3(
       }
     Present { value: standing } =>
       PhysicalMachineAdmitted {
-        binding: PhysicalMachineBinding { unit_key: unit, subject, fleet, control: Present { value: standing } }
+        binding: PhysicalMachineBinding {
+          unit_key: unit,
+          subject,
+          fleet,
+          control: Present { value: standing },
+        }
       }
   }
 }

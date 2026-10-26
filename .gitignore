@@ -211,6 +211,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/shell-emission-model.md
 /docs/plans/construction-justification-rule.md
 /docs/plans/srv1-deploy-principal-split.md
+/docs/plans/flex-supplier-generalization.md
 /docs/plans/interpreter-kernel-d.md
 /docs/plans/inert-layer-lens.md
 /docs/plans/solve-higher-order-design.md
@@ -241,3 +242,5 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/gunb-ai-projection-inventory.md
 /docs/plans/p4-home-serving-power-semantics.md
 /docs/plans/ntfy-deployment-gate-approval.md
+/docs/plans/fabric-serving-router.md
+/docs/plans/network-install-architecture-rows.md

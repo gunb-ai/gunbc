@@ -24,8 +24,8 @@ import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable
 // The phone signs in with Google once. In the same step it creates its Secure-Enclave decision key
 // and its App Attest key, and one POST registers both under the verified Google identity. There is
 // no code, no second step, and no state the phone must recover: the POST is idempotent, so an
-// unanswered POST is resent, and a failed sign-in is "sign in again". The plan carrier is
-// gunbc.plans.approval_google_enrolment; this module is the authority for what admits an enrolment.
+// unanswered POST is resent, and a failed sign-in is "sign in again". This module is the authority
+// for what admits an enrolment.
 //
 // THREE SEALED STAGES, each consuming the carrier only the stage before it mints, so no caller can
 // reach an enrolment write with facts it assembled itself:

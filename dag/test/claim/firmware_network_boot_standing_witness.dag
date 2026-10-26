@@ -63,6 +63,13 @@ import gunbc.firmware_network_boot_standing {
   BiosVersionRefused,
   BiosVersionUnobserved,
   AttemptConstructed,
+  AdmissibleRouteSelection,
+  Executable,
+  AllRefused,
+  NoAdmissibleRows,
+  select_admissible,
+  admissible_readiness_for,
+  redirect_target,
   AttemptDhcpStanding,
   NetworkBootAttemptConstruction,
   DhcpOfferObserved,
@@ -2342,6 +2349,25 @@ test fn the_probe_is_refused_once_at_the_target_key() -> Bool {
   }
 }
 
+// RESTORED DRIFT GUARD (#14634 guard, standalone after the census migration deleted its host
+// test with #14578/#14805 -- the carrier string verdict_probe_hdr survived but NOTHING asserted
+// it until now; re-measurement at main head showed the pin-flip mutation running green).
+// TEXTUAL DRIFT GUARD on the relocated symbol's import line, not a proof of provenance. It pins
+// the exact module-and-symbol substring so a typo, a deletion, or a retarget to a module that
+// never declares the name reddens this test -- the drift modes a census cannot see at all.
+// It CANNOT establish WHERE SecureBootUnobserved resolves: string_contains is a substring check;
+// a header carrying the pinned text only inside a comment plus a real import from a look-alike
+// module still satisfies it. That residual limit is tracked as the typed frontier
+// firmware_network_boot_probe_resolution_frontier, not claimed closed here. A plain DELETION of
+// the import name is also caught at resolution by every probe source that uses SecureBootUnobserved;
+// the retarget to a look-alike declaring the same name is the mode only this guard reddens.
+test fn the_probe_header_pins_the_secure_boot_leaf_import_line() -> Bool {
+  string_contains(
+    s: verdict_probe_hdr,
+    pattern: "import gunbc.secure_boot_observation { SecureBootUnobserved }",
+  )
+}
+
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> ProcessExit {
   census_verdict_all(verdicts: [
     census_verdict(
@@ -3650,4 +3676,58 @@ test fn probe_resolution_frontier_is_open_not_secretly_satisfiable() -> Bool {
       present_decls: [decl_ref(module_path: "gunbc.secure_boot_observation", decl_name: "SecureBootObservation")],
     )
     == DissolutionUnbound
+}
+
+// THE SELECTION IS A SUM, so the pair-of-Optionals state "neither an executable row nor a refusal" has
+// no constructor. Positive controls: each arm is constructed by the real fold over a supplied sweep and
+// consumed by a match that names the other two.
+test fn an_empty_sweep_selects_no_admissible_rows() -> Bool {
+  match select_admissible(readiness: []) {
+    NoAdmissibleRows => true
+    Executable { route: _ } => false
+    AllRefused { first: _ } => false
+  }
+}
+
+test fn a_bound_slot_selects_the_executable_row() -> Bool {
+  match select_admissible(readiness: admissible_readiness_for(
+    blocker: NetworkBootOptionNotSelected,
+    redirect_to: redirect_target(join: fixture_join(), available: fixture_available()),
+    existence: fixture_existence_enabled(),
+    observed_bios_version: present(version: "1.08"),
+  )) {
+    Executable { route: _ } => true
+    AllRefused { first: _ } => false
+    NoAdmissibleRows => false
+  }
+}
+
+test fn an_unread_unit_selects_the_first_refusal() -> Bool {
+  match select_admissible(readiness: admissible_readiness_for(
+    blocker: NoInterfaceCarriesPxe,
+    redirect_to: redirect_target(join: fixture_join(), available: fixture_available()),
+    existence: fixture_existence_enabled(),
+    observed_bios_version: Absent,
+  )) {
+    AllRefused { first: _ } => true
+    Executable { route: _ } => false
+    NoAdmissibleRows => false
+  }
+}
+
+// THE RED: the old disagree shape written as fixture source. `Executable` carries one field, `route`,
+// so the old pair's field names are refused at the constructor;
+// the three positive tests above are the lawful constructions of each arm.
+data old_selection_shape_source: String = "module probe_old_selection\nimport std.optional { Absent }\nimport gunbc.firmware_network_boot_standing { AdmissibleRouteSelection, Executable }\nfn old_shape() -> AdmissibleRouteSelection {\n  Executable { executable: Absent, first_refusal: Absent }\n}\n"
+
+test fn the_old_disagree_shape_is_refused_by_the_compiler() -> Bool {
+  match census_rows_for(source: old_selection_shape_source) {
+    Absent => false
+    Present { value: probe } => census_count_at_key(
+      rows: probe.rows,
+      diagnostic_class: "FieldNotFound",
+      subject_name: "executable",
+      blocking: true,
+    ) >= 1
+  }
 }

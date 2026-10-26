@@ -1,6 +1,32 @@
 module v2.test.claim.loop_infer_iteration
 
-import v2.std.node { NotADeclaration }
+import std.logic { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.witness { Holds, Violates }
+import v2.compiler.infer {
+  infer_branch_type_atoms_equal,
+  inferred_facts_resolved_type,
+  inferred_facts_witness_for_node,
+  InferredTree
+}
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  core_edge_label,
+  Edge,
+  Loop,
+  LoopBoundEdge,
+  Node,
+  NotADeclaration,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

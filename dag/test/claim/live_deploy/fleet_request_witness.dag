@@ -118,6 +118,10 @@ fn desired_for(m: ConvergedMember) -> MemberIdentity {
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_bin()
     OidcConfigFile => desired_bin()
+    // WORKER-ROOT-EQUIVALENT-3: dedicated-worker members, never in this witness's release roster --
+    // total-and-unreached, like the DirectoryRoot/OidcConfigFile rows it sits beside.
+    GitWorkerSubtree { path: _, child: _ } => desired_bin()
+    RepositorySharedPosture { path: _ } => desired_bin()
   }
 }
 
@@ -130,6 +134,8 @@ fn desired_for_unit(unit: NonEmptyStr, m: ConvergedMember) -> MemberIdentity {
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_bin()
     OidcConfigFile => desired_bin()
+    GitWorkerSubtree { path: _, child: _ } => desired_bin()
+    RepositorySharedPosture { path: _ } => desired_bin()
   }
 }
 

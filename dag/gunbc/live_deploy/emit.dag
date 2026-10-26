@@ -24,7 +24,6 @@ import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_ro
 import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
-import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
@@ -310,7 +309,7 @@ import gunbc.membership_reconcile {
 }
 import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv, shell_command_text_of_stmts }
 import gunbc.live_deploy.operations {
-  deploy_stage_dir_var, deploy_cap_stage_dir_var, deploy_stage_dirs_exit_trap_command, install_directory_owned_command,
+  install_directory_owned_command,
 }
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
@@ -1228,6 +1227,12 @@ fn step_renders_its_own_member_commands(step: DeploymentStep) -> Bool {
     Absent => false
     Present { value: member } => match member {
       DirectoryRoot { path: _ } => false
+      // WORKER-ROOT-EQUIVALENT-3: the two git-subtree members are NOT DeploymentSteps -- they ride the
+      // roster and emit their own apply through the typed group in gunbc.live_deploy.apply_legs
+      // (deploy_apply_git_worker_subtree_plan), so a step never carries them. False here is
+      // total-and-unreached, not a behaviour.
+      GitWorkerSubtree { path: _, child: _ } => false
+      RepositorySharedPosture { path: _ } => false
       TreePublication => true
       Executable => true
       UnitFile => true
@@ -1422,7 +1427,8 @@ fn path_parent_dir(path: String) -> String {
 // THE 0755 IS A SHARED CONSTANT, NOT A DERIVED FACT, and every member still on it inherits it
 // regardless of what that member's readers and writers actually need. That is why
 // /opt/gunbc/attempt-state converges world-readable while the per-attempt directories the belt
-// creates under it are 0700 (attempt_state_prepare_argv_for_instance) — the leaf states its
+// creates under it are owner-only, or group-traversable for a dedicated worker account
+// (attempt_state_prepare_argvs_for_instance) — the leaf states its
 // requirement, the root cannot, so the root is loose by default rather than by decision. Ownership
 // is already derived (-o/-g project the service user from the spec, install_d_owned_command); the
 // mode is the one field on the triple still hand-picked.

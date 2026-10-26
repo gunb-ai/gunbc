@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_belt_actuate_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_attempt_state_path_for_instance, dispatch_worktree_path_for_instance }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
@@ -88,16 +89,7 @@ import gunbc.worker_lifecycle {
   worker_observation_without_provider_probe,
   worker_observation_without_provider_probe_for_process,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_tmux_session_name,
-  HostExecArgv,
-  host_exec_argv,
-  DispatchLiveSession,
-  CodexDispatchProvider,
-  dispatch_provider_instance_for_kind,
-  filter_dispatch_tmux_sessions,
-  dispatch_worker_attempt_identity,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_tmux_session_name, HostExecArgv, host_exec_argv, DispatchLiveSession, dispatch_provider_instance_for_kind, filter_dispatch_tmux_sessions, dispatch_worker_attempt_identity }
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
@@ -132,7 +124,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed,
   BeltTeardownOutcome, ReapedSession, TeardownFailed,
   belt_actuate_spawn_member,
-  belt_actuate_teardown_member,
+  belt_actuate_teardown_member_for_instance,
   BeltObserve, BeltSessionsObserved, ObserveRefused,
   belt_observe_from_result,
   belt_spawn_session_uuid,
@@ -195,8 +187,8 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltTickResult,
   BeltTickWholesale, TickPassesRun, TickPassesWithheld,
   belt_dispatch_node_staged_over,
-  srv1_live_dashboard_instance,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts, ContinuationTurnKnown, ContinuationEscalate,
@@ -292,7 +284,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_addressing }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, dispatch_worktree_path_for_instance, dispatch_attempt_state_path_for_instance, DispatchSpawnReady, DispatchSpawnRefused }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, DispatchSpawnReady, DispatchSpawnRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
@@ -493,7 +485,7 @@ test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
 
 test fn witness_spawn_member_refuses_observed_shape() -> Bool {
   let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
-  is_spawn_failed(o: belt_actuate_spawn_member(m: m, workdir: "/", launch: launch_identity_exemplar()))
+  is_spawn_failed(o: belt_actuate_spawn_member(instance: srv1_live_dashboard_instance(), m: m, workdir: "/", launch: launch_identity_exemplar()))
 }
 
 // review 5059520727 finding 4: the admitted identity SURVIVES an actuation failure -- the failed
@@ -502,7 +494,7 @@ test fn witness_spawn_member_refuses_observed_shape() -> Bool {
 test fn witness_identity_survives_actuation_failure() -> Bool {
   let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
   let id = launch_identity_exemplar()
-  match belt_actuate_spawn_member(m: m, workdir: "/", launch: id) {
+  match belt_actuate_spawn_member(instance: srv1_live_dashboard_instance(), m: m, workdir: "/", launch: id) {
     SpawnFailed { node_id: _, step, detail: _, provider: _, launch } =>
       step == "member-shape"
         && launch.node_id == id.node_id
@@ -517,7 +509,7 @@ test fn witness_identity_survives_actuation_failure() -> Bool {
 
 test fn witness_teardown_member_refuses_desired_shape() -> Bool {
   let m = DesiredMember { node_id: "a", node: ready_node(id: "a") }
-  is_teardown_failed(o: belt_actuate_teardown_member(m: m))
+  is_teardown_failed(o: belt_actuate_teardown_member_for_instance(instance: srv1_live_dashboard_instance(), m: m))
 }
 
 fn observe_live_count(o: BeltObserve) -> Int {
@@ -3507,7 +3499,7 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
               pattern: join(["\0", dispatch_worktree_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
             )
             && string_contains(
-              s: join(commands.attempt_state_prepare.args, separator: "\0"),
+              s: join(fold(commands.attempt_state_prepare, init: [], f: (acc, a) => concat(acc, a.args)), separator: "\0"),
               pattern: join(["\0", dispatch_attempt_state_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
             )
       }

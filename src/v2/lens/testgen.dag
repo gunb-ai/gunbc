@@ -45,7 +45,7 @@ import v2.std.diagnostic {
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.find_witness { PreservationPredicate, verify_witness }
 import v2.std.nat { NatAlgebraLawObligation, nat_declared_algebra_law_obligations }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Edge,
   Node,
@@ -785,7 +785,7 @@ fn testgen_emit_algebra_law_claim(
   rhs: Node,
   classification: TestClassification
 ) -> Outcome<TestClaim> {
-  if lhs == rhs {
+  if node_same_occurrence(a: lhs, b: rhs) {
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {

@@ -8,6 +8,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.auth.jwt { JwtCompactSerialization }
+import extdeps.languages.json.emit { serialize_json_string }
+import std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "datatracker.ietf.org/doc/html/rfc7515" }
@@ -17,6 +19,10 @@ data jwa_rs256_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "datatracker.ietf.org/doc/html/rfc7518#section-3.3" }
 }
 
+data jwa_es256_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "datatracker.ietf.org/doc/html/rfc7518#section-3.4" }
+}
+
 // THIS MODULE IS THE SHAPE OF A COMPACT JWS AND NOTHING ELSE. It produces the JWS Signing Input
 // (RFC 7515 section 5.1 step 5: BASE64URL(UTF8(protected header)) '.' BASE64URL(payload)) and joins
 // a signature the CALLER obtained onto it (section 7.1). It does not sign: the signature is a
@@ -24,10 +30,27 @@ data jwa_rs256_citation: ExternalAuthority = ExternalAuthority {
 // transport bound to this shape, never a fact about JWS (DESIGN §3). extdeps.auth.jwt describes
 // claims and does not verify them; this module is the other direction and does not verify either.
 //
-// ONE ALGORITHM, RS256, because one is what this fleet signs with. RFC 7518 registers many;
-// modeling ones no realization produces would be vocabulary with no consumer (DESIGN §3c). When a
-// second signer lands, this row becomes an algorithm coproduct and the functions take it.
-data jws_rs256_alg: NonEmptyStr = "RS256"
+// TWO ALGORITHMS, BECAUSE TWO SIGNERS EXIST. RS256 signs the fleet's GitHub App JWTs; ES256 signs
+// the APNs provider token (extdeps.apple.apns apns_provider_token_suite). RFC 7518 registers many
+// more; modeling ones no realization produces would be vocabulary with no consumer (DESIGN §3c), so
+// a third algorithm is a third arm when its signer lands.
+type JwsAlgorithm
+  = JwsRs256
+  | JwsEs256
+
+fn jws_algorithm_wire(a: JwsAlgorithm) -> NonEmptyStr {
+  match a {
+    JwsRs256 => "RS256" as NonEmptyStr
+    JwsEs256 => "ES256" as NonEmptyStr
+  }
+}
+
+// RFC 7518 section 3.4: ES256 is ECDSA over P-256 with SHA-256, and its JWS Signature is
+// R || S, "each a 32-octet sequence", NOT the DER ECDSA-Sig-Value most signers print. The width is
+// JWA's own statement, so it lives here; a signer that prints DER converts to it before the join.
+// (extdeps.crypto.signature's EcdsaP256Sha256 is the same suite on the verifying side; it is not
+// imported because its closure carries the P-256 arithmetic, which no signer here runs.)
+data jws_es256_coordinate_octets: Int = 32
 
 // BASE64URL IS RFC 7515 section 2's: the URL-safe alphabet of RFC 4648 section 5 WITH ALL TRAILING
 // '=' OMITTED. std.encoding pads, so the padding is cut here rather than a second encoder written.
@@ -67,16 +90,26 @@ fn jws_base64url_text(s: String) -> JwsEncodeOutcome {
   }
 }
 
-fn jws_rs256_protected_header_json() -> String {
-  join(["\{\"alg\":\"", jws_rs256_alg as String, "\",\"typ\":\"JWT\"}"], "")
+// THE PROTECTED HEADER: alg, then kid when the verifier selects its key by one (RFC 7515 section
+// 4.1.4; APNs reads its auth key's id there), then typ JWT. Without a kid the bytes are exactly
+// {"alg":"RS256","typ":"JWT"} as before, which the GitHub App mint and the CI mint steps print.
+fn jws_protected_header_json(alg: JwsAlgorithm, kid: NonEmptyStr?) -> String {
+  join([
+    "\{\"alg\":\"", jws_algorithm_wire(a: alg) as String, "\",",
+    match kid {
+      Absent => ""
+      Present { value: k } => join(["\"kid\":", serialize_json_string(s: k as String), ","], "")
+    },
+    "\"typ\":\"JWT\"}",
+  ], "")
 }
 
 // THE SIGNING INPUT CARRIES THE BOUNDARY'S REFUSAL RATHER THAN SWALLOWING IT. Both segments are
 // base64url of text, so either can surface the octet refusal, and the first one observed is the
 // one reported. JwsEncodeOutcome is reused rather than a third refusal vocabulary being minted:
 // this is the same fact -- a member that is not an octet -- at the same shape, a text segment.
-fn jws_rs256_signing_input(payload_json: String) -> JwsEncodeOutcome {
-  match jws_base64url_text(s: jws_rs256_protected_header_json()) {
+fn jws_signing_input(alg: JwsAlgorithm, kid: NonEmptyStr?, payload_json: String) -> JwsEncodeOutcome {
+  match jws_base64url_text(s: jws_protected_header_json(alg: alg, kid: kid)) {
     JwsEncodeNotOctets { observed: o } => JwsEncodeNotOctets { observed: o }
     JwsEncoded { text: header } =>
       match jws_base64url_text(s: payload_json) {
@@ -144,10 +177,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.auth.jws",
-      decl_name: "jws_rs256_signing_input",
+      decl_name: "jws_signing_input",
       field: WholeDeclaration
     }
   },
   first_citation: extdeps.auth.jws.extdeps_external_authority_anchor,
-  further_citations: [extdeps.auth.jws.jwa_rs256_citation]
+  further_citations: [extdeps.auth.jws.jwa_rs256_citation, extdeps.auth.jws.jwa_es256_citation]
 }

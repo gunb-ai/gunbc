@@ -11,7 +11,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, core_edge, NotADeclaration }
+import v2.std.node { node_same_occurrence, Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, core_edge, NotADeclaration }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, KindInhabitance, TypeApplicationArityMismatch, TypeApplicationConforms, TypeApplicationKindNotInhabited, type_application_conformance, type_binder_set_children }
 import std.types { List, Map }
 import v2.compiler.body_lowering_fold { body_lower_rename_fresh_type_variables }
@@ -195,8 +195,8 @@ fn tak_pair_binders_label_sorted() -> Node {
 
 // The supplied judgment: an argument inhabits a kind exactly when it is that kind's one variant.
 fn tak_pair_judge(argument: Node, kind: Node) -> KindInhabitance {
-  let expected = if kind == tak_atom(id: ^ZKind) { tak_atom(id: ^Zk) } else { tak_atom(id: ^Ak) }
-  if argument == expected { ArgumentInhabitsKind } else { ArgumentOutsideKind }
+  let expected = if node_same_occurrence(a: kind, b: tak_atom(id: ^ZKind)) { tak_atom(id: ^Zk) } else { tak_atom(id: ^Ak) }
+  if node_same_occurrence(a: argument, b: expected) { ArgumentInhabitsKind } else { ArgumentOutsideKind }
 }
 
 

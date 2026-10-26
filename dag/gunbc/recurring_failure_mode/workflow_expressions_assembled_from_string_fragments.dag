@@ -1,0 +1,54 @@
+module gunbc.recurring_failure_mode.workflow_expressions_assembled_from_string_fragments
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// WORKFLOW EXPRESSIONS BUILT FROM STRING FRAGMENTS, NOT THE TYPED TEMPLATE MODEL.
+// GitHub Actions expression syntax — the dollar-brace interpolation medium — has ONE carrier,
+// extdeps.github.expressions: ExpressionTemplate over LiteralText/Interpolation segments,
+// spelled back to text only by serialize_template (and interpolate for single expressions).
+// gunbc.instruments.instrument_dispatch_workflow and gunbc.heal_workflow reach the medium only
+// through that carrier (gunbc#14613; review 85263). OTHER workflow models still embed the medium
+// directly in string literals: whole values (a kv carrying a bare context read) and fragments
+// joined around it ("${{ ", some_name, " }}" style), so the model text now contains an untyped
+// spelling alongside the thing the typed model exists to own (§3), and the witnesses of those
+// models must assert fixed medium text instead of segment structure (§5's second representation).
+//
+// THE POPULATION IS ENUMERATED BY AN EXECUTED SEARCH, AND BY NOTHING ELSE (§6 — no figure is
+// written here, because any figure rots the moment a site is converted):
+//   grep -rlE '"[^"]*\$\{\{' dag/ --include=*.dag | grep -v dag/test/claim | grep -v extdeps/github/expressions
+// lists every model file that embeds the medium in a string literal, outside the witness claims
+// dir and outside the carrier itself. Owner: Charter 4 (Charter 4 triage 2026-10-24, warm-wolf-570
+// routing of review 85263's REQUEST_CHANGES point; the sites this PR owns were fixed directly
+// rather than filed).
+//
+// ONE NUANCE THE MECHANICAL CENSUS MUST NOT LOSE: some hits are PAYLOADS, not expressions —
+// compiler_gate_contract_stamp builds adversarial contract subjects (an argv row containing the
+// medium plus a secret reference) precisely to test that fragment syntax gets refused, and a few
+// sites use the medium text as a string_contains PATTERN to detect it. Those are legitimate uses
+// of the medium as DATA; the class is the medium as a COMPOSED VALUE. The future census named in
+// the trigger must distinguish payload from composition (or exempt declared payload rows), or it
+// will refuse its own test fixtures. That distinction is recorded here so the climb is designed
+// with it, not discovered by a broken gate.
+
+data workflow_expressions_assembled_from_string_fragments: RecurringFailureMode = RecurringFailureMode {
+  identity: "workflow_expressions_assembled_from_string_fragments" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "every workflow model's expressions serialize through serialize_template — each site converted to ExpressionTemplate/interpolate, and a census that refuses the interpolation medium inside a model string literal outside the carrier (payload rows declared, so contract-stamp fixtures keep their adversarial text)" } },
+
+  receipts: [
+    "THE CLASS: a workflow model embeds the GitHub interpolation medium in a string literal — either a whole value (an environment kv whose text is a bare context read) or fragments joined around it — instead of building an Expression/ExpressionTemplate and letting extdeps.github.expressions spell the medium. The typed carrier already exists and is already the only route in gunbc.instruments.instrument_dispatch_workflow and gunbc.heal_workflow; those converted models are the proof the conversion is mechanical, not the boundary.",
+
+    "THE POPULATION (re-derive, never transcribe): grep -rlE with the medium as a quoted-adjacent pattern over dag/ --include=*.dag, excluding dag/test/claim and extdeps/github/expressions, is the ONLY producer of this class's membership — the row writes no figure, because any figure written here would have been stale the same day it was written (sites converted in gunbc#14613). The list concentrates in the fleet models (fleet_converge_workflow carries the bulk, including a format/fromJSON runner selection) with the remainder in the runner, heal_publisher, emitted_subject_build_gate, and compiler_gate_stamp/witness_floor models.",
+
+    "WHAT IT COSTS WHILE OPEN: the emitted YAML is still byte-checked by the regen fixed point, so drift is refused loudly rather than silently — but the model no longer says what the expression MEANS: a group key or context read is invisible to anything that reads the model, and witnesses of those models pin fixed medium text (a second representation of a fact the typed model already carries, §5). Every conversion done so far replaced a joined fragment with an Interpolation over ContextAccess — a mechanical shape, no judgement calls — which is what puts the class at mechanically-preventable rather than harder.",
+
+    "THE PAYLOAD NUANCE: hitting the medium inside a string literal is necessary but not sufficient for the class. compiler_gate_contract_stamp appends a contract row containing the medium and a secret reference specifically as an adversarial subject, and other models test FOR medium text with string_contains; there the medium is data under test, not a composed value. A census that refuses all hits would refuse its own fixtures — the climb must exempt declared payload rows, and this row names that so the gate is built knowing it.",
+
+    "THE CEILING: structurally impossible once every workflow model's expressions serialize through serialize_template — with the medium absent from model string literals (payloads excepted by declaration), composing a value in the untyped medium stops being expressible in the model language at all. Unbuilt: the per-file conversion of the enumerated population plus the refusing census. LOW PRIORITY on the merge path (Charter 4, 2026-10-24): the affected workflows' YAML is fixed-pointed today, so this is a fidelity/erosion class, not an active breakage — recorded per the review so the debt is a counted row instead of a commit-message list.",
+  ],
+
+  evidence: [],
+}

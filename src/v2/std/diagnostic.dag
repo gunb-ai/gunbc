@@ -3,7 +3,7 @@ module v2.std.diagnostic
 import std.types { List }
 import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.node { Node, Symbol, symbol_lexeme }
+import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, Node, Symbol, symbol_lexeme }
 
 type Extent
   = WholeFile
@@ -177,7 +177,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
     }
     NodeLocus { anchor: na } => match b {
       Textual { file: _, extent: _ } => false
-      NodeLocus { anchor: nb } => na.at == nb.at
+      NodeLocus { anchor: nb } => node_same_occurrence(a: na.at, b: nb.at)
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: _ } => false
@@ -209,7 +209,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
 fn correction_eq(a: Correction, b: Correction) -> Bool {
   match a {
     Suggested { node: na } => match b {
-      Suggested { node: nb } => na == nb
+      Suggested { node: nb } => node_equal_ignoring_provenance(a: na, b: nb)
       Unavailable { reason: _ } => false
     }
     Unavailable { reason: ra } => match b {
@@ -316,7 +316,7 @@ fn diagnostics_has_reason(d: Diagnostics, reason: Symbol) -> Bool {
 fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
   match a {
     Accepted { value: av, diagnostics: ad } => match b {
-      Accepted { value: bv, diagnostics: bd } => (av == bv) && diagnostics_eq(a: ad, b: bd)
+      Accepted { value: bv, diagnostics: bd } => node_equal_ignoring_provenance(a: av, b: bv) && diagnostics_eq(a: ad, b: bd)
       Rejected { diagnostics: _ } => false
     }
     Rejected { diagnostics: ar } => match b {
