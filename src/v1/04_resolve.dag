@@ -1459,19 +1459,13 @@ fn node_with_declaration(n: Node, declaration: DeclarationRef) -> Node {
 // v1.tests.claim.carrier_realization_census reads: declaration fields, signature parameter types,
 // the return, the type arguments beneath them, and an arrow's parameter and return positions.
 fn binder_marked_type(n: Node, owner: DeclarationRef, binders: List<String>, source_indices: Map<String, NewlineIndex>) -> Node {
-  // A field's Resolved copy carries a span whose text is not the type's name (field_type_expr_is_stripped_placeholder), so its
-  // name is the node's own `name`; without it the copy a record literal substitutes through stays unmarked.
-  // This is lexical resolution (the step that CREATES the binder identity), not identity-by-spelling across
-  // scopes: `binders` is only this declaration's own header parameters, so the fallback never matches a
-  // binder of another declaration. Follow-up: produce the Resolved copy from the marked child (PR body).
   let authored = authored_name_at(source_indices: source_indices, node: n)
-  let name = if binders |> any(b => b == authored) { authored } else { n.name }
   let is_binder_reference = n.declaration == none
     && n.children |> count == 0
     && n.params |> count == 0
-    && binders |> any(b => b == name)
+    && binders |> any(b => b == authored)
   if is_binder_reference {
-    node_with_declaration(n: n, declaration: decl_type_parameter_ref(module_path: owner.module_path as String, decl_name: owner.decl_name as String, parameter: name))
+    node_with_declaration(n: n, declaration: decl_type_parameter_ref(module_path: owner.module_path as String, decl_name: owner.decl_name as String, parameter: authored))
   } else {
     let is_arrow = match n.connective { Arrow => true  _ => false }
     let children = map(n.children, c => binder_marked_type(n: c, owner: owner, binders: binders, source_indices: source_indices))
@@ -1502,9 +1496,26 @@ fn binder_marked_param(param: Node, owner: DeclarationRef, binders: List<String>
 }
 
 // A field of a product carries its type reference in `inferred`; a coproduct variant carries fields.
+// THE FIELD'S RESOLVED COPY IS RE-REALIZED FROM ITS MARKED FIRST CHILD: the child is marked first and
+// the copy re-mints from it, so the identity flows derivation-first and the walk never names a binder
+// by spelling (a span-stripped copy's own text is not a type name; the deleted n.name fallback
+// papered over that downstream link). A placeholder first child (no authored text, no children, no
+// params) carries no type at all - the copy IS the type there - so it is marked through the copy.
 fn binder_marked_member(member: Node, owner: DeclarationRef, binders: List<String>, source_indices: Map<String, NewlineIndex>) -> Node {
   if member.inferred != none {
-    node_with_children_params_inferred(n: member, children: member.children, params: member.params, inferred: binder_marked_inferred(inferred: member.inferred, owner: owner, binders: binders, source_indices: source_indices))
+    let te = field_node_type_expr(n: member)
+    let marked_child = binder_marked_type(n: te, owner: owner, binders: binders, source_indices: source_indices)
+    let marked_children = if te.children |> count == 0 && te.params |> count == 0 && member.children |> count > 0 {
+      member.children
+    } else {
+      concat([marked_child], member.children |> skip(1))
+    }
+    let marked_inferred = if field_type_expr_is_stripped_placeholder(te: te, source_indices: source_indices) {
+      binder_marked_inferred(inferred: member.inferred, owner: owner, binders: binders, source_indices: source_indices)
+    } else {
+      Present { value: Resolved { node: marked_child } }
+    }
+    node_with_children_params_inferred(n: member, children: marked_children, params: member.params, inferred: marked_inferred)
   } else {
     node_with_children_params_inferred(n: member, children: map(member.children, f => binder_marked_member(member: f, owner: owner, binders: binders, source_indices: source_indices)), params: member.params, inferred: member.inferred)
   }
