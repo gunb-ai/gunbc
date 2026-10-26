@@ -172,15 +172,6 @@ pub fn primitive_data_decl_type_facts() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
-pub fn primitive_type_declarer_qualified_names() -> Rc<PrimitiveIdentity> {
-    thread_local! {
-        static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("type_declarer_qualified_names".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
-}
-
 pub fn primitive_concept_decl_facts() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -335,6 +326,15 @@ pub fn primitive_chars() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_sha256_hex_of_text() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("sha256_hex_of_text".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_machine_word_native_operate() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -390,12 +390,6 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_data_decl_type_facts(),
             "v2.std.decl_index".to_string(),
             "data_decl_type_facts".to_string(),
-            Rc::new(ProjectionFidelity::HostRealizedSeam),
-        ),
-        primitive_projection_row(
-            primitive_type_declarer_qualified_names(),
-            "v2.std.decl_index".to_string(),
-            "type_declarer_qualified_names".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
@@ -495,6 +489,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_sha256_hex_of_text(),
+            "std.content_hash".to_string(),
+            "sha256_hex_of_text".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_machine_word_native_operate(),
             "std.machine_word".to_string(),
             "machine_word_native_operate".to_string(),
@@ -548,7 +548,7 @@ pub fn primitive_projection_row_for_declaration(
 ) -> Option<Rc<PrimitiveProjection>> {
     primitive_projection_roster().iter().cloned().fold(
         std::option::Option::None,
-        |acc: Option<Rc<PrimitiveProjection>>, row: Rc<PrimitiveProjection>| match acc.clone() {
+        |acc: _, row: Rc<PrimitiveProjection>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if crate::std_decl_ref::declaration_ref_eq(

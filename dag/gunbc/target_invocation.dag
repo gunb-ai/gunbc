@@ -110,6 +110,35 @@ fn test_operand_set_form_refusal_rendered(operand: String) -> String {
   )
 }
 
+// A CLAIM-ROOT SOURCE THE ROUTE CANNOT READ IS NO OBSERVATION, AND ITS CAUSE IS NOT A TYPO'S.
+//
+// `gunbc test //test/claim/x:c` selects a claim by the module name a file declares, and paths follow
+// names (DESIGN section 3). A file whose declaration cannot be read therefore cannot be selected, and
+// reporting that as "the pattern selected no discovered claim" makes a broken admitted file read like
+// a misspelled label. All six causes terminate `InvocationSubjectUnreached` (exit 2, never 1: no claim
+// ran), each LOCATED at the file and each distinct from an unknown label.
+type ClaimSourceRefusalCause
+  = ClaimSourceUnparseable { diagnostic: String }
+  | ClaimSourceModuleHeaderAbsent
+  | ClaimSourceUnreadable { reason: String }
+  | ClaimSourceRootUnreadable { reason: String }
+  | ClaimSourceDirectoryNamedDag
+  | ClaimSourceModuleCollision { other: String }
+
+fn claim_source_refusal_rendered(path: String, cause: ClaimSourceRefusalCause) -> String {
+  concat(
+    concat("claim source refused: ", path),
+    match cause {
+      ClaimSourceUnparseable { diagnostic: d } => concat(": the file does not parse: ", d)
+      ClaimSourceModuleHeaderAbsent => ": a .dag under the claim root declares no module, so no claim label can name it (paths follow names)"
+      ClaimSourceUnreadable { reason: r } => concat(": unreadable: ", r)
+      ClaimSourceDirectoryNamedDag => ": a directory named like a .dag source; a source path is a file"
+      ClaimSourceRootUnreadable { reason: r } => concat(": unreadable source root: ", r)
+      ClaimSourceModuleCollision { other: o } => concat(concat(": declares a module also declared by ", o), "; one module, one authority (DESIGN section 3), so de-fork or rename one side")
+    }
+  )
+}
+
 // THE CLAIM ROUTE'S MEMBER VERDICTS, AND THE FOLD THAT MAKES THEM THE OPERAND'S TERMINATION.
 //
 // One verdict per selected claim. `ClaimDidNotHold` is an OBSERVATION -- the claim evaluated and

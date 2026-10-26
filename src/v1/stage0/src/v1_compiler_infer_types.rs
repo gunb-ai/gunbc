@@ -230,9 +230,8 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
     Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
         .iter()
         .cloned()
-        .fold(
-            std::option::Option::None,
-            |acc: Option<String>, k: String| match acc.clone() {
+        .fold(std::option::Option::None, |acc: _, k: String| {
+            match acc.clone() {
                 Some(_) => acc.clone(),
                 std::option::Option::None => {
                     match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
@@ -246,8 +245,8 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
                         std::option::Option::None => std::option::Option::None,
                     }
                 }
-            },
-        )
+            }
+        })
 }
 
 pub fn container_kind_canonical(name: String) -> String {
@@ -2171,25 +2170,27 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        let has_structure = (n.connective.clone() != Connective::NoConnective);
-        let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
-            && has_structure.clone())
-        {
-            n.children.clone().first().cloned()
-        } else {
-            std::option::Option::None
-        };
-        match unwrapped.clone() {
-            Some(base) => {
-                let __tco_0 = base.clone();
-                __tco_loop_n = __tco_0;
-                continue;
-            }
-            std::option::Option::None => {
-                break n;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            let has_structure = (n.connective.clone() != Connective::NoConnective);
+            let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
+                && has_structure.clone())
+            {
+                n.children.clone().first().cloned()
+            } else {
+                std::option::Option::None
+            };
+            match unwrapped.clone() {
+                Some(base) => {
+                    let __tco_0 = base.clone();
+                    __tco_loop_n = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break n;
+                }
             }
         }
     }
@@ -2477,29 +2478,31 @@ pub fn declaration_carried_through_resolution(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_hops: i64,
 ) -> Option<Rc<DeclarationRef>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut hops = __tco_loop_hops;
-        match whole_declaration_carried(n.clone()) {
-            Some(d) => {
-                break Some(d.clone());
-            }
-            std::option::Option::None => {
-                if (hops.clone() <= 0) {
-                    break std::option::Option::None;
-                } else {
-                    match n.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => {
-                            let __tco_0 = r.clone();
-                            let __tco_1 = v1_rt::int_sub(hops, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_hops = __tco_1;
-                            continue;
-                        }
-                        _ => {
-                            break std::option::Option::None;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut hops = __tco_loop_hops;
+            match whole_declaration_carried(n.clone()) {
+                Some(d) => {
+                    break Some(d.clone());
+                }
+                std::option::Option::None => {
+                    if (hops.clone() <= 0) {
+                        break std::option::Option::None;
+                    } else {
+                        match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: r, .. }) => {
+                                let __tco_0 = r.clone();
+                                let __tco_1 = v1_rt::int_sub(hops, 1);
+                                __tco_loop_n = __tco_0;
+                                __tco_loop_hops = __tco_1;
+                                continue;
+                            }
+                            _ => {
+                                break std::option::Option::None;
+                            }
                         }
                     }
                 }
@@ -3077,23 +3080,6 @@ pub fn applied_argument_declared_agrees(
     }
 }
 
-pub fn join_operand_element_is_unit(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        if node_is_element_collection(n.clone(), source_indices) {
-            match n.children.clone().first().cloned() {
-                Some(ch) => is_unit_like(child_type_node(ch.clone())),
-                std::option::Option::None => false,
-            }
-        } else {
-            (is_optional.clone() && is_unit_like(n.clone()))
-        }
-    }
-}
-
 pub fn prefer_specific_type(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -3102,9 +3088,28 @@ pub fn prefer_specific_type(
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
         let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_first_child = left.children.clone().first().cloned();
         let left_norm_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
-        let left_is_unit_inner = join_operand_element_is_unit(left.clone(), source_indices.clone());
+        let left_is_unit_inner = if left_is_container.clone() {
+            match left_first_child.clone() {
+                Some(ch) => {
+                    let el = child_type_node(ch.clone());
+                    let el_is_unit = is_unit_like(el);
+                    el_is_unit.clone()
+                }
+                std::option::Option::None => false,
+            }
+        } else {
+            if left_is_optional.clone() {
+                {
+                    let left_is_unit = is_unit_like(left.clone());
+                    left_is_unit.clone()
+                }
+            } else {
+                false
+            }
+        };
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
         let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
         let same_kind = if (left_is_container.clone() && right_is_container.clone()) {
@@ -3702,37 +3707,39 @@ pub fn first_matching_algebra_field(
     mut __tco_loop_candidates: Rc<Vec<AlgebraFieldKind>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut candidates = __tco_loop_candidates;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        match candidates.clone().first().cloned() {
-            std::option::Option::None => {
-                break std::option::Option::None;
-            }
-            Some(kind) => {
-                match crate::v1_std_core::find_child_named(
-                    n.clone(),
-                    algebra_field_kind_name(kind.clone()),
-                    source_indices.clone(),
-                ) {
-                    Some(f) => {
-                        break Some(Rc::new(AlgebraFieldMatch {
-                            field_kind: kind.clone(),
-                            field_node: f.clone(),
-                        }));
-                    }
-                    std::option::Option::None => {
-                        let __tco_0 = n;
-                        let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
-                        let __tco_2 = source_indices;
-                        __tco_loop_n = __tco_0;
-                        __tco_loop_candidates = __tco_1;
-                        __tco_loop_source_indices = __tco_2;
-                        continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut candidates = __tco_loop_candidates;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            match candidates.clone().first().cloned() {
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+                Some(kind) => {
+                    match crate::v1_std_core::find_child_named(
+                        n.clone(),
+                        algebra_field_kind_name(kind.clone()),
+                        source_indices.clone(),
+                    ) {
+                        Some(f) => {
+                            break Some(Rc::new(AlgebraFieldMatch {
+                                field_kind: kind.clone(),
+                                field_node: f.clone(),
+                            }));
+                        }
+                        std::option::Option::None => {
+                            let __tco_0 = n;
+                            let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
+                            let __tco_2 = source_indices;
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_candidates = __tco_1;
+                            __tco_loop_source_indices = __tco_2;
+                            continue;
+                        }
                     }
                 }
             }
