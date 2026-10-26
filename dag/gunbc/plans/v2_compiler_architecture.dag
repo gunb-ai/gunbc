@@ -93,7 +93,7 @@ fn v2_compiler_architecture_body() -> List<MarkdownBlock> {
     h2(text: "7. The ruling to add to DESIGN.md"),
     p(text: "DESIGN.md is a projection of `gunbc.design_document` and is never hand-edited, so this is a row for that authority in its own change, stated here so the lane that lands it has the text. It carries only the compact ruling and links to this document; the mechanism stays here."),
     quote(blocks: [
-      p(text: "**Compiler completion.** An authored program may omit any fact the compiler can derive uniquely and lawfully from its modeled structure and authorities. The compiler completes those facts and exposes only what it cannot determine as typed residuals carrying provenance and an addressee. Supplying a derivable fact is a second authority unless declared as a policy departure. Libraries may expose residuals; runnable programs must close them. Lenses compare the authored, completed, realized, observed and evidenced forms and refuse unmodeled divergence. The architecture: docs/plans/v2-compiler-architecture.md."),
+      p(text: "**Compiler completion.** An authored program may omit any fact the compiler can derive uniquely and lawfully from its modeled structure and authorities. The compiler completes those facts and exposes only what it cannot determine as typed residuals carrying provenance and an addressee. Supplying a derivable fact is a second authority unless declared as a policy departure. Libraries may expose residuals; runnable programs must close them. Lenses compare the authored, completed, realized, observed and evidenced forms and refuse unmodeled divergence. The architecture: `gunbc.plans.v2_compiler_architecture`."),
     ]),
 
     h2(text: "8. Open decisions"),
