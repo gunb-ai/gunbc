@@ -1,0 +1,58 @@
+module test.claim.supermicro_oem_fan_witness
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.measure { percent, percent_count }
+import extdeps.bmc.supermicro_oem_fan {
+  SupermicroFanMode,
+  supermicro_fan_mode_answer,
+  supermicro_fan_mode_name,
+  supermicro_zone_duty_answer,
+  supermicro_duty_argument
+}
+
+// CAPTURED, NOT AUTHORED: stdout of `ipmitool raw 0x30 0x45 0x00` and `ipmitool raw 0x30 0x70 0x66
+// 0x00 <zone>` on the H11 A16 host (BMC firmware 1.52, H11SSL-i/c/nc), read in band 2026-10-26 by the
+// session that holds the host. They are the shapes the operations in extdeps.bmc.supermicro_oem_fan
+// return on the real path.
+data h11_get_fan_mode_capture: String = " 01\n"
+data h11_get_zone0_duty_capture: String = " 1d\n"
+data h11_get_zone1_duty_capture: String = " 64\n"
+
+fn duty_of(stdout: String) -> Int {
+  match supermicro_zone_duty_answer(stdout: stdout) {
+    Present { value } => percent_count(value) as Int
+    Absent => -1
+  }
+}
+
+test fn the_captured_answers_parse() -> Bool {
+  match supermicro_fan_mode_answer(stdout: h11_get_fan_mode_capture) {
+    Absent => false
+    Present { value: m } => m.code == 1 && match supermicro_fan_mode_name(mode: m) { Present { value: n } => (n as String) == "Full"  Absent => false }
+  }
+    && duty_of(stdout: h11_get_zone0_duty_capture) == 29
+    && duty_of(stdout: h11_get_zone1_duty_capture) == 100
+}
+
+// Two bytes, a non-hex byte, an empty answer and a duty above 100 are each no reading; an unnamed
+// code is a mode with no name, not a refused one.
+test fn malformed_answers_are_no_reading() -> Bool {
+  match supermicro_fan_mode_answer(stdout: " 01 02") { Absent => true  Present { value: _ } => false }
+    && match supermicro_fan_mode_answer(stdout: " zz") { Absent => true  Present { value: _ } => false }
+    && match supermicro_fan_mode_answer(stdout: "") { Absent => true  Present { value: _ } => false }
+    && duty_of(stdout: " 65") == -1
+    && match supermicro_fan_mode_answer(stdout: " 03") {
+      Absent => false
+      Present { value: m } => match supermicro_fan_mode_name(mode: m) { Absent => true  Present { value: _ } => false }
+    }
+}
+
+// The set argument round-trips through the get parse: what is written is what a readback reads.
+test fn the_duty_argument_is_the_byte_a_readback_reads() -> Bool {
+  match supermicro_duty_argument(duty: percent(count: 29)) {
+    Absent => false
+    Present { value: a } => (a as String) == "0x1d" && duty_of(stdout: concat(" ", substring(s: a as String, start: 2, end: 4))) == 29
+  }
+    && match supermicro_duty_argument(duty: percent(count: 100)) { Present { value: a } => (a as String) == "0x64"  Absent => false }
+}
