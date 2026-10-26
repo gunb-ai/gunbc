@@ -17,7 +17,7 @@ fn control_cast_through_declared_param(xs: List<NonEmptyStr>) -> List<NonEmptySt
   distinct_by_key(xs: xs, key: fn(k) { k as String })
 }
 
-data probe_point {
+type probe_point {
   name: NonEmptyStr
   weight: Int
 }
