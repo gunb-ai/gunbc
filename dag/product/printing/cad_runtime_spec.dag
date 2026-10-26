@@ -1,0 +1,89 @@
+module product.printing.cad_runtime_spec
+
+import std.types { String, NonEmptyStr, List }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.cadquery.cadquery { cadquery_distribution_name, cadquery_version, cadquery_ocp_distribution }
+import extdeps.package_managers.pip { PythonDistributionRequirement, pinned_requirement_specifier }
+import extdeps.package_managers.conda_forge { CondaPackageRequirement, conda_requirement_spec }
+import extdeps.package_managers.micromamba { MicromambaRelease, micromamba_linux_aarch64_release }
+import extdeps.opencascade.ocp { ocp_distribution_name, ocp_distribution_version, ocp_wheel_python_abi, ocp_wheel_platform_linux_aarch64 }
+
+// WHAT THE PRINT RUNTIME'S CAD INTERPRETER MUST IMPORT, AND AT WHICH VERSION. This is the one roster
+// the runtime check reads back against, and the one a CAD environment convergence will install.
+// The system libraries OCP links against are not here: on the direct Ubuntu host they are apt
+// packages (extdeps.opencascade.ocp ocp_ubuntu2404_runtime_packages, joined in
+// product.printing.runtime_dependencies runtime_packages), so naming a second provider for the same
+// SONAMEs would be two answers to one question.
+data cadquery_requirement: PythonDistributionRequirement = PythonDistributionRequirement {
+  distribution: cadquery_distribution_name,
+  version: cadquery_version,
+}
+
+data ocp_requirement: PythonDistributionRequirement = PythonDistributionRequirement {
+  distribution: ocp_distribution_name(d: cadquery_ocp_distribution),
+  version: ocp_distribution_version,
+}
+
+// The selected kernel distribution is pinned beside CadQuery, so an installed distribution of the
+// other OCP flavour cannot satisfy the roster by name alone.
+data cad_runtime_python_requirements: List<PythonDistributionRequirement> = [
+  ocp_requirement,
+  cadquery_requirement,
+]
+
+// THE INTERPRETER AND PLATFORM THE PINNED WHEELS ARE BUILT FOR. The OCP wheel is published for
+// CPython 3.11 on manylinux aarch64 (extdeps.opencascade.ocp ocp_wheel_python_abi,
+// ocp_wheel_platform_linux_aarch64), and the pinned Orca artifact is the aarch64 AppImage, so the
+// direct-host print runtime is an aarch64 runtime. Another architecture is a different spec, not a
+// tolerance of this one.
+data cad_runtime_python_tag: NonEmptyStr = ocp_wheel_python_abi
+data cad_runtime_architecture: Architecture = Aarch64
+
+// THE INTERPRETER ITSELF COMES FROM conda-forge, solved by a pinned micromamba. Python is pinned to
+// the patch release and pip to an exact version, so the environment's own installer is part of what
+// it is. Both are published for linux-aarch64 (python) and noarch (pip) on conda-forge.
+data cad_runtime_interpreter_packages: List<CondaPackageRequirement> = [
+  CondaPackageRequirement { package_name: "python", version: "3.11.9" },
+  CondaPackageRequirement { package_name: "pip", version: "25.3" },
+]
+
+// architecture is what the host must report; wheel_platform is the upstream tag that selects the
+// wheel for it. The identity text carries every input that shapes the environment: the solver
+// release, the interpreter packages, the CPython tag and wheel platform, and the pinned
+// distributions. A key missing one of them would name two different environments alike.
+type CadRuntimeSpec sole_constructor {
+  python_tag: NonEmptyStr
+  architecture: Architecture
+  wheel_platform: NonEmptyStr
+  solver: MicromambaRelease
+  interpreter_packages: List<CondaPackageRequirement>
+  requirements: List<PythonDistributionRequirement>
+}
+
+data cad_runtime_spec: CadRuntimeSpec = CadRuntimeSpec {
+  python_tag: cad_runtime_python_tag,
+  architecture: cad_runtime_architecture,
+  wheel_platform: ocp_wheel_platform_linux_aarch64,
+  solver: micromamba_linux_aarch64_release,
+  interpreter_packages: cad_runtime_interpreter_packages,
+  requirements: cad_runtime_python_requirements,
+}
+
+// THE SPEC'S CANONICAL TEXT, AND ITS DIGEST NAMES THE ENVIRONMENT. One line per fact in a fixed
+// order. An environment lives at a directory named by this digest, so changing any pin names a
+// different environment instead of mutating the one a previous preparation ran in.
+fn cad_runtime_spec_text(spec: CadRuntimeSpec) -> String {
+  join(concat(
+    concat(
+      [concat("micromamba=", spec.solver.version as String), concat("micromamba_sha256=", spec.solver.sha256 as String), concat("python_tag=", spec.python_tag as String), concat("wheel_platform=", spec.wheel_platform as String)],
+      map(spec.interpreter_packages, p => concat("conda:", conda_requirement_spec(r: p))),
+    ),
+    map(spec.requirements, r => concat("pip:", pinned_requirement_specifier(r: r))),
+  ), "\n")
+}
+
+fn cad_runtime_spec_digest(spec: CadRuntimeSpec) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: cad_runtime_spec_text(spec: spec))))
+}

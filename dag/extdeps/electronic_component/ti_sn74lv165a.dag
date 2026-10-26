@@ -1,0 +1,68 @@
+module extdeps.electronic_component.ti_sn74lv165a
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import std.measure { millivolt }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, ShiftRegisterSpec, ShiftRegisterSpecification, MillivoltRange, LogicPin,
+  ParallelInput, SerialOutput, SerialInput, ShiftLoadControl, ClockInput, ClockInhibit, LogicGround, LogicSupply,
+}
+
+// TI's SN74LV165A datasheet, SCLS402R (read 2026-10-20): "SNx4LV165A 8-Bit Parallel-Load Shift
+// Registers", recommended VCC 2 V to 5.5 V, the D, DB, DGV, NS and PW pin table, and the package option
+// addendum, which gives orderable SN74LV165APWR (TSSOP, PW, 16 pins) the part marking LV165A. The
+// part has eight parallel inputs (A to H), a serial input (SER), complementary serial outputs (QH and
+// its inverse), a shift/load control (SH/LD), a clock (CLK) and a clock inhibit (CLK INH).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/gpn/sn74lv165a"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_sn74lv165a",
+      decl_name: "sn74lv165a_pw",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data sn74lv165a_pw: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "SN74LV165APWR",
+  package: "TSSOP-16 (PW)",
+  top_marking: "LV165A",
+  specification: ShiftRegisterSpec { register: ShiftRegisterSpecification {
+    bits: 8,
+    supply: MillivoltRange { minimum: millivolt(count: 2000), maximum: millivolt(count: 5500) },
+    pins: [
+      LogicPin { number: 1, name: "SH/LD", role: ShiftLoadControl },
+      LogicPin { number: 2, name: "CLK", role: ClockInput },
+      LogicPin { number: 3, name: "E", role: ParallelInput { bit: 4 } },
+      LogicPin { number: 4, name: "F", role: ParallelInput { bit: 5 } },
+      LogicPin { number: 5, name: "G", role: ParallelInput { bit: 6 } },
+      LogicPin { number: 6, name: "H", role: ParallelInput { bit: 7 } },
+      LogicPin { number: 7, name: "QH (inverted)", role: SerialOutput { inverted: true } },
+      LogicPin { number: 8, name: "GND", role: LogicGround },
+      LogicPin { number: 9, name: "QH", role: SerialOutput { inverted: false } },
+      LogicPin { number: 10, name: "SER", role: SerialInput },
+      LogicPin { number: 11, name: "A", role: ParallelInput { bit: 0 } },
+      LogicPin { number: 12, name: "B", role: ParallelInput { bit: 1 } },
+      LogicPin { number: 13, name: "C", role: ParallelInput { bit: 2 } },
+      LogicPin { number: 14, name: "D", role: ParallelInput { bit: 3 } },
+      LogicPin { number: 15, name: "CLK INH", role: ClockInhibit },
+      LogicPin { number: 16, name: "VCC", role: LogicSupply },
+    ],
+  } },
+  vendor_application_statements: [
+    "SNx4LV165A 8-Bit Parallel-Load Shift Registers",
+    "parallel-in, serial-out: the parallel inputs are read into the register when SH/LD is low and shifted out at QH on the clock when SH/LD is high",
+  ],
+}

@@ -1,5 +1,6 @@
 module test.claim.runner.runner_service_activation_witness
 
+import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied }
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
@@ -53,11 +54,13 @@ import gunbc.runner.runner_service_activation {
   runner_transition_affected_set_identity,
   runner_host_activation_units,
 }
+import gunbc.host.host_axis_caps { derived_runner_slot_cap_members }
 import gunbc.fleet.fleet_converge_plan {
-  fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge, fleet_converge_apply_terminal_line, timer_retirement_plan, caps_reconcile, fleet_converge_desired_caps,
+  fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge, fleet_converge_apply_terminal_line, timer_retirement_plan, caps_reconcile,
 }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
+import gunbc.rung_climb { AwaitsOneGrounding, ClimbableButUnbuilt }
 import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 
@@ -174,6 +177,7 @@ fn witness_request(deploy: RunnerHostDeploy, readiness: RunnerActivationReadines
     observed_activation_readiness: readiness,
     observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
     observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+    observed_host_grants: witness_grants_rendered(host: deploy.host_label),
   }
 }
 
@@ -416,17 +420,14 @@ test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
       },
   )
   match runner_activation_reachability_stall.blocker {
-    AwaitsOneGrounding { grounding: g } =>
-      string_contains(s: g, pattern: "no host observation transaction exists")
+    AwaitsOneGrounding { grounding: _ } =>
+      string_contains(s: runner_activation_reachability_stall.next_rung_trigger.capability, pattern: "host observation transaction")
         && string_contains(s: cause, pattern: "no host observation transaction exists")
-        && string_contains(s: g, pattern: "CompilePoolInRunnerSlots")
         && !string_contains(s: cause, pattern: "CompilePoolInRunnerSlots")
-    CannotClimbFurther { why: _ } => false
     ClimbableButUnbuilt => false
   }
     && stall_is_below_ceiling(s: runner_activation_reachability_stall)
     && match runner_activation_reachability_stall.blocker {
-      CannotClimbFurther { why: _ } => false
       AwaitsOneGrounding { grounding: _ } => true
       ClimbableButUnbuilt => true
     }
@@ -447,7 +448,6 @@ test fn the_safety_row_does_not_claim_the_host_boundary_is_structural() -> Bool 
   }
     && stall_is_below_ceiling(s: runner_activation_safety_stall)
     && match runner_activation_safety_stall.blocker {
-      CannotClimbFurther { why: _ } => false
       AwaitsOneGrounding { grounding: _ } => true
       ClimbableButUnbuilt => true
     }

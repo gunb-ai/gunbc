@@ -1,4 +1,5 @@
 module v2.test.lens_common.infer_fixture
+
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
 import std.optional { optional_absent }
@@ -13,7 +14,7 @@ import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode, NotADeclaration }
 import std.optional { Present }
 import v2.std.witness { Holds, StructuralPropertyWitness, Witness, witness_from_optional }
 
@@ -214,17 +215,18 @@ fn claim_resolved_call_tree(
     root: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Authored { name: callee }, target: declaration },
+        Edge { label: Authored { name: callee }, target: declaration, declaration: NotADeclaration },
         Edge {
           label: Authored { name: ^claim_supplied_call },
           target: Node {
             kind: ComputationNode { behavior: Transform },
             children: Cons {
-              head: Edge { label: Positional, target: declaration_reference_node(qn: callee_path, occurrence_id: claim_minted(n: reference_site)) },
+              head: Edge { label: Positional, target: declaration_reference_node(qn: callee_path, occurrence_id: claim_minted(n: reference_site)), declaration: NotADeclaration },
               tail: actuals
             },
             occurrence_id: OccurrenceSynthetic
-          }
+          },
+          declaration: NotADeclaration
         }
       ],
       occurrence_id: OccurrenceSynthetic
@@ -289,8 +291,8 @@ fn claim_resolved_projection_tree(
     root: Node {
       kind: TypeNode { connective: Conj },
       children: list_append(
-        left: list_map(xs: records, f: fn(r) { Edge { label: Authored { name: claim_path_leaf(path: r.path) }, target: claim_record_declaration(r: r) } }),
-        right: [Edge { label: Authored { name: fn_name }, target: declaration }]
+        left: list_map(xs: records, f: fn(r) { Edge { label: Authored { name: claim_path_leaf(path: r.path) }, target: claim_record_declaration(r: r), declaration: NotADeclaration } }),
+        right: [Edge { label: Authored { name: fn_name }, target: declaration, declaration: NotADeclaration }]
       ),
       occurrence_id: OccurrenceSynthetic
     },

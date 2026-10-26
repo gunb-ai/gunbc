@@ -80,6 +80,7 @@ import gunbc.spark.managed_access_bootstrap {
   GrantProbeRefused,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import std.host_text { chars }
 
 // THE JOIN BETWEEN AUTHORIZATION AND EXECUTION, which is the one thing this vertical was missing.
 //
@@ -528,7 +529,7 @@ fn classify_credential_read(
     BootstrapCredentialNotMaterialized {
       cause: "the materialized credential file is empty, which is a failed materialization and never a blank password" as NonEmptyStr,
     }
-  } else if credential_carries_line_break(code_points: chars(s: content)) {
+  } else if credential_carries_line_break(code_points: chars(text: content)) {
     BootstrapCredentialNotMaterialized {
       cause: "the materialized credential carries a line break, and sudo -S reads only the first line of stdin as the password; this lane will not strip it, because the enrolled bytes are the credential and delivering a truncated one would authenticate as something other than what is enrolled" as NonEmptyStr,
     }

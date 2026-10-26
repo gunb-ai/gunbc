@@ -70,8 +70,8 @@ data unit_must_run_failclosed_note: Disposition = Terminal {
 data unit_must_run_staged_note: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.instruments.rust_stage0_gates",
-    decl_name: "per_unit_test_selector",
+    module_path: "v2.lens.module_graph",
+    decl_name: "entry_affected_by_touched_paths",
     field: WholeDeclaration
   }
 }

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fn_fragment_lowering_exceeds_the_enrolment_margin
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data fn_fragment_lowering_exceeds_the_enrolment_margin: RecurringFailureMode = RecurringFailureMode {
   identity: "fn_fragment_lowering_exceeds_the_enrolment_margin" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "STATED FRONTIER (census of ungated v2.test.claim.parse modules, gunbc#13372, phase 3; ruling valiant-swift-469, grammar program). Four claims whose subject is lowering ONE fn declaration -- v2.test.claim.parse.coproduct_leading_pipe_and_positional_payload_parse positional_payload_without_leading_pipe_with_construction_normalizes_holds, positional_pattern_binder_normalizes_holds, positional_wildcard_pattern_still_normalizes_holds and braced_pattern_binder_still_normalizes_holds -- exceed the required floor's CPU enrolment margin even at fn-fragment grain, so they are NOT gated: they stay in that module in their original whole-module form, with their single-claim fill-debt rows active (v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt), exactly as before the census.",

@@ -1,11 +1,5 @@
 module extdeps.cache.sccache
 
-import extdeps.sudo.elevation { sudo_elevate_argv }
-import extdeps.posix.shell_command_language { posix_single_quote }
-
-import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution, unbound_dissolution }
-import std.decl_ref { decl_ref }
-
 import extdeps.cache.types {
   CacheInterfaceCatalogFacts,
   NativeInternal,
@@ -14,7 +8,9 @@ import extdeps.cache.types {
   SccacheInternalEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
-import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line, sha256_digest_content_hash }
+import extdeps.crypto.hash { Digest, sha256_digest, sha256_digest_content_hash }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { uncataloged_program }
 import std.content_hash { ContentHash }
 import std.cache_interface {
   NativeInternalLookup,
@@ -166,22 +162,26 @@ data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
   linked_cache_interface: Present { value: sccache_local_id },
 }
 
-// The sccache binary install — curl the release tarball, `sha256sum -c` verify, tar,
-// mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with a pinned
-// version and per-arch sha256 — is rendered as a POSIX shell provisioning sequence
-// (medium-as-string). The SccacheBinaryRelease row remains the typed authority for
-// version and digests; only the ACTUATION is shell.
-//
-// It dissolves when host_effect_apply binds a verified-download-plus-install effect
-// (FetchAndVerify then InstallBinary) without the shell leaf, at which point
-// `sccache_install_script` is deleted rather than edited. The trigger names that
-// declaration, so the obligation is answered against the tree rather than by reading
-// this paragraph.
-data sccache_install_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_install_script")
-)
+// THE RETIREMENT OBLIGATION IS DISCHARGED, NOT CARRIED. The installer this module used to expose
+// (`sccache_install_script`) is deleted from this tree, and its trigger went with the declaration --
+// a retirement obligation whose declaration no longer exists is complete, and a trigger citing an
+// absent declaration is exactly the dead vocabulary this repository removes (same disposition as
+// `configfs_op_render_dissolution_trigger` in e52f9d20e3f). The effect the trigger named is now
+// what runs: gunbc.host.verified_binary_install performs FetchAndVerify (extdeps.tools.curl
+// `curl_download_command`, then the digest observation `sha256sum_file_command` gated by
+// `verified_binary_install_admission`) and only then InstallBinary (extdeps.tools.tar
+// `tar_extract_command`, the move and mode through extdeps.tools.gnu_coreutils /
+// extdeps.tools.chmod, elevated by extdeps.sudo.elevation's non-interactive sudo, then
+// extdeps.tools.gnu_coreutils `rm_recursive_force_command` cleanup), with the binary-presence
+// precondition kept as a `test -x` OBSERVATION (extdeps.posix.test_utility). Sccache's url, digest,
+// archive member, destination, mode and privilege are PARAMETERS supplied by
+// gunbc.host.sccache_verified_install, which composes them from the `SccacheBinaryRelease` row and
+// `sccache_installed_binary_path` below -- so this module still owns sccache's values and now owns
+// no shell text. The discharge is recorded in
+// dag/test/claim/dissolution_census_mechanism_witness.dag rather than silently dropped.
 
-// Single authority for WHERE the cited release lands on a host. sccache_install_script writes it
+// Single authority for WHERE the cited release lands on a host. The verified download-plus-install
+// effect writes it (via its `dest_path` parameter, supplied by gunbc.host.sccache_verified_install);
 // and every downstream consumer (the host-standup P1b systemd unit ExecStart, the PATH-shadow
 // read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before
 // this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with
@@ -198,34 +198,6 @@ data sccache_installed_binary_path: String = "/usr/local/bin/sccache"
 data sccache_cache_dir_env_var: NonEmptyStr = "SCCACHE_DIR" as NonEmptyStr
 data sccache_cache_size_env_var: NonEmptyStr = "SCCACHE_CACHE_SIZE" as NonEmptyStr
 data sccache_server_uds_env_var: NonEmptyStr = "SCCACHE_SERVER_UDS" as NonEmptyStr
-
-// Elevate argv before shell quoting so a missing NOPASSWD grant refuses without prompting.
-fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: Digest) -> String {
-  let dir = join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
-  let url = join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
-  join([
-    "set -e",
-    join(["curl -fsSL '", url, "' -o /tmp/sccache.tar.gz"], ""),
-    digest_shell_verify_line(digest: digest, file_path: "/tmp/sccache.tar.gz"),
-    "tar -xzf /tmp/sccache.tar.gz -C /tmp",
-    join(
-      map(
-        sudo_elevate_argv(command: ["mv", join(["/tmp/", dir, "/sccache"], ""), sccache_installed_binary_path]),
-        w => posix_single_quote(spelling: w),
-      ),
-      " ",
-    ),
-    join(
-      map(
-        sudo_elevate_argv(command: ["chmod", "+x", sccache_installed_binary_path]),
-        w => posix_single_quote(spelling: w),
-      ),
-      " ",
-    ),
-    join(["rm -rf /tmp/sccache.tar.gz '/tmp/", dir, "'"], ""),
-    "",
-  ], "\n")
-}
 
 // The release row carries per-arch digests as two named fields, so selecting one by hand is how a
 // caller pins an arch (runner_host_sccache_provision_aarch64). These two selectors make the choice
@@ -298,6 +270,32 @@ type SccacheServerSpawn
 
 data sccache_stats_query_does_not_spawn_note: String = "MEASURED CORRECTION, 2026-08-01: `--show-stats` does NOT auto-start a server, and the widely-repeated claim that 'any sccache invocation auto-starts a server, so --show-stats manufactures the evidence it reports' is FALSE for sccache 0.15.0. Two controls on srv2, each with a PRIVATE cache dir AND a private endpoint so the falsifier could not touch production: with SCCACHE_SERVER_UDS the socket did not exist before or after the call; with a private SCCACHE_SERVER_PORT the listener count was 0 before and 0 after. In both the call returned rc=0 and printed a fully-formed table of ZEROES. A third control isolated what DOES spawn: one real compile (`sccache /usr/bin/gcc -c t.c`) through the same private port took the listener count 0 -> 1, and the new server inherited the INVOKING process's cgroup (observed: the caller's own session scope). THE DEFECT IS REAL BUT DIFFERENTLY SHAPED, and the difference changes the remedy's justification rather than the remedy: --show-stats answers plausibly WITHOUT a server existing at all, so a read-back that converges on it greens over a host with no durable daemon — a fabricated plausible output (DESIGN section 5), which is exactly what srv3 exhibited on 2026-07-25 (a full stats table while the unit had been inactive six hours). The observation there was right; the inference drawn from it — that the call had created a server — was wrong. Consequence for the observer: stats is supplemental data gathered AFTER ownership is independently established, never the thing that establishes it; and the auto-spawn wall belongs on the COMPILE path, which is where a client actually creates a server in its own cgroup."
 
+// THE STATS QUERY AS ONE TYPED ARGV, for the host-effect realizer's build-cache ensure
+// (gunbc.host.build_cache_daemon_ensure), which until now could only ask the question by running the
+// five-line bash body build_cache_provision_shell_script concatenated. ONE argv, no shell: `test -x`
+// and `--show-stats` are the two commands the script's observe phase ran, and both were reachable only
+// through `$(...)` capture plus a `printf` receipt that a LATER phase grepped back out of its own
+// stdout. That middleman is what put the observation in the shell; the operations themselves never
+// needed it.
+//
+// THE FLAG'S MEANING AND ITS MEASURED BEHAVIOUR ARE DIFFERENT CLAIMS AND ARE CITED SEPARATELY. The
+// vendor doc says what the flag is for; what rc it returns and what it prints when NO SERVER EXISTS AT
+// ALL is recorded by sccache_stats_query_does_not_spawn_note (RunnerObserved, srv2 2026-08-01, 0.15.0,
+// two private-endpoint controls) and by sccache_server_process_facts.stats_query_spawns_server: false.
+// The builder deliberately does NOT encode rc semantics: a command builder that returns "success" would
+// be asserting a fact the measured note says is unreliable, and it is the CALLER's classification that
+// interprets the exit status (and, per the note, must not treat a zero here as ownership).
+fn sccache_stats_query_command(binary: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: uncataloged_program(invocation: binary),
+    arguments: [sccache_stats_query_flag as String],
+  )
+}
+
+// THE FLAG, HOISTED so the three sites that need the same spelling (this builder, the script it
+// replaces, and the witness that pins the argv) cannot drift apart by spelling it twice.
+data sccache_stats_query_flag: NonEmptyStr = "--show-stats" as NonEmptyStr
+
 type SccacheServerProcessFacts {
   spawn: SccacheServerSpawn
   idle_timeout_zero_disables_shutdown: Bool
@@ -352,20 +350,38 @@ data sccache_server_process_facts: SccacheServerProcessFacts = {
   ]
 }
 
-data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal error"
+// THE ROSTER IS NON-EMPTY BY CONSTRUCTION, AND THAT IS THE POINT OF THE TYPE. Each fragment is a
+// NON-EMPTY STRING, so an empty fragment is a COMPILE ERROR rather than a state some validator has to
+// catch at claim time: `data probe: NonEmptyStr = ""` and `List<NonEmptyStr> = ["ok", ""]` are both
+// refused by the strict compile (measured, not assumed -- and the flows this depends on were measured
+// too: a NonEmptyStr satisfies a String parameter, a String? field, a String-returning match arm, a
+// join list, and `String == NonEmptyStr`). WHY THIS MATTERS HERE: the classifier is a fold whose
+// accumulator is `Optional`, and a fragment that matched everything would make a host with nothing
+// interesting in its output read as MISCONFIGURED -- a wrong verdict, not a crash. The empty fragment
+// was the only way to write that, and it is no longer writable.
+//
+// THIS REPLACES A VALIDATOR THAT COULD NOT FAIL. gunbc.host.host_effect_realize used to carry
+// `build_cache_fragment_words_are_shell_safe`, whose name promised a shell check; review 82053 found
+// its body had been repurposed to an emptiness check whose second conjunct (`string_contains(join
+// ["prefix", frag, "suffix"], frag)`) is true of every string, i.e. green by construction and cited as
+// coverage (DESIGN 3's name/obligation rule, DESIGN 4b's decoration rule). Deleting the check WITHOUT
+// typing the row would leave the invariant unenforced; typing the row is what makes the deletion safe
+// (DESIGN 5: unwritable beats validated). The shell-era reason the check existed -- fragments were
+// single-quoted into a word list -- died with the script this PR retired.
+data sccache_fatal_error_log_fragment: NonEmptyStr = "sccache: encountered fatal error"
 
-data sccache_rustc_wrapper_exit_254_log_fragment: String = "(exit status: 254)"
+data sccache_rustc_wrapper_exit_254_log_fragment: NonEmptyStr = "(exit status: 254)"
 
-data sccache_failed_to_execute_compile_log_fragment: String = "sccache: error: failed to execute compile"
+data sccache_failed_to_execute_compile_log_fragment: NonEmptyStr = "sccache: error: failed to execute compile"
 
 // The cited roster of stdout/stderr fragments that mean 'the daemon answered, but it is
 // misconfigured' — as a LIST, so a consumer classifying an observation folds over it. The three
 // rows above were previously read one-by-one by a hand-unrolled if/elif chain in the host-standup
 // provisioning emitter, which meant citing a fourth fragment here required an edit there too (the
 // emitter naming a concept it does not own). Consumers iterate this roster; adding a row costs zero
-// emitter edits.
-
-data sccache_misconfigured_log_fragments: List<String> = [
+// emitter edits. ORDER IS PRECEDENCE: the fold keeps the first hit, so this list's order is the
+// classifier's priority -- test.claim pins it, and a reordering is a behaviour change.
+data sccache_misconfigured_log_fragments: List<NonEmptyStr> = [
   sccache_fatal_error_log_fragment,
   sccache_rustc_wrapper_exit_254_log_fragment,
   sccache_failed_to_execute_compile_log_fragment,

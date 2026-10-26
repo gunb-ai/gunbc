@@ -12,6 +12,7 @@ import v2.std.grammar {
   FormalProduction
 }
 import v2.std.compilers.semantic_decl_emission {
+  ColumnUnwired,
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
   TargetSemanticDeclCoproductTaggedUnionSurface,
@@ -33,6 +34,7 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 
 type CStage1TypeDeclFrontierDisposition
@@ -91,7 +93,7 @@ fn c_stage1_type_decl_frontier_deferred_count() -> Int {
 }
 
 fn c_decl_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn c_decl_shape_productions() -> List<FormalProduction> {
@@ -372,7 +374,8 @@ fn c_semantic_decl_binding_spelling_rows() -> List<Node> {
 fn c_semantic_decl_serialize_profile_bundle_node() -> Node {
   semantic_decl_serialize_profile_bundle(
     lex_rows: c_semantic_decl_lex_rows(),
-    spelling_rows: c_semantic_decl_binding_spelling_rows()
+    spelling_rows: c_semantic_decl_binding_spelling_rows(),
+    emit_transform_rows: []
   )
 }
 
@@ -388,6 +391,11 @@ fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
       tag_field: ^c_token_tag_field,
       union_field: ^c_token_union_field
     },
+    member_projection: ColumnUnwired,
+    import_projection: ColumnUnwired,
+    header_projection: ColumnUnwired,
+    doc_projection: ColumnUnwired,
+    conformance_projection: ColumnUnwired,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_all_variants_nullary,

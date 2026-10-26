@@ -1,0 +1,38 @@
+module test.claim.url_file_acquisition_witness
+
+import std.types { Bool }
+import gunbc.artifact_acquisition {
+  AcquisitionSubject, AcquisitionSource, UpstreamRevision, SourceUrl,
+  AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
+  AttemptTerminal, AttemptFailedKey, AttemptUnreachable, AttemptRejected,
+}
+import gunbc.url_file_acquisition { observe_url_file_subject, attempt_url_file_source }
+
+fn revision_subject() -> AcquisitionSubject {
+  AcquisitionSubject {
+    identity: "revision-keyed",
+    key: UpstreamRevision { revision: "0123abc" },
+    install_path: "/nonexistent/gunbc-url-file-witness/artifact",
+    staging_path: Present { value: "/nonexistent/gunbc-url-file-witness/artifact.part" },
+    parent_directory: "/nonexistent/gunbc-url-file-witness",
+    sources: [],
+  }
+}
+
+// RED: a revision-keyed subject is refused by the probe as unestablished, never reported as wrong
+// bytes at the path, and every attempt is rejected before any download.
+test fn w_a_revision_keyed_subject_is_refused_on_both_paths() -> Bool {
+  let observed = match observe_url_file_subject(subject: revision_subject()) {
+    AcquisitionProbeFailed { reason: _ } => true
+    AcquisitionAbsent => false
+    AcquisitionVerified => false
+    AcquisitionDigestMismatch => false
+  }
+  let attempted = match attempt_url_file_source(subject: revision_subject(), origin: AcquisitionSource { identity: "fixture", locator: SourceUrl { url: "https://invalid.example/artifact" } }) {
+    AttemptRejected { detail: _ } => true
+    AttemptTerminal { outcome: _ } => false
+    AttemptFailedKey => false
+    AttemptUnreachable => false
+  }
+  observed && attempted
+}

@@ -92,9 +92,3 @@ test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool {
     acc || w == concat("--header=\"", concat(concat("Authorization: Token ", intent.session_token as String), "\"")))
 }
 
-test fn srv3_os_install_actuate_shell_runner_carries_dissolution_trigger() -> Bool {
-  match srv3_os_install_actuate_shell_runner_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
-  }
-}

@@ -1,0 +1,22 @@
+module gunbc.dashboard_node_uri
+
+import std.types { String, Bool }
+
+// HOME OF THE SCHEME AND ITS RECOGNISER, split out of gunbc.lifecycle_bounded_referent so a consumer that
+// only needs to recognise the spelling does not import the referent and, through it, roadmap_model and
+// extdeps.github (DESIGN section 3, transitive reach). The referent module imports this one.
+// THE URI SCHEME IS DECLARED HERE SO THE SPELLING HAS ONE OWNER. Rendering a referent and
+// recognising one spelled into prose are the same fact read in two directions, and a consumer that
+// spelled `node://` itself would be a second authority for it.
+data dashboard_node_uri_scheme: String = "node://"
+
+// WHAT THIS RECOGNISER IS AND IS NOT. It decides one exact question: does this text spell the
+// declared URI scheme. That is not a heuristic -- the scheme is owned three declarations above and
+// a match on it is a match on this repository's own spelling -- and it is not a general detector
+// for prose naming a lifecycle-bounded thing, which is not a property the source decides at all.
+// A trigger sentence saying "when the assimilate lane finishes" is unreachable by this and by
+// anything else; the class row is explicit that free prose sits outside the modeled guarantee
+// rather than at a low rung on it.
+fn text_spells_a_dashboard_node_uri(text: String) -> Bool {
+  text.contains(dashboard_node_uri_scheme)
+}

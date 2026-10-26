@@ -1,6 +1,7 @@
 module v2.test.fixture.rung_3_4_common
 
-import v2.std.node { Authored }
+
+import v2.std.node { Authored, NotADeclaration }
 
 import v2.std.witness { Holds, Violates, Witness }
 import v2.extdeps.languages.rust { rust_target_model_staging }
@@ -13,7 +14,8 @@ fn rung34_algebra_evidence_node() -> Node {
     children: [
       Edge {
         label: Authored { name: ^rung34_algebra_evidence_axis },
-        target: claim_atom_node(s: ^rung34_inferred_algebra_symbol)
+        target: claim_atom_node(s: ^rung34_inferred_algebra_symbol),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -52,7 +54,8 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
     children: [
       Edge {
         label: Authored { name: ^rung34_roundtrip_module_axis },
-        target: fixture_subject
+        target: fixture_subject,
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

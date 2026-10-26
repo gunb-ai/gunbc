@@ -1,5 +1,6 @@
 module gunbc.instruments.fabric_control_plane_live_probe
 
+import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
 import product.fabric.provider_route {
   CompliancePostureRevision, ProviderRouteFacts, ProviderDataPathClosure,
   ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
@@ -352,7 +353,6 @@ fn cp_probe_demand() -> Demand<NonEmptyStr> {
 // required_witnesses_build_work; it is never transcribed into this probe.
 data fci1_work_source_commit: NonEmptyStr = "e9eaa579ed0b6585a48965842b43ee09af5671a1"
 data fci1_work_source_tree: NonEmptyStr = "c8983a3d8412a5e37a309b2d90ceafc698856619"
-data fci1_installed_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
 data fci1_projected_sudoers_path: NonEmptyStr = "provisioning/srv3/gunbc-ghrunner.sudoers"
 
 fn fci1_root_owner() -> PosixOwnerSpec {
@@ -374,7 +374,7 @@ fn fci1_assert_host_preconditions() -> ProcessExit {
   let cell_root = fabric_cell_root_path(slot: slot) as NonEmptyStr
   let attempts = fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr
   let mode = fci1_directory_mode_unobserved(path: cell_root, desired_mode: "0755")
-  match sha256sum_file_digest_via_shell(path: fci1_installed_sudoers_path) {
+  match sha256sum_file_digest_via_shell(path: runner_host_sudoers_install_path) {
     Sha256FileDigestUnavailable { path: _, reason: _ } => exit_failure(reason: "FCI-1 sudoers readback unavailable")
     Sha256FileDigest { digest: observed_digest } =>
       match sha256sum_file_digest_via_shell(path: fci1_projected_sudoers_path) {

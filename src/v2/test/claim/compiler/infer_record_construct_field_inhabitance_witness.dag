@@ -11,7 +11,7 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus }
 import v2.std.integer { integer_int_type_node }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -77,7 +77,7 @@ data rcf_far_value_source: String = "module v2.test.rcf_far_value\n\nimport v2.t
 
 data rcf_far_missing_source: String = "module v2.test.rcf_far_missing\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_missing: RcfFar = RcfFar { n: 1 }\n"
 
-data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\nimport std.types { Bool }\n\ntype ArB {\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { m: 3 }\n"
+data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\ntype ArB {\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { m: 3 }\n"
 
 data rcf_pattern_source: String = "module v2.test.rcf_pattern\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\nfn rcf_take(a: ArB) -> Int {\n  match a {\n    ArB { n: x } => x\n  }\n}\n"
 
@@ -97,13 +97,17 @@ data rcf_fs_return_mismatch_source: String = "module v2.test.rcf_fs_return_misma
 
 data rcf_alias_wrong_source: String = "module v2.test.rcf_alias_wrong\n\ntype AliasInt = Int\n\nfn f() -> AliasInt { true }\n"
 
-fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+fn rcf_read_in(tree: SourceRootRef, source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: id, file_path: path },
     compilation_unit: unit,
-    source_root: DagTree
+    source_root: tree
   }
+}
+
+fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  rcf_read_in(tree: DagTree, source: source, id: id, unit: unit, path: path)
 }
 
 data rcf_ingest: SourceRootIngest = [

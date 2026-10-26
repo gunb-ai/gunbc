@@ -35,12 +35,12 @@ import v2.std.compilers.lexing {
   ModeledLexRules,
   OneOrMorePattern,
   TokenRule,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_map
 }
 import std.optional { Absent, Optional, Present }
 import v2.std.logic { bool_boolean_algebra }
 import extdeps.languages.lean.overflow { lean_upstream_fixed_width_overflow_returns_rule }
-import std.algebra { Cons, Empty, list_snoc_item, BooleanAlgebra, fold_list, list_map, PointwisePower, empty_map, map_insert }
+import std.algebra { Cons, Empty, list_snoc_item, BooleanAlgebra, fold_list, list_map, PointwisePower, empty_map, map_insert, map_contains_key }
 import std.integer {
   Signedness,
   IntegerOverflowSemantics,
@@ -74,6 +74,7 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 
 type LeanDeclarationKind
@@ -482,7 +483,7 @@ fn lean_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn lean_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn lean_signedness_node(signedness: Signedness) -> Node {
@@ -831,7 +832,7 @@ fn lean_def_dec_parse_expr() -> GrammarExpr {
 fn lean_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: text }
   }
 }
 
@@ -865,11 +866,14 @@ fn lean_lex() -> LexRules {
   ModeledLexRules { root: lean_lex_rules() }
 }
 
+// The token-class membership map for lean_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data lean_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: lean_lex_rules())
+
 fn lean_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(
-    rules: lean_lex_rules(),
-    token_class: sym
-  )
+  map_contains_key(m: lean_lex_token_class_membership, key: sym)
 }
 
 fn lean_grammar_root() -> GrammarRoot {

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_labeled_call_opening_an_if_branch_after_an_uppercase_value_is_parse_failed
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_labeled_call_opening_an_if_branch_after_an_uppercase_value_is_parse_failed: RecurringFailureMode = RecurringFailureMode {
   identity: "a_labeled_call_opening_an_if_branch_after_an_uppercase_value_is_parse_failed" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**an `if` whose condition ends in an UPPERCASE value is accepted, but the SAME `if` is parse-FAILED when its then-branch OPENS with a labelled call** -- the refusal is `expected RParen, found Colon` at the call's first label, not at the `if` (INVALID STATE: `if brand_verdict == BrandNominalDistinctDeclarations { record_lit_union_name_is_not_an_arm(decl: d, type_name: n) }` reports parse-failed at the `decl:`, while the byte-identical construct with a lowercase-final condition, `if recv_is_set && !elem_mismatch && !union_other_bad { set_kernel_ty_from_element(element: element).miss_diags }`, parses. The position and the reported token both point at the wrong construct: the failure is caused 40 characters earlier, at the closing identifier of the condition).",

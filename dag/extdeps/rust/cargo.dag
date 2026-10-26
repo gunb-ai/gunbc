@@ -159,3 +159,58 @@ fn cargo_workspace_footprint(target_dir_patterns: List<String>, cargo_home_patte
     )
   }
 }
+
+// THE DEFAULT TARGET-DIRECTORY LOCATION. Where cargo puts a build's output tree when nothing
+// overrides it: the cargo book's build-cache page, "target directory" section, states cargo
+// creates the output directory in target/ under the package root (for a workspace, the
+// workspace root), and that CARGO_TARGET_DIR overrides this location. That is upstream's
+// convention, not gunbc policy -- distinct from gunbc.owned_cargo_target, which is gunbc's OWN
+// partition for targets with an identity-scoped owner (C4); the two shapes never merge into one
+// fn, because collapsing them would let one change silently retarget the other. A caller with an
+// exclusive, disposable build root (a scratch checkout that only ever hosts this one build)
+// wants THIS layout, not the ownership partition: the disposable root is the isolation boundary,
+// there is no second tenant to name. The failure this home prevents is the silent one: a site
+// re-spelling the join by hand keeps compiling green when upstream's default moves (cargo has
+// discussed relocating it), and the divergence surfaces as artifacts written somewhere the
+// caller's read-back never looks.
+//
+// The segment is the one constant and the fn is its only absolute spelling: some consumers bind
+// the layout RELATIVE to a working directory they do not name (a CI job's cwd, a bash word whose
+// root is a shell var), so they take the segment and never re-spell "target". An empty build_root
+// yields the absolute-from-root form ("/target"), which is what a word composed from a $ROOT var
+// needs.
+data cargo_default_target_relative_segment: String = "target"
+
+fn cargo_default_target_dir(build_root: String) -> String {
+  join([build_root, "/", cargo_default_target_relative_segment], "")
+}
+
+// The same layout's PROFILE faces. "target/release" is not a second fact -- it is the default
+// layout plus the profile cargo builds when asked for (--release to target/release, unoptimized to
+// target/debug, same cited page) -- so the join exists once here, in cargo's own profile names, and
+// no consumer appends "/release" or "/debug" to a target dir by hand. A second local join beside
+// the home is the §6b leaf this migration exists to delete.
+data cargo_default_dev_profile: String = "debug"
+data cargo_default_release_profile: String = "release"
+
+// Profile under an ALREADY-NAMED target directory: the join exists only here, so a site holding a
+// target dir from another authority (gunbc.owned_cargo_target's partition, say) still gets its
+// profile face from this module rather than re-spelling the append.
+fn cargo_profile_dir_under_target_dir(target_dir: String, profile: String) -> String {
+  join([target_dir, "/", profile], "")
+}
+
+fn cargo_default_profile_dir(build_root: String, profile: String) -> String {
+  cargo_profile_dir_under_target_dir(
+    target_dir: cargo_default_target_dir(build_root: build_root),
+    profile: profile
+  )
+}
+
+fn cargo_default_release_dir(build_root: String) -> String {
+  cargo_default_profile_dir(build_root: build_root, profile: cargo_default_release_profile)
+}
+
+// The relative face of the release layout, for sites bound to a working directory they do not name
+// (a CI job's cwd, a bash word whose root is a shell var).
+data cargo_default_release_dir_rel: String = join([cargo_default_target_relative_segment, "/", cargo_default_release_profile], "")

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.plain_type_alias_left_as_a_parse_shell_in_v2
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data plain_type_alias_left_as_a_parse_shell_in_v2: RecurringFailureMode = RecurringFailureMode {
   identity: "plain_type_alias_left_as_a_parse_shell_in_v2" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "**'alias' has two representations in v2: a GENERIC alias lowers to a wrapper, a PLAIN one stays its parse shell** (INVALID STATE: v2.compiler.body_lowering_fold body_lower_eq_type_decl lowers `type List<T> = std.algebra.FreeMonoid<T>` to Conj { List: Conj { <type-parameters>: .., <type-alias>: <lowered type expression> } } (v2.std.type_binder type_alias_wrapper), and a bodyless generic `type MachineWidth<bits>` to its binders alone (type_opaque_wrapper). A plain alias `type Id = Int` and a plain bodyless `type PointerWidth` are returned from body_lower_type_decl_by_body as the unlowered type_decl production shell. So one fact -- 'this name aliases that type expression' -- is carried two ways, told apart by whether the declaration has type parameters.)",
     "A SECTION 3 REPLACEMENT-MIGRATION DEBT, NOT A NICE-TO-HAVE (ruled by neat-boar-16 when the generic arm landed). The lowered wrapper is the terminal representation; the parse-shell alias is X, and it stays frozen: no new reader may learn to read it. HARM WHILE BOTH STAND: every reader that wants an alias's right-hand side must handle both, which is the attractor section 3 names -- nearby questions keep being answered in the shell's vocabulary. CONTAINMENT: v2.std.type_binder type_decl_view is the ONLY place a reader may tell a lowered generic alias from a plain one (TypeAlias / OpaqueTypeDecl vs PlainTypeDecl); no other reader pattern-matches an alias shell against an alias wrapper.",

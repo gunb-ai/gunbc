@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.required_floor_runs_at_its_memory_ceiling
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data required_floor_runs_at_its_memory_ceiling: RecurringFailureMode = RecurringFailureMode {
   identity: "required_floor_runs_at_its_memory_ceiling" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "the required floor process already peaks AT its runner slot's memory.high, so it is memory-throttled on ordinary landings and has no headroom for its own growth (INVALID STATE: a required lane whose working set equals its slot's throttle line; HARM: the lane's wall time is partly throttling rather than work, so its duration measures nothing clean, and the next change that makes the floor heavier is throttled harder or OOM-killed rather than merely slower, taking a required lane down)",

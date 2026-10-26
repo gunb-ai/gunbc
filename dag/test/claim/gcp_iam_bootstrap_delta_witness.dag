@@ -1,0 +1,190 @@
+module test.claim.gcp_iam_bootstrap_delta_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpIamBindingCell, gcp_cells_bindings }
+import std.optional { Present, Absent }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, iam_converge_service_account, iam_observe_service_account, cell_preimage }
+import gunbc.auth.github_gcp_federation { federated_service_account_member }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
+  iam_bootstrap_capability_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_resource_key,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta {
+  BootstrapSubjectReading, SubjectPolicyRead, SubjectAnswered, SubjectPermissionDenied, SubjectNotFound, SubjectUnreadable, SubjectUnobservable,
+  BootstrapSubjectObservation, BootstrapSubjectStanding, SubjectUnbound, SubjectAbsent, SubjectAbsentOrUnboundCannotTell,
+  SubjectNotBootstrapped, BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused,
+  bootstrap_delta_over, roster_subjects, subject_cells, observer_project_standing,
+}
+import extdeps.cloud.gcp.errors { GcpCallerCannotReadParent }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── WHAT THESE CLAIMS ARE ABOUT ──────────────────────────────────────────────────────────────
+// The pure delta at ONE interface: supplied observations in, classification out (DESIGN §3, a witness
+// discriminates at one interface). The roster itself is the real derivation over the real targets and
+// grant sets, so every claim runs over every declared subject in one pass, and the mutation claims
+// derive their roster from the same function with one input widened. The real observer's answers are
+// the live route's inhabitance (the first gcp_iam_bootstrap_delta run), not these claims.
+
+data roster: List<IamBootstrapBinding> = iam_bootstrap_capability_bindings()
+
+fn bound_policy(cells: List<IamBootstrapBinding>) -> GcpPolicy {
+  GcpPolicy { bindings: gcp_cells_bindings(cs: map(cells, b => b.cell)), etag: "e1", version: 3 }
+}
+
+// THE OBSERVATION A FULLY BOOTSTRAPPED SUBJECT GIVES: its policy carrying its roster cells where the
+// observer reads policies (pools, accounts, secrets), nothing where it holds nothing (the project).
+fn bound_observation(r: List<IamBootstrapBinding>, s: IamBootstrapResource) -> BootstrapSubjectObservation {
+  BootstrapSubjectObservation { subject: s, reading: match s {
+    BootstrapProject => SubjectUnobservable
+    BootstrapPool { pool: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+    BootstrapAccount { account: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+    BootstrapSecret { secret: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+    BootstrapBucket { bucket: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
+  } }
+}
+
+fn same_subject(a: IamBootstrapResource, b: IamBootstrapResource) -> Bool {
+  iam_bootstrap_resource_key(resource: a) == iam_bootstrap_resource_key(resource: b)
+}
+
+fn observations_with(r: List<IamBootstrapBinding>, subject: IamBootstrapResource, reading: BootstrapSubjectReading) -> List<BootstrapSubjectObservation> {
+  map(roster_subjects(roster: r), s => if same_subject(a: s, b: subject) { BootstrapSubjectObservation { subject: s, reading: reading } } else { bound_observation(r: r, s: s) })
+}
+
+fn cell_keys(bs: List<IamBootstrapBinding>) -> List<String> {
+  map(bs, b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
+}
+
+fn same_cells(a: List<IamBootstrapBinding>, b: List<IamBootstrapBinding>) -> Bool {
+  let ka = cell_keys(bs: a)
+  let kb = cell_keys(bs: b)
+  count(ka) == count(kb) && all(ka, k => any(kb, x => x == k))
+}
+
+fn the_one_subject(d: BootstrapDelta) -> SubjectNotBootstrapped? {
+  match d {
+    BootstrapDeltaRequired { subjects, root_residual: _ } => if count(subjects) == 1 { subjects.first() } else { none }
+    BootstrapObserved { root_residual: _ } => none
+    BootstrapDeltaRefused { reasons: _ } => none
+  }
+}
+
+fn first_custody_secret_or(fallback: NonEmptyStr) -> NonEmptyStr {
+  match gcp_iam_converge_grant_set_secrets().first() { Present { value: s } => s  Absent => fallback }
+}
+
+data first_custody_secret: NonEmptyStr = first_custody_secret_or(fallback: "no-grant-set-secret-declared")
+
+// A secret's roster cells are the converge's secret-policy cell and the observer's read cell, at least.
+fn secret_cells(r: List<IamBootstrapBinding>, secret: NonEmptyStr) -> List<IamBootstrapBinding> {
+  subject_cells(roster: r, subject: BootstrapSecret { secret: secret })
+}
+
+// ── The whole roster, one pass ───────────────────────────────────────────────────────────────
+
+// EVERY DECLARED SUBJECT BOUND IS OBSERVED, NOT CONVERGED BLINDLY: the delta covers every secret,
+// account, pool and the project; it requires nothing; and the one subject it cannot see (the project,
+// all of whose cells are the root ceremony's) is carried as a typed root residual, never as present.
+test fn the_whole_bound_roster_is_observed_in_one_pass() -> Bool {
+  let subjects = roster_subjects(roster: roster)
+  let kinds_present = any(subjects, s => match s { BootstrapSecret { secret: _ } => true  _ => false })
+    && any(subjects, s => match s { BootstrapAccount { account: _ } => true  _ => false })
+    && any(subjects, s => match s { BootstrapPool { pool: _ } => true  _ => false })
+    && any(subjects, s => match s { BootstrapProject => true  _ => false })
+  match bootstrap_delta_over(roster: roster, observations: map(subjects, s => bound_observation(r: roster, s: s))) {
+    BootstrapObserved { root_residual } => kinds_present && count(root_residual) > 0
+      && all(root_residual, b => match b.resource { BootstrapProject => true  _ => false })
+    _ => false
+  }
+}
+
+// A BOUND SECRET IS A NOOP: the same pass with every secret's policy carrying its cells requires nothing
+// of any secret (the claim above), and a secret carrying FOREIGN cells beside its own is still bound.
+test fn a_bound_secret_is_a_noop() -> Bool {
+  let s = BootstrapSecret { secret: first_custody_secret }
+  let foreign = IamBootstrapBinding { resource: s, cell: GcpIamBindingCell { role: "roles/secretmanager.viewer", member: "user:someone@example.com", condition: none } }
+  let reading = SubjectPolicyRead { policy: bound_policy(cells: secret_cells(r: roster, secret: first_custody_secret) + [foreign]) }
+  match bootstrap_delta_over(roster: roster, observations: observations_with(r: roster, subject: s, reading: reading)) {
+    BootstrapObserved { root_residual: _ } => true
+    _ => false
+  }
+}
+
+// AN UNBOUND DECLARED SECRET IS CLASSIFIED WITH EXACTLY ITS MISSING CELLS: its policy is readable and
+// carries every roster cell but the converge's secret-policy cell, so exactly that one cell is missing.
+test fn an_unbound_declared_secret_is_classified_with_exactly_its_missing_cells() -> Bool {
+  let s = BootstrapSecret { secret: first_custody_secret }
+  let cells = secret_cells(r: roster, secret: first_custody_secret)
+  let converge_member = federated_service_account_member(email: iam_converge_service_account)
+  let kept = filter(cells, b => b.cell.member != converge_member)
+  let dropped = filter(cells, b => b.cell.member == converge_member)
+  match the_one_subject(d: bootstrap_delta_over(roster: roster, observations: observations_with(r: roster, subject: s, reading: SubjectPolicyRead { policy: bound_policy(cells: kept) }))) {
+    Present { value: n } => count(dropped) == 1 && same_subject(a: n.subject, b: s) && same_cells(a: n.missing, b: dropped)
+      && match n.standing { SubjectUnbound => true  _ => false }
+    Absent => false
+  }
+}
+
+// ── Absent and unbound ───────────────────────────────────────────────────────────────────────
+
+// THE OBSERVER CANNOT READ THE PROJECT, so a PERMISSION_DENIED is a typed cannot-tell carrying every
+// roster cell of the subject (google.aip.dev/211), and a NOT_FOUND is absent. Neither is a raw 403.
+test fn absent_and_unbound_are_distinguished_or_a_typed_cannot_tell_is_returned() -> Bool {
+  let s = BootstrapSecret { secret: first_custody_secret }
+  let cells = secret_cells(r: roster, secret: first_custody_secret)
+  let denied = the_one_subject(d: bootstrap_delta_over(roster: roster, observations: observations_with(r: roster, subject: s, reading: SubjectPermissionDenied { cause: "status 403: denied" })))
+  let absent = the_one_subject(d: bootstrap_delta_over(roster: roster, observations: observations_with(r: roster, subject: s, reading: SubjectNotFound)))
+  (match observer_project_standing() { GcpCallerCannotReadParent => true  _ => false })
+    && match denied { Present { value: n } => same_cells(a: n.missing, b: cells) && match n.standing { SubjectAbsentOrUnboundCannotTell { cause: _ } => true  _ => false }  Absent => false }
+    && match absent { Present { value: n } => same_cells(a: n.missing, b: cells) && match n.standing { SubjectAbsent => true  _ => false }  Absent => false }
+}
+
+test fn an_unreadable_subject_refuses_the_whole_delta() -> Bool {
+  let s = BootstrapSecret { secret: first_custody_secret }
+  match bootstrap_delta_over(roster: roster, observations: observations_with(r: roster, subject: s, reading: SubjectUnreadable { cause: "status 503: busy" })) {
+    BootstrapDeltaRefused { reasons } => count(reasons) == 1
+    _ => false
+  }
+}
+
+// THE OBSERVATIONS ARE AN IDENTITY JOIN WITH THE ROSTER: dropping one subject's observation refuses.
+test fn a_missing_observation_refuses_rather_than_shrinking_the_roster() -> Bool {
+  let obs = map(roster_subjects(roster: roster), s => bound_observation(r: roster, s: s))
+  match bootstrap_delta_over(roster: roster, observations: obs.skip(n: 1)) {
+    BootstrapDeltaRefused { reasons: _ } => true
+    _ => false
+  }
+}
+
+// ── Closing the loop: a roster edit surfaces exactly its cells ─────────────────────────────────
+
+data probe_secret: NonEmptyStr = "gunbc-bootstrap-delta-probe-secret"
+
+// ADDING AN ARBITRARY NEW SECRET NAME TO THE GRANT-SET OR CUSTODY POPULATION (the one input both feed,
+// gunbc.auth.gcp_iam_converge gcp_iam_converge_grant_set_secrets) widens the derived roster, and the
+// next delta -- the observer denied on the new name, as it is for a subject nobody has bound -- surfaces
+// exactly that subject with exactly its new cells and nothing else.
+test fn adding_a_secret_to_a_grant_set_surfaces_exactly_its_cells() -> Bool {
+  let widened = iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets() + [probe_secret])
+  let s = BootstrapSecret { secret: probe_secret }
+  let new_cells = filter(widened, b => same_subject(a: b.resource, b: s))
+  let observed = observations_with(r: widened, subject: s, reading: SubjectPermissionDenied { cause: "status 403: denied" })
+  count(widened) == count(roster) + count(new_cells) && count(new_cells) == 2
+    && any(new_cells, b => b.cell.member == federated_service_account_member(email: iam_converge_service_account))
+    && any(new_cells, b => b.cell.member == federated_service_account_member(email: iam_observe_service_account))
+    && match the_one_subject(d: bootstrap_delta_over(roster: widened, observations: observed)) {
+      Present { value: n } => same_subject(a: n.subject, b: s) && same_cells(a: n.missing, b: new_cells)
+      Absent => false
+    }
+}
+
+// THE SAME WIDENING WITHOUT A NEW OBSERVATION REFUSES: the roster edit cannot ride an old observation set.
+test fn a_roster_edit_cannot_reuse_the_previous_observations() -> Bool {
+  let widened = iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets() + [probe_secret])
+  match bootstrap_delta_over(roster: widened, observations: map(roster_subjects(roster: roster), s => bound_observation(r: roster, s: s))) {
+    BootstrapDeltaRefused { reasons: _ } => true
+    _ => false
+  }
+}

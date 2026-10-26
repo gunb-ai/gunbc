@@ -896,6 +896,16 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ReceiverTypeUnestablished { method: s(), span: no_span() },
         TextRepresentationUnidentifiedAtBoundary { position: s(), span: no_span() },
         TextCrossingHasNoImplicitRoute { expected: s(), got: s(), route: s(), span: no_span() },
+        GeneratedProviderUnavailable {
+            declaration: Rc::new(crate::std_decl_ref::DeclarationRef {
+                module_path: s(),
+                decl_name: s(),
+                field: Rc::new(crate::std_decl_ref::DeclField::WholeDeclaration),
+            }),
+            cause:
+                crate::std_generated_provider::GeneratedProviderUnavailableCause::UnavailableModuleAbsent,
+            span: no_span(),
+        },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
         SiblingOperandEffectOrderUndetermined { construct: s(), first_operand: s(), second_operand: s(), span: no_span() },
         PresentArmScrutineeTypeUnresolved { pattern: s(), span: no_span() },
@@ -905,6 +915,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         NonExhaustiveMatch { missing: istrings(), span: no_span() },
         CircularDependency { modules: istrings(), span: no_span() },
         DuplicateModule { name: s(), span: no_span() },
+        TypeAliasCycle { members: istrings(), span: no_span() },
         DuplicateDeclaration { module_name: s(), name: s(), span: no_span() },
         MissingAnnotation { fn_name: s(), what: s(), span: no_span() },
         ParseError { message: s(), span: no_span() },
@@ -952,6 +963,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         CallNamedArgOnFunctionValue { callee: s(), argument: s(), span: no_span() },
         EqualityOnFunctionMember { type_name: s(), member: s(), span: no_span() },
         EqualityMemberUnjudgeable { type_name: s(), member: s(), span: no_span() },
+        EqualityOnInadmissibleType { type_name: s(), span: no_span() },
         EqualityOptionalityMismatch { optional_side: s(), span: no_span() },
         TypeArgumentArityMismatch { type_name: s(), supplied: 0, declared: 0, span: no_span() },
         OccurrenceTransportViolation {
@@ -1364,6 +1376,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => {
             "TextCrossingHasNoImplicitRoute"
         }
+        CompilerDiagnostic::GeneratedProviderUnavailable { .. } => "GeneratedProviderUnavailable",
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
@@ -1375,6 +1388,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
         CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
         CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::TypeAliasCycle { .. } => "TypeAliasCycle",
         CompilerDiagnostic::DuplicateDeclaration { .. } => "DuplicateDeclaration",
         CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
         CompilerDiagnostic::ParseError { .. } => "ParseError",
@@ -1426,6 +1440,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => "TypeParameterInValuePosition",
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => "EqualityOnFunctionMember",
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
+        CompilerDiagnostic::EqualityOnInadmissibleType { .. } => "EqualityOnInadmissibleType",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
@@ -1475,12 +1490,16 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             position.clone()
         }
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { route, .. } => route.clone(),
+        CompilerDiagnostic::GeneratedProviderUnavailable { declaration, .. } => {
+            format!("{}.{}", declaration.module_path, declaration.decl_name)
+        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
         CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::TypeAliasCycle { .. } => "(alias cycle)".to_string(),
         CompilerDiagnostic::DuplicateDeclaration { name, .. } => name.clone(),
         CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
         CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
@@ -1545,6 +1564,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeParameterInValuePosition { name, .. } => name.clone(),
         CompilerDiagnostic::EqualityOnFunctionMember { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::EqualityOnInadmissibleType { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
         }
@@ -1589,6 +1609,101 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
     };
     (class.to_string(), name)
+}
+
+/// THE RENDERED `(expected, got)` PAIR a single diagnostic carries, or `None` when its class
+/// carries none. INTERIM hand-Rust scaffold, one marker with `compile_clean_diagnostic_histogram_key`
+/// (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7): a TOTAL match over
+/// `CompilerDiagnostic` — a variant gains a rendered pair only by its arm being written here, and
+/// the census fold reads this one extractor, never a per-consumer guess (§3). The pair TEXT is the
+/// STRINGS THE CHECK SITE ALREADY RENDERED (for the inhabitance pair, the output of the type-shape
+/// renderer `node_type_shape`, authority src/v1/04_types.dag); this projects those strings and never
+/// re-renders (§6 — the producer is named, its output is not re-derived here). An `i64` pair such as
+/// `ArityMismatch`'s is an arity count, not a rendered type shape: its arm is `None` like the
+/// pairless classes, and the census model's `Absent` is the ONLY honest non-pair reading.
+pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(String, String)> {
+    use crate::v1_std_core::CompilerDiagnostic;
+    match d.diagnostic.as_ref() {
+        CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => None,
+        CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { .. } => None,
+        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => None,
+        CompilerDiagnostic::AmbiguousReference { .. } => None,
+        CompilerDiagnostic::ArityMismatch { .. } => None,
+        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => None,
+        CompilerDiagnostic::CallArgumentDuplicate { .. } => None,
+        CompilerDiagnostic::CallArgumentNameUnknown { .. } => None,
+        CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => None,
+        CompilerDiagnostic::CallPositionalDeficit { .. } => None,
+        CompilerDiagnostic::CallPositionalSurplus { .. } => None,
+        CompilerDiagnostic::CircularDependency { .. } => None,
+        CompilerDiagnostic::ComplexityUnknown { .. } => None,
+        CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => None,
+        CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => None,
+        CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => None,
+        CompilerDiagnostic::DeclaredTypeNotInhabited { expected, got, .. } => {
+            Some((expected.clone(), got.clone()))
+        }
+        CompilerDiagnostic::DuplicateDeclaration { .. } => None,
+        CompilerDiagnostic::DuplicateModule { .. } => None,
+        CompilerDiagnostic::EffectfulSelfRecursionUnrealized { .. } => None,
+        CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => None,
+        CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { .. } => None,
+        CompilerDiagnostic::EmittedSymbolCollision { .. } => None,
+        CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => None,
+        CompilerDiagnostic::EqualityOnFunctionMember { .. } => None,
+        CompilerDiagnostic::EqualityOnInadmissibleType { .. } => None,
+        CompilerDiagnostic::EqualityOptionalityMismatch { .. } => None,
+        CompilerDiagnostic::FieldNotFound { .. } => None,
+        CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => None,
+        CompilerDiagnostic::GeneratedProviderUnavailable { .. } => None,
+        CompilerDiagnostic::ImportCollidesWithKernelName { .. } => None,
+        CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => None,
+        CompilerDiagnostic::InternalError { .. } => None,
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { .. } => None,
+        CompilerDiagnostic::KernelMintShapeMismatch { .. } => None,
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => None,
+        CompilerDiagnostic::MethodExistenceUndecided { .. } => None,
+        CompilerDiagnostic::MethodNotFound { .. } => None,
+        CompilerDiagnostic::MissingAnnotation { .. } => None,
+        CompilerDiagnostic::MissingExport { .. } => None,
+        CompilerDiagnostic::MissingField { .. } => None,
+        CompilerDiagnostic::ModuleFilenameCollision { .. } => None,
+        CompilerDiagnostic::NativeEffectRealizationRefused { .. } => None,
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => None,
+        CompilerDiagnostic::OccurrenceTransportViolation { .. } => None,
+        CompilerDiagnostic::OptionalCastNotEliminated { .. } => None,
+        CompilerDiagnostic::OwnershipViolation { .. } => None,
+        CompilerDiagnostic::ParseError { .. } => None,
+        CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => None,
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => None,
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => None,
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => None,
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => None,
+        CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { .. } => None,
+        CompilerDiagnostic::SoleConstructorViolation { .. } => None,
+        CompilerDiagnostic::TestCodeReferenced { .. } => None,
+        CompilerDiagnostic::TextCrossingHasNoImplicitRoute { expected, got, .. } => {
+            Some((expected.clone(), got.clone()))
+        }
+        CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { .. } => None,
+        CompilerDiagnostic::TransportEmissionNotModeled { .. } => None,
+        CompilerDiagnostic::TypeAliasCycle { .. } => None,
+        CompilerDiagnostic::TypeArgumentArityMismatch { .. } => None,
+        CompilerDiagnostic::TypeArgumentKindMismatch { .. } => None,
+        CompilerDiagnostic::TypeMismatch { expected, got, .. } => {
+            Some((expected.clone(), got.clone()))
+        }
+        CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => None,
+        CompilerDiagnostic::TypeParameterInValuePosition { .. } => None,
+        CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => None,
+        CompilerDiagnostic::UnlistedImportUse { .. } => None,
+        CompilerDiagnostic::UnlistedVariantValueUse { .. } => None,
+        CompilerDiagnostic::UnresolvedImport { .. } => None,
+        CompilerDiagnostic::UnresolvedType { .. } => None,
+        CompilerDiagnostic::VariantCollision { .. } => None,
+        CompilerDiagnostic::VariantNotFound { .. } => None,
+        CompilerDiagnostic::WhereRefinementUnenforced { .. } => None,
+    }
 }
 
 pub(crate) fn compile_clean_internal_error_histogram_name(message: &str) -> String {

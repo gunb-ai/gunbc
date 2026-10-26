@@ -17,6 +17,18 @@ import gunbc.workspace_commissioning_directive { workspace_commissioning_directi
 import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_text }
 import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied }
 import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.sudo.nopasswd_execute_probe_check_op
+import gunbc.fleet.fleet_host_grant_coverage {
+  HostGrantObservation,
+  HostGrantDecisionRead,
+  HostGrantPrincipalObserved,
+  HostGrantPrincipalUnobserved,
+  InstalledSudoersText,
+  InstalledSudoersUnreadable,
+}
+import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, SudoVersionRead, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent, sudo_version_from_run }
+import extdeps.sudo.elevation { sudo_version_command }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
 import std.types { CommitSha }
 
 
@@ -62,7 +74,7 @@ import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program
 import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
-import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner.runner_slot_retirement {
@@ -150,6 +162,7 @@ import gunbc.fleet.fleet_converge_plan_manifest {
   fleet_converge_apply_payload_refusal_text,
 }
 import gunbc.fleet.fleet_converge_plan {
+  fleet_converge_host_grant_queries,
   TimerRetirementMember,
   fleet_converge_allocation_store_plan_artifact,
   fleet_converge_plan_body_path,
@@ -440,6 +453,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  let observed_host_grants = observe_host_grants_wet(host: host)
                   FleetConvergeRequestObserved {
                     request: FullHostConverge {
                       host: host,
@@ -450,6 +464,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                       observed_unit_standings: observed_unit_standings,
                       observed_retirement: observed_retirement,
+                      observed_host_grants: observed_host_grants,
                     },
                   }
                 }
@@ -458,6 +473,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  let observed_host_grants = observe_host_grants_wet(host: host)
                   FleetConvergeRequestObserved {
                     request: FullHostConverge {
                       host: host,
@@ -468,6 +484,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                       observed_unit_standings: observed_unit_standings,
                       observed_retirement: observed_retirement,
+                      observed_host_grants: observed_host_grants,
                     },
                   }
                 }
@@ -549,6 +566,54 @@ fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
             },
           }
       }
+  }
+}
+
+// THE HOST-GRANT HALF OF THE OBSERVATION TRANSACTION. Each rule is asked of sudo itself
+// (`sudo -n -ll -u RUNAS ARGV`, extdeps.sudo.nopasswd_decision), which lists and never runs the
+// command, as the account running this CLI, whose name is recorded beside the decisions. An
+// unreadable principal, a missing binary, a sudo that did not spawn or any status other than the
+// documented 0/1 is typed Unobserved, never covered. The installed drop-in is read separately: it is
+// normally root:root 0440, so an unreadable file is its own typed outcome.
+// THE ONE WET EXEC here (sudo's real exit codes and text) is the unpaired gap; the witnesses
+// run the pure mapping over recorded outputs.
+fn observe_host_grant_decision_wet(query: SudoDecisionQuery, version: SudoVersionRead) -> HostGrantDecisionRead
+{
+  let program = match query.argv.first() {
+    Present { value: w } => w as String
+    Absent => ""
+  }
+  let present = match run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec) {
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+  HostGrantDecisionRead {
+    query: query,
+    decision: if present {
+      sudo_decision_from_run(query: query, version: version, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
+    } else {
+      sudo_decision_binary_absent(query: query)
+    },
+  }
+}
+
+fn observe_host_grants_wet(host: NonEmptyStr) -> HostGrantObservation
+{
+  let installed = Filesystem.Read(path: runner_host_sudoers_install_path)
+  let version = sudo_version_from_run(outcome: run_shell_command_observe_outcome(command: sudo_version_command(), transport: LocalExec))
+  HostGrantObservation {
+    principal: match observe_effective_user_wet() {
+      Present { value: login } => HostGrantPrincipalObserved { login: login }
+      Absent => HostGrantPrincipalUnobserved { cause: "the effective user could not be read (whoami)" as NonEmptyStr }
+    },
+    sudo_version: version,
+    decisions: map(fleet_converge_host_grant_queries(host: host), q => observe_host_grant_decision_wet(query: q, version: version)),
+    installed: if installed.success {
+      InstalledSudoersText { text: installed.content }
+    } else {
+      InstalledSudoersUnreadable { cause: join(["read of ", runner_host_sudoers_install_path as String, " failed"], "") as NonEmptyStr }
+    },
   }
 }
 
@@ -1492,8 +1557,8 @@ fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSl
     } else {
       match actions_runner_registration_decode(raw: read.content) {
         ActionsRunnerRegistrationUnreadable { reason } => SlotRegistrationUnreadable { reason: reason }
-        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => SlotRegisteredEphemeral
-        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => SlotRegisteredPersistent
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral, agent_name: _ } => SlotRegisteredEphemeral
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: _ } => SlotRegisteredPersistent
       }
     }
   }

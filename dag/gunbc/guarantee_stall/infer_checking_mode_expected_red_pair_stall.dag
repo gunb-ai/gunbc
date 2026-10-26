@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.infer_checking_mode_expected_red_pair_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data infer_checking_mode_expected_red_pair_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a generic record construct whose type its field values cannot fix, at a position that declares the instantiation, is accepted with a counted obligation where it should be decided: a phantom binder (data p: Ph<Bool> = Ph { n: 1 }) and a nested construct typed only by its context (data t: Two<Bool> = Two { a: Ph { n: 1 }, b: true }). infer is a bottom-up fold, so the construct's row decides before its expected type is known. Both controls were authored red, awaiting checking mode, so no held guarantee was lost. Measured still red at gunbc main, at the gunbc#14516 head ebd3d110343 and at the gunbc#14531 head bf088ccf074, so neither constructor instantiation nor the Occupancy cut climbs it",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["v2.test.claim.compiler.infer_expected_type_record_instantiation_witness.etr_a_phantom_binder_is_fixed_by_the_declared_type_holds", "v2.test.claim.compiler.infer_expected_type_record_instantiation_witness.etr_a_nested_construct_typed_only_by_its_context_is_decided_at_its_declared_return_holds"] },
+  next_rung_trigger: climbs_when(capability: "expected-type seeding into a record construct's fields at a declared position (checking mode: infer's gather run as v2.std.node fold_node_topdown, whose child_context hands each child the type its parent expects; docs/plans/infer-checking-mode-plan.md), so the construct forms its instantiation before its row decides. When it lands both claims pass unchanged, and the expected-red enrollment (v2.workflow.floor_expected_red floor_expected_red_chunk_infer_checking_mode) and this stall delete in that change"),
+}

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_artifact_consulted_as_current_is_a_superseded_revision
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data an_artifact_consulted_as_current_is_a_superseded_revision: RecurringFailureMode = RecurringFailureMode {
   identity: "an_artifact_consulted_as_current_is_a_superseded_revision" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**an artifact consulted as current is a superseded revision** (a tool, a checkout, or any artifact is consulted as though it speaks for the corpus, and it speaks for an earlier revision of it. What it reports is confident, located, specific and internally consistent -- and wrong about the corpus as it now stands. Nothing in the reading says the artifact is old, so the report gets acted on: investigated, relayed, or issued as an instruction.)",

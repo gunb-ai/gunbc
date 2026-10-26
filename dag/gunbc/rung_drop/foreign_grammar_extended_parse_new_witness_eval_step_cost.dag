@@ -1,7 +1,7 @@
 module gunbc.rung_drop.foreign_grammar_extended_parse_new_witness_eval_step_cost
 
 import std.types { String, List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged, population_from_list }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows }
 
@@ -28,15 +28,13 @@ data foreign_grammar_extended_parse_new_witness_eval_step_cost: RungDrop = RungD
 
   declared: "2026-10-05",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "honest per-token parse cost of the interpreted parser over a foreign grammar; owner: grammar program (stern-bear-500)",
     },
-    population: foreign_grammar_extended_parse_new_witness_eval_step_cost_population,
+    population: population_from_list(xs: foreign_grammar_extended_parse_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY: a precedence-climbing tree contract (one node per operator application, not one per level), or parse claims evaluated on the native route -- the capability gunbc.rung_drop dag_text_round_trip_nested_bind_new_witness_eval_step_cost names. WHAT IT MUST BE SUFFICIENT FOR: both identities, still tokenizing and parsing their extended-function source once through their own language's grammar, measuring under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Deleting an identity, shrinking its source below the constructs its claim names, supplying its tokens or parse, or bundling it into a shared producer does not satisfy this trigger.",
-  }
+  } }
 }

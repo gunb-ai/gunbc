@@ -45,8 +45,8 @@ import gunbc.host.host_standup {
 }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest }
+import std.dissolution { unbound_dissolution, bound_dissolution }
+import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest }
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
   CiRunnerParticipation,
@@ -94,14 +94,16 @@ import gunbc.fleet.fleet_enrollment {
 // over both enums, so a new phase or a new provisioning path does not compile until it is placed.
 fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool {
   match backing {
-    OwnedMachine { provisioning: BmcVirtualMediaInstall } => match p {
-      BmcCredentialConverge => true
-      OsInstallMechanismResolved => true
-      OsInstallActuated => true
+    OwnedMachine { provisioning: OwnedProvisioning { control: c, delivery: d }, unit: _ } => match p {
+      BmcCredentialConverge => match c {
+        Bmc => true
+        NoOutOfBand => false
+      }
+      OsInstallMechanismResolved => delivery_owes_install(d: d)
+      OsInstallActuated => delivery_owes_install(d: d)
       ProviderGuestAdopted => false
-      HostConvergePolicyDerived => true
+      HostConvergePolicyDerived => delivery_owes_install(d: d)
     }
-    OwnedMachine { provisioning: ApplianceFirstBoot } => false
     ProviderGuest { route: _, entitlement: _, resource: _ } => match p {
       BmcCredentialConverge => false
       OsInstallMechanismResolved => false
@@ -109,6 +111,19 @@ fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool
       ProviderGuestAdopted => true
       HostConvergePolicyDerived => false
     }
+  }
+}
+
+// ONLY AN OS INSTALLED OVER VIRTUAL MEDIA OWES THE INSTALL STEPS AND A CONVERGE POLICY. An appliance
+// image arrives through the appliance's own first boot and a RAM image is booted rather than installed,
+// so neither has a mechanism to resolve or an actuation to run. A RAM-image host carries no mutable
+// converged state either: its slots and knobs are inputs to the image, owed by the image-baked arm of
+// gunbc.host.host_converge fleet_converge_policy_from rather than applied by a converge.
+fn delivery_owes_install(d: OwnedOsDelivery) -> Bool {
+  match d {
+    InstalledViaVirtualMedia => true
+    ApplianceImage => false
+    RamImageBoot => false
   }
 }
 
@@ -183,6 +198,11 @@ data host_assimilation_program_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.host.host_assimilation_program", decl_name: "phases_awaiting_a_real_enrollment"),
     reason: "InferenceServingProvision maps to InferenceServingParticipation, and no real gunbc.fleet.fleet_enrollment fleet_enrollments entry carries that participation (the Sparks were sold), so the phase is in no real host program; the spine-claimed claim admits it only through this row",
     dissolution: unbound_dissolution(description: "a real enrollment carries InferenceServingParticipation: the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation whose intent gunbc.serving.rented_allocation_host_enrollment derives, or the owned RTX PRO 6000 enrollment lands. SUFFICIENT FOR deleting this row and the phase from phases_awaiting_a_real_enrollment, after which witness_every_spine_step_is_claimed_by_some_participation needs no exception"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "runner_image_baked_deployment_plan"),
+    reason: "the image-baked arm (RamImageBoot hosts: fleet_image_baked_offers, ConvergePolicyDerived.image_baked) is derived but no image build input reads it yet: the runner_host_medium publish that bakes a host's slots and knobs into its seeded image is a later change, so the arm's only readers today are its witnesses. The trigger is the declaration gunbc.runner.runner_host_medium runner_host_image_slot_roster that folds runner_image_baked_deployment_plan into that image-build input; it must be executed by a claim that a RamImageBoot host's image carries the derived runner count before this row is deleted",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_image_slot_roster")),
   ),
 ]
 

@@ -1,0 +1,36 @@
+module product.printing.slicer_acquisition
+import std.types { String, NonEmptyStr }
+import gunbc.artifact_acquisition { AcquisitionSubject, AcquisitionSource, ContentDigestSha256, SourceUrl, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquire_artifact, acquisition_refusal_text }
+import gunbc.url_file_acquisition { url_file_acquisition_handler }
+import extdeps.printing.orca_slicer { orca_slicer_linux_aarch64_appimage_sha256, orca_slicer_linux_aarch64_appimage_url }
+import product.printing.print_runtime { print_runtime_root }
+
+// THE PINNED SLICER IS ACQUIRED BY DIGEST, beside the CAD runtime, the way the pinned micromamba is
+// (product.printing.cad_runtime_converge). The path is named by the digest; nothing copies an
+// archive in by hand. Every execution still goes through extdeps.printing.orca_slicer
+// with_verified_orca, which re-checks the bytes it runs.
+fn orca_archive_path() -> String {
+  join([print_runtime_root, "/bin/orca-", orca_slicer_linux_aarch64_appimage_sha256 as String, ".AppImage"], "")
+}
+
+fn orca_archive_subject() -> AcquisitionSubject {
+  let path = orca_archive_path()
+  AcquisitionSubject {
+    identity: "orca-slicer-linux-aarch64-appimage",
+    key: ContentDigestSha256 { hex: orca_slicer_linux_aarch64_appimage_sha256 },
+    install_path: path as NonEmptyStr,
+    staging_path: Present { value: concat(path, ".part") as NonEmptyStr },
+    parent_directory: concat(print_runtime_root, "/bin") as NonEmptyStr,
+    sources: [AcquisitionSource { identity: "github.com/SoftFever/OrcaSlicer", locator: SourceUrl { url: orca_slicer_linux_aarch64_appimage_url } }],
+  }
+}
+
+type SlicerArchive = SlicerArchiveReady { path: String } | SlicerArchiveRefused { cause: String }
+
+fn acquire_orca_archive() -> SlicerArchive {
+  match acquire_artifact(subject: orca_archive_subject(), handler: url_file_acquisition_handler) {
+    AcquisitionRefused { cause: c } => SlicerArchiveRefused { cause: concat("Cannot acquire the pinned Orca archive: ", acquisition_refusal_text(cause: c)) }
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => SlicerArchiveReady { path: orca_archive_path() }
+    AcquisitionFetched { identity: _, install_path: _, source: _ } => SlicerArchiveReady { path: orca_archive_path() }
+  }
+}

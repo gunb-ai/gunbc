@@ -4,7 +4,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.types { NonEmptyStr, Int, List, Float, String, Bool }
-import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
+import std.error_primitives { pure_dag_seam_unreachable_int, pure_dag_seam_unreachable_float }
 import extdeps.languages.simd.kernel {
   relu_mul_add_wire_op_codes,
   elemwise_mul_wire_op_code,
@@ -76,7 +76,7 @@ fn wgsl_relu_mul_add_int_kernel_execute(
   b: List<Int>,
   c: List<Int>
 ) -> List<Int> {
-  [pure_dag_seam_unreachable()]
+  [pure_dag_seam_unreachable_int()]
 }
 
 fn wgsl_relu_mul_add_float_kernel_execute(

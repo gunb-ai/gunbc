@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_preflight_demands_the_grant_its_gated_step_installs
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_preflight_demands_the_grant_its_gated_step_installs: RecurringFailureMode = RecurringFailureMode {
   identity: "a_preflight_demands_the_grant_its_gated_step_installs" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a preflight demands, before a step, a precondition that the step it gates is the one responsible for establishing -- so any growth of what the step establishes makes the preflight refuse forever** (INVALID STATE: the gate's demand set is derived from the step's OUTPUT (what the step will grant, install or create) rather than from the step's INPUT (what the step itself spends). On a converged host the two coincide, so the gate passes and looks right. The first time the output grows, the host lacks the new part, the gate refuses, the step that would supply it never runs, and nothing else ever will -- a self-sealing refusal on every host at once.)",

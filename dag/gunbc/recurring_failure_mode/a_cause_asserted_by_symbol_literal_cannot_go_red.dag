@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_cause_asserted_by_symbol_literal_cannot_go_red
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_cause_asserted_by_symbol_literal_cannot_go_red: RecurringFailureMode = RecurringFailureMode {
   identity: "a_cause_asserted_by_symbol_literal_cannot_go_red" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a control asserts a refusal cause by symbol literal without importing the declaration, so the assertion compares SPELLINGS and stays green when the cause row is deleted or renamed (INVALID STATE: a witness matches a typed refusal's cause against ^name; ^name mints a Symbol from text rather than resolving a binding; so the control passes whether or not any declaration of that name exists, and the module's strongest-looking evidence — a refusal matched BY NAME rather than by a Bool — is the evidence least able to notice that its subject is gone)",

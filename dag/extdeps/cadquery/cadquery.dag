@@ -1,6 +1,6 @@
 module extdeps.cadquery.cadquery
 
-import extdeps.python { python_program }
+import extdeps.exec.program { ProgramIdentity }
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.measure { Micrometer, micrometer_count }
@@ -47,8 +47,8 @@ data cadquery_ocp_distribution: OcpDistribution = OcpWithVtk
 // Makefiles. What this builder owns is that CadQuery programs are executed by the PYTHON
 // INTERPRETER and not by a shell, so a path carrying a space or a metacharacter cannot become two
 // operands or a second command.
-fn cadquery_run_program_command(script_path: String) -> ArgvCommand {
-  argv_command(program: python_program(), arguments: [script_path])
+fn cadquery_run_program_command(interpreter: ProgramIdentity, script_path: String) -> ArgvCommand {
+  argv_command(program: interpreter, arguments: [script_path])
 }
 
 // THE EXPORT KNOBS ARE UPSTREAM'S, AND THEY ARE CARRIED AS UPSTREAM SPELLS THEM.
@@ -150,8 +150,11 @@ fn stl_export_call(destination: String, knobs: StlExportKnobs) -> String {
 
 // Import the actual geometry modules as well as reading distribution metadata.
 // Package metadata alone cannot establish that their dynamic dependencies load.
-fn cadquery_import_probe_command(distributions:List<String>) -> ArgvCommand {
- argv_command(program:python_program(),arguments:concat([
-  "-c", "import cadquery, OCP, importlib.metadata as m, json, sys; print(json.dumps(dict((n,m.version(n)) for n in sys.argv[1:])))"
+// The reply also names the interpreter's own executable and its CPython tag (PEP 425 "cpXY"),
+// so a reader can refuse an interpreter other than the one it selected, or one whose ABI the
+// pinned wheels were not built for.
+fn cadquery_import_probe_command(interpreter: ProgramIdentity, distributions: List<String>) -> ArgvCommand {
+ argv_command(program:interpreter,arguments:concat([
+  "-c", "import cadquery, OCP, importlib.metadata as m, json, sys; print(json.dumps(dict(executable=sys.executable, python_tag='cp%d%d' % sys.version_info[:2], distributions=dict((n,m.version(n)) for n in sys.argv[1:]))))"
  ],distributions))
 }

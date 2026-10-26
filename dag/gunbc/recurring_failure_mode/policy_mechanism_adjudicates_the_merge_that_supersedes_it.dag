@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.policy_mechanism_adjudicates_the_merge_that_supersedes_it
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data policy_mechanism_adjudicates_the_merge_that_supersedes_it: RecurringFailureMode = RecurringFailureMode {
   identity: "policy_mechanism_adjudicates_the_merge_that_supersedes_it" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a policy mechanism that ships in the tree it adjudicates, so the one change that supersedes it is adjudicated by the superseded version** (a merge driver, a hook, a lint config, a formatter, a codegen template, a CI entry point -- anything the toolchain reads from the WORKING TREE at the moment it acts. The version that acts is the version already installed, so on every change that leaves the mechanism alone its instruction is current, and on the single change that REPLACES the mechanism its instruction is guaranteed to be the retired one.",

@@ -1,0 +1,279 @@
+module test.claim.machine_intake.mtcollins1_boot_fan_gate_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { string_contains }
+import std.process { ExitSuccess, ExitFailure }
+import std.measure { sdr_undecoded_line_count }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine, sdr_decode_lines, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, PostPowerFanVerdict, FanRowsUndecoded, FanFailureSensorNotNominal, FanFailureSensorNoReading, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable, fan_observation, thermal_observation }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGatePowered, FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, post_power_fan_gate_stop_section, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, PostPowerFanGateReading, PostPowerFanGateReached, PostPowerFanGateNotReached, post_power_fan_gate_exit, post_power_fan_gate_text, post_power_fan_gate_pre_stop_text, post_power_fan_refusal_text }
+import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set }
+
+// SUPPLIED ROUNDS at the verdict and outcome boundaries. The effectful route (settle, read, write-before-stop,
+// PowerDown, readback, one repeat, step-summary append) is the live boot step. The gate-to-boot decision is paired in
+// mtcollins1_boot_run_witness (fan_gate_continuation: admitted, refused and unreached controls); the live effectful
+// route is exercised only by a real boot, and no control here claims it. The unit's set is the OperatorAssumed row mtcollins1_fitted_fan_set.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
+  SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: "ok" as NonEmptyStr, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
+}
+
+fn published() -> ThermalObservation { ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] } }
+
+fn round(on: Bool, lines: List<SdrTypeLine>) -> FanObservationRound {
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: published(), fans: FanSensorsRead { lines: lines, undecoded_lines: [], failure_rows: [] } }
+}
+
+
+
+fn established(round: FanObservationRound) -> Bool {
+  match post_power_fan_verdict(fitted: mtcollins1_fitted_fan_set, chassis: round.chassis, thermal: round.thermal, fans: round.fans) { PostPowerFanVerdictEstablished => true  PostPowerFanVerdictRefused { cause: _ } => false }
+}
+
+fn unit_rows(fan5_1: NonEmptyStr) -> List<SdrTypeLine> {
+  [row(name: "FAN4_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN4_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_1_Speed" as NonEmptyStr, reading: fan5_1), row(name: "FAN0_0_Speed" as NonEmptyStr, reading: "No Reading" as NonEmptyStr), row(name: "FAN3_1_Speed" as NonEmptyStr, reading: "No Reading" as NonEmptyStr)]
+}
+
+
+test fn the_unit_fitted_set_is_established_on_the_observed_reading() -> Bool {
+  established(round: round(on: true, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr)))
+}
+
+test fn the_unit_fitted_set_refuses_when_one_fitted_rotor_reads_zero() -> Bool {
+  established(round: round(on: true, lines: unit_rows(fan5_1: "0 RPM" as NonEmptyStr))) == false
+}
+
+test fn an_off_chassis_refuses_even_with_the_unit_fans_listed() -> Bool {
+  established(round: round(on: false, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr))) == false
+}
+
+// FULL-PATH REPLAY OF REAL RAW STDOUT: the committed `sdr elist` of this controller (powered, artifacts/bmc/mtcollins1-32dimm/06-sdr.txt)
+// goes through sdr_decode_lines, fan_observation, FanObservationRound and the gate; no list is constructed here. In that real text every
+// FANn_Failure line has an EMPTY reading cell (status ok), which the SDR decoder leaves unstructured; the fan layer reads it structurally
+// as NOT-asserted and admits it. The ASSERTED spelling is not in any committed text, so a Failure row that is not (empty reading, ok) or
+// (reading `No Reading`, the host-off capture of run 39053311400) refuses with its own arm.
+fn raw_stdout() -> String {
+  Filesystem.Read(path: "artifacts/bmc/mtcollins1-32dimm/06-sdr.txt").content
+}
+
+fn replay_round(stdout: String) -> FanObservationRound {
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: true }, chassis_raw: "", thermal: published(), fans: fan_observation(success: true, results: sdr_decode_lines(stdout: stdout)) }
+}
+
+fn verdict_of(stdout: String) -> PostPowerFanVerdict {
+  post_power_fan_verdict(fitted: mtcollins1_fitted_fan_set, chassis: ChassisPowerRead { power_on: true }, thermal: published(), fans: replay_round(stdout: stdout).fans)
+}
+
+fn undecoded_of(stdout: String) -> List<String> {
+  match verdict_of(stdout: stdout) {
+    PostPowerFanVerdictRefused { cause: FanRowsUndecoded { texts: t } } => t
+    _ => []
+  }
+}
+
+fn not_nominal_text(stdout: String) -> String {
+  match verdict_of(stdout: stdout) {
+    PostPowerFanVerdictRefused { cause: FanFailureSensorNotNominal { text: t } } => t
+    _ => ""
+  }
+}
+
+fn no_reading_text(stdout: String) -> String {
+  match verdict_of(stdout: stdout) {
+    PostPowerFanVerdictRefused { cause: FanFailureSensorNoReading { text: t } } => t
+    _ => ""
+  }
+}
+
+// the controller's fan rows, Failure rows included (the other empty-reading discrete rows of the whole elist are other sensors' business)
+fn fan_rows(stdout: String) -> String {
+  join(filter(split(s: stdout, delimiter: "\n"), l => string_contains(s: l, pattern: "FAN") && string_contains(s: l, pattern: "PSU") == false), "\n")
+}
+
+fn read_whole() -> Bool { raw_stdout().length() > 1000 }
+
+// POSITIVE CONTROL: the real fan rows, Failure rows with their empty reading cell included, decode whole, the four fitted fans spin, the gate admits.
+test fn the_real_stdout_fan_rows_with_empty_reading_failure_rows_are_established() -> Bool {
+  read_whole() && string_contains(s: fan_rows(stdout: raw_stdout()), pattern: "FAN4_Failure")
+    && undecoded_of(stdout: fan_rows(stdout: raw_stdout())).length() == 0
+    && established(round: replay_round(stdout: fan_rows(stdout: raw_stdout())))
+}
+
+// RED: the host-off shape (run 39053311400, `ns` / `No Reading`) is a sensor not reporting while the chassis is on: it refuses with its own arm.
+test fn a_failure_row_reading_no_reading_while_powered_refuses_with_its_own_arm() -> Bool {
+  let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | ns  | 29.0 | No Reading")
+  read_whole() && s != fan_rows(stdout: raw_stdout()) && established(round: replay_round(stdout: s)) == false
+    && string_contains(s: no_reading_text(stdout: s), pattern: "FAN4_Failure")
+}
+
+// RED: the no-reading sort is the upstream's, not a literal: `Disabled` on a powered Failure row is also a sensor not reporting.
+test fn a_failure_row_reading_disabled_while_powered_refuses_as_no_reading() -> Bool {
+  let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | ns  | 29.0 | Disabled")
+  read_whole() && s != fan_rows(stdout: raw_stdout()) && established(round: replay_round(stdout: s)) == false
+    && string_contains(s: no_reading_text(stdout: s), pattern: "FAN4_Failure")
+}
+
+// RED: an asserted failure (any status but ok on an empty reading) refuses with its own arm, carrying the row text.
+test fn an_asserted_failure_row_refuses_with_its_own_arm() -> Bool {
+  let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | cr  | 29.0 | ")
+  read_whole() && s != fan_rows(stdout: raw_stdout()) && established(round: replay_round(stdout: s)) == false
+    && string_contains(s: not_nominal_text(stdout: s), pattern: "FAN4_Failure")
+}
+
+// RED: `No Reading` under any status refuses while powered.
+test fn a_failure_row_reading_no_reading_under_another_status_refuses() -> Bool {
+  let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | cr  | 29.0 | No Reading")
+  read_whole() && s != fan_rows(stdout: raw_stdout()) && established(round: replay_round(stdout: s)) == false
+    && string_contains(s: no_reading_text(stdout: s), pattern: "FAN4_Failure")
+}
+
+// RED: a structured Failure row whose reading is anything but `No Reading` refuses with the same arm.
+test fn a_structured_failure_row_with_another_reading_refuses() -> Bool {
+  let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | ok  | 29.0 | Asserted")
+  read_whole() && s != fan_rows(stdout: raw_stdout()) && established(round: replay_round(stdout: s)) == false
+    && string_contains(s: not_nominal_text(stdout: s), pattern: "Asserted")
+}
+
+// RED: the whole elist still carries other unstructured rows (CPU0_Hightemp and others); each refuses, carrying its text.
+test fn the_whole_real_elist_still_refuses_on_its_other_unstructured_rows_carrying_each_text() -> Bool {
+  let t = undecoded_of(stdout: raw_stdout())
+  read_whole() && t.length() > 0 && any(t, x => string_contains(s: x, pattern: "CPU0_Hightemp")) && any(t, x => string_contains(s: x, pattern: "_Failure")) == false
+}
+
+test fn the_refusal_text_and_pre_stop_artifact_carry_each_undecoded_line() -> Bool {
+  let r = replay_round(stdout: raw_stdout())
+  let c = FanRowsUndecoded { texts: undecoded_of(stdout: raw_stdout()) }
+  let pre = post_power_fan_gate_pre_stop_text(fitted: mtcollins1_fitted_fan_set, cause: c, observation: r, manager: FanManagerUnread { read_obligation: "fixture obligation" as NonEmptyStr })
+  read_whole() && string_contains(s: pre, pattern: "fan_undecoded_line=[CPU0_Hightemp") && string_contains(s: pre, pattern: "fan_failure_row=[FAN4_Failure") && string_contains(s: post_power_fan_refusal_text(cause: c), pattern: "CPU0_Hightemp")
+}
+
+// RED: one changed unstructured line still refuses.
+test fn one_changed_unstructured_line_still_refuses() -> Bool {
+  let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN0_Presence    | 0Fh | ok  | 29.0 | Device Present"), "FAN0_Presence    | 0Fh | ok  | 29.0")
+  read_whole() && s != fan_rows(stdout: raw_stdout()) && established(round: replay_round(stdout: s)) == false && any(undecoded_of(stdout: s), x => string_contains(s: x, pattern: "FAN0_Presence"))
+}
+
+// RED: one added unstructured line still refuses.
+test fn one_added_unstructured_line_still_refuses() -> Bool {
+  let s = join([fan_rows(stdout: raw_stdout()), "\nFAN9_Presence    | 99h | cr  | 29.0 | "], "")
+  read_whole() && established(round: replay_round(stdout: s)) == false && any(undecoded_of(stdout: s), x => string_contains(s: x, pattern: "FAN9_Presence"))
+}
+
+fn off() -> ChassisPowerObservation { ChassisPowerRead { power_on: false } }
+fn still_on() -> ChassisPowerObservation { ChassisPowerRead { power_on: true } }
+
+fn refused_outcome(stop: FanGateSafeStopReceipt) -> PostPowerFanGateOutcome {
+  PostPowerFanRefused {
+    cause: FittedHeaderZeroRpm { header: "FAN4_0_Speed" as NonEmptyStr },
+    observation: round(on: true, lines: unit_rows(fan5_1: "0 RPM" as NonEmptyStr)),
+    stop: stop,
+    manager: FanManagerUnread { read_obligation: "fixture obligation" as NonEmptyStr },
+    evidence: FanGateEvidence { observation_file: FanGateWritten { path: "artifacts/f.txt" as NonEmptyStr }, step_summary: FanGateWriteFailed { path: "GITHUB_STEP_SUMMARY" as NonEmptyStr, error: "unset" } },
+  }
+}
+
+fn attempt(rb: List<ChassisPowerObservation>) -> FanGatePowerDownAttempt {
+  FanGatePowerDownAttempt { command_success: true, command_stdout: "Chassis Power Control: Down/Off", command_exit_code: 0, command_stderr: "", readbacks: rb }
+}
+
+fn failed_attempt() -> FanGatePowerDownAttempt {
+  FanGatePowerDownAttempt { command_success: false, command_stdout: "", command_exit_code: 1, command_stderr: "Error: Unable to establish IPMI v2 / RMCP+ session", readbacks: [still_on()] }
+}
+
+test fn a_failed_powerdown_command_is_on_the_record_with_its_exit_and_stderr() -> Bool {
+  let t = post_power_fan_gate_stop_section(stop: FanGateSafeStopReceipt { first: failed_attempt(), repeat: FanGateRepeated { attempt: failed_attempt() } })
+  string_contains(s: t, pattern: "PowerDown (first): command success=false exit=1")
+    && string_contains(s: t, pattern: "PowerDown (repeat): command success=false exit=1")
+    && string_contains(s: t, pattern: "stderr=[Error: Unable to establish IPMI v2 / RMCP+ session]")
+}
+
+fn stopped_off() -> FanGateSafeStopReceipt { FanGateSafeStopReceipt { first: attempt(rb: [still_on(), off()]), repeat: FanGateRepeatNotNeeded } }
+
+fn exit_text(outcome: PostPowerFanGateOutcome) -> String {
+  match post_power_fan_gate_exit(fitted: mtcollins1_fitted_fan_set, outcome: outcome) { ExitSuccess => "success"  ExitFailure { code: _, reason: r } => r }
+}
+
+test fn an_established_outcome_exits_success() -> Bool {
+  exit_text(outcome: PostPowerFanEstablished { observation: round(on: true, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr)) }) == "success"
+}
+
+test fn a_refused_outcome_stops_with_the_typed_cause_the_assumed_set_and_the_evidence_pointers() -> Bool {
+  let t = exit_text(outcome: refused_outcome(stop: stopped_off()))
+  string_contains(s: t, pattern: "FAN4_0_Speed") && string_contains(s: t, pattern: "reads zero RPM") && string_contains(s: t, pattern: "OPERATOR'S ASSUMPTION")
+    && string_contains(s: t, pattern: "power-off read back as off") && string_contains(s: t, pattern: "cooling manager standing unread")
+    && string_contains(s: t, pattern: "written to artifacts/f.txt") && string_contains(s: t, pattern: "NOT written to GITHUB_STEP_SUMMARY")
+}
+
+test fn a_stop_whose_repeat_never_read_off_reports_power_off_unconfirmed_with_both_attempts_kept() -> Bool {
+  let stop = FanGateSafeStopReceipt { first: attempt(rb: [still_on(), still_on()]), repeat: FanGateRepeated { attempt: attempt(rb: [still_on(), ChassisUnreadable]) } }
+  let full = post_power_fan_gate_text(reading: PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: mtcollins1_fitted_fan_set, outcome: refused_outcome(stop: stop) } })
+  string_contains(s: exit_text(outcome: refused_outcome(stop: stop)), pattern: "power-off unconfirmed") && string_contains(s: full, pattern: "PowerDown (repeat): command success=true exit=0 stdout=[Chassis Power Control: Down/Off] stderr=[]; readbacks 2:") && string_contains(s: full, pattern: "PowerDown (first): command success=true exit=0 stdout=[Chassis Power Control: Down/Off] stderr=[]; readbacks 2:")
+}
+
+test fn a_repeat_that_read_off_says_so() -> Bool {
+  let stop = FanGateSafeStopReceipt { first: attempt(rb: [still_on()]), repeat: FanGateRepeated { attempt: attempt(rb: [off()]) } }
+  string_contains(s: exit_text(outcome: refused_outcome(stop: stop)), pattern: "only after one repeated PowerDown")
+}
+
+test fn the_stopping_observation_is_in_the_pre_stop_text_not_a_later_reread() -> Bool {
+  let t = post_power_fan_gate_pre_stop_text(fitted: mtcollins1_fitted_fan_set, cause: FittedHeaderMissing { header: "FAN4_0_Speed" as NonEmptyStr }, observation: round(on: true, lines: unit_rows(fan5_1: "0 RPM" as NonEmptyStr)), manager: FanManagerUnread { read_obligation: "o" as NonEmptyStr })
+  string_contains(s: t, pattern: "observation that stopped the boot") && string_contains(s: t, pattern: "FAN5_1_Speed")
+}
+
+fn with_manager(m: FanManagerReadStanding) -> String {
+  post_power_fan_gate_pre_stop_text(fitted: mtcollins1_fitted_fan_set, cause: FittedHeaderMissing { header: "H" as NonEmptyStr }, observation: round(on: true, lines: []), manager: m)
+}
+
+test fn the_unread_manager_standing_renders_what_would_read_it() -> Bool {
+  string_contains(s: with_manager(m: FanManagerUnread { read_obligation: "a REST session" as NonEmptyStr }), pattern: "cooling manager standing unread: a REST session")
+}
+
+test fn an_unreached_gate_reads_not_reached() -> Bool {
+  string_contains(s: post_power_fan_gate_text(reading: PostPowerFanGateNotReached { reason: "r" as NonEmptyStr }), pattern: "not reached: r")
+}
+
+// THERMAL STANDING (side-chat hold 2026-10-19): only a published, fully decoded temperature read admits; every other
+// standing refuses with its own typed arm. A silent pre-POST list never acquires a healthy interpretation by omission.
+fn thermal_cause(t: ThermalObservation) -> String {
+  match post_power_fan_verdict(fitted: mtcollins1_fitted_fan_set, chassis: ChassisPowerRead { power_on: true }, thermal: t, fans: round(on: true, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr)).fans) {
+    PostPowerFanVerdictEstablished => "established"
+    PostPowerFanVerdictRefused { cause: PostPowerThermalUnreadable } => "unreadable"
+    PostPowerFanVerdictRefused { cause: PostPowerThermalNotPublished { publication: TemperatureSensorsSilent } } => "silent"
+    PostPowerFanVerdictRefused { cause: PostPowerThermalNotPublished { publication: TemperatureUndecodable } } => "undecodable"
+    PostPowerFanVerdictRefused { cause: PostPowerThermalNotPublished { publication: TemperatureNoSensorRows } } => "norows"
+    PostPowerFanVerdictRefused { cause: PostPowerThermalRowsUndecoded { undecoded_line_count: _ } } => "undecoded-rows"
+    PostPowerFanVerdictRefused { cause: PostPowerThermalReadingUnrecognised { texts: _ } } => "unrecognised-reading"
+    PostPowerFanVerdictRefused { cause: _ } => "other"
+  }
+}
+
+test fn a_published_fully_decoded_thermal_read_with_spinning_fans_is_established() -> Bool { thermal_cause(t: published()) == "established" }
+test fn an_unreadable_thermal_read_refuses() -> Bool { thermal_cause(t: ThermalUnreadable) == "unreadable" }
+test fn a_silent_pre_post_thermal_list_refuses_and_is_never_healthy() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] }) == "silent" }
+test fn an_undecodable_thermal_list_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureUndecodable, undecoded_line_count: sdr_undecoded_line_count(count: 2), unrecognised_readings: [] }) == "undecodable" }
+test fn a_thermal_read_with_no_sensor_rows_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperatureNoSensorRows, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] }) == "norows" }
+test fn a_published_temperature_beside_an_undecoded_row_refuses() -> Bool { thermal_cause(t: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 1), unrecognised_readings: [] }) == "undecoded-rows" }
+
+// The real route: raw sdr text -> sdr_decode_lines -> thermal_observation -> the gate. sdr_temperature_publication still answers
+// "was ANY temperature published" (TemperaturePublished here), so the unrecognised sibling must be carried by its own field.
+fn thermal_of(stdout: String) -> ThermalObservation { thermal_observation(success: true, results: sdr_decode_lines(stdout: stdout)) }
+test fn a_decoded_temperature_beside_an_unrecognised_reading_refuses() -> Bool {
+  thermal_cause(t: thermal_of(stdout: "CPU0_SOC_Temp    | 3Dh | ok  | 30.15 | 46 degrees C\nCPU1_SOC_Temp    | 3Eh | ok  | 30.16 | 46 kelvin\n")) == "unrecognised-reading"
+}
+test fn only_decoded_temperatures_are_established_by_the_same_route() -> Bool {
+  thermal_cause(t: thermal_of(stdout: "CPU0_SOC_Temp    | 3Dh | ok  | 30.15 | 46 degrees C\nCPU1_SOC_Temp    | 3Eh | ok  | 30.16 | 47 degrees C\n")) == "established"
+}
+test fn the_unrecognised_reading_refusal_text_carries_the_reading() -> Bool {
+  string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalReadingUnrecognised { texts: ["46 kelvin"] }), pattern: "46 kelvin")
+}
+
+test fn the_thermal_refusal_text_names_each_standing() -> Bool {
+  string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalUnreadable), pattern: "temperature sensors were unreadable")
+    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalNotPublished { publication: TemperatureSensorsSilent }), pattern: "published no decoded temperature")
+    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { undecoded_line_count: 3 }), pattern: "3 undecoded row(s)")
+}

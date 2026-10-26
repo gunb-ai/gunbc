@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.emit_stage_cost_dominates_its_closure
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data emit_stage_cost_dominates_its_closure: RecurringFailureMode = RecurringFailureMode {
   identity: "emit_stage_cost_dominates_its_closure" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "emit stage cost dominates its closure (over ONE closure, the seed's Rust emit stage spends an order of magnitude more than every earlier stage combined: for gunbc.live_deploy.repository_convergence_placement's 547-module closure, compile.reconcile took ~2 min and compile.emit took ~38 min, 2602s wall / 2587s CPU / 10.0 GiB peak RSS, session container arm64, 2026-09-24. Re-derive with `gunbc compile --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/repository_convergence_placement.dag --target rust`, which prints per-stage durations.)",

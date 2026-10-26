@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.wet_route_model_lags_seed_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // RECOVERED 2026-09-07 from commit 32815827ef8 on gunbc#9725 (closed unmerged). The three
 // comment blocks below, the subject, current, ceiling, blocker, and population members are

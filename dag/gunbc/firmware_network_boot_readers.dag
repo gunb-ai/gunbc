@@ -1,0 +1,208 @@
+module gunbc.firmware_network_boot_readers
+
+import std.types { Bool, HttpStatus, List, list_length, NonEmptyStr, String }
+import std.algebra { list_map, list_flat_map, list_append }
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import extdeps.bmc.redfish_memory_inventory { redfish_document }
+import extdeps.ietf.http_semantics { http_status_is_success, http_unauthorized, http_forbidden, http_not_found }
+import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_string_list }
+import gunbc.firmware_network_boot_standing { boot_order_entry }
+import gunbc.secure_boot_observation { FirmwareReadRefusal, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized }
+import gunbc.firmware_network_boot_probe {
+  AxisReply, ObservationAxis, BootOrderAxis, NicsAxis, BootOptionsAxis, SecureBootAxis, BiosVersionAxis,
+  ReadRoute, RedfishGetRoute, OpenBmcRedfishGetRoute, MegaRacRestGetRoute,
+  ReplyBootOrder, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder,
+}
+
+// THE REDFISH BODY DECODER FOR THE FIRMWARE NETWORK-BOOT PROBE, DECODER-ONLY. It decodes the REST
+// observations of ComputerSystem and SecureBoot GETs that a CALLER supplies into the probe's AxisReply
+// values. It is NOT the reader the probe's frontier names: that is observe_redfish_boot_axes, the
+// later declaration that consumes actual bound transport executions (one subject, endpoint, row,
+// route and receipt per attempt). Nothing here proves the supplied observations came from the
+// supplied subject or row, so the probe's AxisReplyUninhabited standing is correct and unchanged.
+// Consumers: that named later reader, and this module's witness.
+//
+// READ-ONLY BY CONSTRUCTION. The input is the RESULT of GETs already performed
+// (extdeps.transports.rest RestExchangeObservation, the one REST observation carrier), so nothing
+// here has a request, a method or a target to mutate.
+//
+// REDFISH ROUTES ONLY. The decoder reads DMTF ComputerSystem and SecureBoot documents, so it accepts
+// a row whose route is RedfishGetRoute or OpenBmcRedfishGetRoute. A MegaRacRestGetRoute row is the
+// proprietary SP-X /api surface (Redfish there is build-scoped and must be observed, not assumed),
+// and decoding DMTF bodies against it is refused as RedfishRouteNotRedfish.
+//
+// NIC AND BOOTOPTIONS ARE DECODER GAPS. EthernetInterfaces enumerates interfaces associated with the
+// system, not interfaces the firmware will boot from, and BootOptions needs a reference-keyed read
+// with a kind source. Both axes are answered ReplyBeyondDecoder with our reason, never a BMC
+// refusal, never an empty list, and never the EthernetInterfaces members as bootable NICs.
+//
+// WHAT THE FIXTURES ARE NOT (DESIGN 4d). No captured MegaRAC or OpenBMC ComputerSystem body for
+// these axes is in this corpus, so the witness bodies are DMTF-schema-shaped, not observations.
+// The decoder claims the schema; a real capture is a separate receipt in the observing layer.
+//
+// NO KIND IS GUESSED. BootOrder entries carry a reference and no kind (standing's ruling); the
+// BootOptions axis, where a kind lives, is a decoder gap. An empty list is a refusal and never an
+// Observed empty list.
+
+// The GETs a decode takes: the ComputerSystem and its SecureBoot resource, each as the REST
+// transport observed the exchange.
+type RedfishBootReads {
+  system: RestExchangeObservation
+  secure_boot: RestExchangeObservation
+}
+
+type RedfishDocRead
+  = RedfishDocParsed { doc: JsonValue }
+  | RedfishDocRefused { refusal: FirmwareReadRefusal }
+  | RedfishDocNoResponse
+
+// extdeps.ietf.http_semantics names the codes (RFC 9110 section 15.5). 401 means credentials must be established; 403 means they were accepted
+// and the account lacks the privilege (a role grant); 404 is a resource the service does not serve.
+fn redfish_status_refusal(status: HttpStatus, detail: NonEmptyStr) -> FirmwareReadRefusal {
+  if status == http_unauthorized() { AuthenticationRequired { detail: detail } }
+  else if status == http_forbidden() { AuthorizationDenied { detail: detail } }
+  else if status == http_not_found() { ResourceNotFound { detail: detail } }
+  else { UnexpectedHttpStatus { status: status, detail: detail } }
+}
+
+fn shape_refusal(detail: String) -> FirmwareReadRefusal {
+  ReplyShapeUnrecognized { detail: detail as NonEmptyStr }
+}
+
+// RedfishDocNoResponse means no document was read: the transport observed no response, or a success response whose body could not be read.
+// Neither is a BMC answer about the resource, so no reply is minted and the exchange is reported unread (unread_of).
+// A non-success status with an unreadable body is still the BMC's answer by status.
+fn read_doc(get: RestExchangeObservation) -> RedfishDocRead {
+  match get {
+    RestExchangeRefused { cause: _ } => RedfishDocNoResponse
+    RestResponseObserved { status: s, body: RestBodyReadRefused { cause: c } } =>
+      if http_status_is_success(status: s) { RedfishDocNoResponse }
+      else { RedfishDocRefused { refusal: redfish_status_refusal(status: s, detail: c) } }
+    RestResponseObserved { status: s, body: RestBodyRead { body: b } } =>
+      if http_status_is_success(status: s) {
+        match redfish_document(body: b) {
+          ObservationEstablished { observed: d } => RedfishDocParsed { doc: d }
+          ObservationRefused { cause: c } => RedfishDocRefused { refusal: ReplyShapeUnrecognized { detail: c } }
+        }
+      } else {
+        RedfishDocRefused { refusal: redfish_status_refusal(status: s, detail: "the service answered with a non-success HTTP status") }
+      }
+  }
+}
+
+fn refused_axis(axis: ObservationAxis, refusal: FirmwareReadRefusal) -> List<AxisReply> {
+  [ReplyRefusedByBmc { axis: axis, refusal: refusal }]
+}
+
+// BootOrder is the ComputerSystem's `Boot.BootOrder`: an ordered list of BootOptionReference strings,
+// and nothing else. A BootOrderEntry therefore carries a reference and a label and NO KIND (the
+// standing module's own ruling), so no classification happens here; the reference is the entry's
+// identity and, with no DisplayName in this resource, also the label (data, never consulted).
+// An empty list, a non-string member or an empty reference refuses the axis.
+fn boot_order_reply(system: RedfishDocRead) -> List<AxisReply> {
+  match system {
+    RedfishDocNoResponse => []
+    RedfishDocRefused { refusal: r } => refused_axis(axis: BootOrderAxis, refusal: r)
+    RedfishDocParsed { doc: d } =>
+      match json_field(obj: d, key: "Boot") {
+        FieldAbsent => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "the ComputerSystem carries no Boot object, so BootOrder is not published"))
+        FieldMalformed { cause: c } => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: c))
+        FieldRead { value: boot } =>
+          match json_field_string_list(obj: boot, key: "BootOrder") {
+            FieldAbsent => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "Boot carries no BootOrder"))
+            FieldMalformed { cause: c } => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: c))
+            FieldRead { value: refs } =>
+              if refs == [] { refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "BootOrder is empty; an empty list is not read as no boot entries")) }
+              else if list_length(items: list_flat_map(xs: refs, f: fn(r) { if r == "" { [r] } else { [] } })) > 0 { refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "a BootOrder member is the empty string")) }
+              else { [ReplyBootOrder { devices: list_map(xs: refs, f: fn(r) { boot_order_entry(reference: r as NonEmptyStr, label: r as NonEmptyStr) }) }] }
+          }
+      }
+  }
+}
+
+fn bios_version_reply(system: RedfishDocRead) -> List<AxisReply> {
+  match system {
+    RedfishDocNoResponse => []
+    RedfishDocRefused { refusal: r } => refused_axis(axis: BiosVersionAxis, refusal: r)
+    RedfishDocParsed { doc: d } =>
+      match json_field_string(obj: d, key: "BiosVersion") {
+        FieldAbsent => refused_axis(axis: BiosVersionAxis, refusal: shape_refusal(detail: "the ComputerSystem carries no BiosVersion"))
+        FieldMalformed { cause: c } => refused_axis(axis: BiosVersionAxis, refusal: shape_refusal(detail: c))
+        FieldRead { value: v } =>
+          if v == "" { refused_axis(axis: BiosVersionAxis, refusal: shape_refusal(detail: "BiosVersion is the empty string")) }
+          else { [ReplyBiosVersion { version: v as NonEmptyStr }] }
+      }
+  }
+}
+
+fn secure_boot_reply(get: RestExchangeObservation) -> List<AxisReply> {
+  match read_doc(get: get) {
+    RedfishDocNoResponse => []
+    RedfishDocRefused { refusal: r } => refused_axis(axis: SecureBootAxis, refusal: r)
+    RedfishDocParsed { doc: d } =>
+      match json_field_bool(obj: d, key: "SecureBootEnable") {
+        FieldAbsent => refused_axis(axis: SecureBootAxis, refusal: shape_refusal(detail: "the SecureBoot resource carries no SecureBootEnable"))
+        FieldMalformed { cause: c } => refused_axis(axis: SecureBootAxis, refusal: shape_refusal(detail: c))
+        FieldRead { value: on } => if on { [ReplySecureBootEnabled] } else { [ReplySecureBootDisabled] }
+      }
+  }
+}
+
+// Valid Redfish answers this decoder cannot read, stated as OUR gap (never a BMC refusal, never an empty list).
+fn nics_beyond_decoder() -> AxisReply {
+  ReplyBeyondDecoder { axis: NicsAxis, why: "EthernetInterfaces lists interfaces associated with the system, not the interfaces firmware will boot from; bootable NICs need the BootOption records and their related-device evidence, which this decoder does not read" }
+}
+
+fn boot_options_beyond_decoder() -> AxisReply {
+  ReplyBeyondDecoder { axis: BootOptionsAxis, why: "the ComputerSystem BootOptions collection is published by Redfish but this decoder does not read it, so BootOption references, enabled state and kinds are not observed" }
+}
+
+// BootOrder, BootOptions, NICs, SecureBoot, BIOS version. An axis whose exchange yielded no readable response has no response-derived reply (the two decoder-gap replies are emitted regardless of the transport response).
+fn redfish_axis_replies(reads: RedfishBootReads) -> List<AxisReply> {
+  let system = read_doc(get: reads.system)
+  list_append(left: boot_order_reply(system: system), right: list_append(left: [boot_options_beyond_decoder(), nics_beyond_decoder()], right: list_append(left: secure_boot_reply(get: reads.secure_boot), right: bios_version_reply(system: system))))
+}
+
+// An exchange that produced no usable response (the transport refused, or nothing was observed). It is
+// REPORTED, never turned into a reply and never into a responded contact.
+type RedfishExchange
+  = SystemExchange
+  | SecureBootExchange
+
+// WHY an exchange was not read. The two are different facts: no response was reached, or a success response arrived
+// whose body could not be read (the status is the BMC's and is kept).
+type RedfishUnreadCause
+  = RedfishExchangeUnreached { cause: NonEmptyStr }
+  | RedfishResponseBodyUnreadable { status: HttpStatus, cause: NonEmptyStr }
+
+type RedfishUnread { exchange: RedfishExchange, why: RedfishUnreadCause }
+
+// DECODER-ONLY RESULT: the decoded replies plus, per exchange, the ones that were never read. It is not a
+// probe contact: the subject, row and receipt join, and the Responded/Silent choice, belong to the future
+// observe_redfish_boot_axes, which holds the real attempt. A non-Redfish route is refused outright.
+type RedfishDecodeOutcome
+  = RedfishDecoded { replies: List<AxisReply>, unread: List<RedfishUnread> }
+  | RedfishRouteNotRedfish { route: ReadRoute }
+
+fn unread_of(exchange: RedfishExchange, get: RestExchangeObservation) -> List<RedfishUnread> {
+  match get {
+    RestExchangeRefused { cause: c } => [RedfishUnread { exchange: exchange, why: RedfishExchangeUnreached { cause: c } }]
+    RestResponseObserved { status: s, body: RestBodyReadRefused { cause: c } } =>
+      if http_status_is_success(status: s) { [RedfishUnread { exchange: exchange, why: RedfishResponseBodyUnreadable { status: s, cause: c } }] } else { [] }
+    RestResponseObserved { status: _, body: RestBodyRead { body: _ } } => []
+  }
+}
+
+fn decoded_reads(reads: RedfishBootReads) -> RedfishDecodeOutcome {
+  RedfishDecoded { replies: redfish_axis_replies(reads: reads), unread: list_append(left: unread_of(exchange: SystemExchange, get: reads.system), right: unread_of(exchange: SecureBootExchange, get: reads.secure_boot)) }
+}
+
+fn decode_redfish_boot_reads(route: ReadRoute, reads: RedfishBootReads) -> RedfishDecodeOutcome {
+  match route {
+    MegaRacRestGetRoute => RedfishRouteNotRedfish { route: route }
+    RedfishGetRoute => decoded_reads(reads: reads)
+    OpenBmcRedfishGetRoute => decoded_reads(reads: reads)
+  }
+}

@@ -107,7 +107,53 @@ fn the_rust_renderer_matches_the_dag_carrier_for_every_cause() {
         "claim source refused: p: unreadable: r"
     );
     assert_eq!(
+        r("p", &C::ModuleCollision { other: "q".into() }),
+        "claim source refused: p: declares a module also declared by q; one module, one authority (DESIGN section 3), so de-fork or rename one side"
+    );
+    assert_eq!(
+        r("p", &C::DirectoryNamedDag),
+        "claim source refused: p: a directory named like a .dag source; a source path is a file"
+    );
+    assert_eq!(
         r("p", &C::RootUnreadable { reason: "r".into() }),
         "claim source refused: p: unreadable source root: r"
     );
+}
+
+#[test]
+fn a_directory_named_like_a_dag_source_refuses_naming_the_path() {
+    let root = scratch_claim_root("dirdag", "ok.dag", "module test.claim.zz_ok\n");
+    let dir = std::path::Path::new(&root).join("test/claim/zz_dir.dag");
+    std::fs::create_dir_all(&dir).expect("directory named .dag");
+    let err = route(root).expect_err("a directory named x.dag must refuse, not read as green");
+    assert!(err.contains("zz_dir.dag"), "must name the path: {err}");
+    assert!(
+        err.contains("a directory named like a .dag source"),
+        "{err}"
+    );
+}
+
+// A dangling symlink named like a source cannot be read by ANY uid, root included (a mode-000 file
+// can, because root bypasses permissions), so this RED discriminates wherever it runs and never
+// takes a skip branch.
+#[test]
+fn an_unreadable_claim_source_refuses_naming_the_file() {
+    let root = scratch_claim_root("dangling", "ok.dag", "module test.claim.zz_ok\n");
+    let link = std::path::Path::new(&root).join("test/claim/zz_dangling.dag");
+    std::os::unix::fs::symlink("/nonexistent/zz_target.dag", &link).expect("dangling symlink");
+    let err = route(root).expect_err("an unreadable claim source must refuse, not panic");
+    assert!(err.contains("zz_dangling.dag"), "must name the file: {err}");
+}
+
+#[test]
+fn two_claim_sources_declaring_one_module_refuse_naming_both_paths() {
+    let root = scratch_claim_root("collision", "a.dag", "module test.claim.zz_dup\n");
+    let second = std::path::Path::new(&root).join("test/claim/b.dag");
+    std::fs::write(&second, "module test.claim.zz_dup\n").expect("second declaring file");
+    let err = route(root).expect_err("a module-path collision must refuse, not panic");
+    assert!(
+        err.contains("a.dag") && err.contains("b.dag"),
+        "must name both paths: {err}"
+    );
+    assert!(err.contains("also declared by"), "{err}");
 }

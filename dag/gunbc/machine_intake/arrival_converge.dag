@@ -97,6 +97,7 @@ import gunbc.machine_intake.bmc_rotation_route {
   rotation_route_request_identity,
 }
 import gunbc.machine_intake.bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
+import gunbc.machine_intake.bmc_recovery_route { RecoveryRouteUnavailable, recovery_route_unavailability, InBandRecoveryStanding }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
 import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeWorld,
@@ -511,6 +512,31 @@ type ArrivalStepReceipt
 
 type ArrivalStepRefusal
   = AccessDiscoverObserveRefused { cause: AccessObserveRefusal }
+  // CREDENTIAL UNKNOWN, IN-BAND ROUTE AVAILABLE. The third thing AccessDiscover can say, beside "I
+  // observed access" and "the controller refused me": the out-of-band credential we hold is not the
+  // credential this controller accepts, and this unit has a MODELED way back in -- the in-band recovery
+  // route of gunbc.machine_intake.bmc_recovery_route. The cause is that route's own named judgement and
+  // not AccessObserveRefusal, because ControllerUnreachable there means "the controller did not answer"
+  // -- and a locked-but-alive BMC answers perfectly well; folding the two is how a board that needs a
+  // rescue medium gets written off as dead metal. The cause names what the route still requires (no
+  // reachable rescue host yet, firmware policy never measured yet, readback inconclusive yet), which is
+  // the next physical action, not a retry. The arm carries NO receipt: an available route is not
+  // access, and nothing downstream may treat it as such -- it stops the run exactly like any other
+  // refusal. IntakePhase is untouched: this is a refusal of a step already in the phase order, not a
+  // new phase, so IntakePhase in this module stays the only authority over the order (§3).
+  // THE CALLER'S WIRING MISTAKE IS REFUSED, NOT IGNORED. The standing must name the unit the step instance
+  // names -- both sides are branded strings from different modules, so they are compared as whole strings,
+  // and compared at all rather than trusting the caller passed the right recovery. What this function may
+  // NOT do is answer `none` to a mismatch: that is indistinguishable from "nobody supplied an observation",
+  // so a caller that paired this board with another board's standing would send the run down the
+  // out-of-band path as if nothing had been said -- the wrong-unit observation disappears and the defect
+  // stays in the wiring. §5: "every path succeeds fully or fails with a typed, located diagnostic", and "a
+  // failure arm refuses, never widens". This module already refuses the same class of mistake loudly
+  // (IdentityBindAccessForAnotherInstance, BmcSecureIdentityForAnotherInstance, AccessReadForAnotherUnit),
+  // which is why the silent `none` here was the outlier. Both keys travel so the pairing is checkable
+  // from the refusal alone.
+  | AccessDiscoverRecoveryStandingForAnotherUnit { standing_unit: NonEmptyStr, step_unit: StepSubjectKey }
+  | AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: RecoveryRouteUnavailable }
   | IdentityBindObserveRefused { cause: IdentityObserveRefusal }
   | IdentityBindAccessForAnotherInstance { access: StepInstanceKey }
   | ReadOnlyPhaseRefused { phase: ArrivalPhase, reason: NonEmptyStr }
@@ -586,9 +612,75 @@ fn read_only_refusal(phase: ArrivalPhase, decision: UpsertDecision<ReadOnlyPhase
   }
 }
 
+// WHO BUILDS THE CREDENTIAL-UNKNOWN ARM. A locked unit is refused here, with the recovery route's own
+// named requirement as the cause -- and the arm is REFUSED TO when the route has already handed off.
+// That second half is the point: a standing whose recovery completed is not a refusal at all, it is the
+// case where the out-of-band path is back in reach (bmc_secure's, not this module's), so minting a
+// refusal from it would let a recovered unit be reported as locked. The recovery module cannot mint
+// this arm (its standing is sealed, and the arm belongs to the arrival step), and this module cannot
+// mint a recovery standing; the seam needs both, which is why it sits here.
+fn access_discover_refusal_for_locked_credential(
+  key: StepInstanceKey,
+  standing: InBandRecoveryStanding?,
+) -> ArrivalStepRefusal? {
+  match standing {
+    Absent => none
+    Present { value: s } =>
+      // The standing must name the unit the step instance names. Both sides are branded strings from
+      // different modules, so they are compared as whole strings -- and compared at all, rather than
+      // trusting that the caller passed the right recovery: minting this arm from another unit's locked
+      // standing would send a healthy board off to find a rescue USB.
+      if (s.subject.subject.unit_key as NonEmptyStr) != (key.subject as NonEmptyStr) {
+        // REFUSED, NOT DROPPED. `none` here meant "no observation was supplied", which is a different fact:
+        // an observation WAS supplied and it belongs to another unit. A caller that crossed two boards'
+        // wires got a run that quietly continued as if nothing had been observed, so the only trace of the
+        // defect was a healthy board walking the out-of-band path. §5: "every path succeeds fully or fails
+        // with a typed, located diagnostic" -- and "a failure arm refuses, never widens".
+        Present {
+          value: AccessDiscoverRecoveryStandingForAnotherUnit {
+            standing_unit: s.subject.subject.unit_key as NonEmptyStr,
+            step_unit: key.subject,
+          },
+        }
+      } else {
+        match recovery_route_unavailability(standing: s) {
+          Present { value: cause } =>
+            Present { value: AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: cause } }
+          Absent => none
+        }
+      }
+  }
+}
+
 // THE ACCESSDISCOVER STEP: observe the current read, assess it against the unit the instance names,
 // decide; only Noop over a satisfied assessment mints the receipt.
-fn access_discover(key: StepInstanceKey, read: CurrentManagerRead) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+fn access_discover(
+  key: StepInstanceKey,
+  read: CurrentManagerRead,
+  locked: InBandRecoveryStanding?,
+) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  // CONSUMER OF THE LOCKED-CREDENTIAL ARM -- the reason it is not a dangling declaration. The recovery
+  // standing is an OBSERVED input here, not inferred from the read: this module's out-of-band read cannot
+  // distinguish "we do not hold the password" from "the manager would not answer", and pretending otherwise
+  // is how a board needing a rescue medium gets written off as dead metal (that read's own refusals are
+  // AccessObserveRefusal, whose arms are all capture-reading faults). So the caller supplies what was
+  // actually observed by the in-band route, and if it observed nothing the step behaves exactly as before.
+  // A standing that completed hands off `none` here, and the out-of-band path is taken on its merits.
+  // CLASSIFIED, NOT HIDDEN (section 3c: "consumed by a named later change"): EVERY CALLER IN THE PRODUCT
+  // passes `locked: none` today, and the only caller that supplies a real standing is
+  // machine_intake_bmc_recovery_route_witness. That is honest rather than dangling -- the one unit whose
+  // locked-BMC recovery is actually captured (the specimen under
+  // artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/) is not the unit these arrival entries run,
+  // so a live caller would have to invent a board that was never observed. When that specimen gets its own
+  // arrival entry, its standing goes in at this parameter; until then the seam is exercised only by the
+  // named witness, which is what the classification is for.
+  match access_discover_refusal_for_locked_credential(key: key, standing: locked) {
+    Present { value: refusal } => StepRefused { key: key, cause: refusal }
+    Absent => access_discover_from_read(key: key, read: read)
+  }
+}
+
+fn access_discover_from_read(key: StepInstanceKey, read: CurrentManagerRead) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
   let projection = access_discover_projection()
   match inspect_via_host_effect_projection(subject: key, goal: AccessDiscoverGoal { unit: key.subject }, request: read, projection: projection) {
     GoalObservationRefused { subject: _, goal: _, request: _, cause: c } => StepRefused { key: key, cause: AccessDiscoverObserveRefused { cause: c } }
@@ -1005,8 +1097,8 @@ type PriorLifeInputs {
 // The domain executes its steps in the admitted order, each consuming only the receipt its
 // precondition produced in this run; a step whose precondition did not establish is not executed and
 // the fold records it NotReached. Then the fold composes the outcomes into the run's ledger.
-fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
-  let access = access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read)
+fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, locked: InBandRecoveryStanding?) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
+  let access = access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read, locked: locked)
   match step_outcome_receipt(outcome: access) {
     Absent => [access]
     Present { value: r } =>
@@ -1032,8 +1124,8 @@ fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read:
   }
 }
 
-fn arrival_prefix_outcomes_through_bmc_secure(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, bmc: BmcSecureInputs) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
-  let prefix = arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life)
+fn arrival_prefix_outcomes_through_bmc_secure(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, bmc: BmcSecureInputs, locked: InBandRecoveryStanding?) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
+  let prefix = arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, locked: locked)
   match prefix.last() {
     Absent => prefix
     Present { value: last } =>
@@ -1073,18 +1165,18 @@ fn fold_arrival_prefix(steps: List<ConvergenceStep<IntakePhase>>, run: Convergen
   }
 }
 
-fn converge_arrival_prefix(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs) -> ArrivalPrefixVerdict {
+fn converge_arrival_prefix(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, locked: InBandRecoveryStanding?) -> ArrivalPrefixVerdict {
   match arrival_prefix_steps(phases: arrival_prefix_through(last: arrival_prefix_last)) {
     ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
     ArrivalPrefixStepped { steps: steps } =>
-      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life), discharges: [])
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, locked: locked), discharges: [])
   }
 }
 
 // Apply mints through discharge_bmc_secure_apply. Noop never requires a fold discharge
 // (arrival_receipt_authorization_required is false on BmcSecurePhaseNoop), so a grant
 // copied here would be unused.
-fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, bmc: BmcSecureInputs) -> ArrivalPrefixVerdict {
+fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, bmc: BmcSecureInputs, locked: InBandRecoveryStanding?) -> ArrivalPrefixVerdict {
   match arrival_prefix_steps(phases: arrival_prefix_through(last: BmcSecure)) {
     ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
     ArrivalPrefixStepped { steps: steps } => {
@@ -1103,7 +1195,7 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
           }
         Absent => []
       }
-      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc), discharges: discharges)
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc, locked: locked), discharges: discharges)
     }
   }
 }
@@ -1140,6 +1232,7 @@ fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLi
     read: read_mtjade1_current_manager_read(),
     inputs: mtjade1_identity_bind_inputs(),
     prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
+    locked: none,
   )
 }
 
@@ -1151,5 +1244,6 @@ fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life
     inputs: mtjade1_identity_bind_inputs(),
     prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
     bmc: bmc,
+    locked: none,
   )
 }

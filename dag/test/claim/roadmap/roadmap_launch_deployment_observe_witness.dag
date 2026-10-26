@@ -1,4 +1,34 @@
 module test.claim.roadmap.roadmap_launch_deployment_observe_witness
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { second, second_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import gunbc.durable_handoff_host { AttemptExitInbox, AttemptExitQueued }
+import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedRootTreeMatches, DeployedRootTreeMismatch, DeployedTreeObserved,
+  deployed_root_tree_standing, deployed_tree_root_tree_argv,
+}
+import gunbc.roadmap.roadmap_belt { ManualReady }
+import gunbc.roadmap.roadmap_belt_actuate {
+  BeltPassRecorded, BeltTickReceipt, BeltTickReceiptAbsent, BeltTickReceiptPresent, BeltTickReceiptUnreadable,
+  belt_tick_receipt_decode, belt_tick_receipt_identity_hex, belt_tick_receipt_json_value,
+  belt_tick_receipt_wire_json_from_read,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_serve { dashboard_instance_json }
+import gunbc.roadmap.roadmap_launch_deployment_receipt { TickExecuted, StaleBacklog, EventSpoolStalled }
+import gunbc.roadmap.roadmap_launch_deployment_observe {
+  EventBacklogClear, EventBacklogEntry, InstanceDocumentRefused, InstanceDocumentServed,
+  WorkflowDocumentRefused, WorkflowDocumentServed,
+  dashboard_instance_document_decode, event_backlog_drain_bound, event_backlog_judge,
+  event_backlog_queued_bound, event_backlog_text, iso8601_utc_epoch_seconds,
+  roadmap_workflow_document_decode,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -40,20 +70,25 @@ fn queued_bound_count() -> Nat {
 }
 
 test fn witness_event_backlog_arms() -> Bool {
-  let clear = match event_backlog_judge(entries: [
+  let clear = match event_backlog_judge(stalled: [], entries: [
     EventBacklogEntry { stage: AttemptExitInbox, entry: "a", age: second(count: 10) },
     EventBacklogEntry { stage: AttemptExitQueued, entry: "b", age: second(count: 1200) },
   ]) { EventBacklogClear { inbox, queued } => inbox == 1 && queued == 1  _ => false }
-  let stale_inbox = match event_backlog_judge(entries: [
+  let stale_inbox = match event_backlog_judge(stalled: [], entries: [
     EventBacklogEntry { stage: AttemptExitInbox, entry: "young", age: second(count: 30) },
     EventBacklogEntry { stage: AttemptExitInbox, entry: "old", age: second(count: second_count(s: event_backlog_drain_bound) + 1) },
   ]) { StaleBacklog { stage, entry, age: _, bound } => stage == AttemptExitInbox && entry == "old" && second_count(s: bound) == second_count(s: event_backlog_drain_bound)  _ => false }
-  let oldest_named = match event_backlog_judge(entries: [
+  let oldest_named = match event_backlog_judge(stalled: [], entries: [
     EventBacklogEntry { stage: AttemptExitInbox, entry: "stale-inbox", age: second(count: second_count(s: event_backlog_drain_bound) + 5) },
     EventBacklogEntry { stage: AttemptExitQueued, entry: "stale-queued", age: second(count: queued_bound_count() + 100) },
   ]) { StaleBacklog { stage, entry, age: _, bound: _ } => stage == AttemptExitQueued && entry == "stale-queued"  _ => false }
-  let empty = match event_backlog_judge(entries: []) { EventBacklogClear { inbox, queued } => inbox == 0 && queued == 0  _ => false }
-  clear && stale_inbox && oldest_named && empty
+  let empty = match event_backlog_judge(stalled: [], entries: []) { EventBacklogClear { inbox, queued } => inbox == 0 && queued == 0  _ => false }
+  let stalled = match event_backlog_judge(stalled: ["head+entry"], entries: [
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "head+entry", age: second(count: 1) },
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "behind", age: second(count: 1) },
+    EventBacklogEntry { stage: AttemptExitQueued, entry: "queued", age: second(count: 1) },
+  ]) { EventSpoolStalled { waiting, head } => waiting == 3 && head == "head+entry" && event_backlog_text(f: EventSpoolStalled { waiting: waiting, head: head }) == "exit spool stalled: 3 entries waiting behind head+entry"  _ => false }
+  clear && stale_inbox && oldest_named && empty && stalled
 }
 
 // (3) /instance.json decodes the members the serve route writes, and refuses another schema.

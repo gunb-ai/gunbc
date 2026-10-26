@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.lookup_miss_read_as_positive_classification
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data lookup_miss_read_as_positive_classification: RecurringFailureMode = RecurringFailureMode {
   identity: "lookup_miss_read_as_positive_classification" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a lookup miss is read as POSITIVE evidence of a property, against an environment that could not have answered** (a classifier decides `this thing IS an X` from the fact that a lookup for it returned nothing. The miss is evidence of nothing at all when the consulted authority does not carry the population the question ranges over -- and when it carries none of it, the classifier is not a heuristic that occasionally misfires, it is TOTAL: every subject reaching it is classified X, always, and the predicate's other disjuncts never run.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.realization_violates_its_declared_complexity
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data realization_violates_its_declared_complexity_contract: RecurringFailureMode = RecurringFailureMode {
   identity: "realization_violates_its_declared_complexity_contract" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a primitive's realization costs more than its declared complexity contract, and every algorithm built on the contract inherits the difference silently** INVALID STATE: `std.primitives` `concat_contract` declares concat at log(n + m) on the persistent carrier, and the comment beside the `rc_*` ops in `v1.compiler.runtime_rust` `rt_rc_container_ops` states the same for every update. Yet `rc_list_concat` realized concat as `Rc::make_mut(&mut a).extend(b.iter().cloned())`, one push_back per element of `b`, so a concat cost the length of its right operand. The interpreter's free `concat` arm had the same shape, worse: it copied BOTH operands into a fresh vector.",

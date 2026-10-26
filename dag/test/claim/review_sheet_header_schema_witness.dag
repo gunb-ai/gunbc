@@ -25,7 +25,8 @@ module test.claim.review_sheet_header_schema_witness
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 import gunbc.review_sheet_projection {
   ReviewSheetSchema,
   ReviewColumn,
@@ -286,8 +287,8 @@ fn probe_source(name: String) -> String {
 // could not run.
 data harness_control_source: String = "module probe_review_sheet_header_harness_control\nimport std.types { Int }\nimport gunbc.review_sheet_projection { ci_prospect_sheet_schema }\nfn columns() -> Int { count(ci_prospect_sheet_schema().columns) }\n"
 
-test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
-  total_blocking_count_for(source: harness_control_source) == 0
+test fn the_harness_runs_and_a_clean_source_is_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: harness_control_source), holds: fn(n) { n == 0 }))
 }
 
 // TWO forged carriers are enrolled, so the count is asserted at 2 rather than at "at least one":
@@ -295,10 +296,10 @@ test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
 // validated_header_schema helper would have handed a foreign caller (review 68430). A single
 // refusal would satisfy a >= 1 assertion while the second forgery compiled, which is the shape of
 // evidence that let the helper through in the first place.
-test fn a_validated_header_schema_cannot_be_authored_outside_the_mint() -> Bool {
-  blocking_subject_count_for(
+test fn a_validated_header_schema_cannot_be_authored_outside_the_mint() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(
     source: probe_source(name: "review_sheet_validated_header_schema_forged_probe"),
     wanted_class: "SoleConstructorViolation",
     wanted_subject: "ValidatedHeaderSchema",
-  ) == 2
+  ), holds: fn(n) { n == 2 }))
 }

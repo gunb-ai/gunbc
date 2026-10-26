@@ -1,7 +1,7 @@
 module gunbc.parse_verdict_restore
 
 import std.types { String, List, Int }
-import std.algebra { fold_list }
+import std.algebra { fold_list, list_append }
 import std.integer { int_to_decimal_string }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
@@ -15,7 +15,12 @@ import std.optional { Optional, Present }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.action_use_admission { cache_restore_action }
+import gunbc.instrument_targets { v2_native_cli_source_roots }
 import v2.cli.population_verb_names { cli_verb_parse_population }
+import v2.cli.parse_verdict_invocation {
+  ParseVerdictInvocationArg, cli_option_compiler, cli_option_reuse_from,
+  parse_verdict_invocation_command, parse_verdict_invocation_source_root_args
+}
 import extdeps.cache.github_actions { GhaCachePullRequestMergeRefScope }
 import extdeps.github.expressions {
   Expression,
@@ -49,7 +54,6 @@ import gunbc.parse_verdict_publish {
   parse_verdict_receipts_file,
   parse_verdict_publish_memory_env,
   parse_verdict_cache_working_directory,
-  source_root_argv,
 }
 
 // THE PULL-REQUEST SIDE OF THE PARSE-VERDICT CACHE (gunbc.parse_verdict_publish is the main side).
@@ -308,19 +312,30 @@ fn parse_verdict_record_step() -> Step {
   }
 }
 
-fn parse_verdict_reuse_command() -> String {
-  join(
-    [
-      parse_verdict_generation_one_bin(),
-      " ",
-      cli_verb_parse_population,
-      " --compiler ",
-      parse_verdict_compiler_expr(),
-      " --reuse-from ",
-      parse_verdict_cache_working_directory,
-      source_root_argv()
+// THE INVOCATION IS RENDERED BY THE DECLARATION, not spelled here. The option tokens used to be typed
+// into this join, which meant the string that EMITS the walk and the content hash that CERTIFIES it were
+// two separate acts of typing that could agree by habit rather than by construction -- and one of them
+// (the hash) is what the guard trusts. Renaming an option in the parser would have moved neither.
+// THE WALK'S WHOLE ARGUMENT POPULATION, INCLUDING THE SOURCE-ROOT TAIL. The roots used to be appended as
+// a rendered string by source_root_argv(), which put an option the walk ALWAYS receives outside every
+// declared list -- so no stamped shape contained it. They are arguments now, spelled through
+// parse_verdict_invocation_source_root_args, and this list is what the command renders from AND what the
+// contract stamp reads. Its VALUES are not contract (see that function); its SHAPE is.
+fn parse_verdict_reuse_args() -> List<ParseVerdictInvocationArg> {
+  list_append(
+    left: [
+      ParseVerdictInvocationArg { option: cli_option_compiler, value: parse_verdict_compiler_expr() },
+      ParseVerdictInvocationArg { option: cli_option_reuse_from, value: parse_verdict_cache_working_directory }
     ],
-    ""
+    right: parse_verdict_invocation_source_root_args(roots: v2_native_cli_source_roots())
+  )
+}
+
+fn parse_verdict_reuse_command() -> String {
+  parse_verdict_invocation_command(
+    bin: parse_verdict_generation_one_bin(),
+    verb: cli_verb_parse_population,
+    args: parse_verdict_reuse_args()
   )
 }
 

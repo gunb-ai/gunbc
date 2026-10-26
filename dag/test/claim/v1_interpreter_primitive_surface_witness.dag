@@ -35,12 +35,12 @@ fn planted_row(identity: String, spelling: String, symbol: String) -> Interprete
 }
 
 test fn derived_surface_excludes_deleted_bridge_arm() -> Bool {
-  !v1_interpreter_free_call_arms() |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
+  !(v1_interpreter_free_call_arms() |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows"))
 }
 
 test fn stage0_emission_source_identities_host_scaffold_deleted() -> Bool {
-  !v1_interpreter_free_call_arms()
-    |> any(r => r.authored_spelling == "stage0_emission_source_identities_host")
+  !(v1_interpreter_free_call_arms()
+    |> any(r => r.authored_spelling == "stage0_emission_source_identities_host"))
 }
 
 test fn observed_monotonic_nanos_arm_is_one_authored_roster_free_call() -> Bool {
@@ -166,6 +166,6 @@ test fn an_unrecognised_form_label_refuses_rather_than_defaulting() -> Bool {
 test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {
   let expected = ["eval_method_call", "eval_service_call"]
   let actual = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
-  count(actual |> filter(s => !expected |> any(e => e == s))) == 0
-    && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
+  count(actual |> filter(s => !(expected |> any(e => e == s)))) == 0
+    && count(expected |> filter(e => !(actual |> any(s => s == e)))) == 0
 }

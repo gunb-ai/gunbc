@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.absence_carried_by_a_second_representation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data absence_carried_by_a_second_representation: RecurringFailureMode = RecurringFailureMode {
   identity: "absence_carried_by_a_second_representation" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**absence carried by a second representation of presence** (invalid state: one fact, 'a value is present or not', has more than one authority -- a `none`/`null` sentinel typed by its own rule, an Absent/Missing/Unset carrier whose whole contract is zero-or-one value, an implicit Present wrap or payload extraction inserted differently by the checker and by realization, an Option type or constructor selected by leaf spelling instead of resolved declaration identity, or a cardinality flag restating structure the type already carries. Harm: DESIGN section 3's nicknaming fork at the meaning layer. Consumers disagree about the same value, nested layers (Present(Absent) against Absent) collapse silently, and each fork is later consolidated at a cost its author deferred).",

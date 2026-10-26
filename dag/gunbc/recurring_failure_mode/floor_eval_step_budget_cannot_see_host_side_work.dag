@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.floor_eval_step_budget_cannot_see_host_side_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data floor_eval_step_budget_cannot_see_host_side_work: RecurringFailureMode = RecurringFailureMode {
   identity: "floor_eval_step_budget_cannot_see_host_side_work" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a cost defect lives in HOST work the interpreter does around evaluation -- memo key hashing, memo verification equality, value cloning, map and list primitives -- while the only gated cost measure for enrolling a witness is the eval-step count, which counts interpreted evaluation steps and nothing the host does between them. The defect is then invisible to the enrolment gate by construction: a claim built to catch it cannot fit the step budget at the size where it discriminates, and a claim that fits cannot discriminate. The per-claim CPU budget does see host work, but only where the claim is large enough to cross it, which is where the step gate refuses it.",

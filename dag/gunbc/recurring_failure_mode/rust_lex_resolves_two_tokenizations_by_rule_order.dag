@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.rust_lex_resolves_two_tokenizations_by_rule_order
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data rust_lex_resolves_two_tokenizations_by_rule_order: RecurringFailureMode = RecurringFailureMode {
   identity: "rust_lex_resolves_two_tokenizations_by_rule_order" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: v2.extdeps.languages.rust rust_lex is rust_fn_add_lex_rules (emission spellings with baked spacing, plus as space-plus-space) followed by rust_extended_lex_rules (an ingest set with whitespace trivia and bare spellings). A text such as ` + ` has two tokenizations, one emission token or trivia then a bare plus then trivia, and first-match rule order picks one. The zero-ambiguity ruling forbids order deciding between readings, lexer included.",

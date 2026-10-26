@@ -6,7 +6,7 @@ import v2.extdeps.languages.rust {
   rust_value_expression_projection
 }
 import v2.extdeps.languages.rust_emit_small { rust_emit_small_conditional_target }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealizationsUnwired,
   ConditionalClosedByToken,
   ConditionalDelimiting,
   ConditionalSelfDelimiting,
@@ -87,6 +87,7 @@ fn cld_projection_with(conditional_form: TargetConditionalShape) -> TargetValueE
     match_form: rust_value_expression_projection().match_form,
     bool_literal_form: rust_value_expression_projection().bool_literal_form,
     int_literal_form: rust_value_expression_projection().int_literal_form,
+    list_introduction_form: rust_value_expression_projection().list_introduction_form,
     block_evaluation_mode: rust_value_expression_projection().block_evaluation_mode
   }
 }
@@ -112,7 +113,7 @@ fn cld_emit(projection: TargetValueExpressionProjection) -> Outcome<String> {
   match target_value_expression_to_concrete_tokens(
     expr: cld_conditional(),
     projection: projection,
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: TargetRealizationCatalog { operators: rust_operator_realizations_catalog_node(), primitives: PrimitiveRealizationsUnwired }
   ) {
     Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(

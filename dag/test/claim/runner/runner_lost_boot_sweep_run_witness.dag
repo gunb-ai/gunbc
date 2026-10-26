@@ -1,0 +1,644 @@
+module test.claim.runner.runner_lost_boot_sweep_run_witness
+
+import std.algebra { string_contains }
+import extdeps.transports.rest { RestResult, RestAnswered }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline }
+import gunbc.fleet.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable, OrganizationRunnerRosterEvidence }
+import gunbc.fleet.organization_runner_roster_read { OrganizationRunnerRosterReport }
+import extdeps.uuid { uuid_of }
+import std.decl_ref { decl_ref }
+import gunbc.host.host_control_route { HostControlStanding }
+import extdeps.github.app { GitHubAppInstallationId }
+import extdeps.github.effect { GitHubOrganizationRef }
+import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
+import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId }
+import gunbc.runner.runner_slot_allocation { RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit, current_service_population, current_service_population_over, CurrentServicePopulationRefusal, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationWidthUnresolved }
+import gunbc.runner.runner_jit_deregistration {
+  LostBootSweep, LostBootSweepSelected, LostBootSweepRefused, lost_boot_sweep, deregistration_name, deregistration_app, deregistration_installation,
+  JitDeregistration, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation, SlotLostBoot,
+}
+import gunbc.host.host_effect { FleetSsh }
+import gunbc.host.host_bound_transport { HostBoundTransport, HostBoundTransportRefused, HostBoundTransportResolved, host_bound_transport_of }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+import gunbc.host.host_operation_exec { HostOperationObserved, HostOperationRefused }
+import gunbc.runner.runner_lost_boot_sweep_run {
+  BootIdReadVerdict, BootIdReadEstablished, BootIdReadUnreadable, boot_id_read_verdict,
+  LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input, lost_boot_current_from_capture,
+  CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved, mint_current_boot_evidence, lost_boot_observe_current_boot, lost_boot_observed_over,
+  sweep_host_standing, SweepHostBound, SweepHostNotManaged,
+  sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, 
+}
+import gunbc.runner.runner_lost_boot_sweep_plan {
+  sweep_authority, sweep_listing_of_roster, SweepListingObserved, SweepListingNotObserved,
+  sweep_exceeds_ceiling, sweep_ceiling_refusal_text, lost_boot_sweep_registration_ceiling,
+  sweep_plan, SweepPlan, SweepPlanRefused, SweepPlanSelected,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import test.claim.runner.runner_host_medium_witness { closed, begin_line }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data supplied_labels: RunnerRegistrationLabelsResolution = RegistrationLabelsResolved { labels: ["self-hosted", "linux", "ARM64", "gunbc-heavy", "gunbc-host-x"] }
+data org: GitHubOrganizationRef = GitHubOrganizationRef { login: "gunb-ai" }
+
+fn the_host() -> ManagedHost? { first(managed_hosts()) }
+
+// A boot identity exists only through service_boot_id_of over a KernelBootId, so every fixture takes
+// the real route; an unconstructible id reads as the empty name, which no assertion below accepts.
+fn kernel_boot(id: String) -> HostCaptureRunIdentity {
+  match uuid_of(text: id) {
+    Present { value: u } => KernelBootId { boot_id: u }
+    Absent => HistoricalAttemptOrdinal { ordinal: id as NonEmptyStr }
+  }
+}
+
+data old_boot_id: String = "11111111-1111-4111-8111-111111111111"
+data new_boot_id: String = "22222222-2222-4222-8222-222222222222"
+
+fn unit(m: ManagedHost, id: String, index: Int) -> String {
+  match service_boot_id_of(run: kernel_boot(id: id)) {
+    Present { value: b } => service_slot_unit(host: m.host, boot: b, index: index) as String
+    Absent => ""
+  }
+}
+
+fn listing(names: List<String>) -> RestResult<OrganizationRunnerListWire> {
+  RestAnswered { answer: OrganizationRunnerListWire {
+    total_count: count(names),
+    runners: names |> map(n => OrganizationRunnerWire { id: 1, name: n }),
+  } }
+}
+
+// THE SUPPLIED SEALED POPULATION: a width of 2 and the supplied labels, because the host's offer is not
+// yet in the fleet catalog. It supplies a width to a restricted constructor, so it is itself a boundary:
+// admit_callers-restricted to run_sweep, which is restricted to the terminal claims that sweep over it.
+fn supplied_population(host: HostControlStanding, id: String) -> SuppliedPopulation admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "run_sweep"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_over"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_after_admission"),
+] {
+  match service_boot_id_of(run: kernel_boot(id: id)) {
+    Present { value: b } => SuppliedPopulationBuilt { standing: current_service_population_over(host: host, width: RunnerWidthDerived { slots: 2 }, registration_labels: supplied_labels, boot: b) }
+    Absent => SuppliedPopulationMalformedBoot
+  }
+}
+
+// THE CAUSE OF EACH NON-SWEEP OUTCOME IS ITS OWN ARM: a malformed current id, an unmanaged host and a
+// refused population are three different facts, and none borrows another's refusal.
+type SuppliedPopulation
+  = SuppliedPopulationBuilt { standing: CurrentServicePopulationStanding }
+  | SuppliedPopulationMalformedBoot
+
+type SuppliedSweep
+  = SuppliedSweepRan { sweep: LostBootSweep }
+  | SuppliedBootMalformed
+  | SuppliedHostNotManaged
+  | SuppliedPopulationNotDerived { refusal: CurrentServicePopulationRefusal }
+
+// THE SWEEP UNDER THE RUN'S OWN AUTHORITY, over a SUPPLIED listing (a witness discriminates at one
+// interface): sweep_host_standing is the run's own host derivation, the labels are supplied because the
+// host has no fleet offer today.
+fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: String, names: List<String>) -> SuppliedSweep admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "the_run_sweeps_stale_registrations_under_the_declared_installation"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "one_receipt_line_per_runner_and_any_refusal_fails_the_run"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "each_non_sweep_outcome_names_its_own_cause"),
+] {
+  match sweep_host_standing(host: m.host as String as NonEmptyStr) {
+    SweepHostNotManaged { host: _ } => SuppliedHostNotManaged
+    SweepHostBound { host: _, standing: s } =>
+      match supplied_population(host: s, id: current) {
+        SuppliedPopulationMalformedBoot => SuppliedBootMalformed
+        SuppliedPopulationBuilt { standing: st } =>
+          match st {
+            CurrentServicePopulationDerived { population: p } =>
+              SuppliedSweepRan { sweep: lost_boot_sweep(organization: org, population: p, authority: authority, listing: listing(names: names)) }
+            CurrentServicePopulationRefused { refusal: r } => SuppliedPopulationNotDerived { refusal: r }
+          }
+      }
+  }
+}
+
+data capture_boot_id: String = "aaaaaaaa-0000-4000-8000-000000000001"
+
+// A FIXTURE THAT SUPPLIES A READING IS A BOUNDARY: observed_on names the host's boot by assertion, so it is
+// admit_callers-restricted to the terminal claims below and its one mint is admitted to it by name.
+fn observed_on(host: String, id: String) -> CurrentBootObservation admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_admitted_envelope_on_the_observed_boot_yields_exactly_that_boot"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_authentic_capture_of_an_earlier_boot_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "a_missing_or_foreign_current_boot_observation_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_envelope_that_does_not_establish_runner_host_up_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "a_missing_envelope_or_blank_input_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "a_capture_read_from_a_file_reaches_the_admission"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_earlier_boot_capture_admits_no_plan_over_a_live_registration"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_observed_boot_capture_plans_exactly_the_stale_registration"),
+] {
+  match service_boot_id_of(run: kernel_boot(id: id)) {
+    Present { value: b } => CurrentBootObserved { evidence: mint_current_boot_evidence(host: host, boot: b) }
+    Absent => CurrentBootUnobserved { cause: "unconstructible boot id" }
+  }
+}
+
+// THE CAPTURE RECORDS A BOOT AND THE HOST'S OWN OBSERVATION ESTABLISHES THE CURRENT ONE (review 82195,
+// then the HOLD at 82eaac6e). Positive control: a closed envelope bound to the swept host, joined to an
+// observation of the same host and boot, yields exactly the boot it carries, and not new_boot_id.
+test fn an_admitted_envelope_on_the_observed_boot_yields_exactly_that_boot() -> Bool {
+  match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentPresent { host: h, boot: b } => (h as String) == "mtcollins1" && (b.boot_id as String) == capture_boot_id && (b.boot_id as String) != new_boot_id
+    LostBootCurrentRefused { cause: _ } => false
+  }
+}
+
+// RED: an authentic closed capture of boot A, the host now on boot B. The capture is not the current
+// boot, so the sweep refuses and the live B registrations never become deletion subjects.
+test fn an_authentic_capture_of_an_earlier_boot_refuses() -> Bool {
+  match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: new_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "now on boot") && string_contains(s: c, pattern: new_boot_id)
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }
+}
+
+// REDS: an observation of another host, an unobserved boot and the production observer (which has no
+// route in a fleet-converge run) each refuse, even over an envelope that is otherwise admitted.
+test fn a_missing_or_foreign_current_boot_observation_refuses() -> Bool {
+  (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtjade1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "not mtcollins1")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: CurrentBootUnobserved { cause: "x" }) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unobserved")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: lost_boot_observe_current_boot(transport: none)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unobserved")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  })
+}
+
+// REDS: an open envelope, a failed install, an envelope bound to another machine and an empty capture
+// each refuse with their own cause before any credential is read, over an observation that matches.
+test fn an_envelope_that_does_not_establish_runner_host_up_refuses() -> Bool {
+  (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: begin_line, observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "not a closed envelope")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "1", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "does not establish runner-host-up")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtjade1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtjade1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: _ } => true
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: "", observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: _ } => true
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  })
+}
+
+// A missing or unreadable envelope, and a blank host or path, refuse; none is defaulted.
+test fn a_missing_envelope_or_blank_input_refuses() -> Bool {
+  (match lost_boot_current_input(host: "mtcollins1", capture_path: "/tmp/gunbc_no_such_capture_dir/capture.txt", observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unreadable")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_input(host: "mtcollins1", capture_path: "", observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: _ } => true
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  }) && (match lost_boot_current_input(host: "", capture_path: "x", observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentRefused { cause: _ } => true
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  })
+}
+
+// THE PAIRING CLAIM: a SUCCESSFUL file read reaches the admission consumer. The capture is written to a
+// real file and lost_boot_current_input reads it back, so deleting the read-to-admission route makes
+// this fail where the supplied-text claims above would stay green.
+test fn a_capture_read_from_a_file_reaches_the_admission() -> Bool {
+  let path = "/tmp/gunbc_lbs_capture_pairing.txt"
+  let wrote = Filesystem.Write(path: path, content: closed(install_exit: "0", machine: "aarch64"))
+  wrote.success && (match lost_boot_current_input(host: "mtcollins1", capture_path: path, observed: observed_on(host: "mtcollins1", id: capture_boot_id)) {
+    LostBootCurrentPresent { host: _, boot: b } => (b.boot_id as String) == capture_boot_id
+    LostBootCurrentRefused { cause: _ } => false
+  }) && (match lost_boot_current_input(host: "mtcollins1", capture_path: path, observed: observed_on(host: "mtcollins1", id: new_boot_id)) {
+    LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "now on boot")
+    LostBootCurrentPresent { host: _, boot: _ } => false
+  })
+}
+
+// THE HOST ENTERS ONLY THROUGH ITS managed_host ROW: a managed host binds, a name no row carries is
+// not managed rather than defaulted into a standing.
+test fn the_host_enters_only_through_its_managed_row() -> Bool {
+  (match the_host() {
+    Absent => false
+    Present { value: m } => match sweep_host_standing(host: m.host as String as NonEmptyStr) {
+      SweepHostBound { host: _, standing: _ } => true
+      SweepHostNotManaged { host: _ } => false
+    }
+  }) && (match sweep_host_standing(host: "no-such-managed-host" as NonEmptyStr) {
+    SweepHostNotManaged { host: h } => h == "no-such-managed-host"
+    SweepHostBound { host: _, standing: _ } => false
+  })
+}
+
+// STALE SELECTED, CURRENT UNTOUCHED, over the run's own authority, and the selected registration
+// carries the boot id that made it stale (the SlotLostBoot payload) and the DECLARED installation --
+// condition (4): an authority for another installation yields a registration for that installation,
+// which ensure_jit_runner_deregistered refuses, so the declared pair is what the run must supply.
+test fn the_run_sweeps_stale_registrations_under_the_declared_installation() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => {
+      let names = [unit(m: m, id: old_boot_id, index: 0), unit(m: m, id: new_boot_id, index: 0), "actions-runner@srv1-3.service"]
+      (match run_sweep(m: m, authority: sweep_authority(), current: new_boot_id, names: names) {
+SuppliedSweepRan { sweep: sw } => match sw {
+        LostBootSweepSelected { subjects: rs, untouched: u } =>
+          count(rs) == 1 && count(u) == 2
+            && (match first(rs) {
+              Present { value: s } => (deregistration_name(subject: s).value as String) == unit(m: m, id: old_boot_id, index: 0)
+                && deregistration_installation(subject: s) == gunbai_ci_declared_installation_id
+                && deregistration_app(subject: s) == gunbai_ci_declared
+              Absent => false
+            })
+        LostBootSweepRefused { refusal: _ } => false
+      }
+SuppliedBootMalformed => false
+SuppliedHostNotManaged => false
+SuppliedPopulationNotDerived { refusal: _ } => false
+}) && (match run_sweep(m: m, authority: other_installation_authority(), current: new_boot_id, names: names) {
+SuppliedSweepRan { sweep: sw } => match sw {
+        LostBootSweepSelected { subjects: rs, untouched: _ } =>
+          (match first(rs) {
+            Present { value: s } => deregistration_installation(subject: s) != gunbai_ci_declared_installation_id
+            Absent => false
+          })
+        LostBootSweepRefused { refusal: _ } => false
+      }
+SuppliedBootMalformed => false
+SuppliedHostNotManaged => false
+SuppliedPopulationNotDerived { refusal: _ } => false
+})
+    }
+  }
+}
+
+fn other_installation_authority() -> GitHubCredentialAuthority {
+  ManagedAppInstallationCredential {
+    app: gunbai_ci_declared,
+    installation: GitHubAppInstallationId { value: 4242 },
+    profile: GitHubCredentialProfileRef { name: "other" },
+  }
+}
+
+// PER-RUNNER AGGREGATION: a refusal is a refused line naming its runner and fails the run; no
+// selection (every listed name current or foreign) is a passing run whose untouched names still get
+// one line each.
+test fn one_receipt_line_per_runner_and_any_refusal_fails_the_run() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => {
+      let names = [unit(m: m, id: old_boot_id, index: 0), unit(m: m, id: old_boot_id, index: 1), unit(m: m, id: new_boot_id, index: 0)]
+      match service_boot_id_of(run: kernel_boot(id: new_boot_id)) {
+        Absent => false
+        Present { value: current_boot } =>
+      match run_sweep(m: m, authority: sweep_authority(), current: new_boot_id, names: names) {
+SuppliedSweepRan { sweep: sw } => match sw {
+        LostBootSweepRefused { refusal: _ } => false
+        LostBootSweepSelected { subjects: rs, untouched: u } => {
+          let refused = rs |> map(s => JitDeregistrationRefused {
+            subject: s,
+            exit: SlotLostBoot { superseded_by: current_boot },
+            refusal: DeregistrationAuthorityForAnotherInstallation,
+          })
+          let lines = sweep_report_lines(outcomes: refused, untouched: u)
+          count(lines) == 3
+            && !sweep_all_deregistered(outcomes: refused)
+            && sweep_all_deregistered(outcomes: [])
+            && count(sweep_report_lines(outcomes: [], untouched: u)) == 1
+            && (match first(refused) {
+              Present { value: o } => deregistration_line(outcome: o) == concat("lost-boot-sweep runner=", concat(unit(m: m, id: old_boot_id, index: 0), " refused=authority-for-another-installation"))
+              Absent => false
+            })
+        }
+      }
+SuppliedBootMalformed => false
+SuppliedHostNotManaged => false
+SuppliedPopulationNotDerived { refusal: _ } => false
+}
+      }
+    }
+  }
+}
+
+// PAIRING OBLIGATION (DESIGN 3): the witnesses above SUPPLY a population; this claim is the last execution
+// of the mode's REAL route -- sweep_host_standing -> current_service_population (the host's committed
+// width). The sealed population is refused at construction when the width cannot be derived, so a sweep
+// cannot be called at all; the claim asserts the route's standing equals the independent
+// gunbc_runner_committed_width reading, whichever arm the host is in today. RED: a route that yields a
+// population while the width is unresolved (or refuses a derived one) fails this.
+test fn the_real_route_population_follows_the_committed_width() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } =>
+      match sweep_host_standing(host: m.host as String as NonEmptyStr) {
+        SweepHostNotManaged { host: _ } => false
+        SweepHostBound { host: _, standing: st } =>
+          match service_boot_id_of(run: kernel_boot(id: new_boot_id)) {
+            Absent => false
+            Present { value: b } =>
+              match gunbc_runner_committed_width(host: m.host) {
+                RunnerWidthUnresolved { cause: _ } =>
+                  match current_service_population(host: st, boot: b) {
+                    CurrentServicePopulationRefused { refusal: CurrentPopulationWidthUnresolved { cause: _ } } => true
+                    _ => false
+                  }
+                RunnerWidthDerived { slots: n } =>
+                  match current_service_population(host: st, boot: b) {
+                    CurrentServicePopulationDerived { population: p } => count(p.units) == n
+                    _ => false
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A WRONG CAUSE MUST NOT PASS AS "REFUSED". A malformed current boot id is SuppliedBootMalformed -- not a
+// host-control refusal, not an unmanaged host; a well-formed one over a controlled host yields a sweep.
+// RED: any borrowed arm for the malformed id fails the first conjunct.
+test fn each_non_sweep_outcome_names_its_own_cause() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } =>
+      (match run_sweep(m: m, authority: sweep_authority(), current: "not-a-uuid", names: []) {
+        SuppliedBootMalformed => true
+        SuppliedSweepRan { sweep: _ } => false
+        SuppliedHostNotManaged => false
+        SuppliedPopulationNotDerived { refusal: _ } => false
+      }) && (match run_sweep(m: m, authority: sweep_authority(), current: new_boot_id, names: []) {
+        SuppliedSweepRan { sweep: _ } => true
+        SuppliedBootMalformed => false
+        SuppliedHostNotManaged => false
+        SuppliedPopulationNotDerived { refusal: _ } => false
+      })
+  }
+}
+
+// THE SWEEP'S LISTING IS THE SHARED ROSTER READ'S, AND ONLY AN OBSERVED ROSTER SERVES IT. RED: a partial
+// roster passed through as a listing lets a runner on an unread page read as absent. Positive control: an
+// observed roster becomes the listing, ids and names intact.
+fn roster_report(e: OrganizationRunnerRosterEvidence) -> OrganizationRunnerRosterReport {
+  OrganizationRunnerRosterReport { evidence: e, pages: [], pages_read: 0, disputed_ids: [], note: "n" }
+}
+
+test fn only_an_observed_roster_becomes_the_sweep_listing() -> Bool {
+  let reg = GitHubSelfHostedRunnerRegistration { id: 7, name: "a", status: GitHubRunnerOnline {}, busy: false, ephemeral: none, version: none, os: "Linux", labels: [] }
+  (match sweep_listing_of_roster(report: roster_report(RosterObserved { observed_on: "d", registrations: [reg] })) {
+    SweepListingObserved { listing: w } => w.total_count == 1 && count(w.runners) == 1
+    SweepListingNotObserved { cause: _ } => false
+  }) && (match sweep_listing_of_roster(report: roster_report(RosterObservedPartial { observed_on: "d", registrations: [reg], observed_count: 1, authority_total: 2 })) {
+    SweepListingNotObserved { cause: c } => string_contains(s: c as String, pattern: "was partial (1 of total_count 2)") && !string_contains(s: c as String, pattern: "transport")
+    SweepListingObserved { listing: _ } => false
+  }) && (match sweep_listing_of_roster(report: roster_report(RosterReadUnavailable { reason: "r" })) {
+    SweepListingNotObserved { cause: c } => string_contains(s: c as String, pattern: "was unavailable: r") && !string_contains(s: c as String, pattern: "transport")
+    SweepListingObserved { listing: _ } => false
+  })
+}
+
+test fn a_selection_above_the_step_ceiling_refuses_before_any_deletion() -> Bool {
+  sweep_exceeds_ceiling(selected: lost_boot_sweep_registration_ceiling + 1)
+    && !sweep_exceeds_ceiling(selected: lost_boot_sweep_registration_ceiling)
+    && !sweep_exceeds_ceiling(selected: 0)
+    && string_contains(s: sweep_ceiling_refusal_text(selected: 41), pattern: "nothing was deregistered")
+}
+
+// THE PLAN CONTROLS: sweep_plan is the production call (sweep_and_deregister's only route to a
+// SweepSelection), run here over a SUPPLIED roster report for the host named EXPLICITLY as mtcollins1,
+// never first(managed_hosts()). Zero deletion requests on partial coverage, an unavailable roster or an
+// over-ceiling selection is established at this PLAN boundary: the refusal arm carries no selection, and
+// the only deletion entry takes one. It is not observed at the effect (lost_boot_sweep_effect_pairing_frontier).
+fn mtcollins1_host() -> ManagedHost? { first(filter(managed_hosts(), h => (h.host as String) == (operator_host_mtcollins1 as String))) }
+
+type SuppliedPlan
+  = SuppliedPlanMade { plan: SweepPlan }
+  | SuppliedPlanHostNotManaged
+  | SuppliedPlanPopulationNotDerived
+  | SuppliedPlanNotAdmitted { cause: String }
+
+fn plan_over(m: ManagedHost, report: OrganizationRunnerRosterReport) -> SuppliedPlan admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_observed_mtcollins1_roster_plans_exactly_its_stale_registrations"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "a_partial_or_unavailable_roster_plans_no_deletion"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_over_ceiling_selection_plans_no_deletion"),
+] {
+  match sweep_host_standing(host: m.host as String as NonEmptyStr) {
+    SweepHostNotManaged { host: _ } => SuppliedPlanHostNotManaged
+    SweepHostBound { host: _, standing: s } =>
+      match supplied_population(host: s, id: new_boot_id) {
+        SuppliedPopulationMalformedBoot => SuppliedPlanPopulationNotDerived
+        SuppliedPopulationBuilt { standing: st } =>
+          match st {
+            CurrentServicePopulationDerived { population: p } => SuppliedPlanMade { plan: sweep_plan(organization: org, population: p, report: report) }
+            CurrentServicePopulationRefused { refusal: _ } => SuppliedPlanPopulationNotDerived
+          }
+      }
+  }
+}
+
+// THE ADMITTED BOOT TRAVELS FROM THE JOIN INTO THE POPULATION: the production order (lost_boot_sweep_wet)
+// is admission, then host standing, then the sealed population over the ADMITTED boot, then sweep_plan.
+// No fixture boot is substituted after the join; a refused admission produces no plan at all.
+fn plan_after_admission(m: ManagedHost, capture: String, observed: CurrentBootObservation, report: OrganizationRunnerRosterReport) -> SuppliedPlan admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_earlier_boot_capture_admits_no_plan_over_a_live_registration"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_observed_boot_capture_plans_exactly_the_stale_registration"),
+] {
+  match lost_boot_current_from_capture(host: m.host as String as NonEmptyStr, capture: capture, observed: observed) {
+    LostBootCurrentRefused { cause: c } => SuppliedPlanNotAdmitted { cause: c }
+    LostBootCurrentPresent { host: h, boot: b } =>
+      match sweep_host_standing(host: h) {
+        SweepHostNotManaged { host: _ } => SuppliedPlanHostNotManaged
+        SweepHostBound { host: _, standing: s } =>
+          match supplied_population(host: s, id: b.boot_id as String) {
+            SuppliedPopulationMalformedBoot => SuppliedPlanPopulationNotDerived
+            SuppliedPopulationBuilt { standing: st } =>
+              match st {
+                CurrentServicePopulationDerived { population: p } => SuppliedPlanMade { plan: sweep_plan(organization: org, population: p, report: report) }
+                CurrentServicePopulationRefused { refusal: _ } => SuppliedPlanPopulationNotDerived
+              }
+          }
+      }
+  }
+}
+
+fn reg_named(id: Int, name: String) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration { id: id, name: name, status: GitHubRunnerOnline {}, busy: false, ephemeral: none, version: none, os: "Linux", labels: [] }
+}
+
+test fn an_observed_mtcollins1_roster_plans_exactly_its_stale_registrations() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } =>
+      match plan_over(m: m, report: roster_report(RosterObserved { observed_on: "d", registrations: [reg_named(id: 1, name: unit(m: m, id: old_boot_id, index: 0)), reg_named(id: 2, name: unit(m: m, id: new_boot_id, index: 0))] })) {
+        SuppliedPlanMade { plan: SweepPlanSelected { selection: sel } } => count(sel.subjects) == 1 && count(sel.untouched) == 1
+        _ => false
+      }
+  }
+}
+
+test fn a_partial_or_unavailable_roster_plans_no_deletion() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } => {
+      let stale = reg_named(id: 1, name: unit(m: m, id: old_boot_id, index: 0))
+      (match plan_over(m: m, report: roster_report(RosterObservedPartial { observed_on: "d", registrations: [stale], observed_count: 1, authority_total: 2 })) {
+        SuppliedPlanMade { plan: SweepPlanRefused { cause: c } } => string_contains(s: c, pattern: "was partial (1 of total_count 2)")
+        _ => false
+      }) && (match plan_over(m: m, report: roster_report(RosterReadUnavailable { reason: "r" })) {
+        SuppliedPlanMade { plan: SweepPlanRefused { cause: c } } => string_contains(s: c, pattern: "was unavailable: r")
+        _ => false
+      })
+    }
+  }
+}
+
+test fn an_over_ceiling_selection_plans_no_deletion() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } =>
+      match plan_over(m: m, report: roster_report(RosterObserved { observed_on: "d", registrations: map([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40], i => reg_named(id: i + 1, name: unit(m: m, id: old_boot_id, index: i))) })) {
+        SuppliedPlanMade { plan: SweepPlanRefused { cause: c } } => string_contains(s: c, pattern: "nothing was deregistered")
+        _ => false
+      }
+  }
+}
+
+// THE REVIEWED COMPOSITION, through the production order. Capture A, the host now on B, A and B both
+// listed: admission refuses and no plan exists, so the live B registration cannot become a subject.
+test fn an_earlier_boot_capture_admits_no_plan_over_a_live_registration() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } =>
+      match plan_after_admission(m: m, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: new_boot_id),
+        report: roster_report(RosterObserved { observed_on: "d", registrations: [reg_named(id: 1, name: unit(m: m, id: capture_boot_id, index: 0)), reg_named(id: 2, name: unit(m: m, id: new_boot_id, index: 0))] })) {
+        SuppliedPlanNotAdmitted { cause: c } => string_contains(s: c, pattern: "now on boot")
+        _ => false
+      }
+  }
+}
+
+// POSITIVE CONTROL: capture and observation agree on one boot, and that boot (not a fixture value) is the
+// population's. The stale registration is the selected subject; the exact live one is untouched.
+test fn an_observed_boot_capture_plans_exactly_the_stale_registration() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } =>
+      match plan_after_admission(m: m, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: capture_boot_id),
+        report: roster_report(RosterObserved { observed_on: "d", registrations: [reg_named(id: 1, name: unit(m: m, id: old_boot_id, index: 0)), reg_named(id: 2, name: unit(m: m, id: capture_boot_id, index: 0))] })) {
+        SuppliedPlanMade { plan: SweepPlanSelected { selection: sel } } =>
+          count(sel.subjects) == 1 && (map(sel.subjects, x => deregistration_name(subject: x).value as String)) == [unit(m: m, id: old_boot_id, index: 0)]
+            && sel.untouched == [unit(m: m, id: capture_boot_id, index: 0)]
+        _ => false
+      }
+  }
+}
+
+// ── F3: the host-read current-boot observer ─────────────────────────────────────────────────────
+
+fn verdict_cause(v: BootIdReadVerdict) -> String {
+  match v {
+    BootIdReadUnreadable { cause: c } => c
+    BootIdReadEstablished { boot: _ } => ""
+  }
+}
+
+fn read_out(stdout: String, success: Bool) -> BootIdReadVerdict {
+  boot_id_read_verdict(host: "mtcollins1", read: HostOperationObserved { stdout: stdout, success: success, stderr: none })
+}
+
+// The host's answer, newline included, is the boot it names; the id is the one it printed.
+test fn a_host_boot_id_read_establishes_that_boot() -> Bool {
+  match read_out(stdout: concat(new_boot_id, "\n"), success: true) {
+    BootIdReadEstablished { boot: b } => (b.boot_id as String) == new_boot_id
+    BootIdReadUnreadable { cause: _ } => false
+  }
+}
+
+// REDS: a failed exit, a refused operation, empty stdout and a non-uuid each leave the boot unobserved with its
+// own cause; none becomes a boot.
+test fn a_failed_refused_or_malformed_boot_id_read_establishes_no_boot() -> Bool {
+  string_contains(s: verdict_cause(v: read_out(stdout: new_boot_id, success: false)), pattern: "exited unsuccessfully")
+    && string_contains(s: verdict_cause(v: read_out(stdout: "", success: true)), pattern: "not a uuid")
+    && string_contains(s: verdict_cause(v: read_out(stdout: "not-a-boot", success: true)), pattern: "not a uuid")
+    && string_contains(s: verdict_cause(v: boot_id_read_verdict(host: "mtcollins1", read: HostOperationRefused { operation: "ProcfsReadBootId", reason: "no transport" })), pattern: "was refused")
+}
+
+// No transport is no observation: the production wet entry holds none today, so the sweep stays gated.
+test fn no_transport_leaves_the_current_boot_unobserved() -> Bool {
+  match lost_boot_observe_current_boot(transport: none) {
+    CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "no host-bound transport")
+    CurrentBootObserved { evidence: _ } => false
+  }
+}
+
+// THE PAIRING CLAIM: the real observer's continuation runs over the REAL host-bound transport to
+// mtcollins1 and its own mint produces the evidence the join consumes. Host-bound transport replaces the
+// old bare LocalShell (which named no managed host -- the defect #14738 closed): the evidence's host is
+// read from the bound transport, so the only way to mint mtcollins1's evidence is to hold a transport to
+// mtcollins1. The read outcome is the supplied boundary of the hermetic witnesses (the production route is
+// lost_boot_observe_current_boot, whose only continuation this is); deleting the dispatch in
+// lost_boot_observed_over makes this fail, and the full production dispatch over the bound transport is
+// the claim below.
+test fn the_real_observer_route_mints_evidence_the_join_consumes() -> Bool {
+  match mtcollins1_bound_transport() {
+    Absent => false
+    Present { value: b } =>
+      match lost_boot_observed_over(bound: b, read: HostOperationObserved { stdout: concat(new_boot_id, "\n"), success: true, stderr: none }) {
+        CurrentBootObserved { evidence: e } =>
+          e.host == "mtcollins1"
+            && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: CurrentBootObserved { evidence: e }) {
+              LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "now on boot") && string_contains(s: c, pattern: (e.boot.boot_id as String))
+              LostBootCurrentPresent { host: _, boot: _ } => false
+            })
+        CurrentBootUnobserved { cause: _ } => false
+      }
+  }
+}
+
+// THE PAIRING CLAIM (host-bound, #14738): the real observer runs the real operation over a host-bound
+// transport and names the bound host in what it reads. The hermetic FleetSsh context has no reachable
+// mtcollins1, so the real read is unsuccessful and its cause names the bound host; only the dispatch over
+// the bound transport can produce that cause (the no-transport arm names no host), so deleting the
+// dispatch makes this fail. The mint over a successful read is the claim above.
+test fn the_real_observer_route_reads_over_the_bound_transport_as_its_host() -> Bool {
+  match mtcollins1_bound_transport() {
+    Absent => false
+    Present { value: b } =>
+      match lost_boot_observe_current_boot(transport: Present { value: b }) {
+        CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "boot id read on mtcollins1")
+        CurrentBootObserved { evidence: e } => e.host == "mtcollins1"
+      }
+  }
+}
+
+// The host-bound transport to mtcollins1, built the way production builds the target (fleet_locus_ssh_target)
+// over the hermetic sealed context, then joined to its managed host by host_bound_transport_of.
+fn mtcollins1_bound_transport() -> HostBoundTransport? admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "the_real_observer_route_reads_over_the_bound_transport_as_its_host"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "the_real_observer_route_mints_evidence_the_join_consumes"),
+] {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => none
+    Present { value: ctx } =>
+      match fleet_locus_ssh_target(host: operator_host_mtcollins1) {
+        SshTargetRefused { endpoint: _, refusal: _ } => none
+        SshTargetResolved { target: t } =>
+          match host_bound_transport_of(transport: FleetSsh { target: t, context: ctx }) {
+            HostBoundTransportRefused { cause: _ } => none
+            HostBoundTransportResolved { bound: b } => Present { value: b }
+          }
+      }
+  }
+}

@@ -1,0 +1,89 @@
+module extdeps.languages.css.complex_selector
+
+import std.types { String, List }
+import std.optional { Optional, Absent, Present }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/selectors-4/"
+  }
+}
+
+// Cited upstream: W3C Selectors Level 4. The grammar of a <selector-list>: comma-separated
+// <complex-selector>s, each a sequence of <compound-selector>s joined by the descendant combinator
+// (section 14.1, whitespace), each compound an optional type or universal selector (section 5) followed
+// by simple selectors: .class (section 6.6), :pseudo-class (section 3.6) and ::pseudo-element
+// (section 3.7). Measured shapes in the served gunb.ai sheet: universal and type selectors, chained
+// classes (.a.b), descendant chains, :hover/:focus-visible/:disabled/:last-child, ::before/::after,
+// and comma lists. The child combinator and attribute selectors do not occur and are not modeled.
+// gunbc.site.gunb_ai_css is the consumer. extdeps.languages.css.selectors keeps its older
+// single-subject rows, FROZEN: no new rows or consumers (this module is the model for new sheets).
+// Why it stays for now (DESIGN 3b, diverges with a stated reason): SelectorSubject has about 25 consumers
+// (site element library, gunb_ai_layout, and a dozen witnesses) outside this lane, and moving them is a
+// replacement migration of its own. Trigger: the follow-up that moves those consumers to SelectorList and
+// deletes extdeps.languages.css.selectors; complex_selector expresses every SelectorSubject shape
+// (ClassSelector, ElementSelector, PseudoSuffix; RawSelector rows are the migration's census).
+
+type TypeSelector
+  = UniversalType
+  | ElementType { tag: String }
+
+type SimpleSelector
+  = ClassPart { name: String }
+  | PseudoClassPart { name: String }
+  | PseudoElementPart { name: String }
+
+type CompoundSelector {
+  type_selector: Optional<TypeSelector>
+  parts: List<SimpleSelector>
+}
+
+type ComplexSelector {
+  compounds: List<CompoundSelector>
+}
+
+type SelectorList {
+  selectors: List<ComplexSelector>
+}
+
+fn type_selector_wire(t: TypeSelector) -> String {
+  match t {
+    UniversalType => "*"
+    ElementType { tag: tag } => tag
+  }
+}
+
+fn simple_selector_wire(s: SimpleSelector) -> String {
+  match s {
+    ClassPart { name: n } => join([".", n], "")
+    PseudoClassPart { name: n } => join([":", n], "")
+    PseudoElementPart { name: n } => join(["::", n], "")
+  }
+}
+
+fn compound_selector_wire(c: CompoundSelector) -> String {
+  let head = match c.type_selector {
+    Present { value: t } => type_selector_wire(t: t)
+    Absent => ""
+  }
+  join([head, join(map(c.parts, p => simple_selector_wire(s: p)), "")], "")
+}
+
+fn complex_selector_wire(c: ComplexSelector) -> String {
+  join(map(c.compounds, k => compound_selector_wire(c: k)), " ")
+}
+
+fn selector_list_wire(l: SelectorList) -> String {
+  join(map(l.selectors, c => complex_selector_wire(c: c)), ", ")
+}
+
+fn class_compound(name: String) -> CompoundSelector {
+  CompoundSelector { type_selector: Absent, parts: [ClassPart { name: name }] }
+}
+
+fn element_compound(tag: String) -> CompoundSelector {
+  CompoundSelector { type_selector: Present { value: ElementType { tag: tag } }, parts: [] }
+}

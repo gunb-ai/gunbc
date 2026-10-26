@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.restored_bytes_reviewed_as_authorship
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data restored_bytes_reviewed_as_authorship: RecurringFailureMode = RecurringFailureMode {
   identity: "restored_bytes_reviewed_as_authorship" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**restored bytes reviewed as authorship** (a clobber repair returns content a prior PR already merged and a prior reviewer already accepted, but a diff has no way to say so: the restored lines are ADDED LINES, so a reviewer attributes them to the repairing PR and reviews them as new work.",

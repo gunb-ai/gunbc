@@ -1,10 +1,11 @@
 module test.claim.cooling_qualification_witness
 
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.vendor.amd { amd }
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.measure { watt }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
@@ -56,6 +57,11 @@ data srv3_installed_cooling: InstalledCoolingRealization = InstalledCoolingReali
 // GREEN: the fleet's actual srv3 pairing is catalog-compatible. W1 socket LGA4926 matches the
 // M128-30 socket, the W1's supported-board population contains the ALTRAD8UD, and the W1's
 // 250 W design power covers the M128-30's 183 W TDP.
+data test_socket_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Supplied test fixture socket; its figures are claimed of no upstream socket." as NonEmptyStr
+}
+
+
 test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
   match cooling_catalog_verdict(realization: srv3_installed_cooling) {
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
@@ -74,7 +80,7 @@ test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool 
   let wrong_mount_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
-    socket: CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4189, cooling_mount: ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4189" } },
+    socket: CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4189, figure_standing: test_socket_standing, cooling_mount: ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4189" } },
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
     max_design_power: dynatron_w1_catalog.max_design_power,
@@ -332,7 +338,7 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
   let foreign_platform_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
-    socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 4926, cooling_mount: ProcessorCoolingMount { platform_owner: amd, designation: "ILM4926" } },
+    socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 4926, figure_standing: test_socket_standing, cooling_mount: ProcessorCoolingMount { platform_owner: amd, designation: "ILM4926" } },
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
     max_design_power: dynatron_w1_catalog.max_design_power,
@@ -409,13 +415,13 @@ test fn w_am4_cooler_fits_an_am5_board_because_the_mount_is_retained() -> Bool {
   let am4_socket = CpuSocket {
     platform_owner: amd,
     termination: SocketedPinGrid,
-    contact_count: 1331,
+    contact_count: 1331, figure_standing: test_socket_standing,
     cooling_mount: amd_am4_cooling_mount,
   }
   let am5_socket = CpuSocket {
     platform_owner: amd,
     termination: SocketedLandGrid,
-    contact_count: 1718,
+    contact_count: 1718, figure_standing: test_socket_standing,
     cooling_mount: amd_am4_cooling_mount,
   }
   !cpu_socket_eq(a: am4_socket, b: am5_socket)

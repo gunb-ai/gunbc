@@ -43,22 +43,6 @@ data hmac_sha256_verify_hex_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-// SHA-256 OF A TEXT'S UTF-8 BYTES, lowercase hex (FIPS 180-4). A host seam beside the HMAC ones for
-// one reason, measured: the pure fold (extdeps.crypto.sha2 sha256_hex) costs ~500-600k interpreted
-// eval steps over a ~150-byte text, and the fabric store door digests an approved intent on every
-// protected write (gunbc.fabric.fabric_store_operation_admission). The pure fold stays as its differential
-// oracle through the known answers they share (test.claim.sha256_host_known_answer_witness).
-// A DECLARED FRONTIER (DESIGN §3c): its production consumer is gunbc.fabric.fabric_store_operation_admission
-// intent_digest, which lands in the store-operation wall (gunbc.fabric.fabric_store_operation_admission) PR 4a (gunbc#12537). TRIGGER: that change lands
-// calling sha256_hex_of_text; if the door digests some other way, this primitive is deleted with it.
-data sha256_hex_of_text_contract: PrimitiveContract = {
-  name: "sha256_hex_of_text",
-  work: "n",
-  output_size: "64",
-  certainty: Proven,
-  carrier_cost: CarrierInsensitive
-}
-
 // Issuance: work linear in the message, output the 64 lowercase hex digits of a 32-octet tag. A
 // SECOND contract rather than a widened verify, because only the key holder mints; a verifier keeps
 // its one-bit answer (hmac_sha256_verify_hex_contract above) and never sees a tag to compare.
@@ -130,14 +114,6 @@ data repeat_contract: PrimitiveContract = {
   name: "repeat",
   work: "m * n",
   output_size: "m * n",
-  certainty: Proven,
-  carrier_cost: CarrierInsensitive
-}
-
-data chars_contract: PrimitiveContract = {
-  name: "chars",
-  work: "n",
-  output_size: "n",
   certainty: Proven,
   carrier_cost: CarrierInsensitive
 }
@@ -406,14 +382,6 @@ data reverse_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-data list_push_contract: PrimitiveContract = {
-  name: "list_push",
-  work: "1",
-  output_size: "n + 1",
-  certainty: Amortized,
-  carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log n" }
-}
-
 data append_contract: PrimitiveContract = {
   name: "append",
   work: "m",
@@ -630,6 +598,7 @@ data contiguous_loop_elementwise_float_kernel_contract: PrimitiveContract = {
 
 fn builtin_registry_surface_names() -> List<String> {
   [
+    "witness_deferral_freeze_population_census",
     "hmac_sha256_verify_hex",
     "hmac_sha256_hex",
     "sha256_hex_of_text",
@@ -762,7 +731,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "compile_dag_reference_occurrence_binding_census",
     "dependency_resolution_facts",
     "dependency_resolution_facts_at",
-    "observe_declared_import_closure_symbol_binding",
     "parse_roadmap_acceptance_event_history_jsonl",
     "parse_stage0_cargo_manifest_bins",
     "project_roadmap_acceptance_event_history_from_authority_text_host",
@@ -785,7 +753,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     string_length_contract,
     hmac_sha256_verify_hex_contract,
     hmac_sha256_hex_contract,
-    sha256_hex_of_text_contract,
     substring_contract,
     string_contains_contract,
     starts_with_contract,
@@ -794,7 +761,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     concat_contract,
     split_contract,
     repeat_contract,
-    chars_contract,
     machine_word_native_operate_contract,
     to_string_contract,
     parse_int_contract,
@@ -827,7 +793,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     get_contract,
     max_by_contract,
     reverse_contract,
-    list_push_contract,
     append_contract,
     skip_contract,
     take_contract,
@@ -853,4 +818,67 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     contiguous_loop_elementwise_kernel_contract,
     contiguous_loop_elementwise_float_kernel_contract,
   ]
+}
+
+// ---------------------------------------------------------------------------
+// ConstructorTag: the typed arm identity of a coproduct inhabitant.
+//
+// WHY IT IS SHAPED THIS WAY. A tag must be comparable only through `same_arm`, never through
+// `==`, and must never expose the discriminant it identifies. Both are enforced by the shape
+// itself, with no new vocabulary:
+//   * the one member is function-valued, and a function value has no equality denotation --
+//     `==` and `!=` on a ConstructorTag refuse at typecheck (the accepted rule behind
+//     `v1.compiler.infer.equality_admission_wall_note`: `==` on a function-valued member is
+//     the refusal, not a convention);
+//   * `sole_constructor` makes construction legal only inside THIS file, and `tag_of` is the only
+//     function that builds one, so no consumer can mint a tag or choose what a tag matches.
+// A record with an Int tag or a String name would fail the second clause twice over: it would
+// carry a discriminant in its public shape and derive a structural `==` (both measured; see
+// dag/gunbc/recurring_failure_mode/one_type_variable_bound_to_two_distinct_coproducts.dag).
+//
+// NAMED ARMS. `tag_of(v: Unit0)` names a unit arm as a value at a user function's argument
+// position and works generically. A PAYLOAD arm cannot be named outside `discriminant`'s own
+// argument -- the tag-reference result is granted only when the callee IS `discriminant`
+// (v1.compiler.infer payload_arm_tag_reference_waiver_results, enumerated arm declarations only), so `tag_of(v: WithPayload {})`
+// refuses. Naming a payload arm as a value is the trigger for the frontier recorded on
+// dag/gunbc/recurring_failure_mode/one_type_variable_bound_to_two_distinct_coproducts.dag;
+// until then a payload arm's tag comes from a value of that arm.
+type ConstructorTag<T> sole_constructor {
+  accepts: fn(T) -> Bool
+}
+
+// THE ONLY WAY TO MINT A TAG. The caller supplies a VALUE (or, for a unit arm, the arm spelled
+// as a value) and nothing else -- the predicate below is the only `fn` ever stored in a
+// ConstructorTag, and it is written in this file. That is deliberate and load-bearing: an
+// earlier shape exposed `constructor_tag<T>(accepts: fn(T) -> Bool)`, and because
+// `sole_constructor` guards only the RECORD LITERAL, `constructor_tag(accepts: fn(_w) { true })`
+// minted a tag that `same_arm` reported as matching EVERY arm (measured PASS, so it was real).
+// A predicate-taking entry is a forgery route by construction, and DESIGN section 4b is explicit
+// that a brand is cosmetic until construction enforces it -- so the entry is gone rather than
+// documented as "elaboration-only". There is no visibility mechanism to fall back on either:
+// `public` is not a gate in resolve, and type modifiers are dropped at parse
+// (v1.compiler.parse drop_leading_type_modifier), so `sole_constructor` is the only construction
+// control the language has.
+//
+// The identity is what `discriminant` yields, keyed on T's declaration. `discriminant` still returns a String internally, but the carrier
+// stores only a predicate over T and exposes no string, so a
+// tag cannot be forged from text either. Elaboration for `x is V` calls THIS function on the arm
+// it resolved against T's declared roster; it needs no separate entry, because for a unit arm the
+// arm reference is exactly the value `tag_of` takes. For a payload arm there is no arm-reference
+// value to pass (see the frontier note on
+// dag/gunbc/recurring_failure_mode/one_type_variable_bound_to_two_distinct_coproducts.dag), so
+// elaboration passes a value of that arm -- which is the same identity, and is a control.
+fn tag_of<T>(v: T) -> ConstructorTag<T> {
+  ConstructorTag { accepts: fn(w) { discriminant(v: v) == discriminant(v: w) } }
+}
+
+// THE one exposed comparison, and the only equality between two arms: does `v` inhabit the
+// arm `tag` names? Payloads are blind -- same arm with different payloads answers true, a
+// different arm answers false. There is no `==` on ConstructorTag itself.
+//
+// Bind-then-call is required: a member call on a record receiver has no method surface, and
+// the corpus invokes fn-valued members through a binding (`monoid.op(acc, patch)`).
+fn same_arm<T>(tag: ConstructorTag<T>, v: T) -> Bool {
+  let accepts = tag.accepts
+  accepts(v)
 }

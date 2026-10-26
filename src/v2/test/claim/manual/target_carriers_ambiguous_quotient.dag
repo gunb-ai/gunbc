@@ -1,5 +1,7 @@
 module v2.test.claim.manual.target_carriers_ambiguous_quotient
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fidelity_quotient_bundle(edges: List<Edge>) -> Node {
@@ -9,7 +11,8 @@ fn fidelity_quotient_bundle(edges: List<Edge>) -> Node {
 fn fidelity_quotient_edge() -> Edge {
   Edge {
     label: Authored { name: ^target_model_edge_fidelity_quotient },
-    target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+    target: node_synthetic(kind: TypeNode { connective: Conj }, children: []),
+    declaration: NotADeclaration
   }
 }
 

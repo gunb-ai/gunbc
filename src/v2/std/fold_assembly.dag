@@ -2,7 +2,6 @@ module v2.std.fold_assembly
 import v2.std.node {
   Disj,
   Arrow,
-  Occupancy,
   Instantiation,
   ComputationNode,
   Atom,
@@ -22,7 +21,8 @@ import v2.std.node {
   Ambiguous,
   NotFound,
   named_edge_target_lookup,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import std.algebra { Cons, Empty, FreeMonoid, freemonoid_empty, list_append, list_snoc_item, fold_list, length, is_empty, count_where }
 import v2.std.anti_unification { ChainGeneralization, is_hole, hole_node }
@@ -36,7 +36,7 @@ data fold_template_edge: Symbol = ^fold_template
 data fold_elements_edge: Symbol = ^fold_elements
 
 fn named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn conj_record(children: FreeMonoid<Edge>) -> Node {
@@ -83,7 +83,7 @@ fn apply_fills_step(acc: ApplyEdgesAcc, e: Edge) -> ApplyEdgesAcc {
 }
 fn apply_fills_step_with(acc: ApplyEdgesAcc, e: Edge, r: ApplyResult) -> ApplyEdgesAcc {
   ApplyEdgesAcc {
-    edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: r.node }),
+    edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: r.node, declaration: e.declaration }),
     rest: r.rest
   }
 }
@@ -122,7 +122,6 @@ fn decode_node_list(node: Node) -> Outcome<FreeMonoid<Node>> {
     TypeNode { connective: Atom { identity: _ } } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
     TypeNode { connective: Disj } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
     TypeNode { connective: Arrow } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
-    TypeNode { connective: Occupancy } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
     TypeNode { connective: Instantiation } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
     ComputationNode { behavior: _ } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
   }

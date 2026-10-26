@@ -15,7 +15,6 @@ import gunbc.serving.rented_ninfer_source { ninfer_serve_81c8ce09_sm120_release 
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import gunbc.serving.rented_replica { RentedGpuDevice }
-import product.supplier.vast_ai { VastAiAskReceipt }
 import std.measure { MoneyRate, money_amount_micro }
 import extdeps.currency.currency { Usd }
 import gunbc.serving.rented_enrollment { rented_enrollment_index, rented_enrolled_routes }
@@ -142,7 +141,6 @@ test fn an_acquired_allocation_derives_the_same_endpoint_as_an_imported_one() ->
       owner: "gunbc-flex" as NonEmptyStr,
       asked_at: 1792008000000,
       asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
-      provider_ask: VastAiAskReceipt { ask_id: 77, machine_id: 42 },
     },
     contract: imported.contract, card: imported.card, end: imported.end, engine: imported.engine,
     artifact: imported.artifact, host: imported.host, route: imported.route,

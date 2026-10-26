@@ -1,0 +1,707 @@
+module test.claim.markup_document_comment_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
+
+// WITNESSES THE THREE THINGS THE COMMENT/DOCTYPE ARMS MUST GET RIGHT, and goes red when any of them
+// stops being true. §5: a typecheck is not a witness — every claim here runs the serializer and
+// compares characters, and each has a mutation named below that turns it red.
+//
+//  1. The delimiters come from the MEDIUM, not from a module that happens to emit a comment. Checked
+//     by rendering the same MarkupComment through two media that spell comments differently (HTML and
+//     JSX-shaped): if either delimiter were hardcoded in std.markup, the two renderings would agree.
+//  2. A comment body cannot terminate its own comment. comment_body_hazard refuses a body holding ANY of
+//     the medium's comment terminators, and the medium is refused if its own close sequence holds none of
+//     them; the checks live in the serializer's arms, so a route cannot skip them — a page cannot ship a
+//     comment whose remainder is parsed as markup. A body ending in "-" is ACCEPTED: that rule was an
+//     over-refusal and review 82417 removed it (see witness_comment_trailing_dash_is_accepted).
+//  4. A raw-text element's content cannot contain its own close sequence -- checked over the bytes the
+//     emitter writes, so no child shape can hide from it (see the two raw-text claims).
+//  3. A document puts the doctype OUTSIDE <html>, on its own line, spelled by the medium; and it is only
+//     writable through serialize_document_with, whose refusal is a typed result. The two guards walk into
+//     the document's root rather than certifying it unread.
+//
+// WHY THERE IS NO DOCUMENT ARM IN THE FRAGMENT WALKERS ANY MORE. Document was a Fragment arm, which made
+// a document reachable from any fragment route — including the unguarded JSX ones, where it would have
+// reached a seam labelled unreachable that in fact diverged (review 82244 on #14351). MarkupDocument is a
+// type of its own now, so those walkers have no arm to check and these claims assert the document through
+// its own route. Three claims and seventeen walker arms were deleted with the shape that made them
+// expressible; each deletion is recorded where it happened rather than silently.
+//
+// RED CONTROLS (run once each; the mutation is named so it can be re-run, and the refusals recorded).
+//   C1  std.markup's MarkupComment arm: replace medium.comment_grammar.open with the literal "<!-- ".
+//       witness_comment_delimiters_come_from_the_medium goes red (the JSX-shaped medium renders <!--).
+//   C2  std.markup comment_body_hazard: return HazardFree unconditionally.
+//       witness_comment_terminator_is_refused, witness_guarded_route_refuses_a_self_terminating_comment,
+//       the JSX route claim, witness_comment_in_a_document_still_checked_for_early_close,
+//       witness_medium_grammar_decides_the_comment_check and witness_broken_close_names_both_rows go red.
+//       (witness_comment_trailing_dash_is_accepted STAYS green under this mutation, correctly: it asserts
+//       what the tokenizer accepts, and a check that always passes certainly accepts it. The claims above
+//       are the ones that hold the refusal in place.)
+//   C6  std.markup serialize_document_with: drop the NoDocumentGrammar arm (treat every grammar as
+//       declaring, e.g. reuse the DeclaresDocument keyword branch unconditionally).
+//       witness_a_document_medium_refuses_to_write_a_document goes red. The pair claim
+//       witness_a_declaring_medium_writes_the_document stays green, which is why both exist.
+//   C12+C13 MEASURED red 2/38 (36 pass): std.markup serialize_fragment_with Element arm, make the raw-text
+//       test read a structural fold over the child list instead of the emitted bytes -- a fold with
+//       `MarkupComment { body: _ } => acc` and `Element { ... } => acc`, i.e. the deleted
+//       raw_text_children_text restored. RED: witness_comment_body_cannot_close_a_raw_text_element and
+//       witness_nested_element_cannot_close_a_raw_text_element -- exactly one per skipped arm, which is why
+//       they are two claims and not one. The other 36 stay green, so nothing else is load-bearing on this.
+//       (C12 and C13 were run as one mutation because this restoration expresses both: the guard reads a
+//       re-derived summary rather than the bytes it writes. They are listed separately because the two
+//       regressions are conceptually distinct -- a skipped arm vs a pre-serialization test -- even though the
+//       single mutation that reintroduces the old fold triggers both.)
+//   C14 MEASURED red 2/38 (36 pass): build child_medium WITHOUT the EscapeRaw override, so raw-text children
+//       are escaped. RED: witness_plain_text_cannot_close_its_own_raw_text_element -- the close sequence
+//       arrives as "&lt;/script" and the substring test finds nothing -- a SILENT widen, the guard still runs
+//       and reports clean, which is why the plain-text case needed its own claim even though it predates this
+//       PR. witness_nested_element_cannot_close_a_raw_text_element is red here too (its text payload escapes
+//       the same way).
+//
+// Baseline after both mutations were reverted and the compiler rebuilt: 38 pass / 0 fail.
+//   C7  std.markup comment_body_hazard: drop the first test (the one that asks whether the close sequence
+//       contains its own terminator), so an unsatisfiable medium is serialized anyway.
+//       witness_medium_grammar_decides_the_comment_check and witness_broken_close_names_both_rows go red.
+//       This is the control for the arm that replaced the Bool review 82417 removed: no per-language flag
+//       is consulted anywhere, so the only way to make the check language-sensitive again is to stop
+//       reading the medium -- which these two claims then catch.
+//   C9  std.markup CommentGrammar's fields: drop NonEmptyStr for String on `terminator`. The empty
+//       value becomes expressible again, and the DELETED claim above would be needed once more; the
+//       checker refusing an empty `terminators` set is the measurement that the construction holds -- and
+//       it is now unconstructible twice over, since the field is FreeSemigroup (no empty inhabitant at all).
+//       Verified by
+//       attempting the mutation and reading the compile refusal, not by a claim that can only pass.
+//   C8  std.markup serialize_fragment_with's MarkupComment arm: emit open+body+close without consulting
+//       comment_body_hazard (the pre-review-82279 shape, when the check lived only in a walk a route could
+//       skip). witness_comment_terminator_is_refused, witness_jsx_guarded_route_refuses_a_comment_that_
+//       closes_early and the broker marker claims go red together -- which is the point of putting the
+//       check in the emitter: ONE mutation now reddens every route, where the walk shape needed a separate
+//       control per route and still missed the ones that never called it.
+//   C3  extdeps.languages.html try_serialize_html_document: pass a node other than doc.root to the URL
+//       pass (e.g. skip the root). witness_url_guard_walks_into_the_document goes red (the javascript:
+//       href inside the root is no longer found) while witness_url_guard_passes_a_clean_document stays
+//       green -- which is the point: a guard that always passes is only caught by the claim that expects
+//       a refusal. The walk itself has no Document arm to mutate any more: a Fragment cannot contain one.
+//   C4  std.markup serialize_document_with's DeclaresDocument branch: drop the keyword, emitting only
+//       the name.
+//       witness_document_declares_its_type_before_the_root goes red.
+//   C5  extdeps.languages.html html_comment_terminators: change the head "-->" to " -->".
+//       witness_comment_terminator_is_refused goes red. The emitter's delimiter and the tokenizer's
+//       terminator are two rows on purpose: one is what we write, the other is what ends a comment.
+//   C5b extdeps.languages.html html_comment_terminators: delete the "--!>" member (tail: Empty).
+//       witness_bang_terminator_is_refused, witness_bang_terminator_refusal_names_the_bang and
+//       witness_bang_terminator_refused_by_the_document_route all go red while
+//       witness_comment_terminator_is_refused STAYS green -- which is the whole point of the set. A single
+//       terminator row made this escape invisible; the three claims above are what keep the second member
+//       from being silently dropped again. Note they hold a body containing no "-->" at all, so no
+//       mutation of the first member can substitute for the second.
+
+import std.markup {
+  Fragment, Element, FragmentText, MarkupComment, MarkupDocument, MarkupMedium, MarkupBracket,
+  EscapeHtml, OmitClose, attr, serialize_fragment_with,
+}
+import extdeps.languages.html {
+  try_serialize_html_source, try_serialize_html_document, EmitOk, EmitRejected,
+  html_markup_medium, html_comment_open_sequence, html_comment_close_sequence,
+  html_comment_terminators, html_doctype_open_sequence, html_doctype_name, canonical_html_spellings,
+}
+import std.markup {
+  HazardFree, HazardFound,
+  comment_body_hazard, CommentGrammar,
+  serialize_document_with, Serialized, Rejected,
+}
+import extdeps.uri_validation { find_first_rejected_url }
+import extdeps.languages.react_jsx {
+  try_serialize_jsx_component, JsxOk, JsxRejected, jsx_markup_medium, jsx_comment_terminators,
+}
+import std.optional { Absent, Present }
+import gunbc.auth.approval_broker_marker {
+  approval_broker_marker_comment, BrokerMarkerComment, MarkerCommentRendered, MarkerCommentRefused,
+}
+import std.types { List, Bool, String, NonEmptyStr }
+import std.algebra { Empty, FreeSemigroup }
+
+// A medium that spells comments the way JSX does, so the HTML delimiters cannot be hiding in the
+// serializer. Declared here rather than imported from extdeps.languages.react_jsx so the two media
+// are visibly different objects in this claim's own terms; test.claim.markup_medium_convergence is
+// where the repo's media are checked against each other.
+data jsx_like_bracket: MarkupBracket = MarkupBracket {
+  tag_open: "<",
+  end_tag_open: "</",
+  tag_close: ">",
+  attr_sep: " ",
+  attr_assign: "=",
+  attr_quote: "\"",
+}
+
+data jsx_like_medium: MarkupMedium = MarkupMedium {
+  tag_overrides: [],
+  bracket: jsx_like_bracket,
+  text_escape: EscapeHtml,
+  void_tags: [],
+  void_rendering: OmitClose,
+  raw_text_tags: [],
+  // The comment grammar of THIS adversarial medium, spelled the way JSX spells it. The medium exists to
+  // prove the serializer has no HTML delimiter hidden in it (witness_comment_delimiters_come_from_the_
+  // medium), so its delimiters are deliberately unlike HTML's -- and its terminator is what lets the same
+  // medium be asked whether a comment closed early (witness_medium_grammar_decides_the_comment_check).
+  comment_grammar: CommentGrammar {
+    open: "{/* ",
+    close: " */}",
+    terminators: FreeSemigroup { head: "*/", tail: Empty },
+  },
+  // Declares a doctype ON PURPOSE, unlike the real JSX medium: a claim serializes a Document through this
+  // medium to show the keyword comes from the medium too. The real jsx_markup_medium says NoDocumentGrammar.
+  document_grammar: DeclaresDocument {
+    open: "<!DOCTYPE ",
+    name_end_whitespace: " " as NonEmptyStr,
+    },
+}
+
+fn comment_node(body: String) -> Fragment {
+  MarkupComment { body: body }
+}
+
+fn comment_in_html(body: String) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [comment_node(body: body)],
+  }
+}
+
+fn empty_html() -> Fragment {
+  Element { tag: "html", attributes: [], children: [] }
+}
+
+fn document_with_root(root: Fragment) -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: root }
+}
+
+// ── 1. the delimiters are the medium's ────────────────────────────────────────────────────────
+
+test fn witness_comment_renders_with_the_medium_delimiters() -> Bool {
+  render_markup(serialize_fragment_with(frag: comment_node(body: "note"), medium: html_markup_medium())) == "<!-- note -->"
+}
+
+// THE CLAIM THE RED CONTROL IS FOR. The same fragment through a medium that spells comments
+// differently must render differently. A hardcoded "<!-- " in the serializer passes the claim above
+// and fails this one, which is why both exist.
+test fn witness_comment_delimiters_come_from_the_medium() -> Bool {
+  render_markup(serialize_fragment_with(frag: comment_node(body: "note"), medium: jsx_like_medium)) == "{/* note */}"
+}
+
+test fn witness_html_delimiter_rows_match_the_medium() -> Bool {
+  let m = html_markup_medium()
+  m.comment_grammar.open == html_comment_open_sequence && m.comment_grammar.close == html_comment_close_sequence
+}
+
+// The emitter's delimiter and the tokenizer's terminator are deliberately different rows: a body must
+// not hold the TERMINATOR, and what we write carries an extra space for readability.
+test fn witness_emitter_delimiter_is_not_the_terminator() -> Bool {
+  html_comment_close_sequence == " -->" && html_comment_terminators.head == "-->"
+}
+
+// The serializer's contract for a comment: the body appears verbatim, unescaped. HTML decodes nothing
+// inside a comment, so escaping would corrupt it — red if someone "fixes" the arm by routing the body
+// through the text escaper.
+test fn witness_comment_body_is_emitted_verbatim() -> Bool {
+  render_markup(serialize_fragment_with(frag: comment_node(body: "a & b < c"), medium: html_markup_medium())) == "<!-- a & b < c -->"
+}
+
+// ── 2. a comment cannot terminate itself ──────────────────────────────────────────────────────
+
+test fn witness_clean_comment_body_is_accepted() -> Bool {
+  match comment_body_hazard(body: "a note about the header", grammar: html_markup_medium().comment_grammar) {
+    HazardFree => true
+    HazardFound { reason: _ } => false
+  }
+}
+
+// "a-->b" is the case that separates the TOKENIZER's terminator ("-->", no leading space) from the
+// delimiter we EMIT (" -->", with one). Collapsing the two rows — the obvious tidy-up — leaves a tight
+// "-->" unrefused, and the serializer would then emit a comment the browser closes early.
+test fn witness_comment_terminator_is_refused() -> Bool {
+  all(["before --> after", "ends abruptly -->", "a-->b"],
+    b => match comment_body_hazard(body: b, grammar: html_markup_medium().comment_grammar) {
+      HazardFound { reason: _ } => true
+      HazardFree => false
+    })
+}
+
+// THE BANG TERMINATOR, and the reason the grammar row is a SET. "-->" is not the only way HTML ends a
+// comment: from the comment end state a "!" enters the comment end bang state, where ">" ALSO closes it
+// (HTML §13.2.5.52). So this body contains no "-->" at all, and a guard built from one terminator row
+// reports it HazardFree -- then the serializer emits "<!-- x--!><script>alert(1)</script> -->", a
+// conforming parser ends the comment at "--!>", and the script runs. That is not a wrong answer in a
+// corner; it is a served page executing markup a comment was supposed to contain (reviews 82474 and
+// 82482 on #14351, found independently, confirmed by walking the state machine).
+//
+// Deliberately NOT the shapes above: none of these strings contains "-->", so every one of them is
+// HazardFree under a single-terminator guard. That is what makes this claim discriminating rather than a
+// second copy of the previous one -- it stays red if only the "-->" member is consulted.
+test fn witness_bang_terminator_is_refused() -> Bool {
+  all(["x--!><script>alert(1)</script>", "--!>", "before --!> after", "ends abruptly --!>", "a--!>b"],
+    b => match comment_body_hazard(body: b, grammar: html_markup_medium().comment_grammar) {
+      HazardFound { reason: _ } => true
+      HazardFree => false
+    })
+}
+
+// ...and the refusal is LOCATED (§5: "a typed, located diagnostic"): it names WHICH terminator fired, so
+// "--!>" cannot be refused with a reason that only mentions "-->".
+// THE WHOLE SWEEP'S ESCAPE SET, not a sample of it. Generated by walking the comment state machine of HTML
+// §13.2.5 over EVERY string up to length 5 from the eight characters {-, /, >, *, !, space, '}', x} and
+// keeping the bodies where a single-"-->" guard disagrees with the tokenizer: 17 bodies, listed verbatim
+// below. Every one contains "--!>" and no "-->", so a guard consulting only the first terminator member
+// returns HazardFree on all 17 and this claim goes red on all 17 -- there is no mutation of the "-->" row
+// that can substitute for the "--!>" row, which is the difference between this and a sample.
+//
+// The list is the sweep's output, not a selection from it. If HTML gains a third exit, the same walk finds
+// it and the roster grows; the guard has to keep up.
+test fn witness_every_swept_escape_body_is_refused() -> Bool {
+  all([
+    "--!>", "---!>", "--!>-", "--!>/", "--!>>", "--!>*", "--!>!", "--!> ", "--!>}", "--!>x",
+    "/--!>", ">--!>", "*--!>", "!--!>", " --!>", "}--!>", "x--!>",
+  ], b => match comment_body_hazard(body: b, grammar: html_markup_medium().comment_grammar) {
+    HazardFound { reason: r } => string_contains(s: r, pattern: "--!>")
+    HazardFree => false
+  })
+}
+
+// THE COUNTERPART, so the roster above cannot be satisfied by a guard that refuses everything. These are
+// drawn from the same walk: every body that the deleted trailing-dash rule refused and the tokenizer accepts
+// ("--!", "}--", "--}", "note--", ...). Each must SERIALIZE. Without this, a comment_body_hazard that simply
+// returned HazardFound for every input would satisfy the claim above and every other refusal claim in this
+// file -- the refusals are only evidence because the acceptances are pinned too.
+//
+// (One shape I first put here and removed after checking it against the state machine: "/-->". It looks
+// dash-adjacent but it contains "-->", so it is one of the 17 escapes above, not a safe body. Guessing at a
+// roster is how a witness starts asserting the defect instead of the behaviour.)
+// ── RAW TEXT + COMMENTS (review 82504 on #14351). Inside <script>/<style> the tokenizer is in RAW-TEXT
+// state: "<!--" starts NO comment, so a MarkupComment child is not a comment there -- its body is emitted
+// as script text, and a "</script" inside it ends the element while the rest becomes live markup. The
+// serializer used to check raw-text content with raw_text_children_text, a fold that only gathered
+// FragmentText and RawNode and answered `acc` for MarkupComment AND for Element; the body below was
+// invisible to it, passed the comment check too (it holds no comment terminator), and shipped:
+//   <script><!-- </script><img src=x onerror=alert(1)> --></script>
+// The guard now tests the SERIALIZED children, so it sees what would actually sit between the tags.
+
+// THE REVIEW'S CASE, verbatim, through the route that serves pages. RED under C12.
+test fn witness_comment_body_cannot_close_a_raw_text_element() -> Bool {
+  let inside = MarkupComment { body: "</script><img src=x onerror=alert(1)>" }
+  let root = Element { tag: "script", attributes: [], children: [inside] }
+  match try_serialize_html_document(doc: document_with_root(root: root)) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "</script")
+    EmitOk { html: _ } => false
+  }
+}
+
+// THE GUARD'S OWN CASE, and until now the only case nobody claimed: PLAIN text holding the close sequence
+// inside a raw-text element. It predates the two below, and it is the reason the guard exists. My fix moved
+// the guard's input from the raw child list to the SERIALIZED children, which is exactly the edit that could
+// have silenced it -- if raw-text children were serialized with escaping, "</script" would have arrived as
+// "&lt;/script", the substring test would have matched nothing, and the refusal would have evaporated with
+// no witness to notice. They are serialized with EscapeRaw (child_medium above) precisely so the bytes reach
+// this check as written; this claim is what pins that choice rather than trusting the comment that explains it.
+test fn witness_plain_text_cannot_close_its_own_raw_text_element() -> Bool {
+  let payload = FragmentText { content: "var x = 1; </script><img src=x onerror=alert(1)>" }
+  let root = Element { tag: "script", attributes: [], children: [payload] }
+  match try_serialize_html_document(doc: document_with_root(root: root)) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "</script")
+    EmitOk { html: _ } => false
+  }
+}
+
+// THE SIBLING HOLE the same fold had: `Element { ... } => acc` meant a NESTED element carrying the close
+// sequence was skipped too. Same fix, separate claim -- a mutation that re-adds only one of the two `acc`
+// arms must go red somewhere.
+test fn witness_nested_element_cannot_close_a_raw_text_element() -> Bool {
+  let payload = FragmentText { content: "</style><img src=x onerror=alert(1)>" }
+  let nested = Element { tag: "span", attributes: [], children: [payload] }
+  let root = Element { tag: "style", attributes: [], children: [nested] }
+  match try_serialize_html_document(doc: document_with_root(root: root)) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "</style")
+    EmitOk { html: _ } => false
+  }
+}
+
+// THE COUNTERPART: ordinary raw-text content that does NOT contain its close sequence still serializes,
+// and comments outside raw text are untouched. Without these two, the claims above are satisfied by a
+// serializer that refuses everything.
+test fn witness_legitimate_raw_text_and_ordinary_comments_still_serialize() -> Bool {
+  let css = FragmentText { content: "a { color: red }" }
+  let css_root = Element { tag: "style", attributes: [], children: [css] }
+  let css_ok = match try_serialize_html_document(doc: document_with_root(root: css_root)) {
+    EmitOk { html: h } => string_contains(s: h, pattern: "a { color: red }")
+    EmitRejected { reason: _ } => false
+  }
+  let comment_ok = match try_serialize_html_document(doc: document_with_root(
+    root: comment_in_html(body: "an ordinary note"))) {
+    EmitOk { html: h } => string_contains(s: h, pattern: "<!-- an ordinary note -->")
+    EmitRejected { reason: _ } => false
+  }
+  css_ok && comment_ok
+}
+
+test fn witness_swept_safe_bodies_serialize() -> Bool {
+  all(["-", "--", "---", "x-", "x--", "--!", "--!x", "--}", "}--", "a-", "a--", "note--", "!--", "}", "x/"],
+    b => match try_serialize_html_document(doc: document_with_root(root: comment_in_html(body: b))) {
+      EmitOk { html: _ } => true
+      EmitRejected { reason: _ } => false
+    })
+}
+
+// ...and the refusal is LOCATED (§5): it names WHICH terminator fired, so
+// "--!>" cannot be refused with a reason that only mentions "-->".
+test fn witness_bang_terminator_refusal_names_the_bang() -> Bool {
+  match comment_body_hazard(body: "x--!>y", grammar: html_markup_medium().comment_grammar) {
+    HazardFound { reason: r } => string_contains(s: r, pattern: "--!>")
+    HazardFree => false
+  }
+}
+
+// THROUGH THE ROUTE THAT ACTUALLY SERVES PAGES, not just the helper. try_serialize_html_document is what
+// gunbc/site serves, so the escape had to be closed there: the same body must come back EmitRejected,
+// never EmitOk holding the page with a live <script> in it.
+test fn witness_bang_terminator_refused_by_the_document_route() -> Bool {
+  match try_serialize_html_document(doc: document_with_root(
+    root: comment_in_html(body: "x--!><script>alert(1)</script>"))) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "--!>")
+    EmitOk { html: _ } => false
+  }
+}
+
+// A TRAILING DASH IS NOT A HAZARD. This claim used to assert the opposite -- it demanded a refusal of
+// "trailing dash-" -- and it was green, because the check consulted a Bool that said HTML closes on a
+// trailing dash. Review 82417 on #14351: the Bool's stated premise was that the emitter's own close
+// contributes a "-" making a third for "-->", but html_comment_close_sequence is " -->", which begins with a
+// space, so "- -->" contains exactly one "-->": the close. Walked through the comment state machine of HTML
+// §13.1.1 (the section this module already cites for the doctype rule), the body is accepted. So the claim
+// was pinning an over-refusal, and the ONLY thing that would have caught a return of that rule was this
+// line being red. §4d: "Do not over-generalize a prohibition."
+//
+// Bodies ending in a dash are ordinary prose: an em-dash, a bullet, a truncated date. The list is the
+// tokenizer's own neighbourhood, not a sample.
+test fn witness_comment_trailing_dash_is_accepted() -> Bool {
+  all(["trailing dash-", "-", "--", "---", "note--", "a-"], b =>
+    match comment_body_hazard(body: b, grammar: html_markup_medium().comment_grammar) {
+      HazardFree => true
+      HazardFound { reason: _ } => false
+    })
+}
+
+// THE GRAMMAR'S OWN ROWS DECIDE, with no per-language flag to set correctly. Two media, two questions,
+// both answered from CommentGrammar.close and .terminators:
+//   - a well-formed medium accepts a body its tokenizer survives (HTML accepts "trailing dash-");
+//   - a medium whose close sequence cannot contain its terminator is refused on EVERY body, because that
+//     emitter would open a comment nothing closes -- the rest of the document becomes comment text. That
+//     is a defect in the medium, refused as one, and it is the arm a flag could never have expressed.
+// Without the second half, the medium's rows would be decoration: an adversarial grammar would be
+// serialized happily, which is the same silent-pass shape review 82181 found for JSX.
+test fn witness_medium_grammar_decides_the_comment_check() -> Bool {
+  let accepted = match comment_body_hazard(body: "trailing dash-", grammar: html_markup_medium().comment_grammar) {
+    HazardFree => true
+    HazardFound { reason: _ } => false
+  }
+  let broken = CommentGrammar {
+    open: "<!-- ",
+    close: " ~~ ",
+    terminators: FreeSemigroup { head: "-->", tail: Empty },
+  }
+  let refused_everywhere = all(["", "harmless", "-"], b =>
+    match comment_body_hazard(body: b, grammar: broken) {
+      HazardFound { reason: _ } => true
+      HazardFree => false
+    })
+  accepted && refused_everywhere
+}
+
+// The medium-defect refusal is LOCATED, not a shrug (§5): it names the close sequence and the terminator
+// it fails to contain, so the fix is obvious from the diagnostic alone.
+test fn witness_broken_close_names_both_rows() -> Bool {
+  let broken = CommentGrammar {
+    open: "<!-- ",
+    close: " ~~ ",
+    terminators: FreeSemigroup { head: "-->", tail: Empty },
+  }
+  match comment_body_hazard(body: "x", grammar: broken) {
+    HazardFound { reason: r } =>
+      string_contains(s: r, pattern: "~~") && string_contains(s: r, pattern: html_comment_terminators.head as String)
+    HazardFree => false
+  }
+}
+
+// A refusal that says only "bad" is not located (§5): the terminator must be named in the diagnostic.
+test fn witness_comment_hazard_names_the_terminator() -> Bool {
+  match comment_body_hazard(body: "x --> y", grammar: html_markup_medium().comment_grammar) {
+    HazardFound { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminators.head as String)
+    HazardFree => false
+  }
+}
+
+// The guarded route refuses rather than emitting a self-terminating comment. This is the difference
+// between a typed refusal and a comment that silently becomes markup in a served page.
+test fn witness_guarded_route_refuses_a_self_terminating_comment() -> Bool {
+  match try_serialize_html_source(node: comment_in_html(body: "a --> <script>alert(1)</script>")) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: html_comment_terminators.head as String)
+    EmitOk { html: _ } => false
+  }
+}
+
+test fn witness_guarded_route_emits_a_clean_comment() -> Bool {
+  match try_serialize_html_source(node: comment_in_html(body: "ordinary note")) {
+    EmitOk { html: h } => string_contains(s: h, pattern: "<!-- ordinary note -->")
+    EmitRejected { reason: _ } => false
+  }
+}
+
+// ── 3. the document, and the guards that must walk into it ────────────────────────────────────
+
+test fn witness_document_declares_its_type_before_the_root() -> Bool {
+  match serialize_document_with(doc: document_with_root(root: empty_html()), medium: html_markup_medium()) {
+    Serialized { html: out } =>
+      out == join([html_doctype_open_sequence as String, html_doctype_name as String, ">", "\n", "<html></html>"], "")
+    Rejected { reason: _ } => false
+  }
+}
+
+// The doctype is a SIBLING of <html> — neither an attribute of it nor inside it. Asserted by the
+// PREFIX rather than by an index, so the claim states the stronger thing: the declaration occupies the
+// whole first line, and the root begins at the start of the second. A "doctype index < html index"
+// check would also pass on "<html><head><!DOCTYPE html>" style output, which is the defect it should
+// catch.
+test fn witness_doctype_line_precedes_the_root_element() -> Bool {
+  let out = match serialize_document_with(
+    doc: document_with_root(root: comment_in_html(body: "inner")),
+    medium: html_markup_medium(),
+  ) {
+    Serialized { html: h } => h
+    // A refusal here would produce no text to test, and the claim fails -- it does not pass vacuously.
+    Rejected { reason: _ } => ""
+  }
+  starts_with(s: out, prefix: join([html_doctype_open_sequence as String, html_doctype_name as String, ">", "\n", "<html"], ""))
+}
+
+// THE GUARD MUST WALK IN. A whole page reaches the URL pass through the document route, so a route that
+// checked only its doctype, or skipped the root, would leave every page unguarded while looking like it
+// was checked -- the shape §5 calls worse than no guard. Asserted through the ROUTE (not by calling
+// find_first_rejected_url on the root by hand) so a regression in the route's wiring is red, not just a
+// regression in the walker.
+test fn witness_url_guard_walks_into_the_document() -> Bool {
+  match try_serialize_html_document(doc: document_with_root(root: bad_link_root())) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
+  }
+}
+
+fn bad_link_root() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [
+      Element {
+        tag: "a",
+        attributes: [attr(name: "href", value: "javascript:alert(1)")],
+        children: [FragmentText { content: "click" }],
+      },
+    ],
+  }
+}
+
+// The other half of the pair: the route still ACCEPTS a clean page, so the refusal above is not a
+// blanket rejection that would satisfy both claims.
+test fn witness_url_guard_passes_a_clean_document() -> Bool {
+  match try_serialize_html_document(doc: document_with_root(root: good_link_root())) {
+    EmitOk { html: _ } => true
+    EmitRejected { reason: _ } => false
+  }
+}
+
+fn good_link_root() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [
+      Element {
+        tag: "a",
+        attributes: [attr(name: "href", value: "https://gunb.ai")],
+        children: [FragmentText { content: "site" }],
+      },
+    ],
+  }
+}
+
+// A comment is not markup, so a URL-shaped string inside one is not a reference to reject — while the
+// comment's own hazard (an early close) is still checked inside a document.
+test fn witness_guard_does_not_read_a_comment_as_a_reference() -> Bool {
+  match find_first_rejected_url(node: comment_in_html(body: "see javascript:alert(1) for why")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_comment_in_a_document_still_checked_for_early_close() -> Bool {
+  match try_serialize_html_document(doc: document_with_root(root: comment_in_html(body: "x --> y"))) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
+  }
+}
+
+// ── 4. the doctype name is a production, not free text ────────────────────────────────────────
+
+// Also through the ROUTE, as its reject counterpart does. The pair is what matters: a doctype check that
+// refused everything would satisfy the reject claim alone, and one that refused nothing would satisfy the
+// accept claim alone.
+test fn witness_clean_doctype_name_is_accepted() -> Bool {
+  match try_serialize_html_document(doc: MarkupDocument { doctype: html_doctype_name, root: empty_html() }) {
+    EmitOk { html: _ } => true
+    EmitRejected { reason: _ } => false
+  }
+}
+
+test fn witness_doctype_name_rejects_non_token_names() -> Bool {
+  // The empty name is NOT in this list, because it is no longer expressible: MarkupDocument.doctype is
+  // NonEmptyStr and `MarkupDocument { doctype: "", root: _ }` fails to resolve (measured against the
+  // checker). Asserting a refusal of it would be asserting an invalid value as expected output -- a claim
+  // that can only pass is not a claim. What remains are the characters a length bound cannot exclude: the
+  // two angle brackets the medium spells and the whitespace its DeclaresDocument row spells.
+  //
+  // Asserted through the ROUTE, not by calling the check directly: the refusal only matters if a page
+  // carrying such a name is actually refused, and going through the route also pins the wiring — a check
+  // that nothing calls would keep a direct-call claim green.
+  all([("html system" as NonEmptyStr), ("html>" as NonEmptyStr), ("<html" as NonEmptyStr)],
+    k => match try_serialize_html_document(doc: MarkupDocument { doctype: k, root: empty_html() }) {
+      EmitRejected { reason: _ } => true
+      EmitOk { html: _ } => false
+    })
+}
+
+// ── 5. the consumer's refusal is a refusal (review 82142 on #14351) ───────────────────────────
+
+// The broker marker joins a comment into a served HTML body. If a hazard's text were returned as the
+// comment, the page would ship with an error message where the marker belongs and no marker at all —
+// and the READING side reports an unmarked page as "the request never reached the broker", which is the
+// one question this marker exists to settle. So the hazard's outcome must be un-joinable: a closed
+// result, not a String that means either thing.
+//
+// This arm is currently unreachable through approval_broker_marked_body: its token is a join of three
+// CLOSED sets (lowercase, digits, "/", "-"), so no inhabitant can hold a terminator — checked by
+// witness_marker_token_never_closes_its_comment below. It becomes reachable the moment that alphabet
+// widens, which is the trigger named here. Running the refusal directly is what keeps it from being a
+// branch that only LOOKS handled: control C8 (return the diagnostic as MarkerCommentRendered) turns the
+// first claim red.
+test fn witness_marker_refusal_carries_no_joinable_text() -> Bool {
+  match approval_broker_marker_comment(body: "token --> <script>alert(1)</script>") {
+    MarkerCommentRefused { reason: r } => r != "" && string_contains(s: r, pattern: html_comment_terminators.head as String)
+    MarkerCommentRendered { text: _ } => false
+  }
+}
+
+test fn witness_marker_clean_token_renders_as_a_comment() -> Bool {
+  match approval_broker_marker_comment(body: "approval-broker/roadmap/confirm-page") {
+    MarkerCommentRendered { text: t } => t == "<!-- approval-broker/roadmap/confirm-page -->"
+    MarkerCommentRefused { reason: _ } => false
+  }
+}
+
+// ── 6. the closed set a consumer depends on ───────────────────────────────────────────────────
+
+// gunbc.auth.approval_broker_marker routes its HTML marker through MarkupComment and refuses a token
+// that would close its own comment. That refusal only means something if the token alphabet is what
+// the module claims, so this checks the whole corpus instead of reading the match arms. The corpus is
+// spelled here from the same three closed sets (prefix, process, fold name); if a name is added to
+// gunbc.auth.approval_broker_marker and not here, witness_marker_corpus_matches_the_module's refusal
+// on an unknown-shaped name is the tripwire.
+test fn witness_marker_token_never_closes_its_comment() -> Bool {
+  all(marker_token_corpus(), s => match comment_body_hazard(body: s, grammar: html_markup_medium().comment_grammar) {
+    HazardFree => true
+    HazardFound { reason: _ } => false
+  })
+}
+
+test fn witness_marker_corpus_is_not_empty() -> Bool {
+  list_length(items: marker_token_corpus()) > 0
+}
+
+fn marker_token_corpus() -> List<String> {
+  fold(["roadmap", "broker"], init: [], f: (acc, p) => concat(acc, marker_names().map(n => join(["approval-broker/", p, "/", n], ""))))
+}
+
+fn marker_names() -> List<String> {
+  [
+    "confirm-page", "decision", "submission", "status", "store-receipt", "device-enrol",
+    "device-redeem", "device-pending", "device-request", "device-enrollment-readback",
+    "device-push-update", "no-route-matched", "method-not-allowed", "adapter-refused",
+    "static-route-served",
+  ]
+}
+
+// ── 7. every guarded route, not just the HTML one (review 82181 on #14351) ────────────────────
+// THE CLAIM THIS SECTION EXISTS TO MAKE: the hazard walk is reached from EVERY guarded route, and a
+// route that checks only URLs is red. Before the fix, try_serialize_jsx_component consulted
+// find_first_rejected_url and returned JsxOk for anything else, because the comment and doctype checks
+// had been written once per language and only HTML got one — so a JSX comment holding "*/" closed
+// early and the remainder was parsed as TSX, and a Document emitted "<!DOCTYPE html>" inside a JSX
+// expression container, which is not valid TSX. Both were reported as success. §5: "every path
+// succeeds fully or fails with a typed, located diagnostic."
+//
+// The fix is one walk in std.markup reading the medium's comment grammar, so these claims are about
+// the ROUTE being wired to it, not about HTML's rules being re-asserted for JSX.
+
+fn jsx_root_with_comment(body: String) -> Fragment {
+  Element { tag: "div", attributes: [], children: [ MarkupComment { body: body } ] }
+}
+
+test fn witness_jsx_guarded_route_refuses_a_comment_that_closes_early() -> Bool {
+  match try_serialize_jsx_component(fn_name: "C", node: jsx_root_with_comment(body: "x */ <b>code</b>")) {
+    JsxRejected { reason: r } => string_contains(s: r, pattern: jsx_comment_terminators.head as String)
+    JsxOk { tsx: _ } => false
+  }
+}
+
+// A DOCUMENT IS NOT A JSX CHILD, AND CANNOT BE MADE ONE. This claim used to hand a Document to
+// try_serialize_jsx_component and expect JsxRejected -- which was validation on one route while the
+// unguarded serialize_jsx_fragment/serialize_jsx_component beside it called the serializer directly and
+// reached a seam labelled unreachable that in fact diverged (review 82244 on #14351). std.markup made
+// MarkupDocument a type of its own, so a Fragment cannot contain a document and those routes cannot be
+// handed one: there is no longer a call to refuse. What remains assertable is the ONE place a document is
+// written -- serialize_document_with -- and it refuses a medium with NoDocumentGrammar with a typed,
+// located reason instead of a divergent seam.
+test fn witness_a_document_medium_refuses_to_write_a_document() -> Bool {
+  match serialize_document_with(
+    doc: MarkupDocument { doctype: html_doctype_name, root: jsx_root_with_comment(body: "ok") },
+    medium: jsx_markup_medium(),
+  ) {
+    Rejected { reason: r } => string_contains(s: r, pattern: "no document grammar")
+    Serialized { html: _ } => false
+  }
+}
+
+// And the HTML medium, whose grammar DOES declare a document type, accepts the same document -- so the
+// refusal above is the medium's grammar deciding, not the function refusing everything.
+test fn witness_a_declaring_medium_writes_the_document() -> Bool {
+  match serialize_document_with(
+    doc: MarkupDocument { doctype: html_doctype_name, root: jsx_root_with_comment(body: "ok") },
+    medium: html_markup_medium(),
+  ) {
+    Serialized { html: _ } => true
+    Rejected { reason: _ } => false
+  }
+}
+
+// The other half: JSX still ACCEPTS what JSX can express, and the refusal above is not a blanket
+// rejection that would also pass these claims vacuously.
+test fn witness_jsx_guarded_route_still_accepts_a_clean_component() -> Bool {
+  match try_serialize_jsx_component(fn_name: "C", node: jsx_root_with_comment(body: "a plain note")) {
+    JsxOk { tsx: _ } => true
+    JsxRejected { reason: _ } => false
+  }
+}
+
+// TWO CLAIMS WERE DELETED HERE RATHER THAN KEPT GREEN, and the reason is the point of this section.
+// witness_a_medium_without_a_terminator_refuses_rather_than_passes, and the unterminated_medium it read,
+// existed to prove the walk refused a medium whose comment_terminator was "". CommentGrammar's fields are
+// NonEmptyStr, so that medium no longer typechecks and the claim could only ever pass -- which is the
+// inverse of a guarantee. The typecheck IS the witness for that state; the control roster records it.
+// The same reasoning removed the `keyword: ""` case from witness_doctype_name_rejects_non_token_names.
+

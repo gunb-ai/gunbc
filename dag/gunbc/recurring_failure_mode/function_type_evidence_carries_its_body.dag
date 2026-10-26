@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.function_type_evidence_carries_its_body
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data function_type_evidence_carries_its_body: RecurringFailureMode = RecurringFailureMode {
   identity: "function_type_evidence_carries_its_body" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a bodied Arrow's derived type in v2.compiler.infer is the product-introduction composition over EVERY child, so it carries the body's type as a child edge, and v2.extdeps.languages.dag dag_arrow_with_body_node lists the return atom twice. A function type is domain to codomain; the body is how the function is realized, not part of its type.",

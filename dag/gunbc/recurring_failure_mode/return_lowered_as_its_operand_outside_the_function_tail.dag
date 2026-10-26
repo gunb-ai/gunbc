@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.return_lowered_as_its_operand_outside_the_fu
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data return_lowered_as_its_operand_outside_the_function_tail: RecurringFailureMode = RecurringFailureMode {
   identity: "return_lowered_as_its_operand_outside_the_function_tail" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: a `return e` lowered to `e`, the value of whatever block held it, wherever that block was. The dag grammar's stmt admits seq(`return`, expr) (`v2.extdeps.languages.dag` `dag_grammar_stmt_expr`), and no reader in `v2.compiler.body_lowering_fold` named `dag_token_kw_return`: a deep first-match search answered the statement with its operand, and the keyword was dropped. In a function's tail that is the right value by luck. Anywhere else it is a different program: the function continues where it should have exited.",

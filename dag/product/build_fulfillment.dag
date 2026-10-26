@@ -154,8 +154,12 @@ type NodeRecipe {
   inclusions: List<SystemInclusion>
 }
 
+// A fold's initial value names its element type: a bare `[]` resolves as a list of nothing, and
+// the first field read off an accumulated element then refuses (no field on empty_list_element).
+data no_bom_lines: List<BomLine> = []
+
 fn derive_bom(recipe: NodeRecipe) -> List<BomLine> {
-  let memory_lines = fold(recipe.memory.proposed.population, init: [], f: (lines, dimm) =>
+  let memory_lines = fold(recipe.memory.proposed.population, init: no_bom_lines, f: (lines, dimm) =>
     match dimm.origin {
       RetainedMemoryUnit { serial: _ } => lines
       AcquireMemoryUnit => {
@@ -822,8 +826,10 @@ fn draw_step(acc: List<LotDraw>, lot: InventoryLotIdentity, quantity: Nat) -> Li
 // report one row of the summed quantity rather than two rows a consumer would
 // have to add up — and adding them up is precisely where a second draw against
 // an exhausted lot would hide.
+data no_lot_draws: List<LotDraw> = []
+
 fn owned_stock_consumed(resolutions: BuildResolution) -> List<LotDraw> {
-  fold(resolutions.lines, init: [], f: fn(acc, r) {
+  fold(resolutions.lines, init: no_lot_draws, f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: _ } => acc
       LineResolved { line: _, fulfillment: f } =>

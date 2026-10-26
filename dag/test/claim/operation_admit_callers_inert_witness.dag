@@ -1,9 +1,8 @@
 module test.claim.operation_admit_callers_inert_witness
 
-import std.types { String, Bool, Int }
-import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import std.types { String, Int }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
 
 // ADMIT_CALLERS ON A SERVICE OPERATION IS ACCEPTED AND INERT.
 //
@@ -61,22 +60,12 @@ data admit_fn_form_source: String = "module probe_admit_fn_form\nimport test.fix
 
 data admit_op_form_source: String = "module probe_admit_op_form\nimport std.types { String, Int }\nservice probe.Svc {\n  operation Sealed {\n    input { arg: String }\n    output { exit_code: Int from \"exit_code\" }\n    readonly\n    admit_callers: [\n      decl_ref(module_path: \"probe_admit_op_form\", decl_name: \"admitted_caller\"),\n    ]\n    transport shell { argv: [\"true\", arg] }\n    exit { 0 => Unit  nonzero => Unit }\n    mock_response { 0 => { exit_code: 0 } \"hermetic\" }\n  }\n}\nfn unadmitted_caller() -> Int {\n  probe.Svc.Sealed(arg: \"x\").exit_code\n}\n"
 
-fn admit_census_of(source: String) -> CompileDiagnosticCensus {
-  compile_dag_diagnostic_census(source)
-}
-
 // POSITIVE CONTROL, GREEN TODAY. The fn form refuses an unadmitted caller. This is what makes the
 // expected-red below a finding rather than a broken harness: without it, a red could mean the
 // mechanism is inert OR that this file cannot compile a probe at all, and those are different
 // states with different remedies.
-test fn fn_form_admission_refuses_unadmitted_caller() -> Bool {
-  match census_blocking_count_for_class(
-    census: admit_census_of(source: admit_fn_form_source),
-    wanted: "ConstructorCallAdmissionRefused"
-  ) {
-    Present { value: n } => n >= 1
-    Absent => false
-  }
+test fn fn_form_admission_refuses_unadmitted_caller() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: admit_fn_form_source, wanted_class: "ConstructorCallAdmissionRefused"), holds: fn(n) { n >= 1 }))
 }
 
 // THE FINDING, EXPECTED-RED. Identical question at operation grain: a sealed operation whose
@@ -85,12 +74,6 @@ test fn fn_form_admission_refuses_unadmitted_caller() -> Bool {
 // breakage. Per DESIGN 4b it does NOT get deleted when the resolver gains operation-grain
 // enforcement -- it flips to a permanent regression control, because deleting the evidence on the
 // climb recreates specification-without-execution one rung up.
-test fn operation_form_admission_refuses_unadmitted_caller() -> Bool {
-  match census_blocking_count_for_class(
-    census: admit_census_of(source: admit_op_form_source),
-    wanted: "ConstructorCallAdmissionRefused"
-  ) {
-    Present { value: n } => n >= 1
-    Absent => false
-  }
+test fn operation_form_admission_refuses_unadmitted_caller() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: admit_op_form_source, wanted_class: "ConstructorCallAdmissionRefused"), holds: fn(n) { n >= 1 }))
 }

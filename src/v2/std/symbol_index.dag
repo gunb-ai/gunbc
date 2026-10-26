@@ -6,7 +6,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_lis
 import v2.std.witness { map_get_checked }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Occupancy, Symbol, TypeNode }
+import v2.std.node { node_same_occurrence, Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Symbol, TypeNode }
 import v2.std.type_binder { AliasRenaming, GenericTypeDecl, NotARenaming, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, PureRenamingOf, TypeAlias, binder_conj_names, refinement_declaration_of_node, type_alias_renaming, type_decl_view }
 import std.occurrence_identity { CallableOccurrence, ConstructorOccurrence, LexicalValueOccurrence, NamespaceSegmentOccurrence, OccurrenceCategory, TypeOccurrence }
 import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, OccurrenceCategoryBindingInadmissible, occurrence_category_binding_verdict }
@@ -213,7 +213,7 @@ fn symbol_index_track_global_bare(
               primitive_contracts: index.primitive_contracts
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
-            if existing_path == qualified_path && existing == resolved {
+            if existing_path == qualified_path && node_same_occurrence(a: existing, b: resolved) {
               index
             } else {
               SymbolIndex {
@@ -402,6 +402,32 @@ fn symbol_index_owning_module_of(index: SymbolIndex, path: QualifiedName) -> Opt
       } else {
         symbol_index_owning_module_of(index: index, path: qualified_name_init(qn: path))
       }
+  }
+}
+
+// THE DECLARATIONS A PATH SITS IN, innermost first: the path itself and each proper prefix of it still
+// below its fill-time owning module. A variant's declaring path is its coproduct's path plus the variant
+// (v2.compiler.symbol_index_fill symbol_index_fill_containment_node), while the closure records
+// availability per module-root declaration (v2.compiler.name_resolve closure_declarations_demand), so the
+// row that publishes or refuses a variant is a proper prefix of its path. The walk stops BELOW the owning
+// module, so a nested unit (v2.p.child) is never read as a declaration of its parent (v2.p). No owning
+// module: the path alone. ONE ANSWER for every reader asking which closure row a path belongs to -- the
+// closure's own blocking walk and resolve's refused-provider lookup.
+fn symbol_index_enclosing_declaration_paths(index: SymbolIndex, path: QualifiedName) -> List<QualifiedName> {
+  match symbol_index_owning_module_of(index: index, path: path) {
+    Absent => Cons { head: path, tail: Empty }
+    Present { value: owner } => symbol_index_paths_below(owner: owner, path: path)
+  }
+}
+
+fn symbol_index_paths_below(owner: QualifiedName, path: QualifiedName) -> List<QualifiedName> {
+  if path == owner {
+    Empty
+  } else {
+    match path {
+      Empty => Empty
+      Cons { head: _, tail: _ } => Cons { head: path, tail: symbol_index_paths_below(owner: owner, path: qualified_name_init(qn: path)) }
+    }
   }
 }
 
@@ -756,7 +782,6 @@ fn type_decl_member_shape(index: SymbolIndex, path: QualifiedName, node: Node) -
           }
         TypeNode { connective: Disj } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Instantiation } => TypeDeclShapeRecordOrCoproduct
-        TypeNode { connective: Occupancy } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Atom { identity: _ } } => TypeDeclShapeAliasAtom
         TypeNode { connective: Arrow } => TypeDeclShapeCallable
         ComputationNode { behavior: _ } => TypeDeclShapeValue

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.observer_inside_its_own_observed_population
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data observer_inside_its_own_observed_population: RecurringFailureMode = RecurringFailureMode {
   identity: "observer_inside_its_own_observed_population" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an observer is a member of the population it observes** (INVALID STATE: a predicate is applied to decide whether some work is live, and the predicate's extension INCLUDES THE PROCESS APPLYING IT, so the observation is satisfied by the act of observing. HARM: the probe answers yes forever, at full confidence, having measured only itself -- and because a long-running job and a self-satisfying probe both present as a steady affirmative for an unbounded time, THE FALSE STATE IS INDISTINGUISHABLE FROM THE HEALTHY ONE by inspection of the answer alone.",

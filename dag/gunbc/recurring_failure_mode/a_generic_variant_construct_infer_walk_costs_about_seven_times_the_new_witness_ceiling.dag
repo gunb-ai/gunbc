@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_generic_variant_construct_infer_walk_costs_about_seven_times_the_new_witness_ceiling
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_generic_variant_construct_infer_walk_costs_about_seven_times_the_new_witness_ceiling: RecurringFailureMode = RecurringFailureMode {
   identity: "a_generic_variant_construct_infer_walk_costs_about_seven_times_the_new_witness_ceiling" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "COST-SHAPE SUSPICION, not yet a proven defect. An own-frame infer walk over a minimal one-module fixture carrying a GENERIC variant construct costs about seven times the new-witness eval-step ceiling, while the same-size NON-generic fixture's walk fits it. The fixtures (authored text, assembled through v2.compiler.program_assembly assemble_program_from_ingest, walked by infer): `module p / type Out<T> = Acc { value: T, n: Int } | Rej { n: Int } / fn make<T>(t: T) -> Out<T> { Acc { value: t, n: true } }` and the same with the field value `n: 7`. MEASURED, 2026-10-07, session clever-bat-68, floor run 37662723098 (head 583526cd4d), per-claim own-frame measurements printed by the required floor runner: the wrong-field claim 514,872 eval steps, the right-field twin 497,605 eval steps, against the new-witness ceiling of 72,300 (the 100ms-equivalent, v2.workflow.required_floor claim_ceiling_eval_step_budget NewWitnessTier). The refusal and the acceptance cost the same, so the cost is the generic MACHINERY (type-parameter binding, construct instantiation, declared-type walking), not refusal-path exploration.",

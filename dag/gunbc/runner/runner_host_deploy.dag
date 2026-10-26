@@ -1,6 +1,6 @@
 module gunbc.runner.runner_host_deploy
 
-import std.types { NonEmptyStr, String, Int, List }
+import std.types { NonEmptyStr, String, Int, List, Bool }
 import extdeps.exec.command { ArgvCommand, shell_command_render, env_prefixed_command }
 import extdeps.sudo.elevation { sudo_preserve_environment_command }
 import extdeps.languages.bash.invocation { bash_script_argv }
@@ -14,8 +14,9 @@ import gunbc.auth.github_apps {
   gunbai_ci_declared_installation_id,
   gunbai_ci_app_pem_secret
 }
-import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
-import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.cache.sccache { sccache_release_0_15_0 }
+import extdeps.crypto.hash { sha256_digest }
+import gunbc.host.sccache_verified_install { sccache_verified_install_script }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import product.host_identity { HostIdentity }
@@ -29,7 +30,7 @@ import gunbc.runner.runner_slot_allocation {
   runner_width_unresolved_cause_text,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
+import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, HostEnrollmentIntent, fleet_enrollment_intents, hosts_enrolled_among }
 import std.algebra { Cons, Empty }
 
 // VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path
@@ -162,7 +163,8 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 // COULD ACT ON IT -- the number was real and there was no provisioning target to hand it to.
 //
 // THE ADDRESSES ARE MEASURED, NOT ASSUMED. Both were read over SSH on 2026-08-23 by connecting and
-// asking the host its own name: srv1 answers at 192.168.1.185 and srv2 at 192.168.1.188. That
+// asking the host its own name: srv1 answers at 192.168.1.185 and srv2 at 192.168.1.188 (both moved
+// by hand to their 1G I210 NICs on 2026-10-24: srv1 now .203, srv2 now .201, DHCP). That
 // matters because this lane started the night with 192.168.1.183 and .184 for these two, which are
 // their BMC addresses rather than their host addresses, and an ssh_target pointing at a management
 // controller would fail in a way that looks like an unreachable host rather than a wrong row.
@@ -187,7 +189,7 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 
 data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv1",
-  ssh_target: "briansrls@192.168.1.185",
+  ssh_target: "briansrls@192.168.1.203",
   runner_user: "briansrls",
   unit_user: "root",
   job_user: "ghrunner",
@@ -269,7 +271,7 @@ fn admitted_deploy_or_refusal(host: HostIdentity, spec: RunnerHostSpec) -> Runne
 
 data srv2_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv2",
-  ssh_target: "briansrls@192.168.1.188",
+  ssh_target: "briansrls@192.168.1.201",
   runner_user: "briansrls",
   unit_user: "root",
   job_user: "ghrunner",
@@ -330,7 +332,11 @@ fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
 // with no runner spec -- a provider guest whose runner role is not modeled -- appears as Unmodeled,
 // so a fleet total that walks this roster cannot look complete while one host cannot be deployed.
 fn fleet_runner_host_resolutions() -> List<RunnerHostDeployResolution> {
-  map(hosts_enrolled_for(wanted: CiRunnerParticipation), h => runner_host_deploy_for(host: h))
+  runner_host_resolutions_among(intents: fleet_enrollment_intents)
+}
+
+fn runner_host_resolutions_among(intents: List<HostEnrollmentIntent>) -> List<RunnerHostDeployResolution> {
+  map(hosts_enrolled_among(intents: intents, wanted: CiRunnerParticipation), h => runner_host_deploy_for(host: h))
 }
 
 // THE ADMITTED ROW FOR ONE HOST, OPTIONAL BECAUSE ADMISSION IS NOT GUARANTEED. A consumer that wants
@@ -361,6 +367,19 @@ data runner_host_spec_rows: List<RunnerHostSpecRow> = [
   RunnerHostSpecRow { host: operator_host_srv3, spec: srv3_runner_host_spec },
   RunnerHostSpecRow { host: operator_host_srv4, spec: srv4_runner_host_spec },
 ]
+
+// WHICH HOSTS' JOB ACCOUNTS HOLD A USER SYSTEMD MANAGER (loginctl linger). gunbc.runner.runner_user_session
+// converges it: enable-linger for the host's job_user, then a readback that logind records Linger=yes AND the
+// manager answers over /run/user/<uid>/bus. srv4 only (operator decision relayed on gunbc#14972, 2026-10-25); a
+// host joins by joining this list. Declared frontier (DESIGN 3c), in order: once this converge's readback has held
+// on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels);
+// then gunbc#14972's systemd credential rows select on that label. The label is not derived here yet because it
+// would claim a user manager srv4 is known not to have.
+data runner_job_user_session_hosts: List<HostIdentity> = [operator_host_srv4]
+
+fn runner_job_user_session_on(host: HostIdentity) -> Bool {
+  any(runner_job_user_session_hosts, h => (h as String) == (host as String))
+}
 
 fn runner_host_spec_for(host: HostIdentity) -> RunnerHostSpecLookup {
   match filter(runner_host_spec_rows, r => (r.host as String) == (host as String)).first() {
@@ -410,12 +429,38 @@ fn runner_host_docker_provision_script() -> String {
   docker_ce_repo_install_script(repo: docker_ce_apt_repo_noble_arm64, packages: docker_ce_packages)
 }
 
+// THE SCCACHE PREREQ USES THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT, run with sccache's
+// boundary values (gunbc.host.sccache_verified_install). It used to call
+// extdeps.cache.sccache.sccache_install_script, a script body concatenated in an extdeps module; that
+// declaration is deleted with this swap, and the url, digest, member path, destination and mode are now
+// PARAMETERS supplied here.
+//
+// THIS CALL SITE STILL OWES THE SHELL LEAF, AND THE DEBT IS TRACKED HERE RATHER THAN ELSEWHERE.
+// `sccache_verified_install_script` renders a `set -e` script string (through
+// gunbc.host.verified_binary_install.verified_binary_install_shell), so what this prereq returns is a
+// script, not an effect: it is one of the three consumers named in that function's
+// `verified_binary_install_shell_dissolution_trigger` and in
+// gunbc.host.sccache_verified_install.`sccache_verified_install_script_dissolution_trigger`, and those two
+// rows -- not this paragraph -- are the record of what is owed. Deleting the old trigger together with its
+// declaration, as an earlier revision of this comment claimed, would have turned tracked debt into
+// untracked debt: DESIGN 4b allows a rung to be lowered only by declaring previous rung, temporary rung,
+// reason, bounded population and restoration trigger, and DESIGN 5 forbids hiding a deficit by installing a
+// second path. WHAT RETIRES THE DEBT is this prereq binding
+// gunbc.host.verified_binary_install.verified_binary_install_admitted_plan through typed argv, WITHOUT THE
+// SHELL LEAF; when it does, `verified_binary_install_shell` and `sccache_verified_install_script` are
+// deleted. Until then, do not read the deletion of `sccache_install_script` as this site being clean.
+// (The build-cache consumer, by contrast, IS discharged: gunbc.host.build_cache_daemon_ensure sequences the
+// typed plan with no shell leaf anywhere.)
 fn runner_host_sccache_provision_script(arch: NonEmptyStr, sha256: NonEmptyStr) -> String {
-  sccache_install_script(rel: sccache_release_0_15_0, arch: arch, digest: sha256_digest(hex: sha256))
+  sccache_verified_install_script(
+    rel: sccache_release_0_15_0,
+    arch: arch,
+    digest: sha256_digest(hex: sha256),
+  )
 }
 
 fn runner_host_sccache_provision_aarch64() -> String {
-  sccache_install_script(
+  sccache_verified_install_script(
     rel: sccache_release_0_15_0,
     arch: "aarch64",
     digest: sccache_release_0_15_0.digest_aarch64,

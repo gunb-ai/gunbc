@@ -9,7 +9,7 @@ import std.syntax {
   BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ResourceBody, ServiceBody,
-  OperatorSpec, SyntaxSpec,
+  OperatorSpec, PrefixOperatorSpec, PostfixOperatorSpec, SyntaxSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   LiteralValue, LitBool, LitNull
@@ -100,6 +100,47 @@ data dag_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
 ]
 
+// Prefix (unary) rows of this language's table, beside the infix rows. 18 sits above `|>` at 17
+// (so `-a |> f` pipes the NEGATED value, matching the v2 grammar rows, whose unary production stops
+// at the postfix layer) and below `.` at 19, which the operand's postfix layer consumes (so `-a.b`
+// reads as -(a.b), also matching v2). Before these rows existed, parse_prefix hardcoded 12, which
+// admitted 13/15/17/19 and absorbed the whole tail: the class is
+// gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator.
+data dag_prefix_operators: List<PrefixOperatorSpec> = [
+  PrefixOperatorSpec { symbol: "-", binding_power: 18 },
+  PrefixOperatorSpec { symbol: "!", binding_power: 18 }
+]
+
+// Postfix rows of this language's table, beside the prefix and infix rows (see PostfixOperatorSpec
+// in std.syntax for why these are declared and not literals). `(` and `[` carry 21, the value both
+// postfix arms of the parser compared against before; `as` moves from the parser's literal 13 to 19
+// -- above the prefix rows at 18 so a unary operand consumes its cast (`-a as T` is -(a as T), the
+// shape v2's closed production has always given and v1's old gate paired with a 12-power prefix to
+// give as well), and above the pipe's right power at 18 so `a |> f as T` casts the piped value,
+// matching v2's postfix repeat.
+data dag_postfix_operators: List<PostfixOperatorSpec> = [
+  PostfixOperatorSpec { symbol: "(", binding_power: 21 },
+  PostfixOperatorSpec { symbol: "[", binding_power: 21 },
+  PostfixOperatorSpec { symbol: "as", binding_power: 19 },
+  // The record-literal arm's threshold, declared at 18 (review 84349; measured over both routes,
+  // invocation jd1752ffb). Historically the parser refused the brace when `14 <= min_bp`, a rule
+  // this consume-iff scale cannot express: it consumed at min_bp 12 (the old prefix arm) and at
+  // min_bp 0, but refused at 14 and above — so declaring the row at the old refusal edge (13)
+  // silently moved the brace OUT of a unary operand, because the prefix row now sits at 18: at
+  // 13, `-Foo.Bar { x: 1 }` parsed as `(-Foo.Bar)` followed by a stray block while the v2
+  // grammar, which glues the record suffix at PRIMARY level (dag.dag
+  // dag_grammar_primary_ident_suffix_expr: optional(call-suffix | record-suffix)), keeps it under
+  // the unary. 18 (>= the pipe's right power at 18, below `.` at 19 and call/index at 21)
+  // reproduces the old arm at every position that held text — a unary operand consumes its
+  // record literal on BOTH parsers — and moves the three infix-right positions (additive 14,
+  // multiplicative 16, pipe 18) from v1's historical refusal onto v2's always-consume, where the
+  // census finds zero authored sites (4 regex hits over the .dag tree: one real,
+  // `SpanLocation.Unlocated {` at 00_core.dag, parsed at min_bp 0 and so unaffected; three in
+  // strings/comments). Control-flow braces are untouched: the no-brace loop stops at `{` before
+  // ever consulting this row (02_parse.dag parse_expr_loop_no_brace).
+  PostfixOperatorSpec { symbol: "{", binding_power: 18 }
+]
+
 data v3_supported_dag_operators: Map<String, Bool> = {
   "||": true, "&&": true,
   "==": true, "!=": true, "<": true, ">": true, "<=": true, ">=": true,
@@ -110,6 +151,8 @@ data v3_supported_dag_operators: Map<String, Bool> = {
 data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
   item_forms: dag_item_forms,
   operators: dag_operators,
+  prefix_operators: dag_prefix_operators,
+  postfix_operators: dag_postfix_operators,
   keyword_literals: dag_keyword_literals,
   keyword_set: dag_keyword_set
 }

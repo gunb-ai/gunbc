@@ -1,0 +1,14 @@
+module test.probe.deployment_gate_carrier_axis_direct
+
+// THE CROSS-AXIS CLAIM AT ITS PUREST, with no record literal in the way: an installation id handed
+// to a variable whose declared type is the RULE carrier. This is the question the two separate
+// carriers exist to answer -- are two plain { value: Int } records distinct TYPES, or merely
+// structurally identical shapes the host lets flow into each other? If this compiles, the carriers
+// are a naming convention rather than a wall, and that must be said plainly in the model rather
+// than implied by a witness that quietly asserts nothing.
+import extdeps.github.app { GitHubAppInstallationId }
+import extdeps.github.deployment_protection_rule { GitHubDeploymentProtectionRuleId }
+
+data an_installation_direct: GitHubAppInstallationId = GitHubAppInstallationId { value: 987654 }
+
+data wrong_axis_id: GitHubDeploymentProtectionRuleId = an_installation_direct

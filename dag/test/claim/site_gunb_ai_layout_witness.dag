@@ -1,7 +1,7 @@
 module test.claim.site_gunb_ai_layout_witness
 
 import std.types { Bool, Int, List, String }
-import std.algebra { string_contains }
+import std.algebra { string_contains, collection_concat_shape, collection_map_shape, collection_join_shape, list_push }
 import std.optional { Optional, Absent, Present }
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
@@ -20,6 +20,7 @@ import gunbc.site.gunb_ai_layout {
 import gunbc.site.gunb_ai_layout_review { ballot_entries, ballot_write_entries, BallotRun, BallotWritten, BallotRefusedRun }
 import gunbc.site.gunb_ai_tokens { token_root_decls, token_swatches }
 import std.list { duplicated_by_key, first_where }
+import test.fixture.text_scan { index_of }
 import extdeps.languages.css.media_queries { MediaMaxWidth, css_media_rule_wire, prefers_light }
 import extdeps.languages.css.values { CssLength, Px }
 import gunbc.design.palette { swatch_paint, swatches_of }
@@ -553,16 +554,5 @@ fn from_to(haystack: String, open: String, close: String) -> Optional<String> {
         Present { value: end } => Present { value: substring(s: haystack, start: content_start, end: end) }
       }
     }
-  }
-}
-
-fn index_of(haystack: String, needle: String, at: Int, limit: Int) -> Optional<Int> {
-  let n = string_length(s: needle)
-  if at + n > limit {
-    Absent
-  } else if substring(s: haystack, start: at, end: at + n) == needle {
-    Present { value: at }
-  } else {
-    index_of(haystack: haystack, needle: needle, at: at + 1, limit: limit)
   }
 }

@@ -72,6 +72,7 @@ import extdeps.tailscale.serve {
   tailscale_scoped_removal_capability,
   tailscale_program,
 }
+import std.host_text { chars }
 
 // PER-HOST SOFTWARE, KEYED BY THE SAME HostIdentity ComputeHost already carries (DESIGN 3: do not
 // mint a second host authority). ComputeHost remains the host row; this module is its software
@@ -580,7 +581,7 @@ fn host_tailscale_client(surface: HostSoftwareSurface) -> TailscaleServeCapabili
           ) as String
         }
         Present { value: label } =>
-          match semver_version_parse(cps: chars(s: label as String)) {
+          match semver_version_parse(cps: chars(text: label as String)) {
             Absent => ScopedRemovalUnobserved {
               reason: "the observed tailscale version label failed to parse"
             }

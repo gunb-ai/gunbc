@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.memo_retained_occurrence_id_reminted_after_a
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data memo_retained_occurrence_id_reminted_after_a_rejected_attempt: RecurringFailureMode = RecurringFailureMode {
   identity: "memo_retained_occurrence_id_reminted_after_a_rejected_attempt" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**v2 parse mints one occurrence id for two nodes when a rejected attempt memoized a production that is served later** (INVALID STATE: two nodes of one parse tree carry the same minted occurrence id, and the span index resolves one of them to the other's locus). `v2.compiler.parse` keeps the allocator inside `ParseProvenanceState`, which is path-local: a rejected subparse returns no provenance and its caller resumes with what it held. The memo is not path-local. `parse_expr_not_predicate_attempt` keeps the entries its attempt filled, and so does a choice's failed alternative. A memoized node therefore carried ids the resumed allocator had not counted, the next mints reissued them, and when the entry was served `parse_prov_merge` advanced the allocator only after the reuse had happened. Its replay then kept the index's earlier event for the reissued id (`v2.std.provenance` `span_index_adopt`), so the served node's locus became the other node's.",

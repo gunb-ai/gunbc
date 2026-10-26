@@ -1,4 +1,5 @@
 module v2.lens.application_serializer
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 
 type DagSourcePatch {

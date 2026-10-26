@@ -1,0 +1,79 @@
+module test.claim.float_declaration_realization_chain
+
+import std.types { Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.kernel_type_denotation { BinaryInterchangeFormatMeaning, kernel_type_denotation_row, kernel_type_denotation_rows }
+import extdeps.standards.ieee_754_2019 { binary32, binary64 }
+import extdeps.languages.rust.representation { RustF64, RustI64 }
+import gunbc.rust_source_type_bindings { rust_source_binding, rust_source_type_binding_rows }
+import gunbc.rust_declaration_realization {
+  RustDeclarationFloatAmbiguous, RustDeclarationFloatDenotationAmbiguous, RustDeclarationFloatDisagrees, RustDeclarationFloatHolds, RustDeclarationFloatNotAFloatRepresentation,
+  RustDeclarationFloatUnbound, RustDeclarationFloatUndenoted, RustDeclarationFloatVerdict,
+  rust_declaration_float_verdict
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE CHAIN, NOT THREE RECORDS (operator kernel-type layer rule, 2026-10-18): std.float Float's meaning
+// (std.kernel_type_denotation, binary64), its Rust binding (gunbc.rust_source_type_bindings, keyed on the
+// declaration) and the Rust primitive's parameters (extdeps.languages.rust.primitives) are read together by
+// rust_declaration_float_verdict for the SAME declaration. The production tables hold; each way the chain can
+// break refuses with its own cause.
+
+fn cfr_float() -> DeclarationRef {
+  decl_ref(module_path: "std.float", decl_name: "Float")
+}
+
+fn cfr_is(v: RustDeclarationFloatVerdict, want: String) -> Bool {
+  match v {
+    RustDeclarationFloatHolds => want == "holds"
+    RustDeclarationFloatUnbound { declaration: _ } => want == "unbound"
+    RustDeclarationFloatAmbiguous { declaration: _ } => want == "ambiguous"
+    RustDeclarationFloatNotAFloatRepresentation { declaration: _ } => want == "not_a_float"
+    RustDeclarationFloatUndenoted { declaration: _ } => want == "undenoted"
+    RustDeclarationFloatDenotationAmbiguous { declaration: _ } => want == "meaning_ambiguous"
+    RustDeclarationFloatDisagrees { declaration: _ } => want == "disagrees"
+  }
+}
+
+test fn the_production_float_chain_holds() -> Bool {
+  cfr_is(v: rust_declaration_float_verdict(declaration: cfr_float(), rows: rust_source_type_binding_rows, denotations: kernel_type_denotation_rows), want: "holds")
+}
+
+test fn a_float_declaration_bound_to_i64_refuses_as_not_a_float_holds() -> Bool {
+  cfr_is(v: rust_declaration_float_verdict(declaration: cfr_float(), rows: [rust_source_binding(module_path: "std.float", decl_name: "Float", representation: RustI64)], denotations: kernel_type_denotation_rows), want: "not_a_float")
+}
+
+test fn a_float_declaration_with_no_exact_row_refuses_as_unbound_holds() -> Bool {
+  cfr_is(v: rust_declaration_float_verdict(declaration: cfr_float(), rows: [rust_source_binding(module_path: "std.integer", decl_name: "Int", representation: RustI64)], denotations: kernel_type_denotation_rows), want: "unbound")
+}
+
+test fn two_exact_rows_for_one_declaration_refuse_as_ambiguous_holds() -> Bool {
+  cfr_is(v: rust_declaration_float_verdict(declaration: cfr_float(), rows: [rust_source_binding(module_path: "std.float", decl_name: "Float", representation: RustF64), rust_source_binding(module_path: "std.float", decl_name: "Float", representation: RustF64)], denotations: kernel_type_denotation_rows), want: "ambiguous")
+}
+
+test fn an_f64_binding_against_a_binary32_meaning_refuses_as_disagreeing_holds() -> Bool {
+  cfr_is(v: rust_declaration_float_verdict(declaration: cfr_float(), rows: rust_source_type_binding_rows, denotations: [kernel_type_denotation_row(kernel_name: "Float", declaration: cfr_float(), meaning: BinaryInterchangeFormatMeaning { format: binary32 })]), want: "disagrees")
+}
+
+test fn a_declaration_with_no_meaning_refuses_as_undenoted_holds() -> Bool {
+  cfr_is(v: rust_declaration_float_verdict(declaration: cfr_float(), rows: rust_source_type_binding_rows, denotations: [kernel_type_denotation_row(kernel_name: "Float", declaration: decl_ref(module_path: "std.other", decl_name: "Float"), meaning: BinaryInterchangeFormatMeaning { format: binary64 })]), want: "undenoted")
+}
+
+// TWO MEANINGS FOR ONE DECLARATION REFUSE, IN EITHER ORDER: the binding is the correct f64 and one of the two rows
+// is the correct binary64, but the meaning's authority is contradictory, so the consistency judgment certifies
+// neither and the order the rows happen to be in cannot change that.
+fn cfr_two_meanings(first_binary64: Bool) -> RustDeclarationFloatVerdict {
+  let b64 = kernel_type_denotation_row(kernel_name: "Float", declaration: cfr_float(), meaning: BinaryInterchangeFormatMeaning { format: binary64 })
+  let b32 = kernel_type_denotation_row(kernel_name: "Float", declaration: cfr_float(), meaning: BinaryInterchangeFormatMeaning { format: binary32 })
+  rust_declaration_float_verdict(declaration: cfr_float(), rows: rust_source_type_binding_rows, denotations: if first_binary64 { [b64, b32] } else { [b32, b64] })
+}
+
+test fn two_meanings_binary64_first_refuse_as_ambiguous_holds() -> Bool {
+  cfr_is(v: cfr_two_meanings(first_binary64: true), want: "meaning_ambiguous")
+}
+
+test fn two_meanings_binary32_first_refuse_as_ambiguous_holds() -> Bool {
+  cfr_is(v: cfr_two_meanings(first_binary64: false), want: "meaning_ambiguous")
+}

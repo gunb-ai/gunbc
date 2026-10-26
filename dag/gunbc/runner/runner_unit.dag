@@ -62,6 +62,14 @@ fn runner_unit_dropin_path(file_name: NonEmptyStr) -> NonEmptyStr {
 // runner namespace and systemd's instance namespace -- and that is precisely why they must be
 // derived from one function. gunbc.runner.runner_incarnation carries both on one record, and a record
 // whose two fields are independently spelled can hold a pair that disagrees.
+// A DROP-IN FOR ONE INSTANCE sits in that instance's own directory, which systemd applies after the
+// template's, so a later assignment of the same name wins over runner_unit_dropin_dir. The deploy slot
+// (gunbc.runner.runner_slot_job_role) is the only reader: its job user, labels and docker endpoint
+// differ from every template-level value.
+fn runner_slot_unit_dropin_path(slot: RunnerSlotIdentity, file_name: NonEmptyStr) -> NonEmptyStr {
+  join(["/etc/systemd/system/", runner_slot_unit_name(slot: slot) as String, ".d/", file_name as String], "") as NonEmptyStr
+}
+
 fn runner_registration_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
   runner_slot_instance_name(slot: slot) as NonEmptyStr
 }

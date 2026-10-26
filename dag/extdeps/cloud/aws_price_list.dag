@@ -1,0 +1,74 @@
+module extdeps.cloud.aws_price_list
+
+import std.types { Int, NonEmptyStr, String, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// AWS PRICE LIST QUERY API, the one read the flex loop uses: GetProducts, the on-demand price of one EC2
+// instance type in one region as a LIVE observation. A separately versioned AWS service (API version
+// 2017-10-15; served from a small set of endpoint regions, the region asked about being a filter), read
+// 2026-10-23. extdeps.pricing.aws_ec2 holds static rows for other types and is not this observation.
+// Each PriceList element is a JSON document as a STRING on the wire (a product with its terms); decoding
+// it into the on-demand price per hour is the projection's job and refuses a document with zero or more
+// than one matching on-demand dimension.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_pricing_GetProducts.html" }
+}
+
+data aws_price_list_filter_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_pricing_Filter.html" }
+}
+
+// The subject is the service; aws_price_list_api_version is its revision fact.
+data aws_price_list_query_api: NonEmptyStr = "AWS Price List Query API"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.aws_price_list",
+      decl_name: "aws_price_list_query_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [aws_price_list_filter_page]
+}
+
+data aws_price_list_api_version: NonEmptyStr = "2017-10-15"
+
+// DECLARED FRONTIER (DESIGN 3c): nothing imports this module yet. Its consumer is the on-demand candidate
+// price of the flex AWS supplier row, PR 4 of gunbc.plans.flex_supplier_generalization.
+data aws_price_list_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_price_list for the on-demand candidate price of the flex AWS supplier row (gunbc.plans.flex_supplier_generalization PR 4) and a Plan-mode pass executes over these shapes.")
+
+data aws_price_list_ec2_service_code: NonEmptyStr = "AmazonEC2"
+
+// Filter Type: TERM_MATCH is the only documented value set member the loop uses (the API also documents
+// EQUALS, CONTAINS, ANY_OF, NONE_OF); field names such as instanceType, regionCode, operatingSystem,
+// tenancy, preInstalledSw, capacitystatus are attribute names of the AmazonEC2 service.
+type AwsPriceListFilterType
+  = | AwsPriceListTermMatch
+
+type AwsPriceListFilter {
+  filter_type: AwsPriceListFilterType
+  field: NonEmptyStr
+  value: NonEmptyStr
+}
+
+type AwsPriceListGetProductsRequest {
+  service_code: NonEmptyStr
+  filters: List<AwsPriceListFilter>
+  format_version: NonEmptyStr
+  max_results: Int?
+  next_token: String?
+}
+
+// price_list: one JSON document per matching product, as text. Complete only with no next_token.
+type AwsPriceListGetProductsResponse {
+  format_version: NonEmptyStr
+  price_list: List<String>
+  next_token: String?
+}
+
+data aws_price_list_format_version: NonEmptyStr = "aws_v1"

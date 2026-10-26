@@ -6,7 +6,7 @@ import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plan { PlanDerivation, PlanDerived, PlanDerivationRefused }
 import gunbc.plans.md_helpers { h2, p, cell, row }
 import v2.std.decl_index { DeclFact, decl_facts, TypeItem, FnItem, DataItem, ServiceItem, OtherItem }
-import v2.std.decl_ref_resolution { resolve_declaration_ref_live, declaration_ref_resolution_is_resolved }
+import v2.std.decl_ref_resolution_host { resolve_declaration_ref_live, declaration_ref_resolution_is_resolved }
 
 // THE SHARED TYPE-NAME CENSUS OF THE dag/std <-> src/v2/std FORK, DERIVED RATHER THAN TRANSCRIBED.
 //
@@ -19,11 +19,11 @@ import v2.std.decl_ref_resolution { resolve_declaration_ref_live, declaration_re
 // authored half cannot drift from the derived half without the plan's generation refusing, and
 // with it the required generated-artifact drift gate.
 //
-// "Declares a type" is the seed's item kind: `TypeItem` (a record or coproduct) or `OtherItem` (a
-// declaration with no connective, transport or body -- on these two roots, exactly the `type`
-// aliases). The node kind cannot be used instead: a function's declaration node is its signature,
-// a TypeNode. Any over-inclusion by `OtherItem` fails CLOSED: a non-type declaration entering the
-// population is a name no disposition row carries, and that refuses.
+// "Declares a type" is the seed's item kind: `TypeItem` alone (a record, a coproduct, or a `type`
+// alias, which decl_index item_kind reads from the declaration's own kind). `OtherItem` is the
+// host's cannot-classify answer, so a declaration it could not classify as a type is not counted
+// as one; the node kind cannot be used instead, because a function's declaration node is its
+// signature, a TypeNode.
 data defork_census_dag_root: String = "dag/std"
 data defork_census_v2_root: String = "src/v2/std"
 
@@ -36,7 +36,7 @@ type SharedTypeName {
 fn census_declares_type(f: DeclFact) -> Bool {
   match f.kind {
     TypeItem => true
-    OtherItem => true
+    OtherItem => false
     FnItem => false
     DataItem => false
     ServiceItem => false
@@ -256,8 +256,8 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
   },
   ResolvedSharedTypeName {
     names: ["Float"],
-    resolution: ResolvedByRehomingBothToExtdeps { authority: "extdeps.standards.ieee_754_2019 binary64", citation: "IEEE 754-2019 §3.6 (operator ruling relayed 2026-09-28): `std.float` (Float = Float64, uncited) and `v2.std.float` (Float = Binary64) both deleted; kernel Float's meaning is the `std.kernel_type_denotation` row, not a std alias" },
-    change: 12547
+    resolution: ResolvedByDeletingV2 { reason: "CURRENT: one language-facing declaration, `std.float` `Float` (operator ruling H5 and the kernel-type layer rule, 2026-10-18), opaque, with no v2 redeclaration; its meaning stays the `std.kernel_type_denotation` row (IEEE 754-2019 binary64, `extdeps.standards.ieee_754_2019` §3.6), now joined to the declaration by identity. HISTORY: #12547 (operator ruling relayed 2026-09-28) deleted both forked declarations, `std.float` (Float = Float64, uncited) and `v2.std.float` (Float = Binary64), and homed the meaning in the denotation row; the H5 re-declaration restores one dag-side name for that meaning and reopens no fork." },
+    change: 14355
   },
   ResolvedSharedTypeName {
     names: ["Bool"],

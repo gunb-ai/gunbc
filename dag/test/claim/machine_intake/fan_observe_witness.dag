@@ -1,6 +1,6 @@
 module test.claim.machine_intake.fan_observe_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fan_observe_ipmi_series_step_name,
@@ -8,41 +8,36 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fan_policy_phase_receipt_upload_step,
   fleet_converge_mtcollins1_boot_steps_around,
   fleet_converge_mtcollins1_fan_observe_step,
-  fleet_converge_mtcollins1_boot_step_if_observed,
 }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.ci.ci_spec {
   gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
-  gunbc_ci_mtcollins1_probe_credential_statements,
   gunbc_ci_mtcollins1_probe_rendered,
   gunbc_ci_auth_header_format,
-  gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements,
-  gunbc_ci_fan_outcome_line,
 }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_command_with_words,
   bash_build_assign, bash_build_with_redir_to_file,
 }
-import std.process { ExitSuccess, ExitFailure }
-import std.measure { observation_round_count, second }
-import extdeps.shell
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRefused, FanObservationTaken, FanObservationSeries }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
+import gunbc.host.managed_host { ManagedHostFound, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_status_suffix }
 import gunbc.machine_intake.fan_observe {
-  FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged, FanObservePolicy,
-  fan_boot_phase_refused_prefix, fan_boot_phase_taken_prefix, fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, fan_write_boot_phase_observation,
+  FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged,
+  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text,
 }
 
+// The claims that execute the fan step's emitted bash or touch real files live in
+// test.claim.machine_intake.fan_observe_local_wet, on the local-repo wet lane; every claim here
+// evaluates under Hermetic.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn authority_names(a: FanObserveAdmission, module_path: String, decl_name: String) -> Bool {
@@ -97,8 +92,8 @@ test fn an_openbmc_bound_row_is_read_against_the_phosphor_policy() -> Bool {
       match h.access {
         BmcAccessUnobserved { endpoint: _ } => false
         BmcAccessObserved { observation: o } => {
-          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: openbmc) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
+          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, secure: h.secure, smpro: h.smpro)
+          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { host: openbmc, control: bmc_control_binding(observed: openbmc.access, secured: openbmc.secure) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
         }
       }
   }
@@ -114,8 +109,8 @@ test fn a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation(
       match h.access {
         BmcAccessUnobserved { endpoint: _ } => false
         BmcAccessObserved { observation: o } => {
-          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-          match fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: unobserved) }) {
+          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, secure: h.secure, smpro: h.smpro)
+          match fan_observe_admission(lookup: ManagedHostFound { host: unobserved, control: bmc_control_binding(observed: unobserved.access, secured: unobserved.secure) }) {
             FanObserveRefused { cause: FanHostFamilyUnobserved { endpoint: e } } =>
               (e.host as String) == (o.endpoint.host as String)
                 && string_contains(s: fan_observe_refusal_text(cause: FanHostFamilyUnobserved { endpoint: e }) as String, pattern: "was never observed")
@@ -267,192 +262,6 @@ test fn fan_policy_phase_trap_names_no_unsettled_variable() -> Bool {
     && string_contains(s: boot, pattern: gunbc_ci_mtcollins1_probe_rendered(stmts: [trap_stmt, rm_status], set_e: false))
     && string_contains(s: boot, pattern: gunbc_ci_mtcollins1_probe_rendered(stmts: [rm_status, header_write], set_e: false))
     && !string_contains(s: kvm, pattern: "STATUS_FILE")
-}
-
-// CONTROL (review round, blocker 1, executed): run the emitted prelude's EARLY FAILURE for real.
-// The claim renders the typed prelude with the SAME builders the step projection embeds, writes it to
-// a claim-private path, and executes it with WIF_ACCESS_TOKEN deliberately unset: the script installs
-// its EXIT trap and then dies at the bearer-token header write under set -u - the exact window this
-// blocker is about. The four temp files are planted beforehand at the paths the prelude COMPUTES -
-// derived from the same stem and the same mtcollins1_fan_credential_fetch_status_suffix constant its
-// own assignments use (RUNNER_TEMP is pinned to the claim's working directory; a hand-typed path here
-// would test nothing - the first version of this claim planted .fetch-status while the constant says
-// -fetch-status, so its pass would have been luck). A sound trap removes all four and an unsafe one,
-// aborted by the unset variable before rm, leaves them; absence is read back through the same file
-// transport, not inferred from the exit code. Nothing real is at risk: no fetch is reached and every
-// planted byte is this claim's own.
-test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
-  let stem = "eh810-fan-trap-specimen"
-  let spec_path = concat(stem, ".sh")
-  let credential = concat(stem, "-bmc-credential")
-  let planted_paths = [
-    concat(stem, "-auth-header"),
-    concat(stem, "-sm.json"),
-    credential,
-    concat(credential, mtcollins1_fan_credential_fetch_status_suffix),
-  ]
-  let prelude = gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: true), set_e: false)
-  let written = Filesystem.Write(path: spec_path, content: prelude)
-  let planted = planted_paths |> all(p => Filesystem.Write(path: p, content: "planted-eh810-not-a-secret").success)
-  let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", concat(concat(concat("env -u WIF_ACCESS_TOKEN RUNNER_TEMP='.' bash '"), spec_path), "'")])
-  let every_temp_gone = planted_paths |> all(p => !Filesystem.Read(path: p).success)
-  let spec_gone = Filesystem.Delete(path: spec_path)
-  written.success && planted && run.exit_code != 0 && every_temp_gone && spec_gone.success
-}
-
-type FanTailOutcome {
-  exit_code: Int
-  output: String
-  summary: String
-}
-
-// Runs the REAL outcome tail the fan step emits, against a receipt this claim plants, with a claim-private
-// GITHUB_OUTPUT. Returns the tail's exit code and the output file's content. Fixtures are pure: every
-// path is flat or under the receipt's own target/ dir, and all are removed.
-fn fan_boot_phase_tail_outcome(stem: String, receipt: String) -> FanTailOutcome {
-  fan_boot_phase_tail_run(stem: stem, receipt: receipt, plant: true, from_yml: false)
-}
-
-// plant: false leaves NO receipt (the missing arm); from_yml: true executes the tail EXTRACTED FROM THE
-// COMMITTED fleet-converge.yml fan step (the lines between its gunbc run and its env:, dedented) instead
-// of the tail rendered from the model, so a stale projection turns the control red.
-fn fan_boot_phase_tail_run(stem: String, receipt: String, plant: Bool, from_yml: Bool) -> FanTailOutcome {
-  let spec_path = concat(stem, ".sh")
-  let out_path = concat(stem, "-output")
-  let tail = gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false)
-  let _ = if from_yml {
-    shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", join(["{ echo 'set -euo pipefail'; sed -n '/--function mtcollins1_fan_observe_boot_phase_wet/,/^        env:/p' .github/workflows/fleet-converge.yml | sed '1d;$d' | sed 's/^          //'; } > '", spec_path, "'"], "")]).exit_code == 0
-  } else {
-    Filesystem.Write(path: spec_path, content: concat("set -euo pipefail\n", tail)).success
-  }
-  let _ = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", "mkdir -p target; rm -f target/mtcollins1-fan-observation.txt"])
-  let _ = if plant { Filesystem.Write(path: mtcollins1_fan_observation_receipt_path, content: receipt).success } else { true }
-  let _ = Filesystem.Write(path: out_path, content: "")
-  let summary_path = concat(stem, "-summary")
-  let _ = Filesystem.Write(path: summary_path, content: "")
-  let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", join(["env GITHUB_OUTPUT='", out_path, "' GITHUB_STEP_SUMMARY='", summary_path, "' bash '", spec_path, "'"], "")])
-  let out = Filesystem.Read(path: out_path)
-  let summary = Filesystem.Read(path: summary_path)
-  let _ = Filesystem.Delete(path: summary_path)
-  let _ = Filesystem.Delete(path: spec_path)
-  let _ = Filesystem.Delete(path: out_path)
-  let _ = Filesystem.Delete(path: mtcollins1_fan_observation_receipt_path)
-  FanTailOutcome { exit_code: run.exit_code, output: out.content, summary: summary.content }
-}
-
-// CONTROL (operator ruling 2026-10-16, executed): a MODELED refusal makes the boot INELIGIBLE. The real
-// refused receipt line (the entry's own prefix) goes through the real emitted tail: the step output
-// says refused, the step exits non-zero, and the boot step's if: demands observed - so it cannot run.
-test fn a_modeled_refusal_makes_the_boot_ineligible_by_execution() -> Bool {
-  let refused = fan_boot_phase_tail_outcome(stem: "jc547-fan-refused", receipt: concat(fan_boot_phase_refused_prefix, " cause=jc547-claim-cause raw=[exit=1 stdout=[] stderr=[Error: Unable to establish IPMI v2 / RMCP+ session]]"))
-  refused.exit_code != 0
-    && string_contains(s: refused.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))
-    && !string_contains(s: refused.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
-    && string_contains(s: refused.summary, pattern: "Unable to establish IPMI v2 / RMCP+ session")
-    && string_contains(s: fleet_converge_mtcollins1_boot_step_if_observed, pattern: join(["steps.fan_policy_phase.outputs.", mtcollins1_fan_boot_phase_outcome_output, " == '", mtcollins1_fan_boot_phase_outcome_observed, "'"], ""))
-}
-
-// THE ROUTE (review 81253): the receipt bytes come from the REAL writer fan_write_boot_phase_observation,
-// reached through the real admission route, then go through the real emitted tail. A writer/reader prefix
-// drift, or a writer that stops writing the receipt, turns the paired claims below red. The writer and
-// the tail share one receipt path, so the writer's file is read back and replanted byte-identical.
-fn fan_real_writer_tail_outcome(stem: String, series: FanObservationSeries) -> FanTailOutcome {
-  let _ = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", "mkdir -p target"])
-  let admittable = filter(managed_hosts(), r => match fan_observe_admission(lookup: managed_host_binding_for(host: r.host as NonEmptyStr)) { FanObserveAdmitted { host: _ } => true  _ => false })
-  match admittable.first() {
-    Present { value: row } =>
-      match fan_observe_admission(lookup: managed_host_binding_for(host: row.host as NonEmptyStr)) {
-        FanObserveAdmitted { host: h } =>
-          match fan_write_boot_phase_observation(
-            host: h,
-            policy: FanObservePolicy { rounds: observation_round_count(3), interval: second(5), transition_window: second(30), receipt_path: mtcollins1_fan_observation_receipt_path },
-            series: series,
-          ) {
-            ExitSuccess =>
-              let written = Filesystem.Read(path: mtcollins1_fan_observation_receipt_path)
-              let _ = Filesystem.Delete(path: mtcollins1_fan_observation_receipt_path)
-              fan_boot_phase_tail_outcome(stem: stem, receipt: written.content)
-            ExitFailure { code: _, reason: _ } => FanTailOutcome { exit_code: 99, output: "", summary: "writer failed" }
-          }
-        FanObserveRefused { cause: _ } => FanTailOutcome { exit_code: 99, output: "", summary: "not admitted" }
-      }
-    Absent => FanTailOutcome { exit_code: 99, output: "", summary: "no admittable host" }
-  }
-}
-
-test fn a_real_writer_refusal_makes_the_boot_ineligible_by_execution() -> Bool {
-  let o = fan_real_writer_tail_outcome(stem: "jc547-real-refused", series: FanObservationRefused { cause: "jc547-real-cause raw=[Unable to establish IPMI v2 / RMCP+ session]" as NonEmptyStr })
-  o.exit_code == 1
-    && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))
-    && !string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
-    && string_contains(s: o.summary, pattern: "Unable to establish IPMI v2 / RMCP+ session")
-}
-
-test fn a_real_writer_taken_series_leaves_the_boot_eligible_by_execution() -> Bool {
-  let o = fan_real_writer_tail_outcome(stem: "jc547-real-taken", series: FanObservationTaken { rounds: [], interval: second(5) })
-  o.exit_code == 0
-    && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
-}
-
-fn fan_tail_refuses(stem: String, receipt: String, plant: Bool, from_yml: Bool) -> Bool {
-  let o = fan_boot_phase_tail_run(stem: stem, receipt: receipt, plant: plant, from_yml: from_yml)
-  o.exit_code == 1
-    && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))
-    && !string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
-}
-
-fn fan_tail_admits(stem: String, from_yml: Bool) -> Bool {
-  let o = fan_boot_phase_tail_run(stem: stem, receipt: concat(fan_boot_phase_taken_prefix, "\nFanObservation rounds=3"), plant: true, from_yml: from_yml)
-  o.exit_code == 0 && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
-}
-
-fn fan_tail_four_refusals(stem: String, from_yml: Bool) -> Bool {
-  fan_tail_refuses(stem: concat(stem, "-forged"), receipt: join([fan_boot_phase_refused_prefix, " cause=x raw=[exit=1 stdout=[\n", fan_boot_phase_taken_prefix, "\n] stderr=[]]"], ""), plant: true, from_yml: from_yml)
-    && fan_tail_refuses(stem: concat(stem, "-garbage"), receipt: concat(fan_boot_phase_taken_prefix, "Garbage\nFanObservation rounds=3"), plant: true, from_yml: from_yml)
-    && fan_tail_refuses(stem: concat(stem, "-missing"), receipt: "", plant: false, from_yml: from_yml)
-    && fan_tail_refuses(stem: concat(stem, "-other"), receipt: "SomethingElse rounds=3", plant: true, from_yml: from_yml)
-}
-
-// Refused first line + a verbatim controller answer carrying a forged taken line, a taken-prefixed
-// first line, a missing receipt and an unrecognized line all refuse; only the exact first line admits.
-test fn the_tail_admits_only_an_exact_first_line_by_execution() -> Bool {
-  fan_tail_four_refusals(stem: "jc547-exact", from_yml: false) && fan_tail_admits(stem: "jc547-exact-ok", from_yml: false)
-}
-
-// The same specimens against the COMMITTED yml's fan tail: a stale projection reds here.
-test fn the_committed_yml_tail_admits_only_an_exact_first_line_by_execution() -> Bool {
-  fan_tail_four_refusals(stem: "jc547-yml", from_yml: true) && fan_tail_admits(stem: "jc547-yml-ok", from_yml: true)
-}
-
-// POSITIVE CONTROL: a receipt opening with the taken prefix exits 0 and writes the observed output, so
-// the boot's if: is satisfiable; an unrecognized line is NOT observed (fail-closed).
-test fn an_observed_reading_leaves_the_boot_eligible_by_execution() -> Bool {
-  let observed = fan_boot_phase_tail_outcome(stem: "jc547-fan-observed", receipt: concat(fan_boot_phase_taken_prefix, "\nFanObservation rounds=3"))
-  observed.exit_code == 0
-    && string_contains(s: observed.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
-    && fan_boot_phase_tail_outcome(stem: "jc547-fan-unrecognized", receipt: "SomethingElse rounds=3").exit_code != 0
-}
-
-// CONTROL (review 81090): the three status arms fold by REAL EXECUTION - a file saying ok, a file
-// saying anything else, and no file at all land in FetchOk / FetchRefused / FetchStatusUnobserved.
-// Executed, not described: the fold is what decides whether the boot sees a refusal, so its truth is
-// owed as an observation of the reader, not as agreement with its text. Flat paths beside the claim's
-// own working files: the file transport creates no parent directories, and each path is deleted after
-// the read so a rerun starts from the absent arm.
-test fn fan_policy_phase_fetch_status_folds_three_arms_by_real_execution() -> Bool {
-  let ok_credential = "eh810-fan-fetch-status-claim-credential"
-  let bad_credential = "eh810-fan-fetch-status-claim-other"
-  let absent_credential = "eh810-fan-fetch-status-claim-absent"
-  let ok_path = concat(ok_credential, mtcollins1_fan_credential_fetch_status_suffix)
-  let bad_path = concat(bad_credential, mtcollins1_fan_credential_fetch_status_suffix)
-  let ok_write = Filesystem.Write(path: ok_path, content: "ok")
-  let bad_write = Filesystem.Write(path: bad_path, content: "fetch-failed")
-  let ok_reads_ok = ok_write.success && mtcollins1_fan_credential_fetch_status(credential_path: ok_credential) == FetchOk
-  let bad_reads_refused = bad_write.success && mtcollins1_fan_credential_fetch_status(credential_path: bad_credential) == FetchRefused
-  let absent_reads_unobserved = mtcollins1_fan_credential_fetch_status(credential_path: absent_credential) == FetchStatusUnobserved
-  let ok_clean = Filesystem.Delete(path: ok_path)
-  let bad_clean = Filesystem.Delete(path: bad_path)
-  ok_reads_ok && bad_reads_refused && absent_reads_unobserved && ok_clean.success && bad_clean.success
 }
 
 // CONTROL: the receipt upload still fails the job when the phase wrote NOTHING (review 81077's

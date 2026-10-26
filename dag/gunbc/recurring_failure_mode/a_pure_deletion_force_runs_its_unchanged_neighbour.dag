@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_pure_deletion_force_runs_its_unchanged_neighbour
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_pure_deletion_force_runs_its_unchanged_neighbour: RecurringFailureMode = RecurringFailureMode {
   identity: "a_pure_deletion_force_runs_its_unchanged_neighbour" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**INVALID STATE: the required floor's changed-witness attribution charges a pure-deletion diff hunk to the UNCHANGED declaration that follows it, so deleting witnesses force-runs a neighbour whose text did not change.** The floor maps the PR's changed line ranges to declarations (`v1_compiler.cli_run.required_floor_runner` `floor_diff_edits_from_line_ranges_reading`). A deletion leaves no line in the head file; its range lands at the deletion point, which is the first line of the next declaration, so that declaration is attributed as edited.",

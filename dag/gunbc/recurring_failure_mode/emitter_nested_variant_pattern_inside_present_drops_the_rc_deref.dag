@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.emitter_nested_variant_pattern_inside_presen
 
 import std.types { NonEmptyStr }
 import std.decl_ref { decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data emitter_nested_variant_pattern_inside_present_drops_the_rc_deref: RecurringFailureMode = RecurringFailureMode {
   identity: "emitter_nested_variant_pattern_inside_present_drops_the_rc_deref" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a record pattern whose field is an Optional of a coproduct, with the coproduct variant pattern nested inside Present (`ExprMethodCall { method_semantics: Present { value: AlgebraMethodSemantics { .. } } }`), is emitted as `Some(MethodSemantics::AlgebraMethodSemantics{..})` against a field of type Option<Rc<MethodSemantics>>. The emitter does not dereference the Rc carrier through Present for a nested pattern, so rustc refuses with E0308 in generated code.",

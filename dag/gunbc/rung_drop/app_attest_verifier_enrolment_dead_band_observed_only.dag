@@ -1,7 +1,8 @@
 module gunbc.rung_drop.app_attest_verifier_enrolment_dead_band_observed_only
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // THE DECLARED RUNG DROP for the enrolment margin over EXACTLY TWO App Attest verifier claims whose
@@ -25,16 +26,11 @@ data app_attest_verifier_enrolment_dead_band_observed_only: RungDrop = RungDrop 
 
   declared: "2026-09-23",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "a general dead-band standing in v2.workflow.floor_enrolment_margin, or these two identities executing with stable headroom below the margin" },
-    population: [
-      "test.claim.app_attest_verifier_witness.the_key_id_step_admits_the_real_key_and_reds_on_another_key_id",
-      "test.claim.app_attest_verifier_witness.the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "test.claim.app_attest_verifier_witness.the_key_id_step_admits_the_real_key_and_reds_on_another_key_id", tail: ["test.claim.app_attest_verifier_witness.the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions"] } },
     restoration_trigger: "THE CAPABILITY, EITHER OF TWO: (a) these EXACT two identities execute on a named native route (the gunbc test instrument row gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names) with stable headroom below the enrolment margin across the envelope floor_enrolment_margin derives; or (b) a general repair of the dead-band policy in v2.workflow.floor_enrolment_margin gives every newly enrolled identity in the band a representable standing (gunbc.recurring_failure_mode enrolment_dead_band_has_no_representable_standing). MachineWidth<N> reification or the native frontier ALONE does not retire this row: what must hold is that the two readings are under the margin with headroom, or that the policy no longer needs an exact-identity authority. v2.workflow.floor_enrolment_dead_band and this row then delete together.",
-  }
+  } }
 }

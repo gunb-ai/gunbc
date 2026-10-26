@@ -1,0 +1,746 @@
+module product.electrical.carrier_phase
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Volt, Milliampere, volt_count, milliampere_count, millivolt_count }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.electrical.connectivity { component_identity_eq, ComponentInstanceIdentity, ElectricalTerminalRef, terminal_ref_equal, component_local_label }
+import product.electrical.continuity { BenchConditions, EvidenceRef, Energized, Unpowered, ModuleRemoved, ModuleInstalled, ModuleUnrecorded, terminal_text }
+import product.electrical.source_draw { SourceSetting, setting_only_text }
+import product.electrical.bench_session { VoltageValue, ReadAbout, ReadBelow, StatementCertainty, value_text, certainty_text, ResistanceDisplay, DisplayValue, DisplayAtProbeBaseline, DisplayZeroWithoutBaseline, DisplayAboveBaseline, DisplayOverRange, MeterRange, resistance_display_text, range_text }
+
+// A CARRIER'S LOCAL CONTROLS, ITS INDICATORS AND THE STATES THEY PUT IT IN, AS OBSERVED. A DIP pole's
+// position is read against the package's printed ON legend, never as open or closed: which way a pole
+// closes waits on an unpowered continuity reading. An indicator is lit or dark in a photograph; that
+// it blinks is the operator's temporal statement, which a still cannot carry. A current the operator
+// typed with a decimal that cannot be placed stays as typed, with every value it could mean, and no
+// derivation picks one. A bridge the operator held across two header points is a stimulus with its
+// endpoints and its coupling; what it did to the board is the recorded transition, and no standing
+// here names it a reset, a button or a strap: a hard bridge that collapses a logic rail extinguishes
+// the same indicators, drops the same current and restarts the same way when released. A point that
+// read 0 V energized is a point that read 0 V; it joins the return only by an unpowered reading at the
+// shorted-probe baseline (product.electrical.bench_session).
+//
+// A PHASE IS A RECORDED STATE; ITS STANDING IS DERIVED FROM THE RECORD. The names are of what was
+// observed -- bias draw only, a further domain drawing with nothing lit, a sequence passing, a steady
+// pattern, a bridge held, a release recovering -- and never of a function (boot, BMC, reset, power
+// button). Whether the protected input bus is on in a phase is read only from a voltage at the input
+// switches' downstream terminals in that phase; current and indicators never establish it.
+
+type SwitchPolePosition
+  = TowardOnLegend
+  | AwayFromOnLegend
+  | PolePositionUnrecorded
+
+// One pole of a DIP package, counted as the package prints its poles.
+type SwitchPoleState {
+  package: ComponentInstanceIdentity
+  pole: Nat
+  position: SwitchPolePosition
+}
+
+// What the bench source's own display showed: holding the set voltage (CV), limiting current (CC),
+// or its protection having shut the output; a session that did not say is unrecorded.
+type SourceMode
+  = ConstantVoltageShown
+  | ConstantCurrentShown
+  | ProtectionTrippedShown
+  | SourceModeUnrecorded
+
+// A current as the operator reported it. CurrentAmbiguous keeps the operator's text with the values it
+// could mean when the decimal cannot be placed from the message alone.
+type CurrentReading
+  = CurrentRead { value: Milliampere }
+  | CurrentAmbiguous { verbatim: NonEmptyStr, candidates: List<Milliampere> }
+  | CurrentUnrecorded
+
+// The source's setting for a phase: restated for it, carried forward from the session's standing setup
+// with the basis for carrying it, or unrecorded.
+type SourceSettingStanding
+  = SettingRecorded { setting: SourceSetting }
+  | SettingCarriedForward { setting: SourceSetting, basis: NonEmptyStr }
+  | SettingOneOf { candidates: List<SourceSetting>, basis: NonEmptyStr }
+  | SettingUnrecorded
+
+type SupplyReading {
+  voltage: Volt?
+  current: CurrentReading
+  mode: SourceMode
+}
+
+type IndicatorState
+  = IndicatorDark
+  | IndicatorLit
+  | IndicatorBlinking
+  | IndicatorStateUnobserved
+
+type IndicatorColour
+  = GreenIndicator
+  | RedOrAmberIndicator
+  | ColourUnrecorded
+
+// Which indicator: its silkscreen designator read, a designator the reader assigned from the label
+// order with the basis for it, or a place on the board when no designator is read.
+type IndicatorIdentity
+  = DesignatorRead { designator: NonEmptyStr }
+  | DesignatorCandidate { designator: NonEmptyStr, basis: NonEmptyStr }
+  | IndicatorByPlace { place: NonEmptyStr }
+
+// A photograph establishes lit or dark at its instant; blinking is the operator's statement over time,
+// or a video's: SeenInVideo is a state that held for the video's length, TimedInVideo a blink whose on
+// and off intervals were measured frame by frame over a counted number of full cycles.
+type IndicatorBasis
+  = SeenInPhotograph { evidence: EvidenceRef }
+  | OperatorReported { evidence: EvidenceRef }
+  | SeenInVideo { evidence: EvidenceRef, seconds: Nat }
+  | TimedInVideo { evidence: EvidenceRef, on_ms: Nat, off_ms: Nat, cycles: Nat }
+
+type IndicatorObservation {
+  indicator: IndicatorIdentity
+  colour: IndicatorColour
+  state: IndicatorState
+  basis: IndicatorBasis
+}
+
+// What a described pattern says about presence, typed apart from its prose: the prose is evidence and
+// rendering, and only the presence decides a phase's arm.
+type IndicatorPresence
+  = SomeLit
+  | AllDark
+  | PresenceUnread
+
+type IndicatorPattern
+  = IndicatorsObserved { items: List<IndicatorObservation> }
+  | IndicatorsDescribed { description: NonEmptyStr, presence: IndicatorPresence, evidence: EvidenceRef }
+  | NoIndicatorSeen { evidence: EvidenceRef }
+  | IndicatorsUnobserved
+
+type PhaseSettling
+  = TransientPassing
+  | SettledSteady
+  | SettlingUnrecorded
+
+// A voltage read at a point while a phase held; the phase carries the source setting and the conditions.
+type PhaseNodeVoltage {
+  at: ElectricalTerminalRef
+  reference: ElectricalTerminalRef
+  value: VoltageValue
+  certainty: StatementCertainty
+  evidence: EvidenceRef
+}
+
+// A voltage the operator read at a point they named their own way, which is one of a header's physical
+// terminals but which one is unrecorded: the label and the candidates are kept, and no terminal is
+// minted for the label, so the reading joins no net and no standing reads it as a terminal's.
+type PhaseAliasedVoltage {
+  label: NonEmptyStr
+  candidates: List<ElectricalTerminalRef>
+  reference: ElectricalTerminalRef
+  value: VoltageValue
+  certainty: StatementCertainty
+  evidence: EvidenceRef
+}
+
+type BridgeCoupling
+  = DirectBridge
+  | ResistorCoupled { ohms: Nat }
+
+type BridgeHold
+  = HeldWhileObserved
+  | MomentaryTouch
+  | HoldUnrecorded
+
+// Two header points the operator joined, how, and for how long.
+type HeaderBridge {
+  header: ComponentInstanceIdentity
+  first: ElectricalTerminalRef
+  second: ElectricalTerminalRef
+  coupling: BridgeCoupling
+  hold: BridgeHold
+}
+
+type CarrierPhaseObservation {
+  key: NonEmptyStr
+  asset: PhysicalAssetIdentity
+  conditions: BenchConditions
+  setting: SourceSettingStanding
+  supply: SupplyReading
+  switch_vector: List<SwitchPoleState>
+  held: HeaderBridge?
+  recovering_from: HeaderBridge?
+  settling: PhaseSettling
+  indicators: IndicatorPattern
+  node_voltages: List<PhaseNodeVoltage>
+  aliased_voltages: List<PhaseAliasedVoltage>
+  evidence: List<EvidenceRef>
+}
+
+// WHICH WAY A POLE CLOSES is read unpowered across the pole's two terminals with the actuator in one
+// position, then the other: a display at or near zero one way and over range the other says the pole
+// closes the first way. A zero with no baseline recorded is still only a reported zero here, since the
+// question is which way the pole conducts, not whether two nets are one.
+type SwitchPoleClosure {
+  pole: SwitchPoleState
+  first: ElectricalTerminalRef
+  second: ElectricalTerminalRef
+  display: ResistanceDisplay
+  range: MeterRange
+  evidence: EvidenceRef
+}
+
+type PoleClosureStanding
+  = ClosesTowardOnLegend { toward: SwitchPoleClosure, away: SwitchPoleClosure }
+  | ClosesAwayFromOnLegend { toward: SwitchPoleClosure, away: SwitchPoleClosure }
+  | PoleClosureUnread { package: ComponentInstanceIdentity, pole: Nat }
+
+// Conducting is a display at the baseline or a reported zero; open is over range. A value or an
+// unrecorded height above the baseline is neither, and leaves the pole unread.
+fn closure_conducts(c: SwitchPoleClosure) -> Bool {
+  match c.display {
+    DisplayAtProbeBaseline { shown: _, baseline: _ } => true
+    DisplayZeroWithoutBaseline { reported: _ } => true
+    DisplayValue { ohms: _, approximate: _ } => false
+    DisplayAboveBaseline => false
+    DisplayOverRange => false
+  }
+}
+
+fn closure_open(c: SwitchPoleClosure) -> Bool {
+  match c.display {
+    DisplayOverRange => true
+    DisplayAtProbeBaseline { shown: _, baseline: _ } => false
+    DisplayZeroWithoutBaseline { reported: _ } => false
+    DisplayValue { ohms: _, approximate: _ } => false
+    DisplayAboveBaseline => false
+  }
+}
+
+fn closure_at(closures: List<SwitchPoleClosure>, package: ComponentInstanceIdentity, pole: Nat, position: SwitchPolePosition) -> SwitchPoleClosure? {
+  (filter(closures, c => component_identity_eq(a: c.pole.package, b: package) && c.pole.pole == pole && position_eq(a: c.pole.position, b: position))).first()
+}
+
+fn position_eq(a: SwitchPolePosition, b: SwitchPolePosition) -> Bool {
+  match a {
+    TowardOnLegend => match b { TowardOnLegend => true, AwayFromOnLegend => false, PolePositionUnrecorded => false }
+    AwayFromOnLegend => match b { TowardOnLegend => false, AwayFromOnLegend => true, PolePositionUnrecorded => false }
+    PolePositionUnrecorded => match b { TowardOnLegend => false, AwayFromOnLegend => false, PolePositionUnrecorded => true }
+  }
+}
+
+fn pole_closure_standing(closures: List<SwitchPoleClosure>, package: ComponentInstanceIdentity, pole: Nat) -> PoleClosureStanding {
+  match closure_at(closures: closures, package: package, pole: pole, position: TowardOnLegend) {
+    Absent => PoleClosureUnread { package: package, pole: pole }
+    Present { value: toward } => match closure_at(closures: closures, package: package, pole: pole, position: AwayFromOnLegend) {
+      Absent => PoleClosureUnread { package: package, pole: pole }
+      Present { value: away } =>
+        if closure_conducts(c: toward) && closure_open(c: away) { ClosesTowardOnLegend { toward: toward, away: away } }
+        else if closure_conducts(c: away) && closure_open(c: toward) { ClosesAwayFromOnLegend { toward: toward, away: away } }
+        else { PoleClosureUnread { package: package, pole: pole } }
+    }
+  }
+}
+
+fn closure_reading_text(c: SwitchPoleClosure) -> String {
+  join([resistance_display_text(d: c.display), range_text(r: c.range), " across ", terminal_text(t: c.first), " and ", terminal_text(t: c.second)], "")
+}
+
+fn pole_closure_text(s: PoleClosureStanding) -> String {
+  match s {
+    ClosesTowardOnLegend { toward, away } => join([component_local_label(c: toward.pole.package) as String, ".", to_string(toward.pole.pole), " closes toward the ON legend (", closure_reading_text(c: toward), " toward it; ", closure_reading_text(c: away), " away)"], "")
+    ClosesAwayFromOnLegend { toward, away } => join([component_local_label(c: toward.pole.package) as String, ".", to_string(toward.pole.pole), " closes away from the ON legend (", closure_reading_text(c: away), " away from it; ", closure_reading_text(c: toward), " toward)"], "")
+    PoleClosureUnread { package, pole } => join([component_local_label(c: package) as String, ".", to_string(pole), ": which way it closes is unread"], "")
+  }
+}
+
+// The poles a vector names, each with which way it closes from the closure readings.
+fn pole_closures_text(closures: List<SwitchPoleClosure>, vector: List<SwitchPoleState>) -> String {
+  match vector.first() {
+    Absent => ""
+    Present { value: _ } => join(["Pole closure, unpowered: ", join(map(vector, p => pole_closure_text(s: pole_closure_standing(closures: closures, package: p.package, pole: p.pole))), "; ")], "")
+  }
+}
+
+type SwitchMoveTiming
+  = MovedEnergized
+  | MovedWithOutputOff
+  | MoveTimingUnrecorded
+
+// A pole's position and the act of moving it are two facts: the move is recorded here, with the
+// positions the poles were put in; the state it led to carries the vector.
+type PhaseStimulus
+  = SwitchPolesMoved { poles: List<SwitchPoleState>, timing: SwitchMoveTiming }
+  | HeaderBridgeApplied { bridge: HeaderBridge }
+  | HeaderBridgeReleased { bridge: HeaderBridge }
+  | SettlingDelay
+
+type AudibleEvent
+  = ClickHeard { origin: NonEmptyStr? }
+  | NoSoundReported
+
+type CarrierTransitionObservation {
+  key: NonEmptyStr
+  asset: PhysicalAssetIdentity
+  from_phase: NonEmptyStr
+  stimulus: PhaseStimulus
+  to_phase: NonEmptyStr
+  supply_trace: List<SupplyReading>
+  indicator_trace: List<IndicatorPattern>
+  audible: AudibleEvent
+  evidence: List<EvidenceRef>
+}
+
+// ── STANDINGS ─────────────────────────────────────────────────────────────────────────────────
+
+type PhaseGap
+  = PhaseNotRecorded { key: NonEmptyStr }
+  | PhaseNotEnergized
+  | DrawUnread
+  | DrawAmbiguous { verbatim: NonEmptyStr }
+  | SettlingUnread
+  | IndicatorsUnread
+
+type CarrierPhaseStanding
+  = InputBiasOnly { phase: CarrierPhaseObservation, draw: Milliampere, bias_ceiling: Milliampere }
+  | AuxiliaryDomainActive { phase: CarrierPhaseObservation, draw: Milliampere, bias_ceiling: Milliampere }
+  | SequenceTransient { phase: CarrierPhaseObservation }
+  | ControlSteady { phase: CarrierPhaseObservation }
+  | BridgeHeld { phase: CarrierPhaseObservation, bridge: HeaderBridge }
+  | BridgeReleaseRecovery { phase: CarrierPhaseObservation, bridge: HeaderBridge }
+  | PhaseUnclassified { phase: CarrierPhaseObservation, gap: PhaseGap }
+
+fn is_energized(c: BenchConditions) -> Bool {
+  match c.power {
+    Energized => true
+    Unpowered => false
+  }
+}
+
+fn indicators_seen(p: IndicatorPattern) -> Bool {
+  match p {
+    IndicatorsObserved { items } => any(items, i => match i.state {
+      IndicatorLit => true
+      IndicatorBlinking => true
+      IndicatorDark => false
+      IndicatorStateUnobserved => false
+    })
+    IndicatorsDescribed { description: _, presence, evidence: _ } => match presence {
+      SomeLit => true
+      AllDark => false
+      PresenceUnread => false
+    }
+    NoIndicatorSeen { evidence: _ } => false
+    IndicatorsUnobserved => false
+  }
+}
+
+fn indicators_unobserved(p: IndicatorPattern) -> Bool {
+  match p {
+    IndicatorsUnobserved => true
+    IndicatorsObserved { items: _ } => false
+    IndicatorsDescribed { description: _, presence, evidence: _ } => match presence {
+      PresenceUnread => true
+      SomeLit => false
+      AllDark => false
+    }
+    NoIndicatorSeen { evidence: _ } => false
+  }
+}
+
+fn dark_phase_standing(o: CarrierPhaseObservation, bias_ceiling: Milliampere) -> CarrierPhaseStanding {
+  match o.supply.current {
+    CurrentRead { value } =>
+      if milliampere_count(i: value) > milliampere_count(i: bias_ceiling) { AuxiliaryDomainActive { phase: o, draw: value, bias_ceiling: bias_ceiling } }
+      else { InputBiasOnly { phase: o, draw: value, bias_ceiling: bias_ceiling } }
+    CurrentAmbiguous { verbatim, candidates: _ } => PhaseUnclassified { phase: o, gap: DrawAmbiguous { verbatim: verbatim } }
+    CurrentUnrecorded => PhaseUnclassified { phase: o, gap: DrawUnread }
+  }
+}
+
+fn lit_phase_standing(o: CarrierPhaseObservation) -> CarrierPhaseStanding {
+  match o.settling {
+    TransientPassing => SequenceTransient { phase: o }
+    SettledSteady => ControlSteady { phase: o }
+    SettlingUnrecorded => PhaseUnclassified { phase: o, gap: SettlingUnread }
+  }
+}
+
+// THE STANDING IS TOTAL OVER THE RECORD. A bridge held names the phase before anything else; a
+// recovery from a released bridge next; then an energized phase with nothing lit is bias-only or a
+// further domain by its draw against the bias ceiling (the draw the carrier showed before any control
+// was moved), and one with something lit is a passing sequence or a steady state by its settling.
+fn carrier_phase_standing(o: CarrierPhaseObservation, bias_ceiling: Milliampere) -> CarrierPhaseStanding {
+  if !is_energized(c: o.conditions) { PhaseUnclassified { phase: o, gap: PhaseNotEnergized } }
+  else {
+    match o.held {
+      Present { value: b } => BridgeHeld { phase: o, bridge: b }
+      Absent => match o.recovering_from {
+        Present { value: b } => BridgeReleaseRecovery { phase: o, bridge: b }
+        Absent =>
+          if indicators_unobserved(p: o.indicators) { PhaseUnclassified { phase: o, gap: IndicatorsUnread } }
+          else if indicators_seen(p: o.indicators) { lit_phase_standing(o: o) }
+          else { dark_phase_standing(o: o, bias_ceiling: bias_ceiling) }
+      }
+    }
+  }
+}
+
+fn phase_by_key(phases: List<CarrierPhaseObservation>, key: NonEmptyStr) -> CarrierPhaseObservation? {
+  (filter(phases, p => p.key == key)).first()
+}
+
+fn is_phase_classified(s: CarrierPhaseStanding) -> Bool {
+  match s {
+    PhaseUnclassified { phase: _, gap: _ } => false
+    _ => true
+  }
+}
+
+// ── THE PROTECTED INPUT BUS IN A PHASE ─────────────────────────────────────────────────────────
+
+type ProtectedBusGap
+  = NoReadingAtDownstream { terminals: List<ElectricalTerminalRef> }
+  | SourceVoltageUnrecorded
+  | ReadingIsABound { readings: List<PhaseNodeVoltage> }
+
+// The bus is active in a phase only on a value read at a downstream terminal near the source's set
+// voltage; a reading well below it says the bus is held off; no reading, a bound, or no source voltage
+// to compare against reads nothing.
+type ProtectedBusStanding
+  = ProtectedInputBusActive { phase: CarrierPhaseObservation, readings: List<PhaseNodeVoltage>, source: Volt }
+  | ProtectedInputBusHeldOff { phase: CarrierPhaseObservation, readings: List<PhaseNodeVoltage>, source: Volt }
+  | ProtectedBusInconsistent { phase: CarrierPhaseObservation, readings: List<PhaseNodeVoltage>, source: Volt }
+  | ProtectedBusUnread { phase: CarrierPhaseObservation, gap: ProtectedBusGap }
+
+fn phase_source_volts(o: CarrierPhaseObservation) -> Volt? {
+  match o.supply.voltage {
+    Present { value: v } => Present { value: v }
+    Absent => match o.setting {
+      SettingRecorded { setting } => Present { value: setting.voltage }
+      SettingCarriedForward { setting, basis: _ } => Present { value: setting.voltage }
+      SettingOneOf { candidates, basis: _ } => match candidates.first() {
+        Absent => Absent
+        Present { value: c } => if all(candidates, x => volt_count(v: x.voltage) == volt_count(v: c.voltage)) { Present { value: c.voltage } } else { Absent }
+      }
+      SettingUnrecorded => Absent
+    }
+  }
+}
+
+fn readings_at_any(o: CarrierPhaseObservation, ts: List<ElectricalTerminalRef>) -> List<PhaseNodeVoltage> {
+  filter(o.node_voltages, v => any(ts, t => terminal_ref_equal(a: v.at, b: t)))
+}
+
+fn read_values(vs: List<PhaseNodeVoltage>) -> List<Nat> {
+  flat_map(vs, v => match v.value {
+    ReadAbout { value } => [millivolt_count(v: value)]
+    ReadBelow { bound: _ } => []
+  })
+}
+
+// Near the source: within a tenth of it either way, in millivolts. A reading above that band is not
+// near, it is a reading the source cannot explain.
+fn near_source(millivolts: Nat, source: Volt) -> Bool {
+  let source_mv = volt_count(v: source) * 1000
+  let tenth = volt_count(v: source) * 100
+  millivolts + tenth >= source_mv && millivolts <= source_mv + tenth
+}
+
+// Held off: at or below a tenth of the source.
+fn below_off_ceiling(millivolts: Nat, source: Volt) -> Bool {
+  millivolts * 10 <= volt_count(v: source) * 1000
+}
+
+fn protected_bus_standing(o: CarrierPhaseObservation, downstream: List<ElectricalTerminalRef>) -> ProtectedBusStanding {
+  let readings = readings_at_any(o: o, ts: downstream)
+  match readings.first() {
+    Absent => ProtectedBusUnread { phase: o, gap: NoReadingAtDownstream { terminals: downstream } }
+    Present { value: _ } => match phase_source_volts(o: o) {
+      Absent => ProtectedBusUnread { phase: o, gap: SourceVoltageUnrecorded }
+      Present { value: source } => {
+        let values = read_values(vs: readings)
+        match values.first() {
+          Absent => ProtectedBusUnread { phase: o, gap: ReadingIsABound { readings: readings } }
+          Present { value: _ } =>
+            if all(values, v => near_source(millivolts: v, source: source)) { ProtectedInputBusActive { phase: o, readings: readings, source: source } }
+            else if all(values, v => below_off_ceiling(millivolts: v, source: source)) { ProtectedInputBusHeldOff { phase: o, readings: readings, source: source } }
+            else { ProtectedBusInconsistent { phase: o, readings: readings, source: source } }
+        }
+      }
+    }
+  }
+}
+
+// Read means a state of the bus was read: active or held off. Readings that agree with neither
+// establish no finding.
+fn is_bus_read(s: ProtectedBusStanding) -> Bool {
+  match s {
+    ProtectedInputBusActive { phase: _, readings: _, source: _ } => true
+    ProtectedInputBusHeldOff { phase: _, readings: _, source: _ } => true
+    ProtectedBusInconsistent { phase: _, readings: _, source: _ } => false
+    ProtectedBusUnread { phase: _, gap: _ } => false
+  }
+}
+
+// ── RENDERING ─────────────────────────────────────────────────────────────────────────────────
+
+fn ma_text(i: Milliampere) -> String {
+  join([to_string(milliampere_count(i: i)), " mA"], "")
+}
+
+fn position_text(p: SwitchPolePosition) -> String {
+  match p {
+    TowardOnLegend => "toward the ON legend"
+    AwayFromOnLegend => "away from the ON legend"
+    PolePositionUnrecorded => "position unrecorded"
+  }
+}
+
+fn pole_text(s: SwitchPoleState) -> String {
+  join([component_local_label(c: s.package) as String, ".", to_string(s.pole), " ", position_text(p: s.position)], "")
+}
+
+fn vector_text(v: List<SwitchPoleState>) -> String {
+  match v.first() {
+    Absent => "switch vector unrecorded"
+    Present { value: _ } => join(map(v, s => pole_text(s: s)), ", ")
+  }
+}
+
+fn mode_text(m: SourceMode) -> String {
+  match m {
+    ConstantVoltageShown => "the source showing CV"
+    ConstantCurrentShown => "the source showing CC"
+    ProtectionTrippedShown => "the source's protection tripped"
+    SourceModeUnrecorded => "the source's mode unrecorded"
+  }
+}
+
+fn current_text(c: CurrentReading) -> String {
+  match c {
+    CurrentRead { value } => ma_text(i: value)
+    CurrentAmbiguous { verbatim, candidates } => join(["'", verbatim as String, "' as typed (", join(map(candidates, c => ma_text(i: c)), " or "), "; the decimal is unresolved)"], "")
+    CurrentUnrecorded => "current unrecorded"
+  }
+}
+
+fn supply_text(s: SupplyReading) -> String {
+  join([
+    match s.voltage {
+      Present { value: v } => join([to_string(volt_count(v: v)), " V, "], "")
+      Absent => ""
+    },
+    current_text(c: s.current), ", ", mode_text(m: s.mode),
+  ], "")
+}
+
+fn setting_standing_text(s: SourceSettingStanding) -> String {
+  match s {
+    SettingRecorded { setting } => join(["set to ", setting_only_text(s: setting)], "")
+    SettingCarriedForward { setting, basis } => join(["setting carried forward as ", setting_only_text(s: setting), " (", basis as String, ")"], "")
+    SettingOneOf { candidates, basis } => join(["setting one of ", join(map(candidates, c => setting_only_text(s: c)), " / "), " (", basis as String, ")"], "")
+    SettingUnrecorded => "setting unrecorded"
+  }
+}
+
+fn indicator_identity_text(i: IndicatorIdentity) -> String {
+  match i {
+    DesignatorRead { designator } => designator as String
+    DesignatorCandidate { designator, basis } => join([designator as String, " (candidate: ", basis as String, ")"], "")
+    IndicatorByPlace { place } => place as String
+  }
+}
+
+fn colour_text(c: IndicatorColour) -> String {
+  match c {
+    GreenIndicator => "green"
+    RedOrAmberIndicator => "red or amber"
+    ColourUnrecorded => "colour unrecorded"
+  }
+}
+
+fn state_text(s: IndicatorState) -> String {
+  match s {
+    IndicatorDark => "dark"
+    IndicatorLit => "lit"
+    IndicatorBlinking => "blinking"
+    IndicatorStateUnobserved => "unobserved"
+  }
+}
+
+fn basis_text(b: IndicatorBasis) -> String {
+  match b {
+    SeenInPhotograph { evidence: _ } => "in a photograph"
+    OperatorReported { evidence: _ } => "by the operator's statement"
+    SeenInVideo { evidence: _, seconds } => join(["throughout a ", to_string(seconds), " s video"], "")
+    TimedInVideo { evidence: _, on_ms, off_ms, cycles } => join(["timed in a video: on ", to_string(on_ms), " ms, off ", to_string(off_ms), " ms, over ", to_string(cycles), " cycles"], "")
+  }
+}
+
+fn indicator_text(o: IndicatorObservation) -> String {
+  join([indicator_identity_text(i: o.indicator), " ", colour_text(c: o.colour), " ", state_text(s: o.state), " ", basis_text(b: o.basis)], "")
+}
+
+fn presence_text(p: IndicatorPresence) -> String {
+  match p {
+    SomeLit => "some lit"
+    AllDark => "all dark"
+    PresenceUnread => "presence unread"
+  }
+}
+
+fn pattern_text(p: IndicatorPattern) -> String {
+  match p {
+    IndicatorsObserved { items } => join(map(items, i => indicator_text(o: i)), "; ")
+    IndicatorsDescribed { description, presence, evidence: _ } => join(["indicators as described: '", description as String, "' (", presence_text(p: presence), ")"], "")
+    NoIndicatorSeen { evidence: _ } => "no indicator seen"
+    IndicatorsUnobserved => "indicators unobserved"
+  }
+}
+
+fn coupling_text(c: BridgeCoupling) -> String {
+  match c {
+    DirectBridge => "a direct bridge"
+    ResistorCoupled { ohms } => join(["through ", to_string(ohms), " ohm"], "")
+  }
+}
+
+fn hold_text(h: BridgeHold) -> String {
+  match h {
+    HeldWhileObserved => "held"
+    MomentaryTouch => "touched momentarily"
+    HoldUnrecorded => "hold unrecorded"
+  }
+}
+
+fn bridge_text(b: HeaderBridge) -> String {
+  join([coupling_text(c: b.coupling), " ", hold_text(h: b.hold), " between ", terminal_text(t: b.first), " and ", terminal_text(t: b.second)], "")
+}
+
+fn phase_voltage_text(v: PhaseNodeVoltage) -> String {
+  join([terminal_text(t: v.at), " read ", value_text(v: v.value), " against ", terminal_text(t: v.reference), certainty_text(c: v.certainty)], "")
+}
+
+fn gap_text(g: PhaseGap) -> String {
+  match g {
+    PhaseNotRecorded { key } => join(["no phase '", key as String, "' is recorded"], "")
+    PhaseNotEnergized => "the phase is not recorded as energized"
+    DrawUnread => "its draw is unrecorded"
+    DrawAmbiguous { verbatim } => join(["its draw '", verbatim as String, "' cannot be placed (decimal unresolved)"], "")
+    SettlingUnread => "whether it was passing or settled is unrecorded"
+    IndicatorsUnread => "its indicators are unobserved"
+  }
+}
+
+// Whether the module sat on the carrier is part of a phase's record: a phase repeated with it installed
+// is a different observation from the same draw with it absent, and reads as one.
+fn module_text(c: BenchConditions) -> String {
+  match c.module {
+    ModuleRemoved => "module absent"
+    ModuleInstalled { asset } => join(["module installed: ", asset as String], "")
+    ModuleUnrecorded => "module state unrecorded"
+  }
+}
+
+fn phase_record_text(o: CarrierPhaseObservation) -> String {
+  join([
+    "phase '", o.key as String, "' (", module_text(c: o.conditions), "): ", setting_standing_text(s: o.setting), "; read ", supply_text(s: o.supply), "; ", vector_text(v: o.switch_vector), "; ", pattern_text(p: o.indicators),
+    match o.node_voltages.first() {
+      Absent => ""
+      Present { value: _ } => join(["; while it held: ", join(map(o.node_voltages, v => phase_voltage_text(v: v)), "; ")], "")
+    },
+    match o.aliased_voltages.first() {
+      Absent => ""
+      Present { value: _ } => join(["; at points the operator named (one of the candidates, which unrecorded): ", join(map(o.aliased_voltages, v => aliased_voltage_text(v: v)), "; ")], "")
+    },
+  ], "")
+}
+
+fn aliased_voltage_text(v: PhaseAliasedVoltage) -> String {
+  join(["'", v.label as String, "' (one of ", join(map(v.candidates, t => terminal_text(t: t)), ", "), ") read ", value_text(v: v.value), " against ", terminal_text(t: v.reference), certainty_text(c: v.certainty)], "")
+}
+
+fn phase_standing_text(s: CarrierPhaseStanding) -> String {
+  match s {
+    InputBiasOnly { phase, draw, bias_ceiling } => join(["INPUT BIAS ONLY (", ma_text(i: draw), ", not above the ", ma_text(i: bias_ceiling), " bias draw, nothing lit): ", phase_record_text(o: phase)], "")
+    AuxiliaryDomainActive { phase, draw, bias_ceiling } => join(["AUXILIARY DOMAIN ACTIVE (", ma_text(i: draw), ", above the ", ma_text(i: bias_ceiling), " bias draw, nothing lit; which domain is unread): ", phase_record_text(o: phase)], "")
+    SequenceTransient { phase } => join(["SEQUENCE TRANSIENT (indicators lit, passing): ", phase_record_text(o: phase)], "")
+    ControlSteady { phase } => join(["CONTROL STEADY (indicators lit, settled; what runs is unread): ", phase_record_text(o: phase)], "")
+    BridgeHeld { phase, bridge } => join(["BRIDGE HELD (", bridge_text(b: bridge), "; a logic input pulled low and a rail collapsed read alike until the resistor-coupled test): ", phase_record_text(o: phase)], "")
+    BridgeReleaseRecovery { phase, bridge } => join(["RELEASE RECOVERY (after ", bridge_text(b: bridge), "): ", phase_record_text(o: phase)], "")
+    PhaseUnclassified { phase, gap } => join(["UNCLASSIFIED (", gap_text(g: gap), "): ", phase_record_text(o: phase)], "")
+  }
+}
+
+fn bus_gap_text(g: ProtectedBusGap) -> String {
+  match g {
+    NoReadingAtDownstream { terminals } => join(["no reading at ", join(map(terminals, t => terminal_text(t: t)), " or ")], "")
+    SourceVoltageUnrecorded => "the source's voltage is unrecorded, so nothing to compare a reading against"
+    ReadingIsABound { readings: _ } => "only a bound was read"
+  }
+}
+
+fn protected_bus_text(s: ProtectedBusStanding) -> String {
+  match s {
+    ProtectedInputBusActive { phase, readings, source } => join(["in phase '", phase.key as String, "' the protected input bus is ACTIVE: ", join(map(readings, v => phase_voltage_text(v: v)), "; "), " with the source at ", to_string(volt_count(v: source)), " V"], "")
+    ProtectedInputBusHeldOff { phase, readings, source } => join(["in phase '", phase.key as String, "' the protected input bus is held off: ", join(map(readings, v => phase_voltage_text(v: v)), "; "), " with the source at ", to_string(volt_count(v: source)), " V"], "")
+    ProtectedBusInconsistent { phase, readings, source } => join(["in phase '", phase.key as String, "' the protected input bus readings are INCONSISTENT with the source at ", to_string(volt_count(v: source)), " V (neither all within a tenth of it nor all at or below a tenth of it): ", join(map(readings, v => phase_voltage_text(v: v)), "; ")], "")
+    ProtectedBusUnread { phase, gap } => join(["in phase '", phase.key as String, "' the protected input bus is unread: ", bus_gap_text(g: gap)], "")
+  }
+}
+
+fn timing_text(t: SwitchMoveTiming) -> String {
+  match t {
+    MovedEnergized => "moved with the output on"
+    MovedWithOutputOff => "moved with the output off"
+    MoveTimingUnrecorded => "whether the output was on is unrecorded"
+  }
+}
+
+fn stimulus_text(s: PhaseStimulus) -> String {
+  match s {
+    SwitchPolesMoved { poles, timing } => join(["poles moved (", vector_text(v: poles), "; ", timing_text(t: timing), ")"], "")
+    HeaderBridgeApplied { bridge } => join(["bridge applied: ", bridge_text(b: bridge)], "")
+    HeaderBridgeReleased { bridge } => join(["bridge released: ", bridge_text(b: bridge)], "")
+    SettlingDelay => "settling with nothing touched"
+  }
+}
+
+fn audible_text(a: AudibleEvent) -> String {
+  match a {
+    ClickHeard { origin } => match origin {
+      Present { value: o } => join(["; an audible click, from ", o as String], "")
+      Absent => "; an audible click, origin unrecorded"
+    }
+    NoSoundReported => ""
+  }
+}
+
+fn transition_text(t: CarrierTransitionObservation) -> String {
+  join([
+    "'", t.from_phase as String, "' -> '", t.to_phase as String, "' on ", stimulus_text(s: t.stimulus),
+    match t.supply_trace.first() {
+      Absent => ""
+      Present { value: _ } => join(["; the source read ", join(map(t.supply_trace, s => supply_text(s: s)), ", then ")], "")
+    },
+    match t.indicator_trace.first() {
+      Absent => ""
+      Present { value: _ } => join(["; indicators ", join(map(t.indicator_trace, p => pattern_text(p: p)), ", then ")], "")
+    },
+    audible_text(a: t.audible),
+  ], "")
+}
+
+fn phases_text(phases: List<CarrierPhaseObservation>, transitions: List<CarrierTransitionObservation>, bias_ceiling: Milliampere, downstream: List<ElectricalTerminalRef>) -> String {
+  match phases.first() {
+    Absent => "no carrier phase recorded"
+    Present { value: _ } => join([
+      "Carrier phases (names of what was observed, not of a function): ",
+      join(map(phases, p => join([phase_standing_text(s: carrier_phase_standing(o: p, bias_ceiling: bias_ceiling)), ". ", protected_bus_text(s: protected_bus_standing(o: p, downstream: downstream))], "")), ". "),
+      match transitions.first() {
+        Absent => ""
+        Present { value: _ } => join([". Transitions: ", join(map(transitions, t => transition_text(t: t)), ". ")], "")
+      },
+    ], "")
+  }
+}

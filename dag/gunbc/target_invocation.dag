@@ -115,13 +115,15 @@ fn test_operand_set_form_refusal_rendered(operand: String) -> String {
 // `gunbc test //test/claim/x:c` selects a claim by the module name a file declares, and paths follow
 // names (DESIGN section 3). A file whose declaration cannot be read therefore cannot be selected, and
 // reporting that as "the pattern selected no discovered claim" makes a broken admitted file read like
-// a misspelled label. All four causes terminate `InvocationSubjectUnreached` (exit 2, never 1: no claim
+// a misspelled label. All six causes terminate `InvocationSubjectUnreached` (exit 2, never 1: no claim
 // ran), each LOCATED at the file and each distinct from an unknown label.
 type ClaimSourceRefusalCause
   = ClaimSourceUnparseable { diagnostic: String }
   | ClaimSourceModuleHeaderAbsent
   | ClaimSourceUnreadable { reason: String }
   | ClaimSourceRootUnreadable { reason: String }
+  | ClaimSourceDirectoryNamedDag
+  | ClaimSourceModuleCollision { other: String }
 
 fn claim_source_refusal_rendered(path: String, cause: ClaimSourceRefusalCause) -> String {
   concat(
@@ -130,7 +132,9 @@ fn claim_source_refusal_rendered(path: String, cause: ClaimSourceRefusalCause) -
       ClaimSourceUnparseable { diagnostic: d } => concat(": the file does not parse: ", d)
       ClaimSourceModuleHeaderAbsent => ": a .dag under the claim root declares no module, so no claim label can name it (paths follow names)"
       ClaimSourceUnreadable { reason: r } => concat(": unreadable: ", r)
+      ClaimSourceDirectoryNamedDag => ": a directory named like a .dag source; a source path is a file"
       ClaimSourceRootUnreadable { reason: r } => concat(": unreadable source root: ", r)
+      ClaimSourceModuleCollision { other: o } => concat(concat(": declares a module also declared by ", o), "; one module, one authority (DESIGN section 3), so de-fork or rename one side")
     }
   )
 }
@@ -460,8 +464,8 @@ fn binary_built_elsewhere(binary: String, path: String) -> BinaryFreshness {
 fn assess_binary_freshness(observed: BinaryInputObservation) -> BinaryFreshness {
   match observed {
     DepInfoUnreadable { binary: b, reason: r } => BinaryFreshnessUndecided { binary: b, reason: r }
-    InputsObserved { binary: b, inputs: is } =>
-      fold(is, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
+    InputsObserved { binary: b, inputs: ins } =>
+      fold(ins, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
         binary_freshness_step(acc: acc, input: i)
       })
   }

@@ -24,6 +24,7 @@ import gunbc.instruments.compute_wrong_capture {
   compute_dependency_wrong_capture_exit,
 }
 
+import gunbc.native_census_verb { CensusVerbDemand }
 import gunbc.target_binding {
   TargetBinding,
   TargetBindingIndex,
@@ -51,7 +52,8 @@ import gunbc.target_binding {
   DifferentialSourceRootAbsent, DifferentialReadingExecutionRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  DependencyDemandCensusProducer,
+  NativeCensusVerbProducer,
+  SelfHostFrontierProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -84,7 +86,7 @@ import gunbc.target_invocation {
   TestOperandClaimRoute, ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved,
   claim_route_termination,
   ClaimSourceRefusalCause, ClaimSourceUnparseable, ClaimSourceModuleHeaderAbsent,
-  ClaimSourceUnreadable, ClaimSourceRootUnreadable,
+  ClaimSourceUnreadable, ClaimSourceRootUnreadable, ClaimSourceDirectoryNamedDag, ClaimSourceModuleCollision,
   claim_source_refusal_rendered,
 }
 // `TargetPattern` IS DELIBERATELY NOT IMPORTED HERE, and the omission is the point. This module
@@ -112,6 +114,7 @@ import gunbc.instrument_targets {
   required_lane_resolution_census_label,
   self_host_behavioral_equivalence_label,
   dependency_demand_census_label,
+  self_host_frontier_label,
   generic_identity_census_label,
   interpolation_hole_census_label,
   shared_type_leaf_collision_census_label,
@@ -956,6 +959,8 @@ test fn a_claim_source_refusal_names_the_file_and_its_cause() -> Bool {
       == "claim source refused: dag/test/claim/y.dag: a .dag under the claim root declares no module, so no claim label can name it (paths follow names)"
     && claim_source_refusal_rendered(path: "p", cause: ClaimSourceUnreadable { reason: "r" }) == "claim source refused: p: unreadable: r"
     && claim_source_refusal_rendered(path: "p", cause: ClaimSourceRootUnreadable { reason: "r" }) == "claim source refused: p: unreadable source root: r"
+    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceDirectoryNamedDag) == "claim source refused: p: a directory named like a .dag source; a source path is a file"
+    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceModuleCollision { other: "q" }) == "claim source refused: p: declares a module also declared by q; one module, one authority (DESIGN section 3), so de-fork or rename one side"
 }
 
 // THE CONTAINMENT DECIDES THE EXECUTOR, AND BOTH DIRECTIONS ARE PINNED.
@@ -1066,8 +1071,19 @@ test fn the_dependency_demand_census_operand_routes_to_its_own_producer() -> Boo
   match invoke_target(operand: "//gunbc/instruments:dependency-demand-census") {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: dependency_demand_census_label())
-        && (b.producer == DependencyDemandCensusProducer {})
+        && (b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
         && !(b.producer == SelfHostBehavioralEquivalenceProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The derived self-host frontier is a label bound to its own producer, never a mode of the self-host label.
+test fn the_self_host_frontier_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:self-host-frontier") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: self_host_frontier_label())
+        && (b.producer == SelfHostFrontierProducer {})
+        && !(b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -1078,7 +1094,7 @@ test fn the_generic_identity_census_operand_routes_to_its_own_producer() -> Bool
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: generic_identity_census_label())
         && (b.producer == GenericIdentityCensusProducer {})
-        && !(b.producer == DependencyDemandCensusProducer {})
+        && !(b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unsafe_candidate_swapped_into_a_running_service
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unsafe_candidate_swapped_into_a_running_service: RecurringFailureMode = RecurringFailureMode {
   identity: "unsafe_candidate_swapped_into_a_running_service" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a live-deploy apply switches the running service onto a candidate that was not admitted for that target — either the serve entry does not compile, or the checkout is not the branch that target may install. HARM: the running revision is replaced by a crash-loop (lab, source annotation inside a fn body, learned only at readiness) or by a development checkout aimed at production (gunbc converge --host srv1 --mode deploy on a dev branch, stopped by hand).",

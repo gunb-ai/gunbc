@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_price_table_is_not_evidence_the_service_is
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_price_table_is_not_evidence_the_service_is_offered: RecurringFailureMode = RecurringFailureMode {
   identity: "a_price_table_is_not_evidence_the_service_is_offered" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a seller's pricing page can outlive the service** (INVALID STATE: a census or catalog row treats a still-reachable price table, instance-size grid, or resource-class page as evidence that the product is currently offered.",

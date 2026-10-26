@@ -128,8 +128,24 @@ type SystemdUnitDirective
   | StartLimitBurst { count: NonEmptyStr }
   | OnSuccess { unit: NonEmptyStr }
   | OnFailure { unit: NonEmptyStr }
+  | Condition { kind: SystemdConditionKind, negated: Bool, argument: NonEmptyStr }
   | SuccessAction { action: SystemdUnitStateAction }
   | FailureAction { action: SystemdUnitStateAction }
+
+// systemd.unit(5) (v255), Condition*=: a [Unit] condition checked when the unit's start job runs. A false
+// condition SKIPS the start -- the unit is not started and not failed (ConditionResult=no, Result=success).
+// `negated` is the `!` prefix upstream defines on every condition's argument. Only the kinds a consumer
+// reads are modeled; the set is upstream's and a consumer needing another adds one variant and one wire row.
+type SystemdConditionKind
+  = ConditionPathExists
+  | ConditionDirectoryNotEmpty
+
+fn systemd_condition_kind_wire(kind: SystemdConditionKind) -> String {
+  match kind {
+    ConditionPathExists => "ConditionPathExists"
+    ConditionDirectoryNotEmpty => "ConditionDirectoryNotEmpty"
+  }
+}
 
 // systemd.unit(5) (v255), SuccessAction=/FailureAction=: what the MANAGER does when the unit stops
 // cleanly or enters the failed state. The value set is upstream's and CLOSED, so it is a coproduct
@@ -765,10 +781,16 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     StartLimitBurst { count: v } => join(["StartLimitBurst=", v as String], "")
     OnSuccess { unit: v } => join(["OnSuccess=", v as String], "")
     OnFailure { unit: v } => join(["OnFailure=", v as String], "")
+    Condition { kind: k, negated: n, argument: v } => join([systemd_condition_kind_wire(kind: k), "=", if n { "!" } else { "" }, v as String], "")
     SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
     FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }
 }
+
+// THE SYSTEM MANAGER'S CREDENTIAL STORE (systemd.exec(5), LoadCredential= and ImportCredential=: the first
+// directory the system manager searches for a credential named without a path). A LoadCredential= source the
+// manager opens as root belongs here, root-owned, so no less privileged principal can write or relink it.
+data systemd_system_credstore_directory: NonEmptyStr = "/etc/credstore"
 
 fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String {
   match directive {

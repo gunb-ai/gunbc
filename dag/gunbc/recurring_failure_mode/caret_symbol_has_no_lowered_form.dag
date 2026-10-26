@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.caret_symbol_has_no_lowered_form
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data caret_symbol_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
   identity: "caret_symbol_has_no_lowered_form" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "no lowered form for a caret symbol `^sym` in v2 body lowering: `v2.extdeps.languages.dag` `dag_grammar_caret_symbol_expr` writes it as seq(`^`, ident), and no reader in `v2.compiler.body_lowering_fold` lowers that sequence. As an operator operand (`x == ^sym`) it refuses as `body_lowering_reason_operator_operand_unread`, located at the operand; on the bottom-up value route `body_lower_primary_expr` answers it with `body_lower_pattern_first_atom_optional`, the `^` token, so the symbol it names is lost there without a diagnostic.",

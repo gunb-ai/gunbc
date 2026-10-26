@@ -1,0 +1,227 @@
+module v2.test.claim.emit.swift_type_expression_projection
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { fold_list, list_map, list_snoc_item }
+import std.types { List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
+import v2.compiler.translate { translate_type_expression_project }
+import v2.extdeps.languages.swift { swift_target_model, swift_type_expression_projection }
+import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.compilers.target_model {
+  ModuleScopedPath,
+  NoDeclarationReferenceForm,
+  TargetModel,
+  type_expression_projection_from_target
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Atom, Authored, Conj, Connective, Disj, Edge, Instantiation, Node, Positional, Symbol, TypeNode, NotADeclaration }
+import v2.std.node_query { binder_node }
+import std.optional { Absent }
+import v2.std.qualified_name { declaration_reference_node, optional_declaration_identity, qualified_name_from_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SWIFT'S TYPE-EXPRESSION PROJECTION, ONE EXACT-TEXT CLAIM PER FORM (DESIGN section 5: a typecheck
+// is not a consumer). The inputs are supplied source type nodes at the translate boundary; the
+// target is the real swift_target_model(), so each claim reads the rows the edge carries through
+// translate_type_expression_project and target_serialize_source_from_model. The Swift typecheck of
+// these spellings is a declared manual receipt (swift.dag cites the toolchain), not asserted here.
+
+fn swift_te_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn swift_te_optional(base: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: swift_te_positional_edges(items: [declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic), base]),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn swift_te_applied(connective: Connective, items: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: connective },
+    children: swift_te_positional_edges(items: items),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn swift_te_positional_edges(items: List<Node>) -> List<Edge> {
+  list_map(xs: items, f: fn(item) { Edge { label: Positional, target: item, declaration: NotADeclaration } })
+}
+
+fn swift_te_named_conj(connective: Connective, first: Symbol, second: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: connective },
+    children: [
+      Edge { label: Authored { name: first }, target: binder_node(type_node: swift_te_atom(id: first), default: Absent), declaration: NotADeclaration },
+      Edge { label: Authored { name: second }, target: binder_node(type_node: swift_te_atom(id: second), default: Absent), declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn swift_te_text(node: Node) -> Outcome<String> {
+  match translate_type_expression_project(
+    node: node,
+    target: swift_target_model(),
+    projection: swift_type_expression_projection()
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: emitted, diagnostics: _ } =>
+      match target_serialize_source_from_model(target: swift_target_model(), emitted: emitted) {
+        Accepted { value: source, diagnostics: d } => Accepted { value: source.carried, diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn swift_te_is(node: Node, expected: String) -> Bool {
+  match swift_te_text(node: node) {
+    Accepted { value: text, diagnostics: _ } => text == expected
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn swift_te_refuses(node: Node) -> Bool {
+  match swift_te_text(node: node) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// atom: `type-identifier`.
+test fn swift_atom_emits_a_type_identifier_holds() -> Bool {
+  swift_te_is(node: swift_te_atom(id: ^X), expected: "X")
+}
+
+// conj: `tuple-type` with labeled elements.
+test fn swift_conj_emits_a_labeled_tuple_type_holds() -> Bool {
+  swift_te_is(
+    node: swift_te_named_conj(connective: Conj, first: ^X, second: ^Y),
+    expected: "(X: X, Y: Y)"
+  )
+}
+
+// instantiation: `generic-argument-clause`.
+test fn swift_instantiation_emits_a_generic_argument_clause_holds() -> Bool {
+  swift_te_is(
+    node: swift_te_applied(connective: Instantiation, items: [swift_te_atom(id: ^FooBar), swift_te_atom(id: ^X), swift_te_atom(id: ^Y)]),
+    expected: "FooBar<X, Y>"
+  )
+}
+
+// optional instance: `Optional<T>`, and a second layer is a second `Optional<...>` -- depth is not collapsed.
+test fn swift_occupancy_emits_optional_with_every_layer_spelled_holds() -> Bool {
+  swift_te_is(
+    node: swift_te_optional(base: swift_te_atom(id: ^X)),
+    expected: "Optional<X>"
+  ) &&
+  swift_te_is(
+    node: swift_te_optional(base: swift_te_optional(base: swift_te_atom(id: ^X))),
+    expected: "Optional<Optional<X>>"
+  )
+}
+
+// arrow: `function-type`, positional parameters.
+test fn swift_arrow_emits_a_function_type_holds() -> Bool {
+  swift_te_is(
+    node: anonymous_signature_arrow(
+      domain_types: [swift_te_atom(id: ^X)],
+      codomain: swift_te_atom(id: ^Y),
+      source: swift_te_atom(id: ^X)
+    ),
+    expected: "(X) -> Y"
+  )
+}
+
+// disj: Swift has no anonymous sum type, so the form is declared unwired and refuses typed.
+test fn swift_disj_refuses_typed_holds() -> Bool {
+  swift_te_refuses(
+    node: swift_te_named_conj(connective: Disj, first: ^X, second: ^Y)
+  )
+}
+
+// declaration reference: the module-scoped path form spells `Gunbc.<module>.<name>`.
+test fn swift_declaration_reference_emits_the_module_scoped_spelling_holds() -> Bool {
+  swift_te_is(
+    node: declaration_reference_node(
+      qn: qualified_name_from_dotted_string(dotted: "v2.test.drf_provider.DrfDeclared"),
+      occurrence_id: OccurrenceSynthetic
+    ),
+    expected: "Gunbc.v2.test.drf_provider.DrfDeclared"
+  )
+}
+
+fn swift_te_edge_is_projection(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: n } => n == ^target_model_edge_type_expression_projection
+    _ => false
+  }
+}
+
+// THE RED: the same target with the edge removed is what Swift was before this change, and it
+// refuses typed -- no projection decodes, so no type-position emission is guessed.
+fn swift_te_target_without_edge() -> TargetModel {
+  TargetModel {
+    primitive_realizations: swift_target_model().primitive_realizations,
+    produced_decl_support: swift_target_model().produced_decl_support,
+    bundle: Node {
+      kind: swift_target_model().bundle.kind,
+      children: fold_list(
+        xs: swift_target_model().bundle.children,
+        empty: [],
+        cons: fn(acc, e) {
+          if swift_te_edge_is_projection(e: e) { acc } else { list_snoc_item(xs: acc, item: e) }
+        }
+      ),
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: swift_target_model().lex,
+    binding_spellings: swift_target_model().binding_spellings,
+    token_class_emit_transforms: swift_target_model().token_class_emit_transforms,
+    authority_source_text: swift_target_model().authority_source_text,
+    runtime_row: swift_target_model().runtime_row
+  }
+}
+
+test fn swift_without_the_projection_edge_refuses_typed_holds() -> Bool {
+  match type_expression_projection_from_target(target: swift_te_target_without_edge()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// POSITIVE CONTROL for the RED above: the real target decodes the edge to a module-scoped form.
+test fn swift_target_carries_the_projection_edge_holds() -> Bool {
+  match type_expression_projection_from_target(target: swift_target_model()) {
+    Accepted { value: decoded, diagnostics: _ } =>
+      match decoded.declaration_reference_form {
+        ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _ } => true
+        NoDeclarationReferenceForm => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// INJECTIVITY CONTROL: the pair a.b_c.N / a_b.c.N is exactly what a `_` joiner collides; each must
+// spell its own path, and the two spellings must differ.
+test fn swift_declaration_reference_spelling_is_injective_holds() -> Bool {
+  swift_te_is(node: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "a.b_c.N"), occurrence_id: OccurrenceSynthetic), expected: "Gunbc.a.b_c.N") &&
+  swift_te_is(node: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "a_b.c.N"), occurrence_id: OccurrenceSynthetic), expected: "Gunbc.a_b.c.N")
+}
+
+// DEPTH CONTROL: one layer and two layers of Optional spell differently (`T??` is not `T?`).
+test fn swift_nested_optional_keeps_its_depth_holds() -> Bool {
+  swift_te_is(
+    node: swift_te_optional(base: swift_te_atom(id: ^X)),
+    expected: "Optional<X>"
+  ) &&
+  !swift_te_is(
+    node: swift_te_optional(base: swift_te_optional(base: swift_te_atom(id: ^X))),
+    expected: "Optional<X>"
+  )
+}

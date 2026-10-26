@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.reference_reader_without_postfix_handling_dr
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data reference_reader_without_postfix_handling_drops_call_sites: RecurringFailureMode = RecurringFailureMode {
   identity: "reference_reader_without_postfix_handling_drops_call_sites" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "**a reference reader with no postfix handling silently omits the callee and argument sites of a dotted call, and Accepts** (INVALID STATE: a site enumerator that recognises a qualified name only where one grammar production survives -- here ^dag_surface_qualified_name and the import productions on the PARSE tree -- returns a site set with no member for `a.b.f(x: a.b.v)`, because a dotted call parses as a postfix chain and its argument sits inside the call suffix; nothing in the reader's answer distinguishes 'no references here' from 'references here in a shape I do not read').",
     "HARM. The reader's population was the reference half of a dependency census and a closure walk (v2.lens.reference_deps reference_file_census, reference_closure_bfs_parsed_walk). Every module reached only through a dotted call or a qualified call argument contributed no edge, so the census under-counted and the closure could omit a module that a body actually calls -- a smaller, plausible answer, never a refusal.",

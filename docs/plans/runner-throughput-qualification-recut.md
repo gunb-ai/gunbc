@@ -59,7 +59,7 @@ every identity the hold lists: host, program, revision, calibration specimen ide
 `[witness]` line, image / runtime / toolchain digests, slot unit and incarnation, effective
 `MemoryMax` / `MemoryHigh` / `TasksMax` / `CPUQuota` read back from the unit, cgroup level with
 `HostBudgetResolution`, `memory.peak`, workspace observation (`WorkspaceBytesLocus` as READ, not
-as declared), `[floor-phase]` rows, and the run coordinate (`WorkflowRunId`, attempt label,
+as declared), `[floor-phase]` rows, and the run coordinate (`GitHubWorkflowRunId`, attempt label,
 `observed_at`). Nothing in it is copied from the selection.
 
 **`RunnerThroughputAssessment<P>`** — `sole_constructor`, minted only by

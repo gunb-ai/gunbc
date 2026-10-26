@@ -1,6 +1,16 @@
 module std.languages
 
 import std.types { LanguageId }
+import std.optional { Present }
+// READ, not restated. The HTML comment spelling is governed by the WHATWG tokenizer, so its home is
+// extdeps.languages.html (§3b, External facts: a fact governed by an independently versioned upstream
+// has its home with that upstream, not in std).
+// The four block-delimiter fields below used to carry their OWN "<!-- " / " -->" literals, which made
+// std.languages a second home for characters whose authority sits elsewhere — review 82209 on #14351
+// called that "a second authority, not a read of the first" (§2: "net concepts must not grow by
+// re-invention"). It is now a read, and in the direction the layering supports: a language-target row
+// describing what to emit consults the spec-governed spelling rather than the reverse.
+import extdeps.languages.html { html_comment_open_sequence, html_comment_close_sequence }
 
 type NamingCase
   = SnakeCase
@@ -1095,14 +1105,16 @@ data python_spec: LanguageSpec = {
   service_calls: python_service_calls
 }
 
+// CommonMark defers to HTML here (0.30 §6.6 passes "<!--" through as an HTML block), so the Markdown row
+// reads the SAME characters as the HTML row rather than recording its own copy of someone else's rule.
 data markdown_format: MarkupFormat = {
   id: "markdown",
   name: "Markdown",
   extensions: [".md", ".markdown"],
   comment: {
     line_prefix: null,
-    block_start: "<!-- ",
-    block_end: " -->",
+    block_start: Present { value: html_comment_open_sequence as String },
+    block_end: Present { value: html_comment_close_sequence as String },
     doc_prefix: null
   },
   code_fence: "```"
@@ -1114,8 +1126,8 @@ data html_format: MarkupFormat = {
   extensions: [".html", ".htm"],
   comment: {
     line_prefix: null,
-    block_start: "<!-- ",
-    block_end: " -->",
+    block_start: Present { value: html_comment_open_sequence as String },
+    block_end: Present { value: html_comment_close_sequence as String },
     doc_prefix: null
   },
   code_fence: null

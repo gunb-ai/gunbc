@@ -1,0 +1,75 @@
+module gunbc.auth.gcp_iam_trust_roots
+
+import std.types { List, NonEmptyStr, String, Bool }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref }
+import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
+import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_secret_ref }
+import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution, secret_access_desired_cells, secret_accessor_grant }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant, approval_capability_mac_key_accessor_row, approval_submission_mac_key_accessor_row, approval_store_receipt_mac_key_accessor_row }
+
+// ── THE SECRETS NO APPROVAL-GATED ROUTE MAY OWN THE IAM OF ───────────────────────────────────
+// Every other declared secret's cells are the converge's and the bootstrap delta's (operator,
+// 2026-10-18, relayed by warm-crane-219: "for ALL keys"). These are the exceptions, each because
+// rebinding its readers would let someone mint or forge what gates those very routes; only the
+// first-time root ceremony binds them (rulings by warm-crane-219, 2026-10-19).
+// THE CEREMONIES THAT BIND ROOT CELLS. One secret may carry cells from several of them (the submission
+// MAC key's fleet accessor cell is ApprovalMacKeyProvision's, iam-observe's read of it is
+// IamBootstrapApply's), so ownership is a relation over (secret, cell, ceremony), never a per-secret tag.
+type TrustRootCeremony
+  = IamBootstrapApply
+  | ApprovalMacKeyProvision
+  | OrgAdminAppKeyAccessConverge
+
+// THE ENTRY THAT REPAIRS A MISSING CELL OF THE CEREMONY, named in every refusal of a root cell.
+fn trust_root_ceremony_entry(ceremony: TrustRootCeremony) -> String {
+  match ceremony {
+    IamBootstrapApply => "gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply"
+    ApprovalMacKeyProvision => "gunbc.auth.approval_mac_key_provision provision_approval_mac_keys"
+    OrgAdminAppKeyAccessConverge => "gunbc.fleet.org_actions_converge org_admin_app_key_access_converge_with_supplied_token"
+  }
+}
+
+type TrustRootCell { secret: NonEmptyStr, cell: GcpIamBindingCell, ceremony: TrustRootCeremony }
+
+type CeremonyTrustRootSecret { secret: NonEmptyStr, reason: NonEmptyStr }
+
+data approval_mac_root_reason: NonEmptyStr = "an approval-loop MAC key: whoever rebinds its readers can mint or forge the approval that gates the converge and the bootstrap delta themselves" as NonEmptyStr
+
+// FAIL CLOSED UNTIL THE GATE APP IS DECIDED: once a custom deployment protection rule gates the
+// gcp-iam-bootstrap environment (gunbc.rung_drop gcp_iam_bootstrap_approval_in_reviewed_code), the
+// App answering it is the gate, and whoever holds its private key can open the apply job without a tap.
+// gunbc#14336's GateInstallationClaim takes the App id as a parameter, so the gate App is not decided;
+// the gunbai-ci App key is a root until it is. Trigger: the gate App is named by
+// gunbc.auth.deployment_gate_authorization on main -- this row then names that App's key and no other.
+data gate_app_root_reason: NonEmptyStr = "a GitHub App private key that may answer the gcp-iam-bootstrap deployment protection rule; held as a root until the gate App is decided (gunbc.auth.deployment_gate_authorization)" as NonEmptyStr
+
+fn ceremony_trust_root_secrets() -> List<CeremonyTrustRootSecret> {
+  map([approval_mac_key_secret_ref, approval_submission_mac_key_secret_ref, approval_store_receipt_mac_key_secret_ref], r =>
+    CeremonyTrustRootSecret { secret: r.secret, reason: approval_mac_root_reason })
+    + [CeremonyTrustRootSecret { secret: gunbai_ci_app_pem_secret.secret, reason: gate_app_root_reason }]
+}
+
+fn ceremony_trust_root_secret(secret: NonEmptyStr) -> Bool {
+  any(ceremony_trust_root_secrets(), t => (t.secret as String) == (secret as String))
+}
+
+// THE ROOT CELLS THE TWO NON-BOOTSTRAP CEREMONIES OWE, at cell grain: each is the fleet principal's
+// cell its declaring grant names (gunbc.auth.gcp_secret_access secret_access_desired_cells over the
+// resolved member). iam-observe's cells on a root secret are IamBootstrapApply's and are derived with
+// the bootstrap population (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_root_cells). An
+// unresolved fleet member owes no cell here, and the binder join's count then goes red.
+fn fleet_member_root_cells(grant: SecretAccessGrant, ceremony: TrustRootCeremony) -> List<TrustRootCell> {
+  match grant_member_resolution() {
+    GrantMemberUnresolved { cause: _ } => []
+    GrantMemberResolved { member: m } => map(secret_access_desired_cells(member: m, grant: grant), c => TrustRootCell { secret: grant.target.secret, cell: c, ceremony: ceremony })
+  }
+}
+
+fn ceremony_trust_root_cells() -> List<TrustRootCell> {
+  flat_map([approval_capability_mac_key_accessor_row, approval_submission_mac_key_accessor_row, approval_store_receipt_mac_key_accessor_row], r =>
+    fleet_member_root_cells(grant: fleet_accessor_grant(row: r), ceremony: ApprovalMacKeyProvision))
+    + fleet_member_root_cells(grant: secret_accessor_grant(target: gunbai_ci_app_pem_secret), ceremony: OrgAdminAppKeyAccessConverge)
+}

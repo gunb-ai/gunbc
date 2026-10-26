@@ -1,0 +1,196 @@
+module gunbc.site.gunb_ai_content
+
+// The gunb.ai CONTENT model: what the served page says, where it links, and how the pieces are
+// ordered. Copy lives here as typed data and nowhere else — the served HTML is generated from
+// these rows, so "the site's text" has one home in this repo (DESIGN §3, one upstream per fact)
+// instead of being re-typed into a hand-maintained index.html in another repo.
+//
+// WHAT THIS MODULE DOES NOT HOLD, and why that is deliberate:
+//   - markup shape (which tag, which class): gunbc.site.gunb_ai_page. Copy and structure are
+//     separate decision points; a paragraph re-tagged is not a copy edit.
+//   - colours, sizes, breakpoints: gunbc.site.gunb_ai_tokens / gunb_ai_layout.
+//   - asset BYTES: gunbc.design.brand_mark_assets (the mark and favicon files). The <img>/<link>
+//     references below are paths to those files, not copies of their contents.
+//   - the deck's own content: see the note beside the deck rows below, and the row in
+//     gunbc.plans.gunb_ai_projection's inventory that names the deck layer as open. The deck is
+//     built client-side by assets/cards.js today and is the last un-modelled part of the page.
+//
+// The copy is the operator's, verbatim (settled pick: fixed operator text as typed data). Any
+// wording change is a data edit here, and the witness renders the page and checks the result,
+// so an edit that accidentally breaks the sentence structure goes red rather than shipping.
+
+import std.types { String, List }
+import std.algebra { string_contains }
+
+// ── Identity ────────────────────────────────────────────────────────────────────────────────
+// The word the masthead and the document title both use. ONE row: the <title> is not "gunb.ai"
+// plus a hard-coded em-dash string written at the call site, it is a composition that reads this.
+data site_wordmark: String = "gunb.ai"
+
+// The compiler's name, as the site refers to it. The masthead eyebrow and the hero's bold lead
+// both open with this word, so it is one row and both read it — a rename lands in both or
+// neither, which is the whole point.
+data compiler_name: String = "gunbc"
+
+// The masthead eyebrow: the compiler's name, separated from its role by the shared middle dot.
+// Assembled from rows, so neither "gunbc" nor "·" is written twice in this file.
+fn site_eyebrow() -> String {
+  join([compiler_name, " ", glyph_middle_dot, " structural compiler"], "")
+}
+
+// Document title, composed — the em-dash separator is punctuation from the live page, and the
+// brand and headline halves are the rows above/below, so a rename cannot land on one and miss
+// the other.
+fn document_title() -> String {
+  join([site_wordmark, " — ", headline_text], "")
+}
+
+// Meta description: ITS OWN row, but not a third hand-copied version of the hero prose. The
+// live page's description is exactly the three hero sentences with the first one shortened (the
+// colon elaboration dropped) — so it is generated from the same rows the hero renders from, and
+// editing a hero sentence edits the description with it. Any drift between the two would be a
+// page whose <meta> quietly describes something other than what it says.
+fn meta_description_text() -> String {
+  join([
+    hero_statement_sentence(),
+    join([hero_emphasis_lead(), " ", hero_paragraph_two_tail], ""),
+    hero_paragraph_three,
+  ], " ")
+}
+
+// ── Hero copy ───────────────────────────────────────────────────────────────────────────────
+// The headline WITHOUT its terminal period. The served page shows the period on the <h1> and
+// omits it from <title> — a real asymmetry on the live page, verified byte for byte. Modelling
+// the sentence with the period would force document_title() to TRUNCATE a row to reproduce the
+// title, which is the second-source pattern this module exists to prevent; modelling it without
+// the period lets the h1 ADD punctuation (presentation) and the title read the row as-is.
+data headline_text: String = "A structural compiler for composable systems"
+
+data tagline_text: String = "Describe the system once. Let the compiler derive the rest."
+
+// The first hero paragraph is a CLAIM plus a colon list of examples. Modelled as structure, not
+// as one sentence string: the examples are what the claim is about, they are the part most likely
+// to grow, and rendering is join(["statement: ", e1, ", ", …, "."]). It also gives the meta
+// description a real upstream to derive from — the short form is this statement plus a period,
+// which is why no string in this file is a truncation of another.
+data hero_statement: String = "Modern systems are full of hand-written translations"
+
+data hero_examples: List<String> = [
+  "types into clients",
+  "models into schemas",
+  "services into docs",
+  "code into tests",
+  "source into build rules",
+]
+
+// The paragraph as served: statement, colon, comma-separated examples, full stop.
+fn hero_paragraph_one() -> String {
+  join([hero_statement, ": ", join(hero_examples, ", "), "."], "")
+}
+
+// The description's version of the same claim — the statement alone, punctuated.
+fn hero_statement_sentence() -> String {
+  join([hero_statement, "."], "")
+}
+
+// The second paragraph leads with the compiler's NAME in bold, and the name is the same word the
+// masthead shows. Split into the emphasised lead and the tail so the emphasis is STRUCTURE (a
+// node) rather than an HTML string embedded in copy — which is what makes "the <strong> must
+// contain the brand word" a checkable property instead of a hope.
+// The emphasised lead IS the compiler's name row — same word, same fact, so it is not typed
+// again here; the page renders el("strong", [txt(txt(hero_emphasis_lead()))]).
+fn hero_emphasis_lead() -> String { compiler_name }
+
+data hero_paragraph_two_tail: String = "gives the system one structural description, checks it, and derives the mechanical pieces."
+
+data hero_paragraph_three: String = "When the description is incomplete, the compiler refuses to guess."
+
+// ── Install block ───────────────────────────────────────────────────────────────────────────
+// Same construction, same shared dot: "early access · build from source".
+fn install_label() -> String {
+  join(["early access ", glyph_middle_dot, " build from source"], "")
+}
+
+// The shell prompt, one row. It appears once per command line on the live page; spelling it at
+// each line would be three copies of one fact, and the space after it is part of the fact (the
+// live page renders "$ git clone", with the space inside the prompt span).
+data install_prompt: String = "$ "
+
+// The commands, in order, as DATA rather than a <pre> blob: the order and the count are
+// structure the witness can assert, and adding a step is appending a string, not editing markup.
+//
+// The FIRST command is not an independent string. "git clone <the repository>" and the masthead's
+// GitHub link are one fact stated twice on the live page; here the clone line is GENERATED from
+// link_repository.href below, so the install instructions cannot drift behind the link the site
+// actually points at — which is exactly the kind of second copy of a fact this project exists to
+// remove. That also makes the whole file's most interesting claim possible: see
+// witness_clone_command_reads_the_repository_row.
+fn install_commands() -> List<String> {
+  [
+    join(["git clone ", link_repository.href], ""),
+    install_second_command(),
+    "cargo build --release",
+  ]
+}
+
+// "cd gunbc" names the directory the clone creates — which is the repository URL's last path
+// segment, so it is DERIVED from the same row the clone line reads. Written as its own literal it
+// could name a folder the clone never creates.
+// The URL's final "/"-separated segment, taken by folding the split rather than by an index
+// (this language has no indexing). If the URL ever gains a trailing slash, the fold keeps the
+// last NON-EMPTY segment, so "cd" still names a real directory.
+fn repository_slug() -> String {
+  fold(split(s: repository_url, delimiter: "/"), init: "", f: fn(acc, seg) {
+    if seg == "" { acc } else { seg }
+  })
+}
+
+fn install_second_command() -> String {
+  join(["cd ", repository_slug()], "")
+}
+
+// ── Links ───────────────────────────────────────────────────────────────────────────────────
+// Links are data with a label and a target. Both the masthead and the footer point at the same
+// repository: one row, two consumers, so a repo move is a one-line change and the footer cannot
+// drift behind the masthead.
+type SiteLink { label: String, href: String }
+
+data link_repository: SiteLink = SiteLink {
+  label: "GitHub",
+  href: repository_url,
+}
+
+// The repository's canonical URL, written ONCE: the masthead link, the footer link and the
+// install block's clone command all read it.
+data repository_url: String = "https://github.com/gunb-ai/gunbc"
+
+data link_contact: SiteLink = SiteLink { label: "hello@gunb.ai", href: "mailto:hello@gunb.ai" }
+
+// The deck is deliberately NOT modelled in this module. Its content (the one users-system, its
+// nodes, artifacts, the O(n)/O(n²) budget claim) arrives with its own model and its own witness,
+// ordered after the static page per the parent's direction; declaring a mount row here would be a
+// declaration whose only consumer is a future module (§3c, nothing modelled "for later").
+// It stays a named gap in the parity diff until then: the live page mounts <div
+// data-deck="users.dag"></div> and assets/cards.js fills it. The measurement that established the
+// deck is live (and that a row of this repo's inventory had it wrong) is kept as a re-derivable
+// probe in gunbc.plans.gunb_ai_projection, not as figures transcribed here — a number in a comment
+// rots, a command re-runs.
+
+// ── Punctuation shared across regions ───────────────────────────────────────────────────────
+// The footer separator and the eyebrow's separator are the same character, so it is one row.
+data glyph_middle_dot: String = "·"
+
+// ── Relationship check ───────────────────────────────────────────────────────────────────────
+// CONSUMER: test.claim.site_gunb_ai_content_witness's
+// witness_description_is_generated_from_the_hero_rows, which asserts this predicate alongside its
+// own independent checks. It lives here rather than only in the witness because it is a property
+// of the CONTENT — a colon list leaking into a <meta description> is the classic "search snippet
+// shows the internals" defect — and any second renderer of this content should be able to ask the
+// same question of the same rows. (It used to claim "the page writer consumes" it, which was not
+// true until the writer existed; §3c does not accept a hoped-for consumer.)
+fn meta_description_coherent() -> Bool {
+  string_contains(s: meta_description_text(), pattern: hero_statement)
+    && string_contains(s: meta_description_text(), pattern: hero_paragraph_three)
+    && !string_contains(s: meta_description_text(), pattern: ": ")
+    && !string_contains(s: meta_description_text(), pattern: "build rules")
+}

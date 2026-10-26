@@ -669,7 +669,7 @@ pub fn declaration_lexically_exposed(
     reference: Rc<ReferenceOccurrence>,
 ) -> bool {
     crate::std_occurrence_identity::occurrence_containment_path_is_prefix_of(
-        exposing_scope.clone(),
+        exposing_scope,
         reference.containment.clone(),
     )
 }
@@ -691,7 +691,7 @@ pub fn declaration_module_sibling_exposed(
                         declaration_ordinal.clone(),
                         reference_ordinal.clone(),
                     ) && match module_of_occurrence(
-                        module_by_occurrence.clone(),
+                        module_by_occurrence,
                         reference.occurrence.clone(),
                     ) {
                         std::option::Option::None => false,
@@ -712,10 +712,7 @@ pub fn declaration_exposed_on_reference_chain(
     exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
     order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
 ) -> bool {
-    match exposure_of_occurrence(
-        exposure_by_occurrence.clone(),
-        declaration.occurrence.clone(),
-    ) {
+    match exposure_of_occurrence(exposure_by_occurrence, declaration.occurrence.clone()) {
         std::option::Option::None => false,
         Some(exposure) => match (*exposure.clone()).clone() {
             DeclarationExposure::LexicalExposure {
@@ -729,8 +726,8 @@ pub fn declaration_exposed_on_reference_chain(
                 declaration.clone(),
                 reference.clone(),
                 exposure_module.clone(),
-                module_by_occurrence.clone(),
-                order_by_occurrence.clone(),
+                module_by_occurrence,
+                order_by_occurrence,
             ),
             DeclarationExposure::RootExposure => true,
         },
@@ -866,9 +863,7 @@ pub fn occurrence_candidate_index_build(
     transport: Rc<OccurrenceTransport>,
     inputs: Rc<OccurrenceBindingCandidateInputs>,
 ) -> Rc<OccurrenceCandidateIndexBuild> {
-    match (*crate::std_occurrence_identity::occurrence_transport_validate(transport.clone()))
-        .clone()
-    {
+    match (*crate::std_occurrence_identity::occurrence_transport_validate(transport)).clone() {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Rc::new(
@@ -1008,7 +1003,7 @@ pub fn direct_module_dependency_dedup_step(
     provider: Rc<BoundReferenceProvider>,
 ) -> Rc<DirectModuleDependencyDedupBuild> {
     {
-        let edge = direct_module_dependency_from_provider(provider.clone());
+        let edge = direct_module_dependency_from_provider(provider);
         if (edge.consumer_module.clone() == edge.provider_module.clone()) {
             acc.clone()
         } else {
@@ -1586,27 +1581,12 @@ pub fn cross_file_binding_provenance_fold_step(
 ) -> Rc<CrossFileBindingProvenanceBuild> {
     {
         let projection =
-            cross_file_binding_provenance_from_provider(provider.clone(), acc.module_files.clone());
+            cross_file_binding_provenance_from_provider(provider, acc.module_files.clone());
         match (*projection.clone()).clone() {
-    CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionBound { provenance: provenance, .. } => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: v1_rt::concat(Rc::new(vec![provenance.clone()]), acc.provenances_reversed.clone()),
-    first_failure: acc.first_failure.clone(),
-    more_failures_reversed: acc.more_failures_reversed.clone(),
-}),
+    CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionBound { provenance: provenance, .. } => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = v1_rt::concat(Rc::new(vec![provenance.clone()]), acc.provenances_reversed.clone()); let __rb_2_0 = acc.first_failure.clone(); let __rb_3_0 = acc.more_failures_reversed.clone(); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
     CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionFilePathMissing { module_path: _, .. } => match acc.first_failure.clone() {
-    std::option::Option::None => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: acc.provenances_reversed.clone(),
-    first_failure: Some(projection.clone()),
-    more_failures_reversed: acc.more_failures_reversed.clone(),
-}),
-    Some(_) => Rc::new(CrossFileBindingProvenanceBuild {
-    module_files: acc.module_files.clone(),
-    provenances_reversed: acc.provenances_reversed.clone(),
-    first_failure: acc.first_failure.clone(),
-    more_failures_reversed: v1_rt::concat(Rc::new(vec![projection.clone()]), acc.more_failures_reversed.clone()),
-}),
+    std::option::Option::None => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = acc.provenances_reversed.clone(); let __rb_2_0 = Some(projection.clone()); let __rb_3_0 = acc.more_failures_reversed.clone(); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
+    Some(_) => { let __rb_0_0 = acc.module_files.clone(); let __rb_1_0 = acc.provenances_reversed.clone(); let __rb_2_0 = acc.first_failure.clone(); let __rb_3_0 = v1_rt::concat(Rc::new(vec![projection.clone()]), acc.more_failures_reversed.clone()); let mut __rb_h = acc; match Rc::get_mut(&mut __rb_h) { Some(__rb_r) => { __rb_r.module_files = __rb_0_0; __rb_r.provenances_reversed = __rb_1_0; __rb_r.first_failure = __rb_2_0; __rb_r.more_failures_reversed = __rb_3_0; } None => { __rb_h = Rc::new(CrossFileBindingProvenanceBuild { module_files: __rb_0_0, provenances_reversed: __rb_1_0, first_failure: __rb_2_0, more_failures_reversed: __rb_3_0 }); } } __rb_h },
 },
 }
     }
@@ -1680,7 +1660,7 @@ pub fn direct_file_dependency_dedup_step(
     provenance: Rc<CrossFileBindingProvenance>,
 ) -> Rc<DirectFileDependencyDedupBuild> {
     {
-        let edge = direct_file_dependency_from_provenance(provenance.clone());
+        let edge = direct_file_dependency_from_provenance(provenance);
         if (edge.consumer_file.clone() == edge.provider_file.clone()) {
             acc.clone()
         } else {
@@ -1829,9 +1809,9 @@ pub fn reference_derived_provider_files_for_consumer(
     module_files: Rc<HashMap<String, String>>,
     consumer_file: String,
 ) -> Rc<ReferenceDerivedProviderFileProjection> {
-    match (*cross_file_binding_provenance_from_bound_population(population.clone(), module_files.clone())).clone() {
+    match (*cross_file_binding_provenance_from_bound_population(population.clone(), module_files)).clone() {
     CrossFileBindingProvenancePopulation::AllCrossFileBindingsBound { provenances: provenances, .. } => Rc::new(ReferenceDerivedProviderFileProjection::ReferenceDerivedProviderFileProjectionReady {
-    provider_files: provider_files_for_consumer_file(provenances.clone(), consumer_file.clone()),
+    provider_files: provider_files_for_consumer_file(provenances.clone(), consumer_file),
 }),
     CrossFileBindingProvenancePopulation::CrossFileBindingPopulationBindingRefused { population: _, .. } => Rc::new(ReferenceDerivedProviderFileProjection::ReferenceDerivedProviderFileProjectionBindingRefused {
     population: population.clone(),
@@ -1879,7 +1859,7 @@ pub fn reference_derived_dependency_projection(
     population: Rc<BoundReferencePopulation>,
     module_files: Rc<HashMap<String, String>>,
 ) -> Rc<ReferenceDerivedDependencyProjection> {
-    match (*cross_file_binding_provenance_from_bound_population(population.clone(), module_files.clone())).clone() {
+    match (*cross_file_binding_provenance_from_bound_population(population.clone(), module_files)).clone() {
     CrossFileBindingProvenancePopulation::AllCrossFileBindingsBound { provenances: provenances, .. } => Rc::new(ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady {
     binding_provenance: provenances.clone(),
     file_dependencies: direct_file_dependencies_from_provenances(provenances.clone()),
@@ -1921,7 +1901,7 @@ pub fn structural_binding_walk_selected_references(
     inputs: Rc<OccurrenceBindingCandidateInputs>,
     references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 ) -> Rc<StructuralBindingWalk> {
-    match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
+    match (*occurrence_candidate_index_build(transport, inputs)).clone() {
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
             refusal: refusal,
             ..
@@ -1975,10 +1955,7 @@ pub fn structural_binding_walk_selected_references(
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => {
             Rc::new(StructuralBindingWalk::StructuralBindingWalkReady {
                 population: bound_reference_population_from_projections(
-                    resolve_all_references_via_structural_candidates(
-                        index.clone(),
-                        references.clone(),
-                    ),
+                    resolve_all_references_via_structural_candidates(index.clone(), references),
                 ),
             })
         }
@@ -1991,7 +1968,7 @@ pub fn structural_binding_walk(
 ) -> Rc<StructuralBindingWalk> {
     structural_binding_walk_selected_references(
         transport.clone(),
-        inputs.clone(),
+        inputs,
         transport.references.clone(),
     )
 }
@@ -2448,7 +2425,7 @@ pub fn assemble_cross_file_binding_closure(
             crate::std_occurrence_identity::occurrence_id_allocator_initial(),
         );
         let consumer_transport_rekey =
-            rekey_occurrence_transport(consumer.transport.clone(), consumer_state.clone());
+            rekey_occurrence_transport(consumer.transport.clone(), consumer_state);
         let consumer_inputs_rekey = rekey_occurrence_binding_inputs(
             consumer.inputs.clone(),
             consumer_transport_rekey.state.clone(),
@@ -2652,7 +2629,7 @@ pub enum ReferenceDerivedProviderFilesForAssembledClosure {
 pub fn reference_derived_provider_files_for_assembled_closure(
     closure: Rc<AssembledCrossFileBindingClosure>,
 ) -> Rc<ReferenceDerivedProviderFilesForAssembledClosure> {
-    match (*reference_derived_dependency_projection_for_assembled_closure(closure.clone())).clone() {
+    match (*reference_derived_dependency_projection_for_assembled_closure(closure)).clone() {
     AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { projection: projection, .. } => match (*projection.clone()).clone() {
     ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { file_dependencies: dependencies, .. } => Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureReady {
     provider_files: Rc::new({ let mut __result = Vec::new(); for edge in dependencies.iter().cloned() { __result.push(edge.provider_file.clone()); } __result }),
@@ -2791,8 +2768,8 @@ pub fn resolve_type_reference_containment_binding(
 ) -> Rc<ReferenceBindingProjection> {
     match reference.category.clone() {
         OccurrenceCategory::TypeOccurrence => resolve_reference_binding_via_structural_candidates(
-            transport.clone(),
-            inputs.clone(),
+            transport,
+            inputs,
             reference.clone(),
         ),
         OccurrenceCategory::LexicalValueOccurrence => Rc::new(
@@ -2840,7 +2817,7 @@ pub fn resolve_reference_via_structural_candidates(
 ) -> Rc<ReferenceBindingProjection> {
     {
         let candidates = candidate_occurrence_ids_for_reference(index.clone(), reference.clone());
-        match (*crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated(index.validated.clone(), reference.occurrence.clone(), candidates.clone())).clone() {
+        match (*crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated(index.validated.clone(), reference.occurrence.clone(), candidates)).clone() {
     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused { refusal: refusal, .. } => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
     refusal: refusal.clone(),
 }),
@@ -2882,7 +2859,7 @@ pub fn resolve_reference_binding_via_structural_candidates(
     inputs: Rc<OccurrenceBindingCandidateInputs>,
     reference: Rc<ReferenceOccurrence>,
 ) -> Rc<ReferenceBindingProjection> {
-    match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
+    match (*occurrence_candidate_index_build(transport, inputs)).clone() {
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
             refusal: refusal,
             ..
@@ -2924,7 +2901,7 @@ pub fn resolve_reference_binding_via_structural_candidates(
             },
         ),
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => {
-            resolve_reference_via_structural_candidates(index.clone(), reference.clone())
+            resolve_reference_via_structural_candidates(index.clone(), reference)
         }
     }
 }
@@ -3062,40 +3039,6 @@ pub fn section13_population_law_roster() -> Rc<Vec<Rc<Section13PopulationLawRost
     CACHED.with(|c: &Rc<Vec<Rc<Section13PopulationLawRosterRow>>>| c.clone())
 }
 
-pub fn section13_population_law_id_eq(
-    left: Section13PopulationLawId,
-    right: Section13PopulationLawId,
-) -> bool {
-    match left.clone() {
-        Section13PopulationLawId::Section13StructuralVisibility => match right.clone() {
-            Section13PopulationLawId::Section13StructuralVisibility => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13SiblingArmExclusion => match right.clone() {
-            Section13PopulationLawId::Section13SiblingArmExclusion => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13LexicalEnclosure => match right.clone() {
-            Section13PopulationLawId::Section13LexicalEnclosure => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13SourceOrderGate => match right.clone() {
-            Section13PopulationLawId::Section13SourceOrderGate => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13DistinctIdentityAmbiguity => match right.clone() {
-            Section13PopulationLawId::Section13DistinctIdentityAmbiguity => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse => {
-            match right.clone() {
-                Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse => true,
-                _ => false,
-            }
-        }
-    }
-}
-
 pub fn section13_module_path_is_symbolic(module_path: String) -> bool {
     {
         let path = module_path.clone();
@@ -3111,7 +3054,7 @@ pub fn section13_roster_has_law(
     {
         let mut __found = false;
         for row in rows.iter().cloned() {
-            if section13_population_law_id_eq(row.law.clone(), law.clone()) {
+            if (row.law.clone() == law.clone()) {
                 __found = true;
                 break;
             }
@@ -3154,11 +3097,11 @@ pub fn section13_roster_has_duplicate_law(
             false => {
                 (rows.iter().cloned().fold(
                     0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
-                        match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
-                            true => v1_rt::int_add(count.clone(), 1),
-                            false => count.clone(),
-                        }
+                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| match (row.law.clone()
+                        == other.law.clone())
+                    {
+                        true => v1_rt::int_add(count.clone(), 1),
+                        false => count.clone(),
                     },
                 ) > 1)
             }
@@ -3176,11 +3119,11 @@ pub fn section13_first_duplicate_law(
             std::option::Option::None => {
                 if (rows.iter().cloned().fold(
                     0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
-                        match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
-                            true => v1_rt::int_add(count.clone(), 1),
-                            false => count.clone(),
-                        }
+                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| match (row.law.clone()
+                        == other.law.clone())
+                    {
+                        true => v1_rt::int_add(count.clone(), 1),
+                        false => count.clone(),
                     },
                 ) > 1)
                 {
@@ -3273,7 +3216,7 @@ pub fn section13_adjudicate_row(
     receipt: receipt.clone(),
 })
     } else {
-        match section13_observation_joins_receipt(receipt.clone(), observations.clone(), required_head.clone()) {
+        match section13_observation_joins_receipt(receipt.clone(), observations, required_head) {
     std::option::Option::None => Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedMissingObservation {
     receipt: receipt.clone(),
 }),
@@ -3328,7 +3271,7 @@ pub fn section13_population_law_roster_denominator_holds(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
 ) -> bool {
-    match (*section13_population_law_roster_adjudicate(observations.clone(), required_head.clone())).clone() {
+    match (*section13_population_law_roster_adjudicate(observations, required_head)).clone() {
     Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => true,
     Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDuplicateLaw { law: _, .. } => false,
     Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedUncoveredLaw { law: _, .. } => false,

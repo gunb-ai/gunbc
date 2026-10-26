@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.refusal_located_at_the_symptom_item
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data refusal_located_at_the_symptom_item: RecurringFailureMode = RecurringFailureMode {
   identity: "refusal_located_at_the_symptom_item" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**a refusal located where the enclosing construct BEGAN rather than where the input stopped being admissible** (a backtracking parser whose outer `repeat` ends at a failed item reports the first LEFTOVER token. That token is real and the refusal is real, but the locus names the item that contained the failure, not the construct no production could consume.",

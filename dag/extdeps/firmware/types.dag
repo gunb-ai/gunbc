@@ -3,7 +3,7 @@ module extdeps.firmware.types
 import extdeps.board_authority { BoardAuthorityRef }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
-import std.types { Bool, EpochMs, NonEmptyStr, List, list_length }
+import std.types { Bool, Int, EpochMs, NonEmptyStr, String, List, list_length }
 import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -59,6 +59,17 @@ fn firmware_semantic_version(
     minor: minor,
     patch: patch,
   }
+}
+
+// The dotted major.minor.patch text of a semantic version: the one declared conversion from the
+// product carrier to text (DESIGN section 4), so a diagnostic or wire consumer never reaches the
+// host's debug rendering of the record.
+fn firmware_semantic_version_text(version: FirmwareSemanticVersion) -> String {
+  join([
+    to_string(version.major as Int),
+    to_string(version.minor as Int),
+    to_string(version.patch as Int),
+  ], ".")
 }
 
 // The two independently versioned, independently flashed firmware subjects

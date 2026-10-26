@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.state_changing_http_without_the_request_security_conjunction
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data state_changing_http_without_the_request_security_conjunction: RecurringFailureMode = RecurringFailureMode {
+  identity: "state_changing_http_without_the_request_security_conjunction" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a serve-table obligation that every POST handler in roadmap_serve_own_route_specs is admitted by human_write_admission or a named service-write law before any effect, sufficient for a new POST row without that gate to refuse table construction" } },
+
+  receipts: [
+    "state-changing HTTP without the request-security conjunction (a POST that mutates process or ledger state answers from the route handler without reading request.security, so tailnet reachability is treated as a principal and a cross-site browser POST from a tailnet user launches work.",
+
+    "INVALID STATE: an unauthenticated or cross-site POST to /dispatch, /cleanup, /stop or /publish reaches belt actuation.",
+
+    "HARM: anyone on the tailnet, or a page they visit, can spawn or stop sessions; the existing write law (gunbc.auth.request_authentication human_write_admission) already forbids this for assign/comment/allocate and was not applied here.",
+
+    "DISTINGUISHING FACTS: the handler has a ServeHttpRequest carrying RequestSecurityContext and never consults it; Tailscale-User-Login is transport, not authentication (human_authentication_decision names that refusal); CSRF is csrf_write_decision over the session token, not a second Origin table.",
+
+    "SPECIMEN: gunbc.roadmap.roadmap_serve BeltDispatchHandler / BeltStopHandler / BeltPublishHandler before the 2026-10-14 cut (smart-gull-336 review). Production tracker-web OIDC is unbound (tracker_web_oidc_serve_placement ServeReady only for the lab TEST instance); lab sees GoogleOidcSession when the operator is signed in, else AuthAbsent. Tailnet headers never mint a principal.",
+
+    "RUNG FOUND AT 2, mechanically preventable: the discriminating REDs are unauthenticated POST /dispatch -> 403 naming google-oidc-session, and a session without csrf -> 403 naming csrf-token, both before belt_dispatch_node. The invalid request is still writable on the wire.",
+
+    "CEILING 3, structurally guaranteed, not 4: HTTP clients can still send the bytes; the accepted serve program must refuse them. Making the unauthenticated POST unconstructible would require a listener that cannot accept an unauthenticated connection, which is a different deployment, not this handler.",
+
+    "NEXT-RUNG TRIGGER: a serve-table obligation that every POST handler in roadmap_serve_own_route_specs is admitted by human_write_admission or a named service-write law before any effect, sufficient for a new POST row without that gate to refuse table construction.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. RED: test.claim.roadmap.roadmap_serve_witness unauthenticated_dispatch_refuses_before_actuation and dispatch_without_csrf_refuses_as_cross_site. Positive: authenticated_dispatch_with_csrf_passes_the_write_law and dispatch_client_posts_the_session_csrf_token.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.roadmap.roadmap_serve", decl_name: "serve_after_human_write"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_serve_witness", decl_name: "unauthenticated_dispatch_refuses_before_actuation"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_serve_witness", decl_name: "dispatch_without_csrf_refuses_as_cross_site"),
+    decl_ref(module_path: "test.claim.roadmap.roadmap_serve_witness", decl_name: "authenticated_dispatch_with_csrf_passes_the_write_law"),
+  ],
+}

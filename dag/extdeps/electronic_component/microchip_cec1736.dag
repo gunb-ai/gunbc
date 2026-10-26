@@ -1,0 +1,51 @@
+module extdeps.electronic_component.microchip_cec1736
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.microchip_technology { microchip_technology }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, RootOfTrustSpec, RootOfTrustSpecification,
+  SpiFlashRuntimeProtection, I2cSmbusFiltering, SecureBoot, ComponentAttestation, LifecycleManagement,
+}
+
+// Microchip's CEC1736 Trust Shield, read 2026-10-21 from Microchip's product news page for the family
+// (the datasheet's pin-level behaviour, document number and orderable suffixes are owed to a direct
+// read): "a fully configurable real-time platform root of trust" around a 32-bit 96 MHz Arm Cortex-M4,
+// "runtime firmware protection in the SPI Flash and I2C/SMBus filtering", secure boot, component
+// attestation and lifecycle management, in an 84-pin WFBGA. A platform root of trust of this kind sits
+// between a processor and its boot flash and authenticates the flash's content before that processor
+// runs; which signal releases the processor, and over how many flash ports, is not carried here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.microchip.com/en-us/about/news-releases/products/new-real-time-platform-root-of-trust-provides-an-entire-chain-of"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.microchip_cec1736",
+      decl_name: "cec1736",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data cec1736: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: microchip_technology,
+  ordering_code: "CEC1736 (orderable suffix unread)",
+  package: "WFBGA-84",
+  top_marking: "Microchip logo / CEC1736 / <trace line> / <date and lot line>",
+  specification: RootOfTrustSpec { root_of_trust: RootOfTrustSpecification {
+    core: "Arm Cortex-M4, 96 MHz",
+    protections: [SpiFlashRuntimeProtection, I2cSmbusFiltering, SecureBoot, ComponentAttestation, LifecycleManagement],
+  } },
+  vendor_application_statements: [
+    "CEC1736 Trust Shield: a fully configurable real-time platform root of trust",
+    "runtime firmware protection in the SPI Flash and I2C/SMBus filtering; secure boot, component attestation and lifecycle management",
+  ],
+}

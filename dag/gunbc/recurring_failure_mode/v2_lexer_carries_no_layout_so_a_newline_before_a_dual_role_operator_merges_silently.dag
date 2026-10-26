@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.v2_lexer_carries_no_layout_so_a_newline_befo
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data v2_lexer_carries_no_layout_so_a_newline_before_a_dual_role_operator_merges_silently: RecurringFailureMode = RecurringFailureMode {
   identity: "v2_lexer_carries_no_layout_so_a_newline_before_a_dual_role_operator_merges_silently" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed." as NonEmptyStr } },
 
   receipts: [
     "**a statement followed by a line that begins with an operator that is both prefix and infix (`-`) is read by v2 as ONE binary expression, where the seed refuses it as ambiguous** (INVALID STATE: `x` on one line and `-1` on the next, or `f(a)` then `-b`, parse in v2 as `x - 1` / `f(a) - b`. The second statement is gone, absorbed as a right operand, and nothing is reported.) The seed refuses the same source with 'ambiguous newline before prefix/infix operator '-': move the infix operator before the newline or parenthesize the unary expression', so the two parsers disagree on the same text, and the v2 reading is silently different code.",

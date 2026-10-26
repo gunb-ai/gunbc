@@ -13,7 +13,8 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleased, FileHoldReleaseLost,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
-import gunbc.host.managed_host { ResetNoUnitHold, ResetUnitHoldRequired, managed_host_fixture, managed_hosts }
+import gunbc.host.managed_host { ManagedHost, managed_host_fixture, managed_hosts }
+import gunbc.host.host_maintenance_hold_reason { ResetNoUnitHold, ResetUnitHoldRequired, unit_hold_decision }
 import gunbc.host.managed_host_unit_hold {
   UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, KvmObserverProbe, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
   unit_hold_owner_ref, decode_unit_hold_owner, unit_hold_owner_label,
@@ -22,8 +23,8 @@ import gunbc.host.managed_host_unit_hold {
   ProbeHoldReleaseOutcome, ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
   probe_hold_release_decision, probe_hold_release_refused, probe_hold_release_committed, probe_hold_release_step_exit,
   HolderLivenessRoute, HolderObserveProcess, HolderNotObservable, holder_liveness_route,
-  UnitHoldSubjectAdmitted, UnitHoldNotRequired, admit_unit_hold_subject,
-  UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired,
+  UnitHoldAdmission, UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided, admit_unit_hold_subject, unit_hold_subject_under,
+  UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired, UnitHoldHostUndecided,
   unit_hold_admission_in, unit_hold_admission_for, unit_hold_host_admission_refusal,
   unit_hold_store_hosts, unit_hold_store_hosts_of,
   MaintenanceHoldAdmitted, MaintenanceHoldHostRefused, MaintenanceHoldNoReasonVariable, admit_maintenance_hold_in,
@@ -39,7 +40,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ── The admission: which hosts have a hold, read off the managed rows ──────────────────────────
 // THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE. The real roster admits mtcollins1 to the hold
-// procedure with the key and store host its row declares, the store-host set the runner grants
+// procedure with the key and store host its hold decision declares, the store-host set the runner grants
 // provision from is exactly that store host, and the operator's maintenance admission carries the
 // variable its policy declares. Removing the row, or its hold decision, turns this red.
 test fn w_the_managed_row_is_admitted_to_its_hold_with_its_own_key_and_store() -> Bool {
@@ -51,14 +52,20 @@ test fn w_the_managed_row_is_admitted_to_its_hold_with_its_own_key_and_store() -
         && (s.host.host as String) == (operator_host_mtcollins1 as String)
     UnitHoldHostNotManaged { host: _ } => false
     UnitHoldHostNotRequired { host: _ } => false
+    UnitHoldHostUndecided { host: _ } => false
   })
     && count(stores) == 1
     && stores |> all(h => (h as String) == (operator_host_srv1 as String))
-    && (match admit_maintenance_hold_in(hosts: managed_hosts(), host: operator_host_mtcollins1 as NonEmptyStr) {
+    && (match admit_maintenance_hold_in(admissions: admissions_of(hosts: managed_hosts()), host: operator_host_mtcollins1 as NonEmptyStr) {
       MaintenanceHoldAdmitted { hold: m } => (m.reason_env as String) == "GUNBC_MTCOLLINS1_MAINTENANCE_REASON" && (m.subject.key as String) == (operator_host_mtcollins1 as String)
       MaintenanceHoldHostRefused { admission: _ } => false
       MaintenanceHoldNoReasonVariable { host: _ } => false
     })
+}
+
+// The production hold admission of each row, the way the label-level entries reach it.
+fn admissions_of(hosts: List<ManagedHost>) -> List<UnitHoldAdmission> {
+  map(hosts, h => admit_unit_hold_subject(host: h))
 }
 
 fn refusal_names(admission_text: NonEmptyStr?, pattern: String) -> Bool {
@@ -77,74 +84,122 @@ test fn w_a_host_that_is_not_a_managed_host_is_refused_by_name() -> Bool {
     UnitHoldHostNotManaged { host: h } => (h as String) == "mtjade1"
     UnitHoldHostAdmitted { subject: _ } => false
     UnitHoldHostNotRequired { host: _ } => false
+    UnitHoldHostUndecided { host: _ } => false
   })
     && refusal_names(admission_text: unit_hold_host_admission_refusal(admission: unmanaged), pattern: "'mtjade1' is not a managed host")
-    && (match unit_hold_admission_in(hosts: [], host: operator_host_mtcollins1 as NonEmptyStr) {
+    && (match unit_hold_admission_in(admissions: [], host: operator_host_mtcollins1 as NonEmptyStr) {
       UnitHoldHostNotManaged { host: h } => (h as String) == (operator_host_mtcollins1 as String)
       UnitHoldHostAdmitted { subject: _ } => false
       UnitHoldHostNotRequired { host: _ } => false
+      UnitHoldHostUndecided { host: _ } => false
     })
-    && (match admit_maintenance_hold_in(hosts: managed_hosts(), host: "mtjade1" as NonEmptyStr) {
+    && (match admit_maintenance_hold_in(admissions: admissions_of(hosts: managed_hosts()), host: "mtjade1" as NonEmptyStr) {
       MaintenanceHoldHostRefused { admission: a } => refusal_names(admission_text: unit_hold_host_admission_refusal(admission: a), pattern: "'mtjade1' is not a managed host")
       MaintenanceHoldAdmitted { hold: _ } => false
       MaintenanceHoldNoReasonVariable { host: _ } => false
     })
 }
 
-// RED: A MANAGED HOST WHOSE ROW DECLARES NO HOLD. The real row's standings are kept and its hold
-// decision replaced by ResetNoUnitHold, under its own name and under another: both are refused as
-// hold-less, neither contributes a store host, and the operator's maintenance admission refuses it.
+// RED: A MANAGED HOST DECIDED ResetNoUnitHold. The real row with that decision supplied at the door,
+// under its own name and under another: both are refused as hold-less, neither contributes a store host,
+// and the operator's maintenance admission refuses it.
 test fn w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store() -> Bool {
   managed_hosts() |> all(h => {
-    let unheld = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold, smpro: h.smpro)
-    let other = managed_host_fixture(host: "fixture-unheld-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold, smpro: h.smpro)
-    let direct = match admit_unit_hold_subject(host: unheld) {
+    let other = managed_host_fixture(host: "fixture-unheld-host", access: h.access, secure: h.secure, smpro: h.smpro)
+    let unheld = unit_hold_subject_under(host: h, decision: Present { value: ResetNoUnitHold })
+    let other_unheld = unit_hold_subject_under(host: other, decision: Present { value: ResetNoUnitHold })
+    let direct = match unheld {
       UnitHoldNotRequired { host: x } => (x as String) == (h.host as String)
       UnitHoldSubjectAdmitted { subject: _ } => false
+      UnitHoldUndecided { host: _ } => false
     }
-    let by_label = unit_hold_admission_in(hosts: [unheld], host: h.host as NonEmptyStr)
+    let by_label = unit_hold_admission_in(admissions: [unheld], host: h.host as NonEmptyStr)
     let refused = match by_label {
       UnitHoldHostNotRequired { host: x } => (x as String) == (h.host as String)
       UnitHoldHostAdmitted { subject: _ } => false
       UnitHoldHostNotManaged { host: _ } => false
+      UnitHoldHostUndecided { host: _ } => false
     }
-    let beside_a_held_row = match unit_hold_admission_in(hosts: [other, h], host: "fixture-unheld-host" as NonEmptyStr) {
+    let beside_a_held_row = match unit_hold_admission_in(admissions: [other_unheld, admit_unit_hold_subject(host: h)], host: "fixture-unheld-host" as NonEmptyStr) {
       UnitHoldHostNotRequired { host: x } => (x as String) == "fixture-unheld-host"
       UnitHoldHostAdmitted { subject: _ } => false
       UnitHoldHostNotManaged { host: _ } => false
+      UnitHoldHostUndecided { host: _ } => false
     }
-    let maintenance = match admit_maintenance_hold_in(hosts: [unheld], host: h.host as NonEmptyStr) {
+    let maintenance = match admit_maintenance_hold_in(admissions: [unheld], host: h.host as NonEmptyStr) {
       MaintenanceHoldHostRefused { admission: a } => refusal_names(admission_text: unit_hold_host_admission_refusal(admission: a), pattern: "declares no unit hold")
       MaintenanceHoldAdmitted { hold: _ } => false
       MaintenanceHoldNoReasonVariable { host: _ } => false
     }
-    let stores = unit_hold_store_hosts_of(hosts: [other, h])
+    let stores = unit_hold_store_hosts_of(admissions: [other_unheld, admit_unit_hold_subject(host: h)])
     direct && refused && beside_a_held_row && maintenance
       && refusal_names(admission_text: unit_hold_host_admission_refusal(admission: by_label), pattern: "declares no unit hold")
-      && count(unit_hold_store_hosts_of(hosts: [unheld, other])) == 0
+      && count(unit_hold_store_hosts_of(admissions: [unheld, other_unheld])) == 0
       && count(stores) == 1
       && stores |> all(s => (s as String) == (operator_host_srv1 as String))
   }) && count(managed_hosts()) == 1
 }
 
-// RED: A HELD HOST WITH NO DECLARED REASON VARIABLE. The real row under a name
-// gunbc.host.host_maintenance_hold_reason has no variable for is admitted to the hold and refused for
-// maintenance, naming the host; no variable name is derived from the label.
-// Three rows naming one store host yield that host once (unit_hold_store_hosts_of).
+// RED: A MANAGED HOST WITH NO HOLD DECISION AT ALL. The real row's standings under a name
+// gunbc.host.host_maintenance_hold_reason unit_hold_decision has no row for, through the PRODUCTION
+// admission (admit_unit_hold_subject reads the policy itself): it is UnitHoldUndecided, never
+// UnitHoldNotRequired, by label too; it contributes no store host; and the operator's maintenance
+// admission refuses it naming the missing decision. The same refusal at the door with the decision
+// withheld from the real row shows the arm is the missing decision's and not the name's.
+test fn w_a_managed_host_with_no_hold_decision_is_undecided_and_refused() -> Bool {
+  managed_hosts() |> all(h => {
+    let renamed = managed_host_fixture(host: "fixture-undecided-host", access: h.access, secure: h.secure, smpro: h.smpro)
+    let undecided = admit_unit_hold_subject(host: renamed)
+    let direct = match undecided {
+      UnitHoldUndecided { host: x } => (x as String) == "fixture-undecided-host"
+      UnitHoldNotRequired { host: _ } => false
+      UnitHoldSubjectAdmitted { subject: _ } => false
+    }
+    let withheld = match unit_hold_subject_under(host: h, decision: none) {
+      UnitHoldUndecided { host: x } => (x as String) == (h.host as String)
+      UnitHoldNotRequired { host: _ } => false
+      UnitHoldSubjectAdmitted { subject: _ } => false
+    }
+    let by_label = unit_hold_admission_in(admissions: [undecided, admit_unit_hold_subject(host: h)], host: "fixture-undecided-host" as NonEmptyStr)
+    let refused = match by_label {
+      UnitHoldHostUndecided { host: x } => (x as String) == "fixture-undecided-host"
+      UnitHoldHostNotRequired { host: _ } => false
+      UnitHoldHostAdmitted { subject: _ } => false
+      UnitHoldHostNotManaged { host: _ } => false
+    }
+    let maintenance = match admit_maintenance_hold_in(admissions: [undecided], host: "fixture-undecided-host" as NonEmptyStr) {
+      MaintenanceHoldHostRefused { admission: a } => refusal_names(admission_text: unit_hold_host_admission_refusal(admission: a), pattern: "has no unit hold decision")
+      MaintenanceHoldAdmitted { hold: _ } => false
+      MaintenanceHoldNoReasonVariable { host: _ } => false
+    }
+    direct && withheld && refused && maintenance
+      && refusal_names(admission_text: unit_hold_host_admission_refusal(admission: by_label), pattern: "has no unit hold decision")
+      && count(unit_hold_store_hosts_of(admissions: [undecided])) == 0
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A HELD HOST WITH NO DECLARED REASON VARIABLE. The real row's own hold decision, supplied at the
+// door under a name gunbc.host.host_maintenance_hold_reason has no variable for, is admitted to the hold
+// and refused for maintenance, naming the host; no variable name is derived from the label.
+// Three admissions naming one store host yield that host once (unit_hold_store_hosts_of).
 test fn w_a_held_host_with_no_reason_variable_is_refused_for_maintenance() -> Bool {
   managed_hosts() |> all(h => {
-    let unnamed = managed_host_fixture(host: "fixture-no-reason-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-    let held = match unit_hold_admission_in(hosts: [unnamed], host: "fixture-no-reason-host" as NonEmptyStr) {
+    let unnamed = unit_hold_subject_under(
+      host: managed_host_fixture(host: "fixture-no-reason-host", access: h.access, secure: h.secure, smpro: h.smpro),
+      decision: unit_hold_decision(host: h.host),
+    )
+    let held = match unit_hold_admission_in(admissions: [unnamed], host: "fixture-no-reason-host" as NonEmptyStr) {
       UnitHoldHostAdmitted { subject: _ } => true
       UnitHoldHostNotManaged { host: _ } => false
       UnitHoldHostNotRequired { host: _ } => false
+      UnitHoldHostUndecided { host: _ } => false
     }
-    let maintenance = match admit_maintenance_hold_in(hosts: [unnamed], host: "fixture-no-reason-host" as NonEmptyStr) {
+    let maintenance = match admit_maintenance_hold_in(admissions: [unnamed], host: "fixture-no-reason-host" as NonEmptyStr) {
       MaintenanceHoldNoReasonVariable { host: x } => (x as String) == "fixture-no-reason-host"
       MaintenanceHoldAdmitted { hold: _ } => false
       MaintenanceHoldHostRefused { admission: _ } => false
     }
-    let shared = unit_hold_store_hosts_of(hosts: [unnamed, h, unnamed])
+    let shared = unit_hold_store_hosts_of(admissions: [unnamed, admit_unit_hold_subject(host: h), unnamed])
     held && maintenance
       && count(shared) == 1
       && shared |> all(x => (x as String) == (operator_host_srv1 as String))
@@ -177,6 +232,7 @@ test fn w_a_process_observed_off_the_store_host_is_refused_and_one_on_it_is_admi
   match unit_hold_admission_for(host: operator_host_mtcollins1 as NonEmptyStr) {
     UnitHoldHostNotManaged { host: _ } => false
     UnitHoldHostNotRequired { host: _ } => false
+    UnitHoldHostUndecided { host: _ } => false
     UnitHoldHostAdmitted { subject: s } => {
       let elsewhere = unit_hold_store_executor_decision(subject: s, observed: Present { value: "srv2\n" })
       let here = unit_hold_store_executor_decision(subject: s, observed: Present { value: "srv1\n" })
@@ -220,6 +276,7 @@ test fn w_the_executor_carrier_is_minted_only_from_this_process_own_hostname() -
   match unit_hold_admission_for(host: operator_host_mtcollins1 as NonEmptyStr) {
     UnitHoldHostNotManaged { host: _ } => false
     UnitHoldHostNotRequired { host: _ } => false
+    UnitHoldHostUndecided { host: _ } => false
     UnitHoldHostAdmitted { subject: s } =>
       match unit_hold_store_executor(subject: s) {
         UnitHoldOnStoreHost { executor: e } => (e.observed_hostname as String) == "srv1" && (e.subject.key as String) == (s.key as String)
@@ -228,14 +285,15 @@ test fn w_the_executor_carrier_is_minted_only_from_this_process_own_hostname() -
   }
 }
 
-// RED: A STORE HOST WITH NO ALLOCATED HOSTNAME. The real row with its store placed on a host
+// RED: A STORE HOST WITH NO ALLOCATED HOSTNAME. The real row with a decision placing its store on a host
 // gunbc.hostname_allocation has no row for cannot establish where it runs, whatever it observes.
 test fn w_a_store_host_with_no_allocated_hostname_refuses_the_executor() -> Bool {
   managed_hosts() |> all(h => {
-    let adrift = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetUnitHoldRequired { key: h.host as NonEmptyStr, store_host: "fixture-unallocated-store" as NonEmptyStr }, smpro: h.smpro)
-    match unit_hold_admission_in(hosts: [adrift], host: h.host as NonEmptyStr) {
+    let adrift = unit_hold_subject_under(host: h, decision: Present { value: ResetUnitHoldRequired { key: h.host as NonEmptyStr, store_host: "fixture-unallocated-store" as NonEmptyStr } })
+    match unit_hold_admission_in(admissions: [adrift], host: h.host as NonEmptyStr) {
       UnitHoldHostNotManaged { host: _ } => false
       UnitHoldHostNotRequired { host: _ } => false
+      UnitHoldHostUndecided { host: _ } => false
       UnitHoldHostAdmitted { subject: s } => {
         let d = unit_hold_store_executor_decision(subject: s, observed: Present { value: "fixture-unallocated-store" })
         (match d {

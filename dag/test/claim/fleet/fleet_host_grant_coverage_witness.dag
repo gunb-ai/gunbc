@@ -1,0 +1,467 @@
+module test.claim.fleet.fleet_host_grant_coverage_witness
+
+import std.types { Bool, String, NonEmptyStr, Int }
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import std.content_hash { serialize_content_hash }
+import gunbc.fleet.fleet_converge_scope { FullHost }
+import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FullyApplied, PartiallyApplied }
+import std.algebra { trim }
+import extdeps.sudo.nopasswd_decision {
+  SudoDecision,
+  SudoDecisionAdmits,
+  SudoDecisionNeedsPassword,
+  SudoDecisionDenied,
+  SudoDecisionUnobserved,
+  SudoDecisionQuery,
+  SudoVersionRead,
+  SudoVersionObserved,
+  SudoVersionUnobserved,
+  sudo_decision_from_run,
+  sudo_version_from_run,
+  sudo_decision_binary_absent,
+}
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, process_observation }
+import gunbc.fleet.fleet_host_grant_coverage { InstalledSudoersText }
+import gunbc.fleet.fleet_host_grant_coverage {
+  HostGrantObservation,
+  host_grant_awaiting_capability,
+  host_grant_observation_unobserved_no_transaction,
+}
+import gunbc.fleet.fleet_converge_plan {
+  FleetConvergeRequest,
+  FullHostConverge,
+  FleetConvergeApplyAdmission,
+  ApplyAdmitted,
+  ApplyAwaitingCapability,
+  ApplyMemberSetMismatch,
+  fleet_converge_plan_artifact,
+  fleet_converge_host_grant_rows,
+  fleet_converge_apply_shell,
+  fleet_converge_apply_artifact_admits,
+  fleet_converge_member_set_fingerprint,
+  fleet_converge_scope_wire,
+}
+import gunbc.runner.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
+import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
+import test.claim.fleet.fleet_host_grant_fixture {
+  witness_grants_rendered,
+  witness_grants_outside_the_model,
+  witness_grants_listed_installed_unreadable,
+  witness_grants_missing,
+  witness_grants_decision_unobserved,
+  witness_grants_other_principal,
+  witness_grant_owner,
+  witness_grants_as,
+  witness_grant_rules,
+  witness_grant_rendered_lines,
+}
+
+data grant_host: NonEmptyStr = "srv3" as NonEmptyStr
+
+fn grant_request(grants: HostGrantObservation) -> FleetConvergeRequest {
+  FullHostConverge {
+    host: grant_host,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+    observed_host_grants: grants,
+  }
+}
+
+fn grant_admission(grants: HostGrantObservation) -> FleetConvergeApplyAdmission {
+  let r = grant_request(grants: grants)
+  fleet_converge_apply_artifact_admits(
+    planned_host_text: grant_host as String,
+    planned_scope_wire: fleet_converge_scope_wire(scope: FullHost),
+    planned_fingerprint_text: serialize_content_hash(hash: fleet_converge_member_set_fingerprint(request: r)) as String,
+    observed: r,
+  )
+}
+
+fn grant_plan_body(grants: HostGrantObservation) -> String {
+  match fleet_converge_plan_artifact(
+    host: grant_host,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+    observed_host_grants: grants,
+  ) {
+    Absent => ""
+    Present { value: artifact } => artifact.plan_body
+  }
+}
+
+// The specimen: srv3 apply 39127216304's first host grant.
+data specimen_rule: String = "/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge"
+
+// RED: a host whose installed sudoers lacks the rule refuses AwaitingCapability, naming the exact
+// missing rule, at ADMISSION -- before the apply script (and its first `sudo -n`) can run.
+test fn a_host_without_the_rule_refuses_awaiting_capability_naming_it() -> Bool {
+  match grant_admission(grants: witness_grants_missing(host: grant_host)) {
+    ApplyAwaitingCapability { capability: c } =>
+      string_contains(s: c, pattern: "missing sudoers rule (as ")
+        && string_contains(s: c, pattern: specimen_rule)
+    _ => false
+  }
+}
+
+// Positive control: the same host with the rule rendered-and-installed admits.
+test fn a_host_with_the_rendered_rule_admits() -> Bool {
+  match grant_admission(grants: witness_grants_rendered(host: grant_host)) {
+    ApplyAdmitted => true
+    _ => false
+  }
+}
+
+// §5: a probe that cannot observe is unobserved, never covered.
+test fn an_unread_listing_refuses_as_unobserved_never_covered() -> Bool {
+  match grant_admission(grants: witness_grants_decision_unobserved()) {
+    ApplyAwaitingCapability { capability: c } => string_contains(s: c, pattern: "unobserved sudoers rule")
+    _ => false
+  } && match grant_admission(grants: host_grant_observation_unobserved_no_transaction) {
+    ApplyAwaitingCapability { capability: _ } => true
+    _ => false
+  }
+}
+
+// Listed by sudo but not rendered by us: admits, typed, printed as one countable plan.txt line.
+test fn a_rule_covered_outside_the_model_admits_and_is_printed() -> Bool {
+  let g = witness_grants_outside_the_model(host: grant_host)
+  let body = grant_plan_body(grants: g)
+  match grant_admission(grants: g) {
+    ApplyAdmitted => true
+    _ => false
+  } && string_contains(s: body, pattern: "# host-grants covered-outside-the-model (")
+    && string_contains(s: body, pattern: specimen_rule)
+}
+
+// Listed, but the drop-in (root:root 0440) was unreadable: covered-source-unobserved, admits,
+// printed -- and never counted as rendered.
+test fn listed_with_an_unreadable_dropin_admits_as_source_unobserved_not_rendered() -> Bool {
+  let g = witness_grants_listed_installed_unreadable(host: grant_host)
+  let body = grant_plan_body(grants: g)
+  match grant_admission(grants: g) {
+    ApplyAdmitted => true
+    _ => false
+  } && string_contains(s: body, pattern: "# host-grants covered-source-unobserved (")
+    && !string_contains(s: body, pattern: "# host-grants covered-outside-the-model (")
+}
+
+// The standing is a PREMISE: moving it moves the member-set fingerprint, so a plan taken over a
+// missing rule cannot be applied after the rule arrives (or the reverse) without a re-plan.
+test fn the_grant_standing_moves_the_member_set_fingerprint() -> Bool {
+  fleet_converge_member_set_fingerprint(request: grant_request(grants: witness_grants_missing(host: grant_host)))
+    != fleet_converge_member_set_fingerprint(request: grant_request(grants: witness_grants_rendered(host: grant_host)))
+}
+
+// The terminal agrees with admission: AwaitingCapability, not FullyApplied, over a missing rule.
+test fn the_plan_terminal_is_awaiting_capability_over_a_missing_rule() -> Bool {
+  let body = grant_plan_body(grants: witness_grants_missing(host: grant_host))
+  string_contains(s: body, pattern: "# host-grants missing (")
+}
+
+// Pairing: the fixture's rules are the renderer's, and srv3 has a host-wide rule set to cover.
+test fn the_specimen_rule_is_among_the_hosts_modeled_rules() -> Bool {
+  fleet_converge_host_grant_rows(host: grant_host, grants: witness_grants_rendered(host: grant_host)) != []
+}
+
+fn witness_effect_lines(shell: String) -> Bool {
+  any(xs: split(s: shell, delimiter: "\n"), predicate: l => !trim(s: l).starts_with("#") && string_contains(s: l, pattern: "sudo"))
+}
+
+fn witness_blocked_shell(grants: HostGrantObservation) -> String {
+  let r = grant_request(grants: grants)
+  fleet_converge_apply_shell(request: r, terminal: AwaitingCapability { capability: "host-wide-sudo-grants" })
+}
+
+// GAP 3: a missing grant yields a refusal-only artifact: terminal AwaitingCapability AND an
+// executable body with no sudo line (the same request, rule installed, still carries them).
+test fn a_missing_grant_gives_an_artifact_with_no_sudo_line_and_an_awaiting_terminal() -> Bool {
+  let blocked = witness_blocked_shell(grants: witness_grants_missing(host: grant_host))
+  let covered = fleet_converge_apply_shell(request: grant_request(grants: witness_grants_rendered(host: grant_host)), terminal: FullyApplied)
+  !witness_effect_lines(shell: blocked)
+    && string_contains(s: blocked, pattern: "AwaitingCapability")
+    && string_contains(s: blocked, pattern: "REFUSED, NON-ACTUATING")
+    && witness_effect_lines(shell: covered)
+}
+
+// GAP 2: grants observed as an account that is not the lease owner are not the owner's grants.
+test fn grants_observed_as_another_principal_refuse_naming_both() -> Bool {
+  match grant_admission(grants: witness_grants_other_principal(host: grant_host)) {
+    ApplyAwaitingCapability { capability: c } =>
+      string_contains(s: c, pattern: "someone-else") && string_contains(s: c, pattern: witness_grant_owner() as String)
+    _ => false
+  }
+}
+
+// GAP 2 (baseline): the principal is a premise, so a plan observed as another account cannot be
+// applied as the owner without a re-plan.
+test fn the_observing_principal_moves_the_member_set_fingerprint() -> Bool {
+  fleet_converge_member_set_fingerprint(request: grant_request(grants: witness_grants_other_principal(host: grant_host)))
+    != fleet_converge_member_set_fingerprint(request: grant_request(grants: witness_grants_rendered(host: grant_host)))
+}
+
+// GAP 1: sudo's decision, not the text of a listing: a Denied decision (non-root-only, an overriding
+// later rule, a password-requiring match all exit 1) is a missing grant even though a line naming the
+// command may exist elsewhere in the listing.
+test fn a_denied_decision_is_missing_even_when_the_drop_in_names_the_rule() -> Bool {
+  let g = witness_grants_as(host: grant_host, login: witness_grant_owner(), decision: SudoDecisionDenied { reason: "overridden" }, installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: grant_host), "\n") })
+  match grant_admission(grants: g) {
+    ApplyAwaitingCapability { capability: c } => string_contains(s: c, pattern: "missing sudoers rule (as ")
+    _ => false
+  }
+}
+
+data witness_query: SudoDecisionQuery = SudoDecisionQuery { runas: "root" as NonEmptyStr, argv: ["/usr/bin/install" as NonEmptyStr, "-d" as NonEmptyStr] }
+
+data witness_supported_version: SudoVersionRead = SudoVersionObserved { banner: "Sudo version 1.9.16p2" as NonEmptyStr }
+
+fn witness_run_under(version: SudoVersionRead, code: Int, out: String, err: String) -> SudoDecision {
+  sudo_decision_from_run(query: witness_query, version: version, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: err) })
+}
+
+fn witness_run(code: Int, out: String, err: String) -> SudoDecision {
+  witness_run_under(version: witness_supported_version, code: code, out: out, err: err)
+}
+
+// THE -ll TEXT FIXTURES: recorded external facts (§4d), capture pr14345-sudo-raw-12np58fh, 2026-10-19T02:51:01Z,
+// sudo 1.9.16p2-3+deb13u2, locale C, listing principal `probe`. `witness_listing` reproduces the recorded layout
+// byte for byte (Sudoers entry: <file> / RunAsUsers / Options / Commands + tab argv / Matched) with the varied
+// field substituted; the six RECORDED specimens below are the verbatim bytes and are the discriminating controls.
+fn witness_listing(runas: String, options: String, command: String) -> String {
+  concat("Sudoers entry: /etc/sudoers\n    RunAsUsers: ", concat(runas, concat("\n    Options: ", concat(options, concat("\n    Commands:\n\t", concat(command, concat("\n    Matched: ", concat(command, "\n"))))))))
+}
+
+data recorded_true_query: SudoDecisionQuery = SudoDecisionQuery { runas: "root" as NonEmptyStr, argv: ["/usr/bin/true" as NonEmptyStr] }
+
+fn recorded_decision(code: Int, out: String) -> SudoDecision {
+  sudo_decision_from_run(query: recorded_true_query, version: witness_supported_version, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: "") })
+}
+
+// Sudo version 1.9.15p5, recorded on srv1 by bright-moth-475 on 2026-10-19 (see extdeps.sudo.nopasswd_decision): the verbatim
+// stdout of ghrunner's self-listing `sudo -n -u ghrunner sudo -n -ll -u root <argv>` for the granted install argv (the `-U ghrunner`
+// form run as root gave identical stdout).
+data recorded_15p5_query: SudoDecisionQuery = SudoDecisionQuery { runas: "root" as NonEmptyStr, argv: ["/usr/bin/install" as NonEmptyStr, "-d" as NonEmptyStr, "-m" as NonEmptyStr, "00755" as NonEmptyStr, "-o" as NonEmptyStr, "ghrunner" as NonEmptyStr, "-g" as NonEmptyStr, "ghrunner" as NonEmptyStr, "/var/lib/gunbc/fleet-converge" as NonEmptyStr] }
+
+data recorded_15p5_stdout: String = "Sudoers entry: /etc/sudoers.d/gunbc-ghrunner\n    RunAsUsers: root\n    Options: !authenticate\n    Commands:\n\t/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge\n    Matched: /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge\n"
+
+fn recorded_15p5_under(banner: String, code: Int, out: String) -> SudoDecision {
+  sudo_decision_from_run(query: recorded_15p5_query, version: SudoVersionObserved { banner: banner as NonEmptyStr }, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: "") })
+}
+
+test fn recorded_15p5_srv1_nopasswd_listing_admits_under_its_banner() -> Bool {
+  match recorded_15p5_under(banner: "Sudo version 1.9.15p5", code: 0, out: recorded_15p5_stdout) {
+    SudoDecisionAdmits => true
+    _ => false
+  }
+}
+
+// PASSWD arm on 1.9.15p5, recorded in the noble chroot by sunny-gull-750 (same layout, Options: authenticate).
+test fn recorded_15p5_passwd_listing_needs_a_password() -> Bool {
+  let out = "Sudoers entry: /etc/sudoers.d/p\n    RunAsUsers: root\n    Options: authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n"
+  match sudo_decision_from_run(query: recorded_true_query, version: SudoVersionObserved { banner: "Sudo version 1.9.15p5" as NonEmptyStr }, outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: out, stderr: "") }) {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+test fn recorded_15p5_denied_exit_one_is_denied() -> Bool {
+  match recorded_15p5_under(banner: "Sudo version 1.9.15p5", code: 1, out: "") {
+    SudoDecisionDenied { reason: _ } => true
+    _ => false
+  }
+}
+
+// CONTROL: the same recorded bytes under an unlisted banner stay Unobserved.
+test fn recorded_15p5_stdout_under_an_unlisted_banner_stays_unobserved() -> Bool {
+  match recorded_15p5_under(banner: "Sudo version 1.9.14", code: 0, out: recorded_15p5_stdout) {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+// (a) `Defaults listpw=any` / `probe ALL=(root) NOPASSWD: /usr/bin/true` -> the only recorded admission.
+test fn recorded_a_genuine_nopasswd_admits() -> Bool {
+  match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: !authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {
+    SudoDecisionAdmits => true
+    _ => false
+  }
+}
+
+// (b) `NOPASSWD: /usr/bin/false, PASSWD: /usr/bin/true`: lists with exit 0 and the short listing names the argv, yet authenticates.
+test fn recorded_b_passwd_beside_an_unrelated_nopasswd_needs_a_password() -> Bool {
+  match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+// (c) a later `PASSWD: /usr/bin/true` rule overrides an earlier NOPASSWD one: the recorded bytes equal (b).
+test fn recorded_c_a_later_passwd_override_needs_a_password() -> Bool {
+  match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+// (d) `Defaults listpw=never` / `PASSWD: /usr/bin/true`: the recorded bytes again equal (b).
+test fn recorded_d_listpw_never_with_passwd_needs_a_password() -> Bool {
+  match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+// (e) `(nobody) NOPASSWD:` only and (f) an explicit `!/usr/bin/true` denial both record exit 1, empty stdout and stderr.
+test fn recorded_e_wrong_run_as_is_denied() -> Bool {
+  match recorded_decision(code: 1, out: "") {
+    SudoDecisionDenied { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn recorded_f_explicit_denial_is_denied() -> Bool {
+  match recorded_decision(code: 1, out: "") {
+    SudoDecisionDenied { reason: _ } => true
+    _ => false
+  }
+}
+
+// The unprivileged `sudo -V` capture: its first line is the banner the supported range names.
+test fn recorded_sudo_dash_v_probe_output_yields_the_supported_banner() -> Bool {
+  match sudo_version_from_run(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "Sudo version 1.9.16p2\nSudoers policy plugin version 1.9.16p2\nSudoers file grammar version 50\nSudoers I/O plugin version 1.9.16p2\nSudoers audit plugin version 1.9.16p2\n", stderr: "") }) {
+    SudoVersionObserved { banner: b } => (b as String) == "Sudo version 1.9.16p2"
+    SudoVersionUnobserved { cause: _ } => false
+  }
+}
+
+fn witness_listing_decision(options: String) -> SudoDecision {
+  witness_run(code: 0, out: witness_listing(runas: "root", options: options, command: "/usr/bin/install -d"), err: "")
+}
+
+// THE PURE MAPPING over sudo outputs. Exit 1 (non-root-only, overridden rule, explicit denial) is a refusal
+// for `-u root`; none of them is read as covered.
+test fn sudo_exit_one_is_denied_for_the_non_root_only_and_overridden_rule() -> Bool {
+  match witness_run(code: 1, out: "", err: "Sorry, user brian is not allowed to execute '/usr/bin/install -d' as root") {
+    SudoDecisionDenied { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_long_listing_with_authentication_waived_admits() -> Bool {
+  match witness_listing_decision(options: "!authenticate") {
+    SudoDecisionAdmits => true
+    _ => false
+  }
+}
+
+// THE COUNTEREXAMPLE (review 5566380875): the command LISTS (exit 0, argv named) yet needs a password.
+test fn a_listed_command_that_requires_authentication_needs_a_password_not_admits() -> Bool {
+  match witness_listing_decision(options: "authenticate") {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+test fn a_listing_that_states_no_authentication_requirement_is_unobserved() -> Bool {
+  match witness_listing_decision(options: "setenv") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_exit_zero_listing_not_naming_the_argv_is_unobserved_never_admitted() -> Bool {
+  match witness_run(code: 0, out: witness_listing(runas: "root", options: "!authenticate", command: "/usr/bin/install -d -m 0777"), err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn two_listed_entries_leave_precedence_unestablished_and_are_unobserved() -> Bool {
+  let two = concat(witness_listing(runas: "root", options: "!authenticate", command: "/usr/bin/install -d"), witness_listing(runas: "root", options: "authenticate", command: "/usr/bin/install -d"))
+  match witness_run(code: 0, out: two, err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_entry_for_another_run_as_is_unobserved() -> Bool {
+  match witness_run(code: 0, out: witness_listing(runas: "nobody", options: "!authenticate", command: "/usr/bin/install -d"), err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unparseable_listing_is_unobserved() -> Bool {
+  match witness_run(code: 0, out: "/usr/bin/install -d\n", err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unsupported_or_unread_sudo_version_never_admits() -> Bool {
+  let listing = witness_listing(runas: "root", options: "!authenticate", command: "/usr/bin/install -d")
+  let newer = match witness_run_under(version: SudoVersionObserved { banner: "Sudo version 9.9.9" as NonEmptyStr }, code: 0, out: listing, err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+  let unread = match witness_run_under(version: SudoVersionUnobserved { cause: "sudo -V exited 1" as NonEmptyStr }, code: 0, out: listing, err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+  newer && unread
+}
+
+test fn the_version_banner_is_the_first_line_of_sudo_dash_v() -> Bool {
+  match sudo_version_from_run(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "Sudo version 1.9.16p2\nSudoers policy plugin version 1.9.16p2\n", stderr: "") }) {
+    SudoVersionObserved { banner: b } => (b as String) == "Sudo version 1.9.16p2"
+    _ => false
+  }
+}
+
+test fn an_unexpected_status_and_an_unspawned_sudo_are_unobserved() -> Bool {
+  let other = match witness_run(code: 127, out: "", err: "sudo: not found") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+  let unspawned = match sudo_decision_from_run(query: witness_query, version: witness_supported_version, outcome: ProcessNotSpawned { program: "/usr/bin/sudo" as NonEmptyStr, cause: "no such file" as NonEmptyStr }) {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+  other && unspawned
+}
+
+test fn an_absent_binary_is_unobserved_with_its_own_cause_not_a_missing_grant() -> Bool {
+  match sudo_decision_binary_absent(query: witness_query) {
+    SudoDecisionUnobserved { cause: c } => string_contains(s: c as String, pattern: "is not present")
+    _ => false
+  }
+}
+
+// END TO END: a listed-but-password-requiring rule refuses at admission naming the rule, moves the
+// fingerprint, and leaves an artifact with no sudo line and an AwaitingCapability terminal, even though
+// the installed drop-in names the rule.
+test fn a_rule_that_needs_a_password_refuses_and_leaves_no_sudo_line() -> Bool {
+  let blocked = witness_grants_needs_password(host: grant_host)
+  let refused = match grant_admission(grants: blocked) {
+    ApplyAwaitingCapability { capability: c } =>
+      string_contains(s: c, pattern: "requires a password (as ") && string_contains(s: c, pattern: specimen_rule)
+    _ => false
+  }
+  let moved = fleet_converge_member_set_fingerprint(request: grant_request(grants: blocked))
+    != fleet_converge_member_set_fingerprint(request: grant_request(grants: witness_grants_rendered(host: grant_host)))
+  let shell = witness_blocked_shell(grants: blocked)
+  refused && moved && !witness_effect_lines(shell: shell) && string_contains(s: shell, pattern: "AwaitingCapability")
+}

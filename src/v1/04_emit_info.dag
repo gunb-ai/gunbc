@@ -587,7 +587,11 @@ type EmitGraphInfo {
 
   shared_types: Set<String>
   ownership_index: Map<String, Set<String>>
+  // Per function, the occurrences v1.compiler.ownership build_moved_argument_occurrences proved to be
+  // a binding's only use, at a by-value argument: keyed by occurrence, never by spelling.
+  moved_argument_index: Map<String, Set<Int>>
   movable: Set<String>
+  moved_argument_occurrences: Set<Int>
   variant_to_enum: Map<String, String>
   owned_bindings: Set<String>
 
@@ -609,6 +613,14 @@ type EmitGraphInfo {
   // spine depth, keyed by the parameter it advances (v1.compiler.emit_rust cursor_tail_key). Derived once per fn by v1.compiler.emit_rust tco_cursor_plan from the use graph.
   tco_cursor_params: List<String>
   tco_cursor_tails: Map<String, Int>
+  // The function is lowered by tail recursion modulo cons (v1.compiler.emit_rust is_trmc_eligible):
+  // its loop carries `__trmc_out`, the heads emitted so far, and every exit appends to it.
+  trmc_out: Bool
+
+  // Terminal record literals (keyed by span start) whose same-typed base parameter dies at the
+  // literal, mapped to that parameter. Derived once per fn by v1.compiler.ownership
+  // analyze_dying_base_sites; empty for a fn that is TCO-lowered.
+  dying_base_sites: Map<String, String>
 
   item_leaf_owner_modules: Map<String, LeafOwner>
 }
@@ -636,7 +648,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     positional_payload_variants: empty_set(),
     shared_types: empty_set(),
     ownership_index: empty_map(),
+    moved_argument_index: empty_map(),
     movable: empty_set(),
+    moved_argument_occurrences: empty_set(),
     variant_to_enum: empty_map(),
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
@@ -651,7 +665,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     fn_return_type: none,
     expected_type: none,
     tco_cursor_params: [],
-    tco_cursor_tails: empty_map()
+    tco_cursor_tails: empty_map(),
+    trmc_out: false,
+    dying_base_sites: empty_map()
   }
 }
 
@@ -669,7 +685,9 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     positional_payload_variants: emit_info.positional_payload_variants,
     shared_types: emit_info.shared_types,
     ownership_index: emit_info.ownership_index,
+    moved_argument_index: emit_info.moved_argument_index,
     movable: emit_info.movable,
+    moved_argument_occurrences: emit_info.moved_argument_occurrences,
     variant_to_enum: emit_info.variant_to_enum,
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
@@ -683,7 +701,9 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     fn_return_type: emit_info.fn_return_type,
     expected_type: emit_info.expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -701,7 +721,9 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     positional_payload_variants: emit_info.positional_payload_variants,
     shared_types: emit_info.shared_types,
     ownership_index: emit_info.ownership_index,
+    moved_argument_index: emit_info.moved_argument_index,
     movable: emit_info.movable,
+    moved_argument_occurrences: emit_info.moved_argument_occurrences,
     variant_to_enum: emit_info.variant_to_enum,
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
@@ -715,7 +737,9 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     fn_return_type: fn_return_type,
     expected_type: fn_return_type,
     tco_cursor_params: emit_info.tco_cursor_params,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -738,7 +762,9 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     positional_payload_variants: emit_info.positional_payload_variants,
     shared_types: emit_info.shared_types,
     ownership_index: emit_info.ownership_index,
+    moved_argument_index: emit_info.moved_argument_index,
     movable: emit_info.movable,
+    moved_argument_occurrences: emit_info.moved_argument_occurrences,
     variant_to_enum: emit_info.variant_to_enum,
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
@@ -752,7 +778,9 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     fn_return_type: emit_info.fn_return_type,
     expected_type: expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 

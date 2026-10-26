@@ -1,0 +1,128 @@
+module gunbc.design.gunb_ai_live_scale
+
+import std.types { String, Int, List, Bool }
+import extdeps.languages.css.values {
+  CssLength, CssLengthUnit, Px, Rem, Ch, Em, Vw, Percent, CssDecimalLength, css_px, css_ch,
+  CssFontStack, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif, GenericMonospace,
+}
+import std.optional { Optional, Absent, Present }
+import std.error_primitives { pure_dag_seam_unreachable_string, pure_dag_seam_unreachable_int }
+import gunbc.design.scale { ScaleToken, ScaleValue, LengthValue, FontStackValue, named_length_token, measure_prose }
+
+// THE LIVE MEASURES AND TYPE FAMILIES, AS THE SERVED SHEET STATES THEM. Single authority for the
+// gunb.ai measure, gap and family values (review 82669 on gunbc#14448, the same ruling as
+// gunbc.design.gunb_ai_hues for colour): the served :root spells each once, in rem/ch, and the
+// stylesheet wire (gunbc.site.gunb_ai_css) and the site tokens (gunbc.site.gunb_ai_tokens) both read
+// these rows. A token that is meant to differ from its live source is a LiveScaleDeparture row with
+// its reason; no site token may differ silently.
+// Re-derive from `:root` in gunb-ai/frontend assets/site.css.
+
+type LiveMeasure {
+  name: String
+  length: CssDecimalLength
+}
+
+// The browser-default root font size (css-fonts-4 'medium' = 16px), the px a rem denotes.
+data css_default_root_font_size: CssDecimalLength = CssDecimalLength { milli: 16000, unit: Px }
+
+data live_measure_page: LiveMeasure = LiveMeasure { name: "measure-page", length: CssDecimalLength { milli: 56000, unit: Rem } }
+data live_measure_wide: LiveMeasure = LiveMeasure { name: "measure-wide", length: CssDecimalLength { milli: 62000, unit: Rem } }
+data live_measure_prose: LiveMeasure = LiveMeasure { name: "measure-prose", length: CssDecimalLength { milli: 42000, unit: Rem } }
+data live_measure_title: LiveMeasure = LiveMeasure { name: "measure-title", length: CssDecimalLength { milli: 16000, unit: Ch } }
+
+data live_gap_xs: LiveMeasure = LiveMeasure { name: "gap-xs", length: CssDecimalLength { milli: 400, unit: Rem } }
+data live_gap_sm: LiveMeasure = LiveMeasure { name: "gap-sm", length: CssDecimalLength { milli: 850, unit: Rem } }
+data live_gap_md: LiveMeasure = LiveMeasure { name: "gap-md", length: CssDecimalLength { milli: 1250, unit: Rem } }
+data live_gap_lg: LiveMeasure = LiveMeasure { name: "gap-lg", length: CssDecimalLength { milli: 2500, unit: Rem } }
+data live_gap_xl: LiveMeasure = LiveMeasure { name: "gap-xl", length: CssDecimalLength { milli: 4000, unit: Rem } }
+
+data live_measures: List<LiveMeasure> = [
+  live_measure_page, live_measure_wide, live_measure_prose, live_measure_title,
+  live_gap_xs, live_gap_sm, live_gap_md, live_gap_lg, live_gap_xl,
+]
+
+data live_font_mono: CssFontStack = CssFontStack {
+  families: [NamedFamily { name: "JetBrains Mono" }, GenericFamily { kind: GenericUiMonospace }, GenericFamily { kind: GenericMonospace }],
+}
+
+data live_font_sans: CssFontStack = CssFontStack {
+  families: [NamedFamily { name: "Noto Sans" }, GenericFamily { kind: GenericSystemUi }, GenericFamily { kind: GenericSansSerif }],
+}
+
+// The whole-pixel / whole-character length a live measure denotes, for the integer ScaleToken grain.
+// Every unit is matched: rem is read at the browser-default root size, and a magnitude that is not a
+// whole count of its target unit (0.4rem = 6.4px) or a unit with no pixel/character count (percent)
+// is Absent, never a rounded value.
+fn whole_count_length(thousandths: Int, unit: CssLengthUnit) -> CssLength? {
+  if thousandths % 1000 != 0 {
+    Absent
+  } else {
+    match unit {
+      Px => Present { value: css_px(n: thousandths / 1000) }
+      Ch => Present { value: css_ch(n: thousandths / 1000) }
+      Rem => Absent
+      Em => Absent
+      Vw => Absent
+      Percent => Absent
+    }
+  }
+}
+
+fn live_measure_scale_length(m: LiveMeasure) -> CssLength? {
+  match m.length.unit {
+    Rem => whole_count_length(thousandths: m.length.milli * css_default_root_font_size.milli / 1000, unit: Px)
+    Ch => whole_count_length(thousandths: m.length.milli, unit: Ch)
+    Px => whole_count_length(thousandths: m.length.milli, unit: Px)
+    Em => Absent
+    Vw => Absent
+    Percent => Absent
+  }
+}
+
+// A site token that is meant to differ from its live source is a row here carrying the TOKEN itself and
+// the reason. live_scale_token reads this roster for every token it builds: a token either matches a
+// departure row or derives from its live value, and a token that is neither (a fractional pixel with
+// no row) refuses at the divergent seam instead of rounding.
+// Why a token departs from its live value: the cause is a variant, not prose.
+type LiveDepartureCause
+  = FractionalPixelRoundedToWhole
+  | SharedWorkspaceScaleRow
+  | WebFontNotShipped
+
+type LiveScaleDeparture {
+  live_name: String
+  token: ScaleToken
+  cause: LiveDepartureCause
+}
+
+data live_scale_departures: List<LiveScaleDeparture> = [
+  LiveScaleDeparture { live_name: "gap-xs", token: named_length_token(name: "gap-xs", px: 6), cause: FractionalPixelRoundedToWhole },
+  LiveScaleDeparture { live_name: "gap-sm", token: named_length_token(name: "gap-sm", px: 14), cause: FractionalPixelRoundedToWhole },
+  LiveScaleDeparture { live_name: "measure-prose", token: measure_prose, cause: SharedWorkspaceScaleRow },
+  LiveScaleDeparture { live_name: "font-sans", token: ScaleToken { name: "font-body", value: FontStackValue { stack: CssFontStack { families: [GenericFamily { kind: GenericSystemUi }, GenericFamily { kind: GenericSansSerif }] } } }, cause: WebFontNotShipped },
+]
+
+fn live_scale_departure_for(live_name: String, token_name: String) -> List<LiveScaleDeparture> {
+  filter(live_scale_departures, d => d.live_name == live_name && d.token.name == token_name)
+}
+
+fn live_scale_departure_token(live_name: String, token_name: String) -> ScaleToken? {
+  fold(live_scale_departure_for(live_name: live_name, token_name: token_name), init: Absent, f: (acc, d) => Present { value: d.token })
+}
+
+fn live_scale_token(name: String, m: LiveMeasure) -> ScaleToken {
+  match live_scale_departure_token(live_name: m.name, token_name: name) {
+    Present { value: t } => t
+    Absent => match live_measure_scale_length(m: m) {
+      Present { value: l } => ScaleToken { name: name, value: LengthValue { length: l } }
+      Absent => ScaleToken { name: pure_dag_seam_unreachable_string(), value: LengthValue { length: css_px(n: pure_dag_seam_unreachable_int()) } }
+    }
+  }
+}
+
+fn live_scale_font_token(name: String, live_name: String, live_stack: CssFontStack) -> ScaleToken {
+  match live_scale_departure_token(live_name: live_name, token_name: name) {
+    Present { value: t } => t
+    Absent => ScaleToken { name: name, value: FontStackValue { stack: live_stack } }
+  }
+}

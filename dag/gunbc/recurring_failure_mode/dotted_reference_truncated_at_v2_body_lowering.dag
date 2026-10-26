@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.dotted_reference_truncated_at_v2_body_loweri
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data dotted_reference_truncated_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
   identity: "dotted_reference_truncated_at_v2_body_lowering" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "**a dotted reference is lowered to a PREFIX of itself and the lowering Accepts** (INVALID STATE: v2.compiler.normalize, via v2.compiler.body_lowering_fold, lowered a postfix chain `a.b.c.d` in a BODY to Transform(dag_token_dot, a, b) -- the first dot read as a binary operator by an operand reader that accepted ANY lex token as an operator -- and lowered a qualified name `a.b.C` in a TYPE position to the bare atom `a`. In both arms every later segment was dropped and nothing refused. The tree the resolver and the reference-site collector received carried two or three bare mentions of module-path segments and no mention of the target.)",
     "HARM. Two consumers read the truncated tree as fact. v2.compiler.resolve refused every cross-module reference as an unbound `a` -- a TRUE refusal for the WRONG reason, which is how the class hid: the module was red, so nobody read the tree. v2.compiler.reference_site_collector saw zero qualified sites over the production route, so the XL-0 denominator and the XL-4 reference graph both undercounted exactly the class an import-to-containment cut is made of, and gunbc.compiler_frontend_program_status StageXL0Denominator sat NOT-DERIVABLE on a capability nobody owned. Had the reference been to a name that ALSO existed bare in scope, the first segment would have bound and the module would have been Accepted with a fabricated meaning.",

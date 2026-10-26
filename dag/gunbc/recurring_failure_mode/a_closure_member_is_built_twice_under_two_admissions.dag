@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_closure_member_is_built_twice_under_two_ad
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_closure_member_is_built_twice_under_two_admissions: RecurringFailureMode = RecurringFailureMode {
   identity: "a_closure_member_is_built_twice_under_two_admissions" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: after the eager closure build, each closure module is built twice -- once by v2.compiler.name_resolve closure_phase1_walk_module under imports [] (an admission that is no caller's), and again in the walk under its real admission. The two builds live in separate keyspaces on purpose (the caller's provider keeps its own namespaces and namespaces_built; phase1 stays in the closure's own), because the provider keys a module by name alone and merging them refused the subject's own admission with namespace_provider_admission_conflict (repaired in gunbc#14116). HARM: cost only, never a wrong answer -- redundant work in the sense of DESIGN section 2, scaling with closure size rather than with the change. LIKELY ROOT, A READING NOT A MEASUREMENT: declarations are admission-independent, so keying their build on the admission over-keys it; one declaration build per module would serve both admissions.",
     "RUNG FOUND AT: mitigatable (bounded, correct, redundant). CEILING: structurally guaranteed -- one build per module is decidable from the key. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: declaration builds keyed admission-independently, SUFFICIENT FOR a module's declaration build to execute once across phase1 and the walk. WHY NO CLAIM PINS IT TODAY (DESIGN section 4b, where no harness can express it the missing harness is the trigger): v2.test.claim.name_resolve.admission_fail_closed namespace_provider_builds_each_module_at_most_once_per_context asserts the caller-provider contract only, and its fixtures cannot express the double build -- their sole closure member, the import provider, carries an unbound service marker and is not independently resolvable, so demanding it as a subject refuses rather than builds. A resolvable two-module import fixture in admission_fail_closed is the harness trigger; phase1 builds are observed separately by v2.test.claim.name_resolve.declaration_provider_outcomes dpo_one_namespace_per_module.",

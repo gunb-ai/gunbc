@@ -1,0 +1,66 @@
+module test.claim.print_runtime_witness
+
+import std.types { Bool, String }
+import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_text, cad_runtime_spec_digest }
+import product.printing.print_runtime {
+  RuntimeJudgement, RuntimeMatches, RuntimeMismatch,
+  judge_cad_probe, judge_host_architecture, cad_environment_interpreter, cad_environment_prefix,
+}
+
+fn matches(j: RuntimeJudgement) -> Bool {
+  match j {
+    RuntimeMatches => true
+    RuntimeMismatch { reason: _ } => false
+  }
+}
+
+fn selected() -> String { cad_environment_interpreter(spec: cad_runtime_spec) }
+
+fn reply(executable: String, tag: String, ocp: String, cq: String) -> String {
+  join(["{\"executable\": \"", executable, "\", \"python_tag\": \"", tag, "\", \"distributions\": {\"cadquery-ocp\": \"", ocp, "\", \"cadquery\": \"", cq, "\"}}"], "")
+}
+
+// POSITIVE CONTROL: the selected interpreter, the pinned tag and both pinned versions match.
+test fn w_the_selected_interpreter_at_the_pins_matches() -> Bool {
+  matches(j: judge_cad_probe(spec: cad_runtime_spec, interpreter: selected(), reply: reply(executable: selected(), tag: "cp311", ocp: "7.9.3.1.1", cq: "2.8.0")))
+}
+
+// RED: a correct CadQuery answered by another interpreter -- the PATH python3 the print path used
+// before this runtime existed -- refuses. Only the selected interpreter counts.
+test fn w_a_correct_runtime_on_another_interpreter_refuses() -> Bool {
+  !matches(j: judge_cad_probe(spec: cad_runtime_spec, interpreter: selected(), reply: reply(executable: "/usr/bin/python3", tag: "cp311", ocp: "7.9.3.1.1", cq: "2.8.0")))
+}
+
+// RED: the wrong CPython tag refuses, as does either distribution at another version.
+test fn w_another_python_tag_or_version_refuses() -> Bool {
+  !matches(j: judge_cad_probe(spec: cad_runtime_spec, interpreter: selected(), reply: reply(executable: selected(), tag: "cp312", ocp: "7.9.3.1.1", cq: "2.8.0")))
+    && !matches(j: judge_cad_probe(spec: cad_runtime_spec, interpreter: selected(), reply: reply(executable: selected(), tag: "cp311", ocp: "7.9.3.1.1", cq: "2.7.0")))
+    && !matches(j: judge_cad_probe(spec: cad_runtime_spec, interpreter: selected(), reply: reply(executable: selected(), tag: "cp311", ocp: "7.8.0", cq: "2.8.0")))
+}
+
+// RED: a reply that omits a declared distribution, or is not JSON, refuses rather than passing on
+// what it happened to include.
+test fn w_a_short_or_unreadable_reply_refuses() -> Bool {
+  !matches(j: judge_cad_probe(spec: cad_runtime_spec, interpreter: selected(), reply: join(["{\"executable\": \"", selected(), "\", \"python_tag\": \"cp311\", \"distributions\": {\"cadquery\": \"2.8.0\"}}"], "")))
+    && !matches(j: judge_cad_probe(spec: cad_runtime_spec, interpreter: selected(), reply: "not-json"))
+}
+
+// The host must report aarch64; another cited architecture or an uncited spelling refuses.
+test fn w_host_architecture_is_the_spec_architecture() -> Bool {
+  matches(j: judge_host_architecture(spec: cad_runtime_spec, uname_stdout: "aarch64\n"))
+    && !matches(j: judge_host_architecture(spec: cad_runtime_spec, uname_stdout: "x86_64\n"))
+    && !matches(j: judge_host_architecture(spec: cad_runtime_spec, uname_stdout: "arm64\n"))
+}
+
+// The environment is named by the spec: its interpreter sits inside the digest-named prefix, and
+// the spec text carries every pin the digest is taken over.
+test fn w_the_environment_is_named_by_the_spec_digest() -> Bool {
+  let prefix = cad_environment_prefix(spec: cad_runtime_spec)
+  starts_with(s: selected(), prefix: concat(prefix, "/"))
+    && string_contains(s: prefix, pattern: cad_runtime_spec_digest(spec: cad_runtime_spec))
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "pip:cadquery==2.8.0")
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "pip:cadquery-ocp==7.9.3.1.1")
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "python_tag=cp311")
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "conda:python=3.11.9")
+    && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "micromamba=2.9.0-0")
+}

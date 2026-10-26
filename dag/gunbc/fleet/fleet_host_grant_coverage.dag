@@ -1,0 +1,330 @@
+module gunbc.fleet.fleet_host_grant_coverage
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { trim, length }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  RunsAsRoot,
+  RunsAsAccount,
+  executor_privileged_operation_argv,
+  executor_privileged_operation_principal,
+  executor_privileged_operation_sudoers_command,
+  executor_privileged_operation_sudoers_line,
+}
+import gunbc.runner.runner_host_grants { runner_host_wide_refused_operations, runner_host_sudoers_install_path }
+import gunbc.runner.runner_host_deploy { RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for }
+import extdeps.sudo.nopasswd_decision {
+  SudoDecisionQuery,
+  SudoDecision,
+  SudoDecisionAdmits,
+  SudoDecisionNeedsPassword,
+  SudoDecisionDenied,
+  SudoVersionRead,
+  SudoVersionObserved,
+  SudoVersionUnobserved,
+  SudoDecisionUnobserved,
+}
+
+// WHETHER A HOST-WIDE SUDO GRANT IS INSTALLED IS A PREMISE OF APPLY, AND THIS MODULE OWNS ITS
+// OBSERVATION'S SHAPE AND READING (capability_arrives_outside_the_converged_path, srv3 apply
+// 39127216304: `sudo -n install -d ... /var/lib/gunbc/fleet-converge` failed "a password is
+// required" because gunbc-ghrunner.sudoers is modeled and uninstalled).
+//
+// THE EVIDENCE IS SUDO'S OWN DECISION, PER RULE, FOR THE PRINCIPAL THAT RUNS IT. A listing parsed line
+// by line cannot see a rule's run-as (`(nobody) NOPASSWD: cmd` is no grant to run cmd as root) or
+// sudoers' last-match order (a later entry that denies or needs a password overrides an earlier
+// NOPASSWD), so each rule is asked as `sudo -n -ll -u <run-as> <argv>`
+// (extdeps.sudo.nopasswd_decision), which evaluates both and never executes the command. A listing proves
+// permission, not passwordlessness (`Defaults listpw` governs the listing), so the decision also reads the
+// selected entry's effective authentication; the sudo version it was read under is part of the observation. The decision
+// says WHETHER the principal may run the rule, never WHICH FILE granted it, so a second read of the
+// installed drop-in separates a rendered grant from a hand-installed one.
+//
+// THE PRINCIPAL IS PART OF THE OBSERVATION. Apply runs the host-wide sudo lines inside the flock as the
+// LEASE OWNER (an invoker that is not the owner reaches it through `sudo -n -u <owner>`), and the
+// generation-store ensure as the INVOKER. A decision taken as one account says nothing about another, and
+// an owner's grants are not readable by a different invoker without privilege this module will not
+// borrow, so a host-wide row observed as anyone but the lease owner is unobserved, never covered.
+//
+// AN OBSERVATION THAT FAILED IS NEVER COVERAGE (§5). A decision that could not be taken is
+// GrantUnobserved; a rule sudo admits over a drop-in that could not be read is
+// GrantCoveredSourceUnobserved, because /etc/sudoers.d/* is root:root 0440 (the directory 0750) and
+// "admitted plus unreadable" says nothing about whose rule it is.
+type HostGrantPrincipalRead
+  = HostGrantPrincipalObserved { login: NonEmptyStr }
+  | HostGrantPrincipalUnobserved { cause: NonEmptyStr }
+
+type HostGrantDecisionRead {
+  query: SudoDecisionQuery
+  decision: SudoDecision
+}
+
+type InstalledSudoersRead
+  = InstalledSudoersText { text: String }
+  | InstalledSudoersUnreadable { cause: NonEmptyStr }
+
+type HostGrantObservation {
+  principal: HostGrantPrincipalRead
+  sudo_version: SudoVersionRead
+  decisions: List<HostGrantDecisionRead>
+  installed: InstalledSudoersRead
+}
+
+// WHO RUNS THE SUDO LINE THE RULE AUTHORIZES, relative to the apply: the invoker of the CLI, or the
+// lease owner that runs everything inside the flock.
+type GrantPrincipal
+  = GrantRunByInvoker
+  | GrantRunByLeaseOwner { owner: NonEmptyStr }
+
+// STANDING IS NESTED SO THAT "BLOCKS APPLY" IS AN ARM, NOT A PREDICATE: a covered rule has no
+// blocking reason to render, and a blocking reason has no covered source.
+type GrantCoveredSource
+  = GrantCoveredByRenderedSudoers
+  | GrantCoveredOutsideTheModel
+  | GrantCoveredSourceUnobserved { cause: NonEmptyStr }
+
+type GrantBlockReason
+  = GrantMissing
+  | GrantNeedsPassword
+  | GrantUnobserved { cause: NonEmptyStr }
+
+type HostGrantStanding
+  = GrantCovered { source: GrantCoveredSource }
+  | GrantBlocking { reason: GrantBlockReason }
+
+type HostGrantRow {
+  rule: NonEmptyStr
+  principal: GrantPrincipal
+  standing: HostGrantStanding
+}
+
+data host_grant_observation_unobserved_no_transaction: HostGrantObservation = HostGrantObservation {
+  principal: HostGrantPrincipalUnobserved { cause: "no principal was observed for this host's sudo grants" as NonEmptyStr },
+  sudo_version: SudoVersionUnobserved { cause: "no sudo version was read for this host" as NonEmptyStr },
+  decisions: [],
+  installed: InstalledSudoersUnreadable { cause: "no installed sudoers read was taken for this host" as NonEmptyStr },
+}
+
+// ONE OPERATION OF THE APPLY, WITH THE PRINCIPAL THAT RUNS IT.
+type GrantedOperation {
+  op: ExecutorPrivilegedOperation
+  principal: GrantPrincipal
+}
+
+fn host_grant_run_as(op: ExecutorPrivilegedOperation) -> NonEmptyStr {
+  match executor_privileged_operation_principal(op: op) {
+    RunsAsRoot => "root" as NonEmptyStr
+    RunsAsAccount { login: l } => l
+  }
+}
+
+fn host_grant_query(op: ExecutorPrivilegedOperation) -> SudoDecisionQuery {
+  SudoDecisionQuery { runas: host_grant_run_as(op: op), argv: executor_privileged_operation_argv(op: op) }
+}
+
+fn host_grant_query_key(query: SudoDecisionQuery) -> String {
+  join(concat([query.runas as String], map(query.argv, w => w as String)), " ")
+}
+
+// THE OPERATIONS THE APPLY RUNS UNDER SUDO AND THEIR PRINCIPALS: the host-wide grants run inside the
+// flock as the lease owner (a host with no runner spec declares none), the caller's own invoker-run
+// operations (the generation-store ensure) as the invoker.
+fn host_granted_operations(host: NonEmptyStr, lease_owner: NonEmptyStr, invoker_ops: List<ExecutorPrivilegedOperation>) -> List<GrantedOperation> {
+  concat(
+    match runner_host_spec_for(host: host as HostIdentity) {
+      RunnerHostSpecAbsent { host: _ } => []
+      RunnerHostSpecFound { spec: spec } =>
+        map(runner_host_wide_refused_operations(spec: spec), op => GrantedOperation { op: op, principal: GrantRunByLeaseOwner { owner: lease_owner } })
+    },
+    map(invoker_ops, op => GrantedOperation { op: op, principal: GrantRunByInvoker }),
+  )
+}
+
+// THE QUERIES THE CLI MUST ASK, derived from the same operations the rows are derived from.
+fn host_grant_queries(host: NonEmptyStr, lease_owner: NonEmptyStr, invoker_ops: List<ExecutorPrivilegedOperation>) -> List<SudoDecisionQuery> {
+  map(host_granted_operations(host: host, lease_owner: lease_owner, invoker_ops: invoker_ops), g => host_grant_query(op: g.op))
+}
+
+fn host_grant_principal_block(observation: HostGrantObservation, principal: GrantPrincipal) -> NonEmptyStr? {
+  match observation.principal {
+    HostGrantPrincipalUnobserved { cause: why } => Present { value: why }
+    HostGrantPrincipalObserved { login: observed } =>
+      match principal {
+        GrantRunByInvoker => Absent
+        GrantRunByLeaseOwner { owner: owner } =>
+          if (observed as String) == (owner as String) {
+            Absent
+          } else {
+            Present { value: join(["grants were observed as ", observed as String, " but apply runs this sudo as the lease owner ", owner as String, ", whose grants this invoker cannot read"], "") as NonEmptyStr }
+          }
+      }
+  }
+}
+
+fn host_grant_decision_for(observation: HostGrantObservation, query: SudoDecisionQuery) -> SudoDecision {
+  match filter(observation.decisions, d => host_grant_query_key(query: d.query) == host_grant_query_key(query: query)).first() {
+    Present { value: d } => d.decision
+    Absent => SudoDecisionUnobserved { cause: "no sudo decision was asked for this rule" as NonEmptyStr }
+  }
+}
+
+fn host_grant_source(observation: HostGrantObservation, rendered_line: NonEmptyStr) -> GrantCoveredSource {
+  match observation.installed {
+    InstalledSudoersUnreadable { cause: why } => GrantCoveredSourceUnobserved { cause: why }
+    InstalledSudoersText { text: installed } =>
+      if any(xs: split(s: installed, delimiter: "\n"), predicate: l => trim(s: l) == (rendered_line as String)) {
+        GrantCoveredByRenderedSudoers
+      } else {
+        GrantCoveredOutsideTheModel
+      }
+  }
+}
+
+fn host_grant_standing(observation: HostGrantObservation, g: GrantedOperation, rendered_line: NonEmptyStr) -> HostGrantStanding {
+  match host_grant_principal_block(observation: observation, principal: g.principal) {
+    Present { value: why } => GrantBlocking { reason: GrantUnobserved { cause: why } }
+    Absent =>
+      match host_grant_decision_for(observation: observation, query: host_grant_query(op: g.op)) {
+        SudoDecisionAdmits => GrantCovered { source: host_grant_source(observation: observation, rendered_line: rendered_line) }
+        SudoDecisionNeedsPassword => GrantBlocking { reason: GrantNeedsPassword }
+        SudoDecisionDenied { reason: _ } => GrantBlocking { reason: GrantMissing }
+        SudoDecisionUnobserved { cause: why } => GrantBlocking { reason: GrantUnobserved { cause: why } }
+      }
+  }
+}
+
+fn host_grant_row(observation: HostGrantObservation, grantee: NonEmptyStr, g: GrantedOperation) -> HostGrantRow {
+  HostGrantRow {
+    rule: executor_privileged_operation_sudoers_command(op: g.op),
+    principal: g.principal,
+    standing: host_grant_standing(
+      observation: observation,
+      g: g,
+      rendered_line: executor_privileged_operation_sudoers_line(grantee: grantee, op: g.op),
+    ),
+  }
+}
+
+// A HOST WITH NO RUNNER SPEC DECLARES NO HOST-WIDE GRANTS (host_wide_grant_apply_lines applies none
+// for it), so it has none of those rows; the invoker-run operations remain, rendered for the lease
+// owner as the would-be grantee.
+fn host_grant_rows(host: NonEmptyStr, observation: HostGrantObservation, lease_owner: NonEmptyStr, invoker_ops: List<ExecutorPrivilegedOperation>) -> List<HostGrantRow> {
+  let grantee = match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: _ } => lease_owner
+    RunnerHostSpecFound { spec: spec } => spec.job_user
+  }
+  map(host_granted_operations(host: host, lease_owner: lease_owner, invoker_ops: invoker_ops), g => host_grant_row(observation: observation, grantee: grantee, g: g))
+}
+
+fn host_grant_standing_tag(standing: HostGrantStanding) -> String {
+  match standing {
+    GrantCovered { source: GrantCoveredByRenderedSudoers } => "covered-by-rendered-sudoers"
+    GrantCovered { source: GrantCoveredOutsideTheModel } => "covered-outside-the-model"
+    GrantCovered { source: GrantCoveredSourceUnobserved { cause: _ } } => "covered-source-unobserved"
+    GrantBlocking { reason: GrantMissing } => "missing"
+    GrantBlocking { reason: GrantNeedsPassword } => "needs-password"
+    GrantBlocking { reason: GrantUnobserved { cause: _ } } => "unobserved"
+  }
+}
+
+// THE PREMISE ROWS. The standing tag only, never the cause text: a cause carries an error string
+// that may differ between the plan's read and apply's, which would read as drift of the host.
+fn host_grant_principal_tag(principal: GrantPrincipal) -> String {
+  match principal {
+    GrantRunByInvoker => "invoker"
+    GrantRunByLeaseOwner { owner: o } => concat("lease-owner:", o as String)
+  }
+}
+
+// THE PRINCIPAL THE EVIDENCE WAS TAKEN AS IS A PREMISE TOO: a plan observed as one account must not
+// admit an apply whose evidence would have been another's.
+fn host_grant_baseline_rows(observation: HostGrantObservation, rows: List<HostGrantRow>) -> List<String> {
+  concat(
+    [match observation.principal {
+      HostGrantPrincipalObserved { login: l } => concat("host-grant-observed-as:", l as String)
+      HostGrantPrincipalUnobserved { cause: _ } => "host-grant-observed-as:unobserved"
+    },
+    match observation.sudo_version {
+      SudoVersionObserved { banner: b } => concat("host-grant-sudo-version:", b as String)
+      SudoVersionUnobserved { cause: _ } => "host-grant-sudo-version:unobserved"
+    }],
+    map(rows, r => join(["host-grant:", host_grant_principal_tag(principal: r.principal), ":", r.rule as String, "=", host_grant_standing_tag(standing: r.standing)], "")),
+  )
+}
+
+fn host_grant_blocking_text(rule: NonEmptyStr, principal: GrantPrincipal, reason: GrantBlockReason) -> String {
+  match reason {
+    GrantMissing => join(["missing sudoers rule (as ", host_grant_principal_tag(principal: principal), "): ", rule as String], "")
+    GrantNeedsPassword => join(["sudoers rule requires a password (as ", host_grant_principal_tag(principal: principal), "): ", rule as String], "")
+    GrantUnobserved { cause: why } => join(["unobserved sudoers rule (as ", host_grant_principal_tag(principal: principal), "; ", why as String, "): ", rule as String], "")
+  }
+}
+
+// ONE TEXT PER BLOCKING ROW; a covered row contributes nothing by construction.
+fn host_grant_blocking_texts(rows: List<HostGrantRow>) -> List<String> {
+  flat_map(rows, r => match r.standing {
+    GrantBlocking { reason: reason } => [host_grant_blocking_text(rule: r.rule, principal: r.principal, reason: reason)]
+    GrantCovered { source: _ } => []
+  })
+}
+
+// THE CAPABILITY ApplyAwaitingCapability / AwaitingCapability CARRY. Present exactly when some
+// host-wide grant is missing or unobserved; it names every such rule, so the refusal says what to
+// install and apply never reaches the `sudo -n` that would fail mid-script.
+fn host_grant_awaiting_capability(rows: List<HostGrantRow>) -> String? {
+  let texts = host_grant_blocking_texts(rows: rows)
+  if length(xs: texts) == 0 {
+    Absent
+  } else {
+    Present { value: concat("host-wide-sudo-grants: ", join(texts, "; ")) }
+  }
+}
+
+fn host_grant_rules_line(label: String, rules: List<String>) -> String {
+  if length(xs: rules) == 0 {
+    join(["# host-grants ", label, ": none"], "")
+  } else {
+    join(["# host-grants ", label, " (", to_string(length(xs: rules)), "): ", join(rules, "; ")], "")
+  }
+}
+
+// plan.txt LINES, ONE PER STANDING THAT NEEDS AN OPERATOR'S EYE. Covered-outside-the-model is the
+// countable fact (a rule the host honors that this repository did not render), printed on its own
+// line per host so adopting or replacing it is a decision made on a number, not a surprise. Each
+// line selects its rows by matching the standing, never by comparing a wire tag.
+fn host_grant_plan_lines(rows: List<HostGrantRow>) -> List<String> {
+  [
+    host_grant_rules_line(label: "covered-outside-the-model", rules: flat_map(rows, r => match r.standing {
+      GrantCovered { source: GrantCoveredOutsideTheModel } => [r.rule as String]
+      GrantCovered { source: GrantCoveredByRenderedSudoers } => []
+      GrantCovered { source: GrantCoveredSourceUnobserved { cause: _ } } => []
+      GrantBlocking { reason: _ } => []
+    })),
+    host_grant_rules_line(label: "covered-source-unobserved", rules: flat_map(rows, r => match r.standing {
+      GrantCovered { source: GrantCoveredSourceUnobserved { cause: _ } } => [r.rule as String]
+      GrantCovered { source: GrantCoveredByRenderedSudoers } => []
+      GrantCovered { source: GrantCoveredOutsideTheModel } => []
+      GrantBlocking { reason: _ } => []
+    })),
+    host_grant_rules_line(label: "missing", rules: flat_map(rows, r => match r.standing {
+      GrantBlocking { reason: GrantMissing } => [r.rule as String]
+      GrantBlocking { reason: GrantNeedsPassword } => []
+      GrantBlocking { reason: GrantUnobserved { cause: _ } } => []
+      GrantCovered { source: _ } => []
+    })),
+    host_grant_rules_line(label: "needs-password", rules: flat_map(rows, r => match r.standing {
+      GrantBlocking { reason: GrantNeedsPassword } => [r.rule as String]
+      GrantBlocking { reason: GrantMissing } => []
+      GrantBlocking { reason: GrantUnobserved { cause: _ } } => []
+      GrantCovered { source: _ } => []
+    })),
+    host_grant_rules_line(label: "unobserved", rules: flat_map(rows, r => match r.standing {
+      GrantBlocking { reason: GrantUnobserved { cause: _ } } => [r.rule as String]
+      GrantBlocking { reason: GrantMissing } => []
+      GrantBlocking { reason: GrantNeedsPassword } => []
+      GrantCovered { source: _ } => []
+    })),
+  ]
+}

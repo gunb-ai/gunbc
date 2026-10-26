@@ -13,6 +13,7 @@ pub use crate::extdeps_version::{
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_algebra::{trim, Ordering};
 pub use crate::std_coercion::unicode_scalar_fold;
+pub use crate::std_host_text::chars;
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
@@ -122,39 +123,41 @@ pub fn semver_compare_digits_lexical(
     mut __tco_loop_a: Rc<Vec<i64>>,
     mut __tco_loop_b: Rc<Vec<i64>>,
 ) -> Ordering {
-    loop {
-        #[allow(unused_mut)]
-        let mut a = __tco_loop_a;
-        #[allow(unused_mut)]
-        let mut b = __tco_loop_b;
-        if ((a.clone().len() as i64) == 0) {
-            break Ordering::Equal;
-        } else {
-            match a.clone().first().cloned() {
-                Some(ac) => match b.clone().first().cloned() {
-                    Some(bc) => {
-                        if (ac.clone() < bc.clone()) {
-                            break Ordering::Less;
-                        } else {
-                            if (ac.clone() > bc.clone()) {
-                                break Ordering::Greater;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut a = __tco_loop_a;
+            #[allow(unused_mut)]
+            let mut b = __tco_loop_b;
+            if ((a.clone().len() as i64) == 0) {
+                break Ordering::Equal;
+            } else {
+                match a.clone().first().cloned() {
+                    Some(ac) => match b.clone().first().cloned() {
+                        Some(bc) => {
+                            if (ac.clone() < bc.clone()) {
+                                break Ordering::Less;
                             } else {
-                                {
-                                    let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
-                                    let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
-                                    __tco_loop_a = __tco_0;
-                                    __tco_loop_b = __tco_1;
-                                    continue;
+                                if (ac.clone() > bc.clone()) {
+                                    break Ordering::Greater;
+                                } else {
+                                    {
+                                        let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
+                                        let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
+                                        __tco_loop_a = __tco_0;
+                                        __tco_loop_b = __tco_1;
+                                        continue;
+                                    }
                                 }
                             }
                         }
-                    }
+                        std::option::Option::None => {
+                            break Ordering::Greater;
+                        }
+                    },
                     std::option::Option::None => {
-                        break Ordering::Greater;
+                        break Ordering::Less;
                     }
-                },
-                std::option::Option::None => {
-                    break Ordering::Less;
                 }
             }
         }
@@ -194,40 +197,44 @@ pub fn semver_compare_identifiers(
     mut __tco_loop_a: Rc<Vec<Rc<SemVerIdentifier>>>,
     mut __tco_loop_b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
-    loop {
-        #[allow(unused_mut)]
-        let mut a = __tco_loop_a;
-        #[allow(unused_mut)]
-        let mut b = __tco_loop_b;
-        if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
-            break Ordering::Equal;
-        } else {
-            if ((a.clone().len() as i64) == 0) {
-                break Ordering::Less;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut a = __tco_loop_a;
+            #[allow(unused_mut)]
+            let mut b = __tco_loop_b;
+            if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
+                break Ordering::Equal;
             } else {
-                if ((b.clone().len() as i64) == 0) {
-                    break Ordering::Greater;
+                if ((a.clone().len() as i64) == 0) {
+                    break Ordering::Less;
                 } else {
-                    match a.clone().first().cloned() {
-                        Some(ah) => match b.clone().first().cloned() {
-                            Some(bh) => match semver_compare_identifier(ah.clone(), bh.clone()) {
-                                Ordering::Equal => {
-                                    let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
-                                    let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
-                                    __tco_loop_a = __tco_0;
-                                    __tco_loop_b = __tco_1;
-                                    continue;
+                    if ((b.clone().len() as i64) == 0) {
+                        break Ordering::Greater;
+                    } else {
+                        match a.clone().first().cloned() {
+                            Some(ah) => match b.clone().first().cloned() {
+                                Some(bh) => {
+                                    match semver_compare_identifier(ah.clone(), bh.clone()) {
+                                        Ordering::Equal => {
+                                            let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
+                                            let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
+                                            __tco_loop_a = __tco_0;
+                                            __tco_loop_b = __tco_1;
+                                            continue;
+                                        }
+                                        other => {
+                                            break other.clone();
+                                        }
+                                    }
                                 }
-                                other => {
-                                    break other.clone();
+                                std::option::Option::None => {
+                                    break Ordering::Greater;
                                 }
                             },
                             std::option::Option::None => {
-                                break Ordering::Greater;
+                                break Ordering::Less;
                             }
-                        },
-                        std::option::Option::None => {
-                            break Ordering::Less;
                         }
                     }
                 }
@@ -275,7 +282,7 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
 pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
     {
         let parts = Rc::new(
-            crate::std_algebra::trim(text.clone())
+            crate::std_algebra::trim(text)
                 .split(&".".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -289,12 +296,7 @@ pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
                     std::option::Option::None => std::option::Option::None,
                     Some(minor) => {
                         if ((parts.clone().len() as i64) == 2) {
-                            match semver_numeric_field(Rc::new(
-                                "0".to_string()
-                                    .chars()
-                                    .map(|c| c as i64)
-                                    .collect::<Vec<_>>(),
-                            )) {
+                            match semver_numeric_field(v1_rt::chars(&"0".to_string())) {
                                 std::option::Option::None => std::option::Option::None,
                                 Some(zero) => Some(Rc::new(SemVerVersion {
                                     major: major.clone(),
@@ -326,9 +328,7 @@ pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
 pub fn semver_dotted_part(parts: Rc<Vec<String>>, index: i64) -> Option<Rc<SemVerNumericField>> {
     match parts.clone().get((index.clone()) as usize).cloned() {
         std::option::Option::None => std::option::Option::None,
-        Some(w) => semver_numeric_field(Rc::new(
-            w.clone().chars().map(|c| c as i64).collect::<Vec<_>>(),
-        )),
+        Some(w) => semver_numeric_field(v1_rt::chars(&w.clone())),
     }
 }
 
@@ -401,7 +401,7 @@ pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
 }
 
 pub fn semver_to_version_identity(v: Rc<SemVerVersion>) -> NonEmptyStr {
-    semver_version_label(v.clone())
+    semver_version_label(v)
 }
 
 pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Rc<VersionComparison> {
@@ -425,7 +425,7 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Rc<VersionComp
 }
 
 pub fn semver_identity_code_points(label: NonEmptyStr) -> Rc<Vec<i64>> {
-    Rc::new(label.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+    v1_rt::chars(&label.clone())
 }
 
 pub fn semver_is_ascii_digit(cp: i64) -> bool {
@@ -471,28 +471,31 @@ pub fn semver_split_on(
     mut __tco_loop_cps: Rc<Vec<i64>>,
     mut __tco_loop_acc: Rc<Vec<Rc<Vec<i64>>>>,
 ) -> Rc<Vec<Rc<Vec<i64>>>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut cp = __tco_loop_cp;
-        #[allow(unused_mut)]
-        let mut cps = __tco_loop_cps;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        match semver_index_of(cp.clone(), cps.clone()) {
-            Some(i) => {
-                let __tco_0 = cp;
-                let __tco_1 = Rc::new(v1_rt::list_skip(&cps.clone(), v1_rt::int_add(i.clone(), 1)));
-                let __tco_2 = v1_rt::concat(
-                    acc,
-                    Rc::new(vec![Rc::new(v1_rt::list_take(&cps.clone(), i.clone()))]),
-                );
-                __tco_loop_cp = __tco_0;
-                __tco_loop_cps = __tco_1;
-                __tco_loop_acc = __tco_2;
-                continue;
-            }
-            std::option::Option::None => {
-                break v1_rt::concat(acc.clone(), Rc::new(vec![cps.clone()]));
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut cp = __tco_loop_cp;
+            #[allow(unused_mut)]
+            let mut cps = __tco_loop_cps;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            match semver_index_of(cp.clone(), cps.clone()) {
+                Some(i) => {
+                    let __tco_0 = cp;
+                    let __tco_1 =
+                        Rc::new(v1_rt::list_skip(&cps.clone(), v1_rt::int_add(i.clone(), 1)));
+                    let __tco_2 = v1_rt::concat(
+                        acc,
+                        Rc::new(vec![Rc::new(v1_rt::list_take(&cps.clone(), i.clone()))]),
+                    );
+                    __tco_loop_cp = __tco_0;
+                    __tco_loop_cps = __tco_1;
+                    __tco_loop_acc = __tco_2;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break v1_rt::concat(acc.clone(), Rc::new(vec![cps.clone()]));
+                }
             }
         }
     }
@@ -523,7 +526,7 @@ pub fn semver_numeric_run_without_leading_zero(cps: Rc<Vec<i64>>) -> bool {
 }
 
 pub fn semver_label_from_code_points(cps: Rc<Vec<i64>>) -> String {
-    crate::std_coercion::unicode_scalar_fold(cps.clone())
+    crate::std_coercion::unicode_scalar_fold(cps)
 }
 
 pub fn semver_core_fields_parse(
@@ -568,7 +571,7 @@ pub fn semver_core_fields_parse(
 }
 
 pub fn semver_core_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {
-    match semver_core_fields_parse(cps.clone(), 3) {
+    match semver_core_fields_parse(cps, 3) {
         std::option::Option::None => std::option::Option::None,
         Some(fields) => {
             if ((fields.clone().len() as i64) != 3) {
@@ -651,11 +654,11 @@ pub fn semver_identifier_list_parse(
 }
 
 pub fn semver_pre_release_parse(cps: Rc<Vec<i64>>) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
-    semver_identifier_list_parse(semver_split_on(46, cps.clone(), Rc::new(vec![])), true)
+    semver_identifier_list_parse(semver_split_on(46, cps, Rc::new(vec![])), true)
 }
 
 pub fn semver_build_parse(cps: Rc<Vec<i64>>) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
-    semver_identifier_list_parse(semver_split_on(46, cps.clone(), Rc::new(vec![])), false)
+    semver_identifier_list_parse(semver_split_on(46, cps, Rc::new(vec![])), false)
 }
 
 pub fn semver_identity_head_parse(
@@ -693,7 +696,7 @@ pub fn semver_identity_head_parse(
 }
 
 pub fn semver_identity_parse(label: NonEmptyStr) -> Option<Rc<SemVerVersion>> {
-    semver_version_parse(semver_identity_code_points(label.clone()))
+    semver_version_parse(semver_identity_code_points(label))
 }
 
 pub fn semver_version_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {

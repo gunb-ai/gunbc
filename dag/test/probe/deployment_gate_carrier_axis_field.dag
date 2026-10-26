@@ -1,0 +1,38 @@
+module test.probe.deployment_gate_carrier_axis_field
+
+// THE CROSS-AXIS FORGERY AT THE FIELD, AS A REAL COMPILED SOURCE (review 83825, restored per
+// warm-crane-219's srv2 measurement). An installation id -- the CLOSEST neighbour, same
+// { value: Int } shape, same extdeps.github family, imported so the refusal cannot be an
+// unknown-name artifact -- written into EnabledDeploymentProtectionRule's RULE-id field.
+//
+// This is the forgery the separate carriers exist to make unwritable (§5: construction over
+// validation): if GitHubDeploymentProtectionRuleId and GitHubAppInstallationId were one shared
+// GitHubId, or if the rule field had been mistyped as the installation type, this line would
+// COMPILE. Measured refusal: DeclaredTypeNotInhabited at subject "record literal field 'id'",
+// blocking -- read by
+// an_installation_id_where_a_rule_id_belongs_is_refused_at_the_field in
+// test.claim.deployment_gate_evidence_forged_probe_witness.
+//
+// WHY A FILE AND NOT AN INLINE STRING: as a file on disk the compiler's own diagnostics are
+// readable when a measurement is questioned; the witness reads it the same way its sibling
+// probe_source reads the evidence probe.
+//
+// ONE FORGERY HERE, BY DISCIPLINE RATHER THAN NECESSITY: the census reports a module's type
+// errors together (measured: two deliberate errors in one source yield two rows), so nothing
+// hides the second -- but with each forgery in its own source, a claim's refusal is attributable
+// to THAT forgery alone and cannot drift onto a sibling's row.
+import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
+import extdeps.github.deployment_protection_rule {
+  EnabledDeploymentProtectionRule,
+  RuleOwningApp,
+}
+
+data an_installation: GitHubAppInstallationId = GitHubAppInstallationId { value: 987654 }
+data an_app: GitHubAppId = GitHubAppId { value: 7 }
+
+data forged_foreign_carrier_row: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule {
+  id: an_installation,
+  node_id: "DPPR_axis",
+  enabled: true,
+  app: RuleOwningApp { id: an_app, slug: "owning-app" },
+}

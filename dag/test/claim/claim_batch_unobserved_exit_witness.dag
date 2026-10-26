@@ -1,0 +1,129 @@
+module test.claim.claim_batch_unobserved_exit_witness
+
+import std.types { Bool, String, FilePath, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHY THIS IS WET. The property is the EXIT STATUS and OUTPUT SHAPE of the `claim_batch` process
+// for the two ways an entry fails to reach its subject: an entry whose closure does not resolve is a
+// FINDING (exit 1, a FAIL line), and an entry that is not a file is NO OBSERVATION (exit 2, an
+// UNOBSERVED line). The in-process unit tests cover the classification of a refusal and the
+// composition of two bools; neither sees the CLI wiring that maps one to the other, so collapsing
+// `EntryResolveRefusal::ClosureDiagnostics` into the unobserved arm flips exit 1 to 2 and nothing
+// else in the repository goes red. Only a child process observes it.
+//
+// THE CLOSURE ERROR IS PLANTED, NEVER COMMITTED: a mktemp directory under target/ handed to the
+// child as its only --source-root. The entry imports a name its sibling module does not declare,
+// which is a closure diagnostic and not a host or infrastructure refusal. The finding arm also walks
+// `dag`, because a verdict needs `gunbc.output_policy`; the exit-2 arm is refused at the CLI before
+// any walk.
+
+data closure_error_entry_source: String = "module probe.closure_error_entry
+
+import probe.closure_error_lib { zz_no_such_name }
+
+test fn closure_error_entry_holds() -> Bool {
+  true
+}
+"
+
+data closure_error_lib_source: String = "module probe.closure_error_lib
+
+fn closure_error_lib_value() -> Bool {
+  true
+}
+"
+
+type PlantedClosureError
+  = PlantedClosureErrorReady { dir: String }
+  | PlantedClosureErrorUnwritable { detail: String }
+
+fn plant_closure_error(root: String) -> PlantedClosureError {
+  let dir = shell.Mktemp.DirWithTemplate(
+    template: concat(root, "/target/closure-error-planted-XXXXXX") as FilePath,
+  )
+  if !dir.success {
+    PlantedClosureErrorUnwritable { detail: "mktemp under target/ failed" }
+  } else {
+    let d = dir.path as String
+    let e = Filesystem.Write(path: concat(d, "/closure_error_entry.dag"), content: closure_error_entry_source)
+    let l = Filesystem.Write(path: concat(d, "/closure_error_lib.dag"), content: closure_error_lib_source)
+    if e.success && l.success {
+      PlantedClosureErrorReady { dir: d }
+    } else {
+      PlantedClosureErrorUnwritable { detail: join(["fixture write failed: ", e.error, l.error], "") }
+    }
+  }
+}
+
+// The finding arm must also walk `dag`: a verdict needs gunbc.output_policy, which resolves only
+// from there (measured: without it the child refuses OUTPUT-POLICY REFUSAL, exit 1, before it ever
+// reaches the entry, which would pass the exit-code assertion for the wrong reason, so the FAIL line
+// is asserted too). The missing-entry arm is refused at the CLI before any resolve and needs only the
+// planted root.
+fn closure_error_finding_args(dir: String) -> List<String> {
+  [
+    "--source-root", "dag",
+    "--source-root", dir,
+    "--entry", concat(dir, "/closure_error_entry.dag"),
+    "--function", "closure_error_entry_holds"
+  ]
+}
+
+fn closure_error_missing_entry_args(dir: String) -> List<String> {
+  [
+    "--source-root", dir,
+    "--entry", concat(dir, "/no_such_entry.dag"),
+    "--function", "closure_error_entry_holds"
+  ]
+}
+
+// The finding arm. An entry whose closure does not resolve must exit 1 with a FAIL line naming
+// closure diagnostics, and must not read as no observation.
+test fn an_entry_with_a_closure_error_exits_1_with_a_fail_line() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match plant_closure_error(root: root) {
+    PlantedClosureErrorUnwritable { detail: _ } => false
+    PlantedClosureErrorReady { dir } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: concat(root, "/target/release/claim_batch"),
+        args: closure_error_finding_args(dir: dir)
+      )
+      let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+      cleaned.success
+        && result.exit_code == 1
+        && string_contains(s: result.stdout, pattern: "FAIL closure_error_entry_holds")
+        && string_contains(s: result.stdout, pattern: "closure diagnostics")
+        && !string_contains(s: result.stdout, pattern: "UNOBSERVED")
+    }
+  }
+}
+
+// The no-observation arm, and the positive control for the arm above: the same planted root with an
+// --entry that is not a file must exit 2 with a located `does not exist` refusal. Together the two rows fix both
+// codes, so a binary that returns one code for every refusal fails exactly one of them.
+test fn a_nonexistent_entry_exits_2_with_a_located_refusal() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match plant_closure_error(root: root) {
+    PlantedClosureErrorUnwritable { detail: _ } => false
+    PlantedClosureErrorReady { dir } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: concat(root, "/target/release/claim_batch"),
+        args: closure_error_missing_entry_args(dir: dir)
+      )
+      let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+      cleaned.success
+        && result.exit_code == 2
+        && string_contains(s: result.stderr, pattern: "does not exist")
+        && !string_contains(s: result.stdout, pattern: "FAIL")
+    }
+  }
+}

@@ -67,8 +67,6 @@ import gunbc.ci.ci_layer_roots {
   frontier_probe_witness_measure_receipt_below_cap,
   frontier_probe_witness_measure_receipt_second_root
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness.dag"
 
@@ -1416,19 +1414,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/ci_materialization_witness_test.dag",
-      check_fns: [
-        "ci_ladder_holds_on_live_workflow",
-        "ci_ladder_holds_without_sccache_single_build",
-        "ci_sccache_is_eligible_for_the_capacity_bounded_role"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/duplicate_computation/placement_grain_witness.dag",
       check_fns: [
         "ci_build_across_two_jobs_is_one_violation",
@@ -1478,7 +1463,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/floor_materialization_witness_test.dag",
+      entry: "dag/test/claim/floor/floor_materialization_witness.dag",
       check_fns: [
         "floor_index_build_share_is_shared_by_reference",
         "floor_index_build_has_plural_readers",
@@ -1791,45 +1776,12 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
-      check_fns: [
-        "bind_census_ingested_executes_holds",
-        "bind_census_ingested_wrong_value_red_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
-      check_fns: [
-        "loop_census_ingested_executes_holds",
-        "loop_census_ingested_wrong_value_red_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
       check_fns: ["witness_resolve_distinct_param_bindings_holds"],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
     surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
-      check_fns: ["witness_parse_binding_fidelity_distinct_identifiers_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -1911,66 +1863,29 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration.dag",
-      check_fns: ["frontier_probe_below_cap_complete_population_gates_pass_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanEnrolled {
-        seams: [
-          WitnessSeam {
-            producer: "FalsifierCadenceJob",
-            consumer: "frontier_probe_below_cap_complete_population_gates_pass_holds"
-          }
-        ],
-        cost_basis: MeasuredAtExactSubject {
-          clock: WallClock,
-          duration: millisecond(count: 784772),
-          receipt: frontier_probe_witness_measure_receipt_below_cap
-        },
-        envelope: ScheduledWitnessEnvelope {
-          path_classification: FalsifierRehomedBinWet,
-          wall_budget: millisecond(count: 900000),
-          max_staleness: millisecond(count: 14400000)
-        }
-      }
-    },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration.dag",
-      check_fns: ["frontier_probe_second_source_root_population_gates_pass_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanEnrolled {
-        seams: [
-          WitnessSeam {
-            producer: "FalsifierCadenceJob",
-            consumer: "frontier_probe_second_source_root_population_gates_pass_holds"
-          }
-        ],
-        cost_basis: MeasuredAtExactSubject {
-          clock: WallClock,
-          duration: millisecond(count: 742109),
-          receipt: frontier_probe_witness_measure_receipt_second_root
-        },
-        envelope: ScheduledWitnessEnvelope {
-          path_classification: FalsifierRehomedBinWet,
-          wall_budget: millisecond(count: 900000),
-          max_staleness: millisecond(count: 14400000)
-        }
-      }
-    },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/gauntlet_lane_enrollment_witness.dag",
       check_fns: [
         "witness_rehomed_rows_are_cadence_enrolled",
         "witness_split_entries_keep_cheap_half_per_pr",
         "gauntlet_lane_rehome_is_never_bare_deenrollment_holds",
         "gauntlet_lane_rehome_bare_deenrollment_RED_control_holds",
+        "falsifier_cadence_only_row_is_refused_RED_control_holds",
+        "falsifier_cadence_only_gate_is_refused_RED_control_holds",
         "gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds",
         "gauntlet_lane_gate_bare_deenrollment_RED_control_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/falsifier_rehomed_rows_unexecuted_witness.dag",
+      check_fns: [
+        "falsifier_rehomed_drop_population_is_the_identity_join_of_both_frontiers",
+        "falsifier_rehomed_drop_population_names_entry_and_function",
+        "falsifier_rehomed_drop_population_excludes_unlisted_RED_control_holds"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1991,35 +1906,12 @@ data commit_workflow_realization_bindings: List<CommitWorkflowRealizationBinding
   }
 ]
 
-fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface) -> Bool {
-  match a {
-    GithubActionsCiJob =>
-      match b { GithubActionsCiJob => true  _ => false }
-    GitPrePushHook =>
-      match b { GitPrePushHook => true  _ => false }
-    FalsifierCadenceJob =>
-      match b { FalsifierCadenceJob => true  _ => false }
-  }
-}
-
 fn surface_enrolled(surface: CommitWorkflowSurface, surfaces: List<CommitWorkflowSurface>) -> Bool {
-  any(surfaces, s => commit_workflow_surface_eq(a: s, b: surface))
+  any(surfaces, s => s == surface)
 }
 
 fn enrollment_has_surface(e: CommitCheckEnrollment, surface: CommitWorkflowSurface) -> Bool {
   surface_enrolled(surface: surface, surfaces: e.surfaces)
-}
-
-fn gate_eq(a: Gate, b: Gate) -> Bool {
-  match a {
-    EmitHostGate => match b { EmitHostGate => true  _ => false }
-    CheapClaimPoolGate => match b { CheapClaimPoolGate => true  _ => false }
-    ExtdepsExternalAuthorityGate => match b { ExtdepsExternalAuthorityGate => true  _ => false }
-    DagCompileCleanGate => match b { DagCompileCleanGate => true  _ => false }
-    GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
-    ExtdepsScopePlacementGate => match b { ExtdepsScopePlacementGate => true  _ => false }
-    ProseRowIntroductionGate => match b { ProseRowIntroductionGate => true  _ => false }
-  }
 }
 
 fn gates_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<Gate> {
@@ -2078,30 +1970,12 @@ fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
 // scheduler for its own reasons (diff-proportional ingest proxy, or floor-memo M2) — never its own
 // lane.
 
-// The GATE half of the FalsifierCadenceJob lane, and it did not exist until 2026-07-26. FOUND BY
-// AUDIT, not by a red: the lane shipped with a witness projector
-// (project_falsifier_witness_entries) and no gate projector, while witness_entries_from_enrollments
-// drops CommitSpecGate rows by construction (`CommitSpecGate { gate: _ } => acc`). So a gate row
-// moved to surfaces: [FalsifierCadenceJob] projected into NOTHING — it left the per-PR floor and
-// arrived on no lane — and bare_deenrollment_wall_note's wall could not catch it because that wall
-// filters on enrollment_is_witness_claim, which answers false for exactly this row kind. A gate was
-// therefore the one enrollment shape that could be silently de-enrolled by a one-line surface edit
-// that reads, in the diff, identically to a legitimate re-home. This projector plus the
-// scheduled-surface predicate close that (the predicate was gate_enrollment_is_scheduled; it
-// collapsed into the shared enrollment_is_scheduled on 2026-08-19 when the regen root cut deleted
-// the one surface that separated it from the witness form —
-// enrollment_surface_asymmetry_retired_note): the lane can now receive gates, and the wall now
-// counts them. THE ORDER MATTERS AND IS NOT COSMETIC: this projector and its executing batch
-// (v2.workflow.ci_floor_plan gunbc_falsifier_gate_batch) land in the SAME change as the wall
-// extension, because a wall that credits FalsifierCadenceJob for gates before any batch reads them
-// would bless precisely the enrollment-by-illusion it exists to forbid — the same 'a surface tag
-// with no batch reading it' trap falsifier_cadence_witness_batch_note names for witnesses.
-
-fn project_falsifier_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
-  gates_from_enrollments(
-    rows: filter(roster, e => enrollment_has_surface(e: e, surface: FalsifierCadenceJob))
-  )
-}
+// THE GATE HALF OF THE FalsifierCadenceJob LANE IS GONE, with its projector. It existed from
+// 2026-07-26 so that a gate moved to surfaces: [FalsifierCadenceJob] projected somewhere instead of
+// nowhere; the lane's executor (falsifier.yml) was deleted at 611fd02770 (#8283), so the projection
+// fed nothing that runs, and the scheduled-surface predicate that counted it credited an enrollment
+// no executor reads (the 'enrollment-by-illusion' the original comment forbade). No live gate row
+// rode the surface when it was removed. See falsifier_cadence_surface_note.
 
 data ci_witness_optin_inversion: Disposition = Terminal {
   reason: "Opt-in inversion (operator, 2026-07-04) DISSOLVE FIRED at the discovery flip (operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10, see gunbc.ci.ci_spec ci_spec_discovery_flip_note): the corpus re-enrolled through CiSpec.discovery_scan_dirs with SelectionApplied, so per-PR CI runs tree-wide discovery shrunk to the diff's affected set. The scaffold's dissolve-on (affected-set selection + floor memoization make per-PR selection-by-affectedness affordable) is satisfied at discovery width=1 under union-resolve S1. project_ci_floor_witness_entries is Terminal, not interim: CommitWitnessClaim rows remain live as the explicit-entry roster (execution-kind rows with their own resource profile, and any row that must run as declared) - only the roster's EXCLUSIVITY as witness source dissolved."
@@ -2135,7 +2009,7 @@ fn project_ci_floor_witness_entries(roster: List<CommitCheckEnrollment>) -> List
   )
 }
 
-data falsifier_cadence_surface_note: String = "FalsifierCadenceJob is the SCHEDULED home for declared witness rows whose measured wall prices them out of the per-PR floor (batch-4 clamp FLOOR-BATCH-OVER-BUDGET, run 30148859947: wall_ms=613864 vs clamp_ms=420000 at units=74; authority gunbc.ci.ci_spec gunbc_ci_floor_batch_clamp_params[3]). It extends the axis that ALREADY answers 'where does this check run' — the enrollment surface — rather than minting a second re-home authority beside gunbc.ci.ci_layer_roots falsifier_rehomed_bin_wet_rows, which is specifically the bin_witness_wet_entries per-row-budget overflow (its constructor is bin_wet, its budget datum is bin_witness_wet_per_row_wall_budget_seconds) and does not model CommitWitnessClaim rows. Re-homing here is NEVER a bare de-enrollment: a row moved off GithubActionsCiJob must land on this surface, so it stays enrolled somewhere and its execution is receipted on the 4-hour cadence. The failure mode this guards is measured, not hypothetical — 63 *_test.dag files live under the two test/claim/long/ dirs, 9 are enrolled here, and the rest are enrolled NOWHERE (long/ is excluded from discovery at dir grain and the falsifier does not walk it), so 'deferred' has historically meant 'unscheduled'; this surface is the lane those rows enroll into. GRAIN: enrollment splits at the check_fn, not the file — an entry whose expensive fns re-home keeps its cheap fns on GithubActionsCiJob as the per-PR smoke grain (the mocks-layer-never-replace rule), so a re-home costs the corpus its wet grain per-PR, never the concern's per-PR coverage entirely. 🟡 dissolve-on: v2.workflow.ci_placement Placement (PrTier | Gauntlet) supersedes this surface tag as the witness-scheduling authority. It cannot today: PrTier is unwritable without a WarmCostReceipt { measured_ms, run_ref } AND measured_ms <= gunbc_ci_fast_lane_eval_budget_ms (5s), so wiring placement onto the 36 CommitWitnessClaim rows requires a per-row measured receipt for each — the D2 warm-cost probe on fleet srv hardware is the named filler (ci_placement_law_note), and it has not run. Fabricating those receipts would be the fail-open the placement law exists to forbid; defaulting the unmeasured rows to Gauntlet would de-enroll all 36 at once. Encouraging convergence receipt: the 5s law selects EXACTLY the twelve rows the run-30148859947 slow-witness tables measured over 5s (group A 141s/57s/15s/7s, group B 141s/29s/27s/14s/13s/13s/13s/13s) and admits every other batch-4 row at <=1s, so placement and this surface agree on today's roster — the wiring is blocked on receipts, not on a disputed boundary."
+data falsifier_cadence_surface_note: String = "FalsifierCadenceJob IS NOT AN EXECUTING SURFACE (corrected by the falsifier-surface leaf, node adhoc-cea8e60d-505; found by the Charter 4 census of 242ac98b5fe). It was introduced as the SCHEDULED home for witness rows whose measured wall priced them out of the per-PR floor, on the premise that 'its execution is receipted on the 4-hour cadence'. That premise died with its executor: falsifier.yml was deleted at 611fd02770 (#8283) and nothing dispatches a row on this surface. enrollment_is_scheduled nevertheless counted it, so a row on [FalsifierCadenceJob] alone read as enrolled while running nowhere -- the fail-open the bare-deenrollment wall exists to refuse (DESIGN 5). The variant stays only so the wall has a surface to refuse by name; enrollment_is_scheduled now answers GithubActionsCiJob alone, and a row riding only this surface is a bare de-enrollment. The rows that rode it were re-homed to the typed frontier gunbc.ci.ci_layer_roots falsifier_rehomed_roster_rows, whose loss is declared by gunbc.rung_drop.falsifier_rehomed_rows_unexecuted with a population folded from that frontier. RESTORING THE SURFACE needs the capability, not the tag: an executor that runs those rows (candidate: the known-red instrument once parallel queues land), at which point the surface variant, its handlers and the rung drop retire together."
 
 // RETIRED 2026-08-20 — the subject of this row no longer exists, so 'rehome' no longer describes
 // anything. ORIGINAL CLAIM (operator ruling 2026-07-25): three affected-set provenance walls —
@@ -2158,12 +2032,6 @@ data falsifier_cadence_surface_note: String = "FalsifierCadenceJob is the SCHEDU
 // is corrected in the same change that retires this note. dissolve-on: none — there is no
 // compensating control left to build, because there is no wall left to compensate for.
 
-fn project_falsifier_witness_entries(roster: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
-  witness_entries_from_enrollments(
-    rows: filter(roster, e => enrollment_has_surface(e: e, surface: FalsifierCadenceJob))
-  )
-}
-
 fn enrollment_is_witness_claim(e: CommitCheckEnrollment) -> Bool {
   match e.check {
     CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => true
@@ -2179,7 +2047,6 @@ fn enrollment_is_witness_claim(e: CommitCheckEnrollment) -> Bool {
 // for one predicate. See enrollment_surface_asymmetry_retired_note.
 fn enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
   enrollment_has_surface(e: e, surface: GithubActionsCiJob)
-    || enrollment_has_surface(e: e, surface: FalsifierCadenceJob)
 }
 
 fn enrollment_is_spec_gate(e: CommitCheckEnrollment) -> Bool {
@@ -2204,10 +2071,6 @@ fn live_roster_has_no_bare_deenrolled_gate() -> Bool {
   roster_has_no_bare_deenrolled_gate(roster: commit_gate_roster)
 }
 
-fn live_roster_falsifier_gates() -> List<Gate> {
-  project_falsifier_gates(roster: commit_gate_roster)
-}
-
 // FOUND BY THE WALL, on its first execution (2026-07-25).
 // gauntlet_lane_rehome_is_never_bare_deenrollment_holds redded against the LIVE roster, not a
 // synthetic fixture: the doc-reachability witness (doc_graph_has_no_orphan_docs,
@@ -2228,7 +2091,8 @@ fn live_roster_falsifier_gates() -> List<Gate> {
 
 // The construction wall behind falsifier_cadence_surface_note's 'a re-home is NEVER a bare
 // de-enrollment'. A CommitWitnessClaim row must ride at least one EXECUTING witness surface —
-// GithubActionsCiJob (per-PR floor) or FalsifierCadenceJob (4-hour cadence). GitPrePushHook does
+// GithubActionsCiJob (per-PR floor); FalsifierCadenceJob no longer counts (its executor was deleted,
+// see falsifier_cadence_surface_note). GitPrePushHook does
 // not count: it is an escape hatch by the standing ruling (opt-in per clone, bypassable with
 // --no-verify, absent in container worktrees — commit_gate_rust_suite_removed_disposition), so
 // neither is an enforcement authority for a witness. A row satisfying neither is enrolled NOWHERE
@@ -2236,8 +2100,7 @@ fn live_roster_falsifier_gates() -> List<Gate> {
 // and the shape a lazy re-home would add to. This is detection, not construction (the surface list
 // is still writable as []) — the honest classification per DESIGN §5: it reds in the per-PR floor
 // via gauntlet_lane_enrollment_witness_test with a synthetic RED control, and the construction form
-// waits on the same D2-probe-gated placement wiring as falsifier_cadence_surface_note's
-// dissolve-on, where Gauntlet-vs-PrTier is total over the coproduct and 'neither' becomes
+// waits on the D2-probe-gated placement wiring (ci_placement_law_note), where Gauntlet-vs-PrTier is total over the coproduct and 'neither' becomes
 // unwritable rather than merely counted. AMENDED 2026-07-26: this note described the witness half
 // only, and that scoping was itself the gap — CommitSpecGate rows had NO such wall, so the one row
 // kind whose de-enrollment nothing could catch was the one the Gauntlet lane was about to be used
@@ -2259,10 +2122,6 @@ fn roster_has_no_bare_deenrolled_witness(roster: List<CommitCheckEnrollment>) ->
 
 fn live_roster_has_no_bare_deenrolled_witness() -> Bool {
   roster_has_no_bare_deenrolled_witness(roster: commit_gate_roster)
-}
-
-fn live_roster_falsifier_witness_entries() -> List<ScheduleWitnessEntry> {
-  project_falsifier_witness_entries(roster: commit_gate_roster)
 }
 
 fn witness_seam_eq(a: WitnessSeam, b: WitnessSeam) -> Bool {
@@ -2365,7 +2224,7 @@ fn witness_span_eq(a: WitnessSpan, b: WitnessSpan) -> Bool {
 fn commit_check_kind_eq(a: CommitCheckKind, b: CommitCheckKind) -> Bool {
   match a {
     CommitSpecGate { gate } => match b {
-      CommitSpecGate { gate: other } => gate_eq(a: gate, b: other)
+      CommitSpecGate { gate: other } => gate == other
       CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
       CommitCargoFmtCheck => false
     }
@@ -2789,19 +2648,6 @@ fn roster_witness_spans_wellformed(roster: List<CommitCheckEnrollment>) -> Bool 
   })
 }
 
-fn local_tidy_check_eq(a: LocalTidyCheck, b: LocalTidyCheck) -> Bool {
-  match a {
-    LocalTidyWitnessCheck { entry, check_fns } =>
-      match b {
-        LocalTidyWitnessCheck { entry: entry2, check_fns: check_fns2 } =>
-          entry == entry2 && string_list_eq(left: check_fns, right: check_fns2)
-        _ => false
-      }
-    LocalTidyCargoFmtCheck =>
-      match b { LocalTidyCargoFmtCheck => true  _ => false }
-  }
-}
-
 fn project_local_tidy_checks(roster: List<CommitCheckEnrollment>) -> List<LocalTidyCheck> {
   let pre_push = filter(roster, e => enrollment_has_surface(e: e, surface: GitPrePushHook))
   concat(
@@ -2829,34 +2675,6 @@ fn project_local_tidy_fmt_rows(roster: List<CommitCheckEnrollment>) -> List<Loca
       CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => acc
     }
   })
-}
-
-fn gate_lists_eq(left: List<Gate>, right: List<Gate>) -> Bool {
-  if length(left) != length(right) {
-    false
-  } else {
-    match left.first() {
-      Absent => true
-      Present { value: l } => match right.first() {
-        Absent => false
-        Present { value: r } => if !gate_eq(a: l, b: r) { false } else { gate_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1)) }
-      }
-    }
-  }
-}
-
-fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) -> Bool {
-  if length(left) != length(right) {
-    false
-  } else {
-    match left.first() {
-      Absent => true
-      Present { value: l } => match right.first() {
-        Absent => false
-        Present { value: r } => if !local_tidy_check_eq(a: l, b: r) { false } else { local_tidy_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1)) }
-      }
-    }
-  }
 }
 
 data commit_workflow_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
@@ -2927,21 +2745,3 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
 // per-PR coverage.
 
 data wave1_gate1_d_census_class_c_split_note: String = "wave1_gate1_d_census (test-decomposition-wcf-cut.md Class C row, ~141s measured) split 2026-07-25: attribution-by-execution (claim_batch, cold) showed the census's ENROLLED per-PR check_fn ran a witness wall of 134526ms against a one-time 32034ms entry-closure resolve — the cost lives in the witness body itself, which builds 10 ingested_fixture_arrows fixtures (each a real tokenize->parse_module->normalize->resolve pass) across two aggregator fns; this is genuine corpus breadth (Class C), not a fixture-shaped cost-shape defect (Class F ruled out by measurement, not by assumption). The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness.dag's five table_fixture check_fns, measured eval_self=0.000ms each on a cold run — proves Arrow+body well-formedness/behavior-kind mechanism via table_fixture producers, no census ingest) carries no explicit CommitCheckEnrollment here: it is already picked up per-PR by the source-root *_test.dag discovery walk (ci_spec_discovery_flip_note), so an explicit roster row would be a second, redundant admission path for the same DiscoverySelection-covered file — a §3 duplication, not an accept requirement (a check_fn that is unconditionally discovered needs no roster entry to run). The real census-ingest execution (wave1_gate1_d_census_subsumption_witness_holds, long/wave1_gate1_d_mvp_subsumption_witness.dag) is re-homed off per-PR discovery onto the falsifier's 4-hourly cadence as one more row on falsifier_substrate_long_lane_entries (v2.workflow.ci_floor_plan gunbc_falsifier_substrate_long_lane_batch; frontier row in gunbc.ci.ci_layer_roots falsifier_substrate_long_lane_rows, joining the sibling provenance-producer rows from PR #7230/test-decomposition-wcf-cut.md) — the single hermetic long-lane falsifier consumer for this witness class, not a parallel batch: this witness is ExecutionWitnessKind/SubstrateInputsOnly interpreted computation with no host effects, so folding it into the subprocess-execution Wet lane (falsifier_rehomed_bin_wet_batch) would be a §3 nickname. A WitnessExclusionRow (pattern \"long/wave1_gate1_d_mvp_subsumption_witness.dag\", classification FalsifierSubstrateLongLane) carves the file out of per-PR discovery so the classification is honest, not a lie against an unhandled default. Enrolled, but NOT unconditionally executed — the original claim here ('the row always executes on the 4-hourly cadence') was falsified by the lane's first scheduled run (30176416535, 2026-07-25) and is corrected 2026-07-26: batch 6 declares node_frontier_selection: SelectionApplied and the falsifier diffs GUNBC_CI_DIFF_BASE=HEAD~20, so affected-set selection — a per-PR mechanism, like the fast-lane eval budget that mis-scoped onto the same lane — also applies here. That run reported '10 witness(es) across 3 entr(y/ies) · 1 unaffected (import-closure, skipped without resolve) · 9 in the affected closure' and emitted result lines for only 7: this census row and the two edit_locus rows produced NO receipt and were counted as not-failed. So the honest statement is that enrollment is non-empty and the row executes on the cadences where the last 20 commits touch its closure; a silent skip is indistinguishable from a pass in the batch tally today. Whether this lane should run SelectionOff (unconditional coverage, ~127-135s per cadence for this row alone) is an open cost/cadence decision, not settled here. Dissolve-on: the census ingest's per-fixture pipeline cost drops under the per-PR fast-lane budget on a measured cold run (e.g. shared parse-table/resolve memoization landing for this closure) — then re-enroll wave1_gate1_d_census_subsumption_witness_holds per-PR discovery and delete the falsifier_substrate_long_lane_rows entry, the exclusion row, and this note."
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "commit_workflow_surface_eq" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "gate_eq" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "local_tidy_check_eq" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-]

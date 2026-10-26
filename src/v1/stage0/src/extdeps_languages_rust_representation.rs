@@ -62,7 +62,7 @@ pub fn rust_representation_slug(representation: RustRepresentation) -> String {
 }
 
 pub fn rust_representation_eq(a: RustRepresentation, b: RustRepresentation) -> bool {
-    (rust_representation_slug(a.clone()) == rust_representation_slug(b.clone()))
+    (rust_representation_slug(a) == rust_representation_slug(b))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.symptom_link_patched_without_the_earliest_unjustified_boundary
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data symptom_link_patched_without_the_earliest_unjustified_boundary: RecurringFailureMode = RecurringFailureMode {
   identity: "symptom_link_patched_without_the_earliest_unjustified_boundary" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**symptom link patched without the earliest unjustified boundary** (a defect is observed at one link `c` of a derivation slice `a -> b -> c -> d`; the repair lands at `c` -- a guard, a cache, a batch, a knob, a special case -- without establishing that `c` is the earliest boundary at which the derivation cannot be justified. DESIGN §6b is the doctrine; this row is its executing class.)",

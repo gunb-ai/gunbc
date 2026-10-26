@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.by_value_record_widens_container_slots
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data by_value_record_widens_container_slots: RecurringFailureMode = RecurringFailureMode {
   identity: "by_value_record_widens_container_slots" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "The seed emitter fact F (a record whose every field clones without allocating is held by value instead of behind an Rc) took the state-threading specimen from 8116 to 4114 allocator operations (native-allocation-observation, n=2000) and was read as a win. Run end to end on a representative governed arm it was a regression: gunbc test //gunbc/instruments:value-position-block-nests, prebuilt base (5ef31256) against head (5121c34a) built in one dispatch, 9 alternating runs, case reports equal (the arm discards the normalized value), peak RSS equal (~15.6 MB): median 0.637 s at base, 0.752 s at head, and 5.644G against 7.247G instructions under callgrind (+28%).",

@@ -1,0 +1,110 @@
+module v2.test.claim.unary_operator_arm
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+
+data uoa_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^unary_operator_arm_artifact,
+  file_path: "src/v2/pilot/unary_operator_arm_pilot.dag"
+}
+
+data uoa_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^unary_operator_arm_std_artifact,
+  file_path: "src/v2/pilot/unary_operator_arm_std_pilot.dag"
+}
+
+fn uoa_assemble(src: String, subject: List<Symbol>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+        artifact: uoa_std_artifact,
+        compilation_unit: ^unary_operator_arm_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: src, fidelity: Lossless },
+          artifact: uoa_artifact,
+          compilation_unit: ^unary_operator_arm_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: subject }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn uoa_reason(src: String, subject: List<Symbol>) -> String {
+  match uoa_assemble(src: src, subject: subject) {
+    Rejected { diagnostics: d } => concat("assemble:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+        Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+      }
+  }
+}
+
+
+
+// THE OPERATOR ROUTE OVER ARITY ONE (root std.unicode.types, with the ordering arm). A prefix `!` reads the
+// boolean algebra's complement field through the operand's row, as `&&` reads meet, so `X && !Y` and `if !x`
+// are Bool. On main `!x` as an `&&` operand refused infer_grounding_not_derived and std.unicode.types'
+// unicode_scalar with it; `-1` keeps its literal reading and stays Int.
+
+test fn true_and_not_true_holds() -> Bool {
+  uoa_reason(src: "module p\n\nfn a() -> Bool {\n  true && !(true)\n}\n", subject: uoa_p()) == "ACCEPTED"
+}
+
+test fn eq_and_not_eq_holds() -> Bool {
+  uoa_reason(src: "module p\n\ndata lo: Int = 1\n\nfn a(x: Int) -> Bool {\n  x == 0 && !(x == lo)\n}\n", subject: uoa_p()) == "ACCEPTED"
+}
+
+test fn not_as_branch_condition_holds() -> Bool {
+  uoa_reason(src: "module p\n\nfn a(x: Bool) -> Int {\n  if !x {\n    1\n  } else {\n    2\n  }\n}\n", subject: uoa_p()) == "ACCEPTED"
+}
+
+test fn not_of_int_refuses_holds() -> Bool {
+  uoa_reason(src: "module p\n\nfn a() -> Bool {\n  !1\n}\n", subject: uoa_p()) == "infer:infer_transform_operand_type_mismatch"
+}
+
+test fn not_returned_as_int_refuses_holds() -> Bool {
+  uoa_reason(src: "module p\n\nfn a(x: Bool) -> Int {\n  !x\n}\n", subject: uoa_p()) == "infer:arrow_body_does_not_inhabit_declared_return"
+}
+
+test fn negated_literal_is_int_holds() -> Bool {
+  uoa_reason(src: "module p\n\nfn a() -> Int {\n  -1\n}\n", subject: uoa_p()) == "ACCEPTED"
+}
+
+test fn the_unicode_types_module_infers_holds() -> Bool {
+  uoa_reason(src: "module std.unicode.types\n\ndata unicode_scalar_max_code_point: Int = 1114111\ndata unicode_surrogate_first_code_point: Int = 55296\ndata unicode_surrogate_last_code_point: Int = 57343\n\nfn unicode_scalar(code_point: Int) -> Bool {\n  code_point >= 0\n    && code_point <= unicode_scalar_max_code_point\n    && !(code_point >= unicode_surrogate_first_code_point && code_point <= unicode_surrogate_last_code_point)\n}\n\nfn unicode_scalar_utf8_octet_count(code_point: Int) -> Int {\n  if code_point < 128 {\n    1\n  } else {\n    if code_point < 2048 {\n      2\n    } else {\n      if code_point < 65536 { 3 } else { 4 }\n    }\n  }\n}\n\ntype DisplayWidth = ZeroWidth | Narrow | Wide\n\nfn display_width_columns(w: DisplayWidth) -> Int {\n  match w {\n    ZeroWidth => 0\n    Narrow    => 1\n    Wide      => 2\n  }\n}\n\ntype UnicodeBlock {\n  name: String\n  start: Int\n  end_inclusive: Int\n  default_width: DisplayWidth\n}\n\nfn in_block(cp: Int, block: UnicodeBlock) -> Bool {\n  cp >= block.start && cp <= block.end_inclusive\n}\n", subject: uoa_u()) == "ACCEPTED"
+}
+
+fn uoa_p() -> List<Symbol> {
+  Cons { head: ^p, tail: Empty }
+}
+
+fn uoa_u() -> List<Symbol> {
+  Cons { head: ^std, tail: Cons { head: ^unicode, tail: Cons { head: ^types, tail: Empty } } }
+}
+
+fn unary_operator_arm_receipt() -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat("true_and_not_true=", uoa_reason(src: "module p\n\nfn a() -> Bool {\n  true && !(true)\n}\n", subject: uoa_p())), "\n"), concat("eq_and_not_eq=", uoa_reason(src: "module p\n\ndata lo: Int = 1\n\nfn a(x: Int) -> Bool {\n  x == 0 && !(x == lo)\n}\n", subject: uoa_p()))), "\n"), concat("not_as_branch_condition=", uoa_reason(src: "module p\n\nfn a(x: Bool) -> Int {\n  if !x {\n    1\n  } else {\n    2\n  }\n}\n", subject: uoa_p()))), "\n"), concat("not_of_int_refuses=", uoa_reason(src: "module p\n\nfn a() -> Bool {\n  !1\n}\n", subject: uoa_p()))), "\n"), concat("not_returned_as_int_refuses=", uoa_reason(src: "module p\n\nfn a(x: Bool) -> Int {\n  !x\n}\n", subject: uoa_p()))), "\n"), concat("negated_literal_is_int=", uoa_reason(src: "module p\n\nfn a() -> Int {\n  -1\n}\n", subject: uoa_p()))), "\n"), concat("the_unicode_types_module_infers=", uoa_reason(src: "module std.unicode.types\n\ndata unicode_scalar_max_code_point: Int = 1114111\ndata unicode_surrogate_first_code_point: Int = 55296\ndata unicode_surrogate_last_code_point: Int = 57343\n\nfn unicode_scalar(code_point: Int) -> Bool {\n  code_point >= 0\n    && code_point <= unicode_scalar_max_code_point\n    && !(code_point >= unicode_surrogate_first_code_point && code_point <= unicode_surrogate_last_code_point)\n}\n\nfn unicode_scalar_utf8_octet_count(code_point: Int) -> Int {\n  if code_point < 128 {\n    1\n  } else {\n    if code_point < 2048 {\n      2\n    } else {\n      if code_point < 65536 { 3 } else { 4 }\n    }\n  }\n}\n\ntype DisplayWidth = ZeroWidth | Narrow | Wide\n\nfn display_width_columns(w: DisplayWidth) -> Int {\n  match w {\n    ZeroWidth => 0\n    Narrow    => 1\n    Wide      => 2\n  }\n}\n\ntype UnicodeBlock {\n  name: String\n  start: Int\n  end_inclusive: Int\n  default_width: DisplayWidth\n}\n\nfn in_block(cp: Int, block: UnicodeBlock) -> Bool {\n  cp >= block.start && cp <= block.end_inclusive\n}\n", subject: uoa_u()))), "\n"), concat("neg_param=", uoa_reason(src: "module p\n\nfn a(x: Int) -> Int {\n  -x\n}\n", subject: uoa_p())))
+}

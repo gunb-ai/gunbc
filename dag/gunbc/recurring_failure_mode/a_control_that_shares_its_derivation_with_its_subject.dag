@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_control_that_shares_its_derivation_with_it
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_control_that_shares_its_derivation_with_its_subject: RecurringFailureMode = RecurringFailureMode {
   identity: "a_control_that_shares_its_derivation_with_its_subject" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a control whose content is DERIVED FROM the thing it is meant to discriminate, so it cannot disagree with it. The general form is one sentence -- A CONTROL WRITTEN FROM THE IMPLEMENTATION CAN ONLY AGREE WITH IT -- and the two routes to it look different enough that neither author recognised the other's until they were put side by side. DESCRIBING: read what the code does, write the assertion that says so. COPYING: inline the production body into the control with one input swapped. Copying is simply the most literal way of writing a control from the implementation.",

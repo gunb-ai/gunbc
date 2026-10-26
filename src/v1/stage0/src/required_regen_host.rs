@@ -2994,7 +2994,6 @@ struct CargoBuildObservation {
 }
 
 const REGEN_CONVERGENCE_SCHEMA: &str = "gunbc.regen_convergence_transaction.v1";
-const REGEN_CONVERGENCE_BOUND: usize = 8;
 const REGEN_CONVERGENCE_JOURNAL_REL: &str = "target/regen-convergence-journal";
 const REGEN_CONVERGENCE_RECEIPT_REL: &str = "target/regen-convergence-transaction.json";
 
@@ -3042,7 +3041,7 @@ impl RegenConvergenceModel {
             .ok_or_else(|| {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
-        let index = super::process_shared_index(source_roots);
+        let index = super::process_shared_index_or_refuse(source_roots);
         let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
             .map_err(|e| format!("refusal: convergence transaction model did not resolve: {e}"))?;
         Ok(Self { graph, indices })
@@ -3495,6 +3494,106 @@ fn admit_candidate_manifest(
     Ok(admitted)
 }
 
+/// Evaluate one decision function of the rebuild-scope module. The host effects the answer; the
+/// decision lives in `gunbc.stage0_partition_rebuild_scope`.
+fn rebuild_scope_decision(
+    source_roots: &[String],
+    function: &str,
+    args: Vec<(Option<String>, ModelValue)>,
+) -> Result<ModelValue, String> {
+    rebuild_scope_decision_with(source_roots, function, |_| Ok(args))
+}
+
+/// `rebuild_scope_decision` for arguments that are typed model records, which carry symbols of the
+/// evaluation context and so can only be built once it exists.
+fn rebuild_scope_decision_with(
+    source_roots: &[String],
+    function: &str,
+    args: impl FnOnce(
+        &crate::v1_interpreter::InterpContext,
+    ) -> Result<Vec<(Option<String>, ModelValue)>, String>,
+) -> Result<ModelValue, String> {
+    use crate::v1_interpreter::{self, ExecutionMode};
+    let entry = round_cost_entry(source_roots)?;
+    let index = super::process_shared_index_or_refuse(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
+    })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let args = args(&ctx)?;
+    v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+    })
+    .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+}
+
+/// The modules the host shell crate declares PLUS the shell's own root, read from the same file:
+/// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
+/// fact this read supplies (its stem), not a spelling the fold recognises.
+fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
+    let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
+    let root = lib_rs
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or_else(|| format!("refusal: shell root {} has no file stem", lib_rs.display()))?;
+    modules.push(root.to_string());
+    Ok(modules)
+}
+
+fn stage_rebuild_is_whole_compiler(
+    source_roots: &[String],
+    boundary_files: &[String],
+) -> Result<bool, String> {
+    match rebuild_scope_decision(
+        source_roots,
+        "stage0_stage_rebuild_is_whole_compiler",
+        vec![(
+            Some("boundary_files".to_string()),
+            model_string_list(boundary_files),
+        )],
+    )? {
+        ModelValue::Bool(value) => Ok(value),
+        other => Err(format!(
+            "refusal: stage0_stage_rebuild_is_whole_compiler returned {} instead of Bool",
+            other.type_label_public()
+        )),
+    }
+}
+
+fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, String> {
+    match rebuild_scope_decision(
+        source_roots,
+        "regen_convergence_generation_bound",
+        Vec::new(),
+    )? {
+        ModelValue::Int(value) => Ok(value),
+        other => Err(format!(
+            "refusal: regen_convergence_generation_bound returned {} instead of Int",
+            other.type_label_public()
+        )),
+    }
+}
+
+fn regen_convergence_bound_exceeded(
+    source_roots: &[String],
+    generation_ordinal: usize,
+) -> Result<bool, String> {
+    match rebuild_scope_decision(
+        source_roots,
+        "regen_convergence_bound_exceeded",
+        vec![(
+            Some("generation_ordinal".to_string()),
+            ModelValue::Int(generation_ordinal as i64),
+        )],
+    )? {
+        ModelValue::Bool(value) => Ok(value),
+        other => Err(format!(
+            "refusal: regen_convergence_bound_exceeded returned {} instead of Bool",
+            other.type_label_public()
+        )),
+    }
+}
+
 fn regen_convergence_journal_path(workspace: &Path) -> PathBuf {
     workspace.join(REGEN_CONVERGENCE_JOURNAL_REL)
 }
@@ -3629,6 +3728,25 @@ fn journal_stage0_paths_for_subject(
     basenames: &[String],
     subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<(), String> {
+    let entries = basenames
+        .iter()
+        .map(|basename| {
+            (
+                format!("src/v1/stage0/src/{basename}"),
+                stage0_src.join(basename),
+            )
+        })
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, subject)
+}
+
+/// THE CHECKPOINT IS KEYED BY WORKSPACE-RELATIVE PATH, so a partition boundary file (outside the
+/// seed's `src/`) is restored by the same journal a mirror is: one rollback, not a second one beside it.
+fn journal_paths_for_subject(
+    workspace: &Path,
+    paths: &[(String, PathBuf)],
+    subject: &RegenConvergenceCheckpointSubject,
+) -> Result<(), String> {
     let root = regen_convergence_journal_path(workspace);
     fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
     let manifest_path = root.join("journal.json");
@@ -3674,8 +3792,8 @@ fn journal_stage0_paths_for_subject(
             }
         }
     }
-    for basename in basenames {
-        let relative_path = format!("src/v1/stage0/src/{basename}");
+    for (relative_path, source) in paths {
+        let relative_path = relative_path.clone();
         if journal
             .entries
             .iter()
@@ -3683,7 +3801,7 @@ fn journal_stage0_paths_for_subject(
         {
             continue;
         }
-        let source = stage0_src.join(basename);
+        let source = source.clone();
         let backup_name = format!("surface-{}.bak", journal.entries.len());
         let pre_stage_state = if source.is_file() {
             fs::copy(&source, root.join(&backup_name))
@@ -4168,7 +4286,7 @@ fn render_round_cost_receipt(
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
     })?;
@@ -4311,6 +4429,9 @@ struct PartitionRebuildActuation {
     /// build by construction (e.g. a `#[cfg(test)]`-gated module), so the correct package
     /// closure IS the empty set and the build runs purely as verification of that claim.
     release_scope_empty: bool,
+    /// The decision is the positively modeled partition-generation class (the partition mirror
+    /// moved). Whether that move is EXPLAINED is derived by the host, never read from here.
+    partition_generation_move: bool,
 }
 
 type ModelValue = crate::v1_interpreter::Value;
@@ -4366,7 +4487,7 @@ fn partition_rebuild_actuation(
 ) -> Result<PartitionRebuildActuation, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
     })?;
@@ -4423,13 +4544,217 @@ fn partition_rebuild_actuation(
             ))
         }
     };
+    let partition_generation_move =
+        match call("stage0_partition_rebuild_is_partition_generation_move_today")? {
+            ModelValue::Bool(value) => value,
+            other => {
+                return Err(format!(
+                    "refusal: stage0_partition_rebuild_is_partition_generation_move_today returned {} instead of Bool",
+                    other.type_label_public()
+                ))
+            }
+        };
     Ok(PartitionRebuildActuation {
         actuatable,
         package_closure,
         excluded_packages,
         decision_line,
         release_scope_empty,
+        partition_generation_move,
     })
+}
+
+/// A partition move is ADMITTED only when it is DERIVED, never asserted (no flag, no input, no
+/// allow-list). Two conjuncts, both read from the tree and the change, neither from the mirror:
+///   1. a changed input of the partition-generation mirrors is among THIS change's edits: the
+///      decision is `stage0_partition_move_explained_by_affected_inputs`, over the arm and members
+///      of the `gunbc.regen_affected_set` bound for the diff (plus the authority path), so the
+///      mirror moved because an input moved and not because something drifted;
+///   2. the boundary files the move needs are RENDERED FROM THE CANDIDATE TREE'S ROWS, not the
+///      predecessor's compiled-in ones.
+/// The converse equality (the built seed's own compiled-in rows project to these same bytes) is
+/// checked after each build by `built_seed_boundary_drift`, whose answer is another loop population. Anything else keeps the
+/// typed `WholeCompilerRebuildRequired` refusal.
+fn admit_derived_partition_move(
+    source_roots: &[String],
+    workspace: &Path,
+) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+    let (changed, _departed) = super::required_floor_runner::floor_git_diff_name_status_range()
+        .map_err(|e| {
+            format!(
+                "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the change's diff \
+                 could not be read, so the move cannot be derived from it: {e}"
+            )
+        })?;
+    let diff_text = super::required_floor_runner::floor_git_diff_range().map_err(|e| {
+        format!(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the change's diff \
+             could not be read, so the move cannot be derived from it: {e}"
+        )
+    })?;
+    let unexplainable = |e: String| {
+        format!(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the affected-set \
+             bound could not be derived, so the move cannot be explained: {e}"
+        )
+    };
+    let population = edited_population_from_diff(workspace, &diff_text);
+    let (edges, modules) = regen_module_edges(workspace).map_err(unexplainable)?;
+    let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
+        .map_err(unexplainable)?;
+    let explained = match rebuild_scope_decision_with(
+        source_roots,
+        "stage0_partition_move_explained_by_affected_inputs",
+        |ctx| {
+            let mut args = affected_set_model_args(
+                ctx,
+                &population.edited_modules,
+                &population.unlocatable,
+                &edges,
+                &compared,
+            );
+            args.push((
+                Some("changed_paths".to_string()),
+                model_string_list(&changed),
+            ));
+            Ok(args)
+        },
+    )? {
+        ModelValue::Bool(value) => value,
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_move_explained_by_affected_inputs returned {} instead of Bool",
+                other.type_label_public()
+            ))
+        }
+    };
+    if !explained {
+        return Err(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the partition mirror \
+             moved but no changed input of it (gunbc.regen_affected_set) explains it"
+                .to_string(),
+        );
+    }
+    let packages = emitted_tree_packages(workspace)?;
+    let outcome = crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
+        packages.rows.clone(),
+        crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
+    );
+    Ok((*outcome).clone())
+}
+
+/// The whole-compiler rebuild the partition-generation class requires: the closure is NOT shown
+/// complete for a partition move, so the correct scope is everything. The boundary files are
+/// journalled (the one rollback) and installed BEFORE the build that needs them.
+fn partition_move_rebuild(
+    workspace: &Path,
+    subject: &RegenConvergenceCheckpointSubject,
+    outcome: &crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome,
+) -> Result<CargoBuildObservation, String> {
+    let files = match outcome {
+        crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files } => files,
+        crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause } => {
+            return Err(format!(
+                "PartitionBoundaryCarrierRefused: the candidate tree's partition does not render: {cause:?}"
+            ))
+        }
+    };
+    let entries = files
+        .iter()
+        .map(|f| (f.path.clone(), workspace.join(&f.path)))
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, subject)?;
+    match super::partition_crate_boundary_host::run_partition_crate_boundary_over(outcome, true) {
+        super::partition_crate_boundary_host::PartitionCrateBoundaryOutcome::CarrierRefused {
+            cause,
+        } => return Err(format!("PartitionBoundaryWriteRefused: {cause}")),
+        super::partition_crate_boundary_host::PartitionCrateBoundaryOutcome::Rendered {
+            ..
+        } => {}
+    }
+    seed_cargo_build(workspace, "round.rebuild_from_installed")
+}
+
+/// THE BOUNDARY POPULATION OF THE FIXED POINT: the built seed projects, from its OWN compiled-in
+/// rows and renderer, the partition boundary files. `Ok(vec![])` is agreement; a nonempty answer
+/// names the workspace-relative files the rebuilt producer would change, which are one more
+/// drifted population of the loop (another install and rebuild), never a terminal refusal. A
+/// producer that exits nonzero WITHOUT naming a drifted file did not observe, and refuses.
+fn built_seed_boundary_drift(workspace: &Path) -> Result<Vec<String>, String> {
+    let on_disk = current_exe_on_disk()?;
+    let output = Command::new(&on_disk)
+        .arg("--emit-partition-crates")
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| {
+            format!(
+                "PartitionProjectionUnobserved: spawn {}: {e}",
+                on_disk.display()
+            )
+        })?;
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let drifted = boundary_drift_from_producer_report(&output.stdout).ok_or_else(|| {
+        format!(
+            "PartitionProjectionUnobserved: the built seed returned no typed boundary report: {stderr}"
+        )
+    })?;
+    if output.status.success() != drifted.is_empty() {
+        return Err(format!(
+            "PartitionProjectionUnobserved: exit status and typed report disagree: {stderr}"
+        ));
+    }
+    Ok(drifted)
+}
+
+fn boundary_drift_from_producer_report(stdout: &[u8]) -> Option<Vec<String>> {
+    let report: serde_json::Value = serde_json::from_slice(stdout).ok()?;
+    if report.get("schema")?.as_str()? != "gunbc.partition_boundary_report.v1" {
+        return None;
+    }
+    report
+        .get("divergent")?
+        .as_array()?
+        .iter()
+        .map(|p| p.as_str().map(str::to_string))
+        .collect()
+}
+
+/// Install the rebuilt producer's boundary output: journal the files first (the one rollback),
+/// then let the built seed write them.
+fn install_built_seed_boundary(workspace: &Path, drifted: &[String]) -> Result<(), String> {
+    let journal_path = regen_convergence_journal_path(workspace).join("journal.json");
+    let journal: RegenConvergenceJournal = serde_json::from_slice(
+        &fs::read(&journal_path).map_err(|e| format!("read {}: {e}", journal_path.display()))?,
+    )
+    .map_err(|e| format!("parse {}: {e}", journal_path.display()))?;
+    let subject = RegenConvergenceCheckpointSubject {
+        starting_commit: journal.starting_commit,
+        source_authority_digest: journal.source_authority_digest,
+        stage_plan_authority_digest: journal.stage_plan_authority_digest,
+    };
+    let entries = drifted
+        .iter()
+        .map(|path| (path.clone(), workspace.join(path)))
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, &subject)?;
+    let on_disk = current_exe_on_disk()?;
+    let status = Command::new(&on_disk)
+        .args(["--emit-partition-crates", "--write"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| {
+            format!(
+                "PartitionBoundaryWriteRefused: spawn {}: {e}",
+                on_disk.display()
+            )
+        })?;
+    if !status.status.success() {
+        return Err(format!(
+            "PartitionBoundaryWriteRefused: {}",
+            String::from_utf8_lossy(&status.stderr)
+        ));
+    }
+    Ok(())
 }
 
 fn partitioned_rebuild_from_installed(
@@ -4702,6 +5027,7 @@ fn convergence_plan_from_model(
     affected_bound: &RegenEmissionScope,
     seen_state_keys: &[String],
     seed_digest: &str,
+    generation_bound: i64,
 ) -> Result<(RegenConvergenceStageKindReceipt, Vec<String>, String), String> {
     use crate::v1_interpreter::{self, str_value, Value};
     let ctx = model.context();
@@ -4725,10 +5051,7 @@ fn convergence_plan_from_model(
             Some("ordinal".to_string()),
             Value::Int((ordinal - 1) as i64),
         ),
-        (
-            Some("bound".to_string()),
-            Value::Int(REGEN_CONVERGENCE_BOUND as i64),
-        ),
+        (Some("bound".to_string()), Value::Int(generation_bound)),
     ];
     let progress = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
@@ -5125,15 +5448,20 @@ fn install_convergence_stage(
     candidate_tree_id: &str,
     candidate_tree_digest: &str,
     dependency_closure_id: &str,
-) -> Result<RegenConvergenceStageReceipt, String> {
+    whole_compiler: bool,
+) -> Result<(RegenConvergenceStageReceipt, bool), String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
-    let declared_shell_modules =
-        super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
     let actuation = partition_rebuild_actuation(source_roots, basenames, &declared_shell_modules)?;
-    install_convergence_stage_with_backend(
+    let partition_move = if actuation.partition_generation_move {
+        Some(admit_derived_partition_move(source_roots, workspace)?)
+    } else {
+        None
+    };
+    let receipt = install_convergence_stage_with_backend(
         model,
         workspace,
         stage0_src,
@@ -5149,9 +5477,14 @@ fn install_convergence_stage(
         candidate_tree_digest,
         dependency_closure_id,
         &subject,
-        |workspace| partitioned_rebuild_from_installed(workspace, &actuation),
+        |workspace| match &partition_move {
+            Some(outcome) => partition_move_rebuild(workspace, &subject, outcome),
+            None if whole_compiler => seed_cargo_build(workspace, "round.rebuild_from_installed"),
+            None => partitioned_rebuild_from_installed(workspace, &actuation),
+        },
         || next_pass_executable_digest(workspace),
-    )
+    )?;
+    Ok((receipt, partition_move.is_some()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5904,7 +6237,85 @@ pub fn run_regen_round_cost(
         );
     }
 
-    while !drifted.is_empty() {
+    let generation_bound = regen_convergence_generation_bound(source_roots)?;
+    let mut partition_moved = false;
+    let mut round_records: Vec<String> = Vec::new();
+    loop {
+        if drifted.is_empty() {
+            if !partition_moved {
+                break;
+            }
+            let boundary_drift = match built_seed_boundary_drift(&workspace) {
+                Ok(paths) => paths,
+                Err(failure) => {
+                    restore_regen_convergence_journal(&workspace)?;
+                    return Err(format!("{failure}; checkpoint restored"));
+                }
+            };
+            if boundary_drift.is_empty() {
+                break;
+            }
+            round_records.push(format!(
+                "generation {generation_ordinal}: mirrors converged, boundary drift under the \
+                 rebuilt producer {boundary_drift:?}"
+            ));
+            if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+                restore_regen_convergence_journal(&workspace)?;
+                return Err(format!(
+                    "RegenConvergenceBoundExceeded: boundary files did not converge within the \
+                     declared bound (regen_convergence_max_generations) at generation \
+                     {generation_ordinal}; checkpoint restored; nothing is published -- {}",
+                    round_records.join("; ")
+                ));
+            }
+            let rebuilt = install_built_seed_boundary(&workspace, &boundary_drift)
+                .and_then(|()| seed_cargo_build(&workspace, "round.rebuild_from_boundary"))
+                .and_then(|_| next_pass_executable_digest(&workspace));
+            match rebuilt {
+                Ok(digest) => current_seed_digest = digest,
+                Err(failure) => {
+                    restore_regen_convergence_journal(&workspace)?;
+                    return Err(format!(
+                        "boundary stage refused; checkpoint restored: {failure}"
+                    ));
+                }
+            }
+            generation_ordinal += 1;
+            match run_built_seed_regen(
+                &workspace,
+                candidate_dir_rel,
+                receipt_rel,
+                source_roots,
+                affected_scope,
+                &current_seed_digest,
+            ) {
+                Ok(next) => {
+                    candidate_digest = next.manifest.candidate_tree_digest.clone();
+                    candidate_tree_id = next.manifest.candidate_tree_id.clone();
+                    drifted = next.drifted;
+                    authority_digest = next.authority_digest;
+                    candidate_manifest = next.manifest;
+                }
+                Err(failure) => {
+                    restore_regen_convergence_journal(&workspace)?;
+                    return Err(format!(
+                        "next generation refused; checkpoint restored: {failure}"
+                    ));
+                }
+            }
+            continue;
+        }
+        round_records.push(format!(
+            "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
+        ));
+        if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+            restore_regen_convergence_journal(&workspace)?;
+            return Err(format!(
+                "RegenConvergenceBoundExceeded: no fixed point within the declared bound \
+                 (regen_convergence_max_generations) at generation {generation_ordinal}; checkpoint restored; nothing is published -- {}",
+                round_records.join("; ")
+            ));
+        }
         let admitted_manifest = admit_candidate_manifest(
             &convergence_model,
             &candidate_src,
@@ -5931,6 +6342,7 @@ pub fn run_regen_round_cost(
             &scope,
             &seen_state_keys,
             &current_seed_digest,
+            generation_bound,
         )?;
         seen_states.insert(state);
         let stage_kind = kind;
@@ -5976,6 +6388,35 @@ pub fn run_regen_round_cost(
         .map_err(|failure| {
             format!("install boundary population disagrees with the stage partition: {failure}")
         })?;
+        // THE BOUNDARY POPULATION JOINS THE STAGE THAT IS ALREADY PENDING. The post-install
+        // binary's own producer names the boundary files it would change; when a mirror stage is
+        // pending anyway they install in THE SAME install, so that stage's one rebuild covers
+        // both and no separate boundary rebuild or regeneration runs. Only boundary drift that
+        // first shows after the mirrors converged takes the tail arm above.
+        let stage_boundary = if partition_moved {
+            match built_seed_boundary_drift(&workspace) {
+                Ok(paths) => paths,
+                Err(failure) => {
+                    restore_regen_convergence_journal(&workspace)?;
+                    return Err(format!("{failure}; checkpoint restored"));
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        let stage_whole_compiler = stage_rebuild_is_whole_compiler(source_roots, &stage_boundary)?;
+        if !stage_boundary.is_empty() {
+            round_records.push(format!(
+                "generation {generation_ordinal}: boundary drift under the post-install producer \
+                 {stage_boundary:?} installs with the pending mirrors"
+            ));
+            if let Err(failure) = install_built_seed_boundary(&workspace, &stage_boundary) {
+                restore_regen_convergence_journal(&workspace)?;
+                return Err(format!(
+                    "boundary install refused; checkpoint restored: {failure}"
+                ));
+            }
+        }
         let drifted_entering_stage = drifted.clone();
         v1_rt::trace_mark("round.install.begin".to_string());
         let stage_result = install_convergence_stage(
@@ -5994,10 +6435,14 @@ pub fn run_regen_round_cost(
             &candidate_tree_id,
             &candidate_digest,
             &dependency_closure_id,
+            stage_whole_compiler,
         );
         v1_rt::trace_mark("round.install.done".to_string());
         let mut stage = match stage_result {
-            Ok(stage) => stage,
+            Ok((stage, moved)) => {
+                partition_moved |= moved;
+                stage
+            }
             Err(failure) => {
                 restore_regen_convergence_journal(&workspace)?;
                 return Err(format!(
@@ -6009,6 +6454,7 @@ pub fn run_regen_round_cost(
         current_seed_digest = stage.output_seed_digest.clone();
         stages.push(stage);
         generation_ordinal += 1;
+        v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
         let next = run_built_seed_regen(
             &workspace,
             candidate_dir_rel,
@@ -6017,6 +6463,7 @@ pub fn run_regen_round_cost(
             affected_scope,
             &current_seed_digest,
         );
+        v1_rt::trace_mark("round.built_seed_regen.done".to_string());
         match next {
             Ok(next) => {
                 // APPLIED comes from the stage RECEIPT, never from the plan: a surface the loop
@@ -6165,8 +6612,7 @@ pub fn run_regen_round_cost(
         drained_marks,
     )
     .map_err(|cause| cause.to_string())?;
-    let declared_shell_modules =
-        super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
     let rendered = render_round_cost_receipt(
         source_roots,
         &host,
@@ -6925,7 +7371,7 @@ pub fn regen_generation_role_population(
 > {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry)
         .map_err(|e| format!("refusal: {entry} did not resolve for generation roles: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -7035,25 +7481,16 @@ fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
         })
 }
 
-/// Ask the model. The edges handed over are those whose target the host's walk reached -- the
-/// subgraph on which the model's bounded fold re-derives the same closure at interpreter cost --
-/// and `modules` is that reached set, which bounds the fold (a path among n modules has at most
-/// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
-pub fn render_affected_set_bound(
-    source_roots: &[String],
+/// The arguments `gunbc.regen_affected_set regen_affected_set` is asked with, one construction for
+/// the bound's own run and for the partition-move decision that consumes the typed bound.
+fn affected_set_model_args(
+    ctx: &crate::v1_interpreter::InterpContext,
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
     compared: &[(String, String)],
-) -> Result<AffectedSetBound, String> {
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = affected_set_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-
+) -> Vec<(Option<String>, crate::v1_interpreter::Value)> {
+    use crate::v1_interpreter::{str_value, Value};
     let reached = regen_reverse_closure_host(edited, edges);
     let edge_values: Vec<Value> = edges
         .iter()
@@ -7094,6 +7531,29 @@ pub fn render_affected_set_bound(
         ),
         (Some("modules".to_string()), strs(&reached_list)),
     ];
+    args
+}
+
+/// Ask the model. The edges handed over are those whose target the host's walk reached -- the
+/// subgraph on which the model's bounded fold re-derives the same closure at interpreter cost --
+/// and `modules` is that reached set, which bounds the fold (a path among n modules has at most
+/// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
+pub fn render_affected_set_bound(
+    source_roots: &[String],
+    edited: &[String],
+    unlocatable: &[String],
+    edges: &[(String, String)],
+    compared: &[(String, String)],
+) -> Result<AffectedSetBound, String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = affected_set_entry(source_roots)?;
+    let index = super::process_shared_index_or_refuse(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
+    })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    let args = affected_set_model_args(&ctx, edited, unlocatable, edges, compared);
     let bound = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(&ctx, "regen_affected_set", &args, false)
     })
@@ -7153,6 +7613,7 @@ pub fn render_affected_set_bound(
     // reached modules joined to the compared rows. Either side alone could be wrong; agreement is
     // the evidence, and disagreement stops the line rather than electing a side.
     if arm == "AffectedMirrors" {
+        let reached = regen_reverse_closure_host(edited, edges);
         let host_mirrors: BTreeSet<String> = compared
             .iter()
             .filter(|(module, _)| reached.contains(module))
@@ -7203,7 +7664,7 @@ pub fn render_scope_selection(
 ) -> Result<Vec<String>, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = required_regen_scope_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
     })?;
@@ -7285,7 +7746,7 @@ fn regen_scope_worktree_admitted(source_roots: &[String]) -> Result<(), String> 
                  observation sees every edit"
             )
         })?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry)
         .map_err(|e| format!("refusal: {entry} did not resolve: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Wet);
@@ -7918,6 +8379,29 @@ mod dag_artifact_identity_tests {
             "{}\n{}",
             outcome.summary(),
             outcome.findings.join("\n")
+        );
+    }
+}
+
+#[cfg(test)]
+mod boundary_population_tests {
+    use super::*;
+
+    #[test]
+    fn producer_report_is_read_as_a_typed_record() {
+        let report =
+            br#"{"schema":"gunbc.partition_boundary_report.v1","divergent":["src/b/lib.rs"]}"#;
+        assert_eq!(
+            boundary_drift_from_producer_report(report),
+            Some(vec!["src/b/lib.rs".to_string()])
+        );
+        assert_eq!(
+            boundary_drift_from_producer_report(b"emit-partition-crates: drifted x/y"),
+            None
+        );
+        assert_eq!(
+            boundary_drift_from_producer_report(br#"{"schema":"other","divergent":[]}"#),
+            None
         );
     }
 }

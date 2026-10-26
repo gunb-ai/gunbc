@@ -106,20 +106,77 @@ fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
   bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
 }
 
-fn bash_fold_flatten_stmt_list(list_node: Node) -> List<Node> {
-  match list_at_optional(xs: positional_child_target_nodes(node: list_node), index: 0) {
-    Present { value: first } =>
-      match list_at_optional(xs: positional_child_target_nodes(node: list_node), index: 1) {
-        Present { value: second } =>
-          concat(bash_fold_flatten_stmt_list(list_node: first), [second])
-        Absent => [first]
+// Statement-list encoding is a nonempty cons spine: one statement child, or
+// (prefix-list, statement). Zero children is Bash-illegal as a subshell or then/else
+// body (`( )` / empty `then`). bash_build_stmt_list_from_nodes([]) / word_list_from_nodes([])
+// plant a one-child refused-empty placeholder; that is not a statement or word and must
+// refuse here, not serialize as a member. A tagged statement (first child an Atom) and
+// any third child are not that encoding. Reading only children 0 and 1 of an or_else
+// body used to keep left and drop right (DESIGN section 5).
+fn bash_fold_stmt_list_shape_refused(list_node: Node) -> Outcome<List<Node>> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^bash_fold_serialize_stmt_list_shape_refused,
+        at: node_locus(node: list_node),
+        correction: Unavailable { reason: ExternalContractUnknown }
       }
-    Absent => []
+    )
+  }
+}
+
+fn bash_fold_refused_empty_word_placeholder(node: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
+    Present { value: kind } =>
+      match node_atom_identity_optional(node: kind) {
+        Present { value: binding } => binding == ^bash_build_refused_empty_word_list
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn bash_fold_flatten_stmt_list(list_node: Node) -> Outcome<List<Node>> {
+  match list_at_optional(xs: positional_child_target_nodes(node: list_node), index: 2) {
+    Present { value: _ } => bash_fold_stmt_list_shape_refused(list_node: list_node)
+    Absent =>
+      match list_at_optional(xs: positional_child_target_nodes(node: list_node), index: 0) {
+        Present { value: first } =>
+          match list_at_optional(xs: positional_child_target_nodes(node: list_node), index: 1) {
+            Present { value: second } =>
+              match node_atom_identity_optional(node: first) {
+                Present { value: _ } => bash_fold_stmt_list_shape_refused(list_node: list_node)
+                Absent =>
+                  bind_outcome(
+                    o: bash_fold_flatten_stmt_list(list_node: first),
+                    f: fn(prefix) {
+                      Accepted { value: concat(prefix, [second]), diagnostics: None }
+                    }
+                  )
+              }
+            Absent =>
+              match node_atom_identity_optional(node: first) {
+                Present { value: _ } => bash_fold_stmt_list_shape_refused(list_node: list_node)
+                Absent =>
+                  if bash_fold_refused_empty_word_placeholder(node: first) {
+                    bash_fold_stmt_list_shape_refused(list_node: list_node)
+                  } else {
+                    Accepted { value: [first], diagnostics: None }
+                  }
+              }
+          }
+        Absent => bash_fold_stmt_list_shape_refused(list_node: list_node)
+      }
   }
 }
 
 fn bash_fold_serialize_stmt_list_semi(list_node: Node) -> Outcome<String> {
-  bash_fold_serialize_stmts_semi(stmts: bash_fold_flatten_stmt_list(list_node: list_node))
+  bind_outcome(
+    o: bash_fold_flatten_stmt_list(list_node: list_node),
+    f: fn(stmts) {
+      bash_fold_serialize_stmts_semi(stmts: stmts)
+    }
+  )
 }
 
 fn bash_fold_serialize_with_redir_file(stmt: Node, stmt_spelling: String, redir_of: fn(String) -> String) -> Outcome<String> {
@@ -217,11 +274,20 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
               rule_name: ^bash_production_fold_var_word
             )
           } else if kind == ^bash_fold_word_kind_concat {
-            bash_fold_serialize_leaf_node(
-              emitted: word,
-              production_binding: ^bash_production_fold_concat_word,
-              rule_name: ^bash_production_fold_concat_word
-            )
+            match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
+              Present { value: parts } =>
+                bind_outcome(
+                  o: bash_fold_flatten_stmt_list(list_node: parts),
+                  f: fn(_) {
+                    bash_fold_serialize_leaf_node(
+                      emitted: word,
+                      production_binding: ^bash_production_fold_concat_word,
+                      rule_name: ^bash_production_fold_concat_word
+                    )
+                  }
+                )
+              Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            }
           } else if kind == ^bash_fold_word_kind_cmdsubst {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: body } =>
@@ -276,10 +342,15 @@ fn bash_fold_serialize_word_list_spelling_from(
 }
 
 fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
-  bash_fold_serialize_word_list_spelling_from(
-    acc: "",
-    first: true,
-    rest: bash_fold_flatten_stmt_list(list_node: parts)
+  bind_outcome(
+    o: bash_fold_flatten_stmt_list(list_node: parts),
+    f: fn(words) {
+      bash_fold_serialize_word_list_spelling_from(
+        acc: "",
+        first: true,
+        rest: words
+      )
+    }
   )
 }
 

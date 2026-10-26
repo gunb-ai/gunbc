@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data argument_type_obligation_absent_while_the_route_advances: RecurringFailureMode = RecurringFailureMode {
   identity: "argument_type_obligation_absent_while_the_route_advances" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a reached application advances on the compiler route while the argument's derived type is not judged against the parameter's declared type, so an incompatible argument is Accepted.",

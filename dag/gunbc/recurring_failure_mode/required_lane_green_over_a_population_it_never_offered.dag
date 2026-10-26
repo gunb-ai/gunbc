@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.required_lane_green_over_a_population_it_never_offered
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data required_lane_green_over_a_population_it_never_offered: RecurringFailureMode = RecurringFailureMode {
   identity: "required_lane_green_over_a_population_it_never_offered" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a required lane reports green while being silent by construction about a population it never offered to preparation** (INVALID STATE: a merge-blocking lane publishes a terminal verdict -- planned=N executed=N claims_failed=0 -- over a SELECTED subset, while declared claims outside that selection are neither planned nor executed nor reported as unattempted. A change lands with every required check green and breaks one of those claims; nothing in the gate can say so, because the broken claim was never a member of the set the gate adjudicated. HARM: the red persists on main indefinitely, and every subsequent green check re-attests to its absence. The failure is not that a witness went stale; it is that the instrument's denominator excluded it and the verdict did not say so at the grain a reader consumes.)",

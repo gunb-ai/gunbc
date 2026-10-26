@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.kind_wall_receives_a_de_identified_type_argument
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, FoundAtAmbiguous }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE CHECK CANNOT BE FIXED WHERE IT SITS. v1's declared-kind wall is handed the argument of a kinded
+// type application as a plain leaf: no declaration, no properties, no inference. So at that position the
+// wall cannot tell a parameter declared with the required kind from one declared with a different kind,
+// or from one declared with none at all. Any predicate written there -- including one that names the
+// right declarations -- decides on a name alone and cannot be grounded. The unjustified boundary is not
+// the wall's judgment; it is the boundary above it that hands the wall an argument stripped of the
+// identity the judgment needs.
+data kind_wall_receives_a_de_identified_type_argument: RecurringFailureMode = RecurringFailureMode {
+  identity: "kind_wall_receives_a_de_identified_type_argument" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "RUNG FOUND AT: refused at compile time, but not by a judgment -- by the absence of one. v1 answers every forwarded parameter with type_arg_kind_inhabitance's refusal because the node it is handed carries no identity, so the rung is 'compile-time refusal with an ungrounded reason', which is mitigation and must not be reported as the guarantee. CEILING: attainable and it is not a predicate change -- an identified argument (the binder mark the parser already mints for exactly this case, or a carrier that keeps it) makes a declaration-identity judgment implementable at the wall, which is where v2 now sits. Not structurally impossible, so the v1 half of this guarantee stays unexecuted. NEXT-RUNG TRIGGER, at capability grain: the wall receives a forwarded type argument whose declaring binder is identifiable from the node it is given, and the three decisions (matching kind admitted, unkinded refused, different-kind refused) are then authored as claim rows on the real assembly route and run -- each at its own named step. Until that trigger fires, no v1 PR or census may claim forwarded-parameter kind inhabitance is judged.",
+
+    "COVERAGE HOLE. INVALID STATE: v1.compiler.infer_resolve type_param_kind_diagnostics reaches type_arg_kind_inhabitance with `arg` taken from carrier.children, and at a forwarded-parameter argument that node arrives carrying NOTHING identifying. HARM: no inhabitance judgment is implementable at that position, so a forwarded parameter is neither admitted on its merits nor refused on them -- it can only be refused, which is what it is today, or admitted, which is what v2's counterpart does. The guarantee 'a kinded position was judged' is therefore false for forwarded parameters in both front ends, in opposite directions.",
+
+    "THE MEASUREMENT, 2026-10-18, session silent-raven-360, base 9d94bf86a95 with the mirrors regenerated from the fixed seeds, runner 66 GiB / 19 cores. A probe was installed INSIDE the emitted type_param_declared_kind_matches and at its caller, and the claim vehicle compiled two synthetic sources that differ ONLY in the kinding of a forwarded parameter -- `type Container<s: Scale>` versus `type Container<s: Parity>`, each applied as `type Wrapper<s> = Container<s>`. Both produced byte-identical traces: at the check site the argument reads declaration=None, properties=[], inferred=None, children=[], params=[], and the decision is `step=no_kind_property verdict=false` in both. The two cases are indistinguishable at the wall. Probes are measurement only and are not shipped.",
+
+    "WHAT THAT RETIRES. Two candidate repairs were proposed and each was falsified by this measurement before anything shipped. (1) Carry the kind onto the synthetic binding that env_with_type_variable_bindings mints: that site never fires for this parameter -- across a full run it printed mint names for corpus declarations only, and the binding the wall reads has an empty property list. (2) Read the kind off the reference's own binder mark through declaration_node_of_ref, the route the codebase already provides for parameter identity: the mark is absent from the node the wall receives (declaration=None), so it was stripped, or never applied, upstream of the wall.",
+
+    "WHERE THE BOUNDARY IS, AND WHAT IS NOT BEING CLAIMED. The wall's carrier is the AUTHORED use-site node, resolved by the path that walks a module item's field type expressions -- the same path that mints the arity diagnostic. The marking machinery that would supply the identity (binder_marked_type, which writes decl_type_parameter_ref for exactly this case) is invoked on a different construction of the same reference, from the item-resolution fold; its output never reaches the wall's argument. Naming that producer precisely, and whether it is one site or a family, is the open step; a repair that re-realizes the wall on an identified node belongs there, not in the predicate. Until then this row is the record, and a census that shows no forwarded-parameter refusals must be read as 'not judged', never as 'judged clean'.",
+
+    "WHY THIS IS NOT BEING PAPERED OVER. The two unconditional admits in v1's type_arg_kind_inhabitance (an inferred type variable admits, and a bare name that matches a bound type parameter admits) are dead code at this position precisely because nothing reaching it can distinguish, and deleting them WITHOUT plumbing the identity leaves the position refusing everything -- which is safe but incomplete, and is what this row records. No fallback, alias, or ambient admission is added in the meantime, per the 2026-10-15 ruling that every name is an ordinary declaration reached by import and there is no identity-to-spelling fallback."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer_resolve", decl_name: "type_param_kind_diagnostics", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_resolve", decl_name: "type_arg_kind_inhabitance", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_resolve", decl_name: "binder_marked_type", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_resolve", decl_name: "resolve_item_types", field: WholeDeclaration }
+  ]
+}

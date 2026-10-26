@@ -2,21 +2,7 @@ module v2.test.claim.compiler.declared_return_result
 
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_list_peers, fmi_reason }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
-import v2.compiler.infer {
-  infer,
-  infer_application_result_type,
-  infer_arrow_declared_return_type,
-  infer_projected_field_type,
-  infer_projection_receiver_of_type,
-  infer_receiver_arity_mismatch_diagnostic,
-  infer_type_equal_ignoring_provenance,
-  ProjectionReceiver,
-  ReceiverArityMismatch,
-  ReceiverDeclarationUnavailable,
-  ReceiverPayload,
-  ReceiverTypeNotADeclaration,
-  ReceiverTypeUnderived
-}
+import v2.compiler.infer { infer, infer_application_result_type, infer_arrow_declared_return_type, infer_projected_field_type, infer_projection_receiver_of_type, infer_receiver_arity_mismatch_diagnostic, ProjectionReceiver, ReceiverArityMismatch, ReceiverDeclarationUnavailable, ReceiverPayload, ReceiverTypeNotADeclaration, ReceiverTypeUnderived }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness }
@@ -30,7 +16,7 @@ import v2.std.diagnostic {
 }
 import v2.std.inhabitance { TypeVariableInstance }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node {
+import v2.std.node { node_equal_ignoring_provenance,
   Arrow,
   Atom,
   Authored,
@@ -42,7 +28,8 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 import std.optional { Absent, Optional, Present }
 import std.algebra { Cons, list_snoc_item, length, list_map }
@@ -67,7 +54,7 @@ fn drr_atom(sym: Symbol) -> Node {
 }
 
 fn drr_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 // fn <params>(<no domain>) -> ret
@@ -85,7 +72,7 @@ fn drr_arrow(params: List<Symbol>, ret: Node) -> Node {
 // A binder set built through the one mint (v2.std.type_binder type_binder_set_children), so it carries
 // its declared-order edge and conforms, as a lowered signature's does.
 fn drr_binder_set(params: List<Symbol>) -> Node {
-  let edges = list_map(xs: params, f: fn(p) { Edge { label: Authored { name: p }, target: drr_atom(sym: p) } })
+  let edges = list_map(xs: params, f: fn(p) { Edge { label: Authored { name: p }, target: drr_atom(sym: p), declaration: NotADeclaration } })
   let source = drr_atom(sym: ^drr_binder_source)
   node_synthetic(kind: TypeNode { connective: Conj }, children: type_binder_set_children(binders: edges, source: source))
 }
@@ -97,7 +84,7 @@ fn drr_box_of(arg: Node) -> Node {
 fn drr_present_equals(o: Optional<Node>, expected: Node) -> Bool {
   match o {
     Absent => false
-    Present { value: v } => infer_type_equal_ignoring_provenance(a: v, b: expected)
+    Present { value: v } => node_equal_ignoring_provenance(a: v, b: expected)
   }
 }
 
@@ -143,8 +130,8 @@ test fn drr_a_return_mentioning_an_unbound_type_parameter_is_not_derived() -> Bo
 // written); a receiver that binds nothing keeps the field's declared type.
 test fn drr_a_generic_record_field_projects_at_its_instantiation() -> Bool {
   let bound = [TypeVariableInstance { binder: ^drr_t, instance: drr_atom(sym: ^drr_tally) }]
-  infer_type_equal_ignoring_provenance(a: infer_projected_field_type(field_type: drr_atom(sym: ^drr_t), instances: bound), b: drr_atom(sym: ^drr_tally))
-    && infer_type_equal_ignoring_provenance(a: infer_projected_field_type(field_type: drr_atom(sym: ^drr_t), instances: []), b: drr_atom(sym: ^drr_t))
+  node_equal_ignoring_provenance(a: infer_projected_field_type(field_type: drr_atom(sym: ^drr_t), instances: bound), b: drr_atom(sym: ^drr_tally))
+    && node_equal_ignoring_provenance(a: infer_projected_field_type(field_type: drr_atom(sym: ^drr_t), instances: []), b: drr_atom(sym: ^drr_t))
 }
 
 // WRONG TYPE-ARGUMENT COUNT: Box declares one type parameter, so a receiver typed Box<Tally, Tally>
@@ -154,7 +141,7 @@ fn drr_box_path() -> List<Symbol> {
 }
 
 fn drr_box_index() -> SymbolIndex {
-  let payload = node_synthetic(kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: ^item }, target: drr_atom(sym: ^drr_t) }])
+  let payload = node_synthetic(kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: ^item }, target: drr_atom(sym: ^drr_t), declaration: NotADeclaration }])
   symbol_index_mark_declared_type_params(
     index: symbol_index_insert(index: empty_symbol_index(), qualified_path: drr_box_path(), resolved: payload),
     qualified_path: drr_box_path(),

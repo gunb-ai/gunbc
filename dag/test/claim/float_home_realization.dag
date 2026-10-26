@@ -1,0 +1,26 @@
+module test.claim.float_home_realization
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REAL std.float Float, REACHED BY ITS DECLARATION'S IDENTITY, EMITS THROUGH ITS EXACT BINDING. The probe
+// names the declaration by its qualified path, so emission resolves it to std.float Float and takes
+// gunbc.rust_source_type_bindings' row keyed on that declaration (RustF64): the parameter and the return are
+// f64. Rebinding ONLY that row to RustI64 in the compiled-in mirror turns this red (the parameter emits
+// i64), which is what shows the declaration-keyed row is the route.
+//
+// An IMPORTED `Float` (`import std.float { Float }`) is not used here because it does not reach that row: the
+// seed answers an imported kernel-named type through the bare-name kernel route, and the same mutation leaves
+// it at f64. That route is the legacy one the Float import wave and the bare row's retirement remove; this
+// claim does not count it as evidence. That the bound f64 realizes the declaration's binary64 meaning is
+// test.claim.float_declaration_realization_chain.
+test fn w_qualified_std_float_float_emits_through_its_declaration_binding() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.float_home_probe\nimport std.float\nfn probe(x: std.float.Float) -> std.float.Float { x }\n",
+    "src/test_claim_float_home_probe.rs",
+    ["fn probe(x: f64) -> f64"],
+    []
+  )
+}

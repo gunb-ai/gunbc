@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.resource_contract_validated_but_not_carried
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data resource_contract_validated_but_not_carried: RecurringFailureMode = RecurringFailureMode {
   identity: "resource_contract_validated_but_not_carried" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a `resource` declaration's `kind:`, `mode:`, `expires:` and `acquire { hermetic }` entries are authored facts that v2 reads and then carries nowhere. `v2.compiler.body_lowering_fold` `body_lower_resource_decl` reads every entry against its home (`std.resource_contract` `ResourceKind` / `ResourceMode`, a Bool literal, the `hermetic` execution-mode claim) and refuses at the entry when one does not inhabit it, or is repeated, or `kind` / `mode` is missing. An admitted declaration then lowers to its capabilities, and the normalize capture carries only its name (`DeclaredResource { name }`). The validated values exist in no carrier after lowering.",

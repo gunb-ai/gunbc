@@ -4,7 +4,7 @@ import std.syntax {
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
   BodyKind,
   ExprBody, BlockBody, TypeBody, NoBody,
-  OperatorSpec, SyntaxSpec,
+  OperatorSpec, PrefixOperatorSpec, PostfixOperatorSpec, SyntaxSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or,
   LiteralValue, LitBool
@@ -82,9 +82,31 @@ data rust_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
 ]
 
+// Prefix (unary) rows of this language's table, beside the infix rows. 18 sits above every infix
+// row the prefix must not absorb and below `.` at 19, which the operand's postfix layer consumes.
+data rust_prefix_operators: List<PrefixOperatorSpec> = [
+  PrefixOperatorSpec { symbol: "-", binding_power: 18 },
+  PrefixOperatorSpec { symbol: "!", binding_power: 18 }
+]
+
+// See dag_postfix_operators in extdeps.languages.dag.syntax; this realization's expressions pass
+// the same parser, so its rows carry the same thresholds.
+data rust_postfix_operators: List<PostfixOperatorSpec> = [
+  PostfixOperatorSpec { symbol: "(", binding_power: 21 },
+  PostfixOperatorSpec { symbol: "[", binding_power: 21 },
+  PostfixOperatorSpec { symbol: "as", binding_power: 19 },
+  // The record-literal arm's threshold. Declared at 18 beside its dag sibling: at 13 the
+  // consume-iff read moved a record literal OUT of a unary operand the prefix row at 18 used to
+  // keep it inside (review 84349; measured over both routes, invocation jd1752ffb). See
+  // dag_postfix_operators in extdeps.languages.dag.syntax for the full receipt.
+  PostfixOperatorSpec { symbol: "{", binding_power: 18 }
+]
+
 data rust_syntax_spec: SyntaxSpec = SyntaxSpec {
   item_forms: rust_item_forms,
   operators: rust_operators,
+  prefix_operators: rust_prefix_operators,
+  postfix_operators: rust_postfix_operators,
   keyword_literals: rust_keyword_literals,
   keyword_set: rust_keyword_set
 }

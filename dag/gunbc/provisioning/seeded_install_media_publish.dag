@@ -1,6 +1,6 @@
 module gunbc.provisioning.seeded_install_media_publish
 
-import std.types { NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String }
 import std.algebra { trim }
 import std.optional { Present }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -9,7 +9,7 @@ import extdeps.posix.test_utility { test_regular_file_command }
 import gunbc.host_command_binding {
   CommandHost, HostCommandDone, HostCommandFailed, host_command, host_command_outcome_text,
   HostFileWrite, HostFileWritten, host_write_file,
-  ScratchOutcome, CreationNotRequested,
+  ScratchOutcome, CreationNotRequested, scratch_removed, render_scratch_outcome, host_file_write_text,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaBuildInput,
@@ -222,4 +222,39 @@ fn build_and_publish_seeded_image(host: CommandHost, input: UbuntuSeededInstallM
       staging_path: ubuntu_seeded_install_media_staging_path(dir: dir, input: input),
     ),
   )
+}
+
+// THE ONE JUDGMENT AND RENDERING OF A PUBLICATION, shared by every caller (the census image and the
+// runner image publish legs): it holds when the image is already published, or was published with its
+// build directory removed and no staging residue; a refusal or an unwritten record does not hold.
+fn seeded_image_publication_holds(p: SeededImagePublication) -> Bool {
+  match p {
+    SeededImageAlreadyPublished { built: _, path: _ } => true
+    SeededImagePublished { built: _, path: _, work: w, staging_residue: residue } =>
+      scratch_removed(o: w) && match residue { Absent => true Present { value: _ } => false }
+    SeededImagePublicationRefused { reason: _, work: _ } => false
+    SeededImagePublishedRecordNotWritten { built: _, path: _, work: _, staging_residue: _, record: _ } => false
+  }
+}
+
+fn render_seeded_image_built(built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr) -> String {
+  concat(
+    "image_name=", built.image_name as String, "\n",
+    "output_digest=", built.output_digest as String, "\n",
+    "build_key=", built.build_key as String, "\n",
+    "published_path=", path as String, "\n",
+  )
+}
+
+fn render_seeded_image_publication(p: SeededImagePublication) -> String {
+  match p {
+    SeededImagePublished { built: b, path: path, work: w, staging_residue: residue } =>
+      concat(render_seeded_image_built(built: b, path: path), render_scratch_outcome(label: "build_work", prefix: "", o: w),
+        match residue { Absent => "" Present { value: r } => concat("staging_residue=", r, "\n") })
+    SeededImageAlreadyPublished { built: b, path: path } => concat("already_published=true\n", render_seeded_image_built(built: b, path: path))
+    SeededImagePublicationRefused { reason: r, work: w } => concat("publication=refused\npublication_reason=", r, "\n", render_scratch_outcome(label: "build_work", prefix: "", o: w))
+    SeededImagePublishedRecordNotWritten { built: b, path: path, work: w, staging_residue: residue, record: rec } =>
+      concat(render_seeded_image_built(built: b, path: path), "derivation_record=", host_file_write_text(w: rec), "\n", render_scratch_outcome(label: "build_work", prefix: "", o: w),
+        match residue { Absent => "" Present { value: r } => concat("staging_residue=", r, "\n") })
+  }
 }

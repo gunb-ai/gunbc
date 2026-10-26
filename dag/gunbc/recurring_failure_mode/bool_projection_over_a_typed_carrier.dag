@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.bool_projection_over_a_typed_carrier
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data bool_projection_over_a_typed_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "bool_projection_over_a_typed_carrier" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a Bool-returning function over a sum-typed carrier** (the carrier separates several independent axes and names a cause on each arm; the function answers one bit over it, so two materially different situations arrive at the consumer as the same `false`, and the reason is gone.",

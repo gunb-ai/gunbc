@@ -41,6 +41,7 @@ import extdeps.systemd {
   systemd_memory_max_property,
   systemd_memory_high_property,
   systemd_memory_swap_max_property,
+  systemd_tasks_max_property,
   systemd_cpu_quota_property,
 }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
@@ -68,6 +69,9 @@ import gunbc.shell_command_text {
   shell_command_text_of_stmts,
 }
 
+// On the other runner hosts the same derived_runner_slot_cap_members list is written by
+// gunbc.runner.runner_host_file_converge (administrator over the fleet key; host-wide drain-first,
+// live-cgroup readback); the row below predates that route and is left as it was.
 data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
 type CapMemberAt = NonEmptyStr
@@ -269,6 +273,24 @@ fn derived_runner_memory_swap_cap_member() -> CapMember {
 
 fn derived_runner_memory_cap_members() -> List<CapMember> {
   [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member(), derived_runner_memory_swap_cap_member()]
+}
+
+// TasksMax IS THE FOURTH ROW OF THE ONE SLOT-CAP LIST, NOT A SECOND RENDERING. 50-fleet-tasks.conf was
+// authored a second time in gunbc.fleet.fleet_converge_plan beside this list, so the plan and the
+// deploy disagreed on how many drop-ins a slot carries. derived_runner_memory_cap_members stays the
+// three MEMORY rows because live_deploy's staged install consumes exactly that list and srv1's
+// rendered bytes must not move; derived_runner_slot_cap_members is that list plus tasks, and is what
+// the fleet plan and the runner-host converge both read.
+fn derived_runner_tasks_cap_member() -> CapMember {
+  desired_cap_member(
+    dropin_path: gunbc_runner_per_slot_tasks_dropin_path as NonEmptyStr,
+    property: systemd_tasks_max_property,
+    bytes_value: to_string(gunbc_runner_slot_desired().tasks_max) as NonEmptyStr,
+  )
+}
+
+fn derived_runner_slot_cap_members() -> List<CapMember> {
+  concat(derived_runner_memory_cap_members(), [derived_runner_tasks_cap_member()])
 }
 
 // ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────

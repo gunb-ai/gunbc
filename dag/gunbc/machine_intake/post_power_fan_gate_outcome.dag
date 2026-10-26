@@ -1,0 +1,194 @@
+module gunbc.machine_intake.post_power_fan_gate_outcome
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import extdeps.external_authority { cited_figure_read_obligation }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text, chassis_observation_is_off }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetNotEstablished, FittedFanSetEstablished, FittedFanSetOperatorAssumed, PostPowerFanRefusal, FanFailureSensorNotNominal, FanFailureSensorNoReading, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded, FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, render_round_block, render_thermal_publication }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+// THE TYPED RESULT OF THE POST-POWER-ON CHASSIS-FAN GATE, and everything the stop was decided on. It is a leaf
+// module so the gate (which reads and actuates), the boot run (which carries it) and the diagnostic bundle
+// (which records it) share one declaration without an import cycle.
+
+// WHERE THE COOLING MANAGER STANDS. Wraps the existing MegaRacFanManagerStanding domain; the gate has no REST
+// session, so the only standing is FanManagerUnread, which says what would read it; a Read arm joins when that REST read does. No fan-control write exists on
+// this path (ruling gunbc#14243).
+type FanManagerReadStanding
+  = FanManagerUnread { read_obligation: NonEmptyStr }
+
+// EACH POWER-OFF READBACK IS KEPT, for each PowerDown attempt, never only the last.
+// ONE PowerDown ATTEMPT: what ipmitool said (success, stdout, exit code, stderr) and every readback after it.
+// A command that failed outright is therefore on the record next to the readbacks it produced.
+type FanGatePowerDownAttempt {
+  command_success: Bool
+  command_stdout: String
+  command_exit_code: Int
+  command_stderr: String
+  readbacks: List<ChassisPowerObservation>
+}
+
+type FanGateRepeat
+  = FanGateRepeatNotNeeded
+  | FanGateRepeated { attempt: FanGatePowerDownAttempt }
+
+type FanGateSafeStopReceipt {
+  first: FanGatePowerDownAttempt
+  repeat: FanGateRepeat
+}
+
+type FanGateWrite
+  = FanGateWritten { path: NonEmptyStr }
+  | FanGateWriteFailed { path: NonEmptyStr, error: String }
+
+type FanGateEvidence {
+  observation_file: FanGateWrite
+  step_summary: FanGateWrite
+}
+
+type PostPowerFanGateOutcome
+  = PostPowerFanEstablished { observation: FanObservationRound }
+  | PostPowerFanRefused { cause: PostPowerFanRefusal, observation: FanObservationRound, stop: FanGateSafeStopReceipt, manager: FanManagerReadStanding, evidence: FanGateEvidence }
+
+// THE GATE OF A POWERED HOST, which has NO not-reached arm: once the host is on, the gate is either read (Reached, whose
+// refusal safe-stops) or abandoned before it passed (the settle stopped the boot) with the host safe-stopped and no fan
+// read taken. A powered host whose fans were never verified is not a state the boot may leave (DESIGN 5), so it has no
+// constructor here; the post-power-on boot route carries this type, never the reading below.
+type PoweredFanGate
+  = PostPowerFanGateReached { fitted: FittedFanSet, outcome: PostPowerFanGateOutcome }
+  | PostPowerFanGateAbandoned { reason: NonEmptyStr, stop: FanGateSafeStopReceipt }
+
+// WHETHER THE ATTEMPT POWERED THE HOST AT ALL. NotReached is an attempt that never powered the host on, so no gate was owed.
+type PostPowerFanGateReading
+  = PostPowerFanGateNotReached { reason: NonEmptyStr }
+  | PostPowerFanGatePowered { gate: PoweredFanGate }
+
+fn last_readback(readbacks: List<ChassisPowerObservation>) -> String {
+  fold(readbacks, init: "no readback was taken", f: (acc, r) => chassis_observation_text(observation: r) as String)
+}
+
+fn any_readback_off(readbacks: List<ChassisPowerObservation>) -> Bool {
+  fold(readbacks, init: false, f: (acc, r) => acc || chassis_observation_is_off(observation: r))
+}
+
+type FanGatePowerState
+  = FanGateOffConfirmed
+  | FanGateOffConfirmedAfterRepeat
+  | FanGateOffUnconfirmed { last_readback: String }
+
+fn fan_gate_stop_power_state(stop: FanGateSafeStopReceipt) -> FanGatePowerState {
+  if any_readback_off(readbacks: stop.first.readbacks) {
+    FanGateOffConfirmed
+  } else {
+    match stop.repeat {
+      FanGateRepeatNotNeeded => FanGateOffUnconfirmed { last_readback: last_readback(readbacks: stop.first.readbacks) }
+      FanGateRepeated { attempt: a } => if any_readback_off(readbacks: a.readbacks) { FanGateOffConfirmedAfterRepeat } else { FanGateOffUnconfirmed { last_readback: last_readback(readbacks: a.readbacks) } }
+    }
+  }
+}
+
+fn fan_gate_power_state_text(state: FanGatePowerState) -> String {
+  match state {
+    FanGateOffConfirmed => "power-off read back as off"
+    FanGateOffConfirmedAfterRepeat => "power-off read back as off only after one repeated PowerDown"
+    FanGateOffUnconfirmed { last_readback: l } => concat("power-off unconfirmed after one repeated PowerDown (last readback: ", concat(l, ")"))
+  }
+}
+
+fn post_power_fan_refusal_text(cause: PostPowerFanRefusal) -> String {
+  match cause {
+    FittedSetUnestablished { read_obligation: o } => concat("the fitted fan set is not established: ", o as String)
+    PostPowerChassisNotOn => "the chassis did not read on after the settle window"
+    PostPowerChassisUnreadable => "the chassis status was unreadable after the settle window"
+    PostPowerChassisUndecodable { cause: c } => concat("the chassis status was undecodable after the settle window: ", c as String)
+    PostPowerThermalUnreadable => "the chassis temperature sensors were unreadable after the settle window"
+    PostPowerThermalNotPublished { publication: p } => concat("the chassis temperature sensors published no decoded temperature after the settle window: ", render_thermal_publication(publication: p))
+    PostPowerThermalReadingUnrecognised { texts: t } => join(["the chassis temperature read left ", to_string(t.length()), " unrecognised reading(s) beside a published one: ", join(t, " || ")], "")
+    PostPowerThermalRowsUndecoded { undecoded_line_count: n } => join(["the chassis temperature read left ", to_string(n), " undecoded row(s)"], "")
+    FanReadUnreadable => "the chassis fan sensors were unreadable after the settle window"
+    FanRowsUndecoded { texts: t } => join(["the fan sensor read left ", to_string(t.length()), " undecoded row(s), each refused unread: ", join(t, " || ")], "")
+    FanFailureSensorNoReading { text: t } => concat("a fan failure sensor row reads No Reading while the chassis is on (missing observation, refused unread): ", t)
+    FanFailureSensorNotNominal { text: t } => concat("a fan failure sensor row is not observed as not-asserted (refused unread): ", t)
+    FittedHeaderMissing { header: h } => concat(h as String, " (fitted) has no sensor row")
+    FittedHeaderDuplicated { header: h } => concat(h as String, " (fitted) names more than one sensor row")
+    FittedHeaderStatusRefused { header: h, status: s } => concat(h as String, concat(" (fitted) row status is not ok: ", s as String))
+    FittedHeaderZeroRpm { header: h } => concat(h as String, " (fitted) reads zero RPM")
+    FittedHeaderNoReading { header: h } => concat(h as String, " (fitted) reads no reading")
+    FittedHeaderDutyOnly { header: h } => concat(h as String, " (fitted) reads a duty, not a speed")
+    FittedHeaderReadingUnrecognised { header: h, text: t } => concat(h as String, concat(" (fitted) reading is unrecognised: ", t as String))
+  }
+}
+
+fn fan_manager_standing_text(manager: FanManagerReadStanding) -> String {
+  match manager {
+    FanManagerUnread { read_obligation: o } => concat("cooling manager standing unread: ", o as String)
+  }
+}
+
+// THE FITTED SET'S OWN STANDING, read into every stop text so the operator sees what the verdict rested on.
+fn fitted_set_standing_text(fitted: FittedFanSet) -> String {
+  match fitted {
+    FittedFanSetNotEstablished { read_obligation: o } => concat("fitted set not established: ", o as String)
+    FittedFanSetOperatorAssumed { first: _, rest: _, assumption: a } => concat("fitted set ADMITTED ON THE OPERATOR'S ASSUMPTION: ", a as String)
+    FittedFanSetEstablished { first: _, rest: _, standing: st } => match cited_figure_read_obligation(standing: st) {
+      Present { value: o } => concat("fitted set standing (typed bet, not admitted): ", o as String)
+      Absent => "fitted set standing: cited or observed by receipt"
+    }
+  }
+}
+
+// THE EVIDENCE BEFORE THE STOP: written (attempted, result discriminated) before any PowerDown; a failed write is kept as FanGateWriteFailed and the safe stop still proceeds.
+fn post_power_fan_gate_pre_stop_text(fitted: FittedFanSet, cause: PostPowerFanRefusal, observation: FanObservationRound, manager: FanManagerReadStanding) -> String {
+  join(["post-power-on chassis-fan gate: REFUSED\ncause: ", post_power_fan_refusal_text(cause: cause), "\n", fitted_set_standing_text(fitted: fitted), "\n", fan_manager_standing_text(manager: manager), "\nobservation that stopped the boot:\n", render_round_block(round: observation), "\n"], "")
+}
+
+fn power_down_attempt_text(label: String, attempt: FanGatePowerDownAttempt) -> String {
+  join([label, ": command success=", to_string(attempt.command_success), " exit=", to_string(attempt.command_exit_code), " stdout=[", attempt.command_stdout, "] stderr=[", attempt.command_stderr, "]; readbacks ", to_string(attempt.readbacks.length()), ": ", join(map(attempt.readbacks, r => chassis_observation_text(observation: r) as String), ","), "\n"], "")
+}
+
+fn post_power_fan_gate_stop_section(stop: FanGateSafeStopReceipt) -> String {
+  join(["safe stop: ", fan_gate_power_state_text(state: fan_gate_stop_power_state(stop: stop)), "\n", power_down_attempt_text(label: "PowerDown (first)", attempt: stop.first), match stop.repeat {
+    FanGateRepeatNotNeeded => "repeat: not needed\n"
+    FanGateRepeated { attempt: a } => power_down_attempt_text(label: "PowerDown (repeat)", attempt: a)
+  }], "")
+}
+
+fn fan_gate_write_text(w: FanGateWrite) -> String {
+  match w {
+    FanGateWritten { path: p } => concat("written to ", p as String)
+    FanGateWriteFailed { path: p, error: e } => concat("NOT written to ", concat(p as String, concat(": ", e)))
+  }
+}
+
+fn post_power_fan_gate_text(reading: PostPowerFanGateReading) -> String {
+  match reading {
+    PostPowerFanGateNotReached { reason: why } => concat("post-power-on chassis-fan gate: not reached: ", why as String)
+    PostPowerFanGatePowered { gate: g } => powered_fan_gate_text(gate: g)
+  }
+}
+
+fn powered_fan_gate_text(gate: PoweredFanGate) -> String {
+  match gate {
+    PostPowerFanGateAbandoned { reason: why, stop: s } => join(["post-power-on chassis-fan gate: ABANDONED before it passed, no fan read taken: ", why as String, "\n", post_power_fan_gate_stop_section(stop: s)], "")
+    PostPowerFanGateReached { fitted: fitted, outcome: outcome } => match outcome {
+      PostPowerFanEstablished { observation: o } => join(["post-power-on chassis-fan gate: ESTABLISHED\n", fitted_set_standing_text(fitted: fitted), "\n", render_round_block(round: o), "\n"], "")
+      PostPowerFanRefused { cause: c, observation: o, stop: s, manager: m, evidence: e } =>
+        join([post_power_fan_gate_pre_stop_text(fitted: fitted, cause: c, observation: o, manager: m), post_power_fan_gate_stop_section(stop: s), "observation file ", fan_gate_write_text(w: e.observation_file), "; step summary ", fan_gate_write_text(w: e.step_summary), "\n"], "")
+    }
+  }
+}
+
+// AN ABANDONED GATE'S CLAUSE in the exit of the stop that abandoned it.
+fn post_power_fan_gate_abandoned_text(stop: FanGateSafeStopReceipt) -> String {
+  concat("the post-power-on chassis-fan gate had not passed, so the host was powered down without a fan read: ", fan_gate_power_state_text(state: fan_gate_stop_power_state(stop: stop)))
+}
+
+// THE STOP'S FAILURE REASON, which is the job summary's headline and the step's exit text.
+fn post_power_fan_gate_exit(fitted: FittedFanSet, outcome: PostPowerFanGateOutcome) -> ProcessExit {
+  match outcome {
+    PostPowerFanEstablished { observation: _ } => ExitSuccess
+    PostPowerFanRefused { cause: c, observation: _, stop: s, manager: m, evidence: e } =>
+      exit_failure(reason: join(["mtcollins1 boot stopped: chassis fan function not established after power-on: ", post_power_fan_refusal_text(cause: c), "; ", fan_gate_power_state_text(state: fan_gate_stop_power_state(stop: s)), "; ", fitted_set_standing_text(fitted: fitted), "; ", fan_manager_standing_text(manager: m), "; observation file ", fan_gate_write_text(w: e.observation_file), "; step summary ", fan_gate_write_text(w: e.step_summary)], ""))
+  }
+}

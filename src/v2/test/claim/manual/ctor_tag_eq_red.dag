@@ -1,0 +1,14 @@
+module v2.test.claim.manual.ctor_tag_eq_red
+
+// RED (ii): `==` on a ConstructorTag must refuse at typecheck. The refusal is the shape's job:
+// its only member is function-valued, and a function value has no equality denotation
+// (`v1.compiler.infer.equality_admission_wall_note`). Isolated in its own file because a refusal
+// is a compile error, and a compile error hides every other test in the file.
+
+import std.primitives { tag_of }
+
+type ProbeEq = E0 | E1 { a: Int }
+
+test fn eq_on_carrier_must_refuse() -> Bool {
+  tag_of(v: E0) == tag_of(v: E0)
+}

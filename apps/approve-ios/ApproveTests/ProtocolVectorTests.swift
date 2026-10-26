@@ -1,5 +1,5 @@
 // The Swift byte builders against the vectors the .dag witness EMITS from device_redemption_signing_input
-// and enrolment_transcript (dag/test/fixture/approval_device_redemption/vectors.json). No expected byte
+// and google_enrolment_transcript and google_enrolment_nonce (dag/test/fixture/approval_device_redemption/vectors.json). No expected byte
 // is written here: a hand-copied expectation would be a second authority for the join.
 // GENERATED from gunbc.approve_ios_swift_protocol_vector_tests from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.
 import XCTest
@@ -27,7 +27,7 @@ struct Vectors: Decodable {
 
     struct Enrolment: Decodable {
         struct Input: Decodable {
-            var code: String
+            var attest_key_id: String
             var platform: String
             var point_b64url: String
         }
@@ -35,6 +35,8 @@ struct Vectors: Decodable {
         var name: String
         var input: Input
         var expected: String
+        /// google_enrolment_nonce over `expected`, emitted by the .dag.
+        var nonce: String
     }
 
     struct Read: Decodable {
@@ -54,9 +56,22 @@ struct Vectors: Decodable {
         var body: String
     }
 
+    struct Refusal: Decodable {
+        var name: String
+        var body: String
+        var at: String
+        var cause: String
+    }
+
     struct PathSegment: Decodable {
         var input: String
         var encoded: String
+    }
+
+    struct Escape: Decodable {
+        var input: String
+        var string_json: String
+        var object_json: String
     }
 
     struct Surface: Decodable {
@@ -83,10 +98,17 @@ struct Vectors: Decodable {
     var enrolment: [Enrolment]
     var read: [Read]
     var envelope: [Envelope]
+    /// refusal: malformed push-update bodies with the location and cause the server's decoder gives them.
+    var refusal: [Refusal]
     /// path_segment: input -> encoded, emitted by the .dag path_segment fold.
     var path_segment: [PathSegment]
     /// surface: the one method, and the route paths, by name.
     var surface: [Surface]
+    /// escape: characters the emitter has to escape, with the bytes serialize_json gives them.
+    /// Optional in the Codable so that a fixture predating the section (it is emitted by
+    /// gunbc.auth.approval_device_redemption_fixtures escape_specimens) fails ONLY the test that
+    /// reads it, never the whole suite; that test refuses nil loudly.
+    var escape: [Escape]?
     /// stored_request: the store's own rendering, so the detail screen's reader is joined to it.
     /// Optional in the Codable so that a fixture predating the section (it is emitted by
     /// gunbc.auth.approval_device_redemption_fixtures stored_request_specimens) fails ONLY the test
@@ -103,6 +125,7 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertFalse(v.enrolment.isEmpty, "no enrolment vectors")
         XCTAssertFalse(v.read.isEmpty, "no read vectors")
         XCTAssertFalse(v.envelope.isEmpty, "no envelope vectors")
+        XCTAssertFalse(v.refusal.isEmpty, "no refusal vectors")
         XCTAssertFalse(v.path_segment.isEmpty, "no path_segment vectors")
         XCTAssertFalse(v.surface.isEmpty, "no surface vectors")
         return v
@@ -125,11 +148,13 @@ final class ProtocolVectorTests: XCTestCase {
         }
     }
 
-    func testEnrolmentTranscriptMatchesEveryVector() throws {
+    /// google_enrolment_transcript and google_enrolment_nonce, byte for byte: the nonce the app hands Google is base64url(sha256(transcript)) as the .dag computes it.
+    func testEnrolmentTranscriptAndNonceMatchEveryVector() throws {
         for v in try load().enrolment {
             let platform = try XCTUnwrap(MobilePlatform(rawValue: v.input.platform), v.name)
-            let got = enrolmentTranscript(code: v.input.code, decisionKey: VerifyingKey(point_b64url: v.input.point_b64url), platform: platform)
+            let got = googleEnrolmentTranscript(decisionKey: VerifyingKey(point_b64url: v.input.point_b64url), platform: platform, attestKeyId: v.input.attest_key_id)
             XCTAssertEqual(got, Data(v.expected.utf8), v.name)
+            XCTAssertEqual(googleEnrolmentNonce(got), v.nonce, v.name)
         }
     }
 
@@ -160,7 +185,7 @@ final class ProtocolVectorTests: XCTestCase {
     /// by the app's encoder; the bytes must be the authority's. No input is typed here.
     func testEnrolmentRequestRoundTripsToTheFixtureBytes() throws {
         let body = try envelope("enrolment_request")
-        XCTAssertEqual(WireEncode.enrolmentRequest(try WireDecode.enrolmentRequest(Data(body.utf8))), body)
+        XCTAssertEqual(WireEncode.googleEnrolmentRequest(try WireDecode.googleEnrolmentRequest(Data(body.utf8))), body)
     }
 
     func testSignedRedemptionRoundTripsToTheFixtureBytes() throws {
@@ -206,16 +231,30 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_unknown").utf8)).outcome, OutcomeName.enrollmentUnknown)
     }
 
+    /// A malformed push-update body is refused at the location and with the cause the SERVER's decoder
+    /// gives it (refusal vectors are decode_push_update's own answers), so a cause or a path root the
+    /// transcription restates differently reds here.
+    func testPushUpdateRefusalsMatchTheServer() throws {
+        for v in try load().refusal {
+            do {
+                _ = try WireDecode.pushUpdate(Data(v.body.utf8))
+                XCTFail("refusal vector \(v.name) was accepted")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, WireError.refused(at: v.at, cause: v.cause).localizedDescription, v.name)
+            }
+        }
+    }
+
     /// One envelope per arm of the enrol route's typed refusal (enrolment_refusal_<label>): the arms the
     /// vectors cover are exactly the arms the app spells, and each decodes to the arm its name carries, so an
     /// arm added to the wire without a vector (or renamed) reds here.
     func testEveryEnrolmentRefusalArmDecodes() throws {
         let prefix = "enrolment_refusal_"
         let arms = try load().envelope.filter { $0.name.hasPrefix(prefix) }
-        XCTAssertEqual(Set(arms.map { String($0.name.dropFirst(prefix.count)) }), Set(EnrolmentRefusalKind.allCases.map { $0.rawValue }))
+        XCTAssertEqual(Set(arms.map { String($0.name.dropFirst(prefix.count)) }), Set(GoogleEnrolmentRefusal.labels))
         for a in arms {
-            let kind = try WireDecode.enrolmentRefusal(Data(a.body.utf8))
-            XCTAssertEqual(prefix + kind.rawValue, a.name)
+            let kind = try WireDecode.googleEnrolmentRefusal(Data(a.body.utf8))
+            XCTAssertEqual(prefix + kind, a.name)
         }
     }
 
@@ -248,12 +287,6 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertThrowsError(try WireDecode.enrolmentGrant(Data(#"{"enrollment_id": ""}"#.utf8)))
         XCTAssertThrowsError(try WireDecode.pushUpdate(Data(#"{"kind": "fcm", "project": "p", "token": "t"}"#.utf8)))
         XCTAssertThrowsError(try WireDecode.pushUpdate(Data(#"{"kind": "apns", "environment": "production", "topic": "t", "token": "k", "project": "p"}"#.utf8)))
-    }
-
-    /// enrollment_id_for_code, pinned by the envelope vector over the enrolment vectors' code.
-    func testEnrollmentIdForCodeMatchesTheFixture() throws {
-        let code = try XCTUnwrap(try load().enrolment.first).input.code
-        XCTAssertEqual(enrollmentIdForCode(code), try envelope("enrollment_id_for_code_" + code))
     }
 
     /// device_push_update_client_data frames the exact push body; the enrolment id and time are the
@@ -305,9 +338,13 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertTrue(seg.hasPrefix("id-") && !seg.contains("+") && !seg.contains("/"))
     }
 
-    /// The emitter's escaping is serialize_json's: controls as \u00XX upper-case, "/" literal.
-    func testEmitterEscapesLikeSerializeJson() {
-        XCTAssertEqual(WireJson.string("a\u{1F}b/\"c\\").serialized, #""a\u001Fb/\"c\\""#)
-        XCTAssertEqual(WireJson.object([("k", .array([.string("x")]))]).serialized, #"{"k": ["x"]}"#)
+    /// The emitter's escaping is serialize_json's, over every specimen the fixture carries.
+    func testEmitterEscapesLikeSerializeJson() throws {
+        let vectors = try XCTUnwrap(try load().escape, "vectors.json has no escape section \u{2014} it is emitted by gunbc.auth.approval_device_redemption_fixtures escape_specimens")
+        XCTAssertFalse(vectors.isEmpty, "no escape specimens")
+        for v in vectors {
+            XCTAssertEqual(WireJson.string(v.input).serialized, v.string_json, v.input)
+            XCTAssertEqual(WireJson.object([("k", .array([.string(v.input)]))]).serialized, v.object_json, v.input)
+        }
     }
 }

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.two_admission_authorities_keyed_on_different_relations
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data two_admission_authorities_keyed_on_different_relations: RecurringFailureMode = RecurringFailureMode {
   identity: "two_admission_authorities_keyed_on_different_relations" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: two authorities answer one admission question -- may this value cross from one model to another -- and each is keyed on a DIFFERENT IDENTITY RELATION, with no conversion between the two keys anywhere in the corpus.",
@@ -16,6 +18,8 @@ data two_admission_authorities_keyed_on_different_relations: RecurringFailureMod
     "SPECIMEN 1 (gunbc, 2026-09-22, v2.test.claim.coercion.two_algebra_fork). std.coercion dag_can_cast folds over dag_cast_rules and grounded_primitive_coproduct_identities, keyed on TYPE-NAME STRINGS, and it executes: v1.compiler.infer consults it at three decision points -- kernel_value_declared_type_mismatch_bounded, application_type_names_compatible and validate_cast (explicit `as`). v2.std.coercion coercion_fold asks v2.std.find_witness find_witness for a structure-preserving witness, keyed on NODE IDENTITY, and it has no established executing consumer. Measured over seven supplied pairs, the admission sets differ in both directions: Int->Float, Bool->Int and Int->Nat were admitted name-only (Bool->Int left the name-keyed roster in #12227), while String->String -- an IDENTITY crossing -- is admitted homomorphism-only, because dag_cast_rules carries no identity row for it. That last cell is a property of the RAW HELPER roster, not of production: every live composition in v1.compiler.infer (kernel_value_declared_type_mismatch, application_type_names_compatible, validate_cast) admits name identity before consulting dag_can_cast, so the compiler does not refuse an identity crossing. What the specimen establishes is two admission contracts on disjoint keys, not a production refusal.",
 
     "SPECIMEN 2 (gunbc, 2026-09-22, smart-tern-891, a different surface and an independent sighting). One resource appeared under two labels, Network and std.resources.Network, because a diagnostic field carried the caller's IMPORT SPELLING while the wall itself compared through the resolved declaration identity. Correct by identity in one place, keyed by spelling in another, and only the second was load-bearing for the new consumer. Two independent sightings on one day is what makes this a class rather than a fact about coercion.",
+
+    "SPECIMEN 3 (gunbc, 2026-10-22, tidy-raven-798, measured on the nominal-cast wall work; the explicit-cast roster fork between the two compilers for a KERNEL source). `n as String` with n: Int is ACCEPTED by the seed (v1.compiler.infer validate_cast abstains because Int is inside std.coercion is_dag_cast_domain_type and dag_can_cast answers yes; v1_interpreter eval_cast renders the text) while v2 REFUSES it: v2.compiler.infer infer_transform_cast_optional reaches v2.std.coercion coercion_cast_crossing, finds no exact structural witness and no declared carrier, and answers NoTargetCandidate (src/v2/test/claim/cast_nominal_to_string_probe.dag cns_int_to_string, refused at infer). The two verdicts differ on one subject, and neither is the stricter authority in general. This PR leaves kernel-source behaviour unchanged by instruction; it repairs only the nominal source, where both compilers now refuse under one rule. Unmeasured: whether any corpus site depends on the seed admitting Int as String.",
 
     "RUNG FOUND AT: below the ladder for the divergence itself -- nothing refuses, nothing counts it, and each authority answers confidently within its own key. The coercion specimen is now MITIGATABLE at the measurement grain only: v2.test.claim.coercion.two_algebra_fork pins the admission relation pair by pair over a supplied population, so a change to either side's admission set reds a claim. That is a wall around the MEASUREMENT, not around the state.",
 

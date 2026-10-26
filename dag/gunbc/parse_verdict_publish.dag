@@ -6,6 +6,10 @@ import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push, github_event_name_pull_request }
 import gunbc.action_use_admission { cache_save_action }
 import v2.cli.population_verb_names { cli_verb_parse_population }
+import v2.cli.parse_verdict_invocation {
+  ParseVerdictInvocationArg, cli_option_compiler, cli_option_write_identity, cli_option_receipts,
+  parse_verdict_invocation_command, parse_verdict_invocation_source_root_args
+}
 import gunbc.instrument_targets { v2_native_cli_source_roots }
 import gunbc.emitted_subject_build_gate {
   native_step_memory_inputs,
@@ -18,7 +22,7 @@ import gunbc.host.memory_envelope {
   EnvelopeRequirementUnreadable,
   memory_envelope_required_ci_contract,
 }
-import std.algebra { list_map }
+import std.algebra { list_map, list_append }
 import extdeps.cache.github_actions {
   GhaCacheEntryScope,
   GhaCacheDefaultBranchScope,
@@ -127,28 +131,27 @@ fn github_sha_expr() -> String {
   })
 }
 
-fn source_root_argv() -> String {
-  join(
-    list_map(xs: v2_native_cli_source_roots(), f: fn(root) { join([" --source-root ", root], "") }),
-    ""
+// THE INVOCATION IS RENDERED BY THE DECLARATION. See parse_verdict_reuse_command for why the option
+// tokens are no longer typed where the command is built.
+// THE WALK'S WHOLE ARGUMENT POPULATION, source-root tail included. See parse_verdict_reuse_args in
+// gunbc.parse_verdict_restore for why the roots are declared ARGUMENTS now rather than appended as a
+// rendered string: an option the invocation always passes has to be inside the shape the stamp certifies.
+fn parse_verdict_publish_args() -> List<ParseVerdictInvocationArg> {
+  list_append(
+    left: [
+      ParseVerdictInvocationArg { option: cli_option_compiler, value: parse_verdict_compiler_expr() },
+      ParseVerdictInvocationArg { option: cli_option_write_identity, value: parse_verdict_identity_blob_file() },
+      ParseVerdictInvocationArg { option: cli_option_receipts, value: parse_verdict_receipts_file() }
+    ],
+    right: parse_verdict_invocation_source_root_args(roots: v2_native_cli_source_roots())
   )
 }
 
 fn parse_verdict_publish_command() -> String {
-  join(
-    [
-      parse_verdict_generation_one_bin(),
-      " ",
-      cli_verb_parse_population,
-      " --compiler ",
-      parse_verdict_compiler_expr(),
-      " --write-identity ",
-      parse_verdict_identity_blob_file(),
-      " --receipts ",
-      parse_verdict_receipts_file(),
-      source_root_argv()
-    ],
-    ""
+  parse_verdict_invocation_command(
+    bin: parse_verdict_generation_one_bin(),
+    verb: cli_verb_parse_population,
+    args: parse_verdict_publish_args()
   )
 }
 

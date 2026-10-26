@@ -2,7 +2,7 @@ module v2.std.compilers.coproduct_variant_shape
 
 import std.types { List }
 import std.algebra { Cons, Empty, fold_list }
-import v2.std.node { Disj, Arrow, Occupancy, Instantiation, ComputationNode, Atom, Conj, Edge, TypeNode }
+import v2.std.node { Disj, Arrow, Instantiation, ComputationNode, Atom, Conj, Edge, TypeNode }
 
 // Single authority for nullary vs payload-bearing coproduct variant classification (Conj-child presence on variant targets). Consumed by semantic_decl_emission decoration rules, rust derive-binding rows, and trait_derive_completeness elem-shape. Fail-closed: non-Conj targets carry no payload.
 fn coproduct_variant_edge_has_payload(edge: Edge) -> Bool {
@@ -15,7 +15,6 @@ fn coproduct_variant_edge_has_payload(edge: Edge) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.required_output_field_absent_for_an_empty_upstream_resource
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data required_output_field_absent_for_an_empty_upstream_resource: RecurringFailureMode = RecurringFailureMode {
   identity: "required_output_field_absent_for_an_empty_upstream_resource" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "required output field absent for an empty upstream resource: an extdeps operation declares an output field as required because every observed response carried it, and the upstream OMITS that field for the empty or initial state of the resource. The operation then refuses a perfectly ordinary 200. The defect is modelling a response shape from the populated instances that happened to be in front of the author, so the first read of a freshly created resource is the first read that fails.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.normalized_tree_hides_the_anchor_decl_so_the
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data normalized_tree_hides_the_anchor_decl_so_the_mandatory_tag_rejects_pass_vacuously: RecurringFailureMode = RecurringFailureMode {
   identity: "normalized_tree_hides_the_anchor_decl_so_the_mandatory_tag_rejects_pass_vacuously" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**At the normalized grain the mandatory-tag lens finds no anchor declaration even in a clean module, so every normalized-grain reject of `v2.test.claim.long.mandatory_tag_gate_witness` passes for a reason that is not the one it names** (INVALID STATE: a witness that cannot fail). RECEIPT (sunny-ant-198, 2026-10-06, claim_batch on BuildBuddy, gunbc#13458): on the tree `normalize` returns for the clean source `mandatory_tag_compile_gate` rejects with `mandatory_tag_missing_required_decl`, and with no other reason (unreadable, not-accepted, type-mismatch and projection-gated were each probed false; `normalize` itself accepts). So `mandatory_tag_normalized_grain_clean_accepts` is RED, and `mandatory_tag_normalized_grain_missing_rejects` and `mandatory_tag_normalized_grain_misnamed_rejects` are currently VACUOUS: they assert `missing_required_decl` and every normalized tree yields it. The parse-grain claims are unaffected and still discriminate.",

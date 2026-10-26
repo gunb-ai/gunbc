@@ -1,0 +1,1006 @@
+module gunbc.fleet.runtime_identity_match
+
+// WHO IS ON THE NETWORK (cut 6 of gunbc.plans.physical_machine_boot_program; step S10 of the cut-6
+// network-boot program, which is a dashboard label -- the carrier records the cut-6 decision and carries no
+// S-numbered rows, so S10 is cited to the program and `cut 6` is what resolves in the carrier).
+//
+// A unit has been network-booted. Something now has to bind "the machine that answered on the network" to
+// "the unit the attempt was made for", because every later step -- enrolling it, installing on it, letting
+// the control plane act through it -- acts on the ANSWER of that binding. This module is the binding's
+// EVIDENCE HALF: the axes observable before the boot from the firmware side, the same axes reported by the
+// running OS afterwards, and a total match fn whose three verdicts mean three different things.
+//
+// WHY THE THREE VERDICTS ARE NOT TWO, which is the whole cut:
+// Unprovable is not Mismatch. A unit whose BMC never answered the serial query, or whose OS image does not
+// ship the tool that reads a model string, has told us NOTHING -- it has not told us it is a different
+// machine. Reporting that as a mismatch condemns a unit for its BMC's silence, and in this fleet BMC
+// silence is routine (S2's silent-BMC defect, and the rows where a controller rejects a query outright).
+// So: a divergence between two readings is Mismatch; a missing reading on either side is Unprovable; only
+// agreement across everything that had to be checked is Match. The refusal is preserved as itself rather
+// than collapsed into absence, because "the controller said no" and "nobody asked" lead to different human
+// actions.
+//
+// WHAT IS DELIBERATELY ABSENT:
+// - NO IDENTITY DATA HERE. No row in this module carries a serial, a model, or an address: fixtures live in
+//   witness fns only. A module that shipped a unit's real identity would be a second, unauditable register
+//   of who the fleet's machines are, next to the intake subject that already owns that.
+// - NO PER-HOST BRANCHING. Nothing here is keyed on a machine name, and no axis policy varies by unit. The
+//   unit is CARRIED (as data, on both sides, and on the verdict as a PAIR) and never matched on: the proof
+//   is entirely in the axes. Carrying both keys on the verdict is what keeps the carry honest -- a verdict
+//   that named only one of them would be asserting a pairing it never tested.
+// - NO TRANSPORT IN THE DECISION. Nothing that decides a verdict is a transport fact: no command line, no
+//   tool, no protocol verb appears in any type or fn here. The post-boot side does carry WHICH KIND OF
+//   CHANNEL reported -- as a semantic axis, in one place -- because a channel determines which axes are
+//   answerable at all, and an axis is the only shape where a report and its channel cannot contradict each
+//   other. Deciding is done on the readings; the channel is context that is stated, never inferred.
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
+import gunbc.machine_intake.subject { UnitKey }
+import extdeps.network.mac {
+  Eui48Address,
+  mac_addresses_are_equal,
+  mac_is_permanent_interface_identity,
+  render_mac_address,
+}
+
+// ---------------------------------------------------------------------------
+// THE AXES
+// ---------------------------------------------------------------------------
+
+// The identity axes a boot attempt can be proven on. Closed, because the verdict must be accountable to
+// a fixed list: a verdict that could omit an axis silently would be a verdict about whatever happened to be
+// asked. An additional axis (a TPM attestation quote, say) adds an arm here, a union below, a field on
+// each side, and a row in the axis table -- and the match fn's totals stay total because the verdict is
+// a fold over this union rather than a hand-written chain.
+type RuntimeIdentityAxis
+  = BoardSerialAxis
+  | BiosVersionAxis
+  | ModelAxis
+  | NicSetAxis
+
+// How much an axis carries, as a policy the table can state rather than a bool the fold guesses with.
+//
+// DECISIVE axes must be read on BOTH sides and must agree, or there is no binding. CORROBORATING axes are
+// checked only for divergence: a corroborating axis that goes unanswered does not void the binding, and a
+// corroborating axis that CONTRADICTS does. That asymmetry is the point -- treating a corroborating gap as
+// fatal would make every unit with a mute BMC unprovable forever, and treating a corroborating divergence
+// as harmless would let a wrong machine through on the strength of a serial.
+type AxisWeight
+  = DecisiveAxis
+  | CorroboratingAxis
+
+// ONE ROW PER AXIS: what it weighs, how it is compared, and who says so.
+type RuntimeIdentityAxisRow {
+  axis: RuntimeIdentityAxis
+  weight: AxisWeight
+  // TWO homes, both required, because a row makes TWO claims and a single citation can own only one of
+  // them -- DESIGN section 3b calls that a scope mismatch, and it is worse than no citation because it
+  // looks audited. `reading_authority` owns the FIELD this axis reads (its spelling, and that it can be
+  // absent); `binding_authority` owns the stronger claim, that this field can bind two sightings of a
+  // machine into one unit. A row citing only the reading home would smuggle in an identity claim no home
+  // has granted -- the fleet's own position on the board-serial field is that it is a corroborating pointer
+  // and not a proof, which is exactly why the serial row must also name the home that mints a unit key from
+  // it. A future requirement to cite a third kind of authority adds a field here and a value per row; the
+  // rows are data, so no fn changes.
+  reading_authority: DeclarationRef
+  // OPTIONAL, AND ONLY BECAUSE TWO OF THE FOUR AXES GENUINELY HAVE NO BINDING HOME. A binding authority
+  // is the home that grants the claim "two sightings of this field are sightings of ONE unit". Only the
+  // decisive axes make that claim, and only the decisive axes may bind alone; a corroborating axis can
+  // report that two readings agree without any home having granted it the power to conclude they are the
+  // same machine. Before this was optional, the corroborating rows each carried a second citation for a
+  // power they do not exercise -- a digest over manifest ENTRIES cited as licensing the comparison of a
+  // VERSION STRING, which is the scope mismatch DESIGN section 3b names, and it was made necessary by the
+  // shape rather than by the facts. `Absent` now states the true position: this axis binds nothing, and a
+  // Match that rests on it rests on the decisive axes. Adding a fifth axis that CAN bind means naming a
+  // second home that actually grants it -- and if no such home exists, the honest answer is `Absent`, and
+  // the axis is corroborating.
+  binding_authority: DeclarationRef?
+}
+
+// THE AXIS TABLE, as authored evidence. Every row cites TWO declarations, each of which must (a) exist,
+// (b) resolve uniquely in the corpus, and (c) own the claim the row leans on it for -- a citation that
+// resolves but owns only part of the claim is a scope mismatch, worse than no citation because it looks
+// audited (DESIGN section 3b). That is why the census test --
+// `test_axis_table_citations_resolve_against_the_declaration_census` -- reads the citation pairs OUT OF
+// THESE ROWS instead of restating them: a restated list can keep passing over a row whose citation was
+// renamed or invented, and a citation that resolves to nothing is worse than none, because it reads as
+// audited.
+//
+// What each home is asked to own, and why that one:
+// - BoardSerial reads BoardSerialObservation (the field, its source, and that it may be absent) and names
+//   bind_unit_key as its binding home -- WITH ITS SCOPE STATED, because the citation is easy to over-read
+//   `bind_unit_key` is the fn that mints a UnitKey from a serial and refuses when
+//   a serial is absent, duplicated across units, or contradictory; THIS MODULE DOES NOT RUN THOSE CHECKS and
+//   cannot, because it sees two readings and no ledger of other units. What it borrows is the home's
+//   *concept* -- a serial is a unit identifier only under that home's authority -- not the home's whole
+//   decision procedure. The fold's serial comparison is therefore a text agreement under a named home, and
+//   an operator still needs the ledger to learn the serial is not duplicated: this verdict is one input to
+//   a binding, never the binding itself. A future requirement to rule out a duplicated serial here adds a
+//   row-level obligation to pass `other_units` in, not a quieter comment about the citation.
+// - BiosVersion reads H11sslBmcReportedIdentity, the fleet's own carrier of a BIOS version a unit reports.
+//   It carries no binding home at all: it cites no digest, because a digest over firmware manifest ENTRIES
+//   does not license comparing a VERSION STRING, and an honest `Absent` beats a citation that makes the row
+//   look audited against a home owning a different fact. The axis stays Corroborating because a version
+//   string can be shared by every unit on a batch; only the decisive axes can bind alone.
+// - Model reads FruIdentityFields (board_product, board_part_number, board_serial as a controller decodes
+//   them) and carries NO binding home: a model string names a PRODUCT, not a machine, and every unit of a
+//   batch reports the same one. RecordedFruObservation was cited here as a second home, which is a real
+//   authority over a claim this axis never made -- that is the shape DESIGN section 2 calls re-invention
+//   and section 3b calls unauditable. `Absent` is the row saying so. It is a weaker claim than the
+//   serial's key, which is why this row is Corroborating and what it can ever claim is that two strings
+//   agree.
+// - NicSet reads Eui48Address, and its two citation slots name two DIFFERENT homes, because an address
+//   names an interface on two separate grounds and neither one implies the other. `reading_authority`
+//   cites the EUI-48 type -- the home of the six OCTETS. `binding_authority` cites
+//   `mac_is_permanent_interface_identity`, the octet test that licenses binding at all: unicast,
+//   universally administered, and not the all-zero null address the flags alone accept. Two slots naming
+//   one declaration twice is the decorative citation the census below checks away, and these are two
+//   declarations.
+//   THE SECOND GROUND IS CARRIED AS DATA, NOT CITED -- and saying so here is the honest form of it.
+//   `AddressProvenance` (this module) decides what the SOURCE can say: that the address came from a place
+//   that establishes permanence rather than being assigned by software. Octets cannot show that; software
+//   can set any address it likes and the flags will look perfect, so a Decisive weight resting on the
+//   octets alone was a weight resting on a spoofable fact. It is deliberately NOT a third citation on
+//   this row, for two reasons. A module naming itself as the authority over its own claim is
+//   self-attestation, the same scope defect DESIGN section 3b refuses in other people's citations; and no
+//   home in this corpus publishes a permanent-address reading (a Linux `addr_assign_type`/`perm_addr`
+//   pair) that could be cited in its place. So the claim is made where it can actually be discharged: in
+//   the observation, by whoever supplies the standing handing over `PermanenceEstablished` -- an arm that
+//   ASSERTS a permanent source and carries none (see `AddressProvenance`); this module reads the arm, it does
+//   not authenticate it. A reporter holding only current address state hands over `PermanenceNotEstablished`,
+//   and the axis reports a located gap instead of a verdict. Both grounds must hold for an address to reach the
+//   comparison, and `usable_addresses` is the only place that decides it. A future home that DOES publish
+//   a permanent-address reading becomes a constructor of `AddressProvenance` plus a probe that uses it; if
+//   it ever becomes the thing that licenses binding, its name goes in this row's `binding_authority`, and
+//   that is a data edit -- no fn here changes, because the gap was already modelled.
+//
+// A future requirement to make a fifth axis decisive adds a row with a different weight and two homes -- a
+// reading home and a distinct binding home; no fn here changes, which is what makes the policy reviewable
+// without reading the fold. Whether a home really OWNS its claim is a human judgment no fn can audit, so it
+// is argued here and cited as data; what the witness can and does check mechanically is uniqueness and that
+// no row satisfies the two-home requirement by naming one declaration twice.
+data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
+  RuntimeIdentityAxisRow {
+    axis: BoardSerialAxis,
+    weight: DecisiveAxis,
+    reading_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "BoardSerialObservation"),
+    binding_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "bind_unit_key"),
+  },
+  RuntimeIdentityAxisRow {
+    axis: BiosVersionAxis,
+    weight: CorroboratingAxis,
+    // The reading home is the fleet's own carrier of a BIOS version a unit REPORTS: the record literally
+    // has a `bios_version` field, and that is the whole of what this axis reads. It used to cite
+    // subject.FirmwareManifest, which is a set of firmware ENTRIES plus content DIGESTS -- a digest over
+    // manifest entries does not license comparing a version string, and the citation made the axis look
+    // audited against a home that owns a different fact (DESIGN section 3b, scope mismatch).
+    reading_authority: decl_ref(
+      module_path: "gunbc.machine_intake.supermicro_h11ssl_first_contact",
+      decl_name: "H11sslBmcReportedIdentity",
+    ),
+    // No binding home, because none is needed and none exists: two units can ship the same BIOS version,
+    // which is exactly why this axis is Corroborating. A digest over firmware entries is not a licence to
+    // conclude that two reported version strings mean one machine.
+    binding_authority: Absent,
+  },
+  RuntimeIdentityAxisRow {
+    axis: ModelAxis,
+    weight: CorroboratingAxis,
+    reading_authority: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "FruIdentityFields"),
+    // No binding home. A model string identifies a PRODUCT, not a machine: every unit of a batch reports
+    // the same one, so the strongest honest claim this axis makes is that two reported strings agree.
+    // RecordedFruObservation (the sealed capture carrier) was cited here as the binding home, which is a
+    // real authority over a claim this axis does not make.
+    binding_authority: Absent,
+  },
+  RuntimeIdentityAxisRow {
+    axis: NicSetAxis,
+    weight: DecisiveAxis,
+    reading_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "Eui48Address"),
+    binding_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "mac_is_permanent_interface_identity"),
+  },
+]
+
+
+// ---------------------------------------------------------------------------
+// EACH AXIS, AS A STANDING -- one union each, with the three states as ARMS
+// ---------------------------------------------------------------------------
+
+// What a controller's or an OS's "no" is on an identity axis. Closed, because the remedy differs: a query
+// the controller does not implement is a row to pin, an authentication failure is an operator action, and
+// an unreadable reply is a defect in the reader. A string cannot split those.
+type RuntimeIdentityRefusal
+  = QueryUnsupported { detail: NonEmptyStr }
+  | AuthenticationFailed { detail: NonEmptyStr }
+  | ReplyUnreadable { detail: NonEmptyStr }
+
+// THE ONE AXIS STANDING, shared by every axis. Four separate sums used to live here -- serial, firmware
+// version, model, address set -- each the same three states with a different payload name, and each with its
+// own absence projection beside siblings that answer the same question. That is one concept written four
+// times (DESIGN section 2: model a concept once and derive every use; its Int8..UInt128 example is exactly
+// this, one axis rather than ten types), and it made a fifth axis a fifth sum plus a fifth projection
+// instead of a row. What varies between axes is only the PAYLOAD TYPE, so that is what the parameter carries.
+//
+// The three states are ARMS, not a bool beside a value: a record with `read: Optional<T>` next to
+// `refused: Bool` can name a reading AND a refusal at once, or neither, and the wrapper then disagrees with
+// itself about whether anything was ever read. Here the states are mutually exclusive by construction.
+//
+// WHAT A FIFTH AXIS COSTS: an arm on `RuntimeIdentityAxis`, a field on each side record, and a row in the
+// table. NOT a union and NOT an absence fn. If a genuinely different state ever appears (a reading that is
+// stale rather than absent, say), it is a new arm here plus a new `AxisExamination` arm -- and every fold
+// over them stops compiling until it handles it, which is the price of getting the fourth axis free today.
+type AxisStanding<T>
+  = AxisWasRead { value: T }
+  | AxisStayedSilent { reason: NonEmptyStr }
+  | AxisWasRefused { refusal: RuntimeIdentityRefusal }
+
+// WHAT ONE AXIS SAYS ABOUT A PAIR OF STANDINGS -- the single answer the fold consumes. Three fns used to
+// hand-match coproducts into bools (`both_sides_read`, `axis_is_decisive`, `same_runtime_identity_axis`) and
+// the fold branched on those bools: each had already thrown away WHICH ARM it came from, a new arm would
+// have been silently false, and a reader could not see the weight behind a decision. Here the evidence
+// travels with the verdict about it, the weight is CARRIED rather than flattened to "is decisive", and a new
+// state makes every consumer of this sum stop compiling until it handles the new arm.
+//
+// TWO ARMS, NOT THREE, AND WHY THAT IS THE POINT. There used to be a third, `AxisIncomparable`, justified as
+// "unreachable but total": `axis_pair` decided whether both sides had been read and a SEPARATE `side_gap`
+// decided which side had not, so their leftovers had nowhere to go and landed in an arm every fold returned
+// `[]` for -- which the fold read as "no divergence, no gap", i.e. `Match`. An unreachable arm that is
+// dropped silently is not a safety net, it is the escape hatch DESIGN section 5 rejects by name, and the
+// comment claiming it "surfaces to an operator" was false. The fix is not to make that arm fatal but to
+// delete its constructor: `standing_report` below now answers both questions from ONE match over the two
+// standings, so a state where neither arm applies cannot be built in the first place (correctness by
+// construction, not validation).
+type AxisExamination
+  = AxisCompared { axis: RuntimeIdentityAxis, pair: AxisReadingPair, weight: AxisWeight }
+  | AxisUnanswered { axis: RuntimeIdentityAxis, gaps: List<RuntimeIdentityGap>, weight: AxisWeight }
+
+// WHICH SIDE FAILED TO ANSWER, decided by the same single match that decides whether a pair exists. The two
+// questions -- "is there a pair to compare?" and "if not, who stayed quiet and why?" -- are ONE fact about
+// the same two standings, and deriving them twice is what produced the arm with no honest meaning above.
+//
+// FOUR ARMS, AND THE FOURTH EXISTS BECAUSE THREE WERE NOT ENOUGH. The first version of this sum had
+// `PreQuiet`/`PostQuiet` only, and claimed the firmware side "wins" when both were quiet. That was an
+// argument about the ORDER in which two absences should be REPORTED, used as an argument for DELETING one:
+// with a silent BMC and a booted OS that refused the read, the verdict came out `Unprovable` for one
+// firmware `Unread` and the refusal vanished -- while a refusal names a different next human than a silence
+// does, and the fleet's own history (BMCs that reject vendor commands) is exactly the case an operator
+// needs to see. So BOTH absences are carried when both sides failed, and the firmware side is first in the
+// list, which is all the old "wins" ever justified.
+//
+// WHY THE SILENT/REFUSED MAPPING APPEARS ONCE PER SIDE. A gap that cannot name which side stayed quiet
+// cannot be routed -- the firmware row and the OS row are different places to go and different humans -- so
+// the side must be spoken by the match itself rather than recovered from a value afterwards.
+type AxisReport<T>
+  = BothAnswered { pre_value: T, post_value: T }
+  | PreQuiet { absence: RuntimeIdentityAbsence }
+  | PostQuiet { absence: RuntimeIdentityAbsence }
+  | BothQuiet { pre_absence: RuntimeIdentityAbsence, post_absence: RuntimeIdentityAbsence }
+
+fn standing_report<T>(pre: AxisStanding<T>, post: AxisStanding<T>) -> AxisReport<T> {
+  match pre {
+    AxisWasRead { value: pv } => match post {
+      AxisWasRead { value: ov } => BothAnswered { pre_value: pv, post_value: ov }
+      AxisStayedSilent { reason: r } => PostQuiet { absence: Unread { reason: r } }
+      AxisWasRefused { refusal: f } => PostQuiet { absence: ControllerRefused { refusal: f } }
+    }
+    AxisStayedSilent { reason: r } => match post {
+      AxisWasRead { value: _ } => PreQuiet { absence: Unread { reason: r } }
+      AxisStayedSilent { reason: r2 } =>
+        BothQuiet { pre_absence: Unread { reason: r }, post_absence: Unread { reason: r2 } }
+      AxisWasRefused { refusal: f } =>
+        BothQuiet { pre_absence: Unread { reason: r }, post_absence: ControllerRefused { refusal: f } }
+    }
+    AxisWasRefused { refusal: f } => match post {
+      AxisWasRead { value: _ } => PreQuiet { absence: ControllerRefused { refusal: f } }
+      AxisStayedSilent { reason: r2 } =>
+        BothQuiet { pre_absence: ControllerRefused { refusal: f }, post_absence: Unread { reason: r2 } }
+      AxisWasRefused { refusal: f2 } =>
+        BothQuiet { pre_absence: ControllerRefused { refusal: f }, post_absence: ControllerRefused { refusal: f2 } }
+    }
+  }
+}
+
+// THE GAPS ONE REPORT LEAVES, in report order: firmware side first, then the booted-OS side.
+fn gaps_of_report<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> List<RuntimeIdentityGap> {
+  match report {
+    BothAnswered { pre_value: _, post_value: _ } => []
+    PreQuiet { absence: a } => [RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: a }]
+    PostQuiet { absence: a } => [RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: a }]
+    BothQuiet { pre_absence: pa, post_absence: oa } => [
+      RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: pa },
+      RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: oa },
+    ]
+  }
+}
+
+// WHICH AXIS AN EXAMINATION IS ABOUT. A projection over BOTH arms, deliberately not a pair of bool probes:
+// the witness uses it to count examinations per axis, which is how "no axis was quietly dropped" is asserted
+// now that the third arm is gone -- with two arms, an axis that produced nothing would previously have been
+// invisible in exactly the way the deleted arm made invisible.
+fn examination_axis(e: AxisExamination) -> RuntimeIdentityAxis {
+  match e {
+    AxisCompared { axis: a, pair: _, weight: _ } => a
+    AxisUnanswered { axis: a, gaps: _, weight: _ } => a
+  }
+}
+
+// THE MATCH THE THREE TEXT AXES SHARE, and one of exactly two places an AxisExamination is built (the other
+// is `nic_examination`, which has to screen before it compares). Its arms cover every combination of the two
+// standings, so the fold can never be handed a reading it has no policy for.
+fn examine_axis<T>(
+  row: RuntimeIdentityAxisRow,
+  pre: AxisStanding<T>,
+  post: AxisStanding<T>,
+  build: fn(T, T) -> AxisReadingPair,
+) -> AxisExamination {
+  let report = standing_report(pre: pre, post: post)
+  match report {
+    BothAnswered { pre_value: pv, post_value: ov } =>
+      AxisCompared { axis: row.axis, pair: build(pv, ov), weight: row.weight }
+    PreQuiet { absence: _ } => unanswered(row: row, report: report)
+    PostQuiet { absence: _ } => unanswered(row: row, report: report)
+    BothQuiet { pre_absence: _, post_absence: _ } => unanswered(row: row, report: report)
+  }
+}
+
+// WHY THIS IS ITS OWN FN AND NOT THREE COPIES OF ONE LITERAL. `examine_axis` cannot bind the report to
+// a name and still match on it exhaustively, so the three quiet arms call this. Writing the AxisUnanswered
+// literal out three times is the DESIGN section 3 fork this avoids: a fifth AxisReport arm would then have
+// to be noticed in three places instead of one.
+fn unanswered<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> AxisExamination {
+  AxisUnanswered { axis: row.axis, gaps: gaps_of_report(row: row, report: report), weight: row.weight }
+}
+// What an axis did not answer, and WHETHER it stayed quiet or was refused. The absence is a SUM, not a
+// string: `Unread` (nobody got an answer) and `ControllerRefused` (an answer of "no" came back, with its
+// reason) lead to different human actions, and once both are flattened into one `NonEmptyStr` the closed
+// refusal sum cannot be recovered from the gap -- a declared variant that is then erased is the anemic
+// modeling DESIGN section 2 forbids. The witness
+// `test_refusal_is_unprovable_and_preserves_its_kind` is what keeps this honest.
+// THE FOURTH AND FIFTH ARMS ARE NOT SYNONYMS FOR `Unread`. `Unread` means the side gave no answer at all;
+// these two mean the side ANSWERED and the answer was not evidence. They split on WHICH EVIDENCE IS MISSING,
+// which is the only thing this model is entitled to distinguish:
+//  - `NoEligibleEvidence` -- after BOTH screens ran, this side has no usable address left. It does NOT say
+//    each entry failed the address tests: an entry can be missing because its supplied provenance did not
+//    establish permanence, which is the other arm's business, and when both arms fire the same list is counted
+//    by both. The arms are not a partition of the list; they are two questions asked of the same list.
+//  - `ProvenanceUnestablished` -- an entry's octets may be unobjectionable and the SUPPLIED PROVENANCE does not
+//    establish permanence. Nothing about those octets is in question; what is missing is a source standing.
+// Neither arm says which component is at fault, and the model has no evidence to say it: a gap records what
+// was not established, not who to tell. Conflating the two would report the same missing evidence either way
+// and lose the one distinction an operator can act on -- re-check what was reported, or supply a source
+// standing. A side can be in BOTH states at once, and the fold reports both gaps rather than the first it
+// found. Folding either into `Unread` would say "nobody answered", which is a different claim; folding either
+// into a divergence would report two machines that never disagreed as disagreeing (DESIGN section 5, a
+// fabricated output). `NoEligibleEvidence` carries a count and no list: the eligible count is 0 by definition
+// -- that is what the arm's NAME asserts -- and a field that can hold exactly one value is noise beside a real
+// one, while `reported 0` and `reported 5` are genuinely different situations. `ProvenanceUnestablished`
+// carries the CAUSES (below), so it carries no separate count. The addresses themselves are NOT carried in
+// either arm, because this module must not become a storable register of who the fleet's machines are
+// (header), and a gap is not the place to start.
+type RuntimeIdentityAbsence
+  = Unread { reason: NonEmptyStr }
+  | ControllerRefused { refusal: RuntimeIdentityRefusal }
+  // THIS SIDE HANDED OVER ADDRESSES AND NONE OF THEM SURVIVED BOTH SCREENS. NOT "each one failed the address
+  // tests": an entry can be what is missing because its supplied provenance did not establish permanence, and
+  // when that happens the sibling `ProvenanceUnestablished` arm says so -- the two arms ask different questions
+  // of the same list rather than splitting it. `reported_count` is the length of the whole supplied list, so it
+  // counts entries excluded by either screen: the mixed-evidence control carries `reported_count: 2` where one
+  // entry fails the octet screen and the other fails on provenance. What the count is for is the ends of that
+  // range -- `reported 0` (nothing handed over at all) and `reported 5` (a list handed over, none of it usable)
+  // are different missing evidence and an operator acts on them differently.
+  | NoEligibleEvidence { reported_count: Int }
+  // THIS SIDE HANDED OVER ADDRESSES WHOSE SUPPLIED PROVENANCE DOES NOT ESTABLISH PERMANENCE -- a current
+  // address, or an address whose source was never recorded. DISTINCT from `NoEligibleEvidence` because the
+  // missing evidence is different: there it is the addresses that cannot name an interface; here the octets
+  // may be unobjectionable and what is absent is a source standing. Neither reading assigns fault -- this is
+  // a statement about the evidence supplied, not about who supplied it badly -- and the fold reports BOTH
+  // gaps when both are true, rather than picking the first one it noticed.
+  //
+  // WHY IT CARRIES THE CAUSES THEMSELVES AND NOT A COUNT OF THEM. The causes ARE the diagnostic content of
+  // this gap: "the probe reported the address IN USE, from `read from live interface state`" and "no source
+  // was ever recorded" are different instructions to the operator -- one says point the probe at a permanent
+  // source, the other says the probe never said where anything came from. A count-only arm made every pair of
+  // causes produce an identical gap, so the distinction the address carries was AUTHORED, PROMISED BY THE
+  // SOURCE COMMENT, AND THEN DISCARDED: current-only with detail A and current-only with detail B answered the
+  // same, and the public verdict could not name either (HOLD review, merry-fox-82). This is still one source
+  // of truth: how many were unestablished is `unestablished.length()`, derived from this very list, so there
+  // remains exactly one place a count can be wrong.
+  | ProvenanceUnestablished { unestablished: List<PermanenceNotEstablishedCause> }
+
+// Which axis did not answer, on which side, and whether it was silence or a refusal.
+type RuntimeIdentityGap {
+  axis: RuntimeIdentityAxis
+  side: IdentitySide
+  absence: RuntimeIdentityAbsence
+}
+
+// WHICH SIDE of the boot a reading comes from. Named, so an Unprovable can say whether the firmware side
+// or the running-OS side is the one that stayed quiet -- the operator's next action differs completely.
+type IdentitySide
+  = PreBootFirmwareSide
+  | PostBootOsSide
+
+// A divergence, carrying BOTH readings as the pair that was actually compared -- not as two renderings.
+// The pair is what makes a Mismatch actionable ("the BMC says X and the OS says Y" is a diagnosis where
+// "the serials differ" is an accusation), and carrying the pair rather than a rendering is what keeps this
+// total: the address axis can diverge because one side reported NO addresses at all, and a rendering of that
+// side into a `NonEmptyStr` would have to be fabricated -- either a refinement cast that asserts something
+// unproven, or a sentinel string standing in for absence. Both are forbidden (DESIGN section 5: no
+// fabricated output; absence uses the language's absence type). So the divergence stores what the sides
+// SAID. A report renders an address side into a LIST of `render_mac_address` strings, where "I was told
+// nothing" is a length rather than a lie; the consumer decides what absence looks like to its reader. Adding an axis that reports something other than text or
+// addresses adds an arm to that pair and to those two fns -- the compiler asks, rather than a cast
+// silently agreeing to produce a string of whatever length it gets.
+type RuntimeIdentityDivergence {
+  axis: RuntimeIdentityAxis
+  readings: AxisReadingPair
+}
+
+// ---------------------------------------------------------------------------
+// THE TWO SIDES
+// ---------------------------------------------------------------------------
+
+// THE PRE-BOOT STANDING: what the firmware side said before the boot, per axis. Every axis is present as a
+// field, and each field is itself a three-way union, so there is no way to state a pre-boot standing that
+// quietly omits an axis -- and no way to claim a value while admitting nothing was read. The unit is carried
+// on both sides and never compared; why is argued once, at RuntimeIdentityVerdict.
+type PreBootIdentityStanding {
+  unit: UnitKey
+  board_serial: AxisStanding<NonEmptyStr>
+  bios_version: AxisStanding<NonEmptyStr>
+  model: AxisStanding<NonEmptyStr>
+  nics: AxisStanding<List<ReportedNetworkAddress>>
+}
+
+// THE POST-BOOT REPORT: the same four axes, as the running OS reports them.
+type PostBootIdentityReport {
+  unit: UnitKey
+  reported_over: PostBootReportChannel
+  board_serial: AxisStanding<NonEmptyStr>
+  bios_version: AxisStanding<NonEmptyStr>
+  model: AxisStanding<NonEmptyStr>
+  nics: AxisStanding<List<ReportedNetworkAddress>>
+}
+
+// HOW the OS came to report. A semantic axis rather than a transport detail, because it changes what the
+// report can cover: a machine reachable only over a serial console has no session that can read every axis,
+// and a gap on such a unit is expected rather than suspicious. It stays an axis so the reading and the
+// channel cannot disagree about themselves -- a report cannot claim a full axis set over a channel that
+// cannot carry one, because there is exactly one place both are stated.
+type PostBootReportChannel
+  = NetworkSessionChannel
+  | SerialConsoleChannel
+
+// ---------------------------------------------------------------------------
+// THE VERDICT
+// ---------------------------------------------------------------------------
+
+// Three verdicts, closed, each carrying what makes it true.
+//
+// Match carries the axes it actually checked and passed -- not a bare "true", so a Match can be audited
+// against the table afterwards. Mismatch carries both readings for every axis that diverged. Unprovable
+// carries the named gaps that prevented a verdict, which is what makes "we do not know" a reportable state
+// rather than a silent false.
+// Every verdict carries BOTH keys, because a verdict that names one unit is a claim about a binding, and
+// the fold never checked the pairing: built from `pre.unit` alone, a pre-boot standing for unit A and a
+// post-boot report for unit B whose axes happened to agree returned `Match { unit: A }` -- an identity
+// asserted from one of its two inputs, which is a fabricated binding (DESIGN section 5: no fabricated
+// default). The fix is not to compare the keys (the ruling below forbids that) and not to add a fourth
+// verdict for a mismatched pair (that would be branching on a name, and it would say "these are different
+// machines" from the one piece of evidence that can never say it). It is for the verdict to stop pretending
+// it bound a single unit: it reports the pair it related, and `Match { pre_unit: A, post_unit: B }` is an
+// operator's cue that the pairing was never established, rather than a guarantee that it was.
+//
+// Both are `UnitKey`, the branded key the intake subject owns and that the serial row cites as its binding
+// authority -- not a bare string re-minted here (DESIGN section 2: net concepts must not grow by
+// re-invention). An unmatched pair is representable precisely BECAUSE the type is the same on both sides:
+// the module cannot tell an honest pair from a mis-paired one, so it refuses to decide, and says both names.
+type RuntimeIdentityVerdict
+  = Match { axes_matched: List<RuntimeIdentityAxis>, pre_unit: UnitKey, post_unit: UnitKey }
+  | Mismatch { diverged: List<RuntimeIdentityDivergence>, pre_unit: UnitKey, post_unit: UnitKey }
+  | Unprovable { why: List<RuntimeIdentityGap>, pre_unit: UnitKey, post_unit: UnitKey }
+
+// THE MATCH FN. Total: no error type in its signature, nothing that can panic in its body (no indexing, no
+// unwrapping, every match exhaustive over closed unions), and it takes ONLY the two sides -- the axis table
+// is read from the catalog this module owns, so a caller cannot weaken the verdict by passing a friendlier
+// policy.
+//
+// The order of the three checks IS the ruling:
+//  1. Divergences first. Two readings that disagree is the strongest evidence available about the pair, and
+//     it outranks any gap: a unit with a wrong serial is a Mismatch even if its model string never came
+//     back. Silence never launders a contradiction.
+//  2. Gaps next, and only over axes the table makes DECISIVE -- plus any corroborating gap is recorded but
+//     cannot be fatal, so an unanswered corroborating axis leaves the verdict Match rather than dragging an
+//     honest unit into Unprovable.
+//  3. Match last, and only with the checked-and-passed axes listed.
+fn runtime_identity_match(
+  pre: PreBootIdentityStanding,
+  post: PostBootIdentityReport,
+) -> RuntimeIdentityVerdict {
+  let examined = examinations(pre: pre, post: post)
+  let diverged = all_divergences(examined: examined)
+  let gaps = fatal_gaps(examined: examined)
+  if diverged.length() > 0 {
+    Mismatch { diverged: diverged, pre_unit: pre.unit, post_unit: post.unit }
+  } else if gaps.length() > 0 {
+    Unprovable { why: gaps, pre_unit: pre.unit, post_unit: post.unit }
+  } else {
+    Match { axes_matched: axes_checked_and_passed(examined: examined), pre_unit: pre.unit, post_unit: post.unit }
+  }
+}
+
+// Every axis where BOTH sides read and the readings disagree, in table order. A flat_map over the table
+// rather than a filter/map pair over a probe union: an axis with nothing to report contributes NO element,
+// so there is no "unreachable" placeholder value anywhere in this module that a bug could surface as a
+// verdict.
+fn all_divergences(examined: List<AxisExamination>) -> List<RuntimeIdentityDivergence> {
+  examined.flat_map(e => match e {
+    AxisCompared { axis: a, pair: p, weight: _ } => if axes_agree(pair: p) { [] } else { [RuntimeIdentityDivergence { axis: a, readings: p }] }
+    AxisUnanswered { axis: _, gaps: _, weight: _ } => []
+  })
+}
+
+// The gaps that can void a verdict: a gap on either side of any DECISIVE axis. Corroborating gaps are
+// deliberately not gathered here -- that is where "a mute BMC does not condemn a unit" lives.
+// A gap voids a binding only when the axis that stayed quiet was DECISIVE, matched on the carried weight at
+// the point of use rather than on an `is_decisive` bool: the arm that was matched stays visible in the code
+// that acts on it, and a new weight makes this stop compiling instead of quietly returning false.
+fn fatal_gaps(examined: List<AxisExamination>) -> List<RuntimeIdentityGap> {
+  examined.flat_map(e => match e {
+    AxisUnanswered { axis: _, gaps: gs, weight: w } => gs.flat_map(g => match w {
+      DecisiveAxis => [g]
+      CorroboratingAxis => []
+    })
+    AxisCompared { axis: _, pair: _, weight: _ } => []
+  })
+}
+
+// The axes a Match may claim: decisive axes, read on both sides, compared and passed. A corroborating axis
+// that agreed is not claimed, because it was not required -- claiming it would let a Match look stronger
+// than the table says it is.
+fn axes_checked_and_passed(examined: List<AxisExamination>) -> List<RuntimeIdentityAxis> {
+  examined.flat_map(e => match e {
+    AxisCompared { axis: a, pair: _, weight: w } => match w {
+      DecisiveAxis => [a]
+      CorroboratingAxis => []
+    }
+    AxisUnanswered { axis: _, gaps: _, weight: _ } => []
+  })
+}
+
+// ---------------------------------------------------------------------------
+// PER-AXIS READINGS AND COMPARISONS
+// ---------------------------------------------------------------------------
+
+// WHAT EACH AXIS SAYS ABOUT A PAIR, in ONE pass the fold shares. Two decisions the fold makes -- does
+// anything diverge, and does anything stay unproven -- are derived from this single list, so they can never
+// disagree about what the standings said. `axis_is_decisive`, `both_sides_read` and the per-row gap/divergence
+// wrappers used to answer these as Bools derived separately, each re-deriving the standings and each free to
+// disagree; the weight is carried here instead of being flattened to "is decisive".
+fn examinations(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<AxisExamination> {
+  runtime_identity_axis_rows.map(r => match r.axis {
+    BoardSerialAxis => examine_axis(
+      row: r, pre: pre.board_serial, post: post.board_serial,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    BiosVersionAxis => examine_axis(
+      row: r, pre: pre.bios_version, post: post.bios_version,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    ModelAxis => examine_axis(
+      row: r, pre: pre.model, post: post.model,
+      build: (pv, ov) => TextPair { pre_text: pv, post_text: ov })
+    NicSetAxis => nic_examination(row: r, pre: pre.nics, post: post.nics)
+  })
+}
+
+// THE READINGS OF ONE AXIS ON BOTH SIDES.
+//
+// A SUM, not a record with four fields two of which are always placeholders. The two agreement rules
+// consume different evidence -- an exact-equality axis has no addresses to compare, an address-set axis has
+// no text to compare -- and one flat record would force every string axis to carry `[]` where addresses
+// should be and every address axis to carry a rendering where a reading should be. A flat shape then lets
+// one rule read the half it does not use: the divergence this shape makes impossible is a MAC axis
+// "agreeing" because two rendered strings happened to match, or a serial axis comparing empty address lists
+// and calling that a shared interface. Which arm a pair is follows from the axis, in `examine_axis`, the only
+// place a pair is ever built -- so the rule that runs is decided by the evidence in hand and nothing else.
+type AxisReadingPair
+  = TextPair { pre_text: NonEmptyStr, post_text: NonEmptyStr }
+  | AddressSetPair { pre_addresses: List<Eui48Address>, post_addresses: List<Eui48Address> }
+
+// THE AGREEMENT RULES, indexed by READING KIND -- which is the only way this can be written so a
+// misconfiguration cannot fabricate a verdict. There used to be an `AxisComparison` field on the row and a
+// dispatch on both the row's policy and the pair's arm; that let a reviewer-visible edit to the table (give
+// the address axis `ExactStringEquality`) produce a `Mismatch` for units whose addresses agree, reporting a
+// divergence that never happened. Two independent facts that can contradict each other, and the code's
+// answer to the contradiction was a fabricated verdict -- DESIGN section 5 forbids exactly that, and
+// prefers the shape where the wrong state is unwritable over one that catches it.
+//
+// So the rule travels WITH the evidence: a text pair is compared by exact equality, an address pair by a
+// shared permanent address. Which kind an axis produces is settled by `examine_axis`, the single place a
+// pair is ever built, and no row can now overrule it. The two rules stay two rules because they are
+// genuinely different claims -- the address rule is NOT exact equality, since a firmware reports every
+// interface it can boot from while the booted OS reports only what it brought up, and on this fleet's boxes
+// those sets legitimately differ (a management NIC the firmware lists and the OS leaves down). Exact
+// equality there would make every real unit Unprovable; requiring nothing would let a different machine
+// through.
+//
+// A future axis that needs a THIRD rule (a TPM quote compared by containment, say) adds an arm to
+// `AxisReadingPair` and an arm here, and the compiler asks for both -- that is the cost this shape buys
+// with, and it is cheaper than a table that can state a policy the fold cannot honour.
+fn axes_agree(pair: AxisReadingPair) -> Bool {
+  match pair {
+    TextPair { pre_text: pt, post_text: pt2 } => pt == pt2
+    // Both lists were screened non-empty by `examine_screened_addresses`, which is the only constructor
+    // of this arm, so a shared-none result here means two real addresses that differ -- a divergence --
+    // and an empty list can never reach it to masquerade as one.
+    AddressSetPair { pre_addresses: pa, post_addresses: po } => mac_sets_share_an_address(pre: pa, post: po)
+  }
+}
+
+// AN ADDRESS BINDS ONLY IF IT CAN NAME AN INTERFACE, and the row's binding authority is the predicate that
+// says which addresses can. Octet equality alone is a silent widen (DESIGN section 5): a locally
+// administered address is chosen by software and a group address names no single interface at all, so a
+// bridge, a VM, or a renamed NIC could present one to any machine and be agreed with any other -- a Match
+// from an address that belongs to nobody. Both sets are therefore filtered through the cited predicate
+// BEFORE intersecting, which is what makes the row's Decisive weight earned rather than claimed. Filtering
+// is intersection-only: it can turn an agreement into a non-agreement, never the reverse, and the fold
+// reports that as a divergence an operator sees rather than as silence.
+// THE NIC AXIS IS SCREENED BEFORE IT IS COMPARED, which is why it cannot share `examine_axis` with the
+// three text axes: for a text axis an answer IS evidence, but for this axis an ANSWER CAN FAIL TO BE
+// EVIDENCE, and those two cases must not share a verdict.
+//
+// WHAT EACH OUTCOME MEANS, and what it used to be:
+//  - both sides keep at least one permanent address and share one   -> AxisCompared, agrees   -> Match
+//  - both sides keep at least one and share none                    -> AxisCompared, diverges -> Mismatch
+//  - either side keeps NOTHING                                      -> located gap(s) on the side(s) that
+//    failed                                                          -> Unprovable
+// Only the middle row may call itself a divergence, because it is the only one where two pieces of evidence
+// contradict each other. The third row used to fall through the comparison and come out as a Mismatch, which
+// condemned a unit twice over: two sides that both answered 00:00:00:00:00:00 (the null address, which the
+// IEEE says must not be used as an identifier -- see `extdeps.network.mac.mac_address_is_null`) AGREED, and
+// two sides where the OS reported an empty list "disagreed" with a firmware that had plenty. Neither is a
+// divergence; both mean this axis did not answer, and now each says WHICH side and HOW MUCH it reported, so
+// the two cases stay distinguishable in the verdict instead of collapsing into one silence.
+//
+// TWO INDEPENDENT THINGS MAKE AN ADDRESS USABLE, and only one of them is a property of the six octets.
+// `mac_is_permanent_interface_identity` reads the octets and says the address is universally administered
+// and unicast; nothing in the octets says the address is the one etched on the interface, because software
+// can set any address it likes and the octets will look perfect. So each reported address also carries the
+// SUPPLIED PROVENANCE the caller asserts for it (`ReportedNetworkAddress.provenance`), and this fold uses an
+// address only when the octets pass the address tests AND the supplied provenance is `PermanenceEstablished`
+// -- which is that arm ASSERTING a permanent source, not a source travelling on the arm or being verified
+// here (see `AddressProvenance`). An earlier shape inferred permanence from the octets alone: a current
+// address spoofed to match a burned-in one produced a Match, and nothing in the verdict could record that
+// the address had been assigned by software rather than read from firmware. That is the silent widen DESIGN
+// section 5 refuses, and it is why `ProvenanceNotEstablished` is its own absence rather than an `Unread`:
+// "no provenance was supplied" and "the supplied provenance says current-only" are different missing
+// evidence, and the causes keep them apart.
+//
+// WHY THE ADDRESSES ARE STRUCTURED RATHER THAN THE STANDING. This axis still uses the ONE `AxisStanding<T>`
+// every other axis uses; what changed is T. A parallel `Observed | Unobserved | Refused` sum carrying
+// provenance would have been the same three-way concept written twice -- review 81808 deleted four copies of
+// exactly that -- and it would have let the two drift. Per-address provenance is also what the underlying
+// sources actually report: one interface can hand over a burned-in address and a software-set one in the
+// same listing, and that distinction lives on the address, not on the side.
+//
+// WHY THIS PATH IS CONCRETE AND NOT SHARED WITH THE GENERIC `examine_axis`: a language-layer deficit, not a
+// choice about this domain. Taking `AxisReport<T>` apart at a call site leaves the payload typed `Primitive(T)`
+// and every use that needs its SURFACE -- a method, an optional's present arm -- is refused. Measured, not
+// assumed: collapsing this axis onto `standing_report` at T = `List<ReportedNetworkAddress>` was refused on
+// this module, at both a monomorphic literal call site and a declared-parameter one, with the collapsing fn
+// dead AND live from a `test fn`. Field reads on a non-list payload survive, and so does handing the payload
+// to a fn whose parameter names the concrete type -- which is why the two helpers below are concrete and
+// small rather than general. The deficit and its climb trigger are tracked as
+// gunbc.recurring_failure_mode.nested_field_read_through_a_binder_of_an_inferred_generic_result (third
+// specimen); when that row climbs, `nic_examination` collapses onto `standing_report` and loses the four-way
+// shape it shares with it. `resolve_nic_side` does NOT retire with it: which addresses are usable and which
+// gap each absence earns is this axis's own domain logic, not the generic's. What the deficit costs today is
+// only the duplicated four-way shape inside `nic_examination`.
+//
+// ONE ADDRESS AS THIS AXIS SEES IT: the octets, and where they came from. A record rather than a pair of
+// booleans -- not because a bool could not record the conclusion (the free-standing `PermanenceEstablished`
+// arm lets any caller record it too), but because a bool could not record the LACK: `is_perm_addr: Bool`
+// collapses "read a permanent source", "read live interface state", and "no idea where this came from" into
+// two states, and the second is the one an operator has to be able to see. Keeping cause and detail here is
+// what lets a probe say WHICH, and `remedy_for_unestablished` is what makes saying it worth something. The
+// two fields stay independent facts: the source is not derivable from the address and the address is not
+// derivable from the source, so neither is stored beside the other as a shortcut.
+type ReportedNetworkAddress {
+  address: Eui48Address
+  provenance: AddressProvenance
+}
+
+// WHERE AN ADDRESS WAS READ FROM. A closed union with exactly the states the fleet's sources can actually
+// be in. The CLAIM each arm makes is what is nailed down here; who may make it is NOT nailed down by the
+// type, and the distinction is worth stating because the name reads like a guarantee.
+//
+// `PermanenceEstablished` ASSERTS that its reporter read a permanent-address source (a Linux
+// `perm_addr`/`addr_assign_type` pair, or firmware's own burned-in listing). It carries no source, so the
+// assertion is NOT enforced by this shape: the arm is free-standing and any caller may construct it, directly
+// or through either minting fn in this module (`permanent_report`, `octet_ineligible_report`), and the dry
+// half of this cut has no probe for it to be checked against. What the shape DOES make unwritable is the
+// pair that would contradict it -- "established" cannot be asserted inside the absence that says permanence
+// was not established. So an unearned `PermanenceEstablished` is refused by the PROBE that will mint it (the
+// wet half, S1/S2, where the source is in hand), and until that probe exists the only guards are this
+// comment, the fold's own refusal to invent the arm, and the witness tests that name which reports came from
+// which kind of source. A reader tempted to treat the arm as verified should read `AddressProvenance`'s
+// consumers instead: the fold's guarantee is about how provenance is USED, never about whether it was earned.
+//
+// `AddressIsCurrentOnly` is the honest statement that a *current* address was read and the source cannot show
+// permanence, with the probe's own words in `detail` so an operator can see which source was read;
+// `AddressSourceUnestablished` is the state a caller is in when it has an address and no idea how it was
+// assigned -- which is NOT the same as current-only and must not be folded into it, because current-only is a
+// known limitation to reason about and unestablished is an unknown one. A future source that establishes
+// permanence a different way (an SMBus read of the NIC's EEPROM, say) adds a constructor here, a case in
+// `usable_address`, and an arm in `remedy_for_unestablished`; nothing else moves.
+type AddressProvenance
+  = PermanenceEstablished
+  | PermanenceNotEstablished { cause: PermanenceNotEstablishedCause }
+
+// WHY A SOURCE COULD NOT ESTABLISH PERMANENCE, kept out of `AddressProvenance` so the absence that reports
+// it can carry the cause without also carrying the arm that says permanence WAS established -- the two cannot
+// be named together, which is the illegal state this split removes.
+type PermanenceNotEstablishedCause
+  = AddressIsCurrentOnly { detail: NonEmptyStr }
+  | AddressSourceUnestablished
+
+// ONE SIDE, RESOLVED: either it holds addresses this axis may use, or it has a REASON it does not. The
+// reason is one `RuntimeIdentityAbsence`, so nothing a side can fail by is left out of this sum -- and the
+// fn that builds it is total over every arm of `AxisStanding`, which is what makes a new failure mode stop
+// compiling instead of falling through to an agreement.
+type ResolvedNicSide
+  = SideHoldsAddresses { eligible: List<Eui48Address> }
+  // A NON-EMPTY LIST, and the only fn that builds this arm guarantees it: this arm is chosen exactly when
+  // `usable_addresses` came back empty, which cannot happen while some address is established AND octet-
+  // usable. A side can fail for two reasons at once -- some addresses from a current-only source and others
+  // whose source was never established -- and the list is what lets it say both instead of reporting whichever
+  // check happened to run first.
+  | SideCannotAnswer { absences: List<RuntimeIdentityAbsence> }
+
+// THE SAME FACT, before eligibility is known, per side: whether the side spoke at all, and what it handed
+// over. The COUNT lives nowhere in this sum -- the gaps that need it take it from the list they describe, so
+// there is exactly one place a count can be wrong.
+type NicSideEvidence
+  = NicDidNotAnswer { absence: RuntimeIdentityAbsence }
+  | NicAnswered { addresses: List<ReportedNetworkAddress> }
+
+fn nic_side_evidence(standing: AxisStanding<List<ReportedNetworkAddress>>) -> NicSideEvidence {
+  match standing {
+    AxisStayedSilent { reason: r } => NicDidNotAnswer { absence: Unread { reason: r } }
+    AxisWasRefused { refusal: f } => NicDidNotAnswer { absence: ControllerRefused { refusal: f } }
+    // NO COUNT IS CARRIED HERE. Every consumer of "how many" asks about addresses that turned out to be
+    // unusable, and `unusable_reasons` derives that from the very list it is partitioning. A count stored
+    // beside the list it counts is a second source of truth that can go stale while looking authoritative --
+    // the same defect review 81890 found in two derivations of one fact.
+    AxisWasRead { value: v } => NicAnswered { addresses: v }
+  }
+}
+
+// THE TWO CONDITIONS, APPLIED TOGETHER, in the one place that decides them. Extraction rather than a
+// predicate: flat_map keeps only the addresses whose supplied provenance is `PermanenceEstablished` (that
+// arm asserts the source standing; it is not verified here -- see `AddressProvenance`), so no
+// `is_established` bool is invented to stand in for reading the arm itself, and the eligibility decision and
+// the arm it rests on cannot drift apart. The octet screen then runs on that, and both are needed -- an
+// established address that is locally administered is as useless to this axis as a permanent-looking address
+// whose supplied provenance does not establish permanence.
+fn usable_addresses(reported: List<ReportedNetworkAddress>) -> List<Eui48Address> {
+  reported
+    .flat_map(r => addresses_from_established_source(entry: r))
+    .filter(a => mac_is_permanent_interface_identity(addr: a))
+}
+
+// THE SOURCE GROUND, ONE ADDRESS AT A TIME. A fn rather than an inline lambda so the arm it matches on is
+// named at its own level and can be tested without building a list around it.
+fn addresses_from_established_source(entry: ReportedNetworkAddress) -> List<Eui48Address> {
+  match entry.provenance {
+    PermanenceEstablished => [entry.address]
+    PermanenceNotEstablished { cause: _ } => []
+  }
+}
+
+// ELIGIBILITY IS PER SIDE, AND THEN THE TWO SIDES ARE COMBINED. That order is the whole point of this
+// fn and it used to be the other way round: `nic_examination` matched the two sides' sums directly, so an
+// answering side that held no usable address was only ever reported when the OTHER side also answered. An
+// ineligible firmware list beside a silent OS produced one gap about the OS and the firmware's ineligibility
+// VANISHED; swap the two sides and a different single gap came out. So the same pair of facts, ordered
+// differently, reported different reasons -- and a reason that depends on argument order is not a fact about
+// the machine. Now each side is resolved independently (`resolve_nic_side`) and the combination reports
+// EVERY reason that exists, in the reading order the fold uses everywhere.
+fn nic_examination(
+  row: RuntimeIdentityAxisRow,
+  pre: AxisStanding<List<ReportedNetworkAddress>>,
+  post: AxisStanding<List<ReportedNetworkAddress>>,
+) -> AxisExamination {
+  let left = resolve_nic_side(standing: pre)
+  let right = resolve_nic_side(standing: post)
+  match left {
+    SideHoldsAddresses { eligible: pe } => match right {
+      SideHoldsAddresses { eligible: oe } =>
+        examine_screened_addresses(row: row, pre_eligible: pe, post_eligible: oe)
+      SideCannotAnswer { absences: a } =>
+        AxisUnanswered { axis: row.axis, gaps: gaps_on_os_side(row: row, absences: a), weight: row.weight }
+    }
+    SideCannotAnswer { absences: a } => match right {
+      // THE FIX, stated by name: the firmware's own reasons are reported WHETHER OR NOT the other side
+      // answered. The old code discarded them here.
+      SideHoldsAddresses { eligible: _ } =>
+        AxisUnanswered { axis: row.axis, gaps: gaps_on_firmware_side(row: row, absences: a), weight: row.weight }
+      SideCannotAnswer { absences: b } => AxisUnanswered {
+        axis: row.axis,
+        // pre-boot reasons first: the fold's reading order, so a mixed pair reports the same gaps whichever
+        // way the two lists happen to be built.
+        gaps: [gaps_on_firmware_side(row: row, absences: a), gaps_on_os_side(row: row, absences: b)].flat_map(g => g),
+        weight: row.weight,
+      }
+    }
+  }
+}
+
+// ONE SIDE, RESOLVED ONCE: silence and refusal pass through, and an answered side is screened HERE so that
+// "it answered" and "what it answered is usable" are settled in one place, per side, before the two sides
+// ever meet. `reported_count` survives the screen because the gap must be able to say how much was
+// rejected: `reported 0` (nothing was read at all) and `reported 5` (read, and none of it usable) are
+// different missing evidence and are not the same silence, which is what the count is for.
+fn resolve_nic_side(standing: AxisStanding<List<ReportedNetworkAddress>>) -> ResolvedNicSide {
+  match nic_side_evidence(standing: standing) {
+    NicDidNotAnswer { absence: a } => SideCannotAnswer { absences: [a] }
+    NicAnswered { addresses: v } => {
+      let eligible = usable_addresses(reported: v)
+      if eligible.length() == 0 {
+        SideCannotAnswer { absences: unusable_reasons(reported: v) }
+      } else {
+        SideHoldsAddresses { eligible: eligible }
+      }
+    }
+  }
+}
+
+// WHY NOTHING WAS USABLE, PARTITIONED ONCE. Both counts come out of the SAME partition of the same list,
+// so the two absences cannot disagree about how many addresses there were -- which is the failure mode of
+// deriving them in two places, and is why this is one fn over the reported list rather than two predicates a
+// caller combines. Order follows the addresses as reported, which makes the verdict independent of which
+// check is written first.
+// THE CAUSES ARE KEPT, NOT COUNTED: flat_map collects the cause of each unestablished address in report
+// order, so the gap can name WHICH kinds appeared and quote the probe's own words for the current-only ones.
+// A `filter` + count here would reproduce exactly the defect the HOLD named: the cause survives long enough to
+// be tested for presence and then vanishes, leaving every pair of causes indistinguishable in the verdict.
+fn unusable_reasons(reported: List<ReportedNetworkAddress>) -> List<RuntimeIdentityAbsence> {
+  let unestablished = reported.flat_map(r => match r.provenance {
+    PermanenceEstablished => []
+    PermanenceNotEstablished { cause: c } => [c]
+  })
+  let unestablished_count = unestablished.length()
+  if unestablished_count == 0 {
+    [NoEligibleEvidence { reported_count: reported.length() }]
+  } else if unestablished_count == reported.length() {
+    [ProvenanceUnestablished { unestablished: unestablished }]
+  } else {
+    [
+      ProvenanceUnestablished { unestablished: unestablished },
+      NoEligibleEvidence { reported_count: reported.length() },
+    ]
+  }
+}
+
+// THE REMEDY THIS FOLD OFFERS FOR ONE UNESTABLISHED CAUSE, derived by an exhaustive map rather than stored
+// beside the cause. WHY A DERIVATION AND NOT A FIELD: if the remedy travelled on the address, a reporter could
+// pair any cause with any remedy, and the fold would relay advice that contradicts its own evidence; matched
+// here, the advice cannot disagree with the cause it is about, and a new cause must say what its remedy is
+// before the module compiles. WHY THE FOLD MAY OFFER ADVICE AT ALL: it is allowed to name the ACTION its
+// evidence supports (re-read from a permanent source; record the source) -- an action derived from a declared
+// cause. It is NOT allowed to say that action is warranted, because the cause itself is the reporter's
+// standing, not this fold's finding (see `AddressProvenance`). One arm per cause; nothing here decides
+// whether the cause was truthfully reported.
+type UnestablishedRemedy
+  // THE REPORTER NAMED WHERE IT READ AND WHAT IT READ WAS IN-USE STATE; the words are quoted so the operator
+  // sees the probe's own claim rather than this module's paraphrase of it.
+  = PointTheProbeAtAPermanentSource { probe_said: NonEmptyStr }
+  // NO SOURCE WAS RECORDED AT ALL. The advice is to record a source, not to discard the address: an
+  // unsourced address may still be the machine's real permanent address, and nothing here may say otherwise.
+  | RecordTheSourceBeforeTrustingTheAddress
+
+// WHAT THE SUPPLIED PROVENANCE DID NOT ESTABLISH, AS A REMEDY DERIVED FROM THE CAUSE. The reason this fn
+// the carried causes CONSUMED rather than merely stored: a cause nobody reads is documentation with a type
+// annotation, and the HOLD named precisely that -- a distinction authored, promised, and discarded. Two
+// causes, two remedies, and the current-only one QUOTES THE PROBE'S OWN WORDS, so a fold that substituted,
+// erased, or defaulted the detail changes this output and the public control goes red. It is a closed map
+// over a closed union, not a predicate: no arm is asked "is this the current-only one?", and a third cause
+// added to `PermanenceNotEstablishedCause` stops compiling here instead of inheriting a remedy that may not
+// fit it.
+fn remedy_for_unestablished(cause: PermanenceNotEstablishedCause) -> UnestablishedRemedy {
+  match cause {
+    AddressIsCurrentOnly { detail: d } => PointTheProbeAtAPermanentSource { probe_said: d }
+    AddressSourceUnestablished => RecordTheSourceBeforeTrustingTheAddress
+  }
+}
+
+// THE REMEDIES FOR ONE GAP, in report order; empty for every gap that is not about provenance. Public, and
+// the path the witness discriminates through: it is reached from the gap the public verdict returns, so an
+// assertion here is an assertion about `runtime_identity_match`'s output and not about a private helper.
+fn remedies_for_gap(gap: RuntimeIdentityGap) -> List<UnestablishedRemedy> {
+  match gap.absence {
+    ProvenanceUnestablished { unestablished: cs } =>
+      cs.map(c => remedy_for_unestablished(cause: c))
+    Unread { reason: _ } => []
+    ControllerRefused { refusal: _ } => []
+    NoEligibleEvidence { reported_count: _ } => []
+  }
+}
+
+fn gaps_on_firmware_side(row: RuntimeIdentityAxisRow, absences: List<RuntimeIdentityAbsence>) -> List<RuntimeIdentityGap> {
+  absences.map(a => RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, absence: a })
+}
+
+fn gaps_on_os_side(row: RuntimeIdentityAxisRow, absences: List<RuntimeIdentityAbsence>) -> List<RuntimeIdentityGap> {
+  absences.map(a => RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, absence: a })
+}
+
+// ONE OUTCOMES-OF-A-SCREENED-PAIR path remains, and it is the ONLY one: both sides were found to hold
+// usable addresses by `resolve_nic_side`, the single place eligibility is decided. There is deliberately no
+// short-side branch and no `reported_count` parameter here any more -- re-testing emptiness at this second
+// point would derive the same fact twice from the same input, which is the defect review 81890 had me delete
+// an entire arm for, and an unused count would be a field that can silently go stale. The gap constructors
+// moved with that responsibility into `resolve_nic_side`, where emptiness is actually observed.
+fn examine_screened_addresses(
+  row: RuntimeIdentityAxisRow,
+  pre_eligible: List<Eui48Address>,
+  post_eligible: List<Eui48Address>,
+) -> AxisExamination {
+  // Both sides hold evidence, so whatever follows is a real answer about the machine. The pair carries
+  // the SCREENED lists, because those are what the rule compared: reporting raw readings here would show
+  // an operator addresses that were never part of the decision.
+  AxisCompared {
+    axis: row.axis,
+    pair: AddressSetPair { pre_addresses: pre_eligible, post_addresses: post_eligible },
+    weight: row.weight,
+  }
+}
+
+// PURE INTERSECTION, ON PURPOSE. The screen has ALREADY run -- `examine_screened_addresses` is the only
+// constructor of the pair this reads and it filters through `mac_is_permanent_interface_identity` there --
+// so filtering again here would be the same fact derived twice, which is what produced the unreachable arm
+// review 81890 caught: two derivations of one thing, free to disagree. What remains is the one claim
+// this axis makes: the two sides share at least one of the addresses they both hold as permanent.
+fn mac_sets_share_an_address(pre: List<Eui48Address>, post: List<Eui48Address>) -> Bool {
+  pre.any(a => post.any(b => mac_addresses_are_equal(left: a, right: b)))
+}
+
+// ---------------------------------------------------------------------------
+// THE DECLARED CONSUMER FRONTIER (DESIGN 3c: name the consumer and its route, or classify).
+//
+// WHY A CARRIER RATHER THAN A COMMENT. Nothing outside this module's own witness imports it -- which is
+// TRUE AND EXPECTED for a seam that lands ahead of the cut that reads it, but which a reader (or a
+// reviewer, three rounds running) cannot distinguish from abandonment by looking. std.dissolution already
+// models "an obligation discharged by a declaration that does not exist yet" as a bound trigger over a
+// DeclarationRef whose status is COMPUTED against a declaration population. So the frontier is a row here,
+// and its status is an answer rather than a claim: nothing in this comment says who has landed, because
+// prose describing who-has-landed is a snapshot that goes stale within a day.
+// ---------------------------------------------------------------------------
+
+// THE CONSUMER THAT MUST EXIST: the S9 network-boot arm actuator, which boots a unit and whose whole
+// purpose after that boot is answered by this module -- S10 verifies, against these readings, that the
+// machine that answered on the network is the unit the attempt was made for. The name is not invented
+// here: work item node://adhoc-9cc8b205-64b carries `network_boot_arm_actuator_steps` as its scope, which
+// is the only thing that distinguishes a forward reference from a private fiction (a name nobody has agreed
+// to write would report Pending forever and look like tracking). The ref is also written as a LITERAL in
+// this module's witness, so the module cannot silently rename the frontier out from under the claim.
+//
+// WHAT A FIRED TRIGGER DOES NOT PROVE: that anything EXECUTES this seam. It proves the named declaration
+// exists. A green witness over this row is evidence of a declared frontier, never of integration -- read
+// Pending as "the consumer has not landed", and Fired as "it has been declared", nothing stronger.
+data runtime_identity_match_consumer_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears { ref: runtime_identity_match_consumer_ref() },
+}
+
+fn runtime_identity_match_consumer_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
+}
+
+// THE FRONTIER AS A MACHINE CAN ANSWER IT. The caller supplies the declaration population it actually read;
+// there is no default, because "nothing is present" and "nobody looked" are different answers and a frontier
+// that cannot tell them apart reports itself discharged.
+fn runtime_identity_match_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
+  dissolution_status(condition: runtime_identity_match_consumer_frontier, present_decls: present_decls)
+}

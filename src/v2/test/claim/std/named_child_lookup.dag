@@ -1,5 +1,20 @@
 module v2.test.claim.std.named_child_lookup
 
+import v2.std.node { Atom, Authored, ComputationNode, Conj, Disj, Edge, MatchArmBodyEdge, MatchArmPatternEdge, Node, NotADeclaration, Positional, Symbol, Transform, TypeNode, core_edge, node_same_occurrence }
+import v2.std.node_query {
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildLookup,
+  NamedChildMissing,
+  core_child_lookup,
+  find_named_child,
+  labeled_child_lookup,
+  named_child_lookup
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // named_child_lookup is the total primitive and find_named_child its projection. These witnesses pin
@@ -12,7 +27,7 @@ fn ncl_atom(s: Symbol) -> Node {
 }
 
 fn ncl_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn ncl_conj() -> Node {
@@ -21,7 +36,7 @@ fn ncl_conj() -> Node {
     children: [
       ncl_named(name: ^ncl_unique, target: ncl_atom(s: ^ncl_unique_target)),
       ncl_named(name: ^ncl_repeated, target: ncl_atom(s: ^ncl_repeated_first)),
-      Edge { label: Positional, target: ncl_atom(s: ^ncl_positional_target) },
+      Edge { label: Positional, target: ncl_atom(s: ^ncl_positional_target), declaration: NotADeclaration },
       ncl_named(name: ^ncl_repeated, target: ncl_atom(s: ^ncl_repeated_second))
     ],
     occurrence_id: OccurrenceSynthetic
@@ -30,7 +45,7 @@ fn ncl_conj() -> Node {
 
 fn ncl_found_is(lookup: NamedChildLookup, expected: Node) -> Bool {
   match lookup {
-    NamedChildFound { target: t } => t == expected
+    NamedChildFound { target: t } => node_same_occurrence(a: t, b: expected)
     NamedChildMissing => false
     NamedChildAmbiguous => false
   }
@@ -54,14 +69,14 @@ fn ncl_is_ambiguous(lookup: NamedChildLookup) -> Bool {
 
 fn ncl_rejected_with(o: Outcome<Node>, reason: Symbol) -> Bool {
   match o {
-    Rejected { diagnostics: d } => d.head.reason == reason
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 fn ncl_accepted_is(o: Outcome<Node>, expected: Node) -> Bool {
   match o {
-    Accepted { value: v, diagnostics: _ } => v == expected
+    Accepted { value: v, diagnostics: _ } => node_same_occurrence(a: v, b: expected)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -81,7 +96,7 @@ fn ncl_transform() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: ncl_atom(s: ^ncl_callee) },
+      Edge { label: Positional, target: ncl_atom(s: ^ncl_callee), declaration: NotADeclaration },
       ncl_named(name: ^ncl_arg, target: ncl_atom(s: ^ncl_arg_value))
     ],
     occurrence_id: OccurrenceSynthetic
@@ -99,4 +114,61 @@ test fn find_named_child_projects_the_lookup_with_its_refusal_reasons() -> Bool 
     && ncl_rejected_with(o: find_named_child(root: ncl_conj(), name: ^ncl_repeated), reason: ^named_child_ambiguous)
     && ncl_rejected_with(o: find_named_child(root: ncl_conj(), name: ^ncl_absent), reason: ^named_child_missing)
     && ncl_rejected_with(o: find_named_child(root: ncl_atom(s: ^ncl_not_a_conj), name: ^ncl_unique), reason: ^named_child_missing)
+}
+
+// AN EDGE IS FOUND ON A NODE OF ANY KIND. Whether a node bears a named child is a fact of its children,
+// not of its connective: v2.std.compilers.target_model target_value_expression_resolved_primitive_call
+// hangs an authored edge on an Atom-kind callable-apply wire. The lookup used to gate on the connective
+// and answered NamedChildMissing for that edge although it was there; these REDs go red against that
+// gate, and each control one term away (the same root, a name it does not carry) stays Missing, so
+// Missing keeps meaning "absent". The atom with no children above stays Missing for the same reason.
+fn ncl_atom_wire() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^ncl_wire_callee } },
+    children: [ncl_named(name: ^ncl_wire_marker, target: ncl_atom(s: ^ncl_wire_marker_target))],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ncl_disj_with(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [ncl_named(name: name, target: ncl_atom(s: ^ncl_disj_arm_target))],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn named_child_lookup_finds_an_authored_edge_on_an_atom_root_holds() -> Bool {
+  ncl_found_is(lookup: named_child_lookup(root: ncl_atom_wire(), name: ^ncl_wire_marker), expected: ncl_atom(s: ^ncl_wire_marker_target))
+    && ncl_accepted_is(o: find_named_child(root: ncl_atom_wire(), name: ^ncl_wire_marker), expected: ncl_atom(s: ^ncl_wire_marker_target))
+}
+
+test fn named_child_lookup_answers_missing_for_a_name_an_atom_root_does_not_carry_holds() -> Bool {
+  ncl_is_missing(lookup: named_child_lookup(root: ncl_atom_wire(), name: ^ncl_absent))
+    && ncl_rejected_with(o: find_named_child(root: ncl_atom_wire(), name: ^ncl_absent), reason: ^named_child_missing)
+}
+
+test fn named_child_lookup_reads_a_disjunction_s_authored_edges_holds() -> Bool {
+  ncl_found_is(lookup: named_child_lookup(root: ncl_disj_with(name: ^ncl_unique), name: ^ncl_unique), expected: ncl_atom(s: ^ncl_disj_arm_target))
+    && ncl_is_missing(lookup: named_child_lookup(root: ncl_disj_with(name: ^ncl_unique), name: ^ncl_absent))
+}
+
+// The same for the two sibling lookups: a core marker on a ComputationNode, and a whole label on an
+// Atom, were answered Missing by the same gate.
+fn ncl_transform_with_core_marker() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [core_edge(marker: MatchArmBodyEdge, target: ncl_atom(s: ^ncl_core_target))],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn core_child_lookup_finds_a_marker_on_a_computation_root_holds() -> Bool {
+  ncl_found_is(lookup: core_child_lookup(root: ncl_transform_with_core_marker(), marker: MatchArmBodyEdge), expected: ncl_atom(s: ^ncl_core_target))
+    && ncl_is_missing(lookup: core_child_lookup(root: ncl_transform_with_core_marker(), marker: MatchArmPatternEdge))
+}
+
+test fn labeled_child_lookup_finds_a_label_on_an_atom_root_holds() -> Bool {
+  ncl_found_is(lookup: labeled_child_lookup(root: ncl_atom_wire(), label: Authored { name: ^ncl_wire_marker }), expected: ncl_atom(s: ^ncl_wire_marker_target))
+    && ncl_is_missing(lookup: labeled_child_lookup(root: ncl_atom_wire(), label: Authored { name: ^ncl_absent }))
 }

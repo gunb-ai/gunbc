@@ -4,7 +4,7 @@ import std.markup { Fragment, attr }
 import gunbc.site.markup { el_attrs }
 import gunbc.design.brand_mark { FaceMark, Stencil, brand_mark, brand_mark_svg, brand_mark_figure, brand_mark_ink, brand_mark_badge_stone }
 import gunbc.design.palette { swatch_paint }
-import extdeps.languages.html { serialize_html_source }
+import extdeps.languages.html { serialize_html_source, HtmlEmitResult }
 import extdeps.http.server { MediaType, TopLevelImage }
 
 data site_favicon_path: String = "/favicon-gunb.svg"
@@ -21,7 +21,12 @@ fn site_brand_link() -> Fragment {
 
 // The favicon draws the face on a fixed neutral badge for browser chrome; the mark's 1200-tenth
 // frame is scaled to 108 units and inset on the 128-unit badge.
-fn site_favicon_source() -> String {
+// Returns the EMITTER'S RESULT, not a String. The favicon is a fixed shape with no comment and no raw-text
+// element, so it never refuses today -- but the serializer can refuse, and a function that promised a String
+// would have to invent one for a refusal it cannot produce (§5: "no plausible output is fabricated"). Each
+// of the two routes that serves it says what a refusal means for it, the way serve_page_response already
+// does for pages.
+fn site_favicon_source() -> HtmlEmitResult {
   let svg = el_attrs("svg", [attr(name: "xmlns", value: "http://www.w3.org/2000/svg"), attr(name: "viewBox", value: "0 0 128 128"), attr(name: "color", value: swatch_paint(sw: brand_mark_ink))], [
     el_attrs("rect", [attr(name: "width", value: "128"), attr(name: "height", value: "128"), attr(name: "rx", value: "28"), attr(name: "fill", value: swatch_paint(sw: brand_mark_badge_stone))], []),
     el_attrs("g", [attr(name: "transform", value: "translate(10 12) scale(.09)")], brand_mark_figure(mark: brand_mark(kind: FaceMark), treatment: Stencil)),

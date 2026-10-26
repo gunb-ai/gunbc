@@ -1,9 +1,9 @@
 module gunbc.native_serve
 
 import std.types { Int, List, String, Bool, CommitSha }
-import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count }
-import std.algebra { Cons, Empty, trim }
-import extdeps.http.server { ServeWireResponse, ServeWireHeader, serve_wire_header_name_label }
+import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count, Second, second, second_count }
+import std.algebra { Cons, Empty, trim, list_push }
+import extdeps.http.server { ServeWireResponse, ServeWireHeader }
 import gunbc.running_release_identity { release_revision_text_valid }
 import extdeps.tailscale.identity { tailscale_user_login_header }
 import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
@@ -17,9 +17,9 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 // those reads and writes is one of the folds below: which address to bind and which release this
 // process is (native_serve_start), whether a request head is admissible and how many body bytes to
 // read (native_serve_frame), and whether the request is answered before the handler is entered
-// (native_serve_route). The handler contract is the seed's `gunbc serve` contract unchanged --
-// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision) ->
-// ServeWireResponse` -- so a program served by the seed today is served natively by declaring the
+// (native_serve_route). The handler contract is the seed's `gunbc serve` contract plus one trailing argument --
+// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision[, startup]) ->
+// ServeWireResponse` (startup being the typed value this process's self-check passed with, when the entry declares one) -- so a program served by the seed today is served natively by declaring the
 // arm and naming its handler that.
 //
 // WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (DESIGN section 7):
@@ -65,6 +65,13 @@ data native_serve_read_timeout: Millisecond = millisecond(count: 10000)
 // --request-deadline-ms, parsed below like every other flag.
 data native_serve_request_deadline: Millisecond = millisecond(count: 30000)
 
+// The bound on a worker generation's STARTUP readiness (only a driver that declares native_serve_startup has one):
+// the startup fold runs on the worker before it reports ready, and a self-check over the running image is not a
+// request, so it does not inherit request_deadline. Sized from the measured device-crypto self-check, about 0.5 s
+// for the sha256 of the binary and about 60 ms per P-256 verify, with ~40x headroom for a loaded host. A worker
+// that has not finished its startup by then is the modeled startup refusal (exit native_serve_startup_refused_exit_code).
+data native_serve_startup_deadline: Second = second(count: 30)
+
 // A worker that missed its deadline cannot be killed in-process; it is abandoned and keeps its
 // thread until it returns. This ceiling bounds how many such workers one process will carry: at the
 // ceiling the next request is refused with native_serve_stuck_refused and the process exits with
@@ -89,6 +96,7 @@ type NativeServeContract {
   body_limit: ByteSize
   read_timeout: Millisecond
   request_deadline: Millisecond
+  startup_deadline: Second
   stuck_worker_ceiling: Int
 }
 
@@ -179,6 +187,7 @@ fn native_serve_start_checked(host: String, port: String, revision: String, dead
             body_limit: native_serve_body_limit,
             read_timeout: native_serve_read_timeout,
             request_deadline: deadline,
+            startup_deadline: native_serve_startup_deadline,
             stuck_worker_ceiling: native_serve_stuck_worker_ceiling,
           } }
         }
@@ -417,7 +426,7 @@ fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHea
 // document's entry_function member is this literal rather than whatever the main was told.
 // THE OPTIONAL STARTUP FOLD (a driver that declares none is unchanged). An entry MAY declare
 // `fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup` beside its handler;
-// the rendered main then runs it ONCE, after argv is judged and BEFORE any listener is bound, with
+// the rendered main then runs it once PER WORKER GENERATION (the handler's values are not Send, so the fold runs on the worker that serves; a replacement generation reruns it), the first before any listener is bound, bounded by startup_deadline rather than request_deadline, with
 // the octets of the running executable's own file -- the host's only job is to read those bytes
 // (it computes nothing about them). The fold decides everything: a NativeServeStartupRefused makes
 // the main print native_serve_startup_refusal_line on stderr and exit native_serve_startup_refused_exit_code
@@ -426,8 +435,11 @@ fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHea
 // binary identity this carries. Instrument: //gunbc/instruments:native-serve-device-crypto.
 data native_serve_startup_entry_function: String = "native_serve_startup"
 
-type NativeServeStartup
-  = NativeServeStartupPassed { note: String }
+// S is the handler's startup payload: the typed value the fold passed with, handed to every handler call as a
+// trailing argument (the device-crypto handler's is its DeviceCryptoHandlerReceipt). The line is only what the
+// process announces; nothing reads it back.
+type NativeServeStartup<S>
+  = NativeServeStartupPassed { line: String, value: S }
   | NativeServeStartupRefused { reason: String }
 
 // Distinct from 2 (a refused start) so a supervisor and the instruments can tell a failed
@@ -438,8 +450,8 @@ fn native_serve_startup_refusal_line(reason: String) -> String {
   concat("REFUSED: startup self-check: ", reason)
 }
 
-fn native_serve_startup_passed_line(note: String) -> String {
-  concat("native-serve startup self-check passed: ", note)
+fn native_serve_startup_passed_line(line: String) -> String {
+  concat("native-serve startup self-check passed: ", line)
 }
 
 data native_serve_handler_name: String = "native_serve_handle"
@@ -451,9 +463,9 @@ data native_serve_handler_name: String = "native_serve_handle"
 // into the header block just like a header value), because a value is handler data and one carrying a line break would split the
 // header block. The seed makes the same two checks in hand Rust after evaluation; here they are a
 // fold, and a response that fails them is answered as a typed 500 naming why, never written.
-// Header NAMES need no check: ServeWireHeaderName is closed, and its spelling is
-// extdeps.http.server serve_wire_header_name_label's, so the framing headers the main writes
-// itself (Content-Type, Content-Length, Connection) cannot be set by a handler.
+// Header NAMES need no check: a ServeWireHeader is sole_constructor in extdeps.http.server and is
+// built only from a ServeResponseHeader, whose open arm carries an HttpExtensionFieldName, so the
+// framing headers the main writes itself (Content-Type, Content-Length, Connection) cannot be set.
 type NativeServeOutgoing {
   status: Int
   content_type_label: String
@@ -477,7 +489,7 @@ fn native_serve_unwritable(reason: String) -> NativeServeOutgoing {
 }
 
 fn native_serve_header_line(h: ServeWireHeader) -> String {
-  concat(serve_wire_header_name_label(name: h.name), concat(": ", h.value))
+  concat(h.name, concat(": ", h.value))
 }
 
 fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {

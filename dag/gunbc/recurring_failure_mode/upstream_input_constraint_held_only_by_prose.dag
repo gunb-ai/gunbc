@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.upstream_input_constraint_held_only_by_prose
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data upstream_input_constraint_held_only_by_prose: RecurringFailureMode = RecurringFailureMode {
   identity: "upstream_input_constraint_held_only_by_prose" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "upstream input constraint held only by prose: an external API rejects an input that our model admits -- a length cap, a character class, an enum the upstream narrowed -- and the constraint is recorded as a source annotation on the operation rather than on the input it constrains. The annotation is unreadable by any Accepted program (DESIGN section 4c), so the wall is the author having read it. Every new call site is a fresh chance to violate a constraint the corpus already learned.",

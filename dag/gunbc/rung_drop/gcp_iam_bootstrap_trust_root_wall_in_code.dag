@@ -1,0 +1,28 @@
+module gunbc.rung_drop.gcp_iam_bootstrap_trust_root_wall_in_code
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, Enumerated }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// THE TRUST ROOTS ARE WALLED ONLY IN CODE (DESIGN 4b(3)). iam-bootstrap's role holds setIamPolicy on
+// every account and pool in the project, and neither deny nor allow conditions can name these
+// resources, so the five trust roots -- iam-converge, iam-observe and iam-bootstrap, and the two pools
+// whose principal sets reach them -- are kept out of every delta only by the route's refusal
+// (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_cell_owner). Denial conditions recognize resource
+// tags (https://cloud.google.com/iam/docs/deny-overview, read 2026-10-18) and service accounts take
+// tags while workload identity pools are not listed
+// (https://cloud.google.com/resource-manager/docs/tags/tags-supported-services, read 2026-10-18), so the
+// three accounts can climb; the two pools are a separate residual (gunbc.rung_drop gcp_iam_bootstrap_trust_pool_untaggable).
+data gcp_iam_bootstrap_trust_root_wall_in_code: RungDrop = RungDrop {
+  identity: "gcp_iam_bootstrap_trust_root_wall_in_code" as NonEmptyStr,
+  subject: "iam-bootstrap writing the policy of a trust-root account",
+  declared: "2026-10-18",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "a ceremony stage that binds a gunbc-trust-root tag on the three accounts, and a tag-conditioned deny of iam.googleapis.com/serviceAccounts.setIamPolicy for iam-bootstrap" },
+    population: Enumerated { members: FreeSemigroup { head: "account iam-converge@gunbai-secrets.iam.gserviceaccount.com", tail: ["account iam-observe@gunbai-secrets.iam.gserviceaccount.com", "account iam-bootstrap@gunbai-secrets.iam.gserviceaccount.com"] } },
+    restoration_trigger: "every one of the following observed by readback in one ceremony: the gunbc-trust-root value bound on each of the three accounts by an exact row (that parent, that value); the wall policy present with its exact tag condition, refusing iam-bootstrap serviceAccounts.setIamPolicy/update/delete/disable/enable/undelete on them; actAs/getAccessToken/getOpenIdToken/implicitDelegation/signBlob/signJwt and key creation refused to iam-bootstrap on them by the unconditioned boundary deny; and iam-bootstrap's effective tag-detach authority absent, read as iam-bootstrap: no iam.serviceAccounts.deleteTagBinding on any of the three accounts AND no resourcemanager.tagValueBindings.delete on the trust-root value (both MET-by-probe: the ceremony's privilege readback probes each as iam-bootstrap against an operator-held control; the drop still retires only on that live readback)"
+  } }
+}

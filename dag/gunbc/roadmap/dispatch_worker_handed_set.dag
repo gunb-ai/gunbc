@@ -1,0 +1,212 @@
+module gunbc.roadmap.dispatch_worker_handed_set
+
+import std.types { String, NonEmptyStr, Bool, List }
+import extdeps.systemd {
+  SystemdUnitProperty,
+  WorkingDirectoryProperty,
+  StandardOutputProperty,
+  StandardErrorProperty,
+  ReadWritePathsProperty,
+  ReadOnlyPathsProperty,
+  ExecStopPostProperty,
+  systemd_property_carries_paths,
+  systemd_path_list_separator,
+  systemd_path_list_entry_wire,
+}
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet, LoadCredentialSetting }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties }
+import extdeps.systemd.unit_file { OutputAppendFile, systemd_output_stream_wire }
+
+// THE PATHS A WORKER UNIT IS HANDED ARE ONE TYPED SET, AND THE UNIT IS RENDERED FROM IT. Path text
+// appears only when rendering. Before this module the plan rendered WorkingDirectory=, ReadWritePaths=
+// and the rest from their own sources while the reach check (gunbc.roadmap.dispatch_worker_traversal)
+// assembled a SECOND list of the same facts beside them: reusing the renderer's helpers meant the two
+// could not drift today, but a path a later change handed the unit through a new property was silently
+// outside the check, and the harness argv's --source-root operands (the controller's dag/ and src/v2
+// directories the worker loads modules from) were in no list at all. Chain re-derivation (DESIGN 6b):
+// the earliest unjustified boundary is that the unit's path facts had no single owner, so the owner
+// is this set. Nothing here parses text: the renderers below read entries, the reach check folds
+// over entries, and gunbc.roadmap.roadmap_dispatch_actuator builds the set once per plan.
+//
+// THE RESIDUAL A CONSTRUCTION CANNOT CLOSE: someone appends a raw NamedUnitSetting carrying a path to
+// the worker properties, bypassing the set. dispatch_worker_path_settings_are_the_set closes it as one
+// claim: the unit's path-carrying settings (extdeps.systemd systemd_property_carries_paths) are
+// EXACTLY the set's rendering.
+//
+// CONSUMERS: dispatch_worker_unit_stream_properties renders its path settings from
+// dispatch_worker_set_path_settings; gunbc_harness_spawn_argv reads its --source-root operands from
+// dispatch_worker_source_roots; gunbc.roadmap.dispatch_worker_traversal folds over the set. Executing
+// route: test.claim.roadmap.dispatch_worker_traversal_witness.
+type HandedPathRole
+  = HandedWorkingDirectory
+  | HandedReadWrite
+  | HandedReadOnly { missing_ok: Bool }
+  | HandedStdout
+  | HandedStderr
+  | HandedExitRoot
+  | HandedExecutable
+  | HandedSourceRoot
+  // A FILE THE MANAGER READS AT START AND HANDS IN AS A CREDENTIAL (systemd.exec(5) LoadCredential=): the
+  // unit sees its bytes under `identifier` in $CREDENTIALS_DIRECTORY, never the source path, so the worker
+  // neither enters nor traverses it. Its source is a root-owned credstore file, because the manager opens
+  // it as root: a source the requester could write or relink would make the launch a root read oracle.
+  | HandedCredentialSource { identifier: NonEmptyStr }
+
+type HandedEntry {
+  role: HandedPathRole
+  path: String
+}
+
+// WHETHER THE LEAF IS ENTERED. A working directory, a writable carve-out, the exit root and a source
+// root are directories (the kernel enters or traverses them); an executable, a log target and a
+// read-only pointer are files, so the walk stops at their parent.
+fn handed_entry_leaf_is_directory(entry: HandedEntry) -> Bool {
+  match entry.role {
+    HandedWorkingDirectory => true
+    HandedReadWrite => true
+    HandedReadOnly { missing_ok: _ } => false
+    HandedStdout => false
+    HandedStderr => false
+    HandedExitRoot => true
+    HandedExecutable => false
+    HandedSourceRoot => true
+    HandedCredentialSource { identifier: _ } => false
+  }
+}
+
+// WHOSE PATH IT IS. The exit root is the MANAGER's: ExecStopPost carries the "+" prefix, so the hook
+// runs outside the sandbox with the manager's privileges and the worker uid never touches the inbox.
+// The set keeps it because the unit renders ExecStopPost from it; the worker-traversal fold
+// (gunbc.roadmap.dispatch_worker_traversal) reads only the entries the worker itself enters. The exit
+// root belongs to the manager-created-path handoff (gunbc.roadmap.dispatch_unit_created_paths), with
+// the manager as creator and the drain principal as consumer.
+fn handed_entry_is_entered_by_the_worker(entry: HandedEntry) -> Bool {
+  match entry.role {
+    HandedExitRoot => false
+    HandedCredentialSource { identifier: _ } => false
+    _ => true
+  }
+}
+
+fn dispatch_worker_set_exit_root(set: List<HandedEntry>) -> String {
+  fold(set, init: "", f: (acc, e) =>
+    match e.role {
+      HandedExitRoot => e.path
+      _ => acc
+    })
+}
+
+// THE MODULE ROOTS THE HARNESS WORKER LOADS FROM, minted here once. gunbc_harness_spawn_argv takes its
+// --source-root operands from this function and the plan's set takes the same entries, so the argv
+// word and the judged path cannot be two spellings.
+data dispatch_worker_dag_source_subpath: String = "/dag"
+
+data dispatch_worker_v2_source_subpath: String = "/src/v2"
+
+fn dispatch_worker_source_roots(repo_root: String) -> List<HandedEntry> {
+  [
+    HandedEntry { role: HandedSourceRoot, path: join([repo_root, dispatch_worker_dag_source_subpath], "") },
+    HandedEntry { role: HandedSourceRoot, path: join([repo_root, dispatch_worker_v2_source_subpath], "") },
+  ]
+}
+
+data dispatch_worker_source_root_flag: String = "--source-root"
+
+fn dispatch_worker_source_root_words(repo_root: String) -> List<String> {
+  fold(dispatch_worker_source_roots(repo_root: repo_root), init: [], f: (acc, e) =>
+    concat(acc, [dispatch_worker_source_root_flag, e.path]))
+}
+
+fn dispatch_worker_set_working_directory(set: List<HandedEntry>) -> String {
+  fold(set, init: "", f: (acc, e) =>
+    match e.role {
+      HandedWorkingDirectory => e.path
+      _ => acc
+    })
+}
+
+fn dispatch_worker_set_stream_path(set: List<HandedEntry>, stdout: Bool) -> String {
+  fold(set, init: "", f: (acc, e) =>
+    match e.role {
+      HandedStdout => if stdout { e.path } else { acc }
+      HandedStderr => if stdout { acc } else { e.path }
+      _ => acc
+    })
+}
+
+fn dispatch_worker_set_stream_wire(set: List<HandedEntry>, stdout: Bool) -> String {
+  systemd_output_stream_wire(stream: OutputAppendFile { path: dispatch_worker_set_stream_path(set: set, stdout: stdout) as NonEmptyStr })
+}
+
+fn dispatch_worker_set_read_write_wire(set: List<HandedEntry>) -> String {
+  join(
+    map(
+      filter(set, e => match e.role { HandedReadWrite => true  _ => false }),
+      e => e.path,
+    ),
+    separator: systemd_path_list_separator,
+  )
+}
+
+fn dispatch_worker_set_read_only_wire(set: List<HandedEntry>) -> String {
+  join(
+    fold(set, init: [], f: (acc, e) =>
+      match e.role {
+        HandedReadOnly { missing_ok: m } => concat(acc, [systemd_path_list_entry_wire(path: e.path, missing_ok: m)])
+        _ => acc
+      }),
+    separator: systemd_path_list_separator,
+  )
+}
+
+// THE PATH-CARRYING SETTINGS, rendered from the set and the exit hook word, in the order the
+// worker unit lists them. The first is the socket DENY list (gunbc.compute.unit_bounds, InaccessiblePaths=):
+// a path-carrying setting that denies and so needs no traversal; it rides as the property its owner builds. The exit hook is the attempt's rendered ExecStopPost command
+// (gunbc.roadmap.roadmap_attempt_exit_spool attempt_exit_hook, whose path operand is the set's
+// HandedExitRoot directory); it rides as the command it is, and the claim below compares it as that.
+fn dispatch_worker_set_path_settings(set: List<HandedEntry>, exit_hook: NonEmptyStr) -> List<SystemdRunProperty> {
+  concat(
+    concat(
+      worker_root_equivalent_socket_denial_properties(),
+      [
+      NamedUnitSetting { property: WorkingDirectoryProperty, value: dispatch_worker_set_working_directory(set: set) as NonEmptyStr },
+      NamedUnitSetting { property: StandardOutputProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: true) as NonEmptyStr },
+      NamedUnitSetting { property: StandardErrorProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: false) as NonEmptyStr },
+      NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
+      NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
+      NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
+      ],
+    ),
+    dispatch_worker_set_credential_settings(set: set),
+  )
+}
+
+// THE CREDENTIALS THE MANAGER HANDS THE UNIT, one LoadCredential= per credential entry, in set order. Empty
+// for a set with none, which is every set but a dedicated worker's (gunbc.roadmap.dispatch_worker_unit_confinement
+// dispatch_worker_credentials).
+fn dispatch_worker_set_credential_settings(set: List<HandedEntry>) -> List<SystemdRunProperty> {
+  fold(set, init: [], f: (acc, e) =>
+    match e.role {
+      HandedCredentialSource { identifier: id } => concat(acc, [LoadCredentialSetting { identifier: id, source: e.path as NonEmptyStr }])
+      _ => acc
+    })
+}
+
+fn setting_carries_paths(p: SystemdRunProperty) -> Bool {
+  match p {
+    NamedUnitSetting { property: prop, value: _ } => systemd_property_carries_paths(property: prop)
+    EmptyCapabilityBoundingSet => false
+    LoadCredentialSetting { identifier: _, source: _ } => true
+  }
+}
+
+// THE EQUALITY CLAIM: the path-carrying settings of a worker unit's property list are exactly the
+// rendering of its handed set. A raw path setting added beside the set, or a set entry the unit does
+// not render, makes the lists differ.
+fn dispatch_worker_path_settings_are_the_set(
+  properties: List<SystemdRunProperty>,
+  set: List<HandedEntry>,
+  exit_hook: NonEmptyStr,
+) -> Bool {
+  filter(properties, p => setting_carries_paths(p: p)) == dispatch_worker_set_path_settings(set: set, exit_hook: exit_hook)
+}

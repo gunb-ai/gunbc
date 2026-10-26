@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<IPMI>
+  <BIOS VENDOR="American Megatrends Inc." VER="3.7" REL_DATE="04/29/2026"/>
+  <SYSTEM MANUFACTURER="Supermicro" PN="Super Server" SN="0123456789" SKUN="To be filled by O.E.M."/>
+  <CPU TYPE="03h" SPEED="2000 MHz" PROC_UPGRADE="37h" CORE="64" CORE_ENABLED="64" SOCKET="CPU" MANUFACTURER="Advanced Micro Devices, Inc." VER="AMD EPYC 7702P 64-Core Processor               " SN="Unknown" ASSET="Unknown" PN="Unknown"/>
+  <DIMM TYPE="1ah" SPEED="2667 MHz" CFG_SPEED="2667 MHz" SIZE="16384 MiB" LOCATION="DIMMC1" SN="80AD011634716CAB6E" PN="HMA82GR7AFR4N-VK    " BANK_LOCATION="P0_Node0_Channel2_Dimm0" ASSET="DIMMC1_AssetTag (date:16/34)" MANUFACTURER="SK Hynix"/>
+  <PowerSupply TYPE="Switching" STATUS="Unknown" IVRS="Auto-switch" UNPLUGGED="NO" PRESENT="NO" HOTREP="NO" MAXPOWER="Unknown" GROUP="2" LOCATION="PSU2" SN="To Be Filled By O.E.M." PN="To Be Filled By O.E.M." ASSET="To Be Filled By O.E.M." MANUFACTURER="To Be Filled By O.E.M." NAME="To Be Filled By O.E.M." REV="To Be Filled By O.E.M."/>
+  <PowerSupply TYPE="Switching" STATUS="Unknown" IVRS="Auto-switch" UNPLUGGED="NO" PRESENT="NO" HOTREP="NO" MAXPOWER="Unknown" GROUP="1" LOCATION="PSU1" SN="To Be Filled By O.E.M." PN="To Be Filled By O.E.M." ASSET="To Be Filled By O.E.M." MANUFACTURER="To Be Filled By O.E.M." NAME="To Be Filled By O.E.M." REV="To Be Filled By O.E.M."/>
+</IPMI>

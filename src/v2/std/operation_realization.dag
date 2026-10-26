@@ -6,7 +6,7 @@ import std.effect_grant {
   Envelope, HandlerBinding, CoveredBy, NoCoveringGrant, covering_grant,
   NamespacePosition, ServiceOpTree, Read, Write, Verb,
 }
-import v2.std.operation_argv { OperationRef, BoundOperationInvocation, InputText, InputTextList }
+import std.operation_argv { OperationRef, BoundOperationInvocation, InputText, InputTextList }
 import std.list { first_duplicate_by_key }
 import std.algebra { empty_map, map_insert, map_lookup }
 import std.measure { Second, second, second_count }

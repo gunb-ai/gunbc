@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.observation_heartbeat_lockstep_stall
 
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when_awaiting }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when_awaiting }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 

@@ -24,7 +24,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.type_binder { node_inferred_subtree_nodes }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   StructuralLabel,
   label_sort_key,
   Arrow,
@@ -37,7 +37,8 @@ import v2.std.node {
   TypeNode,
   arrow_signature_order_edge,
   node_subtree_nodes,
-  symbol_lexeme
+  symbol_lexeme,
+  NotADeclaration
 }
 import v2.std.text { String }
 import std.algebra { list_snoc_item, fold_list, list_at_optional }
@@ -75,7 +76,7 @@ fn product_introduction_node_derived(inferred: InferredTree, n: Node) -> Bool {
     Absent => false
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => false
+        GroundingNotDerived { node: _, site: _ } => false
         DerivedGrounding { grounding: _ } => true
       }
   }
@@ -157,7 +158,7 @@ fn is_params_conj(n: Node) -> Bool {
 // (v2.std.node_query binder_node_parts), and its type must be the type-denotation kind.
 fn binder_evidence_is_type_kind(evidence: Node) -> Bool {
   match binder_node_parts(n: evidence) {
-    Present { value: parts } => (parts.type_node == kind_node(kind: TypeDenotationKind)) && binder_evidence_has_no_default(parts: parts)
+    Present { value: parts } => (node_same_occurrence(a: parts.type_node, b: kind_node(kind: TypeDenotationKind))) && binder_evidence_has_no_default(parts: parts)
     Absent => false
   }
 }
@@ -194,7 +195,7 @@ fn params_conj_evidence_is_composed_over_type_kind(inferred: InferredTree, n: No
     Absent => false
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => false
+        GroundingNotDerived { node: _, site: _ } => false
         DerivedGrounding { grounding: g } =>
           let evidence = g.witness.structural.evidence
           match evidence.kind {
@@ -323,7 +324,7 @@ test fn product_introduction_leaves_childless_conj_on_the_frontier_holds() -> Bo
         Absent => false
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => true
+            GroundingNotDerived { node: _, site: _ } => true
             DerivedGrounding { grounding: _ } => false
           }
       }
@@ -338,7 +339,7 @@ fn product_introduction_hand_tree_grounding(tree: Node, n: Node) -> Int {
         Absent => 2
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => 1
+            GroundingNotDerived { node: _, site: _ } => 1
             DerivedGrounding { grounding: _ } => 0
           }
       }
@@ -355,8 +356,8 @@ test fn product_introduction_leaves_partially_evidenced_conj_on_the_frontier_hol
   let partial = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^derived_field }, target: derived_child },
-      Edge { label: Authored { name: ^frontier_field }, target: frontier_child }
+      Edge { label: Authored { name: ^derived_field }, target: derived_child, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^frontier_field }, target: frontier_child, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

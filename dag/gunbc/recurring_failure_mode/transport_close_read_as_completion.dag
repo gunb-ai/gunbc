@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.transport_close_read_as_completion
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data transport_close_read_as_completion: RecurringFailureMode = RecurringFailureMode {
   identity: "transport_close_read_as_completion" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a transport close is read as protocol completion** (a consumer of a streamed response decides the response is FINISHED because the connection ENDED, rather than because the protocol's own terminator arrived.",

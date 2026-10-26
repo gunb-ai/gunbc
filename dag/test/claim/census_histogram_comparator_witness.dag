@@ -1,0 +1,67 @@
+module test.claim.census_histogram_comparator_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensusRow,
+  census_blocking_histograms_equal,
+  census_histograms_equal,
+  censuses_differ_by_exactly_the_target_key,
+}
+
+// The comparator's inputs are SUPPLIED ROWS: the claim is about what the comparator returns for rows
+// of a given shape, so no source is compiled here (the compiled-source route is executed by
+// test.claim.fleet_fan_mint_seal_witness and test.claim.annotation_inside_body_witness).
+
+fn row(class: String, subject: String, blocking: Bool, count: Int) -> CompileDiagnosticCensusRow {
+  CompileDiagnosticCensusRow { diagnostic_class: class as NonEmptyStr, subject_name: subject, blocking: blocking, count: count, rendered_pair: Absent {} }
+}
+
+fn base() -> List<CompileDiagnosticCensusRow> {
+  [row(class: "A", subject: "x", blocking: true, count: 2), row(class: "B", subject: "y", blocking: true, count: 1)]
+}
+
+// SAME MULTIPLICITIES IN A DIFFERENT ORDER, AND ONE KEY SPLIT ACROSS TWO ROWS, ARE EQUAL.
+test fn witness_order_and_row_splitting_do_not_matter() -> Bool {
+  let reordered = [row(class: "B", subject: "y", blocking: true, count: 1), row(class: "A", subject: "x", blocking: true, count: 2)]
+  let split = [row(class: "A", subject: "x", blocking: true, count: 1), row(class: "B", subject: "y", blocking: true, count: 1), row(class: "A", subject: "x", blocking: true, count: 1)]
+  census_histograms_equal(a: base(), b: reordered) && census_histograms_equal(a: base(), b: split)
+}
+
+// A KEY THAT VANISHES WHILE ANOTHER APPEARS AT THE SAME TOTAL IS UNEQUAL, in both argument orders.
+test fn witness_offsetting_change_is_unequal() -> Bool {
+  let swapped = [row(class: "A", subject: "x", blocking: true, count: 2), row(class: "C", subject: "z", blocking: true, count: 1)]
+  !census_histograms_equal(a: base(), b: swapped) && !census_histograms_equal(a: swapped, b: base())
+}
+
+// DUPLICATE ROWS WHOSE SUMMED COUNT CHANGES ARE UNEQUAL: a tally of row entries would call these equal.
+test fn witness_summed_duplicate_count_is_compared() -> Bool {
+  let more = [row(class: "A", subject: "x", blocking: true, count: 2), row(class: "A", subject: "x", blocking: true, count: 1), row(class: "B", subject: "y", blocking: true, count: 1)]
+  !census_histograms_equal(a: base(), b: more)
+}
+
+// A ONE-SIDED KEY IS RED IN EACH DIRECTION: an extra key only in `b`, and a key missing from `b`.
+test fn witness_one_sided_key_is_unequal() -> Bool {
+  let extra = [row(class: "A", subject: "x", blocking: true, count: 2), row(class: "B", subject: "y", blocking: true, count: 1), row(class: "D", subject: "w", blocking: true, count: 1)]
+  let missing = [row(class: "A", subject: "x", blocking: true, count: 2)]
+  !census_histograms_equal(a: base(), b: extra) && !census_histograms_equal(a: extra, b: base())
+    && !census_histograms_equal(a: base(), b: missing) && !census_histograms_equal(a: missing, b: base())
+}
+
+// BLOCKING IS PART OF THE KEY, and the blocking comparison ignores advisory rows.
+test fn witness_blocking_is_part_of_the_key() -> Bool {
+  let advisory_more = [row(class: "A", subject: "x", blocking: true, count: 2), row(class: "B", subject: "y", blocking: true, count: 1), row(class: "N", subject: "n", blocking: false, count: 3)]
+  !census_histograms_equal(a: base(), b: advisory_more) && census_blocking_histograms_equal(a: base(), b: advisory_more)
+}
+
+// THE ONE-KEY DIFFERENTIAL IS THE SAME INDEXED WALK: exactly one extra target occurrence passes; a
+// second extra, an offsetting key, or no target at all refuses.
+test fn witness_differential_reuses_the_walk() -> Bool {
+  let red = [row(class: "A", subject: "x", blocking: true, count: 3), row(class: "B", subject: "y", blocking: true, count: 1)]
+  let red_twice = [row(class: "A", subject: "x", blocking: true, count: 4), row(class: "B", subject: "y", blocking: true, count: 1)]
+  let red_offset = [row(class: "A", subject: "x", blocking: true, count: 3), row(class: "C", subject: "z", blocking: true, count: 1)]
+  censuses_differ_by_exactly_the_target_key(red: red, green: base(), target_class: "A", target_subject: "x")
+    && !censuses_differ_by_exactly_the_target_key(red: red_twice, green: base(), target_class: "A", target_subject: "x")
+    && !censuses_differ_by_exactly_the_target_key(red: red_offset, green: base(), target_class: "A", target_subject: "x")
+    && !censuses_differ_by_exactly_the_target_key(red: base(), green: base(), target_class: "A", target_subject: "x")
+}

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.optional_equality_answers_by_representation
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data optional_equality_answers_by_representation: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_equality_answers_by_representation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: `xs.first() == Present { value: X }` answers false when the list's first element is X. Two optionals compared, both meaning Present X, and the interpreter answers unequal. The comparison is T? == T?, so the wall of optional_compared_with_required_value (EqualityOptionalityMismatch, gunbc#13179) admits it, correctly: it has one meaning.",

@@ -91,7 +91,8 @@ this first assembly so the next revision can reduce handling and fasteners furth
 
 P1 and P2 were sliced through the digest-verified Orca 2.4.2 DAG route, using the
 existing A1 mini 0.4 mm / textured PEI / PLA profiles and explicit cassette process
-settings now in `slice_run.cassette_settings_members`. Four walls, 20% gyroid, five
+settings then held in `slice_run.cassette_settings_members` (since removed; the live
+process policy is `print_preparation.required_settings`). Four walls, 20% gyroid, five
 top/bottom layers, 0.20 mm layer setting, 2 mm outer brim, normal automatic supports.
 Readback confirms 220 C nozzle / 65 C textured bed, filament index 0 for AMS slot 1,
 25 mm total model height, support use, proper unit-scale in-plane placement and in-bed
