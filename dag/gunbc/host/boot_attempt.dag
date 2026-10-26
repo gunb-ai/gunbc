@@ -737,9 +737,12 @@ fn boot_attempt_console_debt_outstanding(present_decls: List<DeclarationRef>) ->
 // outstanding fold -- and cannot disagree with it. An answer keyed to one declaration only (as the first
 // carrier did, naming ConsoleReading while five mtcollins1_ borrowings sat beside it) is the same fact
 // with two writers, which is exactly what this fold removes. CONSUMERS today: the mapping witness
-// (megarac_boot_record_mapping_witness, claims b/c/c2); at dissolution, the re-home that retires these
-// six declarations (work item node://adhoc-de73c7a1-87b) flips this to Fired by making the census lack
-// them -- no other code path may assert the debt is gone. CAVEAT carried from std.dissolution's header:
+// (megarac_boot_record_mapping_witness) -- claims (b)/(c)/(c2) exercise the fold's LOGIC on a census the
+// witness assembles, and claim (d) feeds it a population BUILT FROM A CORPUS READ (v2.std.decl_index
+// decl_facts_at), which is what review 86612 required: a fold nobody hands the real corpus to is a lens
+// nothing gates on (§6). At dissolution, the re-home that retires these six declarations (work item
+// node://adhoc-de73c7a1-87b) flips this to Fired by making the census lack them -- no other code path may
+// assert the debt is gone. CAVEAT carried from std.dissolution's header:
 // an empty census reports FIRED, which is "nothing is present" and not a default -- a caller must hand
 // over the real declaration population or it is answering about a corpus it never read.
 fn boot_attempt_console_debt_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {

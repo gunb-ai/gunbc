@@ -19,8 +19,10 @@ module test.claim.machine_intake.megarac_boot_record_mapping_witness
 
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup, length, non_empty_to_list, string_contains }
-import std.decl_ref { decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionPending, DissolutionFired }
+import v2.std.decl_index { DeclFact, decl_facts_at }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import std.measure { byte_size }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
 import gunbc.host.boot_attempt {
@@ -956,6 +958,53 @@ test fn the_console_debt_carrier_fires_when_the_reading_retires() -> Bool {
     _ => false
   }
   while_present && after_retirement && one_left
+}
+
+// (d) THE FOLD READS THE DECLARATION POPULATION IT CLAIMS TO WATCH, not the carrier's own list.
+// (review 86612; DESIGN §6: "a lens nothing gates on is itself a lie", §3c: a witness asserting
+// existence rather than exercising behavior). Claims (b)/(c)/(c2) above hand the fold a census the
+// witness assembled from the carrier itself, so they pin the fold's LOGIC but nobody ever feeds it the
+// corpus the leak sentence talks about -- nothing could ever make the fold read Fired, and the typed
+// carrier was still prose in a type's clothes. This claim is the consumer that closes that: the
+// population handed to the fold is BUILT FROM A CORPUS READ (v2.std.decl_index decl_facts_at, one keyed
+// read of every borrowing's qualified name -- the keyed read because a per-element uncached lookup
+// re-walked the whole pool, measured 91s each), so the fold answers about declarations that exist in
+// `dag`, not about a list it was handed. It also holds the carrier to being a census and not a guess:
+// each borrowed name must resolve to EXACTLY ONE row (zero = the carrier names something the corpus
+// does not declare, i.e. the fabricated-citation class; two = an ambiguous citation nobody can audit),
+// and the population must be non-empty, because std.dissolution's header warns an EMPTY census reads
+// Fired -- "nothing is present" is not a verdict. Today every borrowing resolves, so the fold says
+// PENDING against the real corpus; when the re-home (work item node://adhoc-de73c7a1-87b) retires one,
+// its row disappears from the read, the derived population shrinks, and this claim is what reports it.
+fn console_debt_qualified_name(ref: DeclarationRef) -> String {
+  concat(ref.module_path as String, concat(".", ref.decl_name as String))
+}
+
+fn console_debt_present_in_corpus(facts: List<DeclFact>, ref: DeclarationRef) -> Bool {
+  length(xs: decl_facts_matching_qualified_name(qn: console_debt_qualified_name(ref: ref), facts: facts)) > 0
+}
+
+test fn the_console_debt_fold_reads_the_real_declaration_population() -> Bool {
+  let refs = boot_attempt_console_debt_refs
+  let facts = decl_facts_at(
+    pool_roots: ["dag"],
+    qualified_names: map(refs, r => console_debt_qualified_name(ref: r)),
+    type_names: [],
+  )
+  // the carrier cites live declarations: one row each, none missing, none ambiguous.
+  let each_named_once = all(refs, r =>
+    length(xs: decl_facts_matching_qualified_name(qn: console_debt_qualified_name(ref: r), facts: facts)) == 1)
+  // the population the fold is asked about comes out of that read.
+  let corpus_decls = filter(refs, r => console_debt_present_in_corpus(facts: facts, ref: r))
+  let read_is_a_population = length(xs: corpus_decls) == length(xs: refs)
+  // and the fold, given THAT, says the debt is live -- Pending rather than the empty-census Fired.
+  let fold_over_corpus = match boot_attempt_console_debt_status(present_decls: corpus_decls) {
+    DissolutionPending => true
+    _ => false
+  }
+  let outstanding_matches_corpus =
+    length(xs: boot_attempt_console_debt_outstanding(present_decls: corpus_decls)) == length(xs: corpus_decls)
+  each_named_once && read_is_a_population && fold_over_corpus && outstanding_matches_corpus
 }
 
 // ── THE DERIVED FINDINGS, READ OUT OF THE FIELDS THE MAPPING FILLS ────────────────────────────────
