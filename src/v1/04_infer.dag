@@ -33,7 +33,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance_of,
+import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -124,7 +124,7 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names,
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names, template_renders_receiver_elements_as_host_text, builtin_receiver_self_host_text_param_names, builtin_host_display_deferred_param_names,
   is_empty_map_constructor, is_empty_set_constructor,
   bare_call_non_declaration_binding, EmptyCollectionConstructor, BuiltinFunction,
   KernelMethodOnly, DeclarationOnly
@@ -176,7 +176,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
+import std.algebra { FreeSemigroup, CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
@@ -205,7 +205,7 @@ import v1.compiler.infer_emit_info {
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
 }
 import v1.compiler.infer_items {
-  ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
+  ItemKind, FnItem, TypeItem, DataItem, ServiceItem, ResourceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
   inferred_to_outputs, item_kind, item_is_effectful_callee,
@@ -608,7 +608,10 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Set<String
 // declaration's own span and ident_span, so the census join (v1.compiler.infer_env
 // declaration_ref_of_type_node) recovers the same DeclarationRef from either spelling, and nothing
 // kernel-minted stands where a corpus declaration exists.
-fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
+// THE REFERENCE ALSO CARRIES THE DECLARATION'S FORM. It is the binding the symbol-index census
+// serves for that declaration, and v1.compiler.infer_lookup census_declaration_identity reads its
+// kind off it; stamped NotAModuleItem, a resource read as OtherItem and was admitted as a callable.
+fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?, module_item_kind: ParsedModuleItemKind) -> Node {
   let declared_leaf = Node {
     occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
@@ -621,7 +624,7 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> 
     inferred: Present { value: Resolved { node: declared_leaf } },
     return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: module_item_kind, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
 }
 
@@ -3546,23 +3549,102 @@ data equality_extensional_container_rows: Map<String, Bool> = carrier_container_
 // IDENTITY, read before any member walk. v2.std.node Edge carries Edge.declaration, a provenance
 // field outside content_hash and the erasure routes, which derived == nevertheless reads; a derived
 // == reaching an Edge therefore compares provenance and answers differently from the erasure routes.
-// Node reaches Edge through its children and joins this set when its existing == sites are moved.
+// Node reaches Edge through its children, so it is declared inadmissible too: a Node comparison names
+// its question through v2.std.node node_equal_ignoring_provenance (structural) or node_same_occurrence
+// (identity).
 // SEED PATH ONLY: the native v2 infer has no == operand judgment; the capability that retires that
 // gap is a native v2 == operand judgment (gunbc.rung_drop native_equality_operand_judgment).
-data equality_inadmissible_declaration_identities: List<String> = [
-  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Edge")
+type EqualityInadmissibleDeclaration {
+  decl_file: String
+  declared_name: String
+}
+
+data equality_inadmissible_declarations: List<EqualityInadmissibleDeclaration> = [
+  EqualityInadmissibleDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Edge" },
+  EqualityInadmissibleDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Node" }
 ]
 
-// THE WALK STOPS AT THESE: Node's children reach Edge, but Node == is not yet inadmissible (ruling A:
-// Edge now, Node when its existing == sites are moved to the erasure route). Each row is a site-debt
-// boundary that leaves with the Node row above, not a second admission.
-data equality_walk_boundary_declaration_identities: List<String> = [
-  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Node")
-]
+data equality_inadmissible_declaration_identities: List<String> = equality_inadmissible_declarations |> map(d => type_declaration_identity_key(decl_file: d.decl_file, declared_name: d.declared_name))
+
+// A NARROWED, DECLARED DROP (gunbc.rung_drop.node_reaching_composite_equality, which reads its population
+// from here): each row names one declaration ("<module> <declaration>") whose `==` compares a COMPOSITE that reaches Node (a record or
+// coproduct with a Node somewhere inside), where no erasure route exists yet because a composite's
+// equality would have to be written by hand per type. Such a site is admitted; a bare Node or Edge operand
+// still refuses everywhere, and a composite reaching Node anywhere else still refuses. The capability that
+// retires the list is derived structural equality with a Node-leaf occurrence route.
+data equality_node_reaching_composite_drop_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.lens.cost symbolic_max_rhs", tail: [
+  "v2.lens.idempotency idempotency_classified_eq",
+  "v2.lens.parallelism parallelism_classified_eq",
+  "v2.test.claim.callexec.kinded_type_param_instances kti_non_generic_call_carries_no_instances",
+  "v2.test.claim.manual.v4_evaluator_runtime_anchor v4_anchor_model_core_same",
+  "v2.test.claim.name_resolve.admission_fail_closed validated_subject_index_matches_general_lookup",
+  "v2.test.lens_complexity.map_id map_id_complexity_projection_holds",
+  "v2.test.lens_complexity.map_id map_id_cost_projection_holds",
+  "v2.test.lens_complexity.nested nested_complexity_projection_holds",
+  "v2.test.lens_complexity.nested nested_cost_projection_holds",
+  "v2.test.lens_cost.arrow_body_cost_domain_excluded arrow_body_cost_domain_excluded_holds",
+  "v2.test.lens_cost.atom_zero atom_zero_claim_holds",
+  "v2.test.lens_cost.bounded_summation existing_cost_lens_kernel_unchanged",
+  "v2.test.lens_cost.disj_max disj_max_claim_holds",
+  "v2.test.lens_cost.helper_properties control_harness_distinguishes_helpers",
+  "v2.test.lens_cost.helper_properties max_dominance_orders_linear_over_log",
+  "v2.test.lens_cost.helper_properties max_equal_operands_return_themselves",
+  "v2.test.lens_cost.helper_properties max_zero_delegates_to_right",
+  "v2.test.lens_cost.helper_properties product_one_is_identity",
+  "v2.test.lens_cost.helper_properties product_unknown_propagates",
+  "v2.test.lens_cost.helper_properties product_zero_absorbs_from_left",
+  "v2.test.lens_cost.helper_properties product_zero_absorbs_from_right",
+  "v2.test.lens_cost.helper_properties sequential_general_case_sums",
+  "v2.test.lens_cost.helper_properties sequential_unknown_left_wins",
+  "v2.test.lens_cost.helper_properties sequential_zero_is_left_identity",
+  "v2.test.lens_cost.helper_properties sequential_zero_is_right_identity",
+  "v2.test.lens_cost.map_linear map_linear_claim_holds",
+  "v2.test.lens_cost.nested_product nested_product_claim_holds",
+  "v2.workflow.bootstrap bootstrap_projection_inputs_well_formed",
+  "v2.workflow.executor executor_batches_preserve_frontiers",
+  "v2.workflow.realization_runner runner_schedule_contains_batch"
+] }
+
+// The refusal names the type it fired on; an operand whose own type IS that type is the inadmissible
+// declaration itself (Node, Edge), not a composite that reaches it.
+fn equality_operand_is_the_refused_type(n: Node, r: EqualityAdmissionRefusal, scope: InferScope) -> Bool {
+  let peeled = normalize_access_type_node(n: n)
+  let source_indices = scope.type_env.source_indices
+  let identity = type_reference_identity(n: peeled, source_indices: source_indices)
+  authored_name_at(source_indices: source_indices, node: peeled) == r.type_name
+    || (equality_inadmissible_declaration_identities |> any(i => i == identity))
+    || (equality_inadmissible_declaration_leaf_names |> any(l => l == qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))))
+}
+
+// WHY THE DECLARED NAME IS READ AS WELL AS THE IDENTITY (measured on the bare-Node fixture, 2026-10-24):
+// a top-level operand's type node carries no Resolved declaration, so type_reference_identity keys it by
+// the USE-SITE file ("test.dag::Node", never "src/v2/std/node.dag::Node"); the guard catches a bare Node
+// == only through Node's own fields (Edge.target: Node), whose types do resolve. So the identity test
+// alone misses a bare inadmissible operand, and its declared name is read from the SAME rows. This fails
+// closed: a user type merely named Node or Edge is refused at a listed declaration, never admitted.
+// Trigger to drop the name read: an operand type reference carries its resolved declaration, so its
+// identity is the declaring file's.
+data equality_inadmissible_declaration_leaf_names: List<String> = equality_inadmissible_declarations |> map(d => d.declared_name)
+
+fn equality_node_reaching_composite_dropped(r: EqualityAdmissionRefusal, left: Node, right: Node, scope: InferScope) -> Bool {
+  r.member == equality_inadmissible_member
+    && !equality_operand_is_the_refused_type(n: left, r: r, scope: scope)
+    && !equality_operand_is_the_refused_type(n: right, r: r, scope: scope)
+    && equality_node_reaching_composite_drop_listed(key: concat(scope.module_name, " ", scope.caller_decl_name))
+}
+
+fn equality_node_reaching_composite_drop_listed(key: String) -> Bool {
+  equality_node_reaching_composite_drop_population.head == key
+    || (equality_node_reaching_composite_drop_population.tail |> any(k => k == key))
+}
+
+// The member text an inadmissible-declaration refusal carries; the refusal's producer, its diagnostic and
+// the node-reaching-composite drop all read this one declaration.
+data equality_inadmissible_member: String = "declared equality-inadmissible"
 
 fn equality_inadmissible_type_refusal(identity: String, name: String) -> EqualityAdmissionRefusal? {
   if equality_inadmissible_declaration_identities |> any(i => i == identity) {
-    equality_refused(carrier: name, member: "declared equality-inadmissible", member_judged: true)
+    equality_refused(carrier: name, member: equality_inadmissible_member, member_judged: true)
   } else {
     none
   }
@@ -3607,8 +3689,6 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
         let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
         if equality_inadmissible_type_refusal(identity: identity, name: name) != none {
           equality_inadmissible_type_refusal(identity: identity, name: name)
-        } else if equality_walk_boundary_declaration_identities |> any(i => i == identity) {
-          none
         } else if (peeled.connective == Arrow) {
           equality_refused(carrier: name, member: "function value", member_judged: true)
         } else if (peeled.connective == Conj) {
@@ -3756,7 +3836,7 @@ fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineInde
 }
 
 fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan) -> CompilerDiagnostic {
-  if r.member == "declared equality-inadmissible" {
+  if r.member == equality_inadmissible_member {
     EqualityOnInadmissibleType { type_name: r.type_name, span: span }
   } else if r.member_judged {
     EqualityOnFunctionMember { type_name: r.type_name, member: r.member, span: span }
@@ -3827,10 +3907,14 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
       )]
     } else {
       match equality_operand_admission(n: lt, scope: scope, visited: empty_map(), depth: 0) {
-        Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
+        Present { value: r } =>
+          if equality_node_reaching_composite_dropped(r: r, left: lt, right: rt, scope: scope) { [] }
+          else { [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)] }
         Absent =>
           match equality_operand_admission(n: rt, scope: scope, visited: empty_map(), depth: 0) {
-            Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
+            Present { value: r } =>
+              if equality_node_reaching_composite_dropped(r: r, left: lt, right: rt, scope: scope) { [] }
+              else { [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)] }
             Absent => []
           }
       }
@@ -7108,20 +7192,41 @@ type Tier2bBt {
 // (v1.compiler.infer_method builtin_host_text_param_names) is asked the one text-representation
 // authority (v1.compiler.infer_env text_representation_by_identity); a CodePointSequence there refuses,
 // located at the argument. An argument is matched to its parameter by label, else by position.
+fn builtin_argument_bound_name(func_name: String, arg: Node, index: Int, scope: InferScope) -> String {
+  match arg_name_at(n: arg, source_indices: scope.type_env.source_indices) {
+    Present { value: label } => label
+    Absent => match builtin_param_names(name: func_name) |> skip(index) |> first { Present { value: n } => n  Absent => "" }
+  }
+}
+
 fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node>, scope: InferScope) -> List<ErrorNode> {
   let host_params = builtin_host_text_param_names(name: func_name)
   if host_params |> count == 0 { [] }
   else {
-    let formal_names = builtin_param_names(name: func_name)
+    let self_params = builtin_receiver_self_host_text_param_names(name: func_name)
+    let deferred_params = builtin_host_display_deferred_param_names(name: func_name)
+    let self_is_unestablished = typed_args |> enumerate |> any(pair =>
+      self_params |> any(n => n == builtin_argument_bound_name(func_name: func_name, arg: pair.second, index: pair.first, scope: scope))
+        && match arg_value(n: pair.second).inferred {
+          Present { value: Resolved { node: _ } } =>
+            match type_reference_declaration_reading(n: expression_value_type(e: arg_value(n: pair.second)), source_indices: scope.type_env.source_indices, env: scope.type_env) {
+              TypeReferenceIsTypeVariable { id: _ } => true
+              _ => false
+            }
+          _ => true
+        })
     typed_args |> enumerate |> flat_map(pair => {
       let arg = pair.second
-      let bound_name = match arg_name_at(n: arg, source_indices: scope.type_env.source_indices) {
-        Present { value: label } => label
-        Absent => match formal_names |> skip(pair.first) |> first { Present { value: n } => n  Absent => "" }
-      }
+      let bound_name = builtin_argument_bound_name(func_name: func_name, arg: arg, index: pair.first, scope: scope)
       if !(host_params |> any(n => n == bound_name)) { [] }
       else {
         let value = arg_value(n: arg)
+        let position = concat("'", concat(bound_name, concat("' of ", func_name)))
+        let route_judged = !(deferred_params |> any(n => n == bound_name))
+          && (!(self_params |> any(n => n == bound_name)) || !self_is_unestablished)
+        let route_diags = if route_judged {
+          nominal_value_at_host_text_diags(t: expression_value_type(e: value), position: position, span: value.span, scope: scope)
+        } else { [] }
         match value.inferred {
           Present { value: Resolved { node: _ } } =>
             match argument_text_representation(value: value, type_env: scope.type_env) {
@@ -7130,8 +7235,10 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
                   " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence"),
                 span: value.span, module_name: scope.module_name)]
               HostText => []
-              NotText => []
-              TextRepresentationUnidentified => [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: concat("argument '", concat(bound_name, concat("' of ", func_name))), span: value.span }, module_name: scope.module_name)]
+              NotText => route_diags
+              TextRepresentationUnidentified => concat(
+                [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: concat("argument ", position), span: value.span }, module_name: scope.module_name)],
+                route_diags)
             }
           _ => []
         }
@@ -7572,7 +7679,7 @@ fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScop
 
 fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
   node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
-    || node_is_kernel_mint_named(n: n, name: "Bool") || node_is_kernel_mint_named(n: n, name: "Unit")
+    || node_is_kernel_mint_named(n: n, name: "Unit")
     || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
 }
 
@@ -7589,22 +7696,105 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
   }
 }
 
-// A cast source is a nominal value with no declared conversion unless its DECLARATION is grounded onto
-// a kernel type or is the std.types `Unit` placeholder. Both exemptions are keyed on the exact
+// THE ONE NOMINAL PREDICATE AT EVERY HOST-TEXT CROSSING
+// (gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text).
+// A value whose type is a declared product or coproduct has no implicit route into host text: the
+// host realization would write its debug rendering. Chain (i) asks this at `as` (validate_cast);
+// chain (ii) asks it at every host-text position a builtin or algebra method declares
+// (builtin_text_argument_crossing_diags, algebra_method_host_text_crossing_diags). Kernel Int, Nat
+// and Bool are no nominal and are not refused here: at a host-text formal they follow the cast's
+// admission of the same source, and a refusal of a kernel source into text joins this judgment so
+// that `as` and the host-text formals give one answer.
+//
+// A type is a nominal value with no declared conversion unless its DECLARATION is grounded onto
+// a kernel type or is the std.types `Unit` placeholder. Every exemption is keyed on the exact
 // DeclarationRef read by type_reference_declaration_ref, never a module-path substring and never a
 // spelling: Nat is exempt because gunbc.structural_realization_bindings kernel_grounding_rows carries a
 // row whose carrier IS that declaration (a Nat is an Int, so `n as Int` is a declared identity), and a
 // foreign type spelled `Unit` is not std.types Unit. `Unit` is what the call-site generic solve answers
 // for a parameter it did not solve and what an absent literal infers as, so it is no established
-// nominal identity. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
+// nominal identity. Kernel Int and Float have no product or coproduct head and are not read as
+// nominal; Bool is: std.types declares it as the coproduct `True | False`, so `b as String` refuses
+// here and so does a Bool at a host-text formal (the refusal's reason text calls it nominal for now;
+// a kernel-scalar arm of this judgment gives it its own). Other kernel mints with a product or
+// coproduct head (the kernel Optional, Map, RestResult, Hash, Callable) are not exempt: a kernel
+// Optional at a host-text formal renders `Present { value: .. }`, this class. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
 // itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
 // located, so it is counted by the diagnostic census rather than waved through.
-fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
-  match type_reference_declaration_ref(n: source_node, source_indices: source_indices, env: env) {
-    Absent => !cast_source_is_solver_unit_placeholder(source_node: source_node)
-    Present { value: d } =>
-      !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
-        && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
+fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
+  (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
+    || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: t, scope: scope)))
+    && match type_reference_declaration_ref(n: t, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+      Absent => !cast_source_is_solver_unit_placeholder(source_node: t)
+      Present { value: d } =>
+        !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
+          && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
+    }
+}
+
+// The refusal every chain (ii) position emits, located at the value. An optional layer
+// (CardOptional on the value's type) has no route into text either: the host renders
+// `Present { value: .. }`. The cast refuses the same source through optional_cast_diags; both read
+// the layer through value_type_carries_optional_layer.
+fn nominal_value_at_host_text_diags(t: Node, position: String, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: t)
+  if value_type_carries_optional_layer(t: t, source_indices: scope.type_env.source_indices) {
+    [inference_error(message: concat("optional ", name, "? at host text ", position, ": no declared conversion"), span: span, module_name: scope.module_name)]
+  } else if value_type_is_declared_nominal(t: t, scope: scope) {
+    [inference_error(message: concat("nominal ", name, " at host text ", position, ": no declared conversion"), span: span, module_name: scope.module_name)]
+  } else { [] }
+}
+
+// THE HOST-TEXT POSITIONS OF AN ALGEBRA METHOD: each formal its template declares as the kernel
+// String (NamedTemplate String), each ReceiverSelf formal when the template returns ReceiverSelf and
+// the call's resolved result is host text, so Self IS the kernel String (the rule
+// v1.compiler.method builtin_host_text_param_names applies to the registry; a bare
+// `concat("id=", p)` resolves here, to the scalar free-monoid concat, before the registry is asked).
+// The result, not the receiver, is read because a literal receiver's text representation is not
+// always identified at this point (measured: the receiver read NotText or unidentified at corpus
+// concat sites whose result was host text),
+// and each receiver element when the template renders them (v1.compiler.method template_renders_receiver_elements_as_host_text).
+// `args` are the call's argument nodes after the receiver.
+fn algebra_method_host_text_crossing_diags(method_name: String, semantics: MethodSemantics?, receiver: Node, args: List<Node>, result_type: Node, scope: InferScope) -> List<ErrorNode> {
+  match semantics {
+    Present { value: sem } =>
+      match sem {
+        AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
+          match at {
+            Present { value: t } =>
+              let receiver_type = resolved_type(n: receiver)
+              let self_is_host_text = template_return_is_receiver_self(template: t)
+                && match text_representation_by_identity(n: result_type, env: scope.type_env) { HostText => true  _ => false }
+              let formal_diags = t.param_types |> skip(1) |> enumerate |> flat_map(pr => {
+                let host_text_formal = match pr.second {
+                  NamedTemplate { name: n } => n == "String"
+                  ReceiverSelf => self_is_host_text
+                  _ => false
+                }
+                if !host_text_formal { [] }
+                else {
+                      match args |> skip(pr.first) |> first {
+                        Present { value: a } =>
+                          let v = arg_value(n: a)
+                          match v.inferred {
+                            Present { value: Resolved { node: _ } } =>
+                              nominal_value_at_host_text_diags(t: expression_value_type(e: v), position: concat("String formal of ", method_name), span: v.span, scope: scope)
+                            _ => []
+                          }
+                        Absent => []
+                      }
+                }
+              })
+              let element_diags = if template_renders_receiver_elements_as_host_text(template: t)
+                  && node_is_element_collection(n: receiver_type, source_indices: scope.type_env.source_indices) {
+                receiver_type.children |> flat_map(ch => nominal_value_at_host_text_diags(t: child_type_node(ch: ch), position: concat("elements of ", method_name), span: receiver.span, scope: scope))
+              } else { [] }
+              concat(formal_diags, element_diags)
+            Absent => []
+          }
+        _ => []
+      }
+    Absent => []
   }
 }
 
@@ -7668,6 +7858,15 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 // pattern destructuring long before any comparison runs, so reconciling the two carriers
 // HERE would not clear those sites. That was measured and the repair withdrawn rather than
 // shipped on a plausible story.
+// AN OPTIONAL LAYER ON A VALUE'S TYPE, read once for every crossing that refuses it: the cast
+// (optional_cast_diags) and the host-text positions (nominal_value_at_host_text_diags). The layer is
+// either the cardinality mark (`T?`) or the Optional carrier written out (`Optional<T>`, read by its
+// last segment so a qualified std.optional.Optional spelling is the same carrier).
+fn value_type_carries_optional_layer(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  t.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t)) == "Optional"
+}
+
 fn optional_cast_diags(
   source_inferred: InferredNode?,
   target_type: Node,
@@ -7678,8 +7877,7 @@ fn optional_cast_diags(
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
-      let source_is_optional = src_node.return_cardinality == CardOptional
-        || qualified_last_segment(name: source_name) == "Optional"
+      let source_is_optional = value_type_carries_optional_layer(t: src_node, source_indices: source_indices)
       let target_is_optional = target_type.return_cardinality == CardOptional
       if source_is_optional && !target_is_optional {
         [make_error_node(
@@ -9684,7 +9882,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name)))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, result_type: bridge_result_type, scope: scope))))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
@@ -10067,7 +10265,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name)))])
+        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope)))])
       }
       }
 
@@ -10653,10 +10851,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
       let source_is_nominal = match inner_typed.inferred {
-        Present { value: Resolved { node: source_node } } =>
-          (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
-            || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: source_node, scope: scope)))
-            && cast_source_is_declared_nominal(source_node: source_node, source_indices: si, env: scope.type_env)
+        Present { value: Resolved { node: source_node } } => value_type_is_declared_nominal(t: source_node, scope: scope)
         _ => false
       }
       let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
@@ -15084,13 +15279,19 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
-  } else if formal.children |> count > 0 && (formal.children |> count) == (actual.children |> count) {
+  } else if formal.children |> count > 0 && formal.connective == actual.connective && (formal.children |> count) == (actual.children |> count) {
     unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
 }
 
 // A generic carries one child per type argument (List<T>, Map<K, V>), so its arguments unify
-// positionally; one rule serves every arity. A position is read RAW, not through child_type_node:
+// positionally; one rule serves every arity. THE TWO SIDES MUST HAVE ONE FORM. A child means a type
+// argument only under an application; under a coproduct declaration it is a variant, under a record a
+// field. A list element read through `.last()` arrives as the coproduct's declaration (Disj, one child
+// per variant), and against an application of the same arity the pairing bound R to the variant
+// StepEstablished: gunbc.machine_intake.arrival_converge then refused `variant not found in type
+// StepOutcome` on every arm of a match over the receipt. Unequal forms bind nothing, as unequal arity
+// does. A position is read RAW, not through child_type_node:
 // a formal child is a type expression whose inferred is its own TypeVariable, and child_type_node
 // answers error_type for anything not Resolved, so reading it through that would drop the very
 // binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
@@ -15611,6 +15812,7 @@ fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
     TypeItem => Present { value: ExportType }
     DataItem => Present { value: ExportData }
     ServiceItem => Present { value: ExportService }
+    ResourceItem => Absent
     OtherItem => Absent
   }
 }
@@ -15739,7 +15941,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.transport == none && item.children |> count > 0 {
-    let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+    let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span, module_item_kind: item.module_item_kind)
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
     let bare_node = Node {
@@ -16915,7 +17117,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       let alias_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.transport == none && item.children |> count > 0 {
-      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span, module_item_kind: item.module_item_kind)
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
@@ -17558,20 +17760,29 @@ fn build_module_context(contributions: List<ItemContribution>,
             rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
           }
         )
-        let root = namespace_root_from_properties(properties: sitem.properties, name: sname, source_indices: env.source_indices)
         InferScopeComponents {
           svc_registry: map_insert(acc.svc_registry, sname, entries),
-          svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
+          svc_locals: acc.svc_locals
         }
       Absent => acc
     }
   )
+  // A SERVICE ROOT IS BOUND ONLY WHERE ITS SERVICE IS DECLARED OR IMPORTED. The closure census
+  // supplies operation entries for a qualified service path; it binds no bare root. It used to: every
+  // service in the closure put its root into every module's locals, and the locals fold below writes
+  // those over the module's own variant locals. So once any module imported the bare-named
+  // extdeps.filesystem.filesystem_io Filesystem, a module that never imported it and declared its own
+  // `| Filesystem` arm read that arm as a service root, and the interpreter raised NoSuchVariable at
+  // run time for a program the checker accepted (v1_compiler compiler_tests
+  // service_root_binds_only_where_its_service_is_imported). The roots
+  // that remain come from local.svc_locals (the module's own services) and from
+  // merge_scope_from_imports (each imported module's services).
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
     svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
-    svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
+    svc_locals: local.svc_locals
   )
   let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
@@ -19039,7 +19250,9 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     positional_payload_variants: variant_shapes.positional_payload,
     shared_types: empty_set(),
     ownership_index: empty_map(),
+    moved_argument_index: empty_map(),
     movable: empty_set(),
+    moved_argument_occurrences: empty_set(),
     variant_to_enum: vtoe,
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
@@ -19054,6 +19267,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     expected_type: none,
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
+    trmc_out: false,
     dying_base_sites: empty_map()
   }
 }

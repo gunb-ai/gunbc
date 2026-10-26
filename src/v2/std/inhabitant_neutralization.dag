@@ -22,6 +22,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node {
+  node_equal_ignoring_provenance,
   Edge,
   Node,
   Symbol,
@@ -192,7 +193,7 @@ fn inhabitant_aligns_with_selection_policy(candidate: Node, selection: Node) -> 
                         Accepted { value: candidate_width, diagnostics: _ } =>
                           match inhabitant_width_node(inhabitant: selection) {
                             Accepted { value: selection_width, diagnostics: _ } =>
-                              candidate_width == selection_width
+                              node_equal_ignoring_provenance(a: candidate_width, b: selection_width)
                             Rejected { diagnostics: _ } => false
                           }
                         Rejected { diagnostics: _ } => false

@@ -10,7 +10,7 @@ import std.algebra {
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named,
   OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable,
-  free_monoid_scalar_templates, kernel_algebra_profile
+  free_monoid_scalar_templates, kernel_algebra_profile, collection_join_shape
 }
 
 import v1.std.core { Unmarked,
@@ -435,7 +435,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "module_declaration_facts_at": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "module_path", ty: NamedTemplate { name: "String" } }], returns: list_of_type_variable(id: "module_declaration_fact_elem") },
   "concept_decl_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "concept_decl_elem") },
   "decl_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "decl_fact_elem") },
-  "decl_facts_at": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "qualified_name", ty: NamedTemplate { name: "String" } }], returns: list_of_type_variable(id: "decl_fact_elem") },
+  "decl_facts_at": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "qualified_names", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "type_names", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "decl_fact_elem") },
   "export_signature_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "decl_fact_elem") },
   "data_decl_type_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "data_decl_type_fact_elem") },
   "fact_cardinality_decl_facts": BuiltinSignature { params: [], returns: list_of_type_variable(id: "fact_cardinality_decl_fact_elem") },
@@ -527,6 +527,45 @@ fn builtin_host_text_param_names(name: String) -> List<String> {
           _ => false
         }
       ) |> map(p => p.name)
+  }
+}
+
+// THE COLLECTION JOIN RENDERS EACH ELEMENT OF ITS RECEIVER AS HOST TEXT. std.algebra
+// collection_join_shape types the receiver as ReceiverSelf, the whole collection, so the element
+// position is not a formal of its own; its host realization still writes every element into the
+// String it returns. Keyed on the template declaration, never on the spelling `join`, which
+// std.algebra also uses for the boolean-algebra and scalar free-monoid joins.
+fn template_renders_receiver_elements_as_host_text(template: AlgebraFieldTemplate) -> Bool {
+  template == collection_join_shape()
+}
+
+// THE HOST-TEXT FORMALS BOUND THROUGH ReceiverSelf. Self is unknown while any ReceiverSelf argument
+// is unestablished (not resolved, or a type variable, as a List concat through a fold accumulator
+// whose type is unsolved at the check), and those formals are then unjudged; otherwise every one is
+// judged, so two records at concat refuse.
+fn builtin_receiver_self_host_text_param_names(name: String) -> List<String> {
+  match builtin_signature(name: name) {
+    Absent => []
+    Present { value: sig } =>
+      if free_monoid_scalar_templates() |> any(t => t.name == name) {
+        sig.params |> filter(p => match p.ty { ReceiverSelf => true  _ => false }) |> map(p => p.name)
+      } else { [] }
+  }
+}
+
+// HOST-DISPLAY RENDERING POSITIONS WHOSE NOMINAL AND OPTIONAL JUDGMENT IS DEFERRED, a declared
+// residual of gunbc.recurring_failure_mode
+// a_nominal_value_reaches_a_string_position_and_renders_host_debug_text: to_string's `value` renders
+// any value through the host Display, and the records, coproducts and Bools that reach it today
+// include persisted receipt bytes and identity preimages, which the to_string program dispositions.
+// The code-point-sequence refusal at these positions is not deferred. The row is deleted when that
+// census leaves no non-text to_string site.
+data host_display_deferred_formals: Map<String, List<String>> = { "to_string": ["value"] }
+
+fn builtin_host_display_deferred_param_names(name: String) -> List<String> {
+  match map_get(host_display_deferred_formals, name) {
+    Present { value: names } => names
+    Absent => []
   }
 }
 

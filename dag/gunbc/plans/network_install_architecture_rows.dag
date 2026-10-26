@@ -1,0 +1,120 @@
+module gunbc.plans.network_install_architecture_rows
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.design_ruling {
+  project_documentation_projections_are_not_checkout_artifacts,
+  one_physical_machine_boot_transaction,
+  root_generalization_closes_breadth,
+}
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul }
+import std.types { List, String }
+
+// THE DESIGN AND CENSUS FOR NETWORK INSTALL AS ROWS (phase 1 of node adhoc-745cd2b0-b0d): the first
+// x86 network install (Supermicro H11SSL, Ubuntu 24.04.3 amd64) lands as rows beside the ARM
+// instances, never as an if-x86 branch. It is the cut-6 delivery strategy of
+// gunbc.plans.physical_machine_boot_program for PXE. It carries no measurement: digests and
+// populations are cited by their authority and the instrument that re-derives them.
+
+fn ruling_names() -> List<String> {
+  [
+    one_physical_machine_boot_transaction.reference.decl_name as String,
+    root_generalization_closes_breadth.reference.decl_name as String,
+  ]
+}
+
+fn opening() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. Target"),
+    p(text: "Network-install Ubuntu onto a physical machine's disk over the site PXE edge, where a new architecture, board or unit is rows: a client-class row, a loader-chain row, an install-media row and a board seed profile. The first new instance is UEFI x86-64 on the Supermicro H11SSL (EPYC 7702P); the ARM (Altra) instances keep their behaviour and become instances of the same rows. The onboarding bar is the boot program's: a new CPU architecture on a supported OS family needs only artifact-compatibility and platform-profile rows."),
+    p(text: concat("Rulings (gunbc.design_ruling): ", join(ruling_names(), ", "))),
+  ]
+}
+
+fn grounding() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Upstream facts and their grounding"),
+    ul(items: [
+      li(text: "**Client architecture codes.** The governing authority is IANA's Processor Architecture Types registry (iana.org/assignments/dhcpv6-parameters, processor-architecture), not RFC 4578 section 2.1: the registry assigns 0x00 x86 BIOS, 0x07 x64 UEFI, 0x09 EBC, 0x0b ARM 64-bit UEFI, 0x10 x64 UEFI HTTP and 0x13 ARM 64-bit UEFI HTTP, while RFC 4578's printed table reads 7 as EFI BC and 9 as EFI x86-64. extdeps.provisioning.dhcp_client_arch already carries the registry values but anchors on RFC 4578; it re-anchors on the registry and records the RFC's divergent numbering as a further citation. A client presenting 9 is EBC and is refused, never guessed onto x86-64 (DESIGN 4d: the class is what the wire measures)."),
+      li(text: "**Ubuntu 24.04.3 amd64 install media.** releases.ubuntu.com/24.04.3/SHA256SUMS lists ubuntu-24.04.3-live-server-amd64.iso; SHA256SUMS.gpg verifies under the Ubuntu CD Image Automatic Signing Key (2012), fingerprint 8439 38DF 228D 22F7 B374 2BC0 D94A A3F0 EFE2 1092. The amd64 ISO is published on releases.ubuntu.com, the arm64 one on cdimage.ubuntu.com/releases/24.04/release, so the SHA256SUMS authority and the mirror are per-architecture fields of the media row, not one module constant."),
+      li(text: "**The netboot directory is not an artefact source.** releases.ubuntu.com/24.04.3/netboot/amd64 is mutable and unhashed: no SHA256SUMS lists it, its grub.cfg boots the 24.04.5 ISO, and its kernel reports 7.0.0-31-generic where the 24.04.3 ISO manifest pins linux-image-6.8.0-71-generic. Every served member is therefore extracted from the SHA256SUMS-verified ISO."),
+      li(text: "**The signed boot chain and its versions** are grounded through two Canonical-signed artefacts carried inside the verified ISO. The ISO's dists/noble/Release verifies under the same CD signing key; it names main/binary-amd64/Packages.gz by sha256, and that index names each pool .deb by sha256. The x86 first stage is shimx64.efi.signed.latest from shim-signed 1.58+15.8-0ubuntu1, which is also the ISO's EFI/boot/bootx64.efi. The second stage is grubnetx64.efi.signed from grub-efi-amd64-signed 1.202.5+2.12-1ubuntu7.3, served as grubx64.efi, the TFTP-prefix network build Canonical's netboot tarball also ships. It is NOT the ISO's EFI/boot/grubx64.efi, which is gcdx64.efi.signed, the CD-boot build. The kernel and initrd are the ISO's casper/vmlinuz (linux-image-6.8.0-71-generic 6.8.0-71.71) and casper/initrd (casper 1.498). The .deb digests are Canonical's; the digests of the files inside them, and of the casper members, are our extraction from the verified ISO. They are pinned in gunbc with TranscribedUncited standing, as the arm64 origin pins already are. They are re-derived by checking the ISO against the signed SHA256SUMS line (gpg --verify SHA256SUMS.gpg SHA256SUMS), checking each .deb against Packages.gz under the signed Release, then extracting each file and running sha256sum on it."),
+      li(text: "**The board's network boot surface** is extdeps.boards.supermicro_h11ssl, cited by PDF page of the held manual (sha256 9400160c..., re-verified this phase): p.15 two Intel i210 gigabit LAN ports; p.86 Boot Mode Select LEGACY/UEFI/DUAL, default DUAL; p.104 EPYC 7002 LAN1 option ROM Disabled/PXE/EFI; p.105 Network Stack, Ipv4 PXE Support, Ipv4 HTTP Support and their IPv6 twins; p.107 HTTP Boot One Time and Boot URI; p.117 Secure Boot Enabled/Disabled with Standard/Custom mode. The text layer does not carry the defaults for Network Stack or Secure Boot, so both are observations, not manual facts."),
+      li(text: "**Boot-device override.** The IPMI v2.0 rev 1.1 Get/Set System Boot Options parameter 5 (boot flags: valid, persistent, BIOS boot type EFI) is already modeled through ipmitool's encoder in extdeps.bmc.ipmi_boot_selection. The DMTF Redfish ComputerSystem.Boot override is modeled in extdeps.bmc.types without BootSourceOverrideMode, which a DUAL-mode board needs to request a UEFI boot. Which surface the H11SSL BMC serves is an observation: unit 1's Redfish answered a ForceRestart, unit 2's ServiceRoot is licence-locked."),
+    ]),
+  ]
+}
+
+fn rows() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. The row model"),
+    ul(items: [
+      li(text: "**Admitted client class (gunbc).** One row per DHCP processor architecture the delivery admits: the class, the Architecture it projects to, the ClientNetworkBootMode family, and the loader chain served to it. The join's by-name refusal match and first_slice_admitted_architectures are replaced by a lookup over these rows. A class with no row stays a typed NetworkBootDeliveryClientModeRefused located at the measured code; an unrecognized code stays carried as read."),
+      li(text: "**Loader chain (shape in extdeps.provisioning.network_boot, instances with their upstreams).** An ordered, nonempty list of TFTP-served members, each with its role (first-stage loader, second-stage loader, loader configuration, kernel, initrd), its TFTP-relative path, its pin, and its verifier: firmware db (the Microsoft UEFI CA for shim), shim's vendor certificate (Canonical, for grub), shim-lock (grub verifying the kernel), or Unauthenticated. 'TFTP holds only the chainloader' is no longer an edge invariant; it is the property of a chain with exactly one member. The ARM row is that one-member chain (the iPXE snponly build pinned in gunbc.fleet.site_pxe_edge_converge); the x86 row is shim, grub, grub.cfg, vmlinuz and initrd; the DGX Spark row is grubnetaa64.efi.signed, grub.cfg, kernel and initrd."),
+      li(text: "**Install media (extdeps.provisioning.ubuntu_install_media).** One row per point release and architecture, carrying its SHA256SUMS authority and mirror. The member paths a network boot serves are per-architecture rows of the ISO layout (for amd64: the shim-signed and grub-efi-amd64-signed pool .debs and their members, casper/vmlinuz, casper/initrd). The member pins live in gunbc, one origin row per architecture."),
+      li(text: "**Board seed profile (gunbc).** The per-board install drivers, loadable modules, late drivers and packages the Altra seed hard-codes become a profile row, each package admitted against the Noble archive for its architecture. The H11SSL row reuses the AST2500 and IPMI rows the Altra profile already carries (both boards have an AST2500 BMC) and adds amd64-microcode."),
+      li(text: "**Boot selection (extdeps.bmc.ipmi_boot_selection).** aarch64_uefi_once_boot_selection generalizes to one UEFI once-selection taking the architecture, admitted only where dhcp_client_arch's UEFI projection is Present. There is still no legacy constructor: no observed board needs BIOS PXE, and a DUAL-mode board is asked for EFI by the EFI boot-type flag."),
+    ]),
+  ]
+}
+
+fn census() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Fork census: the leaves, their generalization, their deletion"),
+    ul(items: [
+      li(text: "gunbc.network_boot_delivery join_network_boot_delivery: the by-name refusal arms for UefiX86_64, BiosX86, HttpBootX86_64 and HttpBootArm64, and first_slice_admitted_architectures read at three sites in join_verified_ticket_after_trust and by gunbc.fleet.site_pxe_edge_converge site_pxe_edge_roster. Generalized to the admitted-class rows; the list and the arms are deleted."),
+      li(text: "gunbc.site_uefi_arm64_pxe_edge: uefi_arm64_client_arch_code, site_edge_arm64_chainloader_transport, site_edge_arm64_tag and the single ArchitectureChainloader the edge carries. Renamed gunbc.site_pxe_edge; the roster carries one loader chain per admitted class, and the dnsmasq rendering emits one dhcp-match and one dhcp-boot line per row. The arm64-named leaves are deleted."),
+      li(text: "gunbc.fleet.site_pxe_edge_converge site_pxe_edge_chainloader_pin: one pin becomes the pinned members of every served chain; the placement step verifies each member against its pin before it writes and again at readback."),
+      li(text: "Three loader leaves: extdeps.firmware.ipxe ipxe_arm64_efi_snponly (ARM), extdeps.provisioning.network_boot network_uefi_bootloader_artifact (grubnet filenames, uncited, read only by test.claim.srv3.srv3_os_install_witness), and extdeps.systems.nvidia_dgx_spark_pxe SparkPxeTftpRelativePath (Spark). All three become loader-chain instances of the one shape; network_uefi_bootloader_artifact is deleted, and its one witness reads the chain row instead. The Spark chain shares the shape without a shim member: NVIDIA's documented first stage is grubnetaa64.efi.signed, verified by the firmware db or an enrolled bootloader (SparkPxeSecureBootPrerequisite). Its members have no pins yet, so under the placement rule they refuse to serve; the Spark route is consumed only by its witness today, so no live boot changes."),
+      li(text: "gunbc.provisioning.altra_autoinstall_seed: admit_altra_autoinstall_target refuses every Architecture but Aarch64 and the AltraProvisioningTarget role; AltraInstallDriver, AltraLoadableModule and AltraLateDriver are board facts wearing a module name. Renamed gunbc.provisioning.ubuntu_autoinstall_seed, with the board seed profile as a row; consumers gunbc.provisioning.provisioning_arm, gunbc.provisioning.network_boot_actuation, extdeps.debian.debconf, extdeps.libxcrypt.crypt_scheme and three witnesses follow the rename in the same change."),
+      li(text: "gunbc.provisioning.ubuntu_arm64_network_origin_observation: ubuntu_install_media_row_for_aarch64 and ubuntu_arm64_network_origin. Renamed gunbc.provisioning.ubuntu_network_origin_observation with one constructor that reads the architecture from the media row; the amd64 origin is a second row of pins."),
+      li(text: "**The edge's dnsmasq rendering (a defect, fixed for every row).** gunbc.site_uefi_arm64_pxe_edge renders dhcp-boot under a proxy dhcp-range, but the dnsmasq man page (thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html) says that in proxy-DHCP mode dnsmasq offers only what --pxe-prompt and --pxe-service give. Its named client system types also follow RFC 4578's numbering (x86-64_EFI is 9, BC_EFI is 7), while x64 UEFI firmware presents 7 under the IANA registry. extdeps.formats.dnsmasq DnsmasqDhcpBootTags is therefore deleted, and the edge renders one pxe-service per served chain, taking the client system type as the integer option-93 code from the IANA row. A readback RED refuses a proxy-mode config read off a host that carries any dhcp-boot line. The edge was never written to srv4, so this changes no live answer; the hypothesis that it explains the address-only offers measured on mtcollins1's segment is not supported, because those came from the router while nothing on srv4 answered."),
+      li(text: "extdeps.bmc.ipmi_boot_selection aarch64_uefi_once_boot_selection: consumed by the mtcollins1 boot path (gunbc.host.virtual_media_boot_selection and its witnesses). Its call sites change spelling only; mtcollins1's selection value is unchanged, and an equality control proves it."),
+    ]),
+  ]
+}
+
+fn trust() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Trust, typed and explicit"),
+    p(text: "Each chain member's verifier is a declared standing, never inferred from silence. Under Secure Boot, the firmware's db authenticates shim, shim authenticates grub, and grub's shim-lock authenticates the kernel. The grub.cfg, the initrd and the autoinstall seed fetch are Unauthenticated members and rest on ControlledNetworkBootstrap: the onboarding LAN segment as a declared ground, compared to the delivery's site by the existing join. Whether Secure Boot is on is measured on the unit (Redfish SecureBoot, or the installer's own reading), not assumed: if it is off, the receipt records that the signature chain was not enforced, and every member then rests on ControlledNetworkBootstrap."),
+    p(text: "Pins are checked twice. At placement, every member is extracted from an ISO whose digest equals the SHA256SUMS line under the verified signature, then digested against its pin before it is written to the TFTP root. At readback, the edge re-hashes what it serves. A placed file whose hash differs from its pin refuses, and the edge does not serve it: the rendered config offers no boot line for a chain with an unverified member."),
+  ]
+}
+
+fn effects() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. Privileged effects"),
+    p(text: "Each effect is classified by gunbc.auth.authorization_pattern_selection select_authorization_pattern and rostered in gunbc.auth.privileged_effect_census, and none runs without merry-fox-82 relaying the operator's go: the srv4 edge activation (ProxyDHCP only, so the router and its DHCP server are untouched and the edge hands out no addresses), the TFTP placement of the pinned members, the BMC boot override on the target unit, and the power cycle under the unit hold."),
+  ]
+}
+
+fn decisions() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Decisions, settled and open"),
+    ul(items: [
+      li(text: "**Loader route for UEFI x86-64:** settled 2026-10-24 by merry-fox-82 (msg_93cf21b7): the signed Ubuntu chain served whole by the edge, as loader-chain rows. The conditions are: one loader-chain model that Spark also consumes; the ARM iPXE row keeps its single-member chain unchanged, with a control proving it; the trust statement typed as above; pins verified at placement and at readback; and a RED for a placed file whose hash differs."),
+      li(text: "**Open: the unit's boot-override surface, Secure Boot state, host NIC MACs and BIOS network-stack settings.** These need read-only reads of the target BMC from a host on the operator LAN, requested from merry-fox-82. The edge roster keys on the host NIC MAC, which no receipt carries yet."),
+      li(text: "**Open: which unit first.** Unit 1 (BMC .252) is being hand-installed on 2026-10-24, and a network install onto its disk replaces that install."),
+      li(text: "**Open boundary: installer media integrity.** casper fetches the live-server ISO by iso-url and does not check its digest. The phase-2 route either serves the verified ISO from the controlled origin or adds an in-installer digest check that aborts autoinstall on mismatch; which one is decided against a measurement of where casper stores the fetched image."),
+    ]),
+    h3(text: "Phases"),
+    ul(items: [
+      li(text: "**1 (this carrier):** design and census."),
+      li(text: "**2a:** the delivery rows: the loader-chain shape and its Ubuntu amd64, iPXE and Spark instances; the admitted client-class rows in the join; gunbc.site_pxe_edge with one pxe-service per served chain; per-chain pins and standings in the converge; the general UEFI boot selection with its parameter-5 bytes; and the media-origin rows with the amd64 pins. Its hermetic witnesses cover x86 admitted, ARM unchanged, wrong-architecture REDs and hash-mismatch REDs."),
+      li(text: "**2b:** the per-board seed (gunbc.provisioning.ubuntu_autoinstall_seed, with board seed profiles, each package admitted against the archive for its architecture) and the rendered amd64 seed. It also binds the grub.cfg rendering that turns the amd64 chain row from Unpinned to Pinned."),
+      li(text: "**3, on merry-fox-82's go:** edge activation, the BMC override and power cycle, and a readback of the measured option-93 class, the served hashes, the installer reaching autoinstall, and the installed-to-disk receipt."),
+    ]),
+  ]
+}
+
+data network_install_architecture_rows_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "network-install-architecture-rows",
+  title: "Network install as rows: client class, loader chain, install media and board seed profile, with UEFI x86-64 on the H11SSL as the first new instance",
+  body: concat(concat(concat(concat(concat(concat(opening(), grounding()), rows()), census()), trust()), effects()), decisions()),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when an x86 unit has been network-installed through the generalized rows with its installed-to-disk receipt, every leaf in section 4 is deleted, and the ARM and Spark chains read the same loader-chain model."),
+  },
+}

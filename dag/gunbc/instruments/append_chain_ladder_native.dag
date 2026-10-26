@@ -1,0 +1,133 @@
+module gunbc.instruments.append_chain_ladder_native
+
+import std.types { Int, List, String, Bool }
+import std.algebra { non_empty_to_list, list_append }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import std.measure { Nanosecond, nanosecond, nanosecond_count }
+import gunbc.instruments.append_chain_ladder {
+  LadderTiming,
+  LadderLinearity,
+  LadderLinear,
+  LadderSuperlinear,
+  LadderUnobserved,
+  ladder_arm_linearity,
+  ladder_linearity,
+  ladder_linearity_terminal,
+  ladder_is_unobserved,
+  ladder_is_superlinear,
+  ladder_piece,
+  non_empty_piece,
+  push_steps,
+  concat_steps,
+  elementwise_steps,
+  non_empty_steps
+}
+
+// THE LABEL'S TIMED ROUTE ON THE EMITTED PATH (gunbc.recurring_failure_mode
+// non_empty_append_on_a_persistent_vector_is_superlinear). `gunbc test //gunbc/instruments:append-chain-ladder`
+// emits this closure, builds it release and runs it (NativeClaimProgramProducer, the producer
+// gunbc.instruments.native_crypto_cost already rides); nothing is interpreted, because the defect is a
+// property of the emitted realization. Each (arm, n) row is the best of ladder_trials runs, each run
+// timed between two observed_monotonic_nanos readings (std.realization_measurement
+// ObserveElapsedAtSubject) around one arm call. A run that builds the wrong element count makes the
+// row not held, so a fast wrong answer is never a time. The rows go to gunbc.instruments.append_chain_ladder
+// ladder_linearity, which judges each doubling of n inside one arm against the policy band.
+//
+// NOT ON THE REQUIRED PATH: this label runs when invoked, and nothing in v2-bootstrap executes it.
+// Reverting the rc_list_concat fix turns concat_chain and non_empty_append_chain superlinear here, which
+// is the RED; it does not turn any required check red.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn ladder_sizes() -> List<Int> { [2000, 4000, 8000, 16000] }
+
+fn ladder_trials() -> Int { 5 }
+
+fn ladder_required_arms() -> List<String> { ["push_chain", "concat_chain", "elementwise_chain", "non_empty_append_chain"] }
+
+type TimedRun {
+  elapsed: Nanosecond
+  length: Int
+}
+
+fn run_arm(arm: String, n: Int, trial: Int) -> TimedRun {
+  let tag = concat(arm, "-", to_string(value: n), "-", to_string(value: trial))
+  let t0 = observed_monotonic_nanos(concat(tag, "-start"))
+  let length = if arm == "push_chain" { push_steps(i: 0, n: n, acc: []) |> count }
+    else if arm == "concat_chain" { concat_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count }
+    else if arm == "elementwise_chain" { elementwise_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count }
+    else { non_empty_to_list(xs: non_empty_steps(i: 0, n: n, acc: non_empty_piece(), piece: non_empty_piece())) |> count }
+  let t1 = observed_monotonic_nanos(concat(tag, "-end"))
+  TimedRun { elapsed: nanosecond(count: t1 - t0), length: length }
+}
+
+fn expected_length(arm: String, n: Int) -> Int {
+  if arm == "non_empty_append_chain" { 8 * (n + 1) } else { 8 * n }
+}
+
+type TimedRow {
+  timing: LadderTiming
+  held: Bool
+}
+
+fn best_of(arm: String, n: Int, trial: Int, best: Nanosecond, held: Bool) -> TimedRow {
+  if trial >= ladder_trials() {
+    TimedRow { timing: LadderTiming { arm: arm, n: n, best: best }, held: held }
+  } else {
+    let r = run_arm(arm: arm, n: n, trial: trial)
+    let next_best = if nanosecond_count(n: r.elapsed) < nanosecond_count(n: best) { r.elapsed } else { best }
+    best_of(arm: arm, n: n, trial: trial + 1, best: next_best, held: held && (r.length == expected_length(arm: arm, n: n)))
+  }
+}
+
+// The first run seeds the best, so no sentinel time stands in for an unobserved minimum.
+fn timed_row(arm: String, n: Int) -> TimedRow {
+  let first = run_arm(arm: arm, n: n, trial: 0)
+  best_of(arm: arm, n: n, trial: 1, best: first.elapsed, held: first.length == expected_length(arm: arm, n: n))
+}
+
+fn timed_rows() -> List<TimedRow> {
+  flat_map(ladder_required_arms(), a => map(ladder_sizes(), n => timed_row(arm: a, n: n)))
+}
+
+// THE REPORT IS IN gunbc.native_claim_program's GRAMMAR: one roster line, then one `case` row per
+// roster identity. Two kinds of case: `<arm>@<n>` holds when that size built the element count it
+// owes (its observed text carries the best time), and `<arm>.linear` holds when ladder_arm_linearity
+// reads that arm's curve as linear. A superlinear arm is therefore a not_held row, which is what lets
+// the reader accept status 1; an unreadable curve is the program's own no-observation terminal.
+fn size_identity(r: TimedRow) -> String {
+  concat(r.timing.arm, "@", to_string(value: r.timing.n))
+}
+
+fn linear_identity(arm: String) -> String { concat(arm, ".linear") }
+
+fn verdict_word(held: Bool) -> String { if held { "held" } else { "not_held" } }
+
+fn size_case(r: TimedRow) -> String {
+  concat("case ", size_identity(r: r), " ", verdict_word(held: r.held), " observed=best_ns=", to_string(value: nanosecond_count(n: r.timing.best)), "\n")
+}
+
+fn linearity_text(v: LadderLinearity) -> String {
+  match v {
+    LadderLinear => "linear"
+    LadderSuperlinear { arm: _, from_n: n, ratio_x100: x } => concat("grew_x100=", to_string(value: x), " from_n=", to_string(value: n))
+    LadderUnobserved { arm: _, cause: c } => concat("no_curve ", c)
+  }
+}
+
+fn linear_case(arm: String, v: LadderLinearity) -> String {
+  concat("case ", linear_identity(arm: arm), " ", verdict_word(held: !(ladder_is_unobserved(v: v) || ladder_is_superlinear(v: v))), " observed=", linearity_text(v: v), "\n")
+}
+
+// The terminal is ladder_linearity's verdict over the required arms (the fold the witness
+// test.claim.append_chain_ladder_linearity_witness exercises), read by ladder_linearity_terminal;
+// this module only formats rows.
+fn native_claim_report() -> NativeClaimReport {
+  let rows = timed_rows()
+  let timings = map(rows, r => r.timing)
+  let arms = ladder_required_arms()
+  let identities = list_append(left: map(rows, r => size_identity(r: r)), right: map(arms, a => linear_identity(arm: a)))
+  let cases = concat(join(map(rows, r => size_case(r: r)), ""), join(map(arms, a => linear_case(arm: a, v: ladder_arm_linearity(rows: timings, arm: a))), ""))
+  let terminal = ladder_linearity_terminal(v: ladder_linearity(rows: timings, arms: arms), sizes_not_held: count(filter(rows, r => !r.held)))
+  NativeClaimReport { stdout: concat("roster ", join(identities, ","), "\n", cases), terminal: terminal }
+}

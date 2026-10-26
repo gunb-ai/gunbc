@@ -46,7 +46,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Arrow,
   ComputationNode,
@@ -167,7 +167,7 @@ fn loop_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcom
         }
       Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
-  } else if node == loop_eval_divergent_value_node {
+  } else if node_same_occurrence(a: node, b: loop_eval_divergent_value_node) {
     outcome_rejected(d: loop_eval_diagnostic(n: node))
   } else {
     outcome_rejected(d: loop_eval_diagnostic(n: node))

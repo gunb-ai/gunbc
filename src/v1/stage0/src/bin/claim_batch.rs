@@ -1208,10 +1208,11 @@ fn main() -> ExitCode {
     if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
         return ExitCode::FAILURE;
     }
-    // ONE DECLARATION CENSUS FOR THE RUN, for the same reason the required floor registers one:
-    // the witnesses this binary evaluates ask keyed questions of it (`decl_facts_at`), and a fold
-    // over N citations makes N demands of one census. With the memo closed each demand re-walks the
-    // corpus, so the keyed read would cost more than the population read it replaces. The subject
+    // ONE DECLARATION CENSUS FOR THE RUN: the claims this binary evaluates are isolated frames that
+    // each ask keyed questions of one census (`decl_facts_at`). A fold inside a claim already asks
+    // all of its keys in one read; what this registration shares is the read ACROSS claims, whose
+    // least common ancestor is this invocation. With the memo closed each claim walks the corpus
+    // once of its own. The subject
     // this hangs on is the invocation itself: one process, one tree, roots supplied on the command
     // line, and `clear_decl_census_memo` on the way out rather than a cell that outlives its
     // subject.

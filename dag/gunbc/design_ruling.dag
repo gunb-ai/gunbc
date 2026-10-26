@@ -294,6 +294,23 @@ data flex_fleet_cap_raised_to_three_dollars: DesignRuling = DesignRuling {
   provenance: "Operator, via deep-otter-797 on gunbc#14150: the interruptible flex fleet rate cap is raised from $1.34/h to $3.00/h (it covers two Flash-Next cards at about $1.40/h each); raising the cap is fine, the limit is not a big deal long-term. This supersedes only the cap figure in flex_market_policy_is_operator_decided; the $50 trial total is unchanged.",
 }
 
+// THE INSTRUMENT FLEET RUNS IN PARALLEL; THE EDGE THE OLD GROUP IMPOSED IS NOT RESTORED AND IS NOT
+// MISSED. Recorded here because the change that took the global instrument queue apart is authorized
+// by nothing else. The operator rejected (2026-10-21, on #14613) the premise that removing the global
+// group loses a guarantee: isolation between jobs is the SLOT's job (gunbc.runner.runner_slot_desired
+// + gunbc.host.memory_envelope), and a concurrency group never isolated anything -- it only serialized
+// dispatches. So no rung drop stands here for a "lost upper edge", because there was no edge worth
+// having. Where isolation genuinely fails today -- the live unit shape drifting from the declared slot
+// shape, above all MemorySwapMax -- is a fleet-convergence class of its own and is filed as
+// gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot, not as
+// a queue compensation.
+data instrument_measurement_queues_run_in_parallel: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_measurement_queues_run_in_parallel"),
+  decided: "2026-10-20",
+  section: "Building & checks",
+  provenance: "Operator, to bright-swift-151 via warm-wolf-570: approved PARALLEL measurement queues. The single 'instrument-dispatch-queued' concurrency group put every instrument dispatch behind one run; key the group per dispatch so unrelated measurements run in parallel while one label on one ref still cannot run twice. Carried with the approval, stated at what the head holds (reworded 2026-10-21 on the #14613 review, which found this clause claiming more than the head does): no new job; each run refuses before the prelude when its granted cgroup bound is under its demand row -- the guard step reads the least numeric memory.high/memory.max on its own cgroup path plus MemTotal (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_guard_statements), so the refusal is on memory.high/memory.max, not on an OOM kill after the fact; the swap bound is OBSERVED ONLY -- the same step reads and prints memory.swap.max, and a refusal on swap is an outstanding rung, not a held guarantee. OPERATOR ISOLATION RULING, 2026-10-21 on #14613, recorded in this provenance because DesignRuling carries no other field (schema: reference, decided, section, provenance): the premise that removing the global group LOSES a guarantee is REJECTED. Work isolation is the authority -- 'a job shouldn't have to worry about what is running on the machine' -- and a concurrency group never provided isolation, it only serialized dispatches. What keeps one instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue: gunbc.runner.runner_slot_desired declares the per-slot shape (memory_max 23622320128, memory_high 22548578304, MemorySwapMax 0, TasksMax 16384) and gunbc.host.memory_envelope gives it teeth -- memory.high throttles early, memory.max refuses late, MemorySwapMax 0 means an overrun is refused rather than silently swapped. So this ruling restores NO upper edge on concurrent instrument occupancy and no such edge is missed. WHAT DOES NOT HOLD TODAY is a different class and is filed as its own ledger row rather than as a queue compensation: the live fleet does not match the declared slot shape (an operator reading of srv3-20 and srv3-01 gave memory.high 26843545600, memory.max 27917287424 and MemorySwapMax 34359738368 -- the first two match the competing floor-pinned values in gunbc.floor.floor_demand rather than the slot row, and the swap is 32 GiB where the slot declares zero), so the swap half of the isolation story is not enforced on those hosts. See gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot.",
+}
+
 data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in"),
   decided: "2026-10-23",
@@ -343,8 +360,16 @@ data runner_listener_admission_is_mask_roster_and_no_worker: DesignRuling = Desi
   provenance: "Operator ruling B at the root of the runner host cap bracket (sleek-owl-397, relayed by clever-crane-830): a running idle listener is admitted to the write and its stop only when its unit is masked, the organization roster says its registration is busy=false and its cgroup holds no Runner.Worker, all re-read immediately before the stop; there is no deregister because nothing re-registers a long-lived slot; the read-to-stop window is a typed residual (gunbc.runner.runner_host_cap_bracket listener_restart_residual) and re-registration a declared frontier (listener_reregistration_frontier). Supersedes the mask-only closure for running idle listeners.",
 }
 
+data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "emit_build_subjects_are_the_two_compiler_products"),
+  decided: "2026-10-09",
+  section: "Building & checks",
+  provenance: "Operator ruling with the v1 withdrawal (gunbc#13658, second round: the required job \"requires fresh emission/build of both retained products\"): the subjects of gunbc.emitted_subject_build_gate emitted_subject_build_rows are the two retained compiler products, //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, and a third subject row is a growth the operator vetoed. Until 2026-10-24 the veto lived only as a comment on test.claim.compiler_gate_emit_build_lane_witness the_job_runs_both_retained_emit_build_subjects, which quotes the roster as remaining the two compiler products; that comment landed in gunbc#13641 and its quotation has no other source in the repository. Re-raised and confirmed on 2026-10-24 by merry-fox-82 when gunbc#14984 built a native control over gunbc.fleet.fleet_convergence_verdict: it stays run by name, and enrolling it would reverse this ruling and goes to the operator.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
     runner_listener_admission_is_mask_roster_and_no_worker,
     runner_host_sudoers_is_installed,
@@ -387,6 +412,7 @@ fn design_rulings() -> List<DesignRuling> {
     flex_market_policy_is_operator_decided,
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
+    instrument_measurement_queues_run_in_parallel,
     approval_enrolment_is_google_sign_in,
     drain_wait_bound_is_derived_from_declared_job_timeouts,
   ]

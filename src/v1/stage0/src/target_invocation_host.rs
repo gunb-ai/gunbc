@@ -322,6 +322,7 @@ pub enum TargetProducer {
     NativeCensusVerb {
         verb: &'static str,
     },
+    SelfHostFrontier,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -507,6 +508,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("fleet-convergence-verdict-route"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/fleet_convergence_verdict_route.dag",
+                function: "fleet_convergence_verdict_route_wire",
+            },
+        ),
+        (
             instrument_label("native-allocation-observation"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_allocation_observation.dag",
@@ -528,6 +536,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
+            },
+        ),
+        (
+            instrument_label("roster-import-sweep-native"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/roster_import_sweep_native.dag",
             },
         ),
         (
@@ -613,6 +627,16 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("effect-pair-census"),
+            TargetProducer::NativeCensusVerb {
+                verb: "effect-pair-census",
+            },
+        ),
+        (
+            instrument_label("self-host-frontier"),
+            TargetProducer::SelfHostFrontier,
+        ),
+        (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
         ),
@@ -641,9 +665,26 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         ),
         (
             instrument_label("append-chain-ladder"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/append_chain_ladder.dag",
-                function: "append_chain_ladder_wire",
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/append_chain_ladder_native.dag",
+            },
+        ),
+        (
+            instrument_label("last-use-move"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/last_use_move_native.dag",
+            },
+        ),
+        (
+            instrument_label("cons-tail-recursion"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag",
+            },
+        ),
+        (
+            instrument_label("member-home-cost"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/member_home_cost_native.dag",
             },
         ),
         (
@@ -1171,6 +1212,10 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::NativeCensusVerb { verb } => {
             run_census_verb(verb, label, &self_host_source_roots())
         }
+        TargetProducer::SelfHostFrontier => run_self_host_frontier(
+            &self_host_source_roots(),
+            &crate::gunbc_stage0_stage0_cargo_manifest::stage0_package_root(),
+        ),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -2078,14 +2123,29 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         crate::v1_interpreter::ExecutionMode::Wet,
     );
     let scratch = std::path::Path::new("target").join(label_name);
-    let write_root = |name: &str, function: &str| -> Result<String, String> {
+    // THE RUN'S ONE FILLED HOME CLOSURE, computed here once and handed to every wave entry point (the three head-file
+    // providers and the standing), so the acquisition door (v2.compiler.module_acquisition) opens ONCE per run instead
+    // of once per proof: within one door start the known/absent memos make re-reads impossible, so a run that recomputed
+    // the closures per proof re-read the substrate per proof (fleet probe 39758520315: 21 starts x 10 substrate files).
+    let roster_closures =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, "wave_run_closures", &[], true)
+        {
+            Ok(value) => value,
+            Err(cause) => return unreached(format!("wave_run_closures failed: {cause}")),
+        };
+    let closures_arg = vec![(Some("closures".to_string()), roster_closures.clone())];
+    let write_root = |name: &str,
+                      function: &str,
+                      entry_args: &[(Option<String>, crate::v1_interpreter::Value)]|
+     -> Result<String, String> {
         // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
         // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
         // directory, so `examples.decls` lands at <root>/dag/examples/decls.dag and the driver binds the root.
         let _ = std::fs::remove_dir_all(scratch.join(name));
         let root = scratch.join(name).join("dag");
-        let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
-            .map_err(|cause| format!("{function} failed: {cause}"))?;
+        let files =
+            crate::v1_interpreter::run_in_context_with_args(&ctx, function, entry_args, true)
+                .map_err(|cause| format!("{function} failed: {cause}"))?;
         for (path, content) in fixture_file_rows(&ctx, &files)? {
             let target = root.join(&path);
             if let Some(parent) = target.parent() {
@@ -2222,20 +2282,33 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Err(cause) => return unreached(format!("the merge preflight failed: {cause}")),
     }
     // The control fixtures are written only past the preflight: a refused merge never reads them.
-    let fixture_roots = write_root("rebind_base", "binding_diff_rebind_base_files")
-        .and_then(|b| write_root("rebind_head", "binding_diff_rebind_head_files").map(|h| (b, h)));
+    let fixture_roots =
+        write_root("rebind_base", "binding_diff_rebind_base_files", &[]).and_then(|b| {
+            write_root("rebind_head", "binding_diff_rebind_head_files", &[]).map(|h| (b, h))
+        });
     let (rebind_base, rebind_head) = match fixture_roots {
         Ok(pair) => pair,
         Err(cause) => return unreached(cause),
     };
-    let wave_roots = write_root("wave_base", "binding_diff_wave_base_files")
-        .and_then(|b| write_root("wave_admit", "binding_diff_wave_head_files").map(|a| (b, a)))
+    let wave_roots = write_root("wave_base", "binding_diff_wave_base_files", &[])
+        .and_then(|b| {
+            write_root("wave_admit", "binding_diff_wave_head_files", &closures_arg).map(|a| (b, a))
+        })
         .and_then(|(b, a)| {
-            write_root("wave_moved", "binding_diff_wave_moved_head_files").map(|m| (b, a, m))
+            write_root(
+                "wave_moved",
+                "binding_diff_wave_moved_head_files",
+                &closures_arg,
+            )
+            .map(|m| (b, a, m))
         })
         .and_then(|(b, a, m)| {
-            write_root("wave_wrong_home", "binding_diff_wave_wrong_home_head_files")
-                .map(|w| (b, a, m, w))
+            write_root(
+                "wave_wrong_home",
+                "binding_diff_wave_wrong_home_head_files",
+                &closures_arg,
+            )
+            .map(|w| (b, a, m, w))
         });
     let (wave_base, wave_admit, wave_moved, wave_wrong_home) = match wave_roots {
         Ok(roots) => roots,
@@ -2343,6 +2416,7 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         (Some("instr_rev".to_string()), text(&instr_rev)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
         (Some("shard_mode".to_string()), text(&shard_mode)),
+        (Some("closures".to_string()), roster_closures),
     ];
     match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
@@ -5225,6 +5299,31 @@ fn typed_graph_exclusive_bytes_over(
 mod native_route_termination_tests {
     use super::*;
 
+    /// THE CONTROL FOR THE NATIVE ROUTE OF THE GENERATOR SWEEP. The instrument's only producer is
+    /// `TargetProducer::NativeClaimProgram` -- emit-by-seed + cargo-build + exec, the same authority
+    /// instrument labels travel. If the row is removed, retargeted at any interpreter route
+    /// (SelfHost/Interpreted/RetainedHost) or downgraded to a wrapper, this test goes red: the
+    /// sweep's native route is the claim, and a fallback in the registry would silently run the
+    /// interpreter instead of the emitted program while still printing rows.
+    #[test]
+    fn roster_import_sweep_native_is_bound_to_the_native_claim_program_producer() {
+        let label = instrument_label("roster-import-sweep-native");
+        let row = instrument_registry()
+            .into_iter()
+            .find(|(l, _)| l == &label)
+            .unwrap_or_else(|| panic!("roster-import-sweep-native lost its registry row"));
+        assert!(
+            matches!(
+                row.1,
+                TargetProducer::NativeClaimProgram {
+                    entry: "dag/gunbc/instruments/roster_import_sweep_native.dag"
+                }
+            ),
+            "roster-import-sweep-native must run through NativeClaimProgramProducer, found a fallback: {:?}",
+            row.1
+        );
+    }
+
     /// `gunbc.target_invocation` `claim_route_termination`, mirrored: the same five rows
     /// `test.claim.target_invocation_witness` `the_claim_route_termination_maps_to_the_three_exit_statuses`
     /// pins on the model, so the host mirror cannot drift from it silently.
@@ -5913,6 +6012,25 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
             "generic-identity-census: {} (controls over {FIXTURE}; report over the closure of {REPORT_ENTRY}, {subjects} sources)",
             standing.lines().next().unwrap_or("STANDING absent")
         ),
+    }
+}
+
+fn run_self_host_frontier(source_roots: &[String], stage0_crate_dir: &str) -> InvocationOutcome {
+    match cli_run::run_self_host_frontier(source_roots, stage0_crate_dir) {
+        Ok(code) => InvocationOutcome {
+            termination: match code {
+                0 => Termination::ObservationHeld,
+                1 => Termination::ObservationDidNotHold,
+                _ => Termination::SubjectUnreached,
+            },
+            message: format!(
+                "self-host-frontier: exit {code}; the [self-host-frontier] lines above are the derived frontier"
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
     }
 }
 

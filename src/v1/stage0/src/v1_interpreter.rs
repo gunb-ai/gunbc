@@ -23913,8 +23913,8 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
-            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
-            // sha256_hex_of_text_contract).
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (the host realization
+            // of the declared seam std.content_hash sha256_hex_of_text).
             arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
                 Ok(Some(str_value(sha256_hex_of_text_digest(
                     expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
@@ -24585,26 +24585,15 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.decl_facts_at" { "decl_facts_at" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
-                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
+                let qualified_names =
+                    expect_str_list($positional.get(1).copied(), "decl_facts_at")?;
+                let type_names = expect_str_list($positional.get(2).copied(), "decl_facts_at")?;
                 Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
                     $ctx,
                     &pool_roots,
-                    qualified_name.as_str(),
+                    &qualified_names,
+                    &type_names,
                 )?))
-            },
-
-            arm "free_call.type_declarer_qualified_names" { "type_declarer_qualified_names" } => {
-                let pool_roots =
-                    expect_str_list($positional.first().copied(), "type_declarer_qualified_names")?;
-                let bare_name =
-                    expect_value_str($positional.get(1).copied(), "type_declarer_qualified_names")?;
-                Ok(Some(
-                    crate::coproduct_reflection::eval_type_declarer_qualified_names(
-                        $ctx,
-                        &pool_roots,
-                        bare_name.as_str(),
-                    )?,
-                ))
             },
 
             arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
@@ -26870,7 +26859,7 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
 }
 
 // SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
-// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// sha256_hex_of_text (declared at std.content_hash sha256_hex_of_text), the same RustCrypto sha2 the HMAC
 // seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
 fn sha256_hex_of_text_digest(text: &str) -> String {
     use sha2::{Digest, Sha256};

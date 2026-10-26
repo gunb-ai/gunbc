@@ -2201,8 +2201,11 @@ fn alias_rhs_with_index_identity(rhs: Node, owner_module: String, env: TypeEnv) 
   }
 }
 
-// A BARE TYPE SPELLING IS RESOLVED IN THE MODULE THAT AUTHORED IT: the module its named import comes from, else the module itself
-// when it declares the name. A spelling neither imported nor declared there answers none.
+// A BARE TYPE SPELLING IS RESOLVED IN THE MODULE THAT AUTHORED IT: the module that DECLARES what its named import brings in, else
+// the module itself when it declares the name. A spelling neither imported nor declared there answers none. The import is chased by
+// bare_occurrence_import_terminal, the one answer to "which module declares this imported name": the one-hop import source is not a
+// declaration, so reading it as one keyed a re-exported type (std.bit Byte imported through v2.std.machine) on the re-exporting
+// module and judged one declaration as two.
 fn declaration_named_in_module(name: String, module_path: String, env: TypeEnv) -> DeclarationRef? {
   if name == "" { none }
   else if qualified_all_but_last(name: name) != "" {
@@ -2214,7 +2217,11 @@ fn declaration_named_in_module(name: String, module_path: String, env: TypeEnv) 
   }
   else {
     match symbol_index_named_import_source(index: env.symbol_index, module_path: module_path, name: name) {
-      Present { value: m } => Present { value: decl_ref(module_path: m, decl_name: name) }
+      Present { value: m } =>
+        match bare_occurrence_import_terminal(index: env.symbol_index, module_path: m, name: name, fuel: 16) {
+          BareOccurrenceImportedByName { module_path: declaring, declaration: _ } => Present { value: decl_ref(module_path: declaring, decl_name: name) }
+          _ => none
+        }
       Absent =>
         match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(module_path, ".", name)) {
           Present { value: _ } => Present { value: decl_ref(module_path: module_path, decl_name: name) }

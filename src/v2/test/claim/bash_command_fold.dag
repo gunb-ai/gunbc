@@ -67,7 +67,7 @@ import v2.workflow.bash_emit {
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -326,7 +326,7 @@ test fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
 }
 
 test fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
-  bash_fold_cmd_true_emitted != bash_fold_cmd_true_wrong_emitted
+  !node_same_occurrence(a: bash_fold_cmd_true_emitted, b: bash_fold_cmd_true_wrong_emitted)
 }
 
 test fn bash_fold_exit_code_42_holds() -> Bool {
