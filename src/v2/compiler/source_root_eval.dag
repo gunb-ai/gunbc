@@ -3542,9 +3542,17 @@ type NativeNfrState {
   duplicates: List<String>
   ambient: Map<String, Bool>
   ambient_list: List<String>
-  refused: List<String>
+  // ONE RECORD PER REFUSED FILE, cause and all: the file and the fatal reason it refused for are one fact,
+  // so they travel together. A cause cannot be missing from a refusal the way it could from a parallel
+  // path list + cause map -- the unattributed state is unwritable, not validated.
+  refused: List<NativeNfrRefusal>
   classified: List<String>
   unread: List<String>
+}
+
+type NativeNfrRefusal {
+  file: String
+  cause: Symbol
 }
 
 type NativeNfrHeadRead {
@@ -3557,8 +3565,9 @@ fn native_nfr_state_with_alloc(s: NativeNfrState, alloc: OccurrenceIdAllocator) 
   NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
 }
 
-fn native_nfr_refuse(s: NativeNfrState, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator) -> NativeNfrState {
-  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: list_snoc_item(xs: s.refused, item: symbol_lexeme(sym: read.compilation_unit)), classified: s.classified, unread: s.unread }
+fn native_nfr_refuse(s: NativeNfrState, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator, cause: Symbol) -> NativeNfrState {
+  let entry = NativeNfrRefusal { file: symbol_lexeme(sym: read.compilation_unit), cause: cause }
+  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: list_snoc_item(xs: s.refused, item: entry), classified: s.classified, unread: s.unread }
 }
 
 // The module root of a declaring module, normalized once.
@@ -3571,7 +3580,7 @@ fn native_nfr_module_root(s: NativeNfrState, plan: NativeDeclRefCensusPlan, fron
         Present { value: read } =>
           let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
           match result.produced {
-            Rejected { diagnostics: _ } => NativeNfrModuleRead { state: native_nfr_refuse(s: s, read: read, alloc: result.alloc), root: Absent }
+            Rejected { diagnostics: d } => NativeNfrModuleRead { state: native_nfr_refuse(s: s, read: read, alloc: result.alloc, cause: diagnostics_fatal_reason(d: d)), root: Absent }
             Accepted { value: tree, diagnostics: _ } =>
               NativeNfrModuleRead {
                 state: NativeNfrState { alloc: result.alloc, roots: map_insert(s.roots, module, tree.root), verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread },
@@ -3654,8 +3663,8 @@ fn native_nfr_add_judged(s: NativeNfrState, key: String, cause: String) -> Nativ
 
 // A file the ingest refused cannot say which functions it holds, so a row under it is unobserved (already
 // counted as `refused`), not stale.
-fn native_nfr_key_under_refused_file(refused: List<String>, key: String) -> Bool {
-  fold_list(xs: refused, empty: false, cons: fn(acc, f) { acc || starts_with(s: key, prefix: concat(f, "::")) })
+fn native_nfr_key_under_refused_file(refused: List<NativeNfrRefusal>, key: String) -> Bool {
+  fold_list(xs: refused, empty: false, cons: fn(acc, f) { acc || starts_with(s: key, prefix: concat(f.file, "::")) })
 }
 
 fn native_nfr_add_classified(s: NativeNfrState, item: String) -> NativeNfrState {
@@ -3669,7 +3678,7 @@ fn native_nfr_add_unread(s: NativeNfrState, item: String) -> NativeNfrState {
 fn native_nfr_scan_candidate(s: NativeNfrState, read: DagSourceReadWitness, plan: NativeDeclRefCensusPlan, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural) -> NativeNfrState {
   let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
   match result.produced {
-    Rejected { diagnostics: _ } => native_nfr_refuse(s: s, read: read, alloc: result.alloc)
+    Rejected { diagnostics: d } => native_nfr_refuse(s: s, read: read, alloc: result.alloc, cause: diagnostics_fatal_reason(d: d))
     Accepted { value: tree, diagnostics: _ } =>
       let pairs = import_pairs_of(rows: normalized_tree_import_bindings(tree: tree))
       let file = symbol_lexeme(sym: read.compilation_unit)
@@ -3698,7 +3707,7 @@ fn native_nfr_scan_candidate(s: NativeNfrState, read: DagSourceReadWitness, plan
 fn native_nfr_scan_holder(s: NativeNfrState, read: DagSourceReadWitness, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural) -> NativeNfrState {
   let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
   match result.produced {
-    Rejected { diagnostics: _ } => native_nfr_refuse(s: s, read: read, alloc: result.alloc)
+    Rejected { diagnostics: d } => native_nfr_refuse(s: s, read: read, alloc: result.alloc, cause: diagnostics_fatal_reason(d: d))
     Accepted { value: tree, diagnostics: _ } =>
       fold_list(
         xs: roster_join_keys(file: symbol_lexeme(sym: read.compilation_unit), root: tree.root),
@@ -3765,7 +3774,7 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
                   right: list_append(
                     left: fold_list(xs: done.duplicates, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] duplicate ", k)) }),
                     right: list_append(
-                      left: fold_list(xs: done.refused, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] refused ", k)) }),
+                      left: fold_list(xs: done.refused, empty: [], cons: fn(acc, r) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] refused ", r.file, " ", symbol_lexeme(sym: r.cause))) }),
                       right: list_append(
                         left: fold_list(xs: done.unread, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] unread ", k)) }),
                         right: list_append(

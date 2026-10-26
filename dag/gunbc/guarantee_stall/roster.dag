@@ -94,6 +94,7 @@ import gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall { compute
 import gunbc.guarantee_stall.swift_source_to_text_door_walk_stall { swift_source_to_text_door_walk_stall }
 import gunbc.guarantee_stall.rust_primitive_rows_hand_spelled_from_the_seed_stall { rust_primitive_rows_hand_spelled_from_the_seed_stall }
 import gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_stall { local_repo_wet_lane_per_row_wall_budget_unarmed_stall }
+import gunbc.guarantee_stall.nfr_wildcard_census_unjudged_scrutinee_typing_stall { nfr_wildcard_census_unjudged_scrutinee_typing_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -283,6 +284,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   decl_ref_host_resolver_awaits_native_claim_evaluation_stall,
   per_file_emission_owner_unmodeled_stall,
   local_repo_wet_lane_per_row_wall_budget_unarmed_stall,
+  nfr_wildcard_census_unjudged_scrutinee_typing_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

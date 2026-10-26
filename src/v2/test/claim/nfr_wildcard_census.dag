@@ -1,16 +1,21 @@
 module v2.test.claim.nfr_wildcard_census
 
-import std.algebra { fold_list, list_at_optional, string_contains }
+import std.algebra { Cons, Empty, fold_list, list_at_optional, string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import std.types { List }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.decl_ref_census { ImportPair }
 import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, head_module_optional, nfr_wildcard_arm_in_tokens, roster_join_keys, root_member_reads, site_join_key }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.source_root_eval { native_nfr_wildcard_census_output }
 import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.compilers.lexing {
   Token,
@@ -142,6 +147,90 @@ test fn nfr_site_key_joins_file_and_fn() -> Bool {
 }
 
 data nfr_zero_arity_src: String = "module m.z\n\ntype C = A | B\n\nfn pick() -> C {\n  A\n}\n\nfn zero() -> Int {\n  match pick() {\n    A => 1\n    _ => 0\n  }\n}\n"
+
+// ZERO-BOUNDARY CONTROL FOR THE REFUSAL CAUSE (the instrumentation this session added: a refused line
+// carries its typed fatal cause; DESIGN section 5 -- a count that does not say what was counted proves
+// nothing). Fixture: a production-scope candidate the NATIVE FRONT END refuses at lower
+// (return-not-in-tail-position, the form v2.test.claim.namespace_xl0.let_match_early_return's nontail
+// drives), one production-scope file the front end ACCEPTS, and a holder rostering both. The refused line
+// must name its cause and the accepted file must not be refused; the census exits 2 (incomplete, not
+// wrong) with the accepted row verified and nothing stale -- the row under the refused file is unobserved,
+// already counted as refused. Attribution needs no claim here: a refusal is one NativeNfrRefusal record
+// carrying its cause, so a cause-less refusal is unwritable (DESIGN section 5, construction over
+// validation). Before the cause rode the line, the exact-equality claim below was RED: the line stopped
+// after the path.
+data nwc_control_refused_src: String = "module nfr.control.refused\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype C = A | B\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn nwc_probe(c: Bool, s: LmeS, k: Int) -> Int {\n  let y = if c {\n    let x = match s {\n      LmeA { v: v } => v\n      LmeB => return k\n      LmeC { w: w } => return w\n      LmeD => return k\n    }\n    x\n  } else { k }\n  y\n}\n\nfn nwc_wild(c: C) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n"
+
+data nwc_control_accepted_src: String = "module nfr.control.accepted\n\ntype C = A | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n"
+
+data nwc_control_holder_src: String = "module nfr.control.holder\n\nimport std.types { List }\n\nimport std.roster_frontier { FrontierRow, PathSubject }\n\ndata nwc_holder_reason: String = \"control\"\n\ndata nwc_holder_dissolution: String = \"control\"\n\ndata non_fold_residue_frontier: List<FrontierRow> = [\n  FrontierRow { subject: PathSubject { path: \"dag/fixture/nfr_control_accepted.dag::pick\" }, reason: nwc_holder_reason, dissolution: nwc_holder_dissolution },\n  FrontierRow { subject: PathSubject { path: \"dag/fixture/nfr_control_refused.dag::nwc_probe\" }, reason: nwc_holder_reason, dissolution: nwc_holder_dissolution },\n  FrontierRow { subject: PathSubject { path: \"dag/fixture/nfr_control_refused.dag::nwc_wild\" }, reason: nwc_holder_reason, dissolution: nwc_holder_dissolution }\n]\n"
+
+// The compilation unit's lexeme IS the path: the refused line prints the unit lexeme, and the production
+// scope predicate reads it, so a fixture that interned a short name would refuse under a different key
+// than the one it claims.
+fn nwc_control_read(path: String, source: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: V2Tree
+  }
+}
+
+data nwc_control_ingest: SourceRootIngest = Cons {
+  head: nwc_control_read(path: "dag/fixture/nfr_control_refused.dag", source: nwc_control_refused_src),
+  tail: Cons {
+    head: nwc_control_read(path: "dag/fixture/nfr_control_accepted.dag", source: nwc_control_accepted_src),
+    tail: Cons {
+      head: nwc_control_read(path: "dag/fixture/nfr_control_holder.dag", source: nwc_control_holder_src),
+      tail: Empty
+    }
+  }
+}
+
+fn nwc_control_lines() -> List<String> {
+  native_nfr_wildcard_census_output(ingest: nwc_control_ingest).lines
+}
+
+fn nwc_control_exit() -> Int {
+  native_nfr_wildcard_census_output(ingest: nwc_control_ingest).exit
+}
+
+fn nwc_has_line(lines: List<String>, want: String) -> Bool {
+  fold_list(xs: lines, empty: false, cons: fn(acc, l) { acc || l == want })
+}
+
+fn nwc_has_line_containing(lines: List<String>, pattern: String) -> Bool {
+  fold_list(xs: lines, empty: false, cons: fn(acc, l) { acc || string_contains(s: l, pattern: pattern) })
+}
+
+// The refused line names its cause: exact equality with the cause-bearing line, so a line that printed
+// only the path, or carried a cause other than the fatal one, is RED.
+test fn nwc_control_refused_line_names_the_fatal_cause() -> Bool {
+  nwc_has_line(lines: nwc_control_lines(), want: "[nfr-wildcard-census] refused dag/fixture/nfr_control_refused.dag body_lowering_reason_return_not_in_tail_position")
+}
+
+// Only the file the front end refuses is refused: the accepted file and the holder are not. Attribution
+// needs no check here -- a refusal is one NativeNfrRefusal record carrying its cause, so a refused line
+// without a cause cannot be written.
+test fn nwc_control_refuses_only_the_file_the_front_end_refuses() -> Bool {
+  !nwc_has_line_containing(lines: nwc_control_lines(), pattern: "refused dag/fixture/nfr_control_accepted.dag")
+    && !nwc_has_line_containing(lines: nwc_control_lines(), pattern: "refused dag/fixture/nfr_control_holder.dag")
+}
+
+// The census is INCOMPLETE, not wrong: exit 2; the summary line counts refused=1, unread=0,
+// stale=0, unrostered=0, duplicates=0 and one verified row (the accepted file's pick, rostered by the
+// holder); the row under the refused file is unobserved (already counted as refused), not stale.
+test fn nwc_control_census_exits_two_with_one_verified_row() -> Bool {
+  let lines = nwc_control_lines()
+  nwc_control_exit() == 2
+    && nwc_has_line_containing(lines: lines, pattern: " refused=1 ")
+    && nwc_has_line_containing(lines: lines, pattern: " unread=0 ")
+    && nwc_has_line_containing(lines: lines, pattern: " stale=0 ")
+    && nwc_has_line_containing(lines: lines, pattern: " unrostered=0 ")
+    && nwc_has_line_containing(lines: lines, pattern: " duplicates=0 ")
+    && nwc_has_line_containing(lines: lines, pattern: " verified_rows=1")
+}
 
 // A fn with no parameters is read, not unread: its empty Conj domain is the accessor's "no binding", and the
 // scrutinee (necessarily not a parameter) is classified. Before the fix this was Unread parameters-unreadable
