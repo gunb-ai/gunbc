@@ -1,7 +1,7 @@
 module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings }
+import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings, filesystem_operation, file_step, fs_read, fs_list, fs_write, fs_delete, fs_resolved }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, FleetHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
@@ -10,7 +10,7 @@ import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.operation_argv { InputTextList, OperationInputBinding, OperationRef }
-import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin }
+import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin, operation_input_text }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
 import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
@@ -530,11 +530,43 @@ fn bracket_realization(legs: List<Leg>, roster: List<RosterAt>, environment: Lis
       OperationBinding { at: gh_get_organization_operation, handler: fn(state, call) { observed_exit(state: state, code: 0, stdout: roster_answer_at(roster: roster, state: state).org_stdout) } },
       OperationBinding { at: gh_list_runners_operation, handler: fn(state, call) { observed_exit(state: state, code: 0, stdout: roster_answer_at(roster: roster, state: state).list_stdout) } },
       environment_binding(get: fn(state) { environment }),
-      // THE HOLDER LEDGER'S Filesystem.List/Read/Write/Delete, answered from the seeded model. The lens is
-      // CONSTANT (get ignores the ssh step counter, put discards): these single-pass claims never write a
-      // ledger and re-read it in the same run, so the ledger always reads Absent -> LedgerFresh, which is
-      // the ordinary state of a slot that has never deferred.
-      filesystem_bindings(get: fn(_state) { bracket_model_fs() }, put: fn(state, _fs) { state }, cwd: fn(_state) { "/" }),
+      // THE HOLDER LEDGER'S Filesystem.Read/List/Write/Delete, answered from the seeded model -- and ONLY
+      // those four ops, hand-bound from the model's own primitives (the same handlers filesystem_bindings
+      // installs, minus the shell.Move/Mkdir/Path legs the bracket route never dispatches; binding ops the
+      // frame neither grants nor reaches is where this frame was refusing to install). The lens is CONSTANT
+      // (get ignores the ssh step counter, put discards): these single-pass claims never write a ledger and
+      // re-read it in the same run, so the ledger always reads Absent -> LedgerFresh, which is the ordinary
+      // state of a slot that has never deferred.
+      OperationBinding { at: filesystem_operation(operation: "Read"), handler: fn(state, call) {
+        match operation_input_text(invocation: call.invocation, name: "path") {
+          Absent => OperationHarnessFault { reason: "a filesystem read was dispatched without a path" as NonEmptyStr }
+          Present { value: path } => file_step(state: state, observation: fs_read(fs: bracket_model_fs(), path: fs_resolved(cwd: "/", path: path)))
+        }
+      } },
+      OperationBinding { at: filesystem_operation(operation: "List"), handler: fn(state, call) {
+        match operation_input_text(invocation: call.invocation, name: "path") {
+          Absent => OperationHarnessFault { reason: "a filesystem list was dispatched without a path" as NonEmptyStr }
+          Present { value: path } => file_step(state: state, observation: fs_list(fs: bracket_model_fs(), path: fs_resolved(cwd: "/", path: path)))
+        }
+      } },
+      OperationBinding { at: filesystem_operation(operation: "Write"), handler: fn(state, call) {
+        match operation_input_text(invocation: call.invocation, name: "path") {
+          Absent => OperationHarnessFault { reason: "a filesystem write was dispatched without a path" as NonEmptyStr }
+          Present { value: path } => {
+            let w = fs_write(fs: bracket_model_fs(), path: fs_resolved(cwd: "/", path: path), content: "", create_new: false)
+            file_step(state: state, observation: w.observation)
+          }
+        }
+      } },
+      OperationBinding { at: filesystem_operation(operation: "Delete"), handler: fn(state, call) {
+        match operation_input_text(invocation: call.invocation, name: "path") {
+          Absent => OperationHarnessFault { reason: "a filesystem delete was dispatched without a path" as NonEmptyStr }
+          Present { value: path } => {
+            let w = fs_delete(fs: bracket_model_fs(), path: fs_resolved(cwd: "/", path: path))
+            file_step(state: state, observation: w.observation)
+          }
+        }
+      } },
     ], wall_clock_bindings(get: fn(state) { ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0), jumps: [] } })),
     advance: fn(state, _now) { state },
   }
@@ -1336,19 +1368,3 @@ test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
   bracket_holder_leaf(relative_path: "system.slice/actions-runner@srv3-02.service/") == "actions-runner@srv3-02.service"
     && bracket_holder_leaf(relative_path: "/system.slice//actions-runner@01.service///") == "actions-runner@01.service"
 }
-
-// TEMPORARY PROBE (calm-stag-693; delete before merge): name the frame refusal.
-fn flow_cause_once() -> String {
-  match flow_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: []) {
-    BracketRunEnded { cause: c } => c
-    BracketRunReturned { value: _, legs: _, calls: _ } => ""
-  }
-}
-
-test fn probe4_loaded_index() -> Bool { string_contains(s: flow_cause_once(), pattern: "loaded index") }
-test fn probe4_admitted_in() -> Bool { string_contains(s: flow_cause_once(), pattern: "modeled_realization_admitted_in") }
-test fn probe4_rest_exchange() -> Bool { string_contains(s: flow_cause_once(), pattern: "rest_exchange_resolution") }
-test fn probe4_clock_after() -> Bool { string_contains(s: flow_cause_once(), pattern: "virtual_clock_after") }
-test fn probe4_failure_kind() -> Bool { string_contains(s: flow_cause_once(), pattern: "filesystem_failure_kind_name") }
-test fn probe4_byte_count() -> Bool { string_contains(s: flow_cause_once(), pattern: "file_observation_byte_count") }
-test fn probe4_may_be_declared() -> Bool { string_contains(s: flow_cause_once(), pattern: "may be declared") }
