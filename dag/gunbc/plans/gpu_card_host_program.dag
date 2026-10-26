@@ -112,7 +112,8 @@ fn gc_census_projection(r: GpuCardCensusReading) -> MarkdownTableRow {
 type GpuCardNodeId
   = GcD0 | GcD1 | GcD2 | GcD3 | GcD4
   | GcN0a | GcN0b | GcN0c | GcN0d | GcN0e
-  | GcN1 | GcN2a | GcN2b | GcN3 | GcN4 | GcN5 | GcN6 | GcN7 | GcN8 | GcN9 | GcN10 | GcN11
+  | GcN1 | GcN2a | GcN2b | GcN2c | GcN3a | GcN3b | GcN3c | GcN4a | GcN4b | GcN5 | GcN5b | GcN5c
+  | GcN6a | GcN6b | GcN6c | GcN6d | GcN7 | GcN8 | GcN9 | GcN10 | GcN11
   | GcN12a | GcN12b | GcN12c | GcN12d | GcN12e
   | GcN13 | GcN14
   | GcGoal
@@ -149,10 +150,19 @@ fn gc_node_label(id: GpuCardNodeId) -> String {
     GcN1 => "N1"
     GcN2a => "N2a"
     GcN2b => "N2b"
-    GcN3 => "N3"
-    GcN4 => "N4"
+    GcN2c => "N2c"
+    GcN3a => "N3a"
+    GcN3b => "N3b"
+    GcN3c => "N3c"
+    GcN4a => "N4a"
+    GcN4b => "N4b"
     GcN5 => "N5"
-    GcN6 => "N6"
+    GcN5b => "N5b"
+    GcN5c => "N5c"
+    GcN6a => "N6a"
+    GcN6b => "N6b"
+    GcN6c => "N6c"
+    GcN6d => "N6d"
     GcN7 => "N7"
     GcN8 => "N8"
     GcN9 => "N9"
@@ -205,71 +215,119 @@ fn gc_row(id: GpuCardNodeId, what: String, home: GpuCardNodeHome, done: String, 
   GpuCardGraphRow { id: id, what: what, home: home, done: done, needs: needs, standing: GcUnstarted }
 }
 
+fn gc_at(r: GpuCardGraphRow, standing: GpuCardNodeStanding) -> GpuCardGraphRow {
+  GpuCardGraphRow { id: r.id, what: r.what, home: r.home, done: r.done, needs: r.needs, standing: standing }
+}
+
+fn gc_finished(s: GpuCardNodeStanding) -> Bool {
+  match s {
+    GcLanded { pr: _ } => true
+    GcDecided => true
+    GcUnstarted => false
+    GcInReview { pr: _ } => false
+  }
+}
+
+// A node can start when it is unstarted and every node it needs has landed or been decided. The list
+// in section 7 is this fold, so it cannot drift from the rows.
+fn gc_ready_labels(rows: List<GpuCardGraphRow>) -> String {
+  let ready = filter(rows, r => match r.standing { GcUnstarted => true  _ => false }
+    && all(r.needs, n => any(rows, q => gc_node_label(id: q.id) == gc_node_label(id: n) && gc_finished(s: q.standing))))
+  join(map(ready, r => gc_node_label(id: r.id)), ", ")
+}
+
 data gpu_card_graph_rows: List<GpuCardGraphRow> = [
-  gc_row(id: GcD0, what: "Confirm the working census in section 0: every installed and committed card and its host.", home: GcOperatorDecides,
-    done: "every census row names its host, or is outside with a reason.", needs: []),
+  gc_row(id: GcD0, what: "Confirm the host of every installed card whose host is unconfirmed in section 0. The committed cards' host is a separate decision.", home: GcOperatorDecides,
+    done: "every installed census row names its host.", needs: []),
   gc_row(id: GcD1, what: "The fan posture for zones that reach a passive card (section 5.4).", home: GcOperatorDecides,
-    done: "the fleet fan ruling is amended for the chosen posture.", needs: []),
+    done: "the posture is named and the fleet fan ruling is amended for it. The rows here are the rows of option (b); choosing (a) revises this carrier to add the enforcer before the posture is realized.", needs: []),
   gc_row(id: GcD2, what: "The NVIDIA driver branch, and open versus proprietary kernel modules.", home: GcOperatorDecides,
-    done: "one branch is named, and its release notes list every in-bound NVIDIA card.", needs: []),
+    done: "one branch is named, and its release notes list every NVIDIA card in the census.", needs: [GcN0a]),
   gc_row(id: GcD3, what: "The host for the R9700 pair, and therefore its kernel and distribution.", home: GcOperatorDecides,
     done: "a fleet host and its OS release are named.", needs: []),
   gc_row(id: GcD4, what: "Who owns the park and wake transition: a host watcher, the engine, or placement driving a host actuator.", home: GcOperatorDecides,
     done: "one owner is named, and the other two have no park or wake path.", needs: []),
-  gc_row(id: GcN0a, what: "The card census, and the bound predicate moved out of this carrier.",
+  gc_row(id: GcN0a, what: "The card census: each card's bound membership, its host, and its catalog row, with the bound predicate moved out of this carrier.",
     home: GcCreates { module: "gunbc.fleet.gpu_card_census" },
-    done: "every card is a census row with its host, slot, board position and catalog model, and this carrier imports the predicate.", needs: [GcD0]),
+    done: "every card is a census row whose catalog row resolves, an installed row's host is read from its residence, a committed row names the host it is committed to, and this carrier imports the predicate.", needs: [GcD3, GcN3b, GcN3c, GcN6b, GcN12d]),
   gc_row(id: GcN0b, what: "An opaque identity for the H11 host.",
     home: GcExtends { symbol: "gunbc.fleet.fleet_host_identity::operator_hosts" },
     done: "the host is a member of the operator host list.", needs: []),
   gc_row(id: GcN0c, what: "The section-3 readings as typed receipts, each with its standing.",
     home: GcCreates { module: "gunbc.serving.gpu_power_state_receipt" },
-    done: "every section-3 row is a receipt keyed by the installed position it was read from.", needs: [GcN0a, GcN0b]),
-  gc_row(id: GcN0d, what: "The lid-off Xid incident as a failure-mode row: a passive card under a zone that does not follow it.",
+    done: "every section-3 row is a receipt keyed by the installed position it was read from.", needs: [GcN6b]),
+  gc_at(r: gc_row(id: GcN0d, what: "The lid-off Xid incident as a failure-mode row: a passive card under a zone that does not follow it.",
     home: GcCreates { module: "gunbc.recurring_failure_mode.a_passive_accelerator_sits_in_a_zone_that_does_not_follow_it" },
-    done: "the row states rung found at, ceiling and next trigger.", needs: []),
-  gc_row(id: GcN0e, what: "The adjacent-slot incident as a failure-mode row: two passive boards starving each other of air.",
+    done: "the row states rung found at, ceiling and next trigger.", needs: []), standing: GcLanded { pr: "#15214" }),
+  gc_at(r: gc_row(id: GcN0e, what: "The adjacent-slot incident as a failure-mode row: two passive boards starving each other of air.",
     home: GcCreates { module: "gunbc.recurring_failure_mode.adjacent_passive_accelerators_starve_each_other" },
-    done: "the row states rung found at, ceiling and next trigger.", needs: []),
-  gc_row(id: GcN1, what: "nvidia-smi power, clock, P-state, clock-event-reason and persistence queries and effects, with unsupported output as its own arm.",
+    done: "the row states rung found at, ceiling and next trigger.", needs: []), standing: GcLanded { pr: "#15214" }),
+  gc_at(r: gc_row(id: GcN1, what: "nvidia-smi power, clock, P-state, clock-event-reason and persistence queries and effects, with unsupported output as its own arm.",
     home: GcExtends { symbol: "extdeps.nvidia.system_management_interface::NvidiaComputeAppsRead" },
-    done: "each operation parses a captured output and refuses an unsupported one, in a witness.", needs: []),
+    done: "each operation parses a captured output and refuses an unsupported one, in a witness.", needs: []), standing: GcInReview { pr: "#15218" }),
   gc_row(id: GcN2a, what: "Driver releases, distribution packages, kernel-module flavour, and the supported-GPU list per release.",
     home: GcCreates { module: "extdeps.nvidia.linux_driver" },
     done: "the chosen branch is cited, and its supported-GPU list is read from its release notes.", needs: [GcD2]),
-  gc_row(id: GcN2b, what: "nvidia-persistenced: its packaged unit shape, which is static and runs the daemon with persistence mode off, and the drop-in that changes its ExecStart.",
+  gc_at(r: gc_row(id: GcN2b, what: "nvidia-persistenced: the startup persistence mode its argv selects, as NVIDIA documents the flags.",
     home: GcCreates { module: "extdeps.nvidia.persistence_daemon" },
-    done: "the packaged unit is modelled from a captured unit file, and the converge fact is the daemon's mode, read back from persistence_mode after a reboot.", needs: []),
-  gc_row(id: GcN3, what: "Catalog rows for every in-bound NVIDIA model not yet catalogued, a multi-GPU board shape for the A16, and a configurable power range distinct from TDP.",
+    done: "a captured argv maps to its mode in a witness, and the two contradictory flags together are ambiguous.", needs: []), standing: GcInReview { pr: "#15215" }),
+  gc_row(id: GcN2c, what: "A unit's ExecStart argv, read from the property systemctl show reports.",
+    home: GcExtends { symbol: "extdeps.systemd.systemctl::systemctl_show_property_value" },
+    done: "a captured ExecStart property parses to its argv in a witness, and a value that does not split refuses.", needs: []),
+  gc_at(r: gc_row(id: GcN3a, what: "A multi-GPU board shape beside the per-GPU row, with a configurable board power range distinct from TDP and the board's zero-power capability, admitted only when its invariants hold.",
     home: GcExtends { symbol: "extdeps.gpu.types::GpuModelCatalogRow" },
-    done: "every in-bound NVIDIA card resolves to a cited catalog row that owns its capability ranges.", needs: []),
-  gc_row(id: GcN4, what: "Supermicro OEM fan-mode and zone-duty operations, and a Supermicro BMC family arm.",
+    done: "a board with no GPU, an inverted range, or a default or named point outside the range has no row, each in a witness.", needs: []), standing: GcInReview { pr: "#15219" }),
+  gc_at(r: gc_row(id: GcN3b, what: "The A16 board row and its per-GPU row, every figure cited to the brief.",
+    home: GcExtends { symbol: "extdeps.gpu.nvidia_a16::extdeps_model_scope" },
+    done: "the A16 is an admitted board row of four GA107-890 GPUs.", needs: [GcN3a]), standing: GcInReview { pr: "#15219" }),
+  gc_at(r: gc_row(id: GcN3c, what: "The RTX 2000 Ada catalog row, every figure cited.",
+    home: GcExtends { symbol: "extdeps.gpu.nvidia::nvidia_rtx_pro_6000_workstation_catalog" },
+    done: "the card resolves to a cited catalog row.", needs: []), standing: GcInReview { pr: "#15219" }),
+  gc_at(r: gc_row(id: GcN4a, what: "Supermicro OEM fan-mode and zone-duty operations, with the firmware's behaviour when no host writes typed as unread.",
     home: GcCreates { module: "extdeps.bmc.supermicro_oem_fan" },
-    done: "get and set for mode and zone duty are modelled, with a readback parse, and what the firmware does when no host writes is cited or typed as unread.", needs: []),
-  gc_row(id: GcN5, what: "H11SSL header-to-zone map, physical slot order and pitch.",
+    done: "get and set for mode and zone duty are modelled, with a readback parse and checked set arguments.", needs: []), standing: GcInReview { pr: "#15216" }),
+  gc_row(id: GcN4b, what: "A Supermicro arm of the BMC firmware family, so a host's fan interface is selected by its BMC.",
+    home: GcExtends { symbol: "extdeps.bmc.endpoint::BmcFirmwareFamily" },
+    done: "the H11's BMC resolves to the Supermicro arm, and the fan operations are selected through it.", needs: []),
+  gc_at(r: gc_row(id: GcN5, what: "H11SSL cooling zones, fan headers and BIOS slot labels, as the manual states them.",
     home: GcExtends { symbol: "extdeps.boards.supermicro_h11ssl::supermicro_h11ssl_fan_headers" },
-    done: "every header maps to a zone, cited or typed as a read obligation.", needs: []),
-  gc_row(id: GcN6, what: "Placement: card residence by slot and GPU position within a board, fan residence and topology by header, and zone reach down to GPU position.",
-    home: GcExtends { symbol: "gunbc.fleet.fleet_fan_wiring::InstalledFanModelStanding" },
-    done: "an adjacent pair of passive cards and an unmapped header each refuse in a witness.", needs: [GcN0a, GcN0e, GcN3, GcN5]),
-  gc_row(id: GcN13, what: "The whole-host wall-power source for each in-bound host: BMC-reported PSU input, or a metered PDU outlet, with its standing.",
+    done: "what the manual states is cited, and what it does not is typed as a read obligation.", needs: []), standing: GcLanded { pr: "#15217" }),
+  gc_row(id: GcN5b, what: "Discharge the H11SSL header-to-zone read obligation.",
+    home: GcExtends { symbol: "extdeps.boards.supermicro_h11ssl::supermicro_h11ssl_header_zone_standing" },
+    done: "the standing is cited to Supermicro or observed by a receipt of a controlled reading.", needs: [GcN5]),
+  gc_row(id: GcN5c, what: "Discharge the H11SSL physical slot order and pitch read obligation.",
+    home: GcExtends { symbol: "extdeps.boards.supermicro_h11ssl::supermicro_h11ssl_slot_geometry_standing" },
+    done: "the standing is cited to Supermicro or observed by a receipt of a measurement.", needs: [GcN5]),
+  gc_row(id: GcN6a, what: "A containment that places a component in a host at a slot and, for a multi-GPU board, each GPU at its position.",
+    home: GcExtends { symbol: "product.placement_supply::PhysicalContainment" },
+    done: "a containment names its slot and position, and two cards in one slot refuse in a witness.", needs: []),
+  gc_row(id: GcN6b, what: "Card residence rows: each installed card an asset with its catalog row, contained in its host at its slot.",
+    home: GcExtends { symbol: "gunbc.fleet.fleet_physical_inventory::installed_cooler_containments" },
+    done: "every installed card is contained in the host the operator confirmed.", needs: [GcD0, GcN0b, GcN6a]),
+  gc_row(id: GcN6c, what: "Fan residence: each header's fans, how many, and their topology.",
+    home: GcExtends { symbol: "gunbc.fleet.fleet_fan_wiring::FanHeaderWiring" },
+    done: "every header on each in-bound host carries its fans and topology, and a chain is tach-unreadable rather than dead.", needs: [GcN0b]),
+  gc_row(id: GcN6d, what: "Zone reach, derived: header to zone from the board, joined with fan residence and card residence, down to GPU position, with which fans cool which positions as an operator declaration with its standing.",
+    home: GcCreates { module: "gunbc.fleet.gpu_card_zone_reach" },
+    done: "an adjacent pair of passive cards and an unmapped header each refuse in a witness, and each installed GPU position resolves to the zone that reaches it.", needs: [GcN0e, GcN3a, GcN5b, GcN5c, GcN6b, GcN6c]),
+  gc_row(id: GcN13, what: "Whole-host wall power for each in-bound host, from the BMC-reported power-supply input, with its standing.",
     home: GcExtends { symbol: "extdeps.bmc.redfish_telemetry::RedfishTelemetryPoint" },
-    done: "each in-bound host has a source read in a witness, and a host with none refuses its power receipts.", needs: [GcN0a]),
+    done: "each in-bound host's input power is read in a witness, and a host whose BMC reports none refuses its power receipts.", needs: [GcN0a]),
   gc_row(id: GcN7, what: "The section-6 instrument: idle phases, a power-cap sweep under representative load, and an idle-gap distribution, keyed by installed position.",
     home: GcCreates { module: "gunbc.instruments.gpu_power_state_matrix" },
-    done: "every in-bound installed position has a throughput-versus-energy curve across its cap range, idle and wake receipts, and wall power on every sample.", needs: [GcN0c, GcN1, GcN6, GcN13]),
+    done: "every in-bound installed position has a throughput-versus-energy curve across its cap range, idle and wake receipts, and wall power on every sample.", needs: [GcN0c, GcN1, GcN6d, GcN13]),
   gc_row(id: GcN8, what: "The power-state machine, and the cap, park threshold and hysteresis selected through std.decision per installed realization: host, slot, board position, fan reach, driver, engine and workload.",
     home: GcCreates { module: "gunbc.serving.gpu_power_state_policy" },
-    done: "each installed position's operating point is a selection receipt, a cap outside the catalog or device range refuses, and a change to any keyed fact is a different decision.", needs: [GcD4, GcN1, GcN3, GcN6, GcN7]),
+    done: "each installed position's operating point is a selection receipt, a cap outside the catalog or device range refuses, and a change to any keyed fact is a different decision.", needs: [GcD4, GcN0a, GcN1, GcN6d, GcN7]),
   gc_row(id: GcN9, what: "An accelerator guard role, and the chosen posture for zones that reach a passive card, realized so that it holds with the host dead.",
     home: GcExtends { symbol: "product.fleet_fan_policy::FleetFanPolicy" },
-    done: "on the H11, the zone's posture is read back from the BMC with the host's controller stopped.", needs: [GcD1, GcN0d, GcN4, GcN6]),
+    done: "on the H11, the zone's posture is read back from the BMC with the host's controller stopped.", needs: [GcD1, GcN0d, GcN4a, GcN4b, GcN6d]),
   gc_row(id: GcN14, what: "Withdraw a host's serving seats before a disruptive transition, and readmit them only after the readback holds.",
     home: GcOwnedElsewhere { owner: "gunbc.plans.serving_fleet_program::serving_fleet_program_plan", obligation: "host withdrawal and readmission through placement" },
     done: "a host can be withdrawn and readmitted, with both transitions observed.", needs: []),
-  gc_row(id: GcN10, what: "The converge leg: observe, plan, apply, independent readback and typed refusals, including a drain or reboot required result and a later pass that reads the loaded driver back.",
+  gc_row(id: GcN10, what: "The converge leg: observe, plan, apply, independent readback and typed refusals, including the persistence drop-in over the packaged unit's argv, a drain or reboot required result, and a later pass that reads the loaded driver back.",
     home: GcCreates { module: "gunbc.host.gpu_card_converge" },
-    done: "the discriminating refusals in section 5.5 go red on the real path, and an undrained host is never rebooted.", needs: [GcN2a, GcN2b, GcN6, GcN8, GcN9, GcN14]),
+    done: "the discriminating refusals in section 5.5 go red on the real path, and an undrained host is never rebooted.", needs: [GcN2a, GcN2b, GcN2c, GcN6d, GcN8, GcN9, GcN14]),
   gc_row(id: GcN11, what: "Run the leg on each installed NVIDIA host, and remove the section-4 specimens.",
     home: GcCreates { module: "gunbc.host.gpu_card_converge" },
     done: "every installed NVIDIA card's readback holds after any reboot, and no specimen remains.", needs: [GcN10]),
@@ -372,17 +430,17 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
     h3(text: "5.1 Upstream facts (extdeps): one module per independently versioned upstream"),
     ul(items: [
       li(text: "**`extdeps.nvidia.system_management_interface`** (extended, since it is the same upstream): power queries (`power.draw`, `power.limit`, `power.min_limit`, `power.max_limit`, `pstate`, `clocks.gr`, `clocks.mem`, `persistence_mode`), `--query-supported-clocks`, `clocks_event_reasons.active`, and the effects `-pl`, `-pm`, `-lmc`/`-rmc` and `-lgc`/`-rgc`. Each operation's \"not supported\" output is its own arm, as `QueryComputeApps` already does, and so is an option the installed driver does not recognize. The option surface is a fact of the driver release (N2a), not of nvidia-smi in general: `-lmi` appears in NVIDIA's documentation, but 595.91.07 rejects it with exit 255."),
-      li(text: "**`extdeps.nvidia.persistence_daemon`** (new): `nvidia-persistenced` and its packaged unit shape: on Ubuntu's 595 server packages it is `static` and runs `--no-persistence-mode`, so whether the daemon is running says nothing about whether persistence is on."),
+      li(text: "**`extdeps.nvidia.persistence_daemon`** (new): the startup persistence mode an `nvidia-persistenced` argv selects, as NVIDIA documents the flags. What a distribution's packaged unit passes is not NVIDIA's: on Ubuntu's 595 server packages the unit is `static` and runs `--no-persistence-mode`, which is a receipt of the observing layer. Reading a unit's `ExecStart` argv is systemd's, through `extdeps.systemd.systemctl::systemctl_show_property_value`. So whether the daemon is running says nothing about whether persistence is on."),
       li(text: "**`extdeps.nvidia.linux_driver`** (new): driver branches and releases, the distribution package names, open versus proprietary kernel module, and the supported-GPU list per release, each cited to NVIDIA's release notes. It holds no version pin: a pin is policy."),
       li(text: "**`extdeps.amd.amdgpu_driver`** and **`extdeps.amd.rocm`** (new), plus **`extdeps.amd.amd_smi`** (new): the kernel driver and firmware the R9700 needs, the ROCm release that supports the card and on which distributions, and the power-cap and clock operations. The R9700's figures (architecture, memory, board power, PCIe) are read obligations until they are cited. None is transcribed here from memory."),
-      li(text: "**Catalog rows**: every in-bound model not yet catalogued, which is the RTX 2000 Ada in `extdeps.gpu.nvidia` and the R9700 in a new `extdeps.gpu.amd`. `extdeps.gpu.types` gains a **configurable power range** distinct from TDP, and a **multi-GPU board** shape so the A16 can be catalogued as one board of four GA107 GPUs without pretending it is one GPU. The catalog owns capability ranges. It never owns an operating point."),
-      li(text: "**`extdeps.bmc.supermicro_oem_fan`** (new): Supermicro's OEM IPMI fan-mode get/set (`0x30 0x45`, with modes Standard, Full, Optimal, HeavyIO and PUE, read before they are typed) and per-zone duty get/set (`0x30 0x70 0x66`), bound to the `extdeps.bmc.ipmi` transport. `extdeps.bmc.endpoint::BmcFirmwareFamily` gains a Supermicro arm."),
-      li(text: "**`extdeps.boards.supermicro_h11ssl`** (extended): the header-to-zone map, cited to the manual page that states it or held as a typed read obligation until it is; physical slot order and pitch; and each slot's root complex."),
+      li(text: "**Catalog rows**: every in-bound model not yet catalogued, which is the RTX 2000 Ada in `extdeps.gpu.nvidia` and the R9700 in a new `extdeps.gpu.amd`. `extdeps.gpu.types` gains a **configurable power range** distinct from TDP, the board's **zero-power capability** (the A16 brief states it is not supported, so a park policy cannot select it), and a **multi-GPU board** shape so the A16 can be catalogued as one board of four GA107-890 GPUs without pretending it is one GPU. A board row exists only through an admission that refuses a board with no GPU, an inverted range, or a default or named point outside it. The catalog owns capability ranges. It never owns an operating point."),
+      li(text: "**`extdeps.bmc.supermicro_oem_fan`** (new): Supermicro's OEM IPMI fan-mode get/set (`0x30 0x45`, with modes Standard, Full, Optimal, HeavyIO and PUE, read before they are typed) and per-zone duty get/set (`0x30 0x70 0x66`), bound to the `extdeps.bmc.ipmi` transport. Separately, `extdeps.bmc.endpoint::BmcFirmwareFamily` gains a Supermicro arm, so the operations are selected by the host's BMC."),
+      li(text: "**`extdeps.boards.supermicro_h11ssl`** (extended): the two cooling zones, the fan headers and the BIOS slot labels the manual states. The manual does not state which headers each zone drives, or the physical slot order and pitch, so those are typed read obligations, each discharged by its own row."),
     ]),
     h3(text: "5.2 Physical placement (gunbc.fleet): what is plugged into what, on which host"),
     ul(items: [
       li(text: "An identity row for the H11 host. Under the 2026-10-07 rule it is opaque, not \"h11\"."),
-      li(text: "**Card residence**: which card (by serial, with its catalog row) sits in which slot of which host. This extends `gunbc.fleet.fleet_physical_inventory`, which already binds assets to hosts. Adjacency is derived from the board's slot order, never authored, so that \"two passive boards in adjacent slots\" is a refusable placement and not something that is only discovered later."),
+      li(text: "**Card residence**: which card (by serial, with its catalog row) sits in which slot of which host, and for a multi-GPU board which GPU sits at which position. The shape extends `product.placement_supply::PhysicalContainment`, whose `HostContainsComponent` already binds a component to a host but not to a slot; the rows sit beside the existing containments in `gunbc.fleet.fleet_physical_inventory`. The census reads an installed card's host from here rather than holding a second copy. Adjacency is derived from the board's slot order, never authored, so that \"two passive boards in adjacent slots\" is a refusable placement and not something that is only discovered later."),
       li(text: "**Fan residence** extends `gunbc.fleet.fleet_fan_wiring`: each header's fans, how many, and their topology (direct, splitter or daisy chain). The tach expectation follows from the topology, so a chain is rotation expected with tach unreadable, which is a different state from a dead fan."),
       li(text: "**Zone reach** is derived: header to zone from the board, joined with fan residence. The answer is \"zone 1 on this host drives these fans, and they cool these slots\". Reach resolves to **a GPU position inside a board, not only to a slot**: at full load the first GPU of each A16 board throttles while its siblings on the same board stay 10–30 °C cooler, so a zone that follows only a per-slot or per-host maximum responds to the wrong population. The last part, which fans cool which positions, is an operator declaration with its own standing, because nothing reads airflow."),
     ]),
@@ -410,9 +468,9 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
     p(text: "**A fail-safe has to hold when the thing that failed was the host.** A host-side loop can write full duty after a lost reading or an ordinary exit. It cannot write anything after the loop, or the whole host, has died, and a witness over a modelled death does not establish the physical transition. So D1 has two honest options:"),
     ul(items: [
       li(text: "**(b) A fixed firmware posture.** Every zone that reaches a passive card rests in a Supermicro firmware mode (Full, or HeavyIO if its reading shows it follows enough). The BMC holds that posture with the host dead, because no host process is in the loop. The cost is acoustic."),
-      li(text: "**(a) A host loop under a lease enforced outside the host.** The loop may lower duty only while it holds a lease. An enforcer that is not on the host, either a BMC capability or a fleet process reaching the BMC over its own network, writes full duty when the lease expires. This needs an extra node, the enforcer, and the graph gains it if D1 picks this option."),
+      li(text: "**(a) A host loop under a lease enforced outside the host.** The loop may lower duty only while it holds a lease. An enforcer that is not on the host, either a BMC capability or a fleet process reaching the BMC over its own network, writes full duty when the lease expires. The enforcer does not exist, so the graph in section 7 does not carry it: the graph is the graph of option (b), and choosing (a) is a revision of this carrier that adds the enforcer before the posture is realized."),
     ]),
-    p(text: "Either way the model gains an **accelerator guard role**, so the posture is read against the GPUs it protects. N4 must record what the firmware does when no host writes, cited or typed as unread, because both options rest on that fact. The recommendation is (b) for this program's bound, because it is realizable with what exists. Option (a) is a follow-up that buys back acoustics."),
+    p(text: "Either way the model gains an **accelerator guard role**, so the posture is read against the GPUs it protects. What the firmware does when no host writes is typed as unread in `extdeps.bmc.supermicro_oem_fan`, because both options rest on that fact, and the posture's readback with the host's controller stopped is what reads it. The recommendation is (b) for this program's bound, because it is realizable with what exists. Option (a) is a follow-up that buys back acoustics."),
     h3(text: "5.5 The converge leg (gunbc.host): observe, apply, read back, refuse"),
     p(text: "It follows the pattern of #12500 and #15177 as one fleet-converge mode, regenerated into the workflow by the model:"),
     ol(items: [
@@ -450,14 +508,15 @@ per sample: host, slot, board position, card + VBIOS, driver + module flavour, p
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: map(gpu_card_graph_rows, r => gc_row_projection(r: r)),
     },
-    p(text: "Nodes that can start now: D0 to D4, N0b, N0d, N0e, N1, N2b, N3, N4, N5, N12c, N12d and N14. The critical path to the NVIDIA cards runs N0a, N6, N7, N8, N10, N11. On the R9700 side, G also waits on D3 and the cards physically arriving. N10 is designed for the R9700 from the start: if adding it needs anything beyond rows, N10 was built wrong."),
+    p(text: join(["Nodes that can start now, folded from the rows' standings: ", gc_ready_labels(rows: gpu_card_graph_rows), ". The critical path to the NVIDIA cards runs through card residence, zone reach, the instrument, the policy and the leg: N6b, N6d, N7, N8, N10, N11. On the R9700 side, G also waits on D3 and the cards physically arriving. N10 is designed for the R9700 from the start: if adding it needs anything beyond rows, N10 was built wrong."], "")),
+    p(text: "**The graph is complete for the recommended decisions, and says where it is not.** Two answers would change it, and each is a revision of this carrier before the node it reaches starts, not an implicit node: D1 choosing (a) adds the off-host enforcer, and a host whose BMC reports no power-supply input adds a metered-PDU source for that host. Each row has one home; a row whose work spans two modules was split, so N3, N4, N5 and N6 are families."),
     p(text: "**Why the graph rows are not shared with the serving fleet program's rows.** `gunbc.plans.serving_fleet_program::ServingFleetRow` and the row type here have the same skeleton (id, home, edges, standing, done), and this is the second instance, so by DESIGN §6b it should be generalized. Not in this change: lifting the shape into `gunbc.plan` changes a sibling plan and its witness, which is outside this program's bound. The trigger is this PR's merge, and the follow-up is one shared plan-graph row type in `gunbc.plan` with both plans and both witnesses migrated onto it."),
     p(text: "Done means executed (DESIGN §5): G is a readback on each host, not a merged PR. And N10 counts only when discriminating inputs go red on the real path: a cap below the device minimum, a header with no zone, adjacent passive cards, and a reboot requested on a host that still holds seats each refuse."),
     h2(text: "8. Decisions for the operator"),
     ul(items: [
       li(text: "**D1, fan posture for zones that reach a passive card** (section 5.4). (a) A host loop under a lease that is enforced outside the host. (b) A fixed firmware posture (Full or HeavyIO) that holds with the host dead. *Recommend (b)* for this bound: it is realizable today, and (a) needs an enforcer that does not exist yet. Either option amends the fleet fan ruling, because the resting posture is no longer `FirmwareAutomatic`."),
       li(text: "**D2, driver pin.** Which NVIDIA branch (production or new-feature), and open or proprietary kernel modules, for the in-bound mix of Ampere (A16), Ada and Blackwell. *Recommend* one production branch whose release notes list every in-bound card, with open modules if they support all of them. This is to be checked against the release notes, not assumed. The H11 already runs the 595 server branch with open modules (`nvidia-driver-595-server-open`), which is the natural candidate to check first."),
-      li(text: "**D0, the census.** Confirm section 0, and in particular the RTX 2000 Ada pair's host. N0a records the answer."),
+      li(text: "**D0, the installed hosts.** Confirm the host of each installed card whose host section 0 holds as unconfirmed: the A16 pair and the RTX 2000 Ada pair. The R9700 pair's host is D3's, not D0's. Card residence records the answer, and the census reads it from there."),
       li(text: "**D3, R9700 host.** Which host the two R9700s go into, and therefore which kernel and distribution the AMD rows have to support. The census holds them as committed, so the program cannot retire before they converge."),
       li(text: "**D4, who owns park and wake.** A host watcher, the engine, or placement driving a host actuator. *Recommend* placement-driven state with a host actuator and readback, so that park and wake are visible to the consolidation policy rather than hidden beneath it. N8 needs this decision."),
       li(text: "**Lane shape.** One lane under the Mt. Collins worker, working the graph in section 7. Nothing outside the graph is in scope."),
