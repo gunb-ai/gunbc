@@ -5,7 +5,8 @@ import std.measure { CpuClock, WallClock, Nanosecond, nanosecond, nanosecond_cou
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import gunbc.regen_round_cost {
   RegenRoundCostReceipt, TraceMark, regen_round_mark, regen_round_cpu_unreadable_cause,
-  RegenRoundPhase, Emit, SeedBuild, RegenRoundPhaseAttribution, Attributed, Unattributed,
+  RegenRoundPhase, Emit, SeedBuild, BaseMirrorBootstrap, RegenRoundPhaseAttribution, Attributed,
+  Unattributed, RoundOneMirrorAuthority, FromBaseMirror, SeedBuiltFromHead,
   regen_round_phase_of_label, regen_round_phase_tag, regen_round_phase_label, regen_round_phases,
   regen_round_total, regen_round_mark_line, regen_round_cost_render
 }
