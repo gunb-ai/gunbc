@@ -1,0 +1,113 @@
+{
+  "head": "7daaddd1f0ce99734e1ddb57138313701455c758",
+  "tracked_paths": 10381,
+  "counts": {
+    "text": 10369,
+    "selected_source_files": 9761,
+    "nontext": 12
+  },
+  "rows": 635,
+  "effects": 4625,
+  "patterns": {
+    "dag_filesystem": "\\bFilesystem\\.(Write|WriteBytes|WriteOwnerOnly|WriteCreateNew|WriteCreateNewWithMode|LinkCreateNew|Delete)\\s*\\(",
+    "dag_shell": "\\bshell\\.(?:Mkdir\\.(?:NewOwnerOnly|Parents)|Mktemp\\.(?:FileInDirectory|Dir|DirWithTemplate)|Link\\.(?:Hard)|Remove\\.(?:FileForce|RecursiveForce|EmptyDirectory)|Move\\.(?:File|Replace|NoReplaceDirectory)|Chmod\\.(?:OwnerOnlyDirectory|WorldWritableDirectory|OwnerReadWriteFile|RecursiveWritable|RecursiveReadOnly)|Copy\\.(?:File|Recursive))\\s*\\(",
+    "dag_filesystem_wrapper": "\\b(?:filesystem_delete|filesystem_create_new|filesystem_link_create_new)\\s*\\(",
+    "dag_coreutils_builder": "\\b(?:mkdir_parents_command|mkdir_create_only_command|mkdir_create_only_with_mode_command|cp_command|cp_preserve_if_absent_command|install_empty_file_command|rm_force_command|rm_recursive_force_command|rm_recursive_force_one_file_system_command|rm_recursive_force_one_file_system_exec_argv|ln_symbolic_force_command|tee_append_command|coreutils_install_directory_argv|coreutils_install_directories_arguments|coreutils_install_file_owned_argv|coreutils_install_directory_owned_arguments|coreutils_install_directory_owned_argv|coreutils_install_file_argv|dd_overwrite_path_command|coreutils_rm_force_argv|coreutils_rm_empty_directory_argv|coreutils_rm_force_recursive_argv|install_file_owned_command|mv_exact_destination_command)\\s*\\(",
+    "rust_fs": "\\b(?:(?:std|tokio)::)?fs::(?:write|copy|rename|remove_file|remove_dir|remove_dir_all|create_dir|create_dir_all|hard_link|soft_link|symlink|set_permissions)\\s*\\(|\\b(?:File|OpenOptions|DirBuilder)::(?:create|create_new|new)\\s*\\(|\\.\\s*(?:write_all|set_len|set_permissions|create_new|create|append|truncate)\\s*\\(",
+    "python_fs": "\\.(?:write_text|write_bytes|mkdir|rename|replace|unlink|rmdir)\\s*\\(|\\b(?:shutil|os)\\.(?:remove|unlink|rmdir|mkdir|makedirs|rename|replace|symlink|link|chmod|chown|rmtree|copy|copy2|copyfile|copytree)\\s*\\(|\\bopen\\s*\\([^\\n]*[\\\"\\x27][wax][b+]*[\\\"\\x27]"
+  },
+  "filesystem_operations": [
+    "Write",
+    "WriteBytes",
+    "WriteOwnerOnly",
+    "WriteCreateNew",
+    "WriteCreateNewWithMode",
+    "LinkCreateNew",
+    "Delete"
+  ],
+  "shell_operations": {
+    "Mkdir": [
+      "NewOwnerOnly",
+      "Parents"
+    ],
+    "Mktemp": [
+      "FileInDirectory",
+      "Dir",
+      "DirWithTemplate"
+    ],
+    "Link": [
+      "Hard"
+    ],
+    "Remove": [
+      "FileForce",
+      "RecursiveForce",
+      "EmptyDirectory"
+    ],
+    "Move": [
+      "File",
+      "Replace",
+      "NoReplaceDirectory"
+    ],
+    "Chmod": [
+      "OwnerOnlyDirectory",
+      "WorldWritableDirectory",
+      "OwnerReadWriteFile",
+      "RecursiveWritable",
+      "RecursiveReadOnly"
+    ],
+    "Copy": [
+      "File",
+      "Recursive"
+    ]
+  },
+  "wrapper_symbols": [
+    "filesystem_delete",
+    "filesystem_create_new",
+    "filesystem_link_create_new"
+  ],
+  "coreutils_builder_symbols": [
+    "mkdir_parents_command",
+    "mkdir_create_only_command",
+    "mkdir_create_only_with_mode_command",
+    "cp_command",
+    "cp_preserve_if_absent_command",
+    "install_empty_file_command",
+    "rm_force_command",
+    "rm_recursive_force_command",
+    "rm_recursive_force_one_file_system_command",
+    "rm_recursive_force_one_file_system_exec_argv",
+    "ln_symbolic_force_command",
+    "tee_append_command",
+    "coreutils_install_directory_argv",
+    "coreutils_install_directories_arguments",
+    "coreutils_install_file_owned_argv",
+    "coreutils_install_directory_owned_arguments",
+    "coreutils_install_directory_owned_argv",
+    "coreutils_install_file_argv",
+    "dd_overwrite_path_command",
+    "coreutils_rm_force_argv",
+    "coreutils_rm_empty_directory_argv",
+    "coreutils_rm_force_recursive_argv",
+    "install_file_owned_command",
+    "mv_exact_destination_command"
+  ],
+  "shell_command_selector": "(?m)(?:^|[\\n;|&]\\s*|\\b(?:sudo|exec|then|do|command|env)\\s+)(?:\\s*)(?:/[-\\w./]+/)?(?:mkdir|install|cp|mv|rm|rmdir|ln|chmod|chown|touch|truncate|tee|dd|mktemp)(?=\\s|$)",
+  "shell_redirect_selector": "(?:^|\\s)(?:>|>>)(?![&=])\\s*(?!/dev/(?:null|stderr|stdout)\\b)(?:[\\\"\\x27]?(?:/|\\$|\\.|[A-Za-z_]))",
+  "selected_extensions": [
+    ".dag",
+    ".rs",
+    ".py",
+    ".sh",
+    ".yml",
+    ".yaml",
+    ".toml",
+    "*Dockerfile*",
+    "*Makefile*"
+  ],
+  "limits": [
+    "Lexical selector candidate census, not execution coverage",
+    "Comments and quoted strings stripped for direct DAG/Rust calls; quoted strings independently searched for shell/generated Rust",
+    "Caller/body review required for string candidates and Rust method targets; arbitrary computed commands and unmodeled native FFI need authority review",
+    "No external callers, deployed filesystem reads, builds or runtime probes"
+  ]
+}

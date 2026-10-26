@@ -1,0 +1,494 @@
+[
+  {
+    "module": "gunbc.auth.approval_assertion_counter",
+    "fn": "observe_assertion_counter",
+    "op": "observe_cas_slot_state",
+    "line": 63
+  },
+  {
+    "module": "gunbc.auth.approval_assertion_counter",
+    "fn": "assertion_counter_commit",
+    "op": "file_compare_and_set",
+    "line": 80
+  },
+  {
+    "module": "gunbc.auth.approval_decision_store",
+    "fn": "observe_escalation",
+    "op": "observe_cas_slot_state",
+    "line": 424
+  },
+  {
+    "module": "gunbc.auth.approval_decision_store",
+    "fn": "file_approval_request",
+    "op": "file_compare_and_set",
+    "line": 463
+  },
+  {
+    "module": "gunbc.auth.approval_decision_store",
+    "fn": "commit_broker_decision",
+    "op": "file_compare_and_set",
+    "line": 478
+  },
+  {
+    "module": "gunbc.auth.approval_decision_store",
+    "fn": "pending_escalations",
+    "op": "cas_slot_keys",
+    "line": 778
+  },
+  {
+    "module": "gunbc.auth.approval_device_redemption",
+    "fn": "device_store_write",
+    "op": "file_compare_and_set",
+    "line": 553
+  },
+  {
+    "module": "gunbc.auth.approval_device_redemption",
+    "fn": "observe_enrolment_slot",
+    "op": "observe_cas_slot_state",
+    "line": 737
+  },
+  {
+    "module": "gunbc.auth.approval_store_receipt",
+    "fn": "store_receipt_answer",
+    "op": "cas_read_generation",
+    "line": 330
+  },
+  {
+    "module": "gunbc.authorization_claim_slot",
+    "fn": "claim_authorization_slot",
+    "op": "file_compare_and_set",
+    "line": 44
+  },
+  {
+    "module": "gunbc.authorization_claim_slot",
+    "fn": "settle_authorization_claim",
+    "op": "file_compare_and_set",
+    "line": 82
+  },
+  {
+    "module": "gunbc.host.host_boot_attempt_admission",
+    "fn": "consume_attempt_slot",
+    "op": "file_compare_and_set",
+    "line": 703
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_dogfood_route",
+    "fn": "dogfood_start_record_for_instance",
+    "op": "observe_cas_slot_state",
+    "line": 1042
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_dogfood_route",
+    "fn": "dogfood_start_record_for_instance",
+    "op": "file_compare_and_set",
+    "line": 1078
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_dogfood_route",
+    "fn": "dogfood_route_acceptance_holds_on",
+    "op": "observe_cas_slot_state",
+    "line": 1109
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_view_preference_store",
+    "fn": "issue_view_store_read",
+    "op": "observe_cas_slot_state",
+    "line": 32
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_view_preference_store",
+    "fn": "issue_view_store_commit",
+    "op": "file_compare_and_set",
+    "line": 54
+  },
+  {
+    "module": "gunbc.scm.repository_slot",
+    "fn": "publish_prepared",
+    "op": "file_compare_and_set",
+    "line": 278
+  },
+  {
+    "module": "gunbc.scm.repository_slot",
+    "fn": "read_repository_slot",
+    "op": "observe_cas_slot_state",
+    "line": 311
+  },
+  {
+    "module": "gunbc.serving.caller_backlog",
+    "fn": "persist_waiting_on_store",
+    "op": "file_compare_and_set",
+    "line": 560
+  },
+  {
+    "module": "gunbc.serving.caller_backlog",
+    "fn": "persist_waiting_idempotent_on_store",
+    "op": "observe_cas_slot_state",
+    "line": 594
+  },
+  {
+    "module": "gunbc.serving.caller_backlog",
+    "fn": "observe_durable_record",
+    "op": "observe_cas_slot_state",
+    "line": 626
+  },
+  {
+    "module": "gunbc.serving.caller_backlog",
+    "fn": "persist_derived_phase",
+    "op": "file_compare_and_set",
+    "line": 675
+  },
+  {
+    "module": "gunbc.workspace_commissioning_store",
+    "fn": "workspace_commissioning_store_observe",
+    "op": "observe_cas_slot_state",
+    "line": 130
+  },
+  {
+    "module": "gunbc.workspace_commissioning_store",
+    "fn": "workspace_commissioning_publish_phase",
+    "op": "file_compare_and_set",
+    "line": 186
+  },
+  {
+    "module": "gunbc.workspace_commissioning_store",
+    "fn": "workspace_commissioning_committed_for_slot",
+    "op": "observe_cas_slot_state",
+    "line": 294
+  },
+  {
+    "module": "gunbc.workspace_commissioning_input_store",
+    "fn": "workspace_commissioning_input_read",
+    "op": "observe_cas_slot_state",
+    "line": 78
+  },
+  {
+    "module": "gunbc.workspace_commissioning_input_store",
+    "fn": "workspace_commissioning_input_publish",
+    "op": "file_compare_and_set",
+    "line": 109
+  },
+  {
+    "module": "gunbc.workspace_commissioning_executor_store",
+    "fn": "workspace_executor_journal_observe",
+    "op": "observe_cas_slot_state",
+    "line": 48
+  },
+  {
+    "module": "gunbc.workspace_commissioning_executor_store",
+    "fn": "workspace_executor_journal_publish",
+    "op": "file_compare_and_set",
+    "line": 103
+  },
+  {
+    "module": "gunbc.fabric.fabric_required_build_cell",
+    "fn": "observe_required_build_cell_expecting",
+    "op": "observe_cas_slot_state",
+    "line": 367
+  },
+  {
+    "module": "product.printed_chassis.assembly_inventory_store",
+    "fn": "publish_inventory",
+    "op": "file_compare_and_set",
+    "line": 18
+  },
+  {
+    "module": "product.printed_chassis.assembly_inventory_store",
+    "fn": "mutate_inventory",
+    "op": "observe_cas_slot_state",
+    "line": 30
+  },
+  {
+    "module": "product.printed_chassis.assembly_inventory_store",
+    "fn": "observe_stored_inventory",
+    "op": "observe_cas_slot_state",
+    "line": 45
+  },
+  {
+    "module": "gunbc.fabric.fabric_cell_grant",
+    "fn": "grant_selected_cell_under_exclusion",
+    "op": "file_hold_acquire_prepare",
+    "line": 165
+  },
+  {
+    "module": "gunbc.fabric.fabric_cell_grant",
+    "fn": "grant_selected_cell_under_exclusion",
+    "op": "file_hold_acquire_commit",
+    "line": 191
+  },
+  {
+    "module": "gunbc.fabric.fabric_cell_grant",
+    "fn": "settle_cell_grant",
+    "op": "file_hold_release_assess",
+    "line": 348
+  },
+  {
+    "module": "gunbc.fabric.fabric_cell_grant",
+    "fn": "settle_cell_grant",
+    "op": "file_hold_release_commit",
+    "line": 349
+  },
+  {
+    "module": "gunbc.fabric.fabric_control_plane",
+    "fn": "reserve_selected_cell_under_exclusion",
+    "op": "file_hold_acquire",
+    "line": 262
+  },
+  {
+    "module": "gunbc.fabric.fabric_control_plane",
+    "fn": "end_cell_hold",
+    "op": "file_hold_release_assess",
+    "line": 702
+  },
+  {
+    "module": "gunbc.fabric.fabric_control_plane",
+    "fn": "free_cell_slot",
+    "op": "file_hold_release_commit",
+    "line": 793
+  },
+  {
+    "module": "gunbc.fleet.printer_execution_hold",
+    "fn": "hold_current",
+    "op": "observe_file_hold",
+    "line": 18
+  },
+  {
+    "module": "gunbc.fleet.printer_execution_hold",
+    "fn": "with_execution_hold",
+    "op": "file_hold_acquire",
+    "line": 24
+  },
+  {
+    "module": "gunbc.fleet.printer_execution_hold",
+    "fn": "with_execution_hold",
+    "op": "file_hold_release_assess",
+    "line": 28
+  },
+  {
+    "module": "gunbc.fleet.printer_execution_hold",
+    "fn": "with_execution_hold",
+    "op": "file_hold_release_commit",
+    "line": 29
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "unit_hold_recover_dead_holder",
+    "op": "file_hold_recovery_assess",
+    "line": 482
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "unit_hold_recover_dead_holder",
+    "op": "file_hold_release_commit",
+    "line": 485
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "unit_hold_acquire_on_store_host",
+    "op": "file_hold_acquire",
+    "line": 544
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "unit_hold_acquire_on_store_host",
+    "op": "file_hold_acquire",
+    "line": 550
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "kvm_observer_release_on_store_host",
+    "op": "observe_file_hold",
+    "line": 723
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "kvm_observer_release_on_store_host",
+    "op": "file_hold_release_assess",
+    "line": 728
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "kvm_observer_release_on_store_host",
+    "op": "file_hold_release_commit",
+    "line": 730
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "unit_hold_release_outcome",
+    "op": "file_hold_release_assess",
+    "line": 750
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "unit_hold_release_outcome",
+    "op": "file_hold_release_commit",
+    "line": 753
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "maintenance_hold_take_admitted",
+    "op": "file_hold_acquire",
+    "line": 874
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "maintenance_hold_release_on_store_host",
+    "op": "observe_file_hold",
+    "line": 921
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "maintenance_hold_release_on_store_host",
+    "op": "file_hold_release_assess",
+    "line": 937
+  },
+  {
+    "module": "gunbc.host.managed_host_unit_hold",
+    "fn": "maintenance_hold_release_on_store_host",
+    "op": "file_hold_release_commit",
+    "line": 940
+  },
+  {
+    "module": "gunbc.machine_intake.arrival_interlock",
+    "fn": "arrival_archive_slot_acquire",
+    "op": "file_hold_acquire",
+    "line": 109
+  },
+  {
+    "module": "gunbc.machine_intake.arrival_interlock",
+    "fn": "arrival_archive_slot_release",
+    "op": "file_hold_release_assess",
+    "line": 128
+  },
+  {
+    "module": "gunbc.machine_intake.arrival_interlock",
+    "fn": "arrival_archive_slot_release",
+    "op": "file_hold_release_commit",
+    "line": 138
+  },
+  {
+    "module": "gunbc.workspace_allocation_lifecycle",
+    "fn": "workspace_recover_release",
+    "op": "observe_file_hold",
+    "line": 156
+  },
+  {
+    "module": "gunbc.workspace_allocation_plan",
+    "fn": "workspace_reservation_prepare",
+    "op": "file_hold_acquire_prepare",
+    "line": 67
+  },
+  {
+    "module": "gunbc.workspace_allocation_plan",
+    "fn": "workspace_reservation_apply_under_exclusion",
+    "op": "observe_file_hold",
+    "line": 133
+  },
+  {
+    "module": "gunbc.workspace_allocation_plan",
+    "fn": "workspace_reservation_acquire",
+    "op": "file_hold_acquire_prepare",
+    "line": 149
+  },
+  {
+    "module": "gunbc.workspace_allocation_plan",
+    "fn": "workspace_reservation_acquire",
+    "op": "file_hold_acquire_commit",
+    "line": 156
+  },
+  {
+    "module": "gunbc.workspace_allocation_plan",
+    "fn": "workspace_reservation_hold_observation",
+    "op": "observe_file_hold",
+    "line": 213
+  },
+  {
+    "module": "gunbc.workspace_allocation_plan",
+    "fn": "workspace_reservation_recover",
+    "op": "observe_file_hold",
+    "line": 222
+  },
+  {
+    "module": "gunbc.workspace_allocation_supply",
+    "fn": "workspace_slot_observation_refusal",
+    "op": "observe_file_hold",
+    "line": 129
+  },
+  {
+    "module": "gunbc.workspace_commissioning_admission_observe",
+    "fn": "workspace_commissioning_no_hold_refusal",
+    "op": "observe_file_hold",
+    "line": 72
+  },
+  {
+    "module": "gunbc.workspace_commissioning_executor_fence",
+    "fn": "workspace_executor_mutation_matches",
+    "op": "observe_file_hold",
+    "line": 34
+  },
+  {
+    "module": "gunbc.workspace_commissioning_executor_submission",
+    "fn": "workspace_executor_initial_guard",
+    "op": "observe_file_hold",
+    "line": 102
+  },
+  {
+    "module": "gunbc.workspace_commissioning_fleet",
+    "fn": "workspace_commissioning_basis_observe",
+    "op": "observe_file_hold",
+    "line": 162
+  },
+  {
+    "module": "gunbc.workspace_commissioning_observe",
+    "fn": "workspace_observe_commissioning_obligations",
+    "op": "observe_file_hold",
+    "line": 18
+  },
+  {
+    "module": "gunbc.workspace_slot_mutation",
+    "fn": "workspace_slot_mutation_acquire",
+    "op": "file_hold_acquire",
+    "line": 51
+  },
+  {
+    "module": "gunbc.workspace_slot_mutation",
+    "fn": "workspace_slot_mutation_release_fenced",
+    "op": "file_hold_release_assess",
+    "line": 94
+  },
+  {
+    "module": "gunbc.workspace_slot_mutation",
+    "fn": "workspace_slot_mutation_release_fenced",
+    "op": "file_hold_release_commit",
+    "line": 96
+  },
+  {
+    "module": "gunbc.workspace_slot_mutation",
+    "fn": "workspace_slot_mutation_release_fenced",
+    "op": "observe_file_hold",
+    "line": 97
+  },
+  {
+    "module": "gunbc.workspace_slot_mutation",
+    "fn": "workspace_commissioning_mutation_held",
+    "op": "observe_file_hold",
+    "line": 124
+  },
+  {
+    "module": "gunbc.workspace_slot_mutation",
+    "fn": "workspace_slot_mutation_supply_open",
+    "op": "observe_file_hold",
+    "line": 141
+  },
+  {
+    "module": "gunbc.workspace_slot_mutation",
+    "fn": "workspace_slot_mutation_still_owned",
+    "op": "observe_file_hold",
+    "line": 156
+  },
+  {
+    "module": "gunbc.workspace_slot_mutation",
+    "fn": "workspace_commissioning_mutation_recover",
+    "op": "observe_file_hold",
+    "line": 210
+  }
+]

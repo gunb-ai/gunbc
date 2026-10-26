@@ -1,0 +1,3504 @@
+{
+  "source_head": "7daaddd1f0ce99734e1ddb57138313701455c758",
+  "input_count": 84,
+  "input_snapshot": "/tmp/evidence-effect-review-input.json",
+  "standing": "Source-body review of the current 7 migrate_evidence plus 77 local_output_adapter rows. Not the old 91-module snapshot and not repo-wide closure.",
+  "rows": [
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "GitHub Actions step output (GITHUB_OUTPUT); approval authority lives in the grant result. Retain job protocol handoff.",
+      "roots": [
+        "fn judge_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {",
+        "fn branch_run_expires_at(run: BranchRunFacts) -> Timestamp {",
+        "fn plan_branch_run_grant(f: DedicatedFederation, run: BranchRunFacts, expires_at: Timestamp, reading: PolicyReading) -> BranchRunGrantPlan {",
+        "fn plan_against_policy(f: DedicatedFederation, run: BranchRunFacts, cell: GcpIamBindingCell, p: GcpPolicy) -> BranchRunGrantPlan {",
+        "data branch_run_grant_escalation_prefix: NonEmptyStr = \"branch-run-grant-\"",
+        "fn account_for_run(run: BranchRunFacts) -> DedicatedFederation? {",
+        "fn branch_run_grant_request_wet() -> ProcessExit {",
+        "fn branch_run_grant_apply_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.auth.branch_run_grant",
+      "path": "dag/gunbc/auth/branch_run_grant.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "mark_branch_run_grant_approved"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 315,
+          "symbol": "mark_branch_run_grant_approved",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path, content: join([branch_run_grant_approved_output, \"=true\\n\"], \"\"))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Verification report artifact emitted after observing the app-key mint record; retain run-scoped output, not a new key/rotation state store.",
+      "roots": [
+        "fn ci_app_key_version_verify_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/app-key-version-verify-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.auth.ci_app_key_rotation",
+      "path": "dag/gunbc/auth/ci_app_key_rotation.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "ci_app_key_version_verify_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 458,
+          "symbol": "ci_app_key_version_verify_wet",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "migrate_evidence",
+      "accountable_package": "M4",
+      "reason": "Create-only bootstrap start/election/closure/retirement records gate privileged retries and recovery; not diagnostics.",
+      "roots": [
+        "gunbc.auth.gcp_iam_bootstrap::iam_bootstrap_apply",
+        "gunbc.auth.gcp_iam_bootstrap::iam_bootstrap_authority_cleanup",
+        "gunbc.auth.gcp_iam_bootstrap::iam_bootstrap_probe_cleanup"
+      ],
+      "binding": "Bootstrap authority identity/deadline and receipt identity; iam_authority_record and iam_bootstrap_cell_authority_reconcile reread pins.",
+      "setup": "Operator checkout target/; no parent creation in these writers. Source explicitly preserves these pre-journal authority records on operator workstation because the ceremony creates the journal bucket.",
+      "locations": [
+        "target/gcp-iam-bootstrap-<receipt>-started.txt",
+        "target/gcp-iam-bootstrap-<receipt>-<stage>.txt",
+        "target/<derived authority elected/closed/retired name>"
+      ],
+      "preserve": "Create-only election, exact bytes on retry, independent IAM readback, cleanup owed after unknown completion. A fabric realization must be available before journal/bootstrap prerequisites; do not make it depend on the credential/bucket it creates.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.auth.gcp_iam_bootstrap",
+      "path": "dag/gunbc/auth/gcp_iam_bootstrap.dag",
+      "input_classification": "migrate_evidence",
+      "effect_symbols": [
+        "iam_authority_pin",
+        "iam_bootstrap_apply",
+        "iam_bootstrap_authority_policy_change"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 770,
+          "symbol": "iam_bootstrap_apply",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "let started = Filesystem.WriteCreateNew(path: concat(\"target/gcp-iam-bootstrap-\", receipt, \"-started.txt\"), content: \"operator bootstrap started; not a convergence receipt\\n\")"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 779,
+          "symbol": "iam_bootstrap_apply",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "let saved = Filesystem.WriteCreateNew(path: concat(\"target/gcp-iam-bootstrap-\", receipt, \"-\", iam_bootstrap_stage_wire(stage: stage), \".txt\"),"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 1040,
+          "symbol": "iam_authority_pin",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "let saved = Filesystem.WriteCreateNew(path: concat(\"target/\", name), content: wire)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 1155,
+          "symbol": "iam_bootstrap_authority_policy_change",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "let elected = if removing { true } else { Filesystem.WriteCreateNew(path: concat(\"target/\", elected_name), content: wire).success }"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "GitHub Actions step output (GITHUB_OUTPUT), handing the admitted approval to the next step; retain protocol boundary.",
+      "roots": [
+        "fn gcp_iam_converge_request_wet() -> ProcessExit",
+        "fn gcp_iam_converge_apply_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.auth.gcp_iam_converge_run",
+      "path": "dag/gunbc/auth/gcp_iam_converge_run.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "mark_approved_as"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 124,
+          "symbol": "mark_approved_as",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path, content: join([output, \"=true\\n\"], \"\"))"
+        }
+      ]
+    },
+    {
+      "classification": "mixed_persistent_cache_and_staging",
+      "accountable_package": "M4",
+      "reason": "jwks_fetch_and_cache writes a cross-request expiring JWKS cache; rs256_verify_over_key creates local OpenSSL transport inputs. Neither is a plain report.",
+      "roots": [
+        "gunbc.roadmap.roadmap_auth_routes::auth_callback_verify",
+        "gunbc.roadmap.roadmap_auth_routes::auth_callback_verdict",
+        "gunbc.auth.oidc_id_token_verification::oidc_id_token_signature_verify"
+      ],
+      "binding": "jwks_cache_layout_for_instance derives from jwks_cache_directory(instance); callback retains the served HostDashboardInstance.",
+      "setup": "jwks_cache_directory is enrolled in dashboard_instance_directory_demands, consumed by both deployment routes.",
+      "locations": [
+        "<instance private auth-jwks directory>/cache.json",
+        "<same directory>/gunbc-jwks-<verify_id>-key.pem",
+        "<same directory>/gunbc-jwks-<verify_id>-message.bin",
+        "<same directory>/gunbc-jwks-<verify_id>-signature.b64url",
+        "<same directory>/gunbc-jwks-<verify_id>-signature.bin"
+      ],
+      "preserve": "Cache is derived data, not issuer authority: 3600-second freshness; stale/unreadable/miss fetches origin; failed fetch does not accept stale keys; failed cache write does not invalidate a successful origin read. M4 may move logical cache storage; preserve local OpenSSL materialization as transport, not retained evidence.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.auth.oidc_id_token_verification",
+      "path": "dag/gunbc/auth/oidc_id_token_verification.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "jwks_fetch_and_cache",
+        "rs256_verify_over_key"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 908,
+          "symbol": "jwks_fetch_and_cache",
+          "match": "Filesystem.WriteOwnerOnly(",
+          "source": "let cache_write = Filesystem.WriteOwnerOnly("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 958,
+          "symbol": "rs256_verify_over_key",
+          "match": "Filesystem.Write(",
+          "source": "let key_write = Filesystem.Write(path: key_path, content: spki_pem)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 959,
+          "symbol": "rs256_verify_over_key",
+          "match": "Filesystem.Write(",
+          "source": "let message_write = Filesystem.Write(path: message_path, content: signing_input)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 960,
+          "symbol": "rs256_verify_over_key",
+          "match": "Filesystem.Write(",
+          "source": "let signature_write = Filesystem.Write(path: signature_url_path, content: join([signature_b64url, pad], \"\"))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Ensure-result and subscription/dashboard instruction reports. Actual allocation/provider state belongs to B2; these file writes are report exports.",
+      "roots": [
+        "data r2_subscription_dashboard_step: NonEmptyStr = \"THE ACCOUNT HOLDS NO R2 SUBSCRIPTION (403 NotEntitled): open the Cloudflare dashboard for this account, Storage & databases > R2 > Overview, and complete the checkout flow to add an R2 subscription (a billing purchase an operator makes; Cloudflare's subscription API offers no R2 plan, so this converge cannot perform it). Then run this entry again. NOTHING WAS CREATED.\"",
+        "data r2_bucket_ensure_receipt_path: String = \"target/r2-bucket-ensure-receipt.txt\"",
+        "fn ensure() -> ProcessExit uses net: Network {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/r2-bucket-ensure-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.cloudflare.r2_bucket_ensure",
+      "path": "dag/gunbc/cloudflare/r2_bucket_ensure.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "ensure",
+        "r2_subscription_dashboard_step"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 502,
+          "symbol": "ensure",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: r2_bucket_ensure_receipt_path, content: text)"
+        },
+        {
+          "kind": "literal_redirect_candidate",
+          "line": 99,
+          "symbol": "r2_subscription_dashboard_step",
+          "match": "> R",
+          "source": "data r2_subscription_dashboard_step: NonEmptyStr = \"THE ACCOUNT HOLDS NO R2 SUBSCRIPTION (403 NotEntitled): open the Cloudflare dashboard for this account, Storage & databases > R2 > Overview, and complete the checkout flow to add an R2 subscription (a billing purchase an operator makes; Cloudflare's subscription API offers no R2 plan, so this converge cannot perform it). Then run this entry again. NOTHING WAS CREATED.\""
+        },
+        {
+          "kind": "literal_redirect_candidate",
+          "line": 99,
+          "symbol": "r2_subscription_dashboard_step",
+          "match": "> O",
+          "source": "data r2_subscription_dashboard_step: NonEmptyStr = \"THE ACCOUNT HOLDS NO R2 SUBSCRIPTION (403 NotEntitled): open the Cloudflare dashboard for this account, Storage & databases > R2 > Overview, and complete the checkout flow to add an R2 subscription (a billing purchase an operator makes; Cloudflare's subscription API offers no R2 plan, so this converge cannot perform it). Then run this entry again. NOTHING WAS CREATED.\""
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Race-control request-body staging and report export. Provider object mutation and release remain F/B2 control obligations; local staging is not durable authority.",
+      "roots": [
+        "fn curl_trace_ids_cli_tool_floor() -> String {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/r2-conditional-put-race-probe-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.cloudflare.r2_conditional_put_race_probe",
+      "path": "dag/gunbc/cloudflare/r2_conditional_put_race_probe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "race_refused_before_rounds",
+        "race_run_with_netrc",
+        "race_write_body"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 532,
+          "symbol": "race_write_body",
+          "match": "Filesystem.Write(",
+          "source": "Filesystem.Write(path: path, content: join([\"r2 conditional put race probe round \", to_string(round), \" \", writer, \"\\n\"], \"\")).success"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 627,
+          "symbol": "race_run_with_netrc",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: race_probe_receipt_path, content: concat(receipt, \"\\n\")).success"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 639,
+          "symbol": "race_refused_before_rounds",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: race_probe_receipt_path, content: concat(receipt, \"\\n\")).success"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 618,
+          "symbol": "race_run_with_netrc",
+          "match": "shell.Mktemp.Dir(",
+          "source": "let staged = shell.Mktemp.Dir()"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 625,
+          "symbol": "race_run_with_netrc",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let bodies_removed = shell.Remove.RecursiveForce(path: staged.path).success"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Account permission-group observation report for the operator; retain requested report export.",
+      "roots": [
+        "fn observe_account_permission_groups_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/r2-mint-preflight-permission-groups.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.cloudflare.r2_permission_group_observe",
+      "path": "dag/gunbc/cloudflare/r2_permission_group_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "observe_account_permission_groups_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 274,
+          "symbol": "observe_account_permission_groups_wet",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "mixed_migrate_recovery_evidence_and_exports",
+      "accountable_package": "M4",
+      "reason": "Mint and orphan receipts retain token identity/custody needed for later reconciliation. Token-list and revoke report exports are separate.",
+      "roots": [
+        "gunbc.cloudflare.r2_token_mint_run::run",
+        "run_object_write",
+        "run_boot_object_read",
+        "run_boot_object_write",
+        "run_cache_object_read",
+        "run_cache_object_write",
+        "run_workspace_object_read",
+        "run_workspace_object_write"
+      ],
+      "binding": "mint_origin_token_and_store(profile,purpose); r2_mint_receipt_scope_for_this_run binds GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT; unscoped operator run is explicit. run_bucket_admin is a separate bootstrap ceremony, not this mint fold.",
+      "setup": "ensure_r2_mint_receipt_dir precedes non-idempotent mint. fleet_converge_workflow derives artifact-upload glob from r2_mint_receipt_glob_in using the same scope.",
+      "locations": [
+        "/tmp/r2-mint-receipts/<run>-<attempt>/r2-<request.name>-mint-receipt.txt",
+        "/tmp/r2-mint-receipts/r2-<request.name>-mint-receipt.txt (operator unscoped)",
+        "/tmp/r2-account-token-list.txt (report only)",
+        "/tmp/r2-object-read-revoke-receipt.txt (report only)"
+      ],
+      "preserve": "Record token ID and exact stored version; retain orphan ID/custody on failed secret storage; do not repeat unknown AccountTokens.Create. Storage bootstrap must not depend on the token being minted. Preserve scoped uploader as local export if needed.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.cloudflare.r2_token_mint_run",
+      "path": "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "ensure_r2_mint_receipt_dir",
+        "list_account_tokens_for_reconcile",
+        "mint_origin_token_and_store",
+        "refuse_with_orphan_receipt",
+        "revoke_unheld_object_read_token"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 875,
+          "symbol": "list_account_tokens_for_reconcile",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 959,
+          "symbol": "revoke_unheld_object_read_token",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 1237,
+          "symbol": "refuse_with_orphan_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 1309,
+          "symbol": "mint_origin_token_and_store",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write("
+        },
+        {
+          "kind": "dag_shell",
+          "line": 1178,
+          "symbol": "ensure_r2_mint_receipt_dir",
+          "match": "shell.Mkdir.Parents(",
+          "source": "let made = shell.Mkdir.Parents(path: dir as FilePath)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Rendered demo assets at supplied paths, not a mutable business-state store.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/demo/board_power_interlock.pcf",
+        "target/demo/board_power_interlock.v",
+        "target/demo/board_power_interlock_truth_table.md",
+        "target/demo/conditioning_network.cir",
+        "target/demo/conditioning_network.spice"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.demo.board_artifacts",
+      "path": "dag/gunbc/demo/board_artifacts.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "write_one"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 97,
+          "symbol": "write_one",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: p, content: s)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Rendered semantic demo/report output, not a mutable record authority.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/demo/semantic_system_readout.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.demo.semantic_system_readout",
+      "path": "dag/gunbc/demo/semantic_system_readout.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "render_demo"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 230,
+          "symbol": "render_demo",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: readout_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Generated brand assets written beneath the requested output directory; retain output materialization.",
+      "roots": [
+        "data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver",
+        "fn v2_cli_main(argv: List<String>) -> BrandAssetsRun {",
+        "fn v2_cli_outcome_text(outcome: BrandAssetsRun) -> String {",
+        "fn v2_cli_exit(outcome: BrandAssetsRun) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.design.brand_mark_assets_cli",
+      "path": "dag/gunbc/design/brand_mark_assets_cli.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "brand_assets_write"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 43,
+          "symbol": "brand_assets_write",
+          "match": "Filesystem.WriteBytes(",
+          "source": "let wrote = Filesystem.WriteBytes(path: path, content: octets_bytes(o: octets))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Observed fabric identity report; selection/binding calls still join A/F elsewhere. This write is a retained report artifact.",
+      "roots": [
+        "fn fabric_writer_identity_observe_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/fabric-writer-identity-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fabric.fabric_writer_identity_observe",
+      "path": "dag/gunbc/fabric/fabric_writer_identity_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "fabric_writer_identity_observe_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 177,
+          "symbol": "fabric_writer_identity_observe_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: fabric_writer_identity_receipt_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Mixed module: selected filesystem hits stage/archive/placeholders/readback and export a receipt. Retain these local materialization effects; workspace_source_publish also calls put_fabric_blob and must join M3 (not be excluded as a whole module).",
+      "roots": [
+        "fn workspace_archived_entry(line: String) -> List<WorkspaceArchivedEntry> {",
+        "fn workspace_run_ok(run: ProcessRunOutcome) -> String? {",
+        "fn workspace_source_pack_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "/home/briansrls",
+        "/home/briansrls/.codex",
+        "/home/briansrls/gunbc",
+        "target/",
+        "target/workspace-source-pack-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fabric.workspace_source",
+      "path": "dag/gunbc/fabric/workspace_source.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "workspace_archived_placeholder_digests",
+        "workspace_pack_archive",
+        "workspace_source_finish",
+        "workspace_source_pack_readable",
+        "workspace_source_publish",
+        "workspace_source_refuse_archive",
+        "workspace_stage_placeholders"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 699,
+          "symbol": "workspace_source_finish",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: workspace_source_receipt_path, content: receipt)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 882,
+          "symbol": "workspace_pack_archive",
+          "match": "Filesystem.Write(",
+          "source": "let listed = Filesystem.Write(path: list_path, content: concat(join(map(members, m => m as String), \"\\n\"), \"\\n\"))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 883,
+          "symbol": "workspace_pack_archive",
+          "match": "Filesystem.Write(",
+          "source": "let placeholder_listed = Filesystem.Write(path: placeholder_list_path, content: join(map(placeholders, p => concat(p.member as String, \"\\n\")), \"\"))"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 741,
+          "symbol": "workspace_source_pack_readable",
+          "match": "shell.Mktemp.Dir(",
+          "source": "let staging = shell.Mktemp.Dir()"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 750,
+          "symbol": "workspace_source_pack_readable",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let removed = shell.Remove.RecursiveForce(path: staging.path)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 792,
+          "symbol": "workspace_stage_placeholders",
+          "match": "shell.Mkdir.Parents(",
+          "source": "let made = shell.Mkdir.Parents(path: parent as FilePath)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 878,
+          "symbol": "workspace_pack_archive",
+          "match": "shell.Mkdir.Parents(",
+          "source": "let root_made = shell.Mkdir.Parents(path: placeholder_root as FilePath)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 934,
+          "symbol": "workspace_archived_placeholder_digests",
+          "match": "shell.Mkdir.Parents(",
+          "source": "let made = shell.Mkdir.Parents(path: into as FilePath)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 986,
+          "symbol": "workspace_source_refuse_archive",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let removed = shell.Remove.RecursiveForce(path: staging as FilePath)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 1022,
+          "symbol": "workspace_source_publish",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let removed = shell.Remove.RecursiveForce(path: staging as FilePath)"
+        },
+        {
+          "kind": "literal_shell_candidate",
+          "line": 794,
+          "symbol": "workspace_stage_placeholders",
+          "match": "mkdir",
+          "source": "WorkspacePlaceholdersRefused { why: concat(\"mkdir -p failed: \", parent) }"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Transcript-rate observation report export; no saved prior-state read in this writer.",
+      "roots": [
+        "fn workspace_transcript_rate_root_reading(root: WorkspaceSourceRoot, run: ProcessRunOutcome) -> TranscriptRootReading {",
+        "fn workspace_transcript_rate_sample_wet(roots: List<WorkspaceSourceRoot>, label: String) -> TranscriptRateSample {",
+        "fn workspace_transcript_rate_observe_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/workspace-transcript-rate-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fabric.workspace_transcript_rate",
+      "path": "dag/gunbc/fabric/workspace_transcript_rate.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "workspace_transcript_rate_finish"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 542,
+          "symbol": "workspace_transcript_rate_finish",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: workspace_transcript_rate_receipt_path, content: receipt)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Caller-requested reference report at a supplied output path.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.altra_firmware_library",
+      "path": "dag/gunbc/fleet/altra_firmware_library.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "write_reference_report"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 227,
+          "symbol": "write_reference_report",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: path, content: to_string(reference_report()))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "App registration/hook observation report; provider reads are the source, not the file as mutable authority.",
+      "roots": [
+        "fn app_control_plane_inspect_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_APP_JWT_HEADER_FILE",
+        "target/app-control-plane-observation-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.app_control_plane_inspection",
+      "path": "dag/gunbc/fleet/app_control_plane_inspection.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "app_control_plane_inspect_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 973,
+          "symbol": "app_control_plane_inspect_wet",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: app_control_plane_receipt_path, content: receipt)"
+        }
+      ]
+    },
+    {
+      "classification": "migrate_evidence",
+      "accountable_package": "M4",
+      "reason": "Published current per-host convergence receipt is read by fleet_receipt_collector, not only printed.",
+      "roots": [
+        "gunbc.fleet.fleet_converge_cli::converge_cli_output",
+        "gunbc.fleet.fleet_converge_cli::converge_cli_output_with_verify"
+      ],
+      "binding": "converge_cli_publish -> converge_cli_atomic_receipt_write derives path from resolved host. collector::collect_host_receipt reads fleet_converge_receipt_path over typed SSH.",
+      "setup": "fleet_converge_receipt_dir is /opt/gunbc/receipts; live_deploy.emit belt-member install owns instance_receipts_dir. Source documents existing host-vs-instance mismatch, not a generalized setup guarantee.",
+      "locations": [
+        "/opt/gunbc/receipts/<host>-converge-receipt.txt",
+        "/opt/gunbc/receipts/<host>-converge-receipt.staging"
+      ],
+      "preserve": "Atomic visible replacement, actual host/revision, service-principal owner readback. Do not confuse host scope with the blue/green per-instance receipt namespace.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.fleet.fleet_converge_cli",
+      "path": "dag/gunbc/fleet/fleet_converge_cli.dag",
+      "input_classification": "migrate_evidence",
+      "effect_symbols": [
+        "converge_cli_atomic_receipt_write"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 604,
+          "symbol": "converge_cli_atomic_receipt_write",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: staging, content: content)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 608,
+          "symbol": "converge_cli_atomic_receipt_write",
+          "match": "shell.Move.File(",
+          "source": "let moved = shell.Move.File(source: staging as FilePath, destination: final_path as FilePath)"
+        }
+      ]
+    },
+    {
+      "classification": "migrate_evidence",
+      "accountable_package": "M4",
+      "reason": "Reviewed plan, apply script and provenance sidecars are consumed by a later privileged apply, not ordinary diagnostics.",
+      "roots": [
+        "gunbc.fleet.fleet_converge_plan_cli::fleet_converge_plan_wet",
+        "fleet_converge_launch_environment_plan_wet",
+        "fleet_converge_workspace_commissioning_plan_wet",
+        "fleet_converge_workspace_allocation_plan_wet",
+        "fleet_converge_apply_wet",
+        "fleet_converge_operator_cli_entry"
+      ],
+      "binding": "ActionsRunBinding plus host/scope/revision, prior/planned generation, member-set and bundle hash; apply reads exactly the reviewed artifact and receipt.",
+      "setup": "write_fleet_converge_plan_artifact_wet / fleet_converge_plan_scoped_bound_wet mkdir plan artifact directory; apply creates apply receipt dir. Workflow uploads/downloads the declared bundle.",
+      "locations": [
+        "/tmp/fleet-converge-plan/plan.txt",
+        "/tmp/fleet-converge-plan/apply.sh",
+        "/tmp/fleet-converge-plan/<baseline,hash,host,generation,member-set,scope sidecars>",
+        "/tmp/fleet-converge-apply/apply_receipt.json",
+        "<operator receipt_path> (export only)"
+      ],
+      "preserve": "Bundle coherence and exact run/revision/host/subject/generation; retain deliberate local apply-script materialization. Operator receipt_path is an export and does not become another authority.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.fleet.fleet_converge_plan_cli",
+      "path": "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+      "input_classification": "migrate_evidence",
+      "effect_symbols": [
+        "fleet_converge_apply_commissioning_bound_wet",
+        "fleet_converge_apply_ordinary_bound_wet",
+        "fleet_converge_operator_cli_entry",
+        "fleet_converge_plan_scoped_bound_wet",
+        "write_fleet_converge_plan_artifact_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 665,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_plan = Filesystem.Write(path: fleet_converge_plan_body_path, content: artifact.plan_body)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 666,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_base = Filesystem.Write(path: fleet_converge_plan_baseline_hex_path, content: artifact.observed_baseline_hex)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 667,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 668,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 669,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: artifact.subject.host as String)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 670,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(cas_generation_count(g: artifact.plan_lease.epoch.generation)))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 671,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_prior = Filesystem.Write(path: fleet_converge_plan_prior_generation_path, content: to_string(artifact.prior_generation))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 672,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_member_fp = Filesystem.Write(path: fleet_converge_plan_member_set_fp_path, content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 673,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_scope = Filesystem.Write(path: fleet_converge_plan_subject_scope_path, content: fleet_converge_scope_wire(scope: artifact.subject.scope))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 979,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_plan = Filesystem.Write(path: fleet_converge_plan_body_path, content: artifact.plan_body)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 980,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_base = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 984,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 985,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 986,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: host_short)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 987,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_gen = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 991,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_prior = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 995,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_member_fp = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 999,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w_scope = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 1447,
+          "symbol": "fleet_converge_operator_cli_entry",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: receipt_path, content: receipt_text)"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 660,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "mkdir_parents_command(",
+          "source": "commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 972,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "mkdir_parents_command(",
+          "source": "commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 1272,
+          "symbol": "fleet_converge_apply_ordinary_bound_wet",
+          "match": "mkdir_parents_command(",
+          "source": "match run_shell_commands(commands: [mkdir_parents_command(path: fleet_converge_apply_receipt_dir)], transport: LocalExec) {"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 1762,
+          "symbol": "fleet_converge_apply_commissioning_bound_wet",
+          "match": "mkdir_parents_command(",
+          "source": "match run_shell_commands(commands: [mkdir_parents_command(path: fleet_converge_apply_receipt_dir)], transport: LocalExec) {"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 678,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "chmod_set_mode_command(",
+          "source": "chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 1033,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "chmod_set_mode_command(",
+          "source": "chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "GITHUB_OUTPUT revision selector handoff. Preserve run/revision binding; retain job protocol output.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.fleet_converge_plan_revision",
+      "path": "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "resolve_plan_revision"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 159,
+          "symbol": "resolve_plan_revision",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path, content: join([\"revision=\", r, \"\\n\"], \"\"))"
+        }
+      ]
+    },
+    {
+      "classification": "migrate_evidence",
+      "accountable_package": "M4",
+      "reason": "Typed plan/apply receipts are read by the dashboard transaction and final launch-deployment receipt join.",
+      "roots": [
+        "gunbc.fleet.fleet_converge_plan_cli::fleet_converge_plan_scoped_bound_wet",
+        "fleet_converge_apply_ordinary_bound_wet",
+        "fleet_converge_apply_commissioning_bound_wet"
+      ],
+      "binding": "FleetConvergePlanReceipt/FleetConvergeApplyReceipt; read_fleet_converge_plan_receipt_at and read_fleet_converge_apply_receipt_at; consumers live_deploy.apply::live_deploy_transaction_admitted_wet_with_access and roadmap_launch_deployment_cli::rlm_launch_deployment_receipt_bound.",
+      "setup": "Plan/apply CLI creates declared artifact directories; receiving job downloads artifacts. No live population measured.",
+      "locations": [
+        "/tmp/fleet-converge-plan/plan_receipt.json",
+        "/tmp/fleet-converge-apply/apply_receipt.json"
+      ],
+      "preserve": "Exact identity of predecessor receipts and refusal on unreadable/mismatched provenance; migrate with the bundle writers/readers, preserving workflow export adapter.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.fleet.fleet_converge_receipt",
+      "path": "dag/gunbc/fleet/fleet_converge_receipt.dag",
+      "input_classification": "migrate_evidence",
+      "effect_symbols": [
+        "write_fleet_converge_apply_receipt",
+        "write_fleet_converge_plan_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 412,
+          "symbol": "write_fleet_converge_plan_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: fleet_converge_plan_receipt_path, content: serialize_json(v: fleet_converge_plan_receipt_json(r: r)))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 417,
+          "symbol": "write_fleet_converge_apply_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: fleet_converge_apply_receipt_path, content: serialize_json(v: fleet_converge_apply_receipt_json(r: r)))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Optional operator-chosen health report via fleet_health_receipt_env; absence of the output does not create a durable health store.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_EVAL_MEMO",
+        "GUNBC_FLEET_HEALTH_RECEIPT"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.fleet_health",
+      "path": "dag/gunbc/fleet/fleet_health.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "write_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 227,
+          "symbol": "write_receipt",
+          "match": "Filesystem.Write(",
+          "source": "Present { value: path } => if trim(s: path) == \"\" { true } else { Filesystem.Write(path: trim(s: path), content: concat(rendered, \"\\n\")).success }"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Read-only host/principal/grant observation reports, including exact sudo grant output. Retain report and credential-custody boundaries.",
+      "roots": [
+        "fn fleet_multi_principal_probe_wet() -> ProcessExit {",
+        "fn spark_exact_grant_probe_wet(attempt_raw: String) -> ProcessExit",
+        "fn spark_exact_grant_probe_ci_wet() -> ProcessExit",
+        "fn spark_managed_access_standing_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GITHUB_RUN_ATTEMPT",
+        "GITHUB_RUN_ID",
+        "GUNBC_FLEET_SSH_ATTEMPT_RAW",
+        "target/fleet-multi-principal-probe-receipt.txt",
+        "target/spark-exact-grant-probe-receipt.txt",
+        "target/spark-managed-access-standing-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.fleet_multi_principal_probe",
+      "path": "dag/gunbc/fleet/fleet_multi_principal_probe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "fleet_multi_principal_probe_wet",
+        "fleet_multi_principal_probe_with_attempt",
+        "spark_exact_grant_probe_ci_wet",
+        "spark_exact_grant_probe_wet",
+        "spark_managed_access_standing_with_verified_credential"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 399,
+          "symbol": "fleet_multi_principal_probe_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 439,
+          "symbol": "fleet_multi_principal_probe_with_attempt",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 573,
+          "symbol": "spark_exact_grant_probe_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 600,
+          "symbol": "spark_exact_grant_probe_ci_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 789,
+          "symbol": "spark_managed_access_standing_with_verified_credential",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: spark_standing_receipt_path, content: body)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Fleet probe identity report export.",
+      "roots": [
+        "fn fleet_probe_identity_observe_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/fleet-probe-identity-observe-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.fleet_probe_identity_observe",
+      "path": "dag/gunbc/fleet/fleet_probe_identity_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "fleet_probe_identity_observe_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 237,
+          "symbol": "fleet_probe_identity_observe_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Collector report export; the separately read host receipts are the durable authority, assigned to fleet_converge_cli/M4.",
+      "roots": [
+        "data fleet_collect_receipt_path: String = \"target/fleet-converge-collect-receipt.txt\"",
+        "fn collect_fleet_convergence_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/fleet-converge-collect-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.fleet_receipt_collector",
+      "path": "dag/gunbc/fleet/fleet_receipt_collector.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "collect_fleet_convergence_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 277,
+          "symbol": "collect_fleet_convergence_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: fleet_collect_receipt_path, content: body)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Wireless convergence result artifact; host networking remains the independent observed state.",
+      "roots": [
+        "data wireless_link_ci_attempt_raw: String = \"spark-wireless-link-converge-ci\"",
+        "data wireless_link_ci_receipt_path: String = \"target/spark-wireless-link-converge-receipt.txt\"",
+        "fn spark_wireless_link_converge_ci_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/spark-wireless-link-converge-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.fleet_wireless_link_converge",
+      "path": "dag/gunbc/fleet/fleet_wireless_link_converge.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "wireless_link_receipt_exit"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 47,
+          "symbol": "wireless_link_receipt_exit",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: wireless_link_ci_receipt_path, content: receipt)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Flex provider pass result export; underlying provider/cell stores must retain their own inventory rows.",
+      "roots": [
+        "fn flex_entry_member(entry: FlexShadowFieldEntry) -> Bool {",
+        "fn flex_entry_wire(entry: FlexShadowFieldEntry) -> String {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/flex-pass-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.flex_pass_run",
+      "path": "dag/gunbc/fleet/flex_pass_run.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "pass"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 350,
+          "symbol": "pass",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: flex_pass_receipt_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Requested Hetzner read report; provider resource is observed independently.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/hetzner-cloud-server-read-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.hetzner_cloud_server_control",
+      "path": "dag/gunbc/fleet/hetzner_cloud_server_control.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "read"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 96,
+          "symbol": "read",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: hetzner_cloud_server_read_receipt_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Organization Actions settings observation artifact.",
+      "roots": [
+        "fn org_actions_inspect_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_ORG_ADMIN_TOKEN",
+        "target/org-actions-credential-validation-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.org_actions_inspection",
+      "path": "dag/gunbc/fleet/org_actions_inspection.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "org_actions_inspect_with_credential"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 356,
+          "symbol": "org_actions_inspect_with_credential",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Runner roster observation artifact, preserving partial/unavailable outcomes.",
+      "roots": [
+        "fn organization_runner_roster_observe_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_ORG_ADMIN_TOKEN is absent: the org runner read runs only under the installation token gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run; no pinned population is substituted",
+        "GUNBC_RUNNER_ID_PROBES",
+        "GUNBC_RUNNER_ROSTER_PAGE_SIZE",
+        "target/org-runner-roster-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.organization_runner_roster_read",
+      "path": "dag/gunbc/fleet/organization_runner_roster_read.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "organization_runner_roster_observe_with_probes"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 1157,
+          "symbol": "organization_runner_roster_observe_with_probes",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Printer-operation result receipt. Preserve the do-not-replay-on-receipt-failure behavior; this writer is not an idempotency store or a printer-job queue.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GITHUB_RUN_ATTEMPT",
+        "GITHUB_RUN_ID",
+        "GITHUB_SHA"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.printer_receipt",
+      "path": "dag/gunbc/fleet/printer_receipt.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "write_receipt_at"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 33,
+          "symbol": "write_receipt_at",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: path, content: content)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Requested printer report plus CA/credential temporary cleanup; retain local export and credential custody.",
+      "roots": [
+        "fn run(printer: String, version: String, output: String) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.fleet.printer_report",
+      "path": "dag/gunbc/fleet/printer_report.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "report_with_credential",
+        "run"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 93,
+          "symbol": "run",
+          "match": "Filesystem.Write(",
+          "source": "if Filesystem.Write(path: output, content: text).success { ExitSuccess }"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 78,
+          "symbol": "report_with_credential",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "if shell.Remove.RecursiveForce(path: workspace).success { result }"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Mixed pinned guest-image materialization and digest export. Retain required local boot input placement; image acquisition/content identity belongs to the existing artifact/M3 cohort.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.guest_image_delivery",
+      "path": "dag/gunbc/guest_image_delivery.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "guest_image_stage_inputs",
+        "guest_image_write_digest_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 46,
+          "symbol": "guest_image_write_digest_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let receipt = Filesystem.Write(path: receipt_path, content: join([key, \"=\", digest.hex as String, \"\\n\"], \"\"))"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 27,
+          "symbol": "guest_image_stage_inputs",
+          "match": "mkdir_parents_command(",
+          "source": "match run_shell_commands(commands: concat(concat([mkdir_parents_command(path: runner_guest_base_dir(root: root))], prepare),"
+        }
+      ]
+    },
+    {
+      "classification": "migrate_evidence",
+      "accountable_package": "M4",
+      "reason": "Candidate manifest and blobs form the sealed input to a later credentialed publisher.",
+      "roots": [
+        "gunbc.heal_candidate_stage0::heal_candidate_stage0_produce_wet",
+        "gunbc.heal_candidate::heal_candidate_produce_over",
+        "gunbc.heal_candidate::heal_candidate_produce_declaring"
+      ],
+      "binding": "HealRepairCandidate repo/PR/run/expected-head identity; candidate_blob_file_name from proposed Git blob identity. heal_publication::heal_publication_publish_wet/publish_for reads and independently admits bundle.",
+      "setup": "prepare_candidate_directory deletes/remakes target/heal-repair-candidate; heal_workflow::heal_candidate_upload_step exports it; publisher workflow downloads.",
+      "locations": [
+        "target/heal-repair-candidate/<manifest>",
+        "target/heal-repair-candidate/<derived blob name>"
+      ],
+      "preserve": "Exact candidate bytes/blob identities/readback and independent publisher admission. Keep artifact transport compatibility; no privileged publication from an unbound output directory.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.heal_candidate",
+      "path": "dag/gunbc/heal_candidate.dag",
+      "input_classification": "migrate_evidence",
+      "effect_symbols": [
+        "prepare_candidate_directory",
+        "write_candidate_blob",
+        "write_candidate_manifest"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 279,
+          "symbol": "write_candidate_blob",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path, content: content)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 317,
+          "symbol": "write_candidate_manifest",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path, content: text)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 340,
+          "symbol": "prepare_candidate_directory",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let removed = shell.Remove.RecursiveForce(path: heal_candidate_directory as FilePath)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 344,
+          "symbol": "prepare_candidate_directory",
+          "match": "shell.Mkdir.Parents(",
+          "source": "let made = shell.Mkdir.Parents(path: heal_candidate_directory as FilePath)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Publication readback export/comment. The forge branch/commit is the authoritative publication and is independently read; local receipt is not its mutable root.",
+      "roots": [
+        "fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun",
+        "fn observe_candidate_world_wet(subject: HealPublicationSubject, directory: String, candidate: HealRepairCandidate, run: TriggeringRunFacts) -> PublisherRun",
+        "fn heal_publication_admit_wet() -> ProcessExit",
+        "fn write_blob_wet(subject: HealPublicationSubject, publisher_token: Secret, entry: AdmittedEntry, blobs: List<ObservedBlobContent>) -> BlobWrites",
+        "fn write_blobs_wet(subject: HealPublicationSubject, publisher_token: Secret, admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> BlobWrites",
+        "fn tree_entry_input(e: AdmittedEntry) -> GitTreeEntryInput {",
+        "fn publish_admitted_wet(subject: HealPublicationSubject, publisher_token: Secret, pull_number: Int, admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> ProcessExit",
+        "fn readback_wet(subject: HealPublicationSubject, pull_number: Int, admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit",
+        "fn heal_publication_publish_wet() -> ProcessExit",
+        "fn post_receipt_wet(subject: HealPublicationSubject, pull_number: Int, text: String) -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GITHUB_EVENT_PATH",
+        "GITHUB_TOKEN",
+        "RUNNER_TEMP",
+        "target/heal-publication-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.heal_publication",
+      "path": "dag/gunbc/heal_publication.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "readback_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 476,
+          "symbol": "readback_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: heal_publication_receipt_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Host memory-envelope observation report.",
+      "roots": [
+        "fn host_memory_envelope_observe_ci_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/host-memory-envelope-observe.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.host.host_memory_envelope_observe",
+      "path": "dag/gunbc/host/host_memory_envelope_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "host_memory_envelope_observe_ci_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 367,
+          "symbol": "host_memory_envelope_observe_ci_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: host_memory_envelope_receipt_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Host reach/identity observation report. Host-key enrollment is a separate delegated effect and requires its own census row.",
+      "roots": [
+        "fn probe_fleet_reach_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/fleet-reach-probe-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.host.host_reach_identity_probe",
+      "path": "dag/gunbc/host/host_reach_identity_probe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "probe_fleet_reach_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 402,
+          "symbol": "probe_fleet_reach_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: fleet_reach_probe_receipt_path, content: join([enroll_lines, to_string(run)], \"\"))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Reset-return/preflight result export; the host is observed independently. Do not claim the file is an effect-replay ledger.",
+      "roots": [
+        "fn host_reset_return_dispatch_admission_wet() -> ProcessExit",
+        "fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE",
+        "GUNBC_HOST_RESET_DISPATCH_MODE"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.host.host_reset_return_run",
+      "path": "dag/gunbc/host/host_reset_return_run.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "host_reset_return_exit",
+        "host_reset_return_preflight_exit"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 604,
+          "symbol": "host_reset_return_preflight_exit",
+          "match": "Filesystem.Write(",
+          "source": "let _w = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 826,
+          "symbol": "host_reset_return_exit",
+          "match": "Filesystem.Write(",
+          "source": "let _w = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "migrate_evidence",
+      "accountable_package": "M4",
+      "reason": "Deployment receipt is later read in final release/launch evidence join.",
+      "roots": [
+        "gunbc.live_deploy.apply::live_deploy_apply_prod_role_transaction_wet",
+        "gunbc.live_deploy.apply::live_deploy_transaction_admitted_wet_with_access"
+      ],
+      "binding": "Selected DesiredDeployment and ActionsRunBinding; live_deploy_write_apply_receipt(spec,receipt,exit). Reader roadmap_launch_deployment_cli::rlm_launch_deployment_receipt_bound uses selected instance.",
+      "setup": "live_deploy_write_apply_receipt creates dir; CI uploads path derived by apply_receipt authority; later join reads downloaded artifact.",
+      "locations": [
+        "target/live-deploy-<instance_id>-receipt/live_deploy_receipt.json"
+      ],
+      "preserve": "Apply outcome, exact candidate/revision/provenance and independent post-apply healthz observation; preserve local artifact export rather than treating it as proof that runtime converged.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.live_deploy.apply",
+      "path": "dag/gunbc/live_deploy/apply.dag",
+      "input_classification": "migrate_evidence",
+      "effect_symbols": [
+        "live_deploy_write_apply_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 1394,
+          "symbol": "live_deploy_write_apply_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: path, content: serialize_json(v: live_deploy_apply_receipt_json(r: receipt)))"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 1391,
+          "symbol": "live_deploy_write_apply_receipt",
+          "match": "mkdir_parents_command(",
+          "source": "match run_shell_commands(commands: [mkdir_parents_command(path: dir)], transport: LocalExec) {"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Deployed-tree observation report; actual deployed tree and release identity remain independently observed.",
+      "roots": [
+        "fn deployed_tree_report_ci_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/deployed-tree-standing-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.live_deploy.deployed_tree_report",
+      "path": "dag/gunbc/live_deploy/deployed_tree_report.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "deployed_tree_report_emit"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 105,
+          "symbol": "deployed_tree_report_emit",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: deployed_tree_report_receipt_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Caller-supplied local result handoff to the deploy that ordered convergence, not a stored repository desired-state authority.",
+      "roots": [
+        "data convergence_base_ref: String = \"refs/remotes/origin/main\"",
+        "data convergence_placement_entry_path: String = \"dag/gunbc/live_deploy/repository_convergence_placement.dag\"",
+        "data convergence_placement_entry_function: String = \"repository_converge_owner_wet\"",
+        "fn repository_converge_owner_wet(",
+        "fn repository_convergence_readback_wet(receipt: String) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.live_deploy.repository_convergence_placement",
+      "path": "dag/gunbc/live_deploy/repository_convergence_placement.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "placement_finish"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 802,
+          "symbol": "placement_finish",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Fan observation/boot-phase report; the boot workflow reads this run-local outcome. Preserve that protocol without creating a persistent fan-control store.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.machine_intake.fan_observe",
+      "path": "dag/gunbc/machine_intake/fan_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "fan_write_boot_phase_receipt",
+        "fan_write_observation"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 250,
+          "symbol": "fan_write_observation",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write("
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 331,
+          "symbol": "fan_write_boot_phase_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: path, content: content)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "KVM probe report beside its typed KvmObserverRecord. The record value drives the probe/seat decision; this export is not the observer seat store.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.machine_intake.megarac_kvm_observer_observe",
+      "path": "dag/gunbc/machine_intake/megarac_kvm_observer_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "kvm_probe_conclude"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 139,
+          "symbol": "kvm_probe_conclude",
+          "match": "Filesystem.Write(",
+          "source": "let kept = Filesystem.Write(path: megarac_kvm_observer_probe_receipt_path(paths: paths), content: concat(kvm_probe_receipt_text(subject: subject, verdict: verdict, rec: rec), \"\\n\"))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Boot diagnostic bundle export; keep retained diagnostic artifact and its evidence references.",
+      "roots": [
+        "fn census_coverage(run: MtCollins1BootRunRecord) -> CarrierStanding {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle",
+      "path": "dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "mtcollins1_boot_write_bundle"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 2548,
+          "symbol": "mtcollins1_boot_write_bundle",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: mtcollins1_boot_diagnostics_path, content: mtcollins1_boot_bundle_text(bundle: bundle))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Fan safety-gate output and GITHUB_STEP_SUMMARY append. Preserve observation-before-stop ordering; this is a run outcome/report channel, not a stored fan policy.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GITHUB_STEP_SUMMARY",
+        "GITHUB_STEP_SUMMARY is unset"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.machine_intake.mtcollins1_boot_fan_gate",
+      "path": "dag/gunbc/machine_intake/mtcollins1_boot_fan_gate.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "fan_gate_summary_append",
+        "fan_gate_write"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 103,
+          "symbol": "fan_gate_write",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path as String, content: content)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 115,
+          "symbol": "fan_gate_summary_append",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path, content: concat(if prior.success { prior.content } else { \"\" }, block))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Census image verification scratch cleanup and publication report; boot image physical publication is a separate existing artifact cohort.",
+      "roots": [
+        "fn mtcollins1_census_image_publish_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "/var/tmp/gunbc-mtcollins1-census-regress.",
+        "/var/tmp/gunbc-mtcollins1-census-regress.XXXXXXXX",
+        "target/mtcollins1-census-image.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.machine_intake.mtcollins1_census_image_publish",
+      "path": "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "census_srv2_regression",
+        "mtcollins1_census_image_publish_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 235,
+          "symbol": "mtcollins1_census_image_publish_wet",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: mtcollins1_census_image_receipt_path, content: rendered)"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 122,
+          "symbol": "census_srv2_regression",
+          "match": "rm_recursive_force_one_file_system_command(",
+          "source": "census_regression_with_scratch(r: judged, scratch: scratch_removal_of(kind: kind, dir: dir, leg: host_run(host: host, command: rm_recursive_force_one_file_system_command(path: dir as String))))"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 102,
+          "symbol": "census_srv2_regression",
+          "match": "mktemp_directory_command(",
+          "source": "match scratch_acquisition_of(kind: kind, prefix: census_regression_prefix, leg: host_run(host: host, command: mktemp_directory_command(template: census_regression_template))) {"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Remote scratch extraction/removal and member-readback report; preserve actual readback and cleanup; no mutable census-history state in these writes.",
+      "roots": [
+        "fn mtcollins1_census_member_readback_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "/tmp/gunbc-",
+        "target/mtcollins1-census-member-readback.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.machine_intake.mtcollins1_census_member_readback",
+      "path": "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "census_member_readback",
+        "mtcollins1_census_member_readback_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 505,
+          "symbol": "mtcollins1_census_member_readback_wet",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 487,
+          "symbol": "census_member_readback",
+          "match": "rm_recursive_force_one_file_system_command(",
+          "source": "cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 485,
+          "symbol": "census_member_readback",
+          "match": "mktemp_directory_command(",
+          "source": "creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template_of(attempt: attempt))),"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "QEMU host prerequisite observation report directory/file.",
+      "roots": [
+        "fn mtcollins1_census_qemu_host_observe_wet() -> ProcessExit {",
+        "fn census_qemu_host_verdict_wet(entry: String, preamble: String, standing: QemuHostStanding) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/mtcollins1-census-qemu-host.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.machine_intake.mtcollins1_census_qemu_host_observe",
+      "path": "dag/gunbc/machine_intake/mtcollins1_census_qemu_host_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "census_qemu_host_verdict_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 51,
+          "symbol": "census_qemu_host_verdict_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: census_qemu_host_observe_receipt_path, content: concat(text, \"\\n\"))"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 50,
+          "symbol": "census_qemu_host_verdict_wet",
+          "match": "mkdir_parents_command(",
+          "source": "let _ = run_shell_commands(commands: [mkdir_parents_command(path: census_qemu_host_observe_receipt_dir)], transport: LocalExec)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Boot phase fan outcome report consumed by the same workflow; preserve refusal-to-stop-boot protocol.",
+      "roots": [
+        "fn mtcollins1_fan_observe_wet() -> ProcessExit",
+        "fn mtcollins1_fan_observe_boot_phase_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE",
+        "target/mtcollins1-fan-observation.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.machine_intake.mtcollins1_fan_observe",
+      "path": "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "mtcollins1_fan_observe_boot_phase_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 146,
+          "symbol": "mtcollins1_fan_observe_boot_phase_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: mtcollins1_fan_observation_receipt_path, content: content)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Namecheap GET-hosts report; write authority explicitly withheld.",
+      "roots": [
+        "fn namecheap_observe_ci_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GITHUB_RUN_ATTEMPT",
+        "GITHUB_RUN_ID",
+        "GITHUB_SHA"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.namecheap.observe",
+      "path": "dag/gunbc/namecheap/observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "namecheap_observe_at"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 61,
+          "symbol": "namecheap_observe_at",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: namecheap_observation_receipt_path, content: receipt)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "OCI converge result report, not provider-state authority.",
+      "roots": [
+        "data oci_always_free_ensure_receipt_path: String = \"target/oci-always-free-ensure-receipt.txt\"",
+        "fn ensure() -> ProcessExit uses net: Network {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/oci-always-free-ensure-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.oracle_oci.always_free_ensure",
+      "path": "dag/gunbc/oracle_oci/always_free_ensure.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "ensure"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 53,
+          "symbol": "ensure",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: oci_always_free_ensure_receipt_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "OCI compartment ensure result report, not provider-state authority.",
+      "roots": [
+        "data oci_compartment_ensure_receipt_path: String = \"target/oci-compartment-ensure-receipt.txt\"",
+        "fn ensure() -> ProcessExit uses net: Network {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/oci-compartment-ensure-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.oracle_oci.compartment_ensure",
+      "path": "dag/gunbc/oracle_oci/compartment_ensure.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "ensure"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 243,
+          "symbol": "ensure",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: oci_compartment_ensure_receipt_path, content: outcome.line)"
+        }
+      ]
+    },
+    {
+      "classification": "migrate_evidence",
+      "accountable_package": "M4",
+      "reason": "Content-addressed private provider-wire byte retention returns PrivateEvidenceRef and digest/size, not a throwaway report.",
+      "roots": [
+        "gunbc.codex_app_server_press::observe_codex_account_preflight",
+        "gunbc.codex_supervised_turn_run::run_codex_supervised_turn",
+        "test.claim.codex_app_server_press_wet_witness",
+        "test.claim.codex_supervised_turn_wet_witness"
+      ],
+      "binding": "Caller evidence_root -> retain_provider_wire_capture / retain_private_evidence_bytes_detailed; PrivateEvidenceRef includes physical root plus SHA-512 address. Actual outer callers found for those Codex entrances are wet witnesses; do not claim a production dispatch root from comments.",
+      "setup": "ensure_private_evidence_root mkdir+chmod0700; mktemp private staging; hard-link exclusive publish; chmod0600; independent SHA-512 readback.",
+      "locations": [
+        "<caller evidence_root>/<SHA-512-derived object path>",
+        "/opt/gunbc/provider-runtime/evidence (declared host_layout root, live use/population unobserved)"
+      ],
+      "preserve": "Confidential bytes, exact cryptographic identity, exclusive publication and custody. Do not downgrade to the structural metadata reference or infer real srv1 records from the path declaration. Classify migration as consumed retention library plus its actual witness cohort, not invented live fleet use.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.provider_wire_evidence",
+      "path": "dag/gunbc/provider_wire_evidence.dag",
+      "input_classification": "migrate_evidence",
+      "effect_symbols": [
+        "ensure_private_evidence_root",
+        "mktemp_file_in_dir",
+        "publish_evidence_object_exclusive",
+        "retain_private_evidence_bytes_detailed"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 182,
+          "symbol": "retain_private_evidence_bytes_detailed",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: staging as String, content: bytes)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 92,
+          "symbol": "ensure_private_evidence_root",
+          "match": "shell.Mkdir.Parents(",
+          "source": "let made = shell.Mkdir.Parents(path: root)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 98,
+          "symbol": "ensure_private_evidence_root",
+          "match": "shell.Chmod.OwnerOnlyDirectory(",
+          "source": "let mode = shell.Chmod.OwnerOnlyDirectory(path: root)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 110,
+          "symbol": "mktemp_file_in_dir",
+          "match": "shell.Mktemp.FileInDirectory(",
+          "source": "let run = shell.Mktemp.FileInDirectory(dir: dir)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 122,
+          "symbol": "publish_evidence_object_exclusive",
+          "match": "shell.Link.Hard(",
+          "source": "let linked = shell.Link.Hard(source: staging, destination: dest)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 126,
+          "symbol": "publish_evidence_object_exclusive",
+          "match": "shell.Chmod.OwnerReadWriteFile(",
+          "source": "let mode = shell.Chmod.OwnerReadWriteFile(path: dest)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 130,
+          "symbol": "publish_evidence_object_exclusive",
+          "match": "shell.Remove.FileForce(",
+          "source": "shell.Remove.FileForce(path: staging).success"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 184,
+          "symbol": "retain_private_evidence_bytes_detailed",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let _ = shell.Remove.RecursiveForce(path: staging)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 191,
+          "symbol": "retain_private_evidence_bytes_detailed",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let _ = shell.Remove.RecursiveForce(path: staging)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 200,
+          "symbol": "retain_private_evidence_bytes_detailed",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let _ = shell.Remove.RecursiveForce(path: staging)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 204,
+          "symbol": "retain_private_evidence_bytes_detailed",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let _ = shell.Remove.RecursiveForce(path: staging)"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 225,
+          "symbol": "retain_private_evidence_bytes_detailed",
+          "match": "shell.Remove.RecursiveForce(",
+          "source": "let _ = shell.Remove.RecursiveForce(path: staging)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Selected file writes are CLI result exports and credential recovery last-result JSON. The actual lifecycle recovery store belongs to C2 and must not be excluded with these reports.",
+      "roots": [
+        "fn belt_run_once_cli() -> ProcessExit {",
+        "fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {",
+        "fn belt_observe_once_cli() -> ProcessExit {",
+        "fn belt_review_head_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {",
+        "fn belt_review_report_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {",
+        "fn belt_verify_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {",
+        "fn belt_escalate_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {",
+        "fn belt_integrate_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {",
+        "fn belt_attempt_obligations_cli(node_id: String, attempt_key: String) -> ProcessExit {",
+        "fn belt_instance_obligation_cli(kind: String) -> ProcessExit {",
+        "fn belt_exit_drain_cli() -> ProcessExit {",
+        "fn belt_exit_stall_analyze_cli() -> ProcessExit {",
+        "fn belt_exit_stall_release_cli() -> ProcessExit {",
+        "fn belt_credential_recovery_cli() -> ProcessExit {",
+        "fn belt_discover_once_cli() -> ProcessExit {",
+        "fn belt_publication_answer_drain_cli() -> ProcessExit {",
+        "fn belt_launch_enqueue_cli() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.roadmap.roadmap_belt_tick_cli",
+      "path": "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "belt_credential_recovery_cli",
+        "belt_escalate_one_cli",
+        "belt_integrate_one_cli",
+        "belt_review_head_cli",
+        "belt_review_report_cli",
+        "belt_verify_one_cli"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 255,
+          "symbol": "belt_review_head_cli",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: receipt_path, content: document)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 266,
+          "symbol": "belt_review_report_cli",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: receipt_path, content: document)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 312,
+          "symbol": "belt_verify_one_cli",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: receipt_path, content: document)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 355,
+          "symbol": "belt_escalate_one_cli",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: receipt_path, content: document)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 397,
+          "symbol": "belt_integrate_one_cli",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: receipt_path, content: document)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 601,
+          "symbol": "belt_credential_recovery_cli",
+          "match": "Filesystem.Write(",
+          "source": "} else if !Filesystem.Write(path: receipt_path, content: receipt).success {"
+        }
+      ]
+    },
+    {
+      "classification": "migrate_git_state",
+      "accountable_package": "M3",
+      "reason": "Actual Git-backed issue/event log and per-operation idempotency receipts; not report export.",
+      "roots": [
+        "gunbc.roadmap.roadmap_event_carrier::roadmap_event_append",
+        "roadmap_event_append_private",
+        "roadmap_event_publish_private"
+      ],
+      "binding": "roadmap_event_carrier_layout_for_instance; logical event subject/operation identity; Git remote refs/heads/roadmap-events; ordinary origin vs srv2 preview instance-local remote.",
+      "setup": "roadmap_event_carrier_directory enrolled in dashboard_instance_directory_demands; roadmap_event_carrier_ensure bootstraps Git carrier; per-read/append private snapshots.",
+      "locations": [
+        "<instance roadmap-events worktree>/events/<node>/<event>.json",
+        "<private snapshot>/<operation receipt>",
+        "origin:refs/heads/roadmap-events",
+        "<srv2 preview instance_root>/ui-preview-events.git"
+      ],
+      "preserve": "Publish event+operation receipt together with exact remote-ref CAS; retry binds original issue/principal/payload/precondition and recovers committed operation before checking latest revision. M3 must own full reader/writer/root transition; snapshot directories remain local Git effects until carrier is retired.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.roadmap.roadmap_event_carrier",
+      "path": "dag/gunbc/roadmap/roadmap_event_carrier.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "roadmap_event_carrier_ensure",
+        "roadmap_event_private_snapshot",
+        "roadmap_event_publish_private"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 465,
+          "symbol": "roadmap_event_publish_private",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: concat(layout.worktree as String, concat(\"/\", rel)), content: roadmap_event_wire_text(env: env))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 466,
+          "symbol": "roadmap_event_publish_private",
+          "match": "Filesystem.Write(",
+          "source": "let recorded = if operation == \"\" { written.success } else { Filesystem.Write(path: concat(layout.worktree as String, concat(\"/\", receipt_path)), content: roadmap_event_wire_text(env: env)).success }"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 254,
+          "symbol": "roadmap_event_private_snapshot",
+          "match": "shell.Mktemp.DirWithTemplate(",
+          "source": "let temporary = shell.Mktemp.DirWithTemplate(template: roadmap_event_snapshot_template(layout: layout))"
+        },
+        {
+          "kind": "literal_shell_candidate",
+          "line": 175,
+          "symbol": "roadmap_event_carrier_ensure",
+          "match": "rm",
+          "source": "match carrier_exec(layout: layout, workdir: layout.worktree as String, args: [\"rm\", \"-rfq\", \"--cached\", \"--ignore-unmatch\", \".\"]) {"
+        },
+        {
+          "kind": "literal_program_candidate",
+          "line": 175,
+          "symbol": "roadmap_event_carrier_ensure",
+          "match": "rm",
+          "source": "match carrier_exec(layout: layout, workdir: layout.worktree as String, args: [\"rm\", \"-rfq\", \"--cached\", \"--ignore-unmatch\", \".\"]) {"
+        },
+        {
+          "kind": "literal_shell_candidate",
+          "line": 463,
+          "symbol": "roadmap_event_publish_private",
+          "match": "mkdir",
+          "source": "CarrierExecFailed { exit_code: _, stderr } => EventAppendRefused { id: env.id, step: \"mkdir\", reason: stderr }"
+        },
+        {
+          "kind": "literal_program_candidate",
+          "line": 463,
+          "symbol": "roadmap_event_publish_private",
+          "match": "mkdir",
+          "source": "CarrierExecFailed { exit_code: _, stderr } => EventAppendRefused { id: env.id, step: \"mkdir\", reason: stderr }"
+        }
+      ]
+    },
+    {
+      "classification": "migrate_evidence",
+      "accountable_package": "M3",
+      "reason": "Reads the previous saved census to report snapshots present across censuses, then replaces it; persistent diagnostic history, not a write-only report.",
+      "roots": [
+        "gunbc.roadmap.roadmap_belt_tick_cli::belt_instance_obligation_cli (SnapshotCensusObligation)",
+        "gunbc.roadmap.roadmap_event_snapshot_census::roadmap_snapshot_census_for_instance"
+      ],
+      "binding": "HostDashboardInstance -> roadmap_event_carrier_layout_for_instance plus roadmap_snapshot_census_receipt_path_for_instance. Namespace is checked when decoding prior receipt.",
+      "setup": "Instance receipts directory is provisioned by belt deployment member; no directory creation in census writer.",
+      "locations": [
+        "<instance_root>/receipts/roadmap-event-snapshot-census.json"
+      ],
+      "preserve": "Per-instance scope, prior-census population, namespace mismatch/unreadable distinctions. It is diagnostic state (not deletion authority), but it persists across runs. Retire only with explicit M3 carrier/snapshot-census retirement receipt.",
+      "disposition": "migrate",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.roadmap.roadmap_event_snapshot_census",
+      "path": "dag/gunbc/roadmap/roadmap_event_snapshot_census.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "roadmap_snapshot_census_at"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 337,
+          "symbol": "roadmap_snapshot_census_at",
+          "match": "Filesystem.Write(",
+          "source": "let write = Filesystem.Write(path: receipt_path, content: serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: receipt)))"
+        }
+      ]
+    },
+    {
+      "classification": "retire_unconsumed_legacy_producer",
+      "accountable_package": "M4",
+      "reason": "persist_verification_receipt defines a durable attempt receipt writer, but exact-name search finds no tracked caller in dag/ or src/. Do not invent a live process entry.",
+      "roots": [],
+      "binding": "Potential layout: dispatch_attempt_verification_path_for_instance(instance,node,attempt); DashboardSshProvision refuses, DashboardLocalProvision writes. Current exact-head verification producer/readers are separate census subjects.",
+      "setup": "Would use attempt-state directory setup; no mkdir in this unconsumed writer.",
+      "locations": [
+        "<dispatch attempt-state>/<node>/<attempt>/verification.json (declared layout only)"
+      ],
+      "preserve": "Delete the unconsumed legacy producer through explicit retirement after caller census. Do not use this function to justify a live state count or claim current exact-head verification evidence is migrated.",
+      "disposition": "retire",
+      "deployed_state": "UNOBSERVED: declared paths and actual source call chains only; no live listing, record count or contents read.",
+      "module": "gunbc.roadmap.roadmap_verify",
+      "path": "dag/gunbc/roadmap/roadmap_verify.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "persist_verification_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 595,
+          "symbol": "persist_verification_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let write = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Runner-group ensure report; actual group mutation and authorization are separate domain effects.",
+      "roots": [
+        "data microvm_runner_group_ensure_receipt_path: String = \"artifacts/microvm-runner-group-ensure-receipt.txt\"",
+        "data microvm_runner_group_ensure_artifact_glob: String = \"artifacts/microvm-runner-group-ensure-*\"",
+        "fn microvm_runner_group_ensure_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_ORG_ADMIN_TOKEN is absent; no bearer token to read the runner groups with"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_group_restriction_ensure_run",
+      "path": "dag/gunbc/runner/runner_group_restriction_ensure_run.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "write_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 153,
+          "symbol": "write_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let kept = Filesystem.Write(path: microvm_runner_group_ensure_receipt_path, content: concat(join(lines, \"\\n\"), \"\\n\"))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Runner-image publication report; physical image materialization remains its artifact authority.",
+      "roots": [
+        "fn mtcollins1_runner_image_publish_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/mtcollins1-runner-image.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_host_medium_publish",
+      "path": "dag/gunbc/runner/runner_host_medium_publish.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "mtcollins1_runner_image_publish_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 84,
+          "symbol": "mtcollins1_runner_image_publish_wet",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: mtcollins1_runner_image_receipt_path, content: rendered)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Lost-boot recovery sweep report; preserve protected recovery effects in their own cohort.",
+      "roots": [
+        "fn lost_boot_sweep_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "RUNNER_TEMP"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_lost_boot_sweep_run",
+      "path": "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "write_sweep_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 282,
+          "symbol": "write_sweep_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let kept = Filesystem.Write(path: lost_boot_sweep_receipt_path, content: concat(join(lines, \"\\n\"), \"\\n\"))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Mixed: direct writes export the network readback; initialize_local_network_receipt also calls publish_initial_network_receipt, whose durable authority must join its own M1/M2 row. Do not classify the entire module as output-only.",
+      "roots": [
+        "fn runner_microvm_network_observe_wet() -> ProcessExit",
+        "fn observe_bound_host_wet(bound: HostIdentity) -> ProcessExit",
+        "fn observe_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, generation: NonEmptyStr) -> ProcessExit",
+        "fn record_converge_readback_wet(",
+        "fn runner_microvm_network_initialize_local_wet(host: String, expected_revision: String) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_microvm_network_observe",
+      "path": "dag/gunbc/runner/runner_microvm_network_observe.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "initialize_local_network_receipt",
+        "record_converge_readback_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 170,
+          "symbol": "record_converge_readback_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: runner_microvm_network_receipt_path, content: text)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 213,
+          "symbol": "initialize_local_network_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let artifact = Filesystem.Write(path: runner_microvm_network_receipt_path, content: receipt_text(o: outcome))"
+        },
+        {
+          "kind": "dag_coreutils_builder",
+          "line": 169,
+          "symbol": "record_converge_readback_wet",
+          "match": "mkdir_parents_command(",
+          "source": "let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_network_receipt_dir)], transport: LocalExec)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Slot-controller outcome report keyed by invocation. Actual in-flight record/hold/teardown stores are separate direct-consumer cohorts.",
+      "roots": [
+        "fn microvm_slot_controller_main() -> ProcessExit",
+        "fn workspace_initial_sanitation_observe_wet(instance: String) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_microvm_slot_controller",
+      "path": "dag/gunbc/runner/runner_microvm_slot_controller.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "controller_exit"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 663,
+          "symbol": "controller_exit",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path, content: concat(text, \"\\n\"))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Broker result/unit receipt export. Actual fabric cell hold and unresolved money-account persistence are distinct domain state; preserve those inventory rows, not a fabricated receipt-backed account.",
+      "roots": [
+        "fn microvm_slot_reserve_main() -> ProcessExit {",
+        "fn microvm_slot_reserve_admitted(run: MicrovmSlotStartRun) -> Bool {",
+        "fn microvm_slot_reserve_ci_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_microvm_slot_reserve",
+      "path": "dag/gunbc/runner/runner_microvm_slot_reserve.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "microvm_slot_reserve_ci_wet",
+        "microvm_slot_reserve_main"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 333,
+          "symbol": "microvm_slot_reserve_main",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: path, content: concat(text, \"\\n\"))"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 483,
+          "symbol": "microvm_slot_reserve_ci_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: microvm_slot_reserve_receipt_path, content: body)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Slot-start result report; actual unit and hold state are independently observed.",
+      "roots": [
+        "fn microvm_slot_start_ci_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_microvm_slot_start",
+      "path": "dag/gunbc/runner/runner_microvm_slot_start.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "microvm_slot_start_ci_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 287,
+          "symbol": "microvm_slot_start_ci_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: microvm_slot_start_receipt_path, content: body)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Host tool convergence report export.",
+      "roots": [
+        "fn password_session_tool_receipt_entry(outcome: PasswordSessionToolOutcome) -> String {",
+        "data runner_password_session_tool_converge_attempt_raw: String = \"runner-password-session-tool-converge-ci\"",
+        "data runner_password_session_tool_converge_receipt_path: String = \"target/runner-password-session-tool-converge-receipt.txt\"",
+        "fn runner_password_session_tool_converge_ci_wet() -> ProcessExit"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/runner-password-session-tool-converge-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_password_session_tool_converge",
+      "path": "dag/gunbc/runner/runner_password_session_tool_converge.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "runner_password_session_tool_converge_ci_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 250,
+          "symbol": "runner_password_session_tool_converge_ci_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Copy of completed jail results and runtime reading to supplied result paths. Preserve create-only and uncertainty; retained execution/accounting authority belongs to the consuming result pipeline, not this local copy primitive.",
+      "roots": [
+        "fn revision_job_main() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_REVISION_JOB_CACHE_DIR",
+        "GUNBC_REVISION_JOB_IMAGE_DIR",
+        "GUNBC_REVISION_JOB_IMAGE_SHA256",
+        "GUNBC_REVISION_JOB_RELEASE_DIR",
+        "GUNBC_REVISION_JOB_SLOT",
+        "GUNBC_REVISION_JOB_SPEC",
+        "GUNBC_REVISION_JOB_STORE_ROOT",
+        "GUNBC_REVISION_JOB_VCPUS",
+        "GUNBC_REVISION_JOB_WORK_DIR"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.runner.runner_revision_job_main",
+      "path": "dag/gunbc/runner/runner_revision_job_main.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "revision_job_await"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 131,
+          "symbol": "revision_job_await",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "let _copied = if jail.success { Filesystem.WriteCreateNew(path: results_out, content: jail.content).success } else { false }"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 139,
+          "symbol": "revision_job_await",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "let _wrote = Filesystem.WriteCreateNew(path: runtime_out, content: runtime_line).success"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Caller-requested repository conversion/capture-demand result JSON. Repository mutations occur in the SCM authority and need their own M3 disposition.",
+      "roots": [
+        "fn scm_convert_repository_cli(path: String, receipt_path: String) -> ProcessExit {",
+        "fn scm_capture_demand_cli(path: String, receipt_path: String) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.scm.repository_convert",
+      "path": "dag/gunbc/scm/repository_convert.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "scm_capture_demand_cli",
+        "scm_convert_repository_cli"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 478,
+          "symbol": "scm_convert_repository_cli",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: receipt_path, content: document)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 569,
+          "symbol": "scm_capture_demand_cli",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: receipt_path, content: document)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Rendered CSS export; lexical helper/string hits are not storage effects.",
+      "roots": [
+        "fn sheet_exit(run: SheetWrite) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.site.gunb_ai_css",
+      "path": "dag/gunbc/site/gunb_ai_css.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "hero_entries",
+        "media_entries",
+        "sheet_write"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 1380,
+          "symbol": "sheet_write",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: path, content: render_sheet())"
+        },
+        {
+          "kind": "literal_shell_candidate",
+          "line": 490,
+          "symbol": "hero_entries",
+          "match": "install",
+          "source": "selector: descendant_list(ancestor: class_compound(name: \"hero-right\"), descendant: class_compound(name: \"install\")),"
+        },
+        {
+          "kind": "literal_program_candidate",
+          "line": 490,
+          "symbol": "hero_entries",
+          "match": "install",
+          "source": "selector: descendant_list(ancestor: class_compound(name: \"hero-right\"), descendant: class_compound(name: \"install\")),"
+        },
+        {
+          "kind": "literal_shell_candidate",
+          "line": 1181,
+          "symbol": "media_entries",
+          "match": "touch",
+          "source": "sheet_ident(property: WebkitOverflowScrolling, ident: \"touch\"),"
+        },
+        {
+          "kind": "literal_program_candidate",
+          "line": 1181,
+          "symbol": "media_entries",
+          "match": "touch",
+          "source": "sheet_ident(property: WebkitOverflowScrolling, ident: \"touch\"),"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Rendered deck export; line_prefix and other text-construction matches are false effect hits.",
+      "roots": [
+        "fn deck_exit(run: DeckWrite) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.site.gunb_ai_deck",
+      "path": "dag/gunbc/site/gunb_ai_deck.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "deck_write",
+        "line_prefix",
+        "retained_1"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 431,
+          "symbol": "deck_write",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: path, content: render_deck())"
+        },
+        {
+          "kind": "literal_shell_candidate",
+          "line": 217,
+          "symbol": "line_prefix",
+          "match": "ln",
+          "source": "SourceLine { n: n, rows: _ } => call_open(callee: \"ln\", leading: [num(n: n)])"
+        },
+        {
+          "kind": "literal_program_candidate",
+          "line": 217,
+          "symbol": "line_prefix",
+          "match": "ln",
+          "source": "SourceLine { n: n, rows: _ } => call_open(callee: \"ln\", leading: [num(n: n)])"
+        },
+        {
+          "kind": "literal_redirect_candidate",
+          "line": 525,
+          "symbol": "retained_1",
+          "match": "> w",
+          "source": "\"      if (!(n.col in widest) || w > widest[n.col]) widest[n.col] = w;\","
+        },
+        {
+          "kind": "literal_redirect_candidate",
+          "line": 537,
+          "symbol": "retained_1",
+          "match": "> g",
+          "source": "\"      if (!(startCol in gapDemand) || need > gapDemand[startCol]) gapDemand[startCol] = need;\","
+        },
+        {
+          "kind": "literal_redirect_candidate",
+          "line": 957,
+          "symbol": "retained_1",
+          "match": "> m",
+          "source": "\"        if (w > max) max = w;\","
+        },
+        {
+          "kind": "literal_redirect_candidate",
+          "line": 972,
+          "symbol": "retained_1",
+          "match": "> n",
+          "source": "\"        if (w > need) need = w;\","
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Requested HTML review pages.",
+      "roots": [
+        "data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver",
+        "fn ballot_exit(run: BallotRun) -> ProcessExit {",
+        "fn v2_cli_main(argv: List<String>) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.site.gunb_ai_layout_review",
+      "path": "dag/gunbc/site/gunb_ai_layout_review.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "write_all"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 153,
+          "symbol": "write_all",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: path, content: page.html)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Rendered brand mark export.",
+      "roots": [
+        "fn mark_exit(run: MarkWrite) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.site.gunb_ai_mark",
+      "path": "dag/gunbc/site/gunb_ai_mark.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "mark_write"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 200,
+          "symbol": "mark_write",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: path, content: b)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Rendered site page export; source declarations remain content authority.",
+      "roots": [
+        "data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver",
+        "data tag_main: String = \"main\"",
+        "fn page_main() -> Fragment {",
+        "fn page_exit(run: PageWrite) -> ProcessExit {",
+        "fn v2_cli_main(argv: List<String>) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.site.gunb_ai_page",
+      "path": "dag/gunbc/site/gunb_ai_page.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "class_install",
+        "page_write"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 789,
+          "symbol": "page_write",
+          "match": "Filesystem.Write(",
+          "source": "let wrote = Filesystem.Write(path: path, content: b)"
+        },
+        {
+          "kind": "literal_shell_candidate",
+          "line": 375,
+          "symbol": "class_install",
+          "match": "install",
+          "source": "data class_install: String = \"install\""
+        },
+        {
+          "kind": "literal_program_candidate",
+          "line": 375,
+          "symbol": "class_install",
+          "match": "install",
+          "source": "data class_install: String = \"install\""
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Rendered tokens review HTML at caller directory.",
+      "roots": [
+        "data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver",
+        "fn v2_cli_exit(run: ReviewRun) -> ProcessExit {",
+        "fn v2_cli_main(argv: List<String>) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.site.gunb_ai_tokens_review",
+      "path": "dag/gunbc/site/gunb_ai_tokens_review.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "review_write"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 40,
+          "symbol": "review_write",
+          "match": "Filesystem.Write(",
+          "source": "let outcome = Filesystem.Write(path: path, content: h)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "srv1 task-limit preapply observation report.",
+      "roots": [
+        "fn observe_srv1_tasks_preapply_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/srv1-tasks-preapply-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.srv1_tasks_preapply_observation",
+      "path": "dag/gunbc/srv1_tasks_preapply_observation.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "observe_srv1_tasks_preapply_wet"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 139,
+          "symbol": "observe_srv1_tasks_preapply_wet",
+          "match": "Filesystem.Write(",
+          "source": "let w = Filesystem.Write(path: srv1_tasks_preapply_receipt_path, content: to_string(receipt))"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Redfish boot/reset request-body materialization for a local command, plus credential binding; retain transport staging. It is not saved boot desired-state authority.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "/tmp/srv3_boot_cd_body.json",
+        "/tmp/srv3_reset_body.json"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.srv3.srv3_boot_once_cd",
+      "path": "dag/gunbc/srv3/srv3_boot_once_cd.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "srv3_boot_once_cd_resolved"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 191,
+          "symbol": "srv3_boot_once_cd_resolved",
+          "match": "Filesystem.Write(",
+          "source": "let boot_write = Filesystem.Write(path: srv3_boot_cd_body_path, content: boot_body)"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 206,
+          "symbol": "srv3_boot_once_cd_resolved",
+          "match": "Filesystem.Write(",
+          "source": "let rst_write = Filesystem.Write(path: srv3_reset_body_path, content: rst_body)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "BMC login request-body/token transport materialization. Preserve secret custody; not ordinary durable evidence.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.srv3.srv3_os_install_actuate",
+      "path": "dag/gunbc/srv3/srv3_os_install_actuate.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "srv3_bmcweb_session_login_resolved"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 96,
+          "symbol": "srv3_bmcweb_session_login_resolved",
+          "match": "Filesystem.Write(",
+          "source": "let body_write = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "BMC credential rotation request-body materialization; actual secret custody/provider state is elsewhere. Retain transport staging, never migrate a plaintext request body as public evidence.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "/tmp/bmc_onboard_netrc",
+        "/tmp/bmc_onboard_pwbody.json",
+        "GUNBC_BMC_TAKEOVER_PASSWORD_FILE"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.tools.bmc_onboard",
+      "path": "dag/gunbc/tools/bmc_onboard.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "bmc_rotate_credential"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 222,
+          "symbol": "bmc_rotate_credential",
+          "match": "Filesystem.Write(",
+          "source": "let body = Filesystem.Write("
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Workspace allocation result export; allocation/hold authority is elsewhere in the same application.",
+      "roots": [
+        "fn workspace_operator_request_wet() -> ProcessExit {",
+        "fn workspace_operator_release_wet() -> ProcessExit {",
+        "fn workspace_operator_observe_wet() -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "GUNBC_WORKSPACE_RELEASE_GENERATION",
+        "GUNBC_WORKSPACE_REQUEST_EXPIRES_AT",
+        "GUNBC_WORKSPACE_REQUEST_KEY",
+        "GUNBC_WORKSPACE_REQUEST_PROFILE",
+        "target/workspace-operation.json"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "gunbc.workspace_operator_request",
+      "path": "dag/gunbc/workspace_operator_request.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "workspace_operator_receipt"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 88,
+          "symbol": "workspace_operator_receipt",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: workspace_operator_receipt_path,"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Vast template ensure report after independent provider readback.",
+      "roots": [
+        "fn ensure() -> ProcessExit uses net: Network {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "target/flex-vast-template-receipt.txt"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "product.fabric.flex_vast_template_control",
+      "path": "dag/product/fabric/flex_vast_template_control.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "flex_template_run"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 126,
+          "symbol": "flex_template_run",
+          "match": "Filesystem.Write(",
+          "source": "let written = Filesystem.Write(path: flex_vast_template_receipt_path, content: text)"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Generated local CAD-check script/manifest requested by output path; external CAD execution requires local inputs.",
+      "roots": [
+        "fn run(root:String,output:String) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "product.printed_chassis.cad_check_run",
+      "path": "dag/product/printed_chassis/cad_check_run.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "check_printable_cad"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 34,
+          "symbol": "check_printable_cad",
+          "match": "Filesystem.Write(",
+          "source": "if !Filesystem.Write(path:manifest_path,content:serialize_json(v:printable_manifest(a:a))).success || !Filesystem.Write(path:script_path,content:source).success {return exit_failure(reason:\"Cannot stage generated CAD checks\")}"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 34,
+          "symbol": "check_printable_cad",
+          "match": "Filesystem.Write(",
+          "source": "if !Filesystem.Write(path:manifest_path,content:serialize_json(v:printable_manifest(a:a))).success || !Filesystem.Write(path:script_path,content:source).success {return exit_failure(reason:\"Cannot stage generated CAD checks\")}"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Requested print-preparation output, immutable profile snapshot, generated kernel scripts and local slicer scratch. Preserve artifact identity/readback; these are deliverable materializations, not an unrequested persistent record service.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "product.printed_chassis.print_preparation",
+      "path": "dag/product/printed_chassis/print_preparation.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "observe_process_batch",
+        "prepare",
+        "run_kernel",
+        "stage_profile"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 41,
+          "symbol": "run_kernel",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "if !Filesystem.WriteCreateNew(path:script,content:concat(source(),call)).success {return exit_failure(reason:\"Preparation script path already exists or is not writable\")}"
+        },
+        {
+          "kind": "dag_filesystem",
+          "line": 69,
+          "symbol": "stage_profile",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "if !read.success {false} else {match parse_json_document(s:read.content) {JsonDocumentParsed {value:JsonObject {members:_}}=>Filesystem.WriteCreateNew(path:destination,content:read.content).success JsonDocumentParsed {value:JsonNull}=>false JsonDocumentParsed {value:JsonBool {value:_}}=>false JsonDocumentParsed {value:JsonNumber {lexeme:_}}=>false JsonDocumentParsed {value:JsonString {value:_}}=>false JsonDocumentParsed {value:JsonArray {elements:_}}=>false JsonDocumentUnreadable {gap:_}=>false}}"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 78,
+          "symbol": "prepare",
+          "match": "shell.Mkdir.Parents(",
+          "source": "if !shell.Mkdir.Parents(path:scratch as FilePath).success {return exit_failure(reason:\"Cannot isolate slicer scratch output\")}"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 93,
+          "symbol": "observe_process_batch",
+          "match": "shell.Mkdir.Parents(",
+          "source": "if !starts_with(s:output,prefix:\"/\") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:\"Observation output must be an absolute writable directory\")}"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Requested prepared print-artifact bundle and create-only prepared-queues.json. Queue hash binds the execution hold, but the durable assembly inventory and hold are separate authorities; preserve those M1/M2 joins.",
+      "roots": [
+        "fn run(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,mode:String,root:String) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "product.printed_chassis.print_workflow",
+      "path": "dag/product/printed_chassis/print_workflow.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "provision_and_run",
+        "run"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 73,
+          "symbol": "run",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "if !Filesystem.WriteCreateNew(path:concat(output,\"/prepared-queues.json\"),content:receipt).success {return exit_failure(reason:\"Prepared queue receipt already exists or is not writable\")}"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 64,
+          "symbol": "run",
+          "match": "shell.Mkdir.Parents(",
+          "source": "if !starts_with(s:output,prefix:\"/\") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:\"Preparation output must be an absolute writable directory\")}"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 106,
+          "symbol": "provision_and_run",
+          "match": "shell.Mkdir.Parents(",
+          "source": "if !starts_with(s:output,prefix:\"/\") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:\"Provisioning receipt needs an absolute writable output directory\")}"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Create-only runtime provenance artifact and local Orca probe scratch; its digest is bound into preparation. Retain artifact/provenance semantics, not a mutable runtime configuration store.",
+      "roots": [],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "/etc/os-release",
+        "/var/lib/gunbc/print-runtime"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "product.printing.print_runtime",
+      "path": "dag/product/printing/print_runtime.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "observe_print_runtime"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 251,
+          "symbol": "observe_print_runtime",
+          "match": "Filesystem.WriteCreateNew(",
+          "source": "if !Filesystem.WriteCreateNew(path: receipt, content: body).success { return PrintRuntimeRefused { reason: \"Print runtime receipt already exists or is not writable\" } }"
+        },
+        {
+          "kind": "dag_shell",
+          "line": 231,
+          "symbol": "observe_print_runtime",
+          "match": "shell.Mkdir.Parents(",
+          "source": "if !shell.Mkdir.Parents(path: scratch as FilePath).success { return PrintRuntimeRefused { reason: \"Cannot isolate runtime probe output\" } }"
+        }
+      ]
+    },
+    {
+      "classification": "retain_local_output_or_materialization",
+      "accountable_package": "boundary-retention",
+      "disposition": "retain",
+      "reason": "Caller-requested runtime dependency convergence report; package installation remains a host effect.",
+      "roots": [
+        "fn converge(receipt:String) -> ProcessExit {"
+      ],
+      "binding": "Retain selected local effect boundary; broader delegated durable operations require their own independently inventoried row.",
+      "setup": "Existing caller/workflow output or staging path; no new fabric setup inferred from this file write.",
+      "locations": [
+        "/etc/os-release"
+      ],
+      "deployed_state": "Not asserted as a durable state population; retained output/materialization effect only.",
+      "module": "product.printing.runtime_converge",
+      "path": "dag/product/printing/runtime_converge.dag",
+      "input_classification": "local_output_adapter",
+      "effect_symbols": [
+        "converge"
+      ],
+      "source_effect_sites": [
+        {
+          "kind": "dag_filesystem",
+          "line": 41,
+          "symbol": "converge",
+          "match": "Filesystem.Write(",
+          "source": "if !Filesystem.Write(path:receipt,content:body).success {return exit_failure(reason:\"Cannot preserve dependency convergence receipt\")}"
+        }
+      ]
+    }
+  ]
+}

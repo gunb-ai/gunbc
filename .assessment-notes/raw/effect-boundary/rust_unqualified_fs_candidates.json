@@ -1,0 +1,101 @@
+{
+  "names": [
+    "write",
+    "rename",
+    "create_dir",
+    "create_dir_all",
+    "remove_file",
+    "remove_dir",
+    "remove_dir_all",
+    "copy",
+    "symlink",
+    "hard_link",
+    "set_permissions"
+  ],
+  "rows": [
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26655,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26661,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26667,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26673,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26714,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26719,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26724,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26753,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26758,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "line": 26763,
+      "match": "write(",
+      "source": "write("
+    },
+    {
+      "path": "src/v1/stage0/src/emitted_closure_compile_host.rs",
+      "line": 3642,
+      "match": "write(",
+      "source": "let first_crate = write(&first, \"A\");"
+    },
+    {
+      "path": "src/v1/stage0/src/emitted_closure_compile_host.rs",
+      "line": 3643,
+      "match": "write(",
+      "source": "write(&second, \"B\");"
+    },
+    {
+      "path": "src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs",
+      "line": 147,
+      "match": "write(",
+      "source": "write(&roster_path, &mutated);"
+    },
+    {
+      "path": "src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs",
+      "line": 199,
+      "match": "write(",
+      "source": "write(&interpreter_path, &mutated);"
+    }
+  ]
+}

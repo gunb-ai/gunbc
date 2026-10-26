@@ -1,0 +1,33 @@
+0 .cargo/config.toml
+500 dag/extdeps/bmc/openbmc_message_registry.dag
+1000 dag/extdeps/linux/efi_stub.dag
+1500 dag/extdeps/vendor/texas_instruments.dag
+2000 dag/gunbc/fabric/fabric_cell_subject.dag
+2500 dag/gunbc/instruments/body_lowering_population_probe.dag
+3000 dag/gunbc/primitive_egress/disposition.dag
+3500 dag/gunbc/recurring_failure_mode/join_judged_against_its_sibling_rather_than_its_declared_context.dag
+4000 dag/gunbc/roadmap/roadmap_site_surface_expect.dag
+4500 dag/gunbc/site/specimen.dag
+5000 dag/std/derived_type_origin.dag
+5500 dag/test/claim/coproduct_payload_soundness_witness.dag
+6000 dag/test/claim/gunbhub_react_browse_witness.dag
+6500 dag/test/claim/ntfy_publish_outcome_witness.dag
+7000 dag/test/claim/runner/runner_service_slot_admission_witness.dag
+7500 dag/test/claim/workspace_launch_directive_witness.dag
+8000 fixtures/receipt_fixture/src/lib.rs
+8500 src/v2/compiler/self_host/candidate_generation.dag
+9000 src/v2/test/claim/compiler/dependency_demand_census.dag
+9500 src/v2/test/claim/manual/infer_algebra_ref_grounding_anchor.dag
+10000 src/v2/test/fixture/integer_census_trunc/through_decode_if_chain.txt
+{
+  "head": "7daaddd1f0ce99734e1ddb57138313701455c758",
+  "tracked_paths": 10381,
+  "counts": {
+    "text": 10369,
+    "selected_source_files": 9761,
+    "nontext": 12
+  },
+  "rows": 635,
+  "effects": 4625
+}
+{'.yml': 9, '.dag': 563, '.rs': 58, '.sh': 3, '.py': 2}

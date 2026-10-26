@@ -1,0 +1,2290 @@
+[
+  {
+    "path": "src/v1/stage0/src/behavioral_receipt_host.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 1426,
+        "symbol": "run_receipt_driver",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&drv_dir).map_err(|e| format!(\"create {}: {e}\", drv_dir.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1428,
+        "symbol": "run_receipt_driver",
+        "match": "fs::write(",
+        "source": "fs::write(&src_path, driver_src).map_err(|e| format!(\"write driver: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1585,
+        "symbol": "behavioral_differential",
+        "match": "fs::write(",
+        "source": "if let Err(e) = fs::write(mirror_path, candidate_source) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1592,
+        "symbol": "behavioral_differential",
+        "match": "fs::write(",
+        "source": "if let Err(e) = fs::write(mirror_path, &committed) {"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/bin/bootstrap_witness.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 243,
+        "symbol": "copy_dir_recursive_bootstrap",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(dest)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 254,
+        "symbol": "copy_dir_recursive_bootstrap",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(&src_path, &dst_path).unwrap_or_else(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 279,
+        "symbol": "copy_stage0_support_modules",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(&src, &dst)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 299,
+        "symbol": "prepare_stage1_for_build",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&cargo_toml, patched).unwrap();"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 403,
+        "symbol": "strict_compile_diagnostic_count",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&out_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 418,
+        "symbol": "strict_compile_diagnostic_count",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&out_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 425,
+        "symbol": "stage0_compile_accepts_dag_target",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&source_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 426,
+        "symbol": "stage0_compile_accepts_dag_target",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&source_dir).unwrap();"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 427,
+        "symbol": "stage0_compile_accepts_dag_target",
+        "match": "std::fs::write(",
+        "source": "std::fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 434,
+        "symbol": "stage0_compile_accepts_dag_target",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&out_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 458,
+        "symbol": "stage0_compile_accepts_dag_target",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&source_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 459,
+        "symbol": "stage0_compile_accepts_dag_target",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&out_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 468,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&entry_root);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 469,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&generated_root);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 470,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&out_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 471,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(entry_root.join(\"ephemeral\")).unwrap();"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 472,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(generated_root.join(\"generated\")).unwrap();"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 473,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::write(",
+        "source": "std::fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 480,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::write(",
+        "source": "std::fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 525,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&entry_root);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 526,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&generated_root);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 527,
+        "symbol": "stage0_compile_imports_ephemeral_generated_source_root",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&out_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 537,
+        "symbol": "bootstrap_stage0_to_stage1",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage1_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 608,
+        "symbol": "bootstrap_stage0_to_stage1",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage1_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 616,
+        "symbol": "bootstrap_fixed_point",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage1_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 640,
+        "symbol": "bootstrap_fixed_point",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage2_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 659,
+        "symbol": "bootstrap_fixed_point",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage1_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 660,
+        "symbol": "bootstrap_fixed_point",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage2_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 664,
+        "symbol": "bootstrap_fixed_point",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage1_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 665,
+        "symbol": "bootstrap_fixed_point",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage2_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 674,
+        "symbol": "performance_ratchet",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&out_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 695,
+        "symbol": "performance_ratchet",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&out_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 709,
+        "symbol": "ci_timing",
+        "match": "OpenOptions::new(",
+        "source": "if let Ok(mut f) = std::fs::OpenOptions::new()"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 710,
+        "symbol": "ci_timing",
+        "match": ".create(",
+        "source": ".create(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 711,
+        "symbol": "ci_timing",
+        "match": ".append(",
+        "source": ".append(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 714,
+        "symbol": "ci_timing",
+        "match": ".write_all(",
+        "source": "let _ = f.write_all(line.as_bytes());"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 752,
+        "symbol": "find_or_build_stage0",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&output_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 794,
+        "symbol": "find_or_build_stage0",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&stage1_target_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 816,
+        "symbol": "find_or_build_stage0",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&output_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 949,
+        "symbol": "bootstrap_l4_structural",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&tmp);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 954,
+        "symbol": "bootstrap_l4_structural",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).expect(\"create dir\");"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 956,
+        "symbol": "bootstrap_l4_structural",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&dest, &*file.content)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 975,
+        "symbol": "bootstrap_l4_structural",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&test_dir).expect(\"create tests dir\");"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 978,
+        "symbol": "bootstrap_l4_structural",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(test_dir.join(\"structural_tests.rs\"), &test_content)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1003,
+        "symbol": "bootstrap_l4_structural",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&tmp);"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/bin/carrier_realization_census.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 61,
+        "symbol": "main",
+        "match": "std::fs::write(",
+        "source": "match std::fs::write(&receipt_path, &receipt) {"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/bin/generic_identity_census.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 66,
+        "symbol": "main",
+        "match": "std::fs::write(",
+        "source": "match std::fs::write(&receipt_path, &receipt) {"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 153,
+        "symbol": "unique_fs_witness_entry",
+        "match": "fs::write(",
+        "source": "fs::write(&entry, rewritten)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 176,
+        "symbol": "closure_scale_witness_entry",
+        "match": "fs::write(",
+        "source": "fs::write(&entry, rewritten)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 247,
+        "symbol": "write_http_pilot_fixture",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&op_dir).map_err(|e| format!(\"fixture op dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 268,
+        "symbol": "write_http_pilot_fixture",
+        "match": "fs::write(",
+        "source": "fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 280,
+        "symbol": "filesystem_write_witness_record_then_hermetic_replay_holds",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 324,
+        "symbol": "filesystem_write_witness_record_then_hermetic_replay_holds",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 336,
+        "symbol": "filesystem_write_closure_scale_record_then_hermetic_replay_holds",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 376,
+        "symbol": "filesystem_write_closure_scale_record_then_hermetic_replay_holds",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 388,
+        "symbol": "hermetic_fixture_staleness_fails_closed",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 415,
+        "symbol": "hermetic_fixture_staleness_fails_closed",
+        "match": "fs::write(",
+        "source": "fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 437,
+        "symbol": "hermetic_fixture_staleness_fails_closed",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 509,
+        "symbol": "record_response_drift_for_same_input_hash_fails_closed",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 603,
+        "symbol": "recorded_fixture_store_roundtrip_value",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 611,
+        "symbol": "hermetic_replay_rejects_corrupted_fixture_response",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 644,
+        "symbol": "hermetic_replay_rejects_corrupted_fixture_response",
+        "match": "fs::write(",
+        "source": "fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 666,
+        "symbol": "hermetic_replay_rejects_corrupted_fixture_response",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 683,
+        "symbol": "hermetic_replay_uses_fixture_not_live_fs_after_mutation",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 704,
+        "symbol": "hermetic_replay_uses_fixture_not_live_fs_after_mutation",
+        "match": "fs::write(",
+        "source": "fs::write(&target, b\"MUTATED-LIVE-FS-CONTENT\").map_err(|e| format!(\"mutate live file: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 721,
+        "symbol": "hermetic_replay_uses_fixture_not_live_fs_after_mutation",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 733,
+        "symbol": "filesystem_hermetic_without_fixture_store_fails_closed",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&scratch).map_err(|e| format!(\"scratch dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 753,
+        "symbol": "filesystem_hermetic_without_fixture_store_fails_closed",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&scratch);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 799,
+        "symbol": "filesystem_read_record_then_hermetic_replay_holds",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 833,
+        "symbol": "filesystem_read_record_then_hermetic_replay_holds",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 957,
+        "symbol": "clock_now_record_then_hermetic_replay_holds",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1002,
+        "symbol": "clock_now_record_then_hermetic_replay_holds",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1014,
+        "symbol": "hermetic_clock_fixture_staleness_fails_closed",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1039,
+        "symbol": "hermetic_clock_fixture_staleness_fails_closed",
+        "match": "fs::write(",
+        "source": "fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1059,
+        "symbol": "hermetic_clock_fixture_staleness_fails_closed",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1076,
+        "symbol": "env_get_record_then_hermetic_replay_holds",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1111,
+        "symbol": "env_get_record_then_hermetic_replay_holds",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1123,
+        "symbol": "hermetic_env_fixture_staleness_fails_closed",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1148,
+        "symbol": "hermetic_env_fixture_staleness_fails_closed",
+        "match": "fs::write(",
+        "source": "fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1168,
+        "symbol": "hermetic_env_fixture_staleness_fails_closed",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1211,
+        "symbol": "diagnostic_redfish_record_then_hermetic_replay_holds",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1251,
+        "symbol": "diagnostic_redfish_record_then_hermetic_replay_holds",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1289,
+        "symbol": "hermetic_http_pilot_fixture_staleness_fails_closed",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&store_dir).map_err(|e| format!(\"fixture dir: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1306,
+        "symbol": "hermetic_http_pilot_fixture_staleness_fails_closed",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(&store_dir);"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 667,
+        "symbol": "drop",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&self.path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 691,
+        "symbol": "project_roadmap_acceptance_event_history_from_authority_text_inner",
+        "match": "std::fs::remove_dir_all(",
+        "source": "if let Err(error) = std::fs::remove_dir_all(&temp_dir) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 699,
+        "symbol": "project_roadmap_acceptance_event_history_from_authority_text_inner",
+        "match": "std::fs::create_dir_all(",
+        "source": "if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 700,
+        "symbol": "project_roadmap_acceptance_event_history_from_authority_text_inner",
+        "match": "std::fs::write(",
+        "source": ".and_then(|_| std::fs::write(&overlay_path, authority_text))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 17392,
+        "symbol": "emit",
+        "match": ".write_all(",
+        "source": ".write_all(bytes.as_bytes())"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 17735,
+        "symbol": "measure_root_demand",
+        "match": "std::fs::write(",
+        "source": "if let Err(e) = std::fs::write(&receipt_path, &json) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18139,
+        "symbol": "serve_bind",
+        "match": "std::fs::remove_file(",
+        "source": "std::fs::remove_file(path)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18151,
+        "symbol": "serve_bind",
+        "match": "std::fs::set_permissions(",
+        "source": "std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666)).map_err("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18501,
+        "symbol": "serve_write_response",
+        "match": ".write_all(",
+        "source": "if let Err(e) = stream.write_all(response.as_bytes()) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18597,
+        "symbol": "bootstrap_invocation_receipt_path",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(receipt_root).map_err(|error| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 20129,
+        "symbol": "top_n_slowest_witnesses",
+        "match": ".truncate(",
+        "source": "sorted.truncate(n);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22268,
+        "symbol": "collect_declared_source_ref_paths_for_closure",
+        "match": ".append(",
+        "source": "paths.append(&mut declared);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 26415,
+        "symbol": "collect_node_refs_inner",
+        "match": ".truncate(",
+        "source": "bound.truncate(restore_to);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 26456,
+        "symbol": "collect_node_refs_inner",
+        "match": ".truncate(",
+        "source": "bound.truncate(siblings_restore_to);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 26513,
+        "symbol": "collect_node_refs_inner",
+        "match": ".truncate(",
+        "source": "bound.truncate(restore_to);"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/checker_dependency.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 213,
+        "symbol": "write_checker_inputs_record",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(out, inputs.join(\"\\n\") + \"\\n\")"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/emitted_crate_workspace_host.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 59,
+        "symbol": "write_files",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 63,
+        "symbol": "write_files",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&path, &*file.content)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 133,
+        "symbol": "run_emitted_crate_workspace",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&root);"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/native_lane_runner.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 515,
+        "symbol": "prepare_emitted_compiler_for_entry",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(binary_path.parent().unwrap_or(Path::new(\".\")))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 516,
+        "symbol": "prepare_emitted_compiler_for_entry",
+        "match": "std::fs::copy(",
+        "source": ".and_then(|_| std::fs::copy(&executable, &binary_path).map(|_| ()))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 937,
+        "symbol": "withdraw_old_route",
+        "match": "std::fs::rename(",
+        "source": "std::fs::rename(&original, &withdrawn).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1000,
+        "symbol": "drop",
+        "match": "std::fs::rename(",
+        "source": "if let Err(e) = std::fs::rename(withdrawn, &self.original) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1024,
+        "symbol": "materialize_malformed_specimen",
+        "match": "std::fs::remove_dir_all(",
+        "source": "std::fs::remove_dir_all(&root).map_err(|e| format!(\"clearing {}: {e}\", root.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1030,
+        "symbol": "materialize_malformed_specimen",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| format!(\"creating {}: {e}\", parent.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1031,
+        "symbol": "materialize_malformed_specimen",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&materialized, bytes)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1591,
+        "symbol": "run_native_binary",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1598,
+        "symbol": "run_native_binary",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(path, &output.stdout).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1783,
+        "symbol": "write_host_facts",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1786,
+        "symbol": "write_host_facts",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(path, text).map_err(|e| format!(\"writing {}: {e}\", path.display()))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2606,
+        "symbol": "emitted_text_compiles_as_rust",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(scratch)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2609,
+        "symbol": "emitted_text_compiles_as_rust",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&source, text)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2731,
+        "symbol": "walk_cli_door",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&filesystem_probe)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2753,
+        "symbol": "walk_cli_door",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&stored)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2755,
+        "symbol": "walk_cli_door",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(stored.join(\"native_cli_door_probe.dag\"), bytes)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2952,
+        "symbol": "walk_native_acquisition_projection_controls",
+        "match": "std::fs::remove_dir_all(",
+        "source": "std::fs::remove_dir_all(&scratch_trees)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2957,
+        "symbol": "walk_native_acquisition_projection_controls",
+        "match": "std::fs::remove_file(",
+        "source": "std::fs::remove_file(absent.join(NATIVE_PROJECTION_SAME_NAMED_FILE)).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2965,
+        "symbol": "walk_native_acquisition_projection_controls",
+        "match": "std::fs::write(",
+        "source": "std::fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3081,
+        "symbol": "copy_directory_tree",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(to).map_err(|e| format!(\"creating {}: {e}\", to.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3093,
+        "symbol": "copy_directory_tree",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(entry.path(), &target).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3236,
+        "symbol": "walk_population_controls",
+        "match": "std::fs::remove_dir_all(",
+        "source": "std::fs::remove_dir_all(&probes)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3239,
+        "symbol": "walk_population_controls",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&empty_root)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3607,
+        "symbol": "parse_compiler_identity_digest",
+        "match": ".append(",
+        "source": "paths.append(&mut closure);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3672,
+        "symbol": "write_parse_verdict_github_outputs",
+        "match": "OpenOptions::new(",
+        "source": "let mut f = std::fs::OpenOptions::new()"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3673,
+        "symbol": "write_parse_verdict_github_outputs",
+        "match": ".create(",
+        "source": ".create(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3674,
+        "symbol": "write_parse_verdict_github_outputs",
+        "match": ".append(",
+        "source": ".append(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3706,
+        "symbol": "keep_generation_one_executable",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(&prepared.binary_path, &kept).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3728,
+        "symbol": "keep_generation_one_executable",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&identity_path, prepared.closure_identity.as_bytes()).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3737,
+        "symbol": "keep_generation_one_executable",
+        "match": "std::fs::write(",
+        "source": "std::fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3752,
+        "symbol": "keep_generation_one_executable",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(&kept, &publisher).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 4072,
+        "symbol": "native_serve_exchange",
+        "match": ".write_all(",
+        "source": "if let Err(cause) = stream.write_all(request.as_bytes()) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 4513,
+        "symbol": "relay",
+        "match": ".write_all(",
+        "source": "let _ = to.write_all(&buf[..n]).and_then(|()| to.flush());"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 4762,
+        "symbol": "open",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(root).map_err(|cause| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 4930,
+        "symbol": "write_record_atomically",
+        "match": "File::create(",
+        "source": "let mut file = std::fs::File::create(&partial).map_err(unwritable)?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 4931,
+        "symbol": "write_record_atomically",
+        "match": ".write_all(",
+        "source": "file.write_all(value.to_string().as_bytes())"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 4933,
+        "symbol": "write_record_atomically",
+        "match": ".write_all(",
+        "source": "file.write_all(b\"\\n\").map_err(unwritable)?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 4935,
+        "symbol": "write_record_atomically",
+        "match": "std::fs::rename(",
+        "source": "std::fs::rename(&partial, path).map_err(unwritable)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 5265,
+        "symbol": "measured_spawn_trampoline",
+        "match": "std::fs::write(",
+        "source": "match std::fs::write(&receipt, line) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 5283,
+        "symbol": "run_native_child_measured",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(receipt);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 5292,
+        "symbol": "run_native_child_measured",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&argv_path, argv.join(\"\\n\"))"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/native_product_cache.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 309,
+        "symbol": "restore_from_shared_store",
+        "match": "std::fs::create_dir_all(",
+        "source": "if let Err(e) = std::fs::create_dir_all(store) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 365,
+        "symbol": "record_outcome",
+        "match": "OpenOptions::new(",
+        "source": "if let Ok(mut f) = std::fs::OpenOptions::new()"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 366,
+        "symbol": "record_outcome",
+        "match": ".create(",
+        "source": ".create(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 367,
+        "symbol": "record_outcome",
+        "match": ".append(",
+        "source": ".append(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 402,
+        "symbol": "commit",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(root).map_err(|e| format!(\"creating {}: {e}\", root.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 407,
+        "symbol": "commit",
+        "match": "std::fs::remove_dir_all(",
+        "source": "_ => std::fs::remove_dir_all(&dest)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 416,
+        "symbol": "commit",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&staging).map_err(|e| format!(\"creating staging: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 418,
+        "symbol": "commit",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(executable, staging.join(EXECUTABLE))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 422,
+        "symbol": "commit",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(staging.join(MANIFEST), text)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 424,
+        "symbol": "commit",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(staging.join(COMMITTED_MARKER), b\"\")"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 426,
+        "symbol": "commit",
+        "match": "std::fs::rename(",
+        "source": "match std::fs::rename(&staging, &dest) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 433,
+        "symbol": "commit",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&staging);"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/required_ci_measurement.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 85,
+        "symbol": "write_required_ci_measurement_receipt",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(path, encoded)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/user_work_scope.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 556,
+        "symbol": "observed_cgroup_bound_in",
+        "match": ".truncate(",
+        "source": "Some(i) => current.truncate(i),"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/codex_app_server_stdio_session.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 64,
+        "symbol": "run_codex_app_server_stdio_session",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(req.client_command_id_path, req.client_command_id)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/emitted_closure_compile_host.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 721,
+        "symbol": "drop",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&self.path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 737,
+        "symbol": "create_private_probe_root",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(base).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 758,
+        "symbol": "create_exclusive_probe_root",
+        "match": "std::fs::create_dir(",
+        "source": "match std::fs::create_dir(&path) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 848,
+        "symbol": "write_probe_crate_files",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1615,
+        "symbol": "establish_discriminating_red",
+        "match": "std::fs::write(",
+        "source": "if let Err(e) = std::fs::write(&path, &mutated) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1625,
+        "symbol": "establish_discriminating_red",
+        "match": "std::fs::write(",
+        "source": "let restore_write = std::fs::write(&path, &original);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2791,
+        "symbol": "retain_not_selected_identities",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(dir)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2793,
+        "symbol": "retain_not_selected_identities",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&path, body)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 1027,
+        "symbol": "post_for_breach",
+        "match": ".write_all(",
+        "source": ".write_all(request.as_bytes())"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1218,
+        "symbol": "finalize",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(worktree);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1440,
+        "symbol": "run_bound_transaction",
+        "match": "std::fs::write(",
+        "source": "if let Err(e) = std::fs::write(&authority_path, &perturbed) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1924,
+        "symbol": "serve_and_judge",
+        "match": "std::fs::write(",
+        "source": "if let Err(e) = std::fs::write(authority_path, original_source) {"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/gunbc_file_transport_generated.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 24,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "OpenOptions::new(",
+        "source": "match std::fs::OpenOptions::new()"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 26,
+        "symbol": "gunbc_file_write_create_new",
+        "match": ".create_new(",
+        "source": ".create_new(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 38,
+        "symbol": "gunbc_file_write_create_new",
+        "match": ".set_permissions(",
+        "source": "staged.set_permissions(std::fs::Permissions::from_mode(declared))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 49,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&staging_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 53,
+        "symbol": "gunbc_file_write_create_new",
+        "match": ".write_all(",
+        "source": "if let Err(staging_err) = staged.write_all(content) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 54,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&staging_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 58,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&staging_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 62,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::hard_link(",
+        "source": "let published = std::fs::hard_link(&staging_path, file_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 63,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&staging_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 68,
+        "symbol": "gunbc_file_link_create_new",
+        "match": "std::fs::hard_link(",
+        "source": "std::fs::hard_link(source_path, file_path)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/main.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 347,
+        "symbol": "write_output_files",
+        "match": "std::fs::create_dir_all(",
+        "source": "if let Err(e) = std::fs::create_dir_all(output_dir) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 367,
+        "symbol": "write_output_files",
+        "match": "std::fs::create_dir_all(",
+        "source": "if let Err(e) = std::fs::create_dir_all(&src_dir) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 376,
+        "symbol": "write_output_files",
+        "match": "std::fs::create_dir_all(",
+        "source": "if let Err(e) = std::fs::create_dir_all(parent) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 384,
+        "symbol": "write_output_files",
+        "match": "std::fs::write(",
+        "source": "if let Err(e) = std::fs::write(&out_path, &*file.content) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1527,
+        "symbol": "run_one_function",
+        "match": ".write_all(",
+        "source": "if let Err(err) = out.write_all(bytes.as_bytes()).and_then(|()| out.flush())"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/memory_governor.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 1826,
+        "symbol": "cgroup_leaf_create",
+        "match": "std::fs::create_dir(",
+        "source": "match std::fs::create_dir(dir) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1838,
+        "symbol": "cgroup_leaf_remove_if_created",
+        "match": "std::fs::remove_dir(",
+        "source": "let _ = std::fs::remove_dir(dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1912,
+        "symbol": "apply_memory_cgroup_bind",
+        "match": "std::fs::write(",
+        "source": "let _ = std::fs::write(\"/sys/fs/cgroup/cgroup.subtree_control\", \"+memory\");"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1917,
+        "symbol": "apply_memory_cgroup_bind",
+        "match": "std::fs::write(",
+        "source": "if std::fs::write(leaf.join(\"memory.max\"), bound.to_string()).is_err() {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1932,
+        "symbol": "apply_memory_cgroup_bind",
+        "match": "std::fs::write(",
+        "source": "if std::fs::write(leaf.join(\"cgroup.procs\"), std::process::id().to_string()).is_err() {"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/namespace_baseline.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 1472,
+        "symbol": "reconstruct_base_index",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&base_tree);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1492,
+        "symbol": "reconstruct_base_index",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&base_tree);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1515,
+        "symbol": "reconstruct_base_index",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&base_tree);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1520,
+        "symbol": "reconstruct_base_index",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&base_tree);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1831,
+        "symbol": "materialize_revision_closure_at",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1839,
+        "symbol": "materialize_revision_closure_at",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(scan.join(rel), &to).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1849,
+        "symbol": "materialize_revision_closure_at",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&scan);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1870,
+        "symbol": "revision_closure_paths",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&scan);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1965,
+        "symbol": "materialize_revision_paths",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(dest).map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1974,
+        "symbol": "materialize_revision_paths",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&tar_path, &archive).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1999,
+        "symbol": "materialize_revision_paths",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&tar_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2266,
+        "symbol": "load_parse_environment_at",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&dest);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2482,
+        "symbol": "kernel_names_at",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&dest);"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/partition_crate_boundary_host.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 156,
+        "symbol": "run_partition_crate_boundary_over",
+        "match": "fs::create_dir_all(",
+        "source": "let _ = fs::create_dir_all(parent);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 158,
+        "symbol": "run_partition_crate_boundary_over",
+        "match": "fs::write(",
+        "source": "match fs::write(&target, &file.rendered) {"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/recorded_fixture.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 275,
+        "symbol": "record",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(parent).map_err(|e| FixtureError::Io {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 284,
+        "symbol": "record",
+        "match": "fs::write(",
+        "source": "fs::write(&path, bytes).map_err(|e| FixtureError::Io { path, source: e })"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/required_regen_host.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 355,
+        "symbol": "run_required_regen_scoped",
+        "match": "fs::remove_dir_all(",
+        "source": "fs::remove_dir_all(&candidate_dir)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1562,
+        "symbol": "write_emitted_tree",
+        "match": "fs::remove_dir_all(",
+        "source": "fs::remove_dir_all(dest_src).map_err(|e| format!(\"remove {}: {e}\", dest_src.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1564,
+        "symbol": "write_emitted_tree",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(dest_src).map_err(|e| format!(\"create {}: {e}\", dest_src.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1581,
+        "symbol": "write_emitted_tree",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(parent)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1594,
+        "symbol": "write_emitted_tree",
+        "match": "fs::write(",
+        "source": "fs::write(&out_path, normalized)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1604,
+        "symbol": "copy_hand_maintained_support",
+        "match": "fs::copy(",
+        "source": "fs::copy(&source, dest_src.join(file_name))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1634,
+        "symbol": "copy_dir_recursive",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(dest).map_err(|e| format!(\"create {}: {e}\", dest.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1641,
+        "symbol": "copy_dir_recursive",
+        "match": "fs::copy(",
+        "source": "fs::copy(&path, dest.join(entry.file_name()))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1800,
+        "symbol": "normalize_population",
+        "match": "fs::remove_dir_all(",
+        "source": "fs::remove_dir_all(work_dir).map_err(|e| format!(\"remove {}: {e}\", work_dir.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1802,
+        "symbol": "normalize_population",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(work_dir).map_err(|e| format!(\"create {}: {e}\", work_dir.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1808,
+        "symbol": "normalize_population",
+        "match": "fs::write(",
+        "source": "fs::write(path, content).map_err(|e| format!(\"write {}: {e}\", path.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1859,
+        "symbol": "normalize_population",
+        "match": "fs::remove_dir_all(",
+        "source": "let _ = fs::remove_dir_all(work_dir);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1899,
+        "symbol": "normalize_cache_write",
+        "match": "fs::write(",
+        "source": "fs::write(&tmp, &bytes).map_err(|e| format!(\"write {}: {e}\", tmp.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1900,
+        "symbol": "normalize_cache_write",
+        "match": "fs::rename(",
+        "source": "fs::rename(&tmp, &path).map_err(|e| format!(\"rename {}: {e}\", path.display()))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2119,
+        "symbol": "with_normalize_cache",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&dir).map_err(|e| format!(\"create {}: {e}\", dir.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2165,
+        "symbol": "normalize_generated_source_attempt",
+        "match": ".write_all(",
+        "source": "let writer = std::thread::spawn(move || stdin.write_all(owned.as_bytes()));"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2187,
+        "symbol": "normalize_with_workdir",
+        "match": "fs::write(",
+        "source": "fs::write(&path, content).map_err(|e| format!(\"write {}: {e}\", path.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2216,
+        "symbol": "write_receipt",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(parent).map_err(|e| format!(\"create {}: {e}\", parent.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2220,
+        "symbol": "write_receipt",
+        "match": "fs::write(",
+        "source": "fs::write(path, json).map_err(|e| format!(\"write receipt {}: {e}\", path.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3683,
+        "symbol": "restore_regen_convergence_journal_for_subject",
+        "match": "fs::remove_dir_all(",
+        "source": "fs::remove_dir_all(&restore_tmp)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3686,
+        "symbol": "restore_regen_convergence_journal_for_subject",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&restore_tmp)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3694,
+        "symbol": "restore_regen_convergence_journal_for_subject",
+        "match": "fs::copy(",
+        "source": "fs::copy(&backup, restore_tmp.join(&entry.backup_name))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3705,
+        "symbol": "restore_regen_convergence_journal_for_subject",
+        "match": "fs::rename(",
+        "source": "fs::rename(&prepared, &destination).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3713,
+        "symbol": "restore_regen_convergence_journal_for_subject",
+        "match": "fs::remove_file(",
+        "source": "fs::remove_file(&destination).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3721,
+        "symbol": "restore_regen_convergence_journal_for_subject",
+        "match": "fs::remove_dir_all(",
+        "source": "fs::remove_dir_all(&root)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3751,
+        "symbol": "journal_paths_for_subject",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(&root).map_err(|e| format!(\"create {}: {e}\", root.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3807,
+        "symbol": "journal_paths_for_subject",
+        "match": "fs::copy(",
+        "source": "fs::copy(&source, root.join(&backup_name))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 3823,
+        "symbol": "journal_paths_for_subject",
+        "match": "fs::write(",
+        "source": "fs::write(&manifest_path, bytes).map_err(|e| format!(\"write {}: {e}\", manifest_path.display()))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 4851,
+        "symbol": "run_built_seed_regen",
+        "match": "fs::remove_file(",
+        "source": "fs::remove_file(&receipt_path).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 5580,
+        "symbol": "install_convergence_stage_with_backend",
+        "match": "fs::copy(",
+        "source": "fs::copy(&candidate, &destination).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 6560,
+        "symbol": "run_regen_round_cost",
+        "match": "fs::write(",
+        "source": "fs::write("
+      },
+      {
+        "kind": "rust_fs",
+        "line": 6568,
+        "symbol": "run_regen_round_cost",
+        "match": "fs::remove_dir_all(",
+        "source": "fs::remove_dir_all(&completed_journal)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 6635,
+        "symbol": "run_regen_round_cost",
+        "match": "fs::create_dir_all(",
+        "source": "fs::create_dir_all(parent).map_err(|e| format!(\"create {}: {e}\", parent.display()))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 6637,
+        "symbol": "run_regen_round_cost",
+        "match": "fs::write(",
+        "source": "fs::write(&receipt_path, &rendered)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/target_invocation_host.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 1636,
+        "symbol": "run_census_infer_reading",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(scratch.join(name));"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1643,
+        "symbol": "run_census_infer_reading",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| format!(\"{label_name}: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1645,
+        "symbol": "run_census_infer_reading",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&target, content).map_err(|e| format!(\"{label_name}: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1855,
+        "symbol": "run_ambient_name_census",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(scratch.join(name));"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1861,
+        "symbol": "run_ambient_name_census",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1863,
+        "symbol": "run_ambient_name_census",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&target, content).map_err(|e| e.to_string())?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1966,
+        "symbol": "run_namespace_wave_binding_diff",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(scratch.join(name));"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1973,
+        "symbol": "run_namespace_wave_binding_diff",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1975,
+        "symbol": "run_namespace_wave_binding_diff",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&target, content).map_err(|e| e.to_string())?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2060,
+        "symbol": "run_base_ambient_name_census",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&tree);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2061,
+        "symbol": "run_base_ambient_name_census",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2199,
+        "symbol": "run_native_process_memory",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| format!(\"{label_name}: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2201,
+        "symbol": "run_native_process_memory",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&target, read_str(\"native_process_memory_control_content\")?)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/v1_interpreter.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 1188,
+        "symbol": "detach_portable_children",
+        "match": ".append(",
+        "source": "PortableValue::List(items) => pending.append(items),"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 2248,
+        "symbol": "portable_value_from_ctx_at",
+        "match": ".truncate(",
+        "source": "path.truncate(len_before);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 8808,
+        "symbol": "eval_binop",
+        "match": ".append(",
+        "source": "result.append((*b_items).clone());"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 14159,
+        "symbol": "eval_algebra_method",
+        "match": ".append(",
+        "source": "result.append((*other).clone());"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18220,
+        "symbol": "dispatch_shell",
+        "match": ".write_all(",
+        "source": ".map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18371,
+        "symbol": "spawn_shell_detached",
+        "match": "File::create(",
+        "source": "std::fs::File::create(path).map_err(|err| InterpError::ShellSpawnRefused {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18875,
+        "symbol": "write_file_owner_only",
+        "match": "OpenOptions::new(",
+        "source": "let mut file = OpenOptions::new()"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18877,
+        "symbol": "write_file_owner_only",
+        "match": ".create_new(",
+        "source": ".create_new(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 18880,
+        "symbol": "write_file_owner_only",
+        "match": ".write_all(",
+        "source": "file.write_all(content)?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 19628,
+        "symbol": "dispatch_file",
+        "match": "std::fs::remove_file(",
+        "source": "return match std::fs::remove_file(&path) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 19915,
+        "symbol": "dispatch_file",
+        "match": "std::fs::write(",
+        "source": "match std::fs::write(&path, content.as_bytes()) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22131,
+        "symbol": "run_arm",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&reader_bin).map_err(|e| format!(\"create reader bin: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22132,
+        "symbol": "run_arm",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&legacy_bin).map_err(|e| format!(\"create legacy bin: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22136,
+        "symbol": "run_arm",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(\"/bin/true\", &reader_probe)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22165,
+        "symbol": "run_arm",
+        "match": "std::fs::copy(",
+        "source": "std::fs::copy(\"/bin/false\", &replacement)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22167,
+        "symbol": "run_arm",
+        "match": "std::fs::rename(",
+        "source": "std::fs::rename(&replacement, &legacy_probe)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22176,
+        "symbol": "run_arm",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&staged, b\"hostile-writer\")"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22178,
+        "symbol": "run_arm",
+        "match": "std::fs::rename(",
+        "source": "std::fs::rename(staged, installed)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22187,
+        "symbol": "run_arm",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(reader_probe);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22213,
+        "symbol": "run_arm",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&root).map_err(|e| format!(\"create fixture root: {e}\"))?;"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22235,
+        "symbol": "run_arm",
+        "match": "std::fs::remove_dir_all(",
+        "source": "let _ = std::fs::remove_dir_all(&root);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22411,
+        "symbol": "eval_emit_host_run_transport_builtin",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&workspace).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22423,
+        "symbol": "eval_emit_host_run_transport_builtin",
+        "match": "std::fs::remove_dir_all(",
+        "source": "if let Err(cleanup) = std::fs::remove_dir_all(&workspace) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22600,
+        "symbol": "eval_emit_host_native_cache_evict_builtin",
+        "match": "std::fs::remove_dir_all(",
+        "source": "match std::fs::remove_dir_all(&workspace_dir) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22798,
+        "symbol": "run_cached_process_spec",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&realization_workspace).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22813,
+        "symbol": "run_cached_process_spec",
+        "match": "OpenOptions::new(",
+        "source": "let publish_lock = std::fs::OpenOptions::new()"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22814,
+        "symbol": "run_cached_process_spec",
+        "match": ".create(",
+        "source": ".create(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22815,
+        "symbol": "run_cached_process_spec",
+        "match": ".truncate(",
+        "source": ".truncate(false)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 22832,
+        "symbol": "run_cached_process_spec",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(&workspace).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 23224,
+        "symbol": "emit_host_materialize_workspace_files",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 23228,
+        "symbol": "emit_host_materialize_workspace_files",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&full, text).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 23384,
+        "symbol": "emit_host_run_transport_cached_in_workspace",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&ready_marker, b\"1\").map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 23391,
+        "symbol": "emit_host_run_transport_cached_in_workspace",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&cold_compile_receipt, cold_compile_nanos.to_string()).map_err(|e| {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 23451,
+        "symbol": "emit_host_run_transport_in_workspace",
+        "match": "std::fs::create_dir_all(",
+        "source": "std::fs::create_dir_all(parent)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 23454,
+        "symbol": "emit_host_run_transport_in_workspace",
+        "match": "std::fs::write(",
+        "source": "std::fs::write(&full, text)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 23824,
+        "symbol": "eval_builtin",
+        "match": ".append(",
+        "source": "result.append((*b_items).clone());"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 24064,
+        "symbol": "eval_builtin",
+        "match": ".append(",
+        "source": "result.append((*b_items).clone());"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/v1_rt.rs",
+    "hits": [
+      {
+        "kind": "rust_fs",
+        "line": 268,
+        "symbol": "v1_concat",
+        "match": ".append(",
+        "source": "self.append(other);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 770,
+        "symbol": "list_concat",
+        "match": ".append(",
+        "source": "a.append(b);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 985,
+        "symbol": "rc_list_concat",
+        "match": ".append(",
+        "source": "Rc::make_mut(&mut result).append((*b).clone());"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1651,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "OpenOptions::new(",
+        "source": "match std::fs::OpenOptions::new()"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1653,
+        "symbol": "gunbc_file_write_create_new",
+        "match": ".create_new(",
+        "source": ".create_new(true)"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1665,
+        "symbol": "gunbc_file_write_create_new",
+        "match": ".set_permissions(",
+        "source": "staged.set_permissions(std::fs::Permissions::from_mode(declared))"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1676,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&staging_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1680,
+        "symbol": "gunbc_file_write_create_new",
+        "match": ".write_all(",
+        "source": "if let Err(staging_err) = staged.write_all(content) {"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1681,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&staging_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1685,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&staging_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1689,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::hard_link(",
+        "source": "let published = std::fs::hard_link(&staging_path, file_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1690,
+        "symbol": "gunbc_file_write_create_new",
+        "match": "std::fs::remove_file(",
+        "source": "let _ = std::fs::remove_file(&staging_path);"
+      },
+      {
+        "kind": "rust_fs",
+        "line": 1695,
+        "symbol": "gunbc_file_link_create_new",
+        "match": "std::fs::hard_link(",
+        "source": "std::fs::hard_link(source_path, file_path)"
+      }
+    ]
+  }
+]

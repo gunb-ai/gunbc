@@ -1,0 +1,834 @@
+{
+  "symbols": [
+    "mkdir_parents_args",
+    "mkdir_parents_argv",
+    "mkdir_parents_command_at",
+    "mkdir_exact_args",
+    "mkdir_exact_argv",
+    "mkdir_exact_command",
+    "mkdir_exact_command_at",
+    "chmod_add_executable_args",
+    "chmod_add_executable_argv",
+    "chmod_recursive_set_mode_command",
+    "chmod_set_mode_command",
+    "chown_argv",
+    "mktemp_directory_command",
+    "ln_hard_command",
+    "ln_symbolic_force_into_directory_command",
+    "rmdir_command",
+    "sort_in_place_command",
+    "cp_program",
+    "mkdir_program",
+    "install_program",
+    "ln_program",
+    "mktemp_program",
+    "tee_program",
+    "dd_program",
+    "rm_program",
+    "rmdir_program",
+    "mv_program"
+  ],
+  "operations": [
+    "openbmc.PasswordSshTransport.MakeDirectoryParents",
+    "openbmc.PasswordSshTransport.MakeDirectory",
+    "openbmc.PasswordSshTransport.RemoveDirectory",
+    "openbmc.PasswordSshTransport.RemoveFile",
+    "openbmc.PasswordSshTransport.CopyFilePreservingMetadata",
+    "openbmc.PasswordSshTransport.RenameReplace",
+    "openbmc.PasswordSshTransport.SynchronizeFilesystems",
+    "coreutils.Truncate.ToSize"
+  ],
+  "rows": [
+    {
+      "path": "dag/extdeps/bmc/openbmc_fan_control.dag",
+      "module": "extdeps.bmc.openbmc_fan_control",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 720,
+          "symbol": "openbmc_execute",
+          "match": "openbmc.PasswordSshTransport.MakeDirectoryParents(",
+          "source": "openbmc.PasswordSshTransport.MakeDirectoryParents("
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 728,
+          "symbol": "openbmc_execute",
+          "match": "openbmc.PasswordSshTransport.MakeDirectory(",
+          "source": "openbmc.PasswordSshTransport.MakeDirectory("
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 737,
+          "symbol": "openbmc_execute",
+          "match": "openbmc.PasswordSshTransport.RemoveDirectory(",
+          "source": "openbmc.PasswordSshTransport.RemoveDirectory("
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 745,
+          "symbol": "openbmc_execute",
+          "match": "openbmc.PasswordSshTransport.RemoveFile(",
+          "source": "openbmc.PasswordSshTransport.RemoveFile("
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 753,
+          "symbol": "openbmc_execute",
+          "match": "openbmc.PasswordSshTransport.CopyFilePreservingMetadata(",
+          "source": "openbmc.PasswordSshTransport.CopyFilePreservingMetadata("
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 762,
+          "symbol": "openbmc_execute",
+          "match": "openbmc.PasswordSshTransport.RenameReplace(",
+          "source": "openbmc.PasswordSshTransport.RenameReplace("
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 771,
+          "symbol": "openbmc_execute",
+          "match": "openbmc.PasswordSshTransport.SynchronizeFilesystems(",
+          "source": "openbmc.PasswordSshTransport.SynchronizeFilesystems("
+        }
+      ]
+    },
+    {
+      "path": "dag/extdeps/crypto/seeded_filler.dag",
+      "module": "extdeps.crypto.seeded_filler",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 67,
+          "symbol": "seeded_filler_write",
+          "match": "coreutils.Truncate.ToSize(",
+          "source": "let sized = coreutils.Truncate.ToSize(size_bytes: to_string(measure_count(m: size)) as NonEmptyStr, path: zero)"
+        }
+      ]
+    },
+    {
+      "path": "dag/extdeps/linux/usb_gadget.dag",
+      "module": "extdeps.linux.usb_gadget",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 457,
+          "symbol": "configfs_prepared_realization",
+          "match": "mkdir_parents_command_at(",
+          "source": "command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: p as String),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 462,
+          "symbol": "configfs_prepared_realization",
+          "match": "ln_symbolic_force_into_directory_command(",
+          "source": "command: ln_symbolic_force_into_directory_command("
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 472,
+          "symbol": "configfs_prepared_realization",
+          "match": "rmdir_command(",
+          "source": "ConfigfsOpRunsArgv { command: rmdir_command(path: p as String) }"
+        }
+      ]
+    },
+    {
+      "path": "dag/extdeps/printing/orca_slicer.dag",
+      "module": "extdeps.printing.orca_slicer",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 158,
+          "symbol": "with_verified_orca",
+          "match": "chmod_set_mode_command(",
+          "source": "match run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: \"0500\", path: path), transport: LocalExec) {"
+        }
+      ]
+    },
+    {
+      "path": "dag/extdeps/provisioning/ubuntu_seeded_install_media_remaster.dag",
+      "module": "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 356,
+          "symbol": "install_media_remaster_from_tree",
+          "match": "chmod_recursive_set_mode_command(",
+          "source": "match host_command(host: host, command: chmod_recursive_set_mode_command(chmod_program: chmod_path_resolved_program, mode: install_media_remaster_tree_mode, path: work_dir as String)) {"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 407,
+          "symbol": "install_media_remaster_in_scratch",
+          "match": "mktemp_directory_command(",
+          "source": "match scratch_acquisition_of(kind: kind, prefix: install_media_remaster_work_prefix, leg: host_run(host: host, command: mktemp_directory_command(template: install_media_remaster_work_template))) {"
+        }
+      ]
+    },
+    {
+      "path": "dag/extdeps/tools/chmod.dag",
+      "module": "extdeps.tools.chmod",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 65,
+          "symbol": "chmod_add_executable_argv",
+          "match": "chmod_add_executable_args(",
+          "source": "concat([chmod_binary_path as String], chmod_add_executable_args(path: path))"
+        }
+      ]
+    },
+    {
+      "path": "dag/extdeps/tools/gnu_coreutils.dag",
+      "module": "extdeps.tools.gnu_coreutils",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 83,
+          "symbol": "mktemp_directory_command",
+          "match": "mktemp_program(",
+          "source": "argv_command(program: mktemp_program(), arguments: [\"-d\", template as String])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 88,
+          "symbol": "mkdir_parents_command",
+          "match": "mkdir_program(",
+          "source": "argv_command(program: mkdir_program(), arguments: [\"-p\", \"--\", path])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 97,
+          "symbol": "mkdir_create_only_command",
+          "match": "mkdir_program(",
+          "source": "argv_command(program: mkdir_program(), arguments: [\"--\", path])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 104,
+          "symbol": "mkdir_create_only_with_mode_command",
+          "match": "mkdir_program(",
+          "source": "argv_command(program: mkdir_program(), arguments: [\"-m\", octal_mode as String, \"--\", path])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 111,
+          "symbol": "ln_hard_command",
+          "match": "ln_program(",
+          "source": "argv_command(program: ln_program(), arguments: [\"--\", source, destination])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 145,
+          "symbol": "cp_command",
+          "match": "cp_program(",
+          "source": "argv_command(program: cp_program(), arguments: [source, destination])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 151,
+          "symbol": "cp_preserve_if_absent_command",
+          "match": "cp_program(",
+          "source": "argv_command(program: cp_program(), arguments: [\"-p\", \"--update=none\", source, destination])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 160,
+          "symbol": "install_empty_file_command",
+          "match": "install_program(",
+          "source": "program: install_program(),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 170,
+          "symbol": "rm_force_command",
+          "match": "rm_program(",
+          "source": "argv_command(program: rm_program(), arguments: [coreutils_rm_force_flag as String, path])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 184,
+          "symbol": "rm_recursive_force_command",
+          "match": "rm_program(",
+          "source": "argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, path])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 194,
+          "symbol": "rm_recursive_force_one_file_system_command",
+          "match": "rm_program(",
+          "source": "argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String, path])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 200,
+          "symbol": "rm_recursive_force_one_file_system_exec_argv",
+          "match": "rm_program(",
+          "source": "[rm_program().invocation as String, coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String]"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 234,
+          "symbol": "ln_symbolic_force_command",
+          "match": "ln_program(",
+          "source": "program: ln_program(),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 263,
+          "symbol": "ln_symbolic_force_into_directory_command",
+          "match": "ln_program(",
+          "source": "program: ln_program(),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 281,
+          "symbol": "rmdir_command",
+          "match": "rmdir_program(",
+          "source": "argv_command(program: rmdir_program(), arguments: [path])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 318,
+          "symbol": "tee_append_command",
+          "match": "tee_program(",
+          "source": "argv_command(program: tee_program(), arguments: [\"-a\", \"--\", path])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 455,
+          "symbol": "dd_overwrite_path_command",
+          "match": "dd_program(",
+          "source": "argv_command(program: dd_program(), arguments: [concat(\"of=\", path), \"status=none\"])"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 473,
+          "symbol": "coreutils_rm_force_argv",
+          "match": "rm_program(",
+          "source": "concat([rm_program().invocation as String, coreutils_rm_force_flag as String], paths)"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 478,
+          "symbol": "coreutils_rm_empty_directory_argv",
+          "match": "rm_program(",
+          "source": "rm_program().invocation as String,"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 486,
+          "symbol": "coreutils_rm_force_recursive_argv",
+          "match": "rm_program(",
+          "source": "rm_program().invocation as String,"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 548,
+          "symbol": "install_file_owned_command",
+          "match": "install_program(",
+          "source": "argv_command(program: install_program(), arguments: ["
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 563,
+          "symbol": "mv_exact_destination_command",
+          "match": "mv_program(",
+          "source": "argv_command(program: mv_program(), arguments: [\"-T\", source, destination])"
+        }
+      ]
+    },
+    {
+      "path": "dag/extdeps/tools/mkdir.dag",
+      "module": "extdeps.tools.mkdir",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 63,
+          "symbol": "mkdir_parents_argv",
+          "match": "mkdir_parents_args(",
+          "source": "concat([mkdir_binary_path as String], mkdir_parents_args(path: path))"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 70,
+          "symbol": "mkdir_parents_command",
+          "match": "mkdir_parents_command_at(",
+          "source": "mkdir_parents_command_at(mkdir_binary: mkdir_binary_path, path: path)"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 119,
+          "symbol": "mkdir_exact_argv",
+          "match": "mkdir_exact_args(",
+          "source": "concat([mkdir_binary_path as String], mkdir_exact_args(path: path))"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 123,
+          "symbol": "mkdir_exact_command",
+          "match": "mkdir_exact_command_at(",
+          "source": "mkdir_exact_command_at(mkdir_binary: mkdir_binary_path, path: path)"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 127,
+          "symbol": "mkdir_exact_command_at",
+          "match": "mkdir_exact_args(",
+          "source": "argv_command(program: uncataloged_program(invocation: mkdir_binary), arguments: mkdir_exact_args(path: path))"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/auth/approval_keyring_converge.dag",
+      "module": "gunbc.auth.approval_keyring_converge",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 163,
+          "symbol": "keyring_chown_argv",
+          "match": "chown_argv(",
+          "source": "chown_argv(owner: ChownOwnerNames { names: PosixOwnerNames { user: fleet_posix_root_user.name, group: fleet_posix_operator_user.name } }, path: path as String)"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/bmc/bmc_netboot_serve.dag",
+      "module": "gunbc.bmc.bmc_netboot_serve",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 399,
+          "symbol": "bmc_netboot_prepared_realization",
+          "match": "mkdir_parents_command_at(",
+          "source": "command: mkdir_parents_command_at(mkdir_binary: bmc_path_resolved_mkdir_applet, path: p as String),"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/busybox_bmc_build.dag",
+      "module": "gunbc.busybox_bmc_build",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 59,
+          "symbol": "busybox_build_commands",
+          "match": "mkdir_parents_command_at(",
+          "source": "mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: bd),"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/devboot/transport.dag",
+      "module": "gunbc.devboot.transport",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 214,
+          "symbol": "devboot_ensure_directory",
+          "match": "mkdir_parents_args(",
+          "source": "args: mkdir_parents_args(path: path),"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/dispatch_credential_acquisition.dag",
+      "module": "gunbc.dispatch_credential_acquisition",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 804,
+          "symbol": "credential_remove_cursor_runtime_root_at",
+          "match": "rmdir_command(",
+          "source": "let marker_gone = run_shell_command_observe(command: rmdir_command(path: join([root.base, marker], \"/\")), transport: LocalExec)"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 805,
+          "symbol": "credential_remove_cursor_runtime_root_at",
+          "match": "rmdir_command(",
+          "source": "let base_gone = run_shell_command_observe(command: rmdir_command(path: root.base), transport: LocalExec)"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+      "module": "gunbc.fleet.fleet_converge_plan_cli",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 678,
+          "symbol": "write_fleet_converge_plan_artifact_wet",
+          "match": "chmod_set_mode_command(",
+          "source": "chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 1033,
+          "symbol": "fleet_converge_plan_scoped_bound_wet",
+          "match": "chmod_set_mode_command(",
+          "source": "chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
+      "module": "gunbc.fleet.fleet_host_key_enrollment",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 411,
+          "symbol": "fleet_host_key_enroll_apply_after_create",
+          "match": "chmod_set_mode_command(",
+          "source": "commands: [ chmod_set_mode_command(chmod_program: chmod_binary_path, mode: \"600\", path: cfg) ],"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 425,
+          "symbol": "fleet_host_key_enroll_apply_after_create",
+          "match": "chmod_set_mode_command(",
+          "source": "commands: [ chmod_set_mode_command(chmod_program: chmod_binary_path, mode: \"600\", path: cfg) ],"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 603,
+          "symbol": "self_enroll_apply",
+          "match": "chmod_set_mode_command(",
+          "source": "commands: [ mkdir_parents_command(path: ssh_dir), chmod_set_mode_command(chmod_program: chmod_binary_path, mode: coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly)) as NonEmptyStr, path: ssh_dir) ],"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 631,
+          "symbol": "self_enroll_apply_after_create",
+          "match": "chmod_set_mode_command(",
+          "source": "commands: [ chmod_set_mode_command(chmod_program: chmod_binary_path, mode: \"600\", path: ak_path) ],"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/fleet/host_credential_custody_converge.dag",
+      "module": "gunbc.fleet.host_credential_custody_converge",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 1263,
+          "symbol": "custody_file_chown_argv",
+          "match": "chown_argv(",
+          "source": "chown_argv(owner: ChownOwnerNames { names: row.file_ownership }, path: row.path as String)"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 1267,
+          "symbol": "custody_chown_argv_at",
+          "match": "chown_argv(",
+          "source": "chown_argv(owner: ChownOwnerNames { names: row.file_ownership }, path: path)"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 1875,
+          "symbol": "apply_host_custody_export",
+          "match": "chown_argv(",
+          "source": "argv: chown_argv(owner: ChownOwnerNames { names: ownership }, path: p as String),"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/host/host_effect_realize.dag",
+      "module": "gunbc.host.host_effect_realize",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 2389,
+          "symbol": "srv3_chown_then_read_back",
+          "match": "chown_argv(",
+          "source": "command: chown_argv(owner: ChownOwnerIds { spec: desired }, path: path),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 2968,
+          "symbol": "websocat_stage_ensure_directory",
+          "match": "mkdir_parents_argv(",
+          "source": "command: mkdir_parents_argv(path: bin_dir),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 3054,
+          "symbol": "websocat_stage_ensure_executable_mode",
+          "match": "chmod_add_executable_argv(",
+          "source": "argv: chmod_add_executable_argv(path: install_path),"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 5114,
+          "symbol": "live_deploy_preamble_acquire_scratch",
+          "match": "mktemp_directory_command(",
+          "source": "match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: live_deploy_preamble_scratch_template), transport: access.transport) {"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 6316,
+          "symbol": "dark_stage_sudoers",
+          "match": "mktemp_directory_command(",
+          "source": "match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: dark_scratch_template), transport: i.transport) {"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 6844,
+          "symbol": "live_deploy_ensure_ownership_marker_leg",
+          "match": "mktemp_directory_command(",
+          "source": "let acquired = run_argv_over_host_effect_transport(command: mktemp_directory_command(template: live_deploy_ensure_stage_template), transport: transport)"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/instruments/build_step_transport.dag",
+      "module": "gunbc.instruments.build_step_transport",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 56,
+          "symbol": "make_probe_executable",
+          "match": "chmod_add_executable_args(",
+          "source": "args: chmod_add_executable_args(path: path),"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/live_deploy/emit.dag",
+      "module": "gunbc.live_deploy.emit",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 3005,
+          "symbol": "privileged_tree_directories_install_command",
+          "match": "install_program(",
+          "source": "[install_program().invocation as String],"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 3015,
+          "symbol": "privileged_tree_files_install_command",
+          "match": "install_program(",
+          "source": "install_program().invocation as String, \"-m\", \"0644\", \"-o\", owner as String, \"-g\", owner as String,"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 3139,
+          "symbol": "locus_tree_receipt_step_at",
+          "match": "install_program(",
+          "source": "\" | \", join(sudo_elevate_argv(command: [install_program().invocation as String, \"-m\", \"0644\", \"-o\", owner as String, \"-g\", owner as String, \"/dev/stdin\","
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/machine_intake/boot_image_fetch.dag",
+      "module": "gunbc.machine_intake.boot_image_fetch",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 286,
+          "symbol": "link_verified_boot_image",
+          "match": "ln_hard_command(",
+          "source": "return match host_command(host: host, command: ln_hard_command(source: staging_path as String, destination: published_path as String)) {"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
+      "module": "gunbc.machine_intake.mtcollins1_census_image_publish",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 102,
+          "symbol": "census_srv2_regression",
+          "match": "mktemp_directory_command(",
+          "source": "match scratch_acquisition_of(kind: kind, prefix: census_regression_prefix, leg: host_run(host: host, command: mktemp_directory_command(template: census_regression_template))) {"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag",
+      "module": "gunbc.machine_intake.mtcollins1_census_member_readback",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 485,
+          "symbol": "census_member_readback",
+          "match": "mktemp_directory_command(",
+          "source": "creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template_of(attempt: attempt))),"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/runner/runner_browser_toolchain.dag",
+      "module": "gunbc.runner.runner_browser_toolchain",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 569,
+          "symbol": "tree_sha256_wet",
+          "match": "sort_in_place_command(",
+          "source": "match run_shell_command_capture(command: env_prefixed_command_in(directory: \"/\", bindings: [EnvSet { name: \"LC_ALL\", value: \"C\" }], command: sort_in_place_command(path: manifest_path)), transport: LocalExec) {"
+        }
+      ]
+    },
+    {
+      "path": "dag/gunbc/runner/runner_revision_job_stage.dag",
+      "module": "gunbc.runner.runner_revision_job_stage",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 257,
+          "symbol": "stage_spec_and_results",
+          "match": "coreutils.Truncate.ToSize(",
+          "source": "else if !coreutils.Truncate.ToSize(size_bytes: to_string(byte_size_count(b: results_bytes)) as NonEmptyStr, path: results as NonEmptyStr).success {"
+        }
+      ]
+    },
+    {
+      "path": "dag/product/printing/cad_runtime_converge.dag",
+      "module": "product.printing.cad_runtime_converge",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 124,
+          "symbol": "build_cad_environment",
+          "match": "chmod_set_mode_command(",
+          "source": "match run_local(label: \"chmod micromamba\", command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: \"0755\", path: micromamba)) {"
+        }
+      ]
+    },
+    {
+      "path": "dag/test/claim/bmc/bmc_netboot_serve_witness.dag",
+      "module": "test.claim.bmc.bmc_netboot_serve_witness",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 230,
+          "symbol": "on_bmc_first_and_last",
+          "match": "mkdir_parents_command_at(",
+          "source": "let inner = mkdir_parents_command_at("
+        }
+      ]
+    },
+    {
+      "path": "dag/test/claim/devboot_host_tool_spelling_witness.dag",
+      "module": "test.claim.devboot_host_tool_spelling_witness",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 51,
+          "symbol": "<module>",
+          "match": "mkdir_parents_argv(",
+          "source": "mkdir_parents_argv(path: \"/srv/devboot/exchange\") =="
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 52,
+          "symbol": "<module>",
+          "match": "mkdir_parents_args(",
+          "source": "concat([mkdir_binary_path as String], mkdir_parents_args(path: \"/srv/devboot/exchange\"))"
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 53,
+          "symbol": "<module>",
+          "match": "mkdir_parents_argv(",
+          "source": "&& mkdir_parents_argv(path: \"/srv/devboot/exchange\") =="
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 61,
+          "symbol": "<module>",
+          "match": "mkdir_parents_args(",
+          "source": "mkdir_parents_args(path: \"/srv/devboot/exchange\") == [\"-p\", \"/srv/devboot/exchange\"]"
+        }
+      ]
+    },
+    {
+      "path": "dag/test/claim/runner/runner_browser_toolchain_real_execution.dag",
+      "module": "test.claim.runner.runner_browser_toolchain_real_execution",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 185,
+          "symbol": "plant_fixture_tree_with",
+          "match": "chmod_set_mode_command(",
+          "source": "&& process_outcome_admitted(outcome: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: \"0755\", path: loc.node_binary as String), transport: LocalExec))"
+        }
+      ]
+    },
+    {
+      "path": "dag/test/claim/seeded_filler_real_execution.dag",
+      "module": "test.claim.seeded_filler_real_execution",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 90,
+          "symbol": "gzipped_size",
+          "match": "coreutils.Truncate.ToSize(",
+          "source": "&& coreutils.Truncate.ToSize(size_bytes: to_string(size) as NonEmptyStr, path: zeros as NonEmptyStr).success"
+        }
+      ]
+    },
+    {
+      "path": "dag/test/claim/srv3/srv3_principal_privilege_witness.dag",
+      "module": "test.claim.srv3.srv3_principal_privilege_witness",
+      "extension": ".dag",
+      "hits": [
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 106,
+          "symbol": "live_tree_disposition",
+          "match": "chown_argv(",
+          "source": "chown_argv("
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 131,
+          "symbol": "live_tree_disposition",
+          "match": "chmod_add_executable_argv(",
+          "source": "chmod_add_executable_argv(path: \"/opt/gunbc/bin/websocat\") =="
+        },
+        {
+          "kind": "additional_typed_fs_constructor_or_operation",
+          "line": 149,
+          "symbol": "live_tree_disposition",
+          "match": "mkdir_parents_argv(",
+          "source": "mkdir_parents_argv(path: \"/opt/gunbc/bin\") == [\"/usr/bin/mkdir\", \"-p\", \"/opt/gunbc/bin\"]"
+        }
+      ]
+    }
+  ]
+}

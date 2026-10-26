@@ -1,0 +1,1589 @@
+[
+  {
+    "module": "extdeps.bmc.openbmc_fan_control",
+    "path": "dag/extdeps/bmc/openbmc_fan_control.dag",
+    "operations": [
+      "openbmc_execute"
+    ],
+    "review": {
+      "name": "OpenBMC fan config actuation",
+      "package": "platform-backend",
+      "modules": [
+        "extdeps.bmc.openbmc_fan_control"
+      ],
+      "process_root_binding": "openbmc_execute receives modeled OpenBmc operation and password SSH host/user/known_hosts binding",
+      "setup_dependents": "CopyFilePreservingMetadata/MakeDirectory*/RenameReplace/Remove*/SynchronizeFilesystems on target BMC through closed PasswordSshTransport",
+      "semantic_split": "External BMC configuration backup/stage/publish/rollback is actual local platform state. Preserve same-filesystem atomic rename and sync semantics; use fabric only for immutable backup/archive evidence, not as substitute for active config.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.auth.approval_keyring_converge",
+    "path": "dag/gunbc/auth/approval_keyring_converge.dag",
+    "operations": [
+      "claim_store_root_mkdir_argv",
+      "keyring_chown_argv",
+      "keyring_ensure_dirs",
+      "keyring_mkdir_argv",
+      "store_root_mkdir_argv"
+    ],
+    "review": {
+      "name": "credential custody and local activation",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.auth.approval_keyring_converge",
+        "gunbc.dispatch_credential_acquisition",
+        "gunbc.dispatch_credential_snapshot",
+        "gunbc.fleet.host_credential_custody_converge",
+        "gunbc.workspace_commissioning_apply_readback",
+        "gunbc.workspace_commissioning_executor_submission"
+      ],
+      "process_root_binding": "keyring converge owns /etc/gunbc-roadmap and approval store directories; credential acquisition takes HostDashboardInstance/attempt root; workspace executor publishes under /etc/credstore after root ownership reading",
+      "setup_dependents": "keyring_ensure_dirs; credential_acquisition_slots_directory/cursor_attempt_runtime_directory in dashboard_instance_directory_demands; custody_dir_ensure_argv; executor credential root ancestry readback",
+      "semantic_split": "Retain actual secret/keyring/credential files and create-only cursor ownership markers on consuming host. M1/C2 own nonsecret acquisition/approval metadata; do not upload raw credentials to generic fabric metadata. Preserve snapshot tombstone stage+atomic rename and provider-specific credential consumption.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.bmc.bmc_netboot_serve",
+    "path": "dag/gunbc/bmc/bmc_netboot_serve.dag",
+    "operations": [
+      "bmc_netboot_apply_prepared",
+      "bmc_netboot_prepared_realization",
+      "bmc_path_resolved_mkdir_applet"
+    ],
+    "review": {
+      "name": "boot media publication/local realization",
+      "package": "M3",
+      "modules": [
+        "gunbc.bmc.bmc_netboot_serve",
+        "gunbc.machine_intake.boot_image_fetch",
+        "gunbc.revision_job_image_delivery"
+      ],
+      "process_root_binding": "bmc_netboot_apply_prepared consumes prepared layout incl /var/lib/gunbc/artifacts/netboot, OpenBMC /tmp/netboot and per-attempt scratch; boot_image_fetch supplied host/staging/verified target; revision_job_image_build_wet root",
+      "setup_dependents": "prepared host command plan ensures path before transfer; verified boot image hard-link/no-replace and owned staging cleanup; revision-image build root/store/index dirs",
+      "semantic_split": "Artifact bytes + identities belong fabric blob/materialization adoption; the BMC HTTP/tftp/image consumer still requires an installed local file. Preserve provenance verification and local placement readback; fixed report files are exports.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.build_cache.build_cache_endpoint_path",
+    "path": "dag/gunbc/build_cache/build_cache_endpoint_path.dag",
+    "operations": [
+      "stale_socket_unlink_command"
+    ],
+    "review": {
+      "name": "local process effect and reaping",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.build_cache.build_cache_endpoint_path",
+        "gunbc.host.host_hygiene_reaper_remediate",
+        "gunbc.host.host_effect_codex_supervised_turn"
+      ],
+      "process_root_binding": "stale_socket_unlink_command receives admitted endpoint path; apply_residual_reap_effect receives discovered owned residual dir; supervised turn apply receives private preamble/evidence root",
+      "setup_dependents": "Owning endpoint/host-hygiene/attempt context; no standalone storage namespace",
+      "semantic_split": "Unix socket unlink and proved orphan cleanup are live process/filesystem effects. Supervised preamble is local process input; generation/client command IDs separately C2 durable resource.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.devboot.build",
+    "path": "dag/gunbc/devboot/build.dag",
+    "operations": [
+      "devboot_build_entry",
+      "devboot_receive_answer_subject",
+      "devboot_serve_entry",
+      "gunbc_build_cli_entry",
+      "materialize_ref_tree",
+      "publish_produced_tree",
+      "publish_request"
+    ],
+    "review": {
+      "name": "native build roots and outputs",
+      "package": "M3",
+      "modules": [
+        "gunbc.devboot.transport",
+        "gunbc.devboot.build",
+        "gunbc.devboot.produce"
+      ],
+      "process_root_binding": "devboot build/serve/materialize/produce entry operands bind request, checkout, artifact/materialization roots; devboot_ensure_directory is transport leaf; GUNBC_MATERIALIZED_TREE_IDENTITY binds identity",
+      "setup_dependents": "build publish_request/materialize_ref_tree/publish_produced_tree; produce snapshot/materialize_source set directories via shared transport",
+      "semantic_split": "Do not replace source tree/output directory with remote string path. Share immutable products and typed records via fabric/provider while preserving required local compiler/build materialization and CLI receipt export.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.devboot.produce",
+    "path": "dag/gunbc/devboot/produce.dag",
+    "operations": [
+      "devboot_materialize",
+      "devboot_materialize_entry",
+      "devboot_materialize_source",
+      "devboot_produce_entry",
+      "devboot_snapshot",
+      "observed_artifact_sha256"
+    ],
+    "review": {
+      "name": "native build roots and outputs",
+      "package": "M3",
+      "modules": [
+        "gunbc.devboot.transport",
+        "gunbc.devboot.build",
+        "gunbc.devboot.produce"
+      ],
+      "process_root_binding": "devboot build/serve/materialize/produce entry operands bind request, checkout, artifact/materialization roots; devboot_ensure_directory is transport leaf; GUNBC_MATERIALIZED_TREE_IDENTITY binds identity",
+      "setup_dependents": "build publish_request/materialize_ref_tree/publish_produced_tree; produce snapshot/materialize_source set directories via shared transport",
+      "semantic_split": "Do not replace source tree/output directory with remote string path. Share immutable products and typed records via fabric/provider while preserving required local compiler/build materialization and CLI receipt export.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.devboot.transport",
+    "path": "dag/gunbc/devboot/transport.dag",
+    "operations": [
+      "devboot_ensure_directory"
+    ],
+    "review": {
+      "name": "native build roots and outputs",
+      "package": "M3",
+      "modules": [
+        "gunbc.devboot.transport",
+        "gunbc.devboot.build",
+        "gunbc.devboot.produce"
+      ],
+      "process_root_binding": "devboot build/serve/materialize/produce entry operands bind request, checkout, artifact/materialization roots; devboot_ensure_directory is transport leaf; GUNBC_MATERIALIZED_TREE_IDENTITY binds identity",
+      "setup_dependents": "build publish_request/materialize_ref_tree/publish_produced_tree; produce snapshot/materialize_source set directories via shared transport",
+      "semantic_split": "Do not replace source tree/output directory with remote string path. Share immutable products and typed records via fabric/provider while preserving required local compiler/build materialization and CLI receipt export.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.dispatch_credential_acquisition",
+    "path": "dag/gunbc/dispatch_credential_acquisition.dag",
+    "operations": [
+      "credential_create_cursor_runtime_root",
+      "credential_remove_cursor_runtime_root_at"
+    ],
+    "review": {
+      "name": "credential custody and local activation",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.auth.approval_keyring_converge",
+        "gunbc.dispatch_credential_acquisition",
+        "gunbc.dispatch_credential_snapshot",
+        "gunbc.fleet.host_credential_custody_converge",
+        "gunbc.workspace_commissioning_apply_readback",
+        "gunbc.workspace_commissioning_executor_submission"
+      ],
+      "process_root_binding": "keyring converge owns /etc/gunbc-roadmap and approval store directories; credential acquisition takes HostDashboardInstance/attempt root; workspace executor publishes under /etc/credstore after root ownership reading",
+      "setup_dependents": "keyring_ensure_dirs; credential_acquisition_slots_directory/cursor_attempt_runtime_directory in dashboard_instance_directory_demands; custody_dir_ensure_argv; executor credential root ancestry readback",
+      "semantic_split": "Retain actual secret/keyring/credential files and create-only cursor ownership markers on consuming host. M1/C2 own nonsecret acquisition/approval metadata; do not upload raw credentials to generic fabric metadata. Preserve snapshot tombstone stage+atomic rename and provider-specific credential consumption.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.dispatch_credential_snapshot",
+    "path": "dag/gunbc/dispatch_credential_snapshot.dag",
+    "operations": [
+      "credential_occupy_tombstone",
+      "dispatch_credential_snapshot_take"
+    ],
+    "review": {
+      "name": "credential custody and local activation",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.auth.approval_keyring_converge",
+        "gunbc.dispatch_credential_acquisition",
+        "gunbc.dispatch_credential_snapshot",
+        "gunbc.fleet.host_credential_custody_converge",
+        "gunbc.workspace_commissioning_apply_readback",
+        "gunbc.workspace_commissioning_executor_submission"
+      ],
+      "process_root_binding": "keyring converge owns /etc/gunbc-roadmap and approval store directories; credential acquisition takes HostDashboardInstance/attempt root; workspace executor publishes under /etc/credstore after root ownership reading",
+      "setup_dependents": "keyring_ensure_dirs; credential_acquisition_slots_directory/cursor_attempt_runtime_directory in dashboard_instance_directory_demands; custody_dir_ensure_argv; executor credential root ancestry readback",
+      "semantic_split": "Retain actual secret/keyring/credential files and create-only cursor ownership markers on consuming host. M1/C2 own nonsecret acquisition/approval metadata; do not upload raw credentials to generic fabric metadata. Preserve snapshot tombstone stage+atomic rename and provider-specific credential consumption.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.durable_handoff_host",
+    "path": "dag/gunbc/durable_handoff_host.dag",
+    "operations": [
+      "host_spool_create_only_command"
+    ],
+    "review": {
+      "name": "attempt exit durable spool",
+      "package": "C2",
+      "modules": [
+        "gunbc.durable_handoff_host",
+        "gunbc.roadmap.roadmap_attempt_exit_spool"
+      ],
+      "process_root_binding": "attempt ExecStopPost emitted by attempt_exit_stop_post_command -> create-only encoded directory in instance inbox; belt vendor-pane death -> attempt_exit_record_put_mkdir_name; belt_exit_entry_move_at transitions exact stage directories",
+      "setup_dependents": "attempt_exit_spool_prepare and instance own directory demands; inbox/queued/running/done/refused paths; all producers/readers and systemd emit route must cut together",
+      "semantic_split": "This IS durable recovery state, not mere mkdir setup. Replace create-only name encoding and atomic stage moves with metadata CAS transition/index only after failure-safe host exit capture contract exists. Retain local exit handoff adapter if host cannot reach fabric at process death.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.executor_privileged_operation",
+    "path": "dag/gunbc/executor_privileged_operation.dag",
+    "operations": [
+      "executor_privileged_operation_argv"
+    ],
+    "review": {
+      "name": "filesystem/platform command realizations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.executor_privileged_operation",
+        "gunbc.owned_directory",
+        "gunbc.host_command_binding",
+        "gunbc.typed_remote_file_write",
+        "gunbc.live_deploy.operations"
+      ],
+      "process_root_binding": "executor_privileged_operation_argv / owned_directory_install_argv / host_write_file / typed_remote_file_* consume typed operation/target/transport path arguments, not an ambient application database root",
+      "setup_dependents": "Owning host effect or DeploymentSpec provides install owner/group/mode, desired path and transport; operations builders emit the same target",
+      "semantic_split": "Retain write/install/stage/rename/delete at selected host because local external consumers require files. These are provider realization boundaries; each caller-owned durable record is accounted in its domain resource, not a new DB here.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.fabric.fabric_source_snapshot",
+    "path": "dag/gunbc/fabric/fabric_source_snapshot.dag",
+    "operations": [
+      "allocate_under_admitted_root",
+      "establish_provider_base",
+      "materialize_source_snapshot",
+      "release_provider_workspace",
+      "snapshot_write_file"
+    ],
+    "review": {
+      "name": "private materialized source workspaces",
+      "package": "M3",
+      "modules": [
+        "gunbc.fabric.fabric_source_snapshot"
+      ],
+      "process_root_binding": "materialize_source_snapshot/allocate_under_admitted_root receives admitted provider layout; snapshot_write_file uses typed snapshot member under private workspace",
+      "setup_dependents": "establish_provider_base create-only 0700 owner root, allocate mktemp under admitted root, per-member parent ensure, release_provider_workspace",
+      "semantic_split": "Retain provider workspace realization and cleanup; immutable source closure belongs metadata/blob plane. Local files are process inputs, not an independently authored source-of-truth store.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.fleet.fleet_host_key_enrollment",
+    "path": "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
+    "operations": [
+      "fleet_authorized_key_self_enroll_wet",
+      "fleet_host_key_enroll_apply",
+      "fleet_host_key_enroll_apply_after_create",
+      "fleet_host_key_enroll_wet",
+      "fleet_host_key_scan_wet",
+      "scan_host_key_lines",
+      "self_enroll_apply",
+      "self_enroll_apply_after_create"
+    ],
+    "review": {
+      "name": "SSH configuration and per-attempt materialization",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.fleet.fleet_host_key_enrollment",
+        "gunbc.fleet.fleet_known_hosts_anchor",
+        "gunbc.fleet.fleet_ssh_credential_verify"
+      ],
+      "process_root_binding": "host enrollment run supplies admitted principal/SSH directory; known-host anchor and public selector derive target/fleet-ssh-attempt-*; multiplex directory is RUNNER_TEMP-bound",
+      "setup_dependents": "host-key enrollment makes .ssh and create-new config/authorized_keys then appends; known-host anchor/multiplex create-only directory; public selector exact existing-content check",
+      "semantic_split": "authorized_keys/known_hosts/config are durable external SSH configuration, retained as platform effect; same source declaration/probe remains authoritative. Attempt key selector/multiplex sockets are local transport resources. Enrollment receipt is explicit output adapter.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.fleet.fleet_known_hosts_anchor",
+    "path": "dag/gunbc/fleet/fleet_known_hosts_anchor.dag",
+    "operations": [
+      "materialize_fleet_ssh_multiplex_directory",
+      "materialize_known_hosts_anchor"
+    ],
+    "review": {
+      "name": "SSH configuration and per-attempt materialization",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.fleet.fleet_host_key_enrollment",
+        "gunbc.fleet.fleet_known_hosts_anchor",
+        "gunbc.fleet.fleet_ssh_credential_verify"
+      ],
+      "process_root_binding": "host enrollment run supplies admitted principal/SSH directory; known-host anchor and public selector derive target/fleet-ssh-attempt-*; multiplex directory is RUNNER_TEMP-bound",
+      "setup_dependents": "host-key enrollment makes .ssh and create-new config/authorized_keys then appends; known-host anchor/multiplex create-only directory; public selector exact existing-content check",
+      "semantic_split": "authorized_keys/known_hosts/config are durable external SSH configuration, retained as platform effect; same source declaration/probe remains authoritative. Attempt key selector/multiplex sockets are local transport resources. Enrollment receipt is explicit output adapter.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.fleet.fleet_ssh_credential_verify",
+    "path": "dag/gunbc/fleet/fleet_ssh_credential_verify.dag",
+    "operations": [
+      "materialize_agent_public_selector"
+    ],
+    "review": {
+      "name": "SSH configuration and per-attempt materialization",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.fleet.fleet_host_key_enrollment",
+        "gunbc.fleet.fleet_known_hosts_anchor",
+        "gunbc.fleet.fleet_ssh_credential_verify"
+      ],
+      "process_root_binding": "host enrollment run supplies admitted principal/SSH directory; known-host anchor and public selector derive target/fleet-ssh-attempt-*; multiplex directory is RUNNER_TEMP-bound",
+      "setup_dependents": "host-key enrollment makes .ssh and create-new config/authorized_keys then appends; known-host anchor/multiplex create-only directory; public selector exact existing-content check",
+      "semantic_split": "authorized_keys/known_hosts/config are durable external SSH configuration, retained as platform effect; same source declaration/probe remains authoritative. Attempt key selector/multiplex sockets are local transport resources. Enrollment receipt is explicit output adapter.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.fleet.host_credential_custody_converge",
+    "path": "dag/gunbc/fleet/host_credential_custody_converge.dag",
+    "operations": [
+      "apply_host_custody_export",
+      "create_only_publish",
+      "custody_chown_argv_at",
+      "custody_dir_ensure_argv",
+      "custody_file_chown_argv",
+      "staging_remove_argv",
+      "write_receipt_then_exit"
+    ],
+    "review": {
+      "name": "credential custody and local activation",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.auth.approval_keyring_converge",
+        "gunbc.dispatch_credential_acquisition",
+        "gunbc.dispatch_credential_snapshot",
+        "gunbc.fleet.host_credential_custody_converge",
+        "gunbc.workspace_commissioning_apply_readback",
+        "gunbc.workspace_commissioning_executor_submission"
+      ],
+      "process_root_binding": "keyring converge owns /etc/gunbc-roadmap and approval store directories; credential acquisition takes HostDashboardInstance/attempt root; workspace executor publishes under /etc/credstore after root ownership reading",
+      "setup_dependents": "keyring_ensure_dirs; credential_acquisition_slots_directory/cursor_attempt_runtime_directory in dashboard_instance_directory_demands; custody_dir_ensure_argv; executor credential root ancestry readback",
+      "semantic_split": "Retain actual secret/keyring/credential files and create-only cursor ownership markers on consuming host. M1/C2 own nonsecret acquisition/approval metadata; do not upload raw credentials to generic fabric metadata. Preserve snapshot tombstone stage+atomic rename and provider-specific credential consumption.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.fleet.site_pxe_edge_converge",
+    "path": "dag/gunbc/fleet/site_pxe_edge_converge.dag",
+    "operations": [
+      "ensure_site_pxe_edge_package",
+      "site_pxe_edge_ci_wet",
+      "site_pxe_edge_rollback_steps"
+    ],
+    "review": {
+      "name": "installed host release and ownership attestations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.host.host_effect_realize",
+        "gunbc.live_deploy.emit",
+        "gunbc.live_deploy.repository_convergence",
+        "gunbc.fleet.site_pxe_edge_converge",
+        "gunbc.runner.runner_host_file_converge"
+      ],
+      "process_root_binding": "host_effect_apply selected typed host effect + HostEffectTransport; live_deploy_apply_prod_role_transaction_wet -> DeploymentSpec release locus/owner/instance root; site PXE config /etc/gunbc-site-pxe-edge.dnsmasq.conf",
+      "setup_dependents": "live_deploy typed install/owned directories/readback; host_effect_realize installs root helper snapshots, systemd/sudoers/controller files; retire_superseded_file under observed deployed source",
+      "semantic_split": "Retain actual host configs, executables, ownership markers, .gunbc-tree-receipt and VMM/launcher readback receipts as materialization-provider attestations on that same host. Archive history can be fabric metadata, but remote receipt cannot establish local installed bytes. BMC token scratch is credential custody, not archival state.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.host.host_effect_codex_supervised_turn",
+    "path": "dag/gunbc/host/host_effect_codex_supervised_turn.dag",
+    "operations": [
+      "host_effect_codex_supervised_turn_apply"
+    ],
+    "review": {
+      "name": "local process effect and reaping",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.build_cache.build_cache_endpoint_path",
+        "gunbc.host.host_hygiene_reaper_remediate",
+        "gunbc.host.host_effect_codex_supervised_turn"
+      ],
+      "process_root_binding": "stale_socket_unlink_command receives admitted endpoint path; apply_residual_reap_effect receives discovered owned residual dir; supervised turn apply receives private preamble/evidence root",
+      "setup_dependents": "Owning endpoint/host-hygiene/attempt context; no standalone storage namespace",
+      "semantic_split": "Unix socket unlink and proved orphan cleanup are live process/filesystem effects. Supervised preamble is local process input; generation/client command IDs separately C2 durable resource.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.host.host_effect_realize",
+    "path": "dag/gunbc/host/host_effect_realize.dag",
+    "operations": [
+      "approval_broker_tree_install_observed",
+      "approval_broker_tree_receipt_write",
+      "compile_pool_slice_install_staging",
+      "compile_pool_slice_install_step",
+      "dark_sidecar_legs",
+      "dark_stage_device_store",
+      "dark_stage_snapshot",
+      "dark_stage_sudoers",
+      "dark_sudoers_legs",
+      "dark_unit_install_leg",
+      "host_remove_outcome_verdict",
+      "host_remove_target_inner_argv",
+      "live_deploy_ensure_ownership_marker_fold",
+      "live_deploy_ensure_ownership_marker_leg",
+      "live_deploy_ensure_ownership_marker_plan",
+      "live_deploy_preamble_acquire_scratch",
+      "live_deploy_preamble_cleanup_scratch",
+      "live_deploy_preamble_legs",
+      "microvm_controller_install_steps",
+      "microvm_controller_owned_dir_argv",
+      "microvm_controller_revision_job_steps",
+      "microvm_controller_staged_write_steps",
+      "realize_bmcweb_token_extract_body",
+      "revision_job_install_file_step",
+      "srv3_actuator_toolchain_apt_install_command",
+      "srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated",
+      "srv3_chown_then_read_back",
+      "srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated",
+      "tree_install_directory_step",
+      "websocat_stage_ensure_directory",
+      "websocat_stage_ensure_executable_mode"
+    ],
+    "review": {
+      "name": "installed host release and ownership attestations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.host.host_effect_realize",
+        "gunbc.live_deploy.emit",
+        "gunbc.live_deploy.repository_convergence",
+        "gunbc.fleet.site_pxe_edge_converge",
+        "gunbc.runner.runner_host_file_converge"
+      ],
+      "process_root_binding": "host_effect_apply selected typed host effect + HostEffectTransport; live_deploy_apply_prod_role_transaction_wet -> DeploymentSpec release locus/owner/instance root; site PXE config /etc/gunbc-site-pxe-edge.dnsmasq.conf",
+      "setup_dependents": "live_deploy typed install/owned directories/readback; host_effect_realize installs root helper snapshots, systemd/sudoers/controller files; retire_superseded_file under observed deployed source",
+      "semantic_split": "Retain actual host configs, executables, ownership markers, .gunbc-tree-receipt and VMM/launcher readback receipts as materialization-provider attestations on that same host. Archive history can be fabric metadata, but remote receipt cannot establish local installed bytes. BMC token scratch is credential custody, not archival state.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.host.host_hygiene_reaper_remediate",
+    "path": "dag/gunbc/host/host_hygiene_reaper_remediate.dag",
+    "operations": [
+      "apply_residual_reap_effect"
+    ],
+    "review": {
+      "name": "local process effect and reaping",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.build_cache.build_cache_endpoint_path",
+        "gunbc.host.host_hygiene_reaper_remediate",
+        "gunbc.host.host_effect_codex_supervised_turn"
+      ],
+      "process_root_binding": "stale_socket_unlink_command receives admitted endpoint path; apply_residual_reap_effect receives discovered owned residual dir; supervised turn apply receives private preamble/evidence root",
+      "setup_dependents": "Owning endpoint/host-hygiene/attempt context; no standalone storage namespace",
+      "semantic_split": "Unix socket unlink and proved orphan cleanup are live process/filesystem effects. Supervised preamble is local process input; generation/client command IDs separately C2 durable resource.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.host.verified_archive_install",
+    "path": "dag/gunbc/host/verified_archive_install.dag",
+    "operations": [
+      "publish_staged_tree_command",
+      "staged_archive_fetch_commands",
+      "staged_archive_install_commands"
+    ],
+    "review": {
+      "name": "local package/toolchain release realization",
+      "package": "M3",
+      "modules": [
+        "gunbc.host.verified_archive_install",
+        "gunbc.package_delivery",
+        "gunbc.runner.runner_browser_toolchain",
+        "gunbc.runner.runner_qemu_toolchain",
+        "product.printing.cad_runtime_converge"
+      ],
+      "process_root_binding": "Verified archive plan supplies archives/staging/install target; Codex bundle typed release/build/publishing roots; browser/QEMU location.base; CAD environment spec derives prefix/marker/lock",
+      "setup_dependents": "digest-verified fetch; mktemp staging then no-replace publish; package current symlink; browser readback/grant drop-in; CAD create-only directory lock",
+      "semantic_split": "Immutable package/toolchain artifacts should use shared fabric blob/materialization provider. Preserve local installed binaries/current links/runtime marker. CAD directory lock is a local build exclusion primitive, separate M2 if generalized, not a metadata overwrite. Runtime/spec receipts remain identity/readback evidence.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.host_command_binding",
+    "path": "dag/gunbc/host_command_binding.dag",
+    "operations": [
+      "host_write_file"
+    ],
+    "review": {
+      "name": "filesystem/platform command realizations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.executor_privileged_operation",
+        "gunbc.owned_directory",
+        "gunbc.host_command_binding",
+        "gunbc.typed_remote_file_write",
+        "gunbc.live_deploy.operations"
+      ],
+      "process_root_binding": "executor_privileged_operation_argv / owned_directory_install_argv / host_write_file / typed_remote_file_* consume typed operation/target/transport path arguments, not an ambient application database root",
+      "setup_dependents": "Owning host effect or DeploymentSpec provides install owner/group/mode, desired path and transport; operations builders emit the same target",
+      "semantic_split": "Retain write/install/stage/rename/delete at selected host because local external consumers require files. These are provider realization boundaries; each caller-owned durable record is accounted in its domain resource, not a new DB here.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.live_deploy.emit",
+    "path": "dag/gunbc/live_deploy/emit.dag",
+    "operations": [
+      "deploy_mktemp_dir_let_step",
+      "emit_artifact_upsert",
+      "emit_release_member_effects",
+      "leftover_systemd_timer_retire_steps",
+      "locus_tree_receipt_step_at",
+      "privileged_tree_directories_install_command",
+      "privileged_tree_files_install_command",
+      "release_locus_binary_install_step"
+    ],
+    "review": {
+      "name": "installed host release and ownership attestations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.host.host_effect_realize",
+        "gunbc.live_deploy.emit",
+        "gunbc.live_deploy.repository_convergence",
+        "gunbc.fleet.site_pxe_edge_converge",
+        "gunbc.runner.runner_host_file_converge"
+      ],
+      "process_root_binding": "host_effect_apply selected typed host effect + HostEffectTransport; live_deploy_apply_prod_role_transaction_wet -> DeploymentSpec release locus/owner/instance root; site PXE config /etc/gunbc-site-pxe-edge.dnsmasq.conf",
+      "setup_dependents": "live_deploy typed install/owned directories/readback; host_effect_realize installs root helper snapshots, systemd/sudoers/controller files; retire_superseded_file under observed deployed source",
+      "semantic_split": "Retain actual host configs, executables, ownership markers, .gunbc-tree-receipt and VMM/launcher readback receipts as materialization-provider attestations on that same host. Archive history can be fabric metadata, but remote receipt cannot establish local installed bytes. BMC token scratch is credential custody, not archival state.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.live_deploy.operations",
+    "path": "dag/gunbc/live_deploy/operations.dag",
+    "operations": [
+      "deploy_stage_dirs_rm_command",
+      "install_directory_command",
+      "install_directory_owned_command",
+      "install_file_owned_command",
+      "rm_force_command",
+      "rm_force_recursive_command"
+    ],
+    "review": {
+      "name": "filesystem/platform command realizations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.executor_privileged_operation",
+        "gunbc.owned_directory",
+        "gunbc.host_command_binding",
+        "gunbc.typed_remote_file_write",
+        "gunbc.live_deploy.operations"
+      ],
+      "process_root_binding": "executor_privileged_operation_argv / owned_directory_install_argv / host_write_file / typed_remote_file_* consume typed operation/target/transport path arguments, not an ambient application database root",
+      "setup_dependents": "Owning host effect or DeploymentSpec provides install owner/group/mode, desired path and transport; operations builders emit the same target",
+      "semantic_split": "Retain write/install/stage/rename/delete at selected host because local external consumers require files. These are provider realization boundaries; each caller-owned durable record is accounted in its domain resource, not a new DB here.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.live_deploy.repository_convergence",
+    "path": "dag/gunbc/live_deploy/repository_convergence.dag",
+    "operations": [
+      "retire_superseded_file"
+    ],
+    "review": {
+      "name": "installed host release and ownership attestations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.host.host_effect_realize",
+        "gunbc.live_deploy.emit",
+        "gunbc.live_deploy.repository_convergence",
+        "gunbc.fleet.site_pxe_edge_converge",
+        "gunbc.runner.runner_host_file_converge"
+      ],
+      "process_root_binding": "host_effect_apply selected typed host effect + HostEffectTransport; live_deploy_apply_prod_role_transaction_wet -> DeploymentSpec release locus/owner/instance root; site PXE config /etc/gunbc-site-pxe-edge.dnsmasq.conf",
+      "setup_dependents": "live_deploy typed install/owned directories/readback; host_effect_realize installs root helper snapshots, systemd/sudoers/controller files; retire_superseded_file under observed deployed source",
+      "semantic_split": "Retain actual host configs, executables, ownership markers, .gunbc-tree-receipt and VMM/launcher readback receipts as materialization-provider attestations on that same host. Archive history can be fabric metadata, but remote receipt cannot establish local installed bytes. BMC token scratch is credential custody, not archival state.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.machine_intake.boot_image_fetch",
+    "path": "dag/gunbc/machine_intake/boot_image_fetch.dag",
+    "operations": [
+      "admitted_after_unstaging",
+      "link_verified_boot_image"
+    ],
+    "review": {
+      "name": "boot media publication/local realization",
+      "package": "M3",
+      "modules": [
+        "gunbc.bmc.bmc_netboot_serve",
+        "gunbc.machine_intake.boot_image_fetch",
+        "gunbc.revision_job_image_delivery"
+      ],
+      "process_root_binding": "bmc_netboot_apply_prepared consumes prepared layout incl /var/lib/gunbc/artifacts/netboot, OpenBMC /tmp/netboot and per-attempt scratch; boot_image_fetch supplied host/staging/verified target; revision_job_image_build_wet root",
+      "setup_dependents": "prepared host command plan ensures path before transfer; verified boot image hard-link/no-replace and owned staging cleanup; revision-image build root/store/index dirs",
+      "semantic_split": "Artifact bytes + identities belong fabric blob/materialization adoption; the BMC HTTP/tftp/image consumer still requires an installed local file. Preserve provenance verification and local placement readback; fixed report files are exports.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.machine_intake.megarac_kvm_still",
+    "path": "dag/gunbc/machine_intake/megarac_kvm_still.dag",
+    "operations": [
+      "kvm_observer_trigger",
+      "megarac_kvm_observer_finish"
+    ],
+    "review": {
+      "name": "KVM observer journal and controls",
+      "package": "M4",
+      "modules": [
+        "gunbc.machine_intake.megarac_kvm_still"
+      ],
+      "process_root_binding": "megarac_kvm_observer_start(host,dir,...); current production start always returns KvmObserverNotStarted because no public client; historical journal readers remain",
+      "setup_dependents": "Existing journal root supplied by boot attempt; trigger/stop/workflow files only under admitted KvmObserverStarted current observation",
+      "semantic_split": "No current reachable start writes should be advertised as active deployed store. Preserve historical journal evidence via artifact storage and local IPC controls if client returns; record explicit source rung drop, not a successful KVM capability.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.machine_intake.mtcollins1_boot_run",
+    "path": "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+    "operations": [
+      "mtcollins1_boot_conclude",
+      "mtcollins1_boot_screen_boundary_report",
+      "mtcollins1_sol_activate_held",
+      "mtcollins1_sol_bind_capture_to_attempt",
+      "mtcollins1_sol_loss_freeze",
+      "mtcollins1_sol_teardown_record",
+      "sol_record_activation",
+      "sol_release_retire"
+    ],
+    "review": {
+      "name": "SOL boot capture, observation-loss and delivery records",
+      "package": "M4",
+      "modules": [
+        "gunbc.machine_intake.mtcollins1_boot_run",
+        "gunbc.machine_intake.mtcollins1_sol_notice"
+      ],
+      "process_root_binding": "mtcollins1_boot_run entry and mtcollins1_sol_notice_wet read mtcollins1_boot_sol_capture_path_env/pid_path_env; SolNoticePaths derived siblings and GITHUB_STEP_SUMMARY",
+      "setup_dependents": "CI spec boot prelude/collector/watch setup binds one attempt capture and pid path; sol_hold supervisor creates/processes local control and capture files",
+      "semantic_split": "Split persistent boot/observation-loss/pre-teardown evidence and notice delivery identities into immutable fabric evidence+metadata if retained beyond job. Keep collector PID/activation/stop/ready signals and live capture local; step summary/log writes are runner protocols. Ledger is best-effort, delivery marker affects duplicate behavior and is not disposable diagnostic noise.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.machine_intake.mtcollins1_sol_notice",
+    "path": "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag",
+    "operations": [
+      "mtcollins1_sol_notice_wet",
+      "sol_notice_channel_write",
+      "sol_notice_deliver",
+      "sol_notice_record"
+    ],
+    "review": {
+      "name": "SOL boot capture, observation-loss and delivery records",
+      "package": "M4",
+      "modules": [
+        "gunbc.machine_intake.mtcollins1_boot_run",
+        "gunbc.machine_intake.mtcollins1_sol_notice"
+      ],
+      "process_root_binding": "mtcollins1_boot_run entry and mtcollins1_sol_notice_wet read mtcollins1_boot_sol_capture_path_env/pid_path_env; SolNoticePaths derived siblings and GITHUB_STEP_SUMMARY",
+      "setup_dependents": "CI spec boot prelude/collector/watch setup binds one attempt capture and pid path; sol_hold supervisor creates/processes local control and capture files",
+      "semantic_split": "Split persistent boot/observation-loss/pre-teardown evidence and notice delivery identities into immutable fabric evidence+metadata if retained beyond job. Keep collector PID/activation/stop/ready signals and live capture local; step summary/log writes are runner protocols. Ledger is best-effort, delivery marker affects duplicate behavior and is not disposable diagnostic noise.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.owned_directory",
+    "path": "dag/gunbc/owned_directory.dag",
+    "operations": [
+      "owned_directory_install_argv"
+    ],
+    "review": {
+      "name": "filesystem/platform command realizations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.executor_privileged_operation",
+        "gunbc.owned_directory",
+        "gunbc.host_command_binding",
+        "gunbc.typed_remote_file_write",
+        "gunbc.live_deploy.operations"
+      ],
+      "process_root_binding": "executor_privileged_operation_argv / owned_directory_install_argv / host_write_file / typed_remote_file_* consume typed operation/target/transport path arguments, not an ambient application database root",
+      "setup_dependents": "Owning host effect or DeploymentSpec provides install owner/group/mode, desired path and transport; operations builders emit the same target",
+      "semantic_split": "Retain write/install/stage/rename/delete at selected host because local external consumers require files. These are provider realization boundaries; each caller-owned durable record is accounted in its domain resource, not a new DB here.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.package_delivery",
+    "path": "dag/gunbc/package_delivery.dag",
+    "operations": [
+      "append_text_to_file",
+      "codex_runtime_install_from_prepared",
+      "finish_bisect_generate_protocol_schema_dir",
+      "finish_bisect_observe_package_materialized_tree_tiny_fixture",
+      "finish_codex_runtime_materialization_after_install",
+      "materialize_codex_runtime_bundle",
+      "materialize_codex_runtime_bundle_through_pair_acquire",
+      "observe_admitted_package_set_identity",
+      "observe_codex_runtime_bundle_receipt_identity",
+      "observe_package_materialized_tree",
+      "observe_protocol_schema_identity",
+      "protocol_schema_process_file_for_bundle",
+      "publish_codex_runtime_current_link",
+      "release_codex_runtime_bundle_immutable",
+      "relocate_build_root_to_unique_publishing",
+      "rename_publishing_noreplace",
+      "write_codex_runtime_receipt_sidecar"
+    ],
+    "review": {
+      "name": "local package/toolchain release realization",
+      "package": "M3",
+      "modules": [
+        "gunbc.host.verified_archive_install",
+        "gunbc.package_delivery",
+        "gunbc.runner.runner_browser_toolchain",
+        "gunbc.runner.runner_qemu_toolchain",
+        "product.printing.cad_runtime_converge"
+      ],
+      "process_root_binding": "Verified archive plan supplies archives/staging/install target; Codex bundle typed release/build/publishing roots; browser/QEMU location.base; CAD environment spec derives prefix/marker/lock",
+      "setup_dependents": "digest-verified fetch; mktemp staging then no-replace publish; package current symlink; browser readback/grant drop-in; CAD create-only directory lock",
+      "semantic_split": "Immutable package/toolchain artifacts should use shared fabric blob/materialization provider. Preserve local installed binaries/current links/runtime marker. CAD directory lock is a local build exclusion primitive, separate M2 if generalized, not a metadata overwrite. Runtime/spec receipts remain identity/readback evidence.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.revision_job_image_delivery",
+    "path": "dag/gunbc/revision_job_image_delivery.dag",
+    "operations": [
+      "revision_job_image_build_wet"
+    ],
+    "review": {
+      "name": "boot media publication/local realization",
+      "package": "M3",
+      "modules": [
+        "gunbc.bmc.bmc_netboot_serve",
+        "gunbc.machine_intake.boot_image_fetch",
+        "gunbc.revision_job_image_delivery"
+      ],
+      "process_root_binding": "bmc_netboot_apply_prepared consumes prepared layout incl /var/lib/gunbc/artifacts/netboot, OpenBMC /tmp/netboot and per-attempt scratch; boot_image_fetch supplied host/staging/verified target; revision_job_image_build_wet root",
+      "setup_dependents": "prepared host command plan ensures path before transfer; verified boot image hard-link/no-replace and owned staging cleanup; revision-image build root/store/index dirs",
+      "semantic_split": "Artifact bytes + identities belong fabric blob/materialization adoption; the BMC HTTP/tftp/image consumer still requires an installed local file. Preserve provenance verification and local placement readback; fixed report files are exports.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_attempt_exit_spool",
+    "path": "dag/gunbc/roadmap/roadmap_attempt_exit_spool.dag",
+    "operations": [
+      "attempt_exit_record_put_mkdir_name",
+      "attempt_exit_spool_prepare"
+    ],
+    "review": {
+      "name": "attempt exit durable spool",
+      "package": "C2",
+      "modules": [
+        "gunbc.durable_handoff_host",
+        "gunbc.roadmap.roadmap_attempt_exit_spool"
+      ],
+      "process_root_binding": "attempt ExecStopPost emitted by attempt_exit_stop_post_command -> create-only encoded directory in instance inbox; belt vendor-pane death -> attempt_exit_record_put_mkdir_name; belt_exit_entry_move_at transitions exact stage directories",
+      "setup_dependents": "attempt_exit_spool_prepare and instance own directory demands; inbox/queued/running/done/refused paths; all producers/readers and systemd emit route must cut together",
+      "semantic_split": "This IS durable recovery state, not mere mkdir setup. Replace create-only name encoding and atomic stage moves with metadata CAS transition/index only after failure-safe host exit capture contract exists. Retain local exit handoff adapter if host cannot reach fabric at process death.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_attempt_launch",
+    "path": "dag/gunbc/runner/runner_attempt_launch.dag",
+    "operations": [
+      "jit_device_staging",
+      "plan_authorized_steps",
+      "write_and_read_back_bootstrap_device"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_browser_toolchain",
+    "path": "dag/gunbc/runner/runner_browser_toolchain.dag",
+    "operations": [
+      "browser_ready_labels_grant_plan",
+      "browser_ready_labels_revoke_plan",
+      "place_toolchain_wet",
+      "plant_probe_wet",
+      "runner_browser_toolchain_converge_ci_wet",
+      "runner_browser_toolchain_readback_at_wet",
+      "stage_in_fresh_directory_wet",
+      "tree_sha256_wet",
+      "write_digest_receipt"
+    ],
+    "review": {
+      "name": "local package/toolchain release realization",
+      "package": "M3",
+      "modules": [
+        "gunbc.host.verified_archive_install",
+        "gunbc.package_delivery",
+        "gunbc.runner.runner_browser_toolchain",
+        "gunbc.runner.runner_qemu_toolchain",
+        "product.printing.cad_runtime_converge"
+      ],
+      "process_root_binding": "Verified archive plan supplies archives/staging/install target; Codex bundle typed release/build/publishing roots; browser/QEMU location.base; CAD environment spec derives prefix/marker/lock",
+      "setup_dependents": "digest-verified fetch; mktemp staging then no-replace publish; package current symlink; browser readback/grant drop-in; CAD create-only directory lock",
+      "semantic_split": "Immutable package/toolchain artifacts should use shared fabric blob/materialization provider. Preserve local installed binaries/current links/runtime marker. CAD directory lock is a local build exclusion primitive, separate M2 if generalized, not a metadata overwrite. Runtime/spec receipts remain identity/readback evidence.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_claim_set_guest",
+    "path": "dag/gunbc/runner/runner_claim_set_guest.dag",
+    "operations": [
+      "write_claim_set_frame"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_guest_image",
+    "path": "dag/gunbc/runner/runner_guest_image.dag",
+    "operations": [
+      "runner_guest_fetch_commands",
+      "runner_guest_image_commands",
+      "runner_guest_image_receipt_wet",
+      "runner_guest_resolver_link_command",
+      "runner_guest_tree_commands",
+      "write_guest_agent_unit_for_device_wet"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_host_file_converge",
+    "path": "dag/gunbc/runner/runner_host_file_converge.dag",
+    "operations": [
+      "finish_runner_host_cap_release",
+      "retire_legs_for",
+      "runner_host_file_ci_wet"
+    ],
+    "review": {
+      "name": "installed host release and ownership attestations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.host.host_effect_realize",
+        "gunbc.live_deploy.emit",
+        "gunbc.live_deploy.repository_convergence",
+        "gunbc.fleet.site_pxe_edge_converge",
+        "gunbc.runner.runner_host_file_converge"
+      ],
+      "process_root_binding": "host_effect_apply selected typed host effect + HostEffectTransport; live_deploy_apply_prod_role_transaction_wet -> DeploymentSpec release locus/owner/instance root; site PXE config /etc/gunbc-site-pxe-edge.dnsmasq.conf",
+      "setup_dependents": "live_deploy typed install/owned directories/readback; host_effect_realize installs root helper snapshots, systemd/sudoers/controller files; retire_superseded_file under observed deployed source",
+      "semantic_split": "Retain actual host configs, executables, ownership markers, .gunbc-tree-receipt and VMM/launcher readback receipts as materialization-provider attestations on that same host. Archive history can be fabric metadata, but remote receipt cannot establish local installed bytes. BMC token scratch is credential custody, not archival state.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_host_medium",
+    "path": "dag/gunbc/runner/runner_host_medium.dag",
+    "operations": [
+      "runner_host_up_stages"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_microvm_boot_probe",
+    "path": "dag/gunbc/runner/runner_microvm_boot_probe.dag",
+    "operations": [
+      "runner_microvm_boot_probe_receipt_wet",
+      "runner_microvm_boot_probe_stage_commands",
+      "runner_microvm_boot_probe_wet"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_microvm_host_ready",
+    "path": "dag/gunbc/runner/runner_microvm_host_ready.dag",
+    "operations": [
+      "firecracker_fetch_commands",
+      "firecracker_install_commands",
+      "write_host_standing_receipt"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_microvm_lifecycle_realize",
+    "path": "dag/gunbc/runner/runner_microvm_lifecycle_realize.dag",
+    "operations": [
+      "clean_attempt_resources",
+      "force_stop_subtree",
+      "stage_attempt_configuration"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_microvm_network_apply",
+    "path": "dag/gunbc/runner/runner_microvm_network_apply.dag",
+    "operations": [
+      "local_stage_cleanup_refusal",
+      "run_privileged_microvm_network_apply",
+      "runner_microvm_network_apply_ci_wet",
+      "runner_microvm_network_apply_local_wet",
+      "runner_microvm_network_plan_local_wet",
+      "write_local_staged_file"
+    ],
+    "review": {
+      "name": "microVM host network config realization",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_microvm_network_apply"
+      ],
+      "process_root_binding": "local wet/CI entry builds selected host/scope network plan; write_local_staged_file binds scope.root_path and file.path",
+      "setup_dependents": "stage private file then mv exact target; owned/privileged network operations and cleanup",
+      "semantic_split": "Host daemon/sysctl/network config remains local platform state. Separate runner_microvm_network_receipt_store is M4 authority; target plan/apply report remains output projection.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_qemu_toolchain",
+    "path": "dag/gunbc/runner/runner_qemu_toolchain.dag",
+    "operations": [
+      "place_qemu_toolchain_wet"
+    ],
+    "review": {
+      "name": "local package/toolchain release realization",
+      "package": "M3",
+      "modules": [
+        "gunbc.host.verified_archive_install",
+        "gunbc.package_delivery",
+        "gunbc.runner.runner_browser_toolchain",
+        "gunbc.runner.runner_qemu_toolchain",
+        "product.printing.cad_runtime_converge"
+      ],
+      "process_root_binding": "Verified archive plan supplies archives/staging/install target; Codex bundle typed release/build/publishing roots; browser/QEMU location.base; CAD environment spec derives prefix/marker/lock",
+      "setup_dependents": "digest-verified fetch; mktemp staging then no-replace publish; package current symlink; browser readback/grant drop-in; CAD create-only directory lock",
+      "semantic_split": "Immutable package/toolchain artifacts should use shared fabric blob/materialization provider. Preserve local installed binaries/current links/runtime marker. CAD directory lock is a local build exclusion primitive, separate M2 if generalized, not a metadata overwrite. Runtime/spec receipts remain identity/readback evidence.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_revision_job_guest",
+    "path": "dag/gunbc/runner/runner_revision_job_guest.dag",
+    "operations": [
+      "revision_job_cargo_config_steps",
+      "revision_job_tree_steps",
+      "revision_job_vendor_steps"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_revision_job_image",
+    "path": "dag/gunbc/runner/runner_revision_job_image.dag",
+    "operations": [
+      "revision_job_image_build",
+      "revision_job_image_build_core",
+      "revision_job_image_tree_commands",
+      "revision_job_write_toolchain_receipt"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_revision_job_launch",
+    "path": "dag/gunbc/runner/runner_revision_job_launch.dag",
+    "operations": [
+      "revision_job_launch_plan"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_revision_job_stage",
+    "path": "dag/gunbc/runner/runner_revision_job_stage.dag",
+    "operations": [
+      "stage_revision_job",
+      "stage_spec_and_results",
+      "stage_verified_revision"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.runner_revision_job_toolchain",
+    "path": "dag/gunbc/runner/runner_revision_job_toolchain.dag",
+    "operations": [
+      "prepare_toolchain_closure",
+      "prove_toolchain_rows",
+      "toolchain_effect_commands",
+      "verify_toolchain_index"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.workspace_guest_image",
+    "path": "dag/gunbc/runner/workspace_guest_image.dag",
+    "operations": [
+      "workspace_guest_bootstrap_script",
+      "workspace_image_tree_commands",
+      "workspace_image_write_tree"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.runner.workspace_microvm",
+    "path": "dag/gunbc/runner/workspace_microvm.dag",
+    "operations": [
+      "workspace_launch_plan"
+    ],
+    "review": {
+      "name": "guest images and attempt devices",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.runner.runner_attempt_launch",
+        "gunbc.runner.runner_claim_set_guest",
+        "gunbc.runner.runner_guest_image",
+        "gunbc.runner.runner_host_medium",
+        "gunbc.runner.runner_microvm_boot_probe",
+        "gunbc.runner.runner_microvm_host_ready",
+        "gunbc.runner.runner_microvm_lifecycle_realize",
+        "gunbc.runner.runner_revision_job_guest",
+        "gunbc.runner.runner_revision_job_image",
+        "gunbc.runner.runner_revision_job_launch",
+        "gunbc.runner.runner_revision_job_stage",
+        "gunbc.runner.runner_revision_job_toolchain",
+        "gunbc.runner.workspace_guest_image",
+        "gunbc.runner.workspace_microvm"
+      ],
+      "process_root_binding": "Selected runner host/slot/attempt binds jail_root, image root, staging/work/store directories and bootstrap/results device. claim guest reads GUNBC_CLAIM_SET_RESULTS_DEVICE/RESULTS_BYTES. Revision job entry variables supply dirs/spec/image digest",
+      "setup_dependents": "runner host/image/controller desired plans stage kernel/rootfs/vendor/toolchain/config/unit and credentials with explicit mode/uid/gid; attempt cleanup removes exact owned paths",
+      "semantic_split": "Retain guest device I/O, /etc files inside image, jail rootfs copy and cgroup.kill. Images/toolchain bundles use M3 immutable artifact provider; revision receipt/index and cell/network readiness are separate M4 rows. Do not erase consumed result bytes until durable receipt publication succeeded.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.serving.rented_release",
+    "path": "dag/gunbc/serving/rented_release.dag",
+    "operations": [
+      "rented_anchor_decision",
+      "rented_clean_decision"
+    ],
+    "review": {
+      "name": "serving/model installation and access config",
+      "package": "M3",
+      "modules": [
+        "gunbc.serving.rented_release",
+        "gunbc.serving.serving_artifact_placement",
+        "gunbc.spark.fabric_rail_apply",
+        "gunbc.spark.managed_access_apply",
+        "gunbc.spark.managed_grant_install"
+      ],
+      "process_root_binding": "ServingArtifactRoots/model_link and selected serving target; rented release owner/paths; spark selected host/grant/key/rail facts",
+      "setup_dependents": "ensure partial dir, verified move to digest path, symbolic next-link+rename; explicit root install/grant retirement",
+      "semantic_split": "Retain exact installed artifact/model symlink and SSH/systemd access config. Immutable model/engine bytes should come through blob provider; authorization scope cannot dissolve into generic storage grants. Output receipts separate.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.serving.serving_artifact_placement",
+    "path": "dag/gunbc/serving/serving_artifact_placement.dag",
+    "operations": [
+      "serving_artifact_sequence",
+      "serving_engine_promotion",
+      "serving_link_switch",
+      "serving_mutating_endangers"
+    ],
+    "review": {
+      "name": "serving/model installation and access config",
+      "package": "M3",
+      "modules": [
+        "gunbc.serving.rented_release",
+        "gunbc.serving.serving_artifact_placement",
+        "gunbc.spark.fabric_rail_apply",
+        "gunbc.spark.managed_access_apply",
+        "gunbc.spark.managed_grant_install"
+      ],
+      "process_root_binding": "ServingArtifactRoots/model_link and selected serving target; rented release owner/paths; spark selected host/grant/key/rail facts",
+      "setup_dependents": "ensure partial dir, verified move to digest path, symbolic next-link+rename; explicit root install/grant retirement",
+      "semantic_split": "Retain exact installed artifact/model symlink and SSH/systemd access config. Immutable model/engine bytes should come through blob provider; authorization scope cannot dissolve into generic storage grants. Output receipts separate.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.spark.fabric_rail_apply",
+    "path": "dag/gunbc/spark/fabric_rail_apply.dag",
+    "operations": [
+      "fabric_rail_apply_wet",
+      "fabric_rail_host_script"
+    ],
+    "review": {
+      "name": "serving/model installation and access config",
+      "package": "M3",
+      "modules": [
+        "gunbc.serving.rented_release",
+        "gunbc.serving.serving_artifact_placement",
+        "gunbc.spark.fabric_rail_apply",
+        "gunbc.spark.managed_access_apply",
+        "gunbc.spark.managed_grant_install"
+      ],
+      "process_root_binding": "ServingArtifactRoots/model_link and selected serving target; rented release owner/paths; spark selected host/grant/key/rail facts",
+      "setup_dependents": "ensure partial dir, verified move to digest path, symbolic next-link+rename; explicit root install/grant retirement",
+      "semantic_split": "Retain exact installed artifact/model symlink and SSH/systemd access config. Immutable model/engine bytes should come through blob provider; authorization scope cannot dissolve into generic storage grants. Output receipts separate.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.spark.managed_access_apply",
+    "path": "dag/gunbc/spark/managed_access_apply.dag",
+    "operations": [
+      "install_authorized_key_script",
+      "spark_managed_access_apply_wet",
+      "spark_managed_access_bootstrap_ci_wet"
+    ],
+    "review": {
+      "name": "serving/model installation and access config",
+      "package": "M3",
+      "modules": [
+        "gunbc.serving.rented_release",
+        "gunbc.serving.serving_artifact_placement",
+        "gunbc.spark.fabric_rail_apply",
+        "gunbc.spark.managed_access_apply",
+        "gunbc.spark.managed_grant_install"
+      ],
+      "process_root_binding": "ServingArtifactRoots/model_link and selected serving target; rented release owner/paths; spark selected host/grant/key/rail facts",
+      "setup_dependents": "ensure partial dir, verified move to digest path, symbolic next-link+rename; explicit root install/grant retirement",
+      "semantic_split": "Retain exact installed artifact/model symlink and SSH/systemd access config. Immutable model/engine bytes should come through blob provider; authorization scope cannot dissolve into generic storage grants. Output receipts separate.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.spark.managed_grant_install",
+    "path": "dag/gunbc/spark/managed_grant_install.dag",
+    "operations": [
+      "spark_grant_install_ci_wet",
+      "spark_retired_dropin_converge"
+    ],
+    "review": {
+      "name": "serving/model installation and access config",
+      "package": "M3",
+      "modules": [
+        "gunbc.serving.rented_release",
+        "gunbc.serving.serving_artifact_placement",
+        "gunbc.spark.fabric_rail_apply",
+        "gunbc.spark.managed_access_apply",
+        "gunbc.spark.managed_grant_install"
+      ],
+      "process_root_binding": "ServingArtifactRoots/model_link and selected serving target; rented release owner/paths; spark selected host/grant/key/rail facts",
+      "setup_dependents": "ensure partial dir, verified move to digest path, symbolic next-link+rename; explicit root install/grant retirement",
+      "semantic_split": "Retain exact installed artifact/model symlink and SSH/systemd access config. Immutable model/engine bytes should come through blob provider; authorization scope cannot dissolve into generic storage grants. Output receipts separate.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.typed_remote_file_write",
+    "path": "dag/gunbc/typed_remote_file_write.dag",
+    "operations": [
+      "typed_remote_file_rename_argv",
+      "typed_remote_file_stage_argv",
+      "typed_remote_file_unlink_staging_argv",
+      "typed_remote_file_write_tee_command"
+    ],
+    "review": {
+      "name": "filesystem/platform command realizations",
+      "package": "platform-backend",
+      "modules": [
+        "gunbc.executor_privileged_operation",
+        "gunbc.owned_directory",
+        "gunbc.host_command_binding",
+        "gunbc.typed_remote_file_write",
+        "gunbc.live_deploy.operations"
+      ],
+      "process_root_binding": "executor_privileged_operation_argv / owned_directory_install_argv / host_write_file / typed_remote_file_* consume typed operation/target/transport path arguments, not an ambient application database root",
+      "setup_dependents": "Owning host effect or DeploymentSpec provides install owner/group/mode, desired path and transport; operations builders emit the same target",
+      "semantic_split": "Retain write/install/stage/rename/delete at selected host because local external consumers require files. These are provider realization boundaries; each caller-owned durable record is accounted in its domain resource, not a new DB here.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.url_file_acquisition",
+    "path": "dag/gunbc/url_file_acquisition.dag",
+    "operations": [
+      "ensure_url_file_parent",
+      "url_file_discard_infra_failure",
+      "url_file_discard_mismatch",
+      "url_file_publish"
+    ],
+    "review": {
+      "name": "acquired URL file installation",
+      "package": "M3",
+      "modules": [
+        "gunbc.url_file_acquisition"
+      ],
+      "process_root_binding": "subject.parent_directory/install_path, part_path and admitted URL/file digest supplied to url_file_publish",
+      "setup_dependents": "ensure_url_file_parent; move verified part to destination; cleanup mismatch/infra refusal",
+      "semantic_split": "Retain local placement consumed by external tool; artifact acquisition should use existing origin/blob provenance and local materialization provider, never path-only successful publish.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.workspace_commissioning_apply_readback",
+    "path": "dag/gunbc/workspace_commissioning_apply_readback.dag",
+    "operations": [
+      "workspace_commissioning_credential_remove",
+      "workspace_commissioning_submitter_remove"
+    ],
+    "review": {
+      "name": "credential custody and local activation",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.auth.approval_keyring_converge",
+        "gunbc.dispatch_credential_acquisition",
+        "gunbc.dispatch_credential_snapshot",
+        "gunbc.fleet.host_credential_custody_converge",
+        "gunbc.workspace_commissioning_apply_readback",
+        "gunbc.workspace_commissioning_executor_submission"
+      ],
+      "process_root_binding": "keyring converge owns /etc/gunbc-roadmap and approval store directories; credential acquisition takes HostDashboardInstance/attempt root; workspace executor publishes under /etc/credstore after root ownership reading",
+      "setup_dependents": "keyring_ensure_dirs; credential_acquisition_slots_directory/cursor_attempt_runtime_directory in dashboard_instance_directory_demands; custody_dir_ensure_argv; executor credential root ancestry readback",
+      "semantic_split": "Retain actual secret/keyring/credential files and create-only cursor ownership markers on consuming host. M1/C2 own nonsecret acquisition/approval metadata; do not upload raw credentials to generic fabric metadata. Preserve snapshot tombstone stage+atomic rename and provider-specific credential consumption.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "gunbc.workspace_commissioning_executor_submission",
+    "path": "dag/gunbc/workspace_commissioning_executor_submission.dag",
+    "operations": [
+      "workspace_executor_credential_publish"
+    ],
+    "review": {
+      "name": "credential custody and local activation",
+      "package": "security-platform",
+      "modules": [
+        "gunbc.auth.approval_keyring_converge",
+        "gunbc.dispatch_credential_acquisition",
+        "gunbc.dispatch_credential_snapshot",
+        "gunbc.fleet.host_credential_custody_converge",
+        "gunbc.workspace_commissioning_apply_readback",
+        "gunbc.workspace_commissioning_executor_submission"
+      ],
+      "process_root_binding": "keyring converge owns /etc/gunbc-roadmap and approval store directories; credential acquisition takes HostDashboardInstance/attempt root; workspace executor publishes under /etc/credstore after root ownership reading",
+      "setup_dependents": "keyring_ensure_dirs; credential_acquisition_slots_directory/cursor_attempt_runtime_directory in dashboard_instance_directory_demands; custody_dir_ensure_argv; executor credential root ancestry readback",
+      "semantic_split": "Retain actual secret/keyring/credential files and create-only cursor ownership markers on consuming host. M1/C2 own nonsecret acquisition/approval metadata; do not upload raw credentials to generic fabric metadata. Preserve snapshot tombstone stage+atomic rename and provider-specific credential consumption.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  },
+  {
+    "module": "product.printing.cad_runtime_converge",
+    "path": "dag/product/printing/cad_runtime_converge.dag",
+    "operations": [
+      "build_cad_environment",
+      "build_locked",
+      "converge_cad_runtime"
+    ],
+    "review": {
+      "name": "local package/toolchain release realization",
+      "package": "M3",
+      "modules": [
+        "gunbc.host.verified_archive_install",
+        "gunbc.package_delivery",
+        "gunbc.runner.runner_browser_toolchain",
+        "gunbc.runner.runner_qemu_toolchain",
+        "product.printing.cad_runtime_converge"
+      ],
+      "process_root_binding": "Verified archive plan supplies archives/staging/install target; Codex bundle typed release/build/publishing roots; browser/QEMU location.base; CAD environment spec derives prefix/marker/lock",
+      "setup_dependents": "digest-verified fetch; mktemp staging then no-replace publish; package current symlink; browser readback/grant drop-in; CAD create-only directory lock",
+      "semantic_split": "Immutable package/toolchain artifacts should use shared fabric blob/materialization provider. Preserve local installed binaries/current links/runtime marker. CAD directory lock is a local build exclusion primitive, separate M2 if generalized, not a metadata overwrite. Runtime/spec receipts remain identity/readback evidence.",
+      "existing_population": "UNOBSERVED. No runtime directory inspection; only source binding/desired declaration."
+    }
+  }
+]

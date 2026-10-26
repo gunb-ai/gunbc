@@ -1,0 +1,359 @@
+
+src/v1/stage0/src/behavioral_receipt_host.rs
+1426 run_receipt_driver fs::create_dir_all(&drv_dir).map_err(|e| format!("create {}: {e}", drv_dir.display()))?;
+1428 run_receipt_driver fs::write(&src_path, driver_src).map_err(|e| format!("write driver: {e}"))?;
+1585 behavioral_differential if let Err(e) = fs::write(mirror_path, candidate_source) {
+1592 behavioral_differential if let Err(e) = fs::write(mirror_path, &committed) {
+
+src/v1/stage0/src/bin/bootstrap_witness.rs
+243 copy_dir_recursive_bootstrap std::fs::create_dir_all(dest)
+254 copy_dir_recursive_bootstrap std::fs::copy(&src_path, &dst_path).unwrap_or_else(|e| {
+279 copy_stage0_support_modules std::fs::copy(&src, &dst)
+299 prepare_stage1_for_build std::fs::write(&cargo_toml, patched).unwrap();
+403 strict_compile_diagnostic_count let _ = std::fs::remove_dir_all(&out_dir);
+418 strict_compile_diagnostic_count let _ = std::fs::remove_dir_all(&out_dir);
+425 stage0_compile_accepts_dag_target let _ = std::fs::remove_dir_all(&source_dir);
+426 stage0_compile_accepts_dag_target std::fs::create_dir_all(&source_dir).unwrap();
+427 stage0_compile_accepts_dag_target std::fs::write(
+434 stage0_compile_accepts_dag_target let _ = std::fs::remove_dir_all(&out_dir);
+458 stage0_compile_accepts_dag_target let _ = std::fs::remove_dir_all(&source_dir);
+459 stage0_compile_accepts_dag_target let _ = std::fs::remove_dir_all(&out_dir);
+468 stage0_compile_imports_ephemeral_generated_source_root let _ = std::fs::remove_dir_all(&entry_root);
+469 stage0_compile_imports_ephemeral_generated_source_root let _ = std::fs::remove_dir_all(&generated_root);
+470 stage0_compile_imports_ephemeral_generated_source_root let _ = std::fs::remove_dir_all(&out_dir);
+471 stage0_compile_imports_ephemeral_generated_source_root std::fs::create_dir_all(entry_root.join("ephemeral")).unwrap();
+472 stage0_compile_imports_ephemeral_generated_source_root std::fs::create_dir_all(generated_root.join("generated")).unwrap();
+473 stage0_compile_imports_ephemeral_generated_source_root std::fs::write(
+480 stage0_compile_imports_ephemeral_generated_source_root std::fs::write(
+525 stage0_compile_imports_ephemeral_generated_source_root let _ = std::fs::remove_dir_all(&entry_root);
+526 stage0_compile_imports_ephemeral_generated_source_root let _ = std::fs::remove_dir_all(&generated_root);
+527 stage0_compile_imports_ephemeral_generated_source_root let _ = std::fs::remove_dir_all(&out_dir);
+537 bootstrap_stage0_to_stage1 let _ = std::fs::remove_dir_all(&stage1_dir);
+608 bootstrap_stage0_to_stage1 let _ = std::fs::remove_dir_all(&stage1_dir);
+616 bootstrap_fixed_point let _ = std::fs::remove_dir_all(&stage1_dir);
+640 bootstrap_fixed_point let _ = std::fs::remove_dir_all(&stage2_dir);
+659 bootstrap_fixed_point let _ = std::fs::remove_dir_all(&stage1_dir);
+660 bootstrap_fixed_point let _ = std::fs::remove_dir_all(&stage2_dir);
+664 bootstrap_fixed_point let _ = std::fs::remove_dir_all(&stage1_dir);
+665 bootstrap_fixed_point let _ = std::fs::remove_dir_all(&stage2_dir);
+674 performance_ratchet let _ = std::fs::remove_dir_all(&out_dir);
+695 performance_ratchet let _ = std::fs::remove_dir_all(&out_dir);
+709 ci_timing if let Ok(mut f) = std::fs::OpenOptions::new()
+710 ci_timing .create(true)
+711 ci_timing .append(true)
+714 ci_timing let _ = f.write_all(line.as_bytes());
+752 find_or_build_stage0 let _ = std::fs::remove_dir_all(&output_dir);
+794 find_or_build_stage0 let _ = std::fs::remove_dir_all(&stage1_target_dir);
+816 find_or_build_stage0 let _ = std::fs::remove_dir_all(&output_dir);
+949 bootstrap_l4_structural let _ = std::fs::remove_dir_all(&tmp);
+954 bootstrap_l4_structural std::fs::create_dir_all(parent).expect("create dir");
+956 bootstrap_l4_structural std::fs::write(&dest, &*file.content)
+975 bootstrap_l4_structural std::fs::create_dir_all(&test_dir).expect("create tests dir");
+978 bootstrap_l4_structural std::fs::write(test_dir.join("structural_tests.rs"), &test_content)
+1003 bootstrap_l4_structural let _ = std::fs::remove_dir_all(&tmp);
+
+src/v1/stage0/src/bin/carrier_realization_census.rs
+61 main match std::fs::write(&receipt_path, &receipt) {
+
+src/v1/stage0/src/bin/generic_identity_census.rs
+66 main match std::fs::write(&receipt_path, &receipt) {
+
+src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs
+153 unique_fs_witness_entry fs::write(&entry, rewritten)
+176 closure_scale_witness_entry fs::write(&entry, rewritten)
+247 write_http_pilot_fixture fs::create_dir_all(&op_dir).map_err(|e| format!("fixture op dir: {e}"))?;
+268 write_http_pilot_fixture fs::write(
+280 filesystem_write_witness_record_then_hermetic_replay_holds fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+324 filesystem_write_witness_record_then_hermetic_replay_holds let _ = fs::remove_dir_all(&store_dir);
+336 filesystem_write_closure_scale_record_then_hermetic_replay_holds fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+376 filesystem_write_closure_scale_record_then_hermetic_replay_holds let _ = fs::remove_dir_all(&store_dir);
+388 hermetic_fixture_staleness_fails_closed fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+415 hermetic_fixture_staleness_fails_closed fs::write(
+437 hermetic_fixture_staleness_fails_closed let _ = fs::remove_dir_all(&store_dir);
+509 record_response_drift_for_same_input_hash_fails_closed let _ = fs::remove_dir_all(&store_dir);
+603 recorded_fixture_store_roundtrip_value let _ = fs::remove_dir_all(&store_dir);
+611 hermetic_replay_rejects_corrupted_fixture_response fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+644 hermetic_replay_rejects_corrupted_fixture_response fs::write(
+666 hermetic_replay_rejects_corrupted_fixture_response let _ = fs::remove_dir_all(&store_dir);
+683 hermetic_replay_uses_fixture_not_live_fs_after_mutation fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+704 hermetic_replay_uses_fixture_not_live_fs_after_mutation fs::write(&target, b"MUTATED-LIVE-FS-CONTENT").map_err(|e| format!("mutate live file: {e}"))?;
+721 hermetic_replay_uses_fixture_not_live_fs_after_mutation let _ = fs::remove_dir_all(&store_dir);
+733 filesystem_hermetic_without_fixture_store_fails_closed fs::create_dir_all(&scratch).map_err(|e| format!("scratch dir: {e}"))?;
+753 filesystem_hermetic_without_fixture_store_fails_closed let _ = fs::remove_dir_all(&scratch);
+799 filesystem_read_record_then_hermetic_replay_holds fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+833 filesystem_read_record_then_hermetic_replay_holds let _ = fs::remove_dir_all(&store_dir);
+957 clock_now_record_then_hermetic_replay_holds fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+1002 clock_now_record_then_hermetic_replay_holds let _ = fs::remove_dir_all(&store_dir);
+1014 hermetic_clock_fixture_staleness_fails_closed fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+1039 hermetic_clock_fixture_staleness_fails_closed fs::write(
+1059 hermetic_clock_fixture_staleness_fails_closed let _ = fs::remove_dir_all(&store_dir);
+1076 env_get_record_then_hermetic_replay_holds fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+1111 env_get_record_then_hermetic_replay_holds let _ = fs::remove_dir_all(&store_dir);
+1123 hermetic_env_fixture_staleness_fails_closed fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+1148 hermetic_env_fixture_staleness_fails_closed fs::write(
+1168 hermetic_env_fixture_staleness_fails_closed let _ = fs::remove_dir_all(&store_dir);
+1211 diagnostic_redfish_record_then_hermetic_replay_holds fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+1251 diagnostic_redfish_record_then_hermetic_replay_holds let _ = fs::remove_dir_all(&store_dir);
+1289 hermetic_http_pilot_fixture_staleness_fails_closed fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
+1306 hermetic_http_pilot_fixture_staleness_fails_closed let _ = fs::remove_dir_all(&store_dir);
+
+src/v1/stage0/src/cli_run.rs
+667 drop let _ = std::fs::remove_dir_all(&self.path);
+691 project_roadmap_acceptance_event_history_from_authority_text_inner if let Err(error) = std::fs::remove_dir_all(&temp_dir) {
+699 project_roadmap_acceptance_event_history_from_authority_text_inner if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
+700 project_roadmap_acceptance_event_history_from_authority_text_inner .and_then(|_| std::fs::write(&overlay_path, authority_text))
+17392 emit .write_all(bytes.as_bytes())
+17735 measure_root_demand if let Err(e) = std::fs::write(&receipt_path, &json) {
+18139 serve_bind std::fs::remove_file(path)
+18151 serve_bind std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666)).map_err(
+18501 serve_write_response if let Err(e) = stream.write_all(response.as_bytes()) {
+18597 bootstrap_invocation_receipt_path std::fs::create_dir_all(receipt_root).map_err(|error| {
+20129 top_n_slowest_witnesses sorted.truncate(n);
+22268 collect_declared_source_ref_paths_for_closure paths.append(&mut declared);
+26415 collect_node_refs_inner bound.truncate(restore_to);
+26456 collect_node_refs_inner bound.truncate(siblings_restore_to);
+26513 collect_node_refs_inner bound.truncate(restore_to);
+
+src/v1/stage0/src/cli_run/checker_dependency.rs
+213 write_checker_inputs_record std::fs::write(out, inputs.join("\n") + "\n")
+
+src/v1/stage0/src/cli_run/emitted_crate_workspace_host.rs
+59 write_files std::fs::create_dir_all(parent).map_err(|e| {
+63 write_files std::fs::write(&path, &*file.content)
+133 run_emitted_crate_workspace let _ = std::fs::remove_dir_all(&root);
+
+src/v1/stage0/src/cli_run/native_lane_runner.rs
+515 prepare_emitted_compiler_for_entry std::fs::create_dir_all(binary_path.parent().unwrap_or(Path::new(".")))
+516 prepare_emitted_compiler_for_entry .and_then(|_| std::fs::copy(&executable, &binary_path).map(|_| ()))
+937 withdraw_old_route std::fs::rename(&original, &withdrawn).map_err(|e| {
+1000 drop if let Err(e) = std::fs::rename(withdrawn, &self.original) {
+1024 materialize_malformed_specimen std::fs::remove_dir_all(&root).map_err(|e| format!("clearing {}: {e}", root.display()))?;
+1030 materialize_malformed_specimen std::fs::create_dir_all(parent).map_err(|e| format!("creating {}: {e}", parent.display()))?;
+1031 materialize_malformed_specimen std::fs::write(&materialized, bytes)
+1591 run_native_binary std::fs::create_dir_all(parent).map_err(|e| {
+1598 run_native_binary std::fs::write(path, &output.stdout).map_err(|e| {
+1783 write_host_facts std::fs::create_dir_all(parent)
+1786 write_host_facts std::fs::write(path, text).map_err(|e| format!("writing {}: {e}", path.display()))
+2606 emitted_text_compiles_as_rust std::fs::create_dir_all(scratch)
+2609 emitted_text_compiles_as_rust std::fs::write(&source, text)
+2731 walk_cli_door std::fs::create_dir_all(&filesystem_probe)
+2753 walk_cli_door std::fs::create_dir_all(&stored)
+2755 walk_cli_door std::fs::write(stored.join("native_cli_door_probe.dag"), bytes)
+2952 walk_native_acquisition_projection_controls std::fs::remove_dir_all(&scratch_trees)
+2957 walk_native_acquisition_projection_controls std::fs::remove_file(absent.join(NATIVE_PROJECTION_SAME_NAMED_FILE)).map_err(|e| {
+2965 walk_native_acquisition_projection_controls std::fs::write(
+3081 copy_directory_tree std::fs::create_dir_all(to).map_err(|e| format!("creating {}: {e}", to.display()))?;
+3093 copy_directory_tree std::fs::copy(entry.path(), &target).map_err(|e| {
+3236 walk_population_controls std::fs::remove_dir_all(&probes)
+3239 walk_population_controls std::fs::create_dir_all(&empty_root)
+3607 parse_compiler_identity_digest paths.append(&mut closure);
+3672 write_parse_verdict_github_outputs let mut f = std::fs::OpenOptions::new()
+3673 write_parse_verdict_github_outputs .create(true)
+3674 write_parse_verdict_github_outputs .append(true)
+3706 keep_generation_one_executable std::fs::copy(&prepared.binary_path, &kept).map_err(|e| {
+3728 keep_generation_one_executable std::fs::write(&identity_path, prepared.closure_identity.as_bytes()).map_err(|e| {
+3737 keep_generation_one_executable std::fs::write(
+3752 keep_generation_one_executable std::fs::copy(&kept, &publisher).map_err(|e| {
+4072 native_serve_exchange if let Err(cause) = stream.write_all(request.as_bytes()) {
+4513 relay let _ = to.write_all(&buf[..n]).and_then(|()| to.flush());
+4762 open std::fs::create_dir_all(root).map_err(|cause| {
+4930 write_record_atomically let mut file = std::fs::File::create(&partial).map_err(unwritable)?;
+4931 write_record_atomically file.write_all(value.to_string().as_bytes())
+4933 write_record_atomically file.write_all(b"\n").map_err(unwritable)?;
+4935 write_record_atomically std::fs::rename(&partial, path).map_err(unwritable)
+5265 measured_spawn_trampoline match std::fs::write(&receipt, line) {
+5283 run_native_child_measured let _ = std::fs::remove_file(receipt);
+5292 run_native_child_measured std::fs::write(&argv_path, argv.join("\n"))
+
+src/v1/stage0/src/cli_run/native_product_cache.rs
+309 restore_from_shared_store if let Err(e) = std::fs::create_dir_all(store) {
+365 record_outcome if let Ok(mut f) = std::fs::OpenOptions::new()
+366 record_outcome .create(true)
+367 record_outcome .append(true)
+402 commit std::fs::create_dir_all(root).map_err(|e| format!("creating {}: {e}", root.display()))?;
+407 commit _ => std::fs::remove_dir_all(&dest)
+416 commit std::fs::create_dir_all(&staging).map_err(|e| format!("creating staging: {e}"))?;
+418 commit std::fs::copy(executable, staging.join(EXECUTABLE))
+422 commit std::fs::write(staging.join(MANIFEST), text)
+424 commit std::fs::write(staging.join(COMMITTED_MARKER), b"")
+426 commit match std::fs::rename(&staging, &dest) {
+433 commit let _ = std::fs::remove_dir_all(&staging);
+
+src/v1/stage0/src/cli_run/required_ci_measurement.rs
+85 write_required_ci_measurement_receipt std::fs::write(path, encoded)
+
+src/v1/stage0/src/cli_run/user_work_scope.rs
+556 observed_cgroup_bound_in Some(i) => current.truncate(i),
+
+src/v1/stage0/src/codex_app_server_stdio_session.rs
+64 run_codex_app_server_stdio_session std::fs::write(req.client_command_id_path, req.client_command_id)
+
+src/v1/stage0/src/emitted_closure_compile_host.rs
+721 drop let _ = std::fs::remove_dir_all(&self.path);
+737 create_private_probe_root std::fs::create_dir_all(base).map_err(|e| {
+758 create_exclusive_probe_root match std::fs::create_dir(&path) {
+848 write_probe_crate_files let _ = std::fs::remove_dir_all(&dir);
+1615 establish_discriminating_red if let Err(e) = std::fs::write(&path, &mutated) {
+1625 establish_discriminating_red let restore_write = std::fs::write(&path, &original);
+2791 retain_not_selected_identities std::fs::create_dir_all(dir)
+2793 retain_not_selected_identities std::fs::write(&path, body)
+
+src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs
+1027 post_for_breach .write_all(request.as_bytes())
+1218 finalize let _ = std::fs::remove_dir_all(worktree);
+1440 run_bound_transaction if let Err(e) = std::fs::write(&authority_path, &perturbed) {
+1924 serve_and_judge if let Err(e) = std::fs::write(authority_path, original_source) {
+
+src/v1/stage0/src/gunbc_file_transport_generated.rs
+24 gunbc_file_write_create_new match std::fs::OpenOptions::new()
+26 gunbc_file_write_create_new .create_new(true)
+38 gunbc_file_write_create_new staged.set_permissions(std::fs::Permissions::from_mode(declared))
+49 gunbc_file_write_create_new let _ = std::fs::remove_file(&staging_path);
+53 gunbc_file_write_create_new if let Err(staging_err) = staged.write_all(content) {
+54 gunbc_file_write_create_new let _ = std::fs::remove_file(&staging_path);
+58 gunbc_file_write_create_new let _ = std::fs::remove_file(&staging_path);
+62 gunbc_file_write_create_new let published = std::fs::hard_link(&staging_path, file_path);
+63 gunbc_file_write_create_new let _ = std::fs::remove_file(&staging_path);
+68 gunbc_file_link_create_new std::fs::hard_link(source_path, file_path)
+
+src/v1/stage0/src/main.rs
+347 write_output_files if let Err(e) = std::fs::create_dir_all(output_dir) {
+367 write_output_files if let Err(e) = std::fs::create_dir_all(&src_dir) {
+376 write_output_files if let Err(e) = std::fs::create_dir_all(parent) {
+384 write_output_files if let Err(e) = std::fs::write(&out_path, &*file.content) {
+1527 run_one_function if let Err(err) = out.write_all(bytes.as_bytes()).and_then(|()| out.flush())
+
+src/v1/stage0/src/memory_governor.rs
+1826 cgroup_leaf_create match std::fs::create_dir(dir) {
+1838 cgroup_leaf_remove_if_created let _ = std::fs::remove_dir(dir);
+1912 apply_memory_cgroup_bind let _ = std::fs::write("/sys/fs/cgroup/cgroup.subtree_control", "+memory");
+1917 apply_memory_cgroup_bind if std::fs::write(leaf.join("memory.max"), bound.to_string()).is_err() {
+1932 apply_memory_cgroup_bind if std::fs::write(leaf.join("cgroup.procs"), std::process::id().to_string()).is_err() {
+
+src/v1/stage0/src/namespace_baseline.rs
+1472 reconstruct_base_index let _ = std::fs::remove_dir_all(&base_tree);
+1492 reconstruct_base_index let _ = std::fs::remove_dir_all(&base_tree);
+1515 reconstruct_base_index let _ = std::fs::remove_dir_all(&base_tree);
+1520 reconstruct_base_index let _ = std::fs::remove_dir_all(&base_tree);
+1831 materialize_revision_closure_at std::fs::create_dir_all(parent).map_err(|e| {
+1839 materialize_revision_closure_at std::fs::copy(scan.join(rel), &to).map_err(|e| {
+1849 materialize_revision_closure_at let _ = std::fs::remove_dir_all(&scan);
+1870 revision_closure_paths let _ = std::fs::remove_dir_all(&scan);
+1965 materialize_revision_paths std::fs::create_dir_all(dest).map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+1974 materialize_revision_paths std::fs::write(&tar_path, &archive).map_err(|e| {
+1999 materialize_revision_paths let _ = std::fs::remove_file(&tar_path);
+2266 load_parse_environment_at let _ = std::fs::remove_dir_all(&dest);
+2482 kernel_names_at let _ = std::fs::remove_dir_all(&dest);
+
+src/v1/stage0/src/partition_crate_boundary_host.rs
+156 run_partition_crate_boundary_over let _ = fs::create_dir_all(parent);
+158 run_partition_crate_boundary_over match fs::write(&target, &file.rendered) {
+
+src/v1/stage0/src/recorded_fixture.rs
+275 record fs::create_dir_all(parent).map_err(|e| FixtureError::Io {
+284 record fs::write(&path, bytes).map_err(|e| FixtureError::Io { path, source: e })
+
+src/v1/stage0/src/required_regen_host.rs
+355 run_required_regen_scoped fs::remove_dir_all(&candidate_dir)
+1562 write_emitted_tree fs::remove_dir_all(dest_src).map_err(|e| format!("remove {}: {e}", dest_src.display()))?;
+1564 write_emitted_tree fs::create_dir_all(dest_src).map_err(|e| format!("create {}: {e}", dest_src.display()))?;
+1581 write_emitted_tree fs::create_dir_all(parent)
+1594 write_emitted_tree fs::write(&out_path, normalized)
+1604 copy_hand_maintained_support fs::copy(&source, dest_src.join(file_name))
+1634 copy_dir_recursive fs::create_dir_all(dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
+1641 copy_dir_recursive fs::copy(&path, dest.join(entry.file_name()))
+1800 normalize_population fs::remove_dir_all(work_dir).map_err(|e| format!("remove {}: {e}", work_dir.display()))?;
+1802 normalize_population fs::create_dir_all(work_dir).map_err(|e| format!("create {}: {e}", work_dir.display()))?;
+1808 normalize_population fs::write(path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
+1859 normalize_population let _ = fs::remove_dir_all(work_dir);
+1899 normalize_cache_write fs::write(&tmp, &bytes).map_err(|e| format!("write {}: {e}", tmp.display()))?;
+1900 normalize_cache_write fs::rename(&tmp, &path).map_err(|e| format!("rename {}: {e}", path.display()))
+2119 with_normalize_cache fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+2165 normalize_generated_source_attempt let writer = std::thread::spawn(move || stdin.write_all(owned.as_bytes()));
+2187 normalize_with_workdir fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
+2216 write_receipt fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+2220 write_receipt fs::write(path, json).map_err(|e| format!("write receipt {}: {e}", path.display()))?;
+3683 restore_regen_convergence_journal_for_subject fs::remove_dir_all(&restore_tmp)
+3686 restore_regen_convergence_journal_for_subject fs::create_dir_all(&restore_tmp)
+3694 restore_regen_convergence_journal_for_subject fs::copy(&backup, restore_tmp.join(&entry.backup_name))
+3705 restore_regen_convergence_journal_for_subject fs::rename(&prepared, &destination).map_err(|e| {
+3713 restore_regen_convergence_journal_for_subject fs::remove_file(&destination).map_err(|e| {
+3721 restore_regen_convergence_journal_for_subject fs::remove_dir_all(&root)
+3751 journal_paths_for_subject fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
+3807 journal_paths_for_subject fs::copy(&source, root.join(&backup_name))
+3823 journal_paths_for_subject fs::write(&manifest_path, bytes).map_err(|e| format!("write {}: {e}", manifest_path.display()))
+4851 run_built_seed_regen fs::remove_file(&receipt_path).map_err(|e| {
+5580 install_convergence_stage_with_backend fs::copy(&candidate, &destination).map_err(|e| {
+6560 run_regen_round_cost fs::write(
+6568 run_regen_round_cost fs::remove_dir_all(&completed_journal)
+6635 run_regen_round_cost fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+6637 run_regen_round_cost fs::write(&receipt_path, &rendered)
+
+src/v1/stage0/src/target_invocation_host.rs
+1636 run_census_infer_reading let _ = std::fs::remove_dir_all(scratch.join(name));
+1643 run_census_infer_reading std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
+1645 run_census_infer_reading std::fs::write(&target, content).map_err(|e| format!("{label_name}: {e}"))?;
+1855 run_ambient_name_census let _ = std::fs::remove_dir_all(scratch.join(name));
+1861 run_ambient_name_census std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+1863 run_ambient_name_census std::fs::write(&target, content).map_err(|e| e.to_string())?;
+1966 run_namespace_wave_binding_diff let _ = std::fs::remove_dir_all(scratch.join(name));
+1973 run_namespace_wave_binding_diff std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+1975 run_namespace_wave_binding_diff std::fs::write(&target, content).map_err(|e| e.to_string())?;
+2060 run_base_ambient_name_census let _ = std::fs::remove_dir_all(&tree);
+2061 run_base_ambient_name_census std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
+2199 run_native_process_memory std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
+2201 run_native_process_memory std::fs::write(&target, read_str("native_process_memory_control_content")?)
+
+src/v1/stage0/src/v1_interpreter.rs
+1188 detach_portable_children PortableValue::List(items) => pending.append(items),
+2248 portable_value_from_ctx_at path.truncate(len_before);
+8808 eval_binop result.append((*b_items).clone());
+14159 eval_algebra_method result.append((*other).clone());
+18220 dispatch_shell .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
+18371 spawn_shell_detached std::fs::File::create(path).map_err(|err| InterpError::ShellSpawnRefused {
+18875 write_file_owner_only let mut file = OpenOptions::new()
+18877 write_file_owner_only .create_new(true)
+18880 write_file_owner_only file.write_all(content)?;
+19628 dispatch_file return match std::fs::remove_file(&path) {
+19915 dispatch_file match std::fs::write(&path, content.as_bytes()) {
+22131 run_arm std::fs::create_dir_all(&reader_bin).map_err(|e| format!("create reader bin: {e}"))?;
+22132 run_arm std::fs::create_dir_all(&legacy_bin).map_err(|e| format!("create legacy bin: {e}"))?;
+22136 run_arm std::fs::copy("/bin/true", &reader_probe)
+22165 run_arm std::fs::copy("/bin/false", &replacement)
+22167 run_arm std::fs::rename(&replacement, &legacy_probe)
+22176 run_arm std::fs::write(&staged, b"hostile-writer")
+22178 run_arm std::fs::rename(staged, installed)
+22187 run_arm let _ = std::fs::remove_file(reader_probe);
+22213 run_arm std::fs::create_dir_all(&root).map_err(|e| format!("create fixture root: {e}"))?;
+22235 run_arm let _ = std::fs::remove_dir_all(&root);
+22411 eval_emit_host_run_transport_builtin std::fs::create_dir_all(&workspace).map_err(|e| {
+22423 eval_emit_host_run_transport_builtin if let Err(cleanup) = std::fs::remove_dir_all(&workspace) {
+22600 eval_emit_host_native_cache_evict_builtin match std::fs::remove_dir_all(&workspace_dir) {
+22798 run_cached_process_spec std::fs::create_dir_all(&realization_workspace).map_err(|e| {
+22813 run_cached_process_spec let publish_lock = std::fs::OpenOptions::new()
+22814 run_cached_process_spec .create(true)
+22815 run_cached_process_spec .truncate(false)
+22832 run_cached_process_spec std::fs::create_dir_all(&workspace).map_err(|e| {
+23224 emit_host_materialize_workspace_files std::fs::create_dir_all(parent).map_err(|e| {
+23228 emit_host_materialize_workspace_files std::fs::write(&full, text).map_err(|e| {
+23384 emit_host_run_transport_cached_in_workspace std::fs::write(&ready_marker, b"1").map_err(|e| {
+23391 emit_host_run_transport_cached_in_workspace std::fs::write(&cold_compile_receipt, cold_compile_nanos.to_string()).map_err(|e| {
+23451 emit_host_run_transport_in_workspace std::fs::create_dir_all(parent)
+23454 emit_host_run_transport_in_workspace std::fs::write(&full, text)
+23824 eval_builtin result.append((*b_items).clone());
+24064 eval_builtin result.append((*b_items).clone());
+
+src/v1/stage0/src/v1_rt.rs
+268 v1_concat self.append(other);
+770 list_concat a.append(b);
+985 rc_list_concat Rc::make_mut(&mut result).append((*b).clone());
+1651 gunbc_file_write_create_new match std::fs::OpenOptions::new()
+1653 gunbc_file_write_create_new .create_new(true)
+1665 gunbc_file_write_create_new staged.set_permissions(std::fs::Permissions::from_mode(declared))
+1676 gunbc_file_write_create_new let _ = std::fs::remove_file(&staging_path);
+1680 gunbc_file_write_create_new if let Err(staging_err) = staged.write_all(content) {
+1681 gunbc_file_write_create_new let _ = std::fs::remove_file(&staging_path);
+1685 gunbc_file_write_create_new let _ = std::fs::remove_file(&staging_path);
+1689 gunbc_file_write_create_new let published = std::fs::hard_link(&staging_path, file_path);
+1690 gunbc_file_write_create_new let _ = std::fs::remove_file(&staging_path);
+1695 gunbc_file_link_create_new std::fs::hard_link(source_path, file_path)

@@ -1,6 +1,10 @@
 # Fabric DB
 
-The fabric DB is gunbc's own store for the fabric's durable state. The operator decided on 2026-09-19 to move off git: the fabric needs its own storage anyway and will grow it toward a Colossus-like shape, with Cloudflare R2 as a durability tier. Its first consumer is the fabric event log (`gunbc.fabric.fabric_event_log`), which carries every capacity transaction: serving seats and upstream quota.
+The fabric DB is gunbc's own store for the fabric's durable state. The operator decided on 2026-09-19 to move the fabric event log off Git. Its first consumer, `gunbc.fabric.fabric_event_log`, carries capacity transactions, including serving seats and upstream quota.
+
+**Target-policy supersession, 2026-10-23:** Brian replaced this plan's fixed one-host/one-root placement and R2-as-step-4B-durability-tier policy with contract-constrained arbitrage among this host's disk, another host's served disk, and R2. The authority for that target, the verified current baseline, interfaces, complete migration inventory and staffing is [`gunbc.plans.logical_work_realization::logical_work_realization_plan`](../../dag/gunbc/plans/logical_work_realization.dag). Cost and latency readings must be real and cited; missing evidence remains `SelectionNeedsEvidence`. No backend has a fixed role. One linearization point **per head**, durability, confidentiality, access and state continuity remain constraints. This design change does not move the incumbent store or authorize a deployment.
+
+The September rollout and drain below are historical receipts, not instructions to discard the state of a new cohort. In particular, the still-Git-backed `roadmap_event_carrier` is a different authority from the already-migrated fabric event log and requires its own complete state transition.
 
 ## What it is
 
@@ -19,11 +23,11 @@ Three facts, kept apart (DESIGN §3):
 - **Realization:** three pieces.
   - `gunbc.fabric.fabric_storage_file_store`: heads are `gunbc.durable_cas_file_store` slots, and objects are write-once files beside them.
   - `gunbc.fabric.fabric_storage_serve`: the served endpoint, one `gunbc serve` process on the placed host, loopback-bound behind `tailscale serve`.
-  - `gunbc.fabric.fabric_storage_client`: the caller-side binding. It runs in process on the placed host and makes one bounded HTTPS POST anywhere else.
+  - `gunbc.fabric.fabric_storage_client`: the caller-side binding. The current default placement is reached through an admitted local door/socket or HTTPS; separately admitted host-local file bindings also exist.
   - **Wire:** `gunbc.fabric.fabric_storage_wire` is the one text form every outcome crosses the hop in.
-- **Policy:** `gunbc.fabric.fabric_storage_placement`, one host and one root. Nothing downstream names the host.
+- **Incumbent policy:** `gunbc.fabric.fabric_storage_placement`, one placed default store on the prod-role host. This is the current deployment, not the target policy. Its replacement is the arbitrage program above; a changed quote alone never relocates existing mutable authority.
 
-## Steps 1–3 (this change)
+## Steps 1–3 (historical September rollout)
 
 1. **Model:** the interface, as above.
 2. **First realization:**
@@ -48,34 +52,34 @@ After the deploy, wait at least the seat term before trusting a seat count. A se
 
 The git repository at `/opt/gunbc/fabric-event-log.git` on srv1 is left in place, read-only, as history. Nothing consults it.
 
-### Access
+### Access today (source-verified 2026-10-23)
 
-The backend binds 127.0.0.1 and is reached only through `tailscale serve` on srv1's port 10000. So only tailnet members reach it, and the `Tailscale-User-Login` header is exactly as trustworthy as `extdeps.tailscale.identity` states.
+The served deployment is loopback-bound behind `tailscale serve`; the local door/socket and HTTPS routes have distinct admission. `Tailscale-User-Login` has the standing declared by `extdeps.tailscale.identity`. The protected `/state` route requires one writer MAC for **every operation**, including reads. See `fabric_storage_binding`, `fabric_storage_client` and `fabric_storage_serve` for the executable policy.
 
-**Declared gap:** no principal is refused. Any tailnet member that reaches the listener may append. Restricting appends needs a modeled roster of fabric writer principals, one sufficient for the handler to refuse a login outside it. That roster is the next rung.
+The original unrestricted-append paragraph is superseded; it is not a current access claim. The remaining uncertainty, readiness and interface gaps are recorded in the new plan's verified-baseline section. Candidate pricing does not confer access or bypass the admitted route.
 
 ## Two planes
 
-The fabric stores two kinds of thing, and they get two interfaces over one placement policy and one transport family:
+The fabric stores two kinds of thing. Their contracts remain distinct while placement is selected from requirements and evidence:
 
 - **Metadata plane:** `std.fabric_storage`. Small structured immutable objects whose preimage travels inside one request, links the store walks, compare-and-set heads, durable history. An object body is `NonEmptyStr`; it does not grow a binary constructor, because fusing bulk bytes into this wire would push every existing client through a binary rewrite.
 - **Blob plane:** `std.fabric_blob`. Opaque files that live on disk on both sides of a transfer, under an exact address (an admitted cryptographic key, not the content digest). A read stages the bytes in a directory the transfer minted and mints a sealed `FabricBlobReading` (SHA-256 and byte size derived from the staged file); whatever owns the bytes' meaning verifies them from that reading. Publication is create-if-absent; there is no listing, no prefix fallback, no overwrite and no delete on the publisher's surface. Objects are whole, up to a bound the placement declares, and an object over it refuses before upload.
 
 `std.cache_interface` already distinguishes `StructuredArtifact` from `RawBytes`, `TarArchive` and `FileTree`; the metadata plane carries the first, the blob plane the others.
 
-## Steps 4–5 (the program)
+## Steps 4–5 (historical program, revised target above)
 
 **4A. Whole-object R2 blob realization (the build cache is its first consumer).**
 
 - The R2 staged-file transfer is `gunbc.cloudflare.r2_staged_transfer`, extracted below the durable origin's provenance. The durable origin (`gunbc.cloudflare.r2_origin_object`, which alone mints `OriginReading`) and the blob plane (`gunbc.fabric.fabric_blob_r2`, which mints `FabricBlobReading`) both consume it; neither shares the other's provenance carrier.
-- Create-if-absent object writes are **not** missing: `extdeps.tools.curl` sends a signed `If-None-Match: *` and the transfer classifies stored / already present / refused / outcome-unknown. What is still missing is the ETag-conditioned put a head needs (4B).
+- Create-if-absent object writes are **not** missing: `extdeps.tools.curl` sends a signed `If-None-Match: *` and the transfer classifies stored / already present / refused / outcome-unknown. ETag-conditioned heads also now exist in `fabric_storage_r2_head::{r2_head_read,r2_head_advance}`. They are not yet a complete R2 realization behind the shared binding: history, missing-target refusal and other gaps are explicit fabric-integrator obligations in the new plan.
 - Placement: the cache is a third private bucket, the `FabricCacheBlobs` purpose in `gunbc.cloudflare.r2_origin`, because its writer (one canonical publisher), its readers and its retention differ from the durable and boot buckets. It is a placement, not a third store: the interface is `std.fabric_blob`. Its layout, object bound and release are `gunbc.fabric.fabric_blob_placement`.
 - Retention is physical release by age (`std.cache_interface` `ReleasedAfterInterval`), realized by an R2 lifecycle rule (`extdeps.cloudflare.r2_lifecycle`) that `gunbc.cloudflare.r2_bucket_ensure` converges with readback. It is not a freshness window: a present object stays a valid hit, and a released one is an established miss. It bounds object age only; peak bytes and cost stay unestablished until pack size and publication rate are measured.
-- A run that has not built `gunbc` reaches the blob plane through emitted workflow shell that realizes the same operation plans (key, size bound, conditional write, verdicts); it does not respell them.
+- `fabric_blob_shell` retains an operation-plan shell realization and its evidence. The 2026-10-23 audit found no production caller of its get/put script producers in `dag/` or `src/v2/`; this historical intended route is not evidence of current workflow execution. The seed does have a native-product restore caller, inventoried in the new plan.
 
-**4B. R2 durability for the metadata plane.** Replicate immutable metadata objects to R2; the srv1 file store stays the head linearization point. R2 holds heads only once an ETag-conditioned put is modeled and can serve as the compare-and-set.
+**4B fixed role is superseded.** R2 is an eligible realization for whichever logical contracts its evidence satisfies; it is not permanently a replica tier, and srv1 is not permanently the linearization host. Arbitrage preserves one linearization point per head, required history and authority continuity. Existing metadata objects or heads do not move until their cohort's admitted cut reconciles them.
 
-**5. Colossus-like growth.** Multipart and chunked blobs (lifting 4A's whole-object bound), chunk manifests, resumable transfer, replication across hosts with an explicit metadata authority (which host linearizes which head), failover that preserves one linearization point per head, and collection of unreachable chunks.
+**5. Remaining capability directions.** Multipart and chunked blobs, resumable transfer, replication with explicit head authority, failover preserving that authority, and collection of unreachable chunks remain capability questions. They are not fixed backend roles or permission to bypass the new plan's selection, retention, release and state-transition contracts.
 
 The metadata interface already leaves room: object refs are `ContentHash` (a family change is a new mint, not a new type), heads are per name (so heads can shard by name), and every failure a replicated store adds (an unreachable replica, a stale read) has an existing arm to land in. The blob interface leaves the same room: an address and a reading do not change when an object is carried in chunks.
 

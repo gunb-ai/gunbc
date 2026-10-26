@@ -1,0 +1,38 @@
+# Pinned filesystem/shell source audit
+
+Source: 7daaddd1f0ce99734e1ddb57138313701455c758. No repository edits, builds, new tests or runtime filesystem probes. DESIGN.md and docs/plans/fabric-storage.md informed semantic dispositions.
+
+## Reproduction
+
+From that checkout, run `python3 /tmp/storage_effect_audit_7daaddd1f0ce/scan.py`, then `supplement.py`, `classify.py`, `refine.py`, `rust_review.py`, and `local_compiler_review.py` in that directory. These are disposable audit tools, not a permanent census/gate or parallel model authority. The exact patterns and name sets are persisted in `selectors.json`, `supplemental_inventory.json` and the scripts. The JSON source excerpts and line locations make each row inspectable without rerunning an effect.
+
+Primary universe: `git ls-files -z`, 10381 tracked paths, 10369 UTF-8/text-readable files and 12 nontext files. Primary language/config selector: .dag/.rs/.py/.sh/.yml/.yaml/.toml or a basename containing Dockerfile/Makefile: 9761 files. Hidden .github workflow files are included because selection is from Git, not rg's hidden-file defaults. Primary result: 635 candidate files and 4625 lexical sites. These are NOT durable domain counts. A typed-constructor/service supplement adds two otherwise absent files; final candidate roster is 637 files.
+
+Read-only text outside that language selector is not silently equated to absence of effects: root audited .githooks/{pre-commit,pre-push,generated-artifact-merge}, tools/fabric_ci_fci1_bounded_execution_context.env, and recovered initramfs.spec.in separately. Swift/iOS persistence and fixture C/JS are joined from /tmp/ios-persistence-inventory.md under the parallel owner. Markdown, JSON/text evidence, lockfiles, source patches/recovered files, images and binaries are not executable source merely because they contain historical commands. The parent integration should retain explicit dispositions for its supplemental files.
+
+## Selectors and interpretation
+
+Direct DAG operations: Filesystem.{Write,WriteBytes,WriteOwnerOnly,WriteCreateNew,WriteCreateNewWithMode,LinkCreateNew,Delete}; shell.{Mkdir,Mktemp,Link,Remove,Move,Chmod,Copy} exact operation names in selectors.json. Filesystem helper assessors `filesystem_delete/create_new/link_create_new` are included as boundary anchors, but their presence alone is not an effect. GNU coreutils/mkdir/chmod/chown argv constructors and OpenBMC remote filesystem operations are explicitly enumerated by supplement.py; constructor rows are separated from realized stores.
+
+Direct DAG/Rust matching strips comments, ordinary and raw strings and character literals while retaining newlines; escaped newline Rust strings are handled. Quoted source is separately inspected for generated Rust effects and shell program/redirection candidates. Shell candidate programs: mkdir/install/cp/mv/rm/rmdir/ln/chmod/chown/touch/truncate/tee/dd/mktemp, including absolute command paths and argv string tokens. Redirection excludes /dev/null, stderr/stdout forwarding. Actual command builders, exported shell realizations and generated workflow sources are inspected; CSS `>` and English/model/example words are explicit false positives.
+
+Rust mutation candidates: fs/std::fs/tokio::fs write/copy/rename/remove/create/link/set_permissions; File/OpenOptions/DirBuilder constructors; write_all/set_len/set_permissions/create_new/create/append/truncate methods. These deliberately overselect: Vec/String append/truncate, formatter/socket/stdout/pipe writes and OpenOptions configuration are not file publication. rust_review.py bounds each cfg(test) item/block by its braces instead of wrongly excluding everything after the first test. This found production regeneration journal functions after an interspersed test module.
+
+Supplemental Rust check used unqualified names `write rename create_dir create_dir_all remove_file remove_dir remove_dir_all copy symlink hard_link set_permissions` with `(?<![:.\w])(?:NAME)\s*\(` after lexical stripping, excluding fn declarations. All 14 matches resolve to already-inventoried local test helpers in cli_run.rs, emitted_closure_compile_host.rs, or interpreter_dispatch_bijection_real_roster_red.rs; no new production domain. Direct `use (std|tokio)::(fs|os::unix::fs)` imports introduced none of those functions. Additional `.write(`, `.write_fmt(` and `write!/writeln!` sites are in rust_import_write_supplement.json: real file macro writes are native_product_cache receipt append and native_lane_runner GITHUB_OUTPUT, both already present through OpenOptions; other macros format Display values or write stderr/process pipes. phase_profile.rs::emit_record writes stderr only.
+
+Python fixture writes are included; four generated Python source `.append` matches (cadquery_realization, print_preparation_kernel, review_realization, deposited_geometry) are list construction, explicitly excluded.
+
+## Semantic deliverables
+
+- classified_inventory.json: every candidate file, exact sites, initial semantic class, binding/path/declaration evidence and state-standing field.
+- durable_resources.json / durable_roster.md: 26 named durable resources with exact module roster, operation partition, one accountable package, entry binding, provisioning, invariants and current-state standing. Mixed-source operations are split (OCI launch record M4 vs exclusive lock M2). Other direct-CAS/hold resources join the parent inventory.
+- local_effect_review.json / .md: all 61 files classified as local/mixed retained effect, source-reviewed by shared external-process/platform/materialization contract. Calls out durable exit spool, SOL marker/evidence, and local installed-tree attestations that generic 'local' would hide.
+- compiler_effect_review.json / .md: all 45 compiler/seed candidate files (including native_product_cache). Explicit persistent resources: native product cache, cached native workspace and publication lock, census run history, rustfmt disk cache, regeneration rollback journal, recorded fixture store, and C2 supervised command-ID adapter. Compiler emission, kernel cgroup files, socket operations, stdio, isolated tests and collection methods have concrete exclusions.
+- /tmp/evidence-effect-dispositions.md (parallel owner): supersedes generic preliminary local_output_adapter labels for the original 91 report/receipt/output modules.
+- /tmp/ios-persistence-inventory.md (parallel owner): Swift client persistence and fixture C/JS.
+
+## Limits and standing
+
+This is a pinned source boundary inventory and staffing map, not semantic execution coverage. Arbitrarily computed argv/shell commands, higher-order carriers and path selectors can be invisible to any finite token set; transport/provider source definitions and parent effect inventories must close those paths. No static count proves a live store empty or unused. Dynamic CLI/source invocation can select exported functions even when ordinary call-reference search finds no caller. In particular deploy_transition mutation functions have no repository symbol uses outside definitions/prose at this pin: that is a selected-root gap, not proof that old files do not exist. Megarac KVM start is explicitly unavailable in current source; historical journal evidence remains meaningful.
+
+All deployed population fields are UNOBSERVED. Source desired paths, enrollment lists, historical receipt fixtures and prose saying 'pre-provisioned' are recorded as their actual evidence kind; they are never promoted to current machine measurements. Final semantic resource/interface choices remain review judgments. Parent supplemental inventories are necessary joins, not optional examples.

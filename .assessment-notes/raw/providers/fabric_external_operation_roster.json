@@ -1,0 +1,3411 @@
+[
+  {
+    "module": "test.manual.snapshot_census_wet",
+    "symbol": "census_wet_snapshot",
+    "callee": "roadmap_event_snapshot_template",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 43
+  },
+  {
+    "module": "test.manual.snapshot_census_wet",
+    "symbol": "census_wet_snapshot",
+    "callee": "carrier_exec",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 44
+  },
+  {
+    "module": "test.manual.snapshot_census_wet",
+    "symbol": "census_wet_closed",
+    "callee": "roadmap_event_snapshot_close",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 52
+  },
+  {
+    "module": "test.manual.snapshot_census_wet",
+    "symbol": "snapshot_census_wet",
+    "callee": "roadmap_event_carrier_layout",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 62
+  },
+  {
+    "module": "test.manual.snapshot_census_wet",
+    "symbol": "snapshot_census_wet",
+    "callee": "roadmap_event_carrier_layout",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 63
+  },
+  {
+    "module": "test.manual.snapshot_census_wet",
+    "symbol": "snapshot_census_wet",
+    "callee": "roadmap_event_carrier_layout",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 81
+  },
+  {
+    "module": "gunbc.cloudflare.r2_origin_object",
+    "symbol": "classify_origin_put",
+    "callee": "classify_r2_put",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 117
+  },
+  {
+    "module": "gunbc.cloudflare.r2_origin_object",
+    "symbol": "put_origin_object",
+    "callee": "r2_put_staged_file",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 233
+  },
+  {
+    "module": "gunbc.cloudflare.r2_origin_object",
+    "symbol": "classify_origin_fetch",
+    "callee": "classify_r2_fetch",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 260
+  },
+  {
+    "module": "gunbc.cloudflare.r2_origin_object",
+    "symbol": "fetch_origin_object",
+    "callee": "r2_fetch_into_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 297
+  },
+  {
+    "module": "gunbc.cloudflare.r2_origin_object",
+    "symbol": "fetch_origin_object",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 307
+  },
+  {
+    "module": "gunbc.cloudflare.r2_conditional_put_race_probe",
+    "symbol": "race_seed",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 540
+  },
+  {
+    "module": "gunbc.cloudflare.r2_conditional_put_race_probe",
+    "symbol": "race_cleanup",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 598
+  },
+  {
+    "module": "test.manual.issue_command_wet",
+    "symbol": "issue_command_wet",
+    "callee": "roadmap_event_carrier_layout",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 15
+  },
+  {
+    "module": "test.manual.issue_command_wet",
+    "symbol": "issue_command_wet",
+    "callee": "roadmap_events_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 26
+  },
+  {
+    "module": "test.manual.issue_command_wet",
+    "symbol": "issue_command_wet",
+    "callee": "carrier_snapshot_close_failures",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 32
+  },
+  {
+    "module": "test.manual.issue_command_wet",
+    "symbol": "issue_command_wet",
+    "callee": "carrier_snapshot_close_failures",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 42
+  },
+  {
+    "module": "test.claim.workspace_allocation_storage_wet_witness",
+    "symbol": "workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 18
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "object_path",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 154
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "opened",
+    "callee": "local_store_initialize",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 210
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "commit_then_read_back_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 226
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "commit_then_read_back_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 227
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "corruption_is_an_integrity_refusal_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 246
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "corruption_is_an_integrity_refusal_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 249
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "wrong_kind_refuses_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 272
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "incomplete_refuses_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 313
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_second_writer_converges_on_the_committed_artifact_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 329
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_second_writer_converges_on_the_committed_artifact_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 330
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_second_writer_converges_on_the_committed_artifact_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 339
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 354
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 355
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 356
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 373
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 380
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 387
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_batch_answers_each_request_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 400
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_batch_answers_each_request_by_real_execution",
+    "callee": "local_store_lookup_batch",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 401
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "bundle_family_budget_bytes",
+    "callee": "local_store_family_budget",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 424
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "root_object_bytes",
+    "callee": "local_store_is_store_file_name",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 436
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "root_object_bytes",
+    "callee": "local_store_object_bytes",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 437
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "root_object_bytes",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 437
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "the_family_budget_holds_on_disk_across_overrun_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 469
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_artifact_over_its_family_budget_refuses_and_evicts_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 490
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_artifact_over_its_family_budget_refuses_and_evicts_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 491
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_artifact_over_its_family_budget_refuses_and_evicts_nothing_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 495
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_artifact_over_its_family_budget_refuses_and_evicts_nothing_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 496
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_family_without_a_declared_budget_refuses_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 510
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_corrupt_occupancy_index_refuses_and_never_reads_as_empty_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 524
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_corrupt_occupancy_index_refuses_and_never_reads_as_empty_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 525
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_corrupt_occupancy_index_refuses_and_never_reads_as_empty_by_real_execution",
+    "callee": "local_store_index_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 525
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_corrupt_occupancy_index_refuses_and_never_reads_as_empty_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 527
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_corrupt_occupancy_index_refuses_and_never_reads_as_empty_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 530
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_object_no_index_names_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 545
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_object_no_index_names_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 547
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_object_no_index_names_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 548
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_object_no_index_names_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 553
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_object_no_index_names_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 554
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_object_no_index_names_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 555
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "the_occupancy_index_slot_stays_within_its_window_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 571
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "the_occupancy_index_slot_stays_within_its_window_by_real_execution",
+    "callee": "local_store_index_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 572
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "the_occupancy_index_slot_stays_within_its_window_by_real_execution",
+    "callee": "local_store_hold_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 573
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "recency_is_recorded_once_and_never_fails_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 589
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "recency_is_recorded_once_and_never_fails_by_real_execution",
+    "callee": "local_store_record_recency",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 594
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "recency_is_recorded_once_and_never_fails_by_real_execution",
+    "callee": "local_store_record_recency",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 601
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "the_host_ceiling_is_the_declared_sum_of_family_budgets",
+    "callee": "local_store_budget_sum",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 618
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "root_object_names",
+    "callee": "local_store_is_object_name",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 631
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_execution",
+    "callee": "local_store_with_family",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 669
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 669
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 673
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 677
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution",
+    "callee": "local_store_with_family",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 717
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution",
+    "callee": "local_store_commit_under_request",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 721
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 724
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_hold_left_by_a_dead_writer_is_recovered_by_observation_by_real_execution",
+    "callee": "local_store_index_window",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 744
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_hold_left_by_a_dead_writer_is_recovered_by_observation_by_real_execution",
+    "callee": "local_store_hold_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 749
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_hold_left_by_a_dead_writer_is_recovered_by_observation_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 757
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_hold_left_by_a_dead_writer_is_recovered_by_observation_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 759
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 781
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 785
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 787
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 789
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 793
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_is_object_name",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 813
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_is_object_name",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 814
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_is_object_name",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 815
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_is_object_name",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 816
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_is_object_name",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 817
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 821
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 823
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 824
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 828
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_index_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 828
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_read_index",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 830
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 835
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 836
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_of_an_unpublished_request_stays_refused_until_the_doomed_bytes_are_gone_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 858
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_of_an_unpublished_request_stays_refused_until_the_doomed_bytes_are_gone_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 862
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_of_an_unpublished_request_stays_refused_until_the_doomed_bytes_are_gone_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 863
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_of_an_unpublished_request_stays_refused_until_the_doomed_bytes_are_gone_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 867
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_of_an_unpublished_request_stays_refused_until_the_doomed_bytes_are_gone_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 874
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 909
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 910
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 914
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 916
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 922
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 950
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 951
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 952
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "local_store_index_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 952
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 954
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 959
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 960
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 961
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 963
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 968
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 969
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 970
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 971
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "index_row_count",
+    "callee": "local_store_read_index",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 982
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_object_whose_presence_cannot_be_established_refuses_before_any_index_write_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 997
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_object_whose_presence_cannot_be_established_refuses_before_any_index_write_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1000
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "stage",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1021
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_byte_part_commits_and_is_served_verified_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1040
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_byte_part_commits_and_is_served_verified_by_real_execution",
+    "callee": "local_store_lookup_parts",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1041
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_tampered_byte_part_refuses_the_lookup_and_is_not_a_miss_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1058
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_tampered_byte_part_refuses_the_lookup_and_is_not_a_miss_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1060
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_missing_byte_part_refuses_the_lookup_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1075
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_missing_byte_part_refuses_the_lookup_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1077
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "byte_parts_count_against_the_budget_and_leave_with_their_record_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1096
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "byte_parts_count_against_the_budget_and_leave_with_their_record_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1097
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1113
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1115
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1116
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1118
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1120
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "mutating_the_staging_file_after_commit_leaves_the_stored_part_unchanged_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1139
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "mutating_the_staging_file_after_commit_leaves_the_stored_part_unchanged_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1140
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "mutating_the_staging_file_after_commit_leaves_the_stored_part_unchanged_by_real_execution",
+    "callee": "local_store_lookup_parts",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1141
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "opening_with_a_partial_family_catalog_refuses_and_sweeps_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1179
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "opening_with_a_partial_family_catalog_refuses_and_sweeps_nothing_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1180
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "opening_with_a_partial_family_catalog_refuses_and_sweeps_nothing_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1181
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "opening_with_a_partial_family_catalog_refuses_and_sweeps_nothing_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1185
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution",
+    "callee": "local_store_index_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1199
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1203
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1204
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1205
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1208
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1210
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution",
+    "callee": "local_store_index_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1218
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_identical_retry_of_a_verified_record_copies_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1240
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_identical_retry_of_a_verified_record_copies_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1242
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_divergent_retry_conflicts_before_any_copy_and_changes_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1263
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_divergent_retry_conflicts_before_any_copy_and_changes_nothing_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1266
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_refused_part_publish_leaves_no_temporary_copy_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1289
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1309
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1312
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_refused_orphan_delete_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1343
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_refused_orphan_delete_leaves_the_store_unwritable_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1344
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_refused_orphan_delete_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1348
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_refused_orphan_delete_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1351
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_sweep_leaves_the_store_unwritable_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1373
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_sweep_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_with_family",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1374
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_sweep_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1374
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_sweep_leaves_the_store_unwritable_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1377
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_sweep_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1378
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "an_unavailable_sweep_leaves_the_store_unwritable_by_real_execution",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1384
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1406
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_open",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1411
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1414
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "hold_slot_head_generation",
+    "callee": "local_store_hold_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1427
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "hold_slot_head_generation",
+    "callee": "local_store_digits_int",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1433
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution",
+    "callee": "local_store_held_session",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1466
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution",
+    "callee": "local_store_commit_under_request",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1467
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1468
+  },
+  {
+    "module": "test.claim.materialization_store_local_wet_witness",
+    "symbol": "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1481
+  },
+  {
+    "module": "gunbc.compute.work_provider_local",
+    "symbol": "compute_store_providers",
+    "callee": "local_store_family_budget",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1955
+  },
+  {
+    "module": "gunbc.compute.work_provider_local",
+    "symbol": "compute_store_providers",
+    "callee": "local_store_family_provider",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 1956
+  },
+  {
+    "module": "gunbc.compute.work_provider_local",
+    "symbol": "compute_store_open",
+    "callee": "local_store_initialize",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 2023
+  },
+  {
+    "module": "gunbc.compute.work_provider_local",
+    "symbol": "compute_store_read",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 2036
+  },
+  {
+    "module": "gunbc.compute.work_provider_local",
+    "symbol": "compute_store_commit",
+    "callee": "local_store_commit",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 2112
+  },
+  {
+    "module": "gunbc.compute.work_provider_local",
+    "symbol": "compute_dependency_read",
+    "callee": "local_store_lookup_parts",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 2162
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "tag_read",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 238
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "a_412_is_classified_by_the_precondition_that_was_sent",
+    "callee": "classify_r2_put",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 257
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "a_412_is_classified_by_the_precondition_that_was_sent",
+    "callee": "classify_r2_put",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 258
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "a_412_is_classified_by_the_precondition_that_was_sent",
+    "callee": "classify_r2_put",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 259
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "a_412_is_classified_by_the_precondition_that_was_sent",
+    "callee": "classify_r2_put",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 260
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "answered",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 285
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "not_answered",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 292
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "put_of",
+    "callee": "classify_origin_put",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 310
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "origin_put_with_credential_residue_is_never_clean_and_keeps_its_verdict",
+    "callee": "put_is_clean",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 351
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "origin_put_with_credential_residue_is_never_clean_and_keeps_its_verdict",
+    "callee": "put_is_clean",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 352
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "fetch_of",
+    "callee": "classify_origin_fetch",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 357
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "origin_read_target_resolves_to_the_declared_bucket_and_read_credential",
+    "callee": "resolve_origin_target",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 416
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "origin_write_target_resolves_to_the_declared_bucket_and_write_credential",
+    "callee": "resolve_origin_target",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 435
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "origin_write_target_refuses_while_the_write_credential_is_unminted",
+    "callee": "resolve_origin_target_under",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 466
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "a_staging_residue_is_carried_out_of_the_fetch_on_both_staged_arms",
+    "callee": "origin_fetch_of_staged",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 530
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "a_staging_residue_is_carried_out_of_the_fetch_on_both_staged_arms",
+    "callee": "origin_fetch_of_staged",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 531
+  },
+  {
+    "module": "test.claim.cloudflare_r2_origin_object",
+    "symbol": "a_released_staging_directory_is_carried_out_as_removed",
+    "callee": "origin_fetch_of_staged",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 559
+  },
+  {
+    "module": "gunbc.compute.host_capacity",
+    "symbol": "compute_capacity_store_ensure",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 186
+  },
+  {
+    "module": "test.claim.workspace_acquisition_storage_wet_witness",
+    "symbol": "acquisition_cancellation_temporary_store",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 84
+  },
+  {
+    "module": "test.claim.workspace_acquisition_storage_wet_witness",
+    "symbol": "concurrent_actor_replacement_admits_exactly_one",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 133
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "btrfs_is_the_realized_snapshot_capability",
+    "callee": "workspace_snapshot_capability",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 70
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "a_filesystem_without_snapshots_is_refused_naming_its_type",
+    "callee": "workspace_snapshot_capability",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 78
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_unread_filesystem_is_unobserved_never_btrfs",
+    "callee": "workspace_snapshot_capability",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 86
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "every_part_measured_under_the_bound_holds",
+    "callee": "workspace_bound_verdict",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 382
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "a_missing_part_leaves_a_fitting_sum_undecided",
+    "callee": "workspace_bound_verdict",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 390
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "measured_parts_over_the_bound_exceed_it_whatever_is_missing",
+    "callee": "workspace_bound_verdict",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 398
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "the_draft_time_verdicts_are_withheld_and_the_quota_is_static",
+    "callee": "workspace_draft_verdict_lines",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 410
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "the_quota_verdict_compares_bytes_to_the_quota",
+    "callee": "workspace_quota_verdict",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 420
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "the_quota_verdict_compares_bytes_to_the_quota",
+    "callee": "workspace_quota_verdict",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 421
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_ungrounded_cas_refuses_the_commit_with_its_read_obligation",
+    "callee": "r2_head_binding",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 432
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_ungrounded_cas_refuses_the_commit_with_its_read_obligation",
+    "callee": "workspace_instrument_commit",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 437
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_identical_tree_restores_byte_equal",
+    "callee": "workspace_restore_compare",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 454
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "a_missing_extra_or_changed_file_is_its_own_refusal",
+    "callee": "workspace_restore_compare",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 461
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "a_missing_extra_or_changed_file_is_its_own_refusal",
+    "callee": "workspace_restore_compare",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 462
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "a_missing_extra_or_changed_file_is_its_own_refusal",
+    "callee": "workspace_restore_compare",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 463
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "a_restored_file_holding_the_uncommitted_chunk_refuses",
+    "callee": "workspace_restore_compare",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 468
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_occupied_key_with_other_bytes_is_not_stored",
+    "callee": "fabric_object_r2_put_verdict",
+    "authority": "gunbc.fabric.fabric_object_r2",
+    "line": 563
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_occupied_key_with_other_bytes_is_not_stored",
+    "callee": "fabric_object_r2_put_verdict",
+    "authority": "gunbc.fabric.fabric_object_r2",
+    "line": 567
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_unknown_put_without_a_resolving_readback_stays_unknown",
+    "callee": "fabric_object_r2_put_verdict",
+    "authority": "gunbc.fabric.fabric_object_r2",
+    "line": 577
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_unknown_put_without_a_resolving_readback_stays_unknown",
+    "callee": "fabric_object_r2_put_verdict",
+    "authority": "gunbc.fabric.fabric_object_r2",
+    "line": 581
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "an_unknown_put_without_a_resolving_readback_stays_unknown",
+    "callee": "fabric_object_r2_put_verdict",
+    "authority": "gunbc.fabric.fabric_object_r2",
+    "line": 585
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "residue_survives_a_committed_advance_into_the_exit",
+    "callee": "workspace_exit_with_custody",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 601
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "residue_survives_a_committed_advance_into_the_exit",
+    "callee": "workspace_custody_of_head_advance",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 601
+  },
+  {
+    "module": "test.claim.workspace_checkpoint_instrument",
+    "symbol": "residue_survives_a_committed_advance_into_the_exit",
+    "callee": "workspace_exit_with_custody",
+    "authority": "gunbc.fabric.workspace_checkpoint_instrument",
+    "line": 605
+  },
+  {
+    "module": "test.claim.serving_caller_backlog_wet_witness",
+    "symbol": "only_one_of_two_retries_claims_the_seat_by_real_execution",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 812
+  },
+  {
+    "module": "test.claim.serving_caller_backlog_wet_witness",
+    "symbol": "completion_fixture",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 848
+  },
+  {
+    "module": "test.claim.serving_caller_backlog_wet_witness",
+    "symbol": "failover_fixture",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 910
+  },
+  {
+    "module": "test.claim.serving_caller_backlog_wet_witness",
+    "symbol": "only_one_of_two_acquired_seats_for_one_hold_leaves_settle_bound_by_real_execution",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 988
+  },
+  {
+    "module": "gunbc.instruments.fabric_event_log_probe",
+    "symbol": "fabric_event_log_probe",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 55
+  },
+  {
+    "module": "test.claim.workspace_gateway_refresh_witness",
+    "symbol": "refresh_failure_withdraws_success_delayed_success_cannot_revive_and_new_refresh_recovers",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 55
+  },
+  {
+    "module": "gunbc.instruments.native_materialization_store_closure",
+    "symbol": "store_path_cases",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 150
+  },
+  {
+    "module": "gunbc.instruments.native_materialization_store_closure",
+    "symbol": "store_path_cases",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 151
+  },
+  {
+    "module": "gunbc.instruments.fabric_m0_origin_object_probe",
+    "symbol": "fetch_absent",
+    "callee": "fetch_origin_object",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 134
+  },
+  {
+    "module": "gunbc.instruments.fabric_m0_origin_object_probe",
+    "symbol": "put_admitted",
+    "callee": "put_is_clean",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 151
+  },
+  {
+    "module": "gunbc.instruments.fabric_m0_origin_object_probe",
+    "symbol": "roundtrip",
+    "callee": "put_origin_object",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 186
+  },
+  {
+    "module": "gunbc.instruments.fabric_m0_origin_object_probe",
+    "symbol": "roundtrip",
+    "callee": "fetch_origin_object",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 190
+  },
+  {
+    "module": "gunbc.instruments.source_snapshot_handoff",
+    "symbol": "prepare_snapshot_workspace",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 294
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_detail_response_over",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 840
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_detail_response_over",
+    "callee": "roadmap_events_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 842
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_detail_response_over",
+    "callee": "roadmap_events_read_all",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 858
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_assignment_context_over",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 917
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_assignment_context_over",
+    "callee": "roadmap_events_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 918
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_assignment_context_over",
+    "callee": "roadmap_events_read_all",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 922
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_assign_permitted",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 1039
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_create_response_over",
+    "callee": "roadmap_operation_identity_valid",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 1072
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "issue_command_form_valid",
+    "callee": "roadmap_operation_identity_valid",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 1102
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "serve_issue_comment_permitted",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 1289
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_serve",
+    "symbol": "issue_comment_readback_response",
+    "callee": "roadmap_events_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 1316
+  },
+  {
+    "module": "test.claim.spark.pair_serving_authority_log_real_execution",
+    "symbol": "alr_witness_root_ready",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 75
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_snapshot_census",
+    "symbol": "roadmap_snapshot_census_of",
+    "callee": "roadmap_event_snapshot_path_owned",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 51
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_snapshot_census",
+    "symbol": "roadmap_snapshot_census_read",
+    "callee": "carrier_exec",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 60
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_snapshot_census",
+    "symbol": "roadmap_snapshot_census_read",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 61
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_snapshot_census",
+    "symbol": "snapshot_census_population_fault",
+    "callee": "roadmap_event_snapshot_path_owned",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 117
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_snapshot_census",
+    "symbol": "roadmap_snapshot_census_at",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 329
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_snapshot_census",
+    "symbol": "roadmap_snapshot_census_for_instance",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 345
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_attempt_request_binding",
+    "symbol": "attempt_request_binding_commit_for_instance",
+    "callee": "roadmap_events_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 141
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_attempt_request_binding",
+    "symbol": "attempt_request_binding_commit_for_instance",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 141
+  },
+  {
+    "module": "gunbc.native_product_shared_store",
+    "symbol": "native_product_shared_get",
+    "callee": "get_cache_blob",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 91
+  },
+  {
+    "module": "gunbc.native_product_shared_store",
+    "symbol": "native_product_shared_get",
+    "callee": "get_cache_blob",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 92
+  },
+  {
+    "module": "gunbc.native_product_shared_store",
+    "symbol": "native_product_shared_put",
+    "callee": "put_cache_blob",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 100
+  },
+  {
+    "module": "gunbc.native_product_shared_transfer",
+    "symbol": "native_product_finish",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 85
+  },
+  {
+    "module": "gunbc.materialization_store_budgets",
+    "symbol": "materialization_store_host_ceiling_bytes",
+    "callee": "local_store_budget_sum",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 39
+  },
+  {
+    "module": "gunbc.materialization_store_budgets",
+    "symbol": "materialization_store_local_facts",
+    "callee": "materialization_store_local_facts_at",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 42
+  },
+  {
+    "module": "test.claim.workspace_request_consumer_witness",
+    "symbol": "persisted_expired_request_settles_after_reader_restart_without_offers",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 67
+  },
+  {
+    "module": "test.claim.workspace_request_consumer_witness",
+    "symbol": "waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 99
+  },
+  {
+    "module": "test.claim.workspace_request_consumer_witness",
+    "symbol": "enrolled_roster_discovers_a_customer_request_the_operator_pass_misses",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 131
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_served_observation",
+    "symbol": "served_observation_daily_surface_over",
+    "callee": "roadmap_standings_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 260
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_served_observation",
+    "symbol": "served_observation_daily_surface_over",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 260
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_served_observation",
+    "symbol": "served_observation_events_for_instance",
+    "callee": "roadmap_events_read_all",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 838
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_served_observation",
+    "symbol": "served_observation_events_for_instance",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 838
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_served_observation",
+    "symbol": "served_observation_issue_query_surface",
+    "callee": "roadmap_standings_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 954
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_served_observation",
+    "symbol": "served_observation_issue_query_surface",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 954
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "resolve_fabric_blob_target",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 76
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 78
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "r2_fetch_into_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 80
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 81
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 82
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 83
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 84
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 87
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "get_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 90
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "resolve_fabric_blob_target",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 160
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 161
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 165
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 171
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 171
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "r2_put_staged_file",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 173
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 174
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 174
+  },
+  {
+    "module": "gunbc.fabric.fabric_object_r2",
+    "symbol": "put_fabric_object_r2",
+    "callee": "r2_head_staging_join",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 177
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_cli",
+    "symbol": "roadmap_event_record_exit",
+    "callee": "carrier_snapshot_close_failures",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 60
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_cli",
+    "symbol": "roadmap_event_record_cli",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 80
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_cli",
+    "symbol": "roadmap_event_record_cli",
+    "callee": "roadmap_events_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 82
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_cli",
+    "symbol": "roadmap_event_record_cli",
+    "callee": "roadmap_event_append",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 94
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_cli",
+    "symbol": "roadmap_event_standing_report",
+    "callee": "roadmap_events_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 120
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_cli",
+    "symbol": "roadmap_event_standing_report",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 120
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_event_cli",
+    "symbol": "roadmap_event_standing_report",
+    "callee": "carrier_report_with_snapshot_close",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 121
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "a_store_opens_only_on_its_own_marker",
+    "callee": "store_marker_content",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 519
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "a_store_opens_only_on_its_own_marker",
+    "callee": "local_store_open_decide",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 520
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "a_store_opens_only_on_its_own_marker",
+    "callee": "local_store_open_decide",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 527
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "a_store_opens_only_on_its_own_marker",
+    "callee": "local_store_open_decide",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 531
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "a_store_opens_only_on_its_own_marker",
+    "callee": "store_marker_content",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 531
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "a_store_opens_only_on_its_own_marker",
+    "callee": "local_store_open_decide",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 535
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "decodes_to",
+    "callee": "store_marker_decode",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 551
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "is_malformed",
+    "callee": "store_marker_decode",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 559
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "hand_marker",
+    "callee": "store_marker_head",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 567
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "the_marker_catalog_round_trips_and_no_two_catalogs_share_an_encoding",
+    "callee": "store_marker_content",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 580
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "the_marker_catalog_round_trips_and_no_two_catalogs_share_an_encoding",
+    "callee": "store_marker_content",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 581
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "the_marker_catalog_round_trips_and_no_two_catalogs_share_an_encoding",
+    "callee": "store_marker_content",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 582
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "the_marker_catalog_round_trips_and_no_two_catalogs_share_an_encoding",
+    "callee": "store_marker_catalog_field",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 583
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "the_marker_catalog_round_trips_and_no_two_catalogs_share_an_encoding",
+    "callee": "store_marker_catalog_field",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 583
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "a_marker_outside_the_canonical_encoding_is_malformed",
+    "callee": "store_marker_catalog_admissible",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 602
+  },
+  {
+    "module": "test.claim.materialization_store_witness",
+    "symbol": "an_unreadable_object_fault_names_the_host_kind",
+    "callee": "store_read_observation",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 625
+  },
+  {
+    "module": "gunbc.fabric.fabric_storage_r2_head",
+    "symbol": "r2_head_observe",
+    "callee": "r2_fetch_into_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 345
+  },
+  {
+    "module": "gunbc.fabric.fabric_storage_r2_head",
+    "symbol": "r2_head_observe",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 350
+  },
+  {
+    "module": "gunbc.fabric.fabric_storage_r2_head",
+    "symbol": "r2_head_advance",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 384
+  },
+  {
+    "module": "gunbc.fabric.fabric_storage_r2_head",
+    "symbol": "r2_head_advance",
+    "callee": "r2_put_staged_file",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 386
+  },
+  {
+    "module": "gunbc.fabric.fabric_storage_r2_head",
+    "symbol": "r2_head_advance",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 387
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_belt_tick_cli",
+    "symbol": "belt_tick_exit_with_snapshot_closes",
+    "callee": "carrier_snapshot_close_failures",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 191
+  },
+  {
+    "module": "gunbc.fabric.fabric_blob_r2",
+    "symbol": "put_fabric_blob",
+    "callee": "r2_put_staged_file",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 127
+  },
+  {
+    "module": "gunbc.fabric.fabric_blob_r2",
+    "symbol": "release_fabric_blob_staging",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 150
+  },
+  {
+    "module": "gunbc.fabric.fabric_blob_r2",
+    "symbol": "get_fabric_blob",
+    "callee": "r2_fetch_into_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 165
+  },
+  {
+    "module": "gunbc.fabric.fabric_blob_r2",
+    "symbol": "get_fabric_blob",
+    "callee": "r2_release_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 172
+  },
+  {
+    "module": "test.claim.materialization_store_local_immutable_pin_wet_witness",
+    "symbol": "object_path",
+    "callee": "store_path",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 94
+  },
+  {
+    "module": "test.claim.materialization_store_local_immutable_pin_wet_witness",
+    "symbol": "opened",
+    "callee": "local_store_initialize",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 107
+  },
+  {
+    "module": "test.claim.materialization_store_local_immutable_pin_wet_witness",
+    "symbol": "a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution",
+    "callee": "local_store_with_family",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 150
+  },
+  {
+    "module": "test.claim.materialization_store_local_immutable_pin_wet_witness",
+    "symbol": "a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution",
+    "callee": "local_store_hold_key",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 153
+  },
+  {
+    "module": "test.claim.materialization_store_local_immutable_pin_wet_witness",
+    "symbol": "a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution",
+    "callee": "local_store_with_family",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 155
+  },
+  {
+    "module": "test.claim.materialization_store_local_immutable_pin_wet_witness",
+    "symbol": "a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution",
+    "callee": "local_store_commit_under_request",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 159
+  },
+  {
+    "module": "test.claim.materialization_store_local_immutable_pin_wet_witness",
+    "symbol": "a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution",
+    "callee": "local_store_lookup",
+    "authority": "extdeps.realization.materialization_store_local",
+    "line": 165
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_custody_of_r2_staging",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 277
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_instrument_commit_admitted",
+    "callee": "put_fabric_object_r2",
+    "authority": "gunbc.fabric.fabric_object_r2",
+    "line": 343
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_instrument_commit_admitted",
+    "callee": "r2_head_advance",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 348
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_instrument_commit_admitted",
+    "callee": "r2_head_fabric_advance",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 350
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_head_binding",
+    "callee": "resolve_fabric_blob_target",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 537
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_head_binding",
+    "callee": "resolve_fabric_blob_target",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 540
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_head_binding",
+    "callee": "r2_head_binding",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 544
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_stored_entry_read",
+    "callee": "get_fabric_object_r2",
+    "authority": "gunbc.fabric.fabric_object_r2",
+    "line": 559
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_observed_entry",
+    "callee": "r2_head_read",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 584
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_closure",
+    "callee": "r2_head_read",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 631
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_chunk_of_file",
+    "callee": "put_workspace_chunk",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 727
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_measure_on_btrfs",
+    "callee": "resolve_fabric_blob_target",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 961
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_measure_on_btrfs",
+    "callee": "get_fabric_blob",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 970
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_measure_on_btrfs",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 972
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_measure_on_btrfs",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 973
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_measure_on_btrfs",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 976
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_measure_on_btrfs",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 979
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_timed_commit",
+    "callee": "r2_head_cas_admission",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 1080
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_timed_commit",
+    "callee": "r2_head_cas_ground",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 1080
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_restore_barrier",
+    "callee": "r2_head_cas_admission",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 1167
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_restore_barrier",
+    "callee": "r2_head_cas_ground",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 1167
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_restore_after_barrier",
+    "callee": "put_workspace_chunk",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 1187
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_restore_entry",
+    "callee": "get_workspace_chunk",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 1253
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_restore_entry",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 1255
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_restore_entry",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 1256
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_restore_entry",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 1259
+  },
+  {
+    "module": "gunbc.fabric.workspace_checkpoint_instrument",
+    "symbol": "workspace_restore_entry",
+    "callee": "release_fabric_blob_staging",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 1264
+  },
+  {
+    "module": "gunbc.fabric.workspace_source",
+    "symbol": "workspace_source_publish",
+    "callee": "put_fabric_blob",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 1020
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_issue_command",
+    "symbol": "issue_command_apply",
+    "callee": "roadmap_event_append",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 46
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_head_body_round_trips_in_the_fabric_wire_words",
+    "callee": "r2_head_body_reading",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 51
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_head_body_round_trips_in_the_fabric_wire_words",
+    "callee": "r2_head_body",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 51
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_head_body_round_trips_in_the_fabric_wire_words",
+    "callee": "r2_head_body_reading",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 55
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_present_head_needs_its_tag_and_a_well_formed_body",
+    "callee": "r2_head_body",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 60
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_present_head_needs_its_tag_and_a_well_formed_body",
+    "callee": "r2_head_observed_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 61
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_present_head_needs_its_tag_and_a_well_formed_body",
+    "callee": "r2_head_observed_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 65
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_present_head_needs_its_tag_and_a_well_formed_body",
+    "callee": "r2_head_observed_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 66
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_present_head_needs_its_tag_and_a_well_formed_body",
+    "callee": "r2_head_observed_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 67
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_present_head_needs_its_tag_and_a_well_formed_body",
+    "callee": "r2_head_observed_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 68
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_plan_creates_if_absent_replaces_by_tag_and_writes_nothing_on_a_mismatch",
+    "callee": "r2_head_advance_plan",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 74
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_plan_creates_if_absent_replaces_by_tag_and_writes_nothing_on_a_mismatch",
+    "callee": "r2_head_advance_plan",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 78
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_plan_creates_if_absent_replaces_by_tag_and_writes_nothing_on_a_mismatch",
+    "callee": "r2_head_advance_plan",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 83
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "an_ambiguous_put_is_reconciled_only_by_a_readback_of_the_same_head",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 99
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "an_ambiguous_put_is_reconciled_only_by_a_readback_of_the_same_head",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 103
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "an_ambiguous_put_is_reconciled_only_by_a_readback_of_the_same_head",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 107
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "an_ambiguous_put_is_reconciled_only_by_a_readback_of_the_same_head",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 111
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "an_ambiguous_put_is_reconciled_only_by_a_readback_of_the_same_head",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 115
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "an_ambiguous_put_is_reconciled_only_by_a_readback_of_the_same_head",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 119
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "get_of",
+    "callee": "classify_r2_fetch",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 127
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "get_of",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 127
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "get_of",
+    "callee": "r2_head_observed_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 128
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "get_of",
+    "callee": "r2_fetch_of_verdict",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 128
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "classify_r2_fetch",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 139
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 139
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "classify_r2_fetch",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 140
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 140
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "classify_r2_fetch",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 141
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 141
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "classify_r2_fetch",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 142
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "classify_s3_transfer",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 142
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "r2_fetch_retains_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 143
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "r2_fetch_retains_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 143
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "r2_fetch_retains_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 143
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "r2_fetch_retains_staging",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 143
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_get_403_is_store_refused_and_no_answer_is_unreachable",
+    "callee": "r2_fetch_of_verdict",
+    "authority": "gunbc.cloudflare.r2_staged_transfer",
+    "line": 144
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_412_is_the_lost_race_answered_with_the_readback",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 153
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_412_is_the_lost_race_answered_with_the_readback",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 157
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "residues_ride_beside_a_commit_and_never_erase_it",
+    "callee": "r2_head_result_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 167
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "two_failed_cleanups_report_both_paths",
+    "callee": "r2_head_staging_join",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 179
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "two_failed_cleanups_report_both_paths",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 180
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "two_failed_cleanups_report_both_paths",
+    "callee": "r2_head_staging_join",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 181
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "two_failed_cleanups_report_both_paths",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 181
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "two_failed_cleanups_report_both_paths",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 181
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "two_failed_cleanups_report_both_paths",
+    "callee": "r2_head_staging_of",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 183
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_binding_reads_and_writes_one_locator_with_two_credentials",
+    "callee": "r2_head_binding",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 190
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_binding_reads_and_writes_one_locator_with_two_credentials",
+    "callee": "r2_head_read_target",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 193
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "a_binding_reads_and_writes_one_locator_with_two_credentials",
+    "callee": "r2_head_write_target",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 194
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_r2_cas_is_admitted_on_the_race_probe_receipt",
+    "callee": "r2_head_cas_ground",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 207
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_r2_cas_is_admitted_on_the_race_probe_receipt",
+    "callee": "r2_head_cas_ground_headers",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 208
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_r2_cas_is_admitted_on_the_race_probe_receipt",
+    "callee": "r2_head_cas_ground_linearizability",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 218
+  },
+  {
+    "module": "test.claim.fabric_storage_r2_head",
+    "symbol": "the_r2_cas_is_admitted_on_the_race_probe_receipt",
+    "callee": "r2_head_cas_admission",
+    "authority": "gunbc.fabric.fabric_storage_r2_head",
+    "line": 223
+  },
+  {
+    "module": "test.claim.fabric_blob",
+    "symbol": "cache_blob_targets_resolve_with_the_pinned_access_key_ids",
+    "callee": "resolve_fabric_blob_target",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 89
+  },
+  {
+    "module": "test.claim.fabric_blob",
+    "symbol": "cache_blob_targets_resolve_with_the_pinned_access_key_ids",
+    "callee": "resolve_fabric_blob_target",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 95
+  },
+  {
+    "module": "test.claim.fabric_blob",
+    "symbol": "an_unminted_cache_credential_still_refuses_naming_its_mint_entry",
+    "callee": "resolve_fabric_blob_target_under",
+    "authority": "gunbc.fabric.fabric_blob_r2",
+    "line": 123
+  },
+  {
+    "module": "gunbc.fabric.fabric_m0_origin_commit",
+    "symbol": "commit_manifest_to_origin",
+    "callee": "put_origin_object",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 150
+  },
+  {
+    "module": "gunbc.fabric.fabric_m0_origin_commit",
+    "symbol": "commit_manifest_to_origin",
+    "callee": "fetch_origin_object",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 151
+  },
+  {
+    "module": "gunbc.fabric.fabric_m0_origin_commit",
+    "symbol": "commit_object_to_origin",
+    "callee": "put_origin_object",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 286
+  },
+  {
+    "module": "gunbc.fabric.fabric_m0_origin_commit",
+    "symbol": "commit_object_to_origin",
+    "callee": "fetch_origin_object",
+    "authority": "gunbc.cloudflare.r2_origin_object",
+    "line": 287
+  },
+  {
+    "module": "test.claim.live_deploy.tailnet_door_cutover_journal_wet_witness",
+    "symbol": "the_cutover_journal_survives_its_writer_and_fences_a_stale_write",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 23
+  },
+  {
+    "module": "test.claim.live_deploy.owned_directory_route_witness",
+    "symbol": "the_event_carrier_worktree_is_demanded_enrolled_and_rendered_by_the_srv1_transaction",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 70
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_result_returned",
+    "symbol": "result_return_for_progress",
+    "callee": "roadmap_bound_result_append",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 233
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_result_returned",
+    "symbol": "result_return_attempts_for_instance",
+    "callee": "roadmap_events_read_all",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 325
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_result_returned",
+    "symbol": "result_return_attempts_for_instance",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 325
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_result_returned",
+    "symbol": "result_returned_observe_for_attempt",
+    "callee": "roadmap_events_read",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 476
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_result_returned",
+    "symbol": "result_returned_observe_for_attempt",
+    "callee": "roadmap_event_carrier_layout_for_instance",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 476
+  },
+  {
+    "module": "gunbc.roadmap.roadmap_result_returned",
+    "symbol": "result_returned_report",
+    "callee": "carrier_report_with_snapshot_close",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 508
+  },
+  {
+    "module": "test.claim.fabric.fabric_partition_read_wet_witness",
+    "symbol": "fresh_store",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 22
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_task_store_wet_witness",
+    "symbol": "task_store_create_replay_and_conflicting_key",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 26
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_task_store_wet_witness",
+    "symbol": "task_store_revise_stale_and_supersede",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 50
+  },
+  {
+    "module": "test.claim.roadmap.workspace_allocation_write_seam_wet_witness",
+    "symbol": "seam_admitted_create_and_release_land_in_the_store",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 32
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "the_layout_addresses_events_by_node_and_id_under_the_instance_root",
+    "callee": "roadmap_event_carrier_layout",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 30
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "the_layout_addresses_events_by_node_and_id_under_the_instance_root",
+    "callee": "roadmap_event_node_dir",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 34
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "the_layout_addresses_events_by_node_and_id_under_the_instance_root",
+    "callee": "roadmap_event_file_relative",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 35
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "the_layout_addresses_events_by_node_and_id_under_the_instance_root",
+    "callee": "roadmap_event_push_refspec",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 36
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "the_layout_addresses_events_by_node_and_id_under_the_instance_root",
+    "callee": "roadmap_event_commit_message",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 37
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read",
+    "callee": "roadmap_events_decode_reads",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 46
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read",
+    "callee": "roadmap_events_decode_reads",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 47
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read",
+    "callee": "roadmap_events_decode_reads",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 48
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read",
+    "callee": "roadmap_events_decode_reads",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 49
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "the_all_events_read_concatenates_and_the_first_refusal_refuses_the_whole",
+    "callee": "roadmap_all_events_of_reads",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 65
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "the_all_events_read_concatenates_and_the_first_refusal_refuses_the_whole",
+    "callee": "roadmap_all_events_of_reads",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 69
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "the_all_events_read_concatenates_and_the_first_refusal_refuses_the_whole",
+    "callee": "roadmap_all_events_of_reads",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 73
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree",
+    "callee": "roadmap_event_carrier_layout",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 108
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree",
+    "callee": "carrier_snapshot_close_of",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 109
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree",
+    "callee": "carrier_snapshot_close_of",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 110
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree",
+    "callee": "carrier_snapshot_close_failure",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 117
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree",
+    "callee": "carrier_snapshot_close_failure",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 121
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree",
+    "callee": "carrier_snapshot_close_failure",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 122
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree",
+    "callee": "carrier_snapshot_close_failures",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 124
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree",
+    "callee": "carrier_snapshot_close_failures",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 125
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_report_keeps_its_answer_and_states_a_leaked_snapshot_after_it",
+    "callee": "carrier_report_with_snapshot_close",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 133
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_report_keeps_its_answer_and_states_a_leaked_snapshot_after_it",
+    "callee": "carrier_report_with_snapshot_close",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 134
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "a_report_keeps_its_answer_and_states_a_leaked_snapshot_after_it",
+    "callee": "carrier_report_with_snapshot_close",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 135
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "an_append_is_refused_on_a_history_the_order_authority_cannot_order",
+    "callee": "roadmap_event_parent_admitted",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 176
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "an_append_is_refused_on_a_history_the_order_authority_cannot_order",
+    "callee": "roadmap_event_parent_admitted",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 178
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "an_append_is_refused_on_a_history_the_order_authority_cannot_order",
+    "callee": "roadmap_event_parent_admitted",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 179
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_carrier_witness",
+    "symbol": "an_append_is_refused_on_a_history_the_order_authority_cannot_order",
+    "callee": "roadmap_event_parent_admitted",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 180
+  },
+  {
+    "module": "test.claim.fabric.fabric_event_log_wet_witness",
+    "symbol": "fresh_files",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 24
+  },
+  {
+    "module": "test.claim.workspace_prelaunch_expiry_hold_witness",
+    "symbol": "expired_reserved_controller_retires_even_when_cleanup_is_uncertain",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 19
+  },
+  {
+    "module": "test.claim.durable_cas_fabric_storage_real_execution",
+    "symbol": "dcel_store_ready",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 44
+  },
+  {
+    "module": "test.claim.fabric.fabric_storage_file_store_wet_witness",
+    "symbol": "fresh_store",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 37
+  },
+  {
+    "module": "test.claim.fabric.fabric_storage_file_store_wet_witness",
+    "symbol": "a_declared_entry_mode_is_the_published_mode_of_objects_and_heads",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 233
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "census_layout",
+    "callee": "roadmap_event_carrier_layout",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 23
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "census_namespace",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 27
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "census_selects",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 59
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "census_pair_is_disjoint",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 68
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "census_pair_is_disjoint",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 69
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 96
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 97
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 125
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 126
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 126
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list",
+    "callee": "roadmap_event_snapshot_path_owned",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 127
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list",
+    "callee": "roadmap_event_snapshot_template",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 127
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_of_an_instance_is_exactly_its_own_snapshots_in_gits_list",
+    "callee": "roadmap_event_snapshot_path_owned",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 128
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_event_snapshot_census_witness",
+    "symbol": "the_census_receipt_is_total_and_a_self_contradicting_one_is_refused",
+    "callee": "roadmap_event_snapshot_namespace",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 215
+  },
+  {
+    "module": "test.claim.fabric.fabric_state_namespace_wet_witness",
+    "symbol": "witness_public_head_cannot_alias_private_state_object",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 16
+  },
+  {
+    "module": "test.claim.fabric.fabric_state_namespace_wet_witness",
+    "symbol": "witness_public_head_cannot_alias_private_state_object",
+    "callee": "fabric_storage_file_root_ensure",
+    "authority": "gunbc.fabric.fabric_storage_file_store",
+    "line": 17
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it",
+    "callee": "roadmap_result_authority_of_record",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 457
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it",
+    "callee": "roadmap_result_authority_of_record",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 470
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it",
+    "callee": "roadmap_result_authority_of_record",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 471
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it",
+    "callee": "roadmap_result_authority_of_record",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 472
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it",
+    "callee": "roadmap_result_authority_of_record",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 473
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it",
+    "callee": "roadmap_result_append_of",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 474
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it",
+    "callee": "roadmap_result_append_of",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 475
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it",
+    "callee": "roadmap_result_append_of",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 476
+  },
+  {
+    "module": "test.claim.roadmap.roadmap_result_returned_witness",
+    "symbol": "a_bound_attempts_result_reaches_its_requester_through_the_real_codecs",
+    "callee": "roadmap_events_decode_reads",
+    "authority": "gunbc.roadmap.roadmap_event_carrier",
+    "line": 641
+  }
+]

@@ -1,0 +1,632 @@
+[
+  {
+    "path": "src/v1/stage0/src/bin/bootstrap_witness.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 185,
+        "source": "write!("
+      },
+      {
+        "line": 217,
+        "source": "write!("
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 604,
+        "source": "Self::BinTableMissingPath => write!(f, \"[[bin]] table missing path\"),"
+      },
+      {
+        "line": 606,
+        "source": "write!(f, \"[[bin]] path value must be a TOML string\")"
+      },
+      {
+        "line": 608,
+        "source": "Self::BinTableTomlParse => write!(f, \"Cargo manifest is not valid TOML\"),"
+      },
+      {
+        "line": 31062,
+        "source": "write!("
+      },
+      {
+        "line": 31068,
+        "source": "write!("
+      },
+      {
+        "line": 31074,
+        "source": "write!("
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/emit_host.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 2343,
+        "source": "} => write!("
+      },
+      {
+        "line": 2349,
+        "source": "FixtureRenderRefusal::ReadPathNotEmitted { read_path, emitted } => write!("
+      },
+      {
+        "line": 2357,
+        "source": "write!("
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/native_lane_runner.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 3677,
+        "source": "writeln!(f, \"compiler_identity={parse_compiler_identity}\")"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cli_run/native_product_cache.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 370,
+        "source": "let _ = writeln!(f, \"{line}\");"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/codex_app_server_stdio_session.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 102,
+        "source": "if writeln!(stdin, \"{line}\").is_err() {"
+      },
+      {
+        "line": 114,
+        "source": "if writeln!(stdin, \"{turn_line}\").is_err() {"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 39,
+        "source": "Self::MissingEntryFile { path } => write!(f, \"missing entry module file {path:?}\"),"
+      },
+      {
+        "line": 41,
+        "source": "write!("
+      },
+      {
+        "line": 47,
+        "source": "write!(f, \"missing emitted-population manifest {path:?}\")"
+      },
+      {
+        "line": 49,
+        "source": "Self::EmptyPopulationManifest { path } => write!("
+      },
+      {
+        "line": 57,
+        "source": "write!("
+      },
+      {
+        "line": 62,
+        "source": "Self::Io(e) => write!(f, \"io error: {e}\"),"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/gunbc_file_transport_generated.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 25,
+        "source": ".write(true)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/main.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 293,
+        "source": "write!(f, \"gunbc compile: output write refused: \")?;"
+      },
+      {
+        "line": 296,
+        "source": "write!(f, \"could not create output directory {path}: {cause}\")"
+      },
+      {
+        "line": 299,
+        "source": "write!("
+      },
+      {
+        "line": 305,
+        "source": "write!(f, \"could not write {path}: {cause}\")"
+      },
+      {
+        "line": 308,
+        "source": "write!("
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/phase_profile.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 76,
+        "source": "let _ = writeln!("
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/recorded_fixture.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 84,
+        "source": "} => write!("
+      },
+      {
+        "line": 93,
+        "source": "} => write!("
+      },
+      {
+        "line": 101,
+        "source": "} => write!("
+      },
+      {
+        "line": 112,
+        "source": "} => write!("
+      },
+      {
+        "line": 120,
+        "source": "} => write!("
+      },
+      {
+        "line": 126,
+        "source": "write!(f, \"fixture deserialization mismatch: {reason}\")"
+      },
+      {
+        "line": 129,
+        "source": "write!(f, \"fixture unknown tag {:?} \u2014 refusing to fabricate a value\", tag)"
+      },
+      {
+        "line": 131,
+        "source": "FixtureError::JsonDepthExceeded { detail } => write!(f, \"fixture {detail}\"),"
+      },
+      {
+        "line": 133,
+        "source": "write!("
+      },
+      {
+        "line": 139,
+        "source": "write!(f, \"fixture clock unavailable \u2014 refusing to guess recorded_at or freshness\")"
+      },
+      {
+        "line": 142,
+        "source": "write!(f, \"fixture I/O error at {}: {}\", path.display(), source)"
+      },
+      {
+        "line": 145,
+        "source": "write!(f, \"fixture JSON error at {}: {}\", path.display(), source)"
+      },
+      {
+        "line": 148,
+        "source": "write!(f, \"fixture input_hash must be 16-char hex, got {:?}\", digest)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/required_regen_host.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 3890,
+        "source": "Self::ExecutableReplacedAfterHandoff { before, after } => write!("
+      },
+      {
+        "line": 3896,
+        "source": "Self::SourceChangedAcrossHandoff { carried, observed } => write!("
+      },
+      {
+        "line": 3901,
+        "source": "Self::OpenedTargetNotBuildOutput { built, opened } => write!("
+      },
+      {
+        "line": 3906,
+        "source": "Self::WrongArtifactAcrossHandoff { built, running } => write!("
+      },
+      {
+        "line": 3911,
+        "source": "Self::SeedBuildMeasurementCount { found } => write!("
+      },
+      {
+        "line": 3916,
+        "source": "Self::HandoffUndecodable { value } => write!("
+      },
+      {
+        "line": 3920,
+        "source": "Self::ReExecFailed { path, cause } => write!("
+      },
+      {
+        "line": 6860,
+        "source": "let mut rewritten = fs::OpenOptions::new().write(true).open(&path).unwrap();"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/target_invocation_host.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 5022,
+        "source": ".write(true)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/v1_interpreter.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 987,
+        "source": "Value::Null => write!(f, \"null\"),"
+      },
+      {
+        "line": 988,
+        "source": "Value::Bool(b) => write!(f, \"{}\", b),"
+      },
+      {
+        "line": 989,
+        "source": "Value::Int(n) => write!(f, \"{}\", n),"
+      },
+      {
+        "line": 990,
+        "source": "Value::Float(n) => write!(f, \"{}\", n),"
+      },
+      {
+        "line": 991,
+        "source": "Value::Str(s) => write!(f, \"{}\", s),"
+      },
+      {
+        "line": 993,
+        "source": "write!(f, \"[\")?;"
+      },
+      {
+        "line": 996,
+        "source": "write!(f, \", \")?;"
+      },
+      {
+        "line": 998,
+        "source": "write!(f, \"{}\", item)?;"
+      },
+      {
+        "line": 1000,
+        "source": "write!(f, \"]\")"
+      },
+      {
+        "line": 1008,
+        "source": "write!(f, \"{{\")?;"
+      },
+      {
+        "line": 1011,
+        "source": "write!(f, \", \")?;"
+      },
+      {
+        "line": 1013,
+        "source": "write!(f, \"{}: {}\", k, v)?;"
+      },
+      {
+        "line": 1015,
+        "source": "write!(f, \"}}\")"
+      },
+      {
+        "line": 1018,
+        "source": "write!(f, \"{{\")?;"
+      },
+      {
+        "line": 1021,
+        "source": "write!(f, \", \")?;"
+      },
+      {
+        "line": 1023,
+        "source": "write!(f, \"{}\", k)?;"
+      },
+      {
+        "line": 1025,
+        "source": "write!(f, \"}}\")"
+      },
+      {
+        "line": 1028,
+        "source": "write!(f, \"{} {{\", resolve_sym(*type_name))?;"
+      },
+      {
+        "line": 1031,
+        "source": "write!(f, \",\")?;"
+      },
+      {
+        "line": 1033,
+        "source": "write!(f, \" {}: {}\", resolve_sym(*k), v)?;"
+      },
+      {
+        "line": 1035,
+        "source": "write!(f, \" }}\")"
+      },
+      {
+        "line": 1043,
+        "source": "write!(f, \"{}\", resolve_sym(*variant_name))"
+      },
+      {
+        "line": 1045,
+        "source": "write!(f, \"{} {{\", resolve_sym(*variant_name))?;"
+      },
+      {
+        "line": 1048,
+        "source": "write!(f, \",\")?;"
+      },
+      {
+        "line": 1050,
+        "source": "write!(f, \" {}: {}\", resolve_sym(*k), v)?;"
+      },
+      {
+        "line": 1052,
+        "source": "write!(f, \" }}\")"
+      },
+      {
+        "line": 1055,
+        "source": "Value::Closure { .. } => write!(f, \"<closure>\"),"
+      },
+      {
+        "line": 1056,
+        "source": "Value::Fn { node } => write!(f, \"<fn {}>\", node.name),"
+      },
+      {
+        "line": 1057,
+        "source": "Value::Unit => write!(f, \"()\"),"
+      },
+      {
+        "line": 1599,
+        "source": "} => write!("
+      },
+      {
+        "line": 1603,
+        "source": "InterpError::NoSuchFunction { name } => write!("
+      },
+      {
+        "line": 1611,
+        "source": "write!(f, \"call contract mismatch calling '{}': {}\", callee, detail)"
+      },
+      {
+        "line": 1613,
+        "source": "InterpError::NoSuchVariable { name } => write!(f, \"undefined variable: {}\", name),"
+      },
+      {
+        "line": 1615,
+        "source": "write!(f, \"no field '{}' on type '{}'\", field, type_name)"
+      },
+      {
+        "line": 1617,
+        "source": "InterpError::TypeError { msg } => write!(f, \"type error: {}\", msg),"
+      },
+      {
+        "line": 1624,
+        "source": "write!("
+      },
+      {
+        "line": 1639,
+        "source": "} => write!("
+      },
+      {
+        "line": 1648,
+        "source": "} => write!(f, \"{instrument}: {refusal}\"),"
+      },
+      {
+        "line": 1653,
+        "source": "write!("
+      },
+      {
+        "line": 1663,
+        "source": "write!("
+      },
+      {
+        "line": 1670,
+        "source": "write!(f, \"cross-representation equality: {}\", detail)"
+      },
+      {
+        "line": 1673,
+        "source": "write!(f, \"string realization straddle: {}\", detail)"
+      },
+      {
+        "line": 1676,
+        "source": "write!(f, \"{}\", detail)"
+      },
+      {
+        "line": 1683,
+        "source": "write!("
+      },
+      {
+        "line": 1692,
+        "source": "write!(f, \"non-exhaustive pattern match on: {}\", value)"
+      },
+      {
+        "line": 1695,
+        "source": "write!(f, \"match guard at {} evaluated to {}, not a Bool\", at, found)"
+      },
+      {
+        "line": 1698,
+        "source": "write!(f, \"REST response undecodable: {}\", refusal)"
+      },
+      {
+        "line": 1700,
+        "source": "InterpError::DivisionByZero => write!(f, \"division by zero\"),"
+      },
+      {
+        "line": 1701,
+        "source": "InterpError::IntegerOverflow { op, lhs, rhs } => write!("
+      },
+      {
+        "line": 1706,
+        "source": "InterpError::Unimplemented { what } => write!(f, \"not yet implemented: {}\", what),"
+      },
+      {
+        "line": 1707,
+        "source": "InterpError::EarlyReturn { .. } => write!(f, \"internal: uncaught early return\"),"
+      },
+      {
+        "line": 1708,
+        "source": "InterpError::AuthDeclaredButUnwired { service, reason } => write!("
+      },
+      {
+        "line": 1713,
+        "source": "InterpError::ServiceConfigUnresolved { key, spelled } => write!("
+      },
+      {
+        "line": 1718,
+        "source": "InterpError::ServiceConfigMissing { key, service } => write!("
+      },
+      {
+        "line": 1727,
+        "source": "} => write!("
+      },
+      {
+        "line": 1732,
+        "source": "InterpError::ModeledOperationRefused { operation, cause } => write!("
+      },
+      {
+        "line": 1737,
+        "source": "InterpError::ModeledWorkerKilled { operation } => write!("
+      },
+      {
+        "line": 1742,
+        "source": "InterpError::ShellSpawnRefused { argv0, cause } => write!("
+      },
+      {
+        "line": 1747,
+        "source": "InterpError::HostToolUnresolved { name, probed } => write!("
+      },
+      {
+        "line": 1754,
+        "source": "HermeticEffectGround::UnpublishedMockCase { published_cases } => write!("
+      },
+      {
+        "line": 1760,
+        "source": "HermeticEffectGround::NoMockResponse => write!("
+      },
+      {
+        "line": 1765,
+        "source": "HermeticEffectGround::FilesystemRemoval => write!("
+      },
+      {
+        "line": 1771,
+        "source": "InterpError::HostToolRelativePathAmbiguous { name } => write!("
+      },
+      {
+        "line": 1781,
+        "source": "} => write!("
+      },
+      {
+        "line": 5849,
+        "source": "writeln!("
+      },
+      {
+        "line": 5854,
+        "source": "writeln!("
+      },
+      {
+        "line": 5882,
+        "source": "writeln!("
+      },
+      {
+        "line": 5918,
+        "source": "writeln!("
+      },
+      {
+        "line": 5924,
+        "source": "writeln!("
+      },
+      {
+        "line": 18876,
+        "source": ".write(true)"
+      },
+      {
+        "line": 19414,
+        "source": "let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;"
+      },
+      {
+        "line": 21302,
+        "source": "write!(f, \"at {} ({}): \", self.field_path, self.coproduct)?;"
+      },
+      {
+        "line": 21305,
+        "source": "write!(f, \"the coproduct's declaration identity is unresolved\")"
+      },
+      {
+        "line": 21307,
+        "source": "RestResponseDecodeCause::NoWireContract => write!("
+      },
+      {
+        "line": 21312,
+        "source": "write!(f, \"the declaring module's wire_contract does not resolve: {}\", cause)"
+      },
+      {
+        "line": 21315,
+        "source": "write!(f, \"{} CoproductWireContract rows name this coproduct\", count)"
+      },
+      {
+        "line": 21317,
+        "source": "RestResponseDecodeCause::UnsupportedEncoding { encoding } => write!("
+      },
+      {
+        "line": 21323,
+        "source": "write!(f, \"naming policy {} has no interpreter realization\", naming)"
+      },
+      {
+        "line": 21326,
+        "source": "write!(f, \"expected a JSON string, found {}\", json_kind)"
+      },
+      {
+        "line": 21328,
+        "source": "RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => write!("
+      },
+      {
+        "line": 21333,
+        "source": "RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => write!("
+      },
+      {
+        "line": 21339,
+        "source": "write!(f, \"\\\"{}\\\" names no arm under the declared wire contract\", spelling)"
+      },
+      {
+        "line": 21341,
+        "source": "RestResponseDecodeCause::NotAnExactDecimal { json_text } => write!("
+      },
+      {
+        "line": 22816,
+        "source": ".write(true)"
+      }
+    ]
+  },
+  {
+    "path": "src/v1/stage0/src/v1_rt.rs",
+    "imports": [],
+    "write_forms": [
+      {
+        "line": 1652,
+        "source": ".write(true)"
+      }
+    ]
+  }
+]

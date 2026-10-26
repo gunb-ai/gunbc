@@ -1,0 +1,216 @@
+{
+  "source_revision": "7daaddd1f0ce99734e1ddb57138313701455c758",
+  "export_date": "2026-10-23",
+  "originals": [
+    {
+      "path": "raw/effect-boundary/METHODOLOGY.md",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/METHODOLOGY.md",
+      "bytes": 7629,
+      "sha256": "4954064fe68b737ed474152a3eac1bab43c6975c0eb28d336656258a0ed1b00d"
+    },
+    {
+      "path": "raw/effect-boundary/classified_inventory.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/classified_inventory.json",
+      "bytes": 3458663,
+      "sha256": "162d2f284b0aa4485992712b4c261515fcb91c731c141c6955f4435fa3f9a6a7"
+    },
+    {
+      "path": "raw/effect-boundary/classified_roster.tsv",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/classified_roster.tsv",
+      "bytes": 182652,
+      "sha256": "cf0cb237ff904a4d9499f56750d3288a2d26c24e5e201d0270f29d0e677b83fa"
+    },
+    {
+      "path": "raw/effect-boundary/classify.py",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/classify.py",
+      "bytes": 24372,
+      "sha256": "fdb331b19ba9fff874eaf84052ffb47e5eabffdd5efb902f49f0a146389e2663"
+    },
+    {
+      "path": "raw/effect-boundary/compiler_effect_review.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/compiler_effect_review.json",
+      "bytes": 94300,
+      "sha256": "1edbdc5c7bfa38561f2236edbd51a0550c108e4b80fe5544cdf9a7e954ee1887"
+    },
+    {
+      "path": "raw/effect-boundary/compiler_effect_review.md",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/compiler_effect_review.md",
+      "bytes": 10385,
+      "sha256": "9bd07c694fb54ec837a48cf2c08d2735596829ff4d28a2ca63487e51b2016ef5"
+    },
+    {
+      "path": "raw/effect-boundary/durable_resources.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/durable_resources.json",
+      "bytes": 25653,
+      "sha256": "b99def063d56c46bae224778bf8de447245b316da5d7d2809b3a42869862b77f"
+    },
+    {
+      "path": "raw/effect-boundary/durable_roster.md",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/durable_roster.md",
+      "bytes": 22168,
+      "sha256": "6994b6d76b626de6ec7c6a1f798163f6699c5d10b2a9ee29c114095d79967f7f"
+    },
+    {
+      "path": "raw/effect-boundary/local_compiler_review.py",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/local_compiler_review.py",
+      "bytes": 21043,
+      "sha256": "c302bf91be713afc160aa476209b89f41cdc54266f91b3a35ac35257ffe85f73"
+    },
+    {
+      "path": "raw/effect-boundary/local_effect_review.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/local_effect_review.json",
+      "bytes": 95409,
+      "sha256": "711a8b7fc60d526cba221a13dea62d516a4bb6092070d3d494ed5c4733cfcd1a"
+    },
+    {
+      "path": "raw/effect-boundary/local_effect_review.md",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/local_effect_review.md",
+      "bytes": 14065,
+      "sha256": "3a766f96a4e43fbfb133df3f0ea3959c61abc9891992158a8884f033ea044421"
+    },
+    {
+      "path": "raw/effect-boundary/raw_inventory.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/raw_inventory.json",
+      "bytes": 1543742,
+      "sha256": "1e5a80454a34b26018581b983f4b6e21ddbab39dba8cefc7a02ef762bf4bf1f4"
+    },
+    {
+      "path": "raw/effect-boundary/refine.py",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/refine.py",
+      "bytes": 23734,
+      "sha256": "52124aa34cb3cb0e0e39de3f2c01b28dbfc71faf490ee95d9eb763933f96c9eb"
+    },
+    {
+      "path": "raw/effect-boundary/roster.tsv",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/roster.tsv",
+      "bytes": 125359,
+      "sha256": "412c179c4bac17b8defd9fb342f6ea7a990d98644451e9e27a4b86299b34d3f6"
+    },
+    {
+      "path": "raw/effect-boundary/rust_import_write_supplement.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/rust_import_write_supplement.json",
+      "bytes": 15314,
+      "sha256": "2f1b2dccde41d8374c4e06686caaed5693047dde838d91714c654fc604f0d647"
+    },
+    {
+      "path": "raw/effect-boundary/rust_production_candidates.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/rust_production_candidates.json",
+      "bytes": 71104,
+      "sha256": "71fa850d7b14fbf7c87549562c7978312519db8fc2e3d8c27717f0167f6f5fa9"
+    },
+    {
+      "path": "raw/effect-boundary/rust_production_candidates.txt",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/rust_production_candidates.txt",
+      "bytes": 26451,
+      "sha256": "041294f6d9cfb8e173c1e76aa664a798e4d3c1734bd6288ce0f850ebed37324c"
+    },
+    {
+      "path": "raw/effect-boundary/rust_review.py",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/rust_review.py",
+      "bytes": 1074,
+      "sha256": "d8d2215f6ac8873f42f8c6ec350e8622cf7e7257f1ef4fcae6b5ae6cb6a819c0"
+    },
+    {
+      "path": "raw/effect-boundary/rust_unqualified_fs_candidates.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/rust_unqualified_fs_candidates.json",
+      "bytes": 2269,
+      "sha256": "71e6292293e3f533fb905eca8afc4882b36b1f5beb07d205a5f60129828d9542"
+    },
+    {
+      "path": "raw/effect-boundary/scan.log",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/scan.log",
+      "bytes": 1400,
+      "sha256": "fd852149e3bea961a7cbe94006981afd94134c0f8f435a74d45f130034b0a919"
+    },
+    {
+      "path": "raw/effect-boundary/scan.py",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/scan.py",
+      "bytes": 7682,
+      "sha256": "82fd33b76dd655a6e7e9bd76d99013806ede81b71cb4be14cb96cf0deda603da"
+    },
+    {
+      "path": "raw/effect-boundary/selectors.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/selectors.json",
+      "bytes": 4994,
+      "sha256": "7f8c8eeb23c960a1a983d10e7a345647613cb85afec8a3a7dfe9908c118eaf34"
+    },
+    {
+      "path": "raw/effect-boundary/supplement.py",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/supplement.py",
+      "bytes": 2107,
+      "sha256": "ed29847a2d337df990c2c469b09dddb8b58a4d909bc4fbdd21d5239dd5528945"
+    },
+    {
+      "path": "raw/effect-boundary/supplemental_inventory.json",
+      "source_path": "/tmp/storage_effect_audit_7daaddd1f0ce/supplemental_inventory.json",
+      "bytes": 32961,
+      "sha256": "9a8bf71e6dd1812f6fa3681f129b36192e864375aac34fecb36dce2de2f017aa"
+    },
+    {
+      "path": "raw/semantic/evidence-effect-dispositions.md",
+      "source_path": "/tmp/evidence-effect-dispositions.md",
+      "bytes": 33449,
+      "sha256": "dab7dd366d4257047e6b191ca63e9add232aad6297ce09dfe1a55456aea18e79"
+    },
+    {
+      "path": "raw/semantic/evidence-effect-dispositions.json",
+      "source_path": "/tmp/evidence-effect-dispositions.json",
+      "bytes": 169042,
+      "sha256": "c27a4afcf3b7ec379cdbe55ecd8d05f2ee10f3e51c3112795db7572c13d9ab96"
+    },
+    {
+      "path": "raw/semantic/evidence-effect-review-input.json",
+      "source_path": "/tmp/evidence-effect-review-input.json",
+      "bytes": 245161,
+      "sha256": "5fdabc19d2cddebf86ca94ed85e1e30e8a9a416fceeb21548ddacdc4a251320f"
+    },
+    {
+      "path": "raw/lifecycle/lifecycle-six-cut.md",
+      "source_path": "/tmp/lifecycle-six-cut.md",
+      "bytes": 17685,
+      "sha256": "4cc079b8454a3cb2174ffad160f1a680af4dcd919a1297aab3830b9a32c65edd"
+    },
+    {
+      "path": "raw/lifecycle/cas-hold-cohort-roots.md",
+      "source_path": "/tmp/cas-hold-cohort-roots.md",
+      "bytes": 36879,
+      "sha256": "f1cc77a753ce4a0a84703ab652262938df8b219455c41477d07fd4dc3e8952fb"
+    },
+    {
+      "path": "raw/lifecycle/cas-hold-direct-roster.json",
+      "source_path": "/tmp/cas-hold-direct-roster.json",
+      "bytes": 12672,
+      "sha256": "cc15c1c07fc453854221371f5ace4c44f05a33cfa46541cbcc1c2aea6f84da49"
+    },
+    {
+      "path": "raw/providers/fabric_today_and_migration_inventory.md",
+      "source_path": "/tmp/fabric_today_and_migration_inventory.md",
+      "bytes": 30581,
+      "sha256": "7bd7b241a209e257552d4fd7aaa706744a1fdb72ca6640b67b471de5d2b7c95b"
+    },
+    {
+      "path": "raw/providers/fabric_external_operation_roster.json",
+      "source_path": "/tmp/fabric_external_operation_roster.json",
+      "bytes": 124524,
+      "sha256": "94a71fbe1c09b2ecf6fa4318cecd36661eab9e38f92ffac4f915baff5600bb08"
+    },
+    {
+      "path": "raw/device/ios-persistence-inventory.md",
+      "source_path": "/tmp/ios-persistence-inventory.md",
+      "bytes": 16823,
+      "sha256": "72a7b90793c14fbb9aa4a6dd964826a2ed3b2b0883b7fee5783d14b86991d108"
+    },
+    {
+      "path": "raw/selection/storage-arbitrage-r2-d1-d2-review.md",
+      "source_path": "/tmp/storage-arbitrage-r2-d1-d2-review.md",
+      "bytes": 21449,
+      "sha256": "345f19a425e1a813809ac4f8d062f7787c009d93fccb1df8f677218fde5ac8b8"
+    },
+    {
+      "path": "raw/selection/revision-main-review.md",
+      "source_path": "/tmp/revision-main-review.md",
+      "bytes": 11692,
+      "sha256": "e8c1b7a839695a746d6985a93727b69e45be2aebd8fba029eede8c3bcc66ecf1"
+    }
+  ]
+}
