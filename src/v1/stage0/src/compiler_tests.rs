@@ -4620,6 +4620,7 @@ mod compiler_tests {
     ) -> std::rc::Rc<crate::v1_std_core::Node> {
         let span = crate::v1_std_core::no_span();
         std::rc::Rc::new(crate::v1_std_core::Node {
+            application_role: std::option::Option::None,
             occurrence_identity: std::rc::Rc::new(
                 crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
             ),
@@ -4641,7 +4642,6 @@ mod compiler_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
-            application_role: None,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             declaration: None,
             expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
@@ -5134,6 +5134,7 @@ mod compiler_tests {
                 end: 0,
             });
             std::rc::Rc::new(crate::v1_std_core::Node {
+            application_role: std::option::Option::None,
                 occurrence_identity: std::rc::Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),
@@ -5155,7 +5156,6 @@ mod compiler_tests {
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
-                application_role: None,
                 declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
                 declaration: None,
                 expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
@@ -6236,7 +6236,6 @@ mod compiler_tests {
         std::rc::Rc::new(crate::v1_std_core::Node {
             properties: std::rc::Rc::new(props),
             module_item_kind: kind,
-            application_role: None,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             declaration: None,
             ..(*shaped_type_node(name, Vec::new())).clone()

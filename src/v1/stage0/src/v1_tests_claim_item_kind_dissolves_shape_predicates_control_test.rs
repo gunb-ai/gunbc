@@ -26,6 +26,7 @@ use std::rc::Rc;
 
 pub fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Rc<Node> {
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "ZqxLeafShaped".to_string(),
         ident: std::option::Option::None,
@@ -45,7 +46,6 @@ pub fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
-        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -54,6 +54,7 @@ pub fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Rc<Node> {
 
 pub fn structured_item(kind: ParsedModuleItemKind) -> Rc<Node> {
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "ZqxStructured".to_string(),
         ident: std::option::Option::None,
@@ -73,7 +74,6 @@ pub fn structured_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
-        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),

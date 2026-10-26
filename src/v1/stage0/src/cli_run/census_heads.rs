@@ -287,7 +287,8 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         declaration_marker,
         declaration,
         expr_data,
-    , application_role} = &**n;
+        application_role,
+    } = &**n;
     let refuse = |what: &str| {
         Err(format!(
             "heads projection refused: node '{name}' carries {what}, which the heads parser does \
@@ -407,7 +408,7 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         }
     };
     Ok(Rc::new(Node {
-            application_role: std::option::Option::None,
+        application_role: application_role.clone(),
         occurrence_identity,
         name: name.clone(),
         ident,
