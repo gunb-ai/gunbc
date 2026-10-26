@@ -121,16 +121,35 @@ data nvidia_container_toolkit_sources_list_path: NonEmptyStr = "/etc/apt/sources
 
 // THE CDI SPEC IS THE ARTIFACT, not a side effect. A rootless dockerd cannot reach the host driver
 // through the privileged runc hook the rootful path uses; `--device nvidia.com/gpu=all` resolves
-// ONLY against a generated CDI spec. `nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` is
-// NVIDIA's own instruction for producing it (the authority anchor's runtime-configuration step);
-// `nvidia-ctk cdi list` is the readback that proves a device exists, which is what a capability
-// witness cites. These are argv ROWS, not shell: the caller composes them with elevation where the
-// write needs privilege.
+// ONLY against a generated CDI spec. `nvidia-ctk cdi generate` writing the spec row below is
+// NVIDIA's own instruction for producing it (the authority anchor's runtime-configuration step).
+//
+// THE CDI SPEC'S CANONICAL LOCATION, per the CDI spec's own search path as exercised on the
+// measuring host (srv1 2026-10-25: /etc/cdi/nvidia.yaml, root:root 0644). ONE row: the observe arm
+// reads it and the generate argv below writes through it, so the step that produces the file and
+// the check that certifies it cannot disagree about which file they mean.
+data nvidia_cdi_spec_path: NonEmptyStr = "/etc/cdi/nvidia.yaml"
+
+// The `--output=` operand, DERIVED from the path row rather than respelled beside it — §3 puts each
+// fact in exactly one place, and a literal here would be a second source for the same fact: change
+// one and generate would write a file the readback never looks at. The builder is the shape
+// extdeps.docker docker_hub_https uses for its `https://` word; the row-calls-builder shape is
+// extdeps.systemd systemd_memory_max_property = systemd_unit_property_wire(property: MemoryMax).
+fn nvidia_ctk_cdi_output_word_of(spec_path: NonEmptyStr) -> NonEmptyStr {
+  join(["--output=", spec_path as String], "") as NonEmptyStr
+}
+
+data nvidia_ctk_cdi_output_word: NonEmptyStr =
+  nvidia_ctk_cdi_output_word_of(spec_path: nvidia_cdi_spec_path)
+
+// The generate leg's argv. `nvidia-ctk cdi list`, below, is the readback that proves a device
+// exists, which is what a capability witness cites. These are argv ROWS, not shell: the caller
+// composes them with elevation where the write needs privilege.
 data nvidia_ctk_cdi_generate_argv: List<NonEmptyStr> = [
   "nvidia-ctk",
   "cdi",
   "generate",
-  "--output=/etc/cdi/nvidia.yaml",
+  nvidia_ctk_cdi_output_word,
 ]
 
 data nvidia_ctk_cdi_list_argv: List<NonEmptyStr> = ["nvidia-ctk", "cdi", "list"]
@@ -140,11 +159,6 @@ data nvidia_ctk_cdi_list_argv: List<NonEmptyStr> = ["nvidia-ctk", "cdi", "list"]
 // measuring host (srv1 2026-10-25: `nvidia-ctk cdi list` prints nvidia.com/gpu=0,
 // =GPU-96b749dc-…, and =all) is the citation.
 data nvidia_cdi_all_gpu_device: NonEmptyStr = "nvidia.com/gpu=all"
-
-// The CDI spec's canonical location, per the CDI spec's own search path as exercised on the
-// measuring host (srv1 2026-10-25: /etc/cdi/nvidia.yaml, root:root 0644). Named so the observe arm
-// and the generate argv cannot drift apart by spelling the path twice.
-data nvidia_cdi_spec_path: NonEmptyStr = "/etc/cdi/nvidia.yaml"
 
 // THE BINARY ROW THE TYPED ARGV BOUNDARY ASKS FOR. extdeps.exec.command argv_command admits a
 // program whose identity is a row in the corpus, and nothing had ever declared nvidia-ctk — the
