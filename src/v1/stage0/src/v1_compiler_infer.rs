@@ -14861,8 +14861,8 @@ Rc::new(InferResult {
                                 let __it = crate::v1_compiler_infer_types::resolved_type(
                                     crate::v1_std_core::arg_value(fi.typed_arg.clone()),
                                 );
-                                eprintln!("DIAGFOLD1 mod={:?} caller={:?} init_ty={} expected={} joined={}", scope.module_name, scope.caller_decl_name, type_node_label(__it.clone(), scope.type_env.source_indices.clone()), expected.map(|e| type_node_label(e, scope.type_env.source_indices.clone())).unwrap_or("<none>".to_string()), type_node_label(fold_init_joined_with_expected(__it, expected.clone(), scope.clone()), scope.type_env.source_indices.clone()));
-                                fold_init_joined_with_expected(__it, expected.clone(), scope.clone())
+                                eprintln!("DIAGFOLD1 mod={:?} caller={:?} init_ty={} expected={} joined={}", scope.module_name, scope.caller_decl_name, type_node_label(__it.clone(), scope.type_env.source_indices.clone()), match expected.clone() { Some(e) => type_node_label(e, scope.type_env.source_indices.clone()), None => "<none>".to_string() }, type_node_label(fold_init_joined_with_expected(__it.clone(), expected.clone(), scope.clone()), scope.type_env.source_indices.clone()));
+                                fold_init_joined_with_expected(__it.clone(), expected.clone(), scope.clone())
                             }),
                             std::option::Option::None => std::option::Option::None,
                         };
