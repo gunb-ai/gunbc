@@ -2555,7 +2555,7 @@ fn write_reload_and_restart_admitted_over(
       other => other
     }
   }
-  let slots = concat(concat(concat(owned_slots, foreign_slots), [holder_final]), [])
+  let slots = concat(concat(owned_slots, foreign_slots), [holder_final])
   // DISCHARGED ONLY AFTER A READ-BACK THAT THE HOST ADMITS AGAIN; otherwise the obligation stays held.
   // The host-settled fold is used, not the unit-settled one: a DEFERRED SELF is the bracket physically
   // completing everything it CAN do on this host (see slot_cap_outcome_host_settled), so it must not strand

@@ -1230,7 +1230,7 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
       // test. The holder is never observed for admission and never bracketed (that exclusion is srv3's fix);
       // its own verdict is its live cgroup read-back, and the holder's unit never appears in the drained,
       // gated or foreign sets these controls read. The holder claims themselves run against the judgment
-      // layer (slot_cap_holder_standing) in runner_slot_cap_converge_witness, where every read-back shape
+      // layer (slot_cap_holder_verdict) in runner_slot_cap_converge_witness, where every read-back shape
       // is a control rather than a leg sequence.
       holder: u(n: "02"))
   })

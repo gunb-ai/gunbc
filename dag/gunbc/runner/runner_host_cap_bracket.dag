@@ -1255,9 +1255,10 @@ fn holder_deferral_ledger_clear(host: String, unit: NonEmptyStr) -> String?
   match holder_deferral_ledger_path(unit: unit) {
     Absent => none
     Present { value: path } => {
-      // An effect result, read like every other delete in the repo (workspace_commissioning_
-      // apply_readback.dag:181): success covers both deleted and already-absent, and a refusal
-      // carries its error -- the typed variant arms are the kernel's, not route vocabulary.
+      // An effect result, read like every other delete in the repo (the idiom in
+      // gunbc.github_effect_perform.remove_staged_controller_key): success covers both deleted and
+      // already-absent, and a refusal carries its error -- the typed variant arms are the kernel's,
+      // not route vocabulary.
       let removed = Filesystem.Delete(path: path)
       if removed.success { none } else { Present { value: join(["delete of ", path, " refused: ", removed.error], "") } }
     }

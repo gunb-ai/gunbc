@@ -46,7 +46,7 @@ import gunbc.runner.runner_slot_cap_converge {
   slot_cap_outcome_settled,
   slot_cap_outcome_host_settled,
   slot_cap_outcome_wire,
-  slot_cap_holder_standing,
+  slot_cap_holder_verdict,
   slot_cap_holder_deferral_outcome,
   HolderDeferralLedger,
   LedgerFresh,
@@ -630,7 +630,7 @@ fn holder_at_desired_rows() -> SlotCapLive {
 }
 
 test fn a_holder_whose_live_cgroup_reads_back_at_desired_is_converged_and_settled() -> Bool {
-  match slot_cap_holder_standing(unit: unit(n: "02"), live: holder_at_desired_rows(), desired: desired()) {
+  match slot_cap_holder_verdict(unit: unit(n: "02"), live: holder_at_desired_rows(), desired: desired()) {
     SlotCapsSelfAtDesired { unit: u } => (u as String) == "actions-runner@srv3-02.service" && slot_cap_outcome_settled(o: SlotCapsSelfAtDesired { unit: u })
     _ => false
   }
@@ -642,7 +642,7 @@ test fn a_holder_whose_live_cgroup_reads_back_at_desired_is_converged_and_settle
 // the deferral is an obligation for the NEXT pass, not a reason to withhold this host's caps.
 test fn a_holder_not_read_back_is_deferred_never_converged_yet_never_bars_the_host() -> Bool {
   let owed = holder_live(max: to_string(byte_size_count(b: desired().memory_max)), swap: to_string(byte_size_count(b: desired().memory_swap_max)), high: none)
-  let def = slot_cap_holder_standing(unit: unit(n: "02"), live: owed, desired: desired())
+  let def = slot_cap_holder_verdict(unit: unit(n: "02"), live: owed, desired: desired(), ledger: LedgerFresh)
   match def {
     SlotCapsSelfDeferred { unit: u, detail: _ } =>
       (u as String) == "actions-runner@srv3-02.service"
@@ -658,7 +658,7 @@ test fn a_holder_not_read_back_is_deferred_never_converged_yet_never_bars_the_ho
 // the deferred detail names what was read against what was wanted, so the operator sees WHY.
 test fn a_holder_reading_stale_values_is_deferred_naming_the_disagreement() -> Bool {
   let stale = holder_live(max: "27917287424", swap: "34359738368", high: Present { value: concat(to_string(byte_size_count(b: desired().memory_high)), "\n") })
-  match slot_cap_holder_standing(unit: unit(n: "02"), live: stale, desired: desired()) {
+  match slot_cap_holder_verdict(unit: unit(n: "02"), live: stale, desired: desired(), ledger: LedgerFresh) {
     SlotCapsSelfDeferred { unit: u, detail: d } =>
       (u as String) == "actions-runner@srv3-02.service" && !slot_cap_outcome_settled(o: SlotCapsSelfDeferred { unit: u, detail: d })
         && string_contains(s: d, pattern: "27917287424") && string_contains(s: d, pattern: to_string(byte_size_count(b: desired().memory_max)))
@@ -670,7 +670,7 @@ test fn a_holder_reading_stale_values_is_deferred_naming_the_disagreement() -> B
 // evidence is never evidence of application. (The unread shape the shared parser produces for a dead unit.)
 test fn an_unreadable_holder_is_deferred_not_converged() -> Bool {
   let unread = SlotCapLive { unit_memory_max: "", unit_swap_max: "", unit_memory_high: "", unit_tasks_max: "", control_group: "", cgroup_memory_max: none, cgroup_swap_max: none, cgroup_memory_high: none }
-  match slot_cap_holder_standing(unit: unit(n: "02"), live: unread, desired: desired()) {
+  match slot_cap_holder_verdict(unit: unit(n: "02"), live: unread, desired: desired(), ledger: LedgerFresh) {
     SlotCapsSelfDeferred { unit: u, detail: _ } => (u as String) == "actions-runner@srv3-02.service" && !slot_cap_outcome_settled(o: SlotCapsSelfDeferred { unit: u, detail: "x" })
     _ => false
   }

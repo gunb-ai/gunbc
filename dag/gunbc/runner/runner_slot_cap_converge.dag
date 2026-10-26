@@ -59,7 +59,7 @@ type SlotCapLive {
   control_group: String
   cgroup_memory_max: String?
   cgroup_swap_max: String?
-  // THE THIRD LIVE READING, read only by the bracket holder's fold (slot_cap_holder_standing): the
+  // THE THIRD LIVE READING, read only by the bracket holder's fold (slot_cap_holder_verdict): the
   // shared standing still judges max+swap, the pair the memory-envelope check reads. The holder counts
   // as converged only when this too reads at desired (fleet slot ruling, parent 2026-10-24).
   cgroup_memory_high: String?
@@ -642,12 +642,6 @@ fn slot_cap_holder_verdict(unit: NonEmptyStr, live: SlotCapLive, desired: Runner
   } else {
     slot_cap_holder_deferral_outcome(ledger: ledger, unit: unit, live: live, desired: desired)
   }
-}
-
-// THE PURE CONTROL FOLD: the holder's verdict for a pass with no prior deferrals recorded (LedgerFresh).
-// The production route reaches the same fold through slot_cap_holder_standing_over with the host ledger.
-fn slot_cap_holder_standing(unit: NonEmptyStr, live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapOutcome {
-  slot_cap_holder_verdict(unit: unit, live: live, desired: desired, ledger: LedgerFresh)
 }
 
 // THE SSH FOLD: the same verdict, read from the holder's live cgroup over the pinned transport (one
