@@ -1086,10 +1086,18 @@ fn bracket_holder_leaf(relative_path: String) -> String {
 // instance, so what comes out is exactly the name the bracket speaks in its argv and refusals.
 fn bracket_holder_unit_of_leaf(leaf: String) -> BracketHolder
 {
-  match read_runner_unit_name(observed: leaf as NonEmptyStr) {
-    NotARunnerUnit { observed: o } => HolderNotOnSubject { why: join(["the cgroup leaf '", o as String, "' is not an actions-runner@ unit: this job runs outside every runner slot of the subject host, so there is nothing to exclude"], "") }
-    RunnerUnitInstanceMalformed { observed: o, cause: c } => HolderUnidentified { cause: join(["the cgroup leaf '", o as String, "' names an actions-runner@ instance that cannot be parsed: ", c as String], "") }
-    RunnerUnitInstance { registration_name: i } => HolderIdentified { unit: runner_unit_name_of_registration(registration_name: i) }
+  // A leaf that is empty after the slashes are trimmed is a job sitting in the slice root (or the root
+  // cgroup) -- it occupies no unit this pass manages, exactly like a dispatcher job. Named here rather
+  // than cast to a non-empty string and handed to the parser, which would turn a decidable case into a
+  // cast that has nothing to name.
+  if leaf == "" {
+    HolderNotOnSubject { why: "the job's own cgroup has no leaf unit: it runs at a slice root, not in a runner slot" }
+  } else {
+    match read_runner_unit_name(observed: leaf as NonEmptyStr) {
+      NotARunnerUnit { observed: o } => HolderNotOnSubject { why: join(["the cgroup leaf '", o as String, "' is not an actions-runner@ unit: this job runs outside every runner slot of the subject host, so there is nothing to exclude"], "") }
+      RunnerUnitInstanceMalformed { observed: o, cause: c } => HolderUnidentified { cause: join(["the cgroup leaf '", o as String, "' names an actions-runner@ instance that cannot be parsed: ", c as String], "") }
+      RunnerUnitInstance { registration_name: i } => HolderIdentified { unit: runner_unit_name_of_registration(registration_name: i) }
+    }
   }
 }
 

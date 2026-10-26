@@ -1385,6 +1385,16 @@ test fn a_job_off_the_subject_host_brackets_every_desired_unit() -> Bool {
   length(kept) == 3 && all(wanted, x => any(kept, y => x == y))
 }
 
+// A LEAF WITH NOTHING IN IT -- a job in the slice root or the root cgroup -- occupies no unit either, and
+// is named as such instead of being cast to a string that has nothing to name.
+test fn an_empty_leaf_says_the_job_holds_no_slot() -> Bool {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice///")) {
+    HolderNotOnSubject { why: w } => string_contains(s: w, pattern: "no leaf unit")
+    HolderIdentified { unit: _ } => false
+    HolderUnidentified { cause: _ } => false
+  }
+}
+
 test fn a_holder_outside_the_desired_units_removes_nothing() -> Bool {
   let wanted = [u(n: "01"), u(n: "02")]
   length(bracket_units_to_bracket(units: wanted, holder: HolderIdentified { unit: u(n: "09") })) == 2
