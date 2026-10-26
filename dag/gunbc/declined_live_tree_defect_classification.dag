@@ -252,10 +252,18 @@ data doc_reachability_rows: List<ClassifiedRow> = [
     // that closure rested on a reference that does not resolve (§3), and it turned an operator-owned open
     // ruling into a lane-owned closure. The guidance that used to live in the question String as prose is
     // typed now: `recommended_if_ruled` names the rung-drop carrier, the owner, and the restoration
-    // trigger -- a `DeclarationRef` at the CAPABILITY restored (review 86427; §4b(3)), a declaration that
-    // resolves in this tree -- which a non-operator lane may act on without reversing the operator's cut
-    // (review 86337, DESIGN 4c), and `prior_change_attribution` states -- withheld, with its reason -- why no prior
-    // change closes this row while the ruling is open.
+    // trigger. THE TRIGGER NAMES THIS CLAIM'S OWN IDENTITY, AND THAT IS THE HONEST READING OF §4b(3) HERE
+    // rather than a citation of a symptom (review 86627 offered both routes; this takes the second and
+    // says why). The capability the drop waits for is doc-graph admission -- every declared plan root
+    // admitted against the live source roots -- and `doc_graph_registered_plan_roots_all_admitted` is not
+    // a red label attached to the row, it is the ONLY executable form that capability has anywhere in this
+    // tree; naming it names the capability, and the drop retires exactly when it runs green. An earlier
+    // comment here described the trigger as "the g1 planted-control discriminators", which is NOT what the
+    // value is: those controls have no home in this tree (group-B header above), so no DeclarationRef
+    // could name one without becoming the phantom review 86427 already caught, and a comment describing a
+    // different fact from its own value is the §3 defect the same review flagged. When a typed home for
+    // the controls lands, the trigger and this comment move together -- and the witness claim that joins
+    // the trigger to the row identity fails if only one of them does.
     disposition: NeedsOperatorRuling {
       question: permanent_evidence_ruling_question,
       recommended_if_ruled: Present {
@@ -400,6 +408,29 @@ fn permanent_evidence_ruling_row() -> Optional<ClassifiedRow> {
         && (row.identity.function == "doc_graph_registered_plan_roots_all_admitted")
     }
   )
+}
+
+// THE ROW IDENTITY, AS A DECLARATION REF, DERIVED FROM THE ROW ITSELF (review 86627). The witness joins
+// the recommended route's restoration trigger to this value rather than to two string literals: the join
+// is then over the row's own typed identity, so the trigger cannot be repointed at some other healthy
+// declaration to make a pinning claim pass, and it cannot drift away from the row it belongs to. It is
+// DERIVED, not restated -- the module and name come from `permanent_evidence_ruling_row()`, the same
+// search the field accessors use -- so no second copy of the identity exists to go stale.
+fn ruling_identity() -> Optional<DeclarationRef> {
+  match permanent_evidence_ruling_row() {
+    Present { value: row } =>
+      Present { value: decl_ref(module_path: row.identity.module_path, decl_name: row.identity.function) }
+    Absent {} => Absent {}
+  }
+}
+
+// THE JOIN THE WITNESS USES, kept here so the falsifier is a claim and not an expression. The trigger
+// must be the ref of the very row the ruling is about.
+fn ruling_identity_is_the_trigger(row_id: Optional<DeclarationRef>, trg: DeclarationRef) -> Bool {
+  match row_id {
+    Present { value: id } => (id.module_path == trg.module_path) && (id.decl_name == trg.decl_name)
+    Absent {} => false
+  }
 }
 
 fn permanent_evidence_ruling_fields() -> Optional<RulingFields> {

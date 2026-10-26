@@ -8,6 +8,8 @@ import gunbc.declined_live_tree_defect_classification {
   real_defect_count,
   wrong_witness_count,
   permanent_evidence_ruling_fields,
+  ruling_identity,
+  ruling_identity_is_the_trigger,
   RecommendedDropRoute,
   PriorChangeAttribution,
   RulingFields,
@@ -16,6 +18,7 @@ import gunbc.declined_live_tree_defect_classification {
 }
 import std.optional { Present }
 import std.algebra { string_contains }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.types { List }
 import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
 import gunbc.doc_graph_roots { hand_authored_works_resolution_pool_roots }
@@ -84,15 +87,16 @@ test fn the_open_ruling_carries_a_typed_recommendation() -> Bool {
     } =>
       (dc == "gunbc.rung_drop")
         && (own == "the operator who cut docs/probes/ in the 2026-08-24 measurement bankruptcy")
-        // THE TRIGGER IS CHECKED, NOT PINNED (review 86427): it resolves against the LIVE declaration
-        // index through the same host join the retirement witness uses, so a trigger that names a
-        // deleted declaration -- the exact defect review 86427 found when this field was a string --
-        // fails THIS claim instead of being frozen into it as a literal. §4b(3): what it names is the
-        // capability restored, the g1 planted-control discriminators, which are the three retired
-        // claims themselves.
+        // THE TRIGGER IS CHECKED, NOT PINNED (review 86427 AND review 86627). The first version of this
+        // falsifier checked resolution but then pinned the ref against two string literals, which is the
+        // pinning this claim exists to refuse (review 86627). The join is derived instead: the trigger must
+        // be the ref of the VERY ROW this ruling is about -- the identity the carrier's own accessor
+        // searched on -- so it cannot drift from the row and cannot be repointed at some other healthy
+        // declaration to make the claim pass. Resolution stays checked against the LIVE declaration index
+        // through the same host join the retirement witness uses, so a trigger naming a deleted
+        // declaration fails THIS claim rather than being frozen into it.
         && (cited_declaration_ref_refusal_count_live(refs: [trg], pool_roots: pool_roots()) == 0)
-        && (trg.module_path == "test.claim.doc_reachability_witness")
-        && (trg.decl_name == "doc_graph_registered_plan_roots_all_admitted")
+        && ruling_identity_is_the_trigger(row_id: ruling_identity(), trg: trg)
         && is_withheld(pa)
     _ => false
   }
@@ -103,6 +107,41 @@ test fn the_open_ruling_carries_a_typed_recommendation() -> Bool {
 // at the same time would be the carrier contradicting itself, and it is the shape review 84372/84397
 // rejected. The reason must name #9181, because the withheld claim IS about #9181: naming it is what keeps
 // the withheld state distinguishable from a row nobody ever asked about.
+// THE JOIN IS A FALSIFIER, NOT A TAUTOLOGY (review 86627). A healthy trigger is joined to the row by
+// identity, so this refutes the join rather than being satisfied by any resolvable declaration: the
+// row's OWN ref must pass the join, and a ref to a different -- perfectly resolvable -- declaration
+// must fail it. A witness that only ever checked "== 0" on resolution could be satisfied by pointing
+// the trigger anywhere healthy; that is the pinning-shaped failure review 86627 named, and it fails
+// HERE instead.
+test fn a_trigger_on_a_different_resolvable_declaration_refuses_the_join() -> Bool {
+  (ruling_identity_is_the_trigger(
+    row_id: ruling_identity(),
+    trg: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_works_resolution_pool_roots")
+  ) == false)
+    && ruling_identity_is_the_trigger(row_id: ruling_identity(), trg: ruling_ref())
+}
+
+fn ruling_ref() -> DeclarationRef {
+  match permanent_evidence_ruling_fields() {
+    Present {
+      value: RulingFields {
+        question: _,
+        recommended_if_ruled: Present {
+          value: RecommendedDropRoute {
+            drop_carrier: _,
+            owner: _,
+            restoration_trigger: trg,
+          },
+        },
+        prior_change_attribution: _,
+      },
+    } => trg
+    // REFUSED, NOT DEFAULTED. This arm means the ruling lost its typed recommendation, which the claim
+    // above already refuses; returning a ref here would let a lost recommendation pass the join silently.
+    _ => decl_ref(module_path: "the_join_refuses_when_the_ruling_has_no_recommendation", decl_name: "unreachable")
+  }
+}
+
 test fn the_prior_change_question_is_withheld_not_written() -> Bool {
   match permanent_evidence_ruling_fields() {
     Present { value: RulingFields { question: _, recommended_if_ruled: _, prior_change_attribution: pa } } =>
