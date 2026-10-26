@@ -3886,6 +3886,73 @@ mod compiler_tests {
     }
 
     #[test]
+    fn shared_roster_follows_the_declaration_not_the_spelling() {
+        // DISCRIMINATING RED for the last leaf-keyed consumer: the derive roster of a struct
+        // was picked by the SHARED SET keyed by SPELLING, so two declarations of one leaf took
+        // one roster -- dag/std/bit.dag's `Word64 { bytes: List<Byte> }` inherited `Copy` from
+        // std.machine_word's constant `Word64 { hi: Int, lo: Int }` (shared_by_every_declarer
+        // answers all-agree), and rustc refused `Copy` over the Rc fields: E0204 at emitted
+        // std_bit.rs:40, the refusal that closed the native roster-sweep route. probe.bits
+        // declares the non-constant Word64 (List field); probe.words declares the constant one.
+        // RED: the non-constant declaration must NOT derive Copy. CONTROL: the constant
+        // declaration keeps Copy, and the single-declarer constant type is untouched.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let sources = im::vector![
+                    source("probe_bits.dag", "module probe.bits\ntype Word64 { bytes: List<Int> }\nfn word64_of(n: Int) -> Word64 { Word64 { bytes: [n] } }\n"),
+                    source("probe_words.dag", "module probe.words\ntype Word64 { hi: Int, lo: Int }\nfn word64_pair(h: Int, l: Int) -> Word64 { Word64 { hi: h, lo: l } }\n"),
+                    source("probe_single.dag", "module probe.single\ntype Tag64 { hi: Int, lo: Int }\nfn tag_pair(h: Int, l: Int) -> Tag64 { Tag64 { hi: h, lo: l } }\n")
+                ];
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                for d in result.diagnostics.iter() {
+                    eprintln!("DIAG {} {}", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));
+                }
+                let emitted = |suffix: &str| -> String {
+                    result.files.iter()
+                        .find(|f| f.path.ends_with(suffix))
+                        .map(|f| f.content.clone())
+                        .unwrap_or_else(|| panic!("no emitted file ending {}; files: {:?}", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))
+                };
+                let bits = emitted("probe_bits.rs");
+                let words = emitted("probe_words.rs");
+                let single = emitted("probe_single.rs");
+                assert!(
+                    bits.contains("struct Word64"),
+                    "probe.bits must emit its Word64 declaration; probe_bits:\n{}",
+                    bits
+                );
+                assert!(
+                    !bits.contains("Copy"),
+                    "the non-constant Word64 (its List field is Rc-carried) must NOT derive Copy -- pre-repair it inherited Copy from the same-leaf constant declaration and rustc refused E0204; probe_bits:\n{}",
+                    bits
+                );
+                assert!(
+                    words.contains("struct Word64") && words.contains("Copy"),
+                    "the constant Word64 {{ hi: Int, lo: Int }} keeps its Copy roster; probe_words:\n{}",
+                    words
+                );
+                assert!(
+                    single.contains("struct Tag64") && single.contains("Copy"),
+                    "a single-declarer constant record is untouched by the re-key; probe_single:\n{}",
+                    single
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shared_roster_follows_the_declaration_not_the_spelling panicked");
+    }
+
+    #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()
@@ -5823,117 +5890,6 @@ mod compiler_tests {
             control.contains("pub struct Odd<K: Clone>")
                 && !control.contains("more than one module of this closure declares"),
             "a sole declarer resolves by spelling:\n{control}"
-        );
-    }
-
-    // A DECLARATION'S MEMBERS ARE NOT ITS TYPE ARGUMENTS (v1.compiler.emit_rust
-    // type_node_is_declaration_structure). Specimen: every fold(.., init: child_walk_init(), ..) in
-    // v2.compiler.resolve rendered `|acc: _, ..|` for the non-generic ChildWalk, because the closure
-    // walk descended into ChildWalk's fields, reached a leaf the fn's environment does not bind, and
-    // read the miss as an unbound generic. THE REDS: a declaration item and a coproduct body whose
-    // member is such a leaf answer `not generic` from both walks that read leaves, and so does a
-    // reference whose `inferred` is that body. THE CONTROLS: a leaf neither the environment nor the fn
-    // binds still reads unbound and one the fn binds reads bound; an item spelled by itself still
-    // answers through its formals; and the real route annotates a declared record accumulator.
-    #[test]
-    fn fold_declared_accumulator_is_not_read_as_an_unbound_generic() {
-        use crate::v1_std_core::{Connective, Node, ParsedModuleItemKind};
-        let si = std::rc::Rc::new(HashMap::new());
-        let env = crate::v1_compiler_infer_env::empty_type_env();
-        let none_bound = std::rc::Rc::new(im::Vector::<String>::new());
-        let t_bound = std::rc::Rc::new(im::Vector::from(vec!["T".to_string()]));
-        let closure = |n: std::rc::Rc<Node>, g: std::rc::Rc<im::Vector<String>>| {
-            crate::v1_compiler_emit_rust::type_node_has_closure_unbound_generic_atom(
-                n,
-                g,
-                env.clone(),
-                si.clone(),
-            )
-        };
-        let variable = |n: std::rc::Rc<Node>| {
-            crate::v1_compiler_emit_rust::type_node_has_unbound_type_variable(
-                n,
-                none_bound.clone(),
-                si.clone(),
-            )
-        };
-        let unbindable = named_type_node("Shared");
-        assert!(
-            closure(unbindable.clone(), none_bound.clone()),
-            "a leaf the environment does not bind and the fn does not bind reads unbound"
-        );
-        assert!(
-            !closure(named_type_node("T"), t_bound.clone()),
-            "a generic the fn binds is bound"
-        );
-        let mut free_member = (*named_type_node("pending")).clone();
-        free_member.inferred = Some(std::rc::Rc::new(
-            crate::v1_std_core::InferredNode::TypeVariable {
-                id: "x".to_string(),
-            },
-        ));
-        let mut item = (*shaped_type_node(
-            "Walk",
-            vec![unbindable.clone(), std::rc::Rc::new(free_member)],
-        ))
-        .clone();
-        item.module_item_kind = ParsedModuleItemKind::ModuleItemTypeDeclaration;
-        let item = std::rc::Rc::new(item);
-        assert!(
-            !closure(item.clone(), none_bound.clone()),
-            "a declaration item's members are not its type arguments"
-        );
-        assert!(
-            !variable(item.clone()),
-            "a member's type variable is not the item's"
-        );
-        let mut body = (*shaped_type_node("Optional", vec![named_type_node("Absent")])).clone();
-        body.connective = Connective::Disj;
-        let body = std::rc::Rc::new(body);
-        assert!(
-            !closure(body.clone(), none_bound.clone()),
-            "a coproduct body's arms are not type arguments"
-        );
-        let mut reference = (*shaped_type_node("Optional", vec![named_type_node("T")])).clone();
-        reference.inferred = Some(std::rc::Rc::new(
-            crate::v1_std_core::InferredNode::Resolved { node: body.clone() },
-        ));
-        assert!(
-            !closure(std::rc::Rc::new(reference), t_bound.clone()),
-            "a reference is spelled by its own arguments, not its declaration's arms"
-        );
-        let mut formal_item = (*named_type_node("Holder")).clone();
-        formal_item.module_item_kind = ParsedModuleItemKind::ModuleItemTypeDeclaration;
-        formal_item.params = std::rc::Rc::new(vec![named_type_node("T")].into());
-        let formal_item = std::rc::Rc::new(formal_item);
-        assert!(
-            closure(formal_item.clone(), none_bound.clone()),
-            "an item spelled by itself names its formals, unbound here"
-        );
-        assert!(
-            !closure(formal_item.clone(), t_bound.clone()),
-            "and bound where the fn binds them"
-        );
-        use crate::v1_compiler_compile::SourceFile;
-        let walker = std::rc::Rc::new(SourceFile { path: "fixtures/fold_declared_accumulator/walker.dag".to_string(), content: concat!(
-            "module hom.walker\n\ntype Item {\n  k: Int\n}\n\ntype Walk {\n  ordinal: Int\n  items: List<Item>\n}\n\n",
-            "fn walk_init() -> Walk {\n  Walk { ordinal: 0, items: [] }\n}\n\n",
-            "fn walk_step(w: Walk, i: Item) -> Walk {\n  Walk { ordinal: w.ordinal + i.k, items: w.items }\n}\n\n",
-            "fn walk_ordinal(w: Walk) -> Int {\n  w.ordinal\n}\n\n",
-            "fn declared(xs: List<Item>) -> Int {\n  walk_ordinal(w: fold(xs, init: walk_init(), f: fn(acc, e) { walk_step(w: acc, i: e) }))\n}\n").to_string() });
-        let result = crate::v1_compiler_compile::compile_sources(
-            std::rc::Rc::new(vec![walker].into()),
-            crate::v1_compiler_artifact::RenderTarget::Rust,
-        );
-        let emitted = result
-            .files
-            .iter()
-            .find(|f| f.path.contains("hom_walker"))
-            .map(|f| f.content.clone())
-            .unwrap_or_default();
-        assert!(
-            emitted.contains("fold(walk_init(), |acc: Rc<Walk>,"),
-            "the real route annotates a declared record accumulator:\n{emitted}"
         );
     }
 

@@ -3474,6 +3474,27 @@ fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recu
   )
 }
 
+// THE ROSTER ARM ASKS THE DECLARATION, NOT THE SPELLING. shared_types above is keyed by spelling
+// and must stay so: every REFERENCE to a spelling must render the same way, so a leaf two
+// declarations own gets one answer for all readers (shared_by_every_declarer). But a struct's own
+// derive roster is not a spelling question -- a declaration's fields are what they are. Two
+// declarations of one leaf with different field shapes take ONE roster from the spelling answer,
+// and the non-constant one derives Copy over Rc fields: the E0204 refusal at emitted
+// std_bit.rs:40 (std.bit's `Word64 { bytes: List<Byte> }` inheriting Copy from
+// std.machine_word's constant `Word64 { hi: Int, lo: Int }`), the case
+// gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer still
+// names. So the roster arm reads THIS declaration's summary by the identity key TypeSummaryIndex
+// already mints (type_decl_identity, no second key type), and calls it shared exactly when the one
+// existing marking rule (maybe_mark_shared_type) would mark it. A spelling this module does not
+// declare keeps the leaf answer, so single-declarer types are unaffected.
+fn shared_type_declaration_is_marked_shared(module_path: String, name: String, emit_info: EmitGraphInfo) -> Bool {
+  set_contains(emit_info.shared_types, name) || match type_summary_decided(index: emit_info.type_summaries, key: type_decl_identity(owner_module: module_path, decl_name: name)) {
+    Present { value: summary } =>
+      set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: emit_info.recursive_type_set, target_needs_sharing: sharing_for_target(target: Rust).needs_sharing), summary.name)
+    Absent => false
+  }
+}
+
 fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
 
   let sharing = sharing_for_target(target: target)
@@ -8443,7 +8464,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     module_path: env.module_path,
     name: name,
     children: children,
-    shared_types: shared_types,
+    declared_shared: shared_type_declaration_is_marked_shared(module_path: env.module_path, name: name, emit_info: emit_info),
     has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
