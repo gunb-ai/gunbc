@@ -3146,8 +3146,10 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
     // THE PRE-POWER RETENTIONS: the ORIGINAL cause the executing phase reported (carried in the record),
     // and only on a write-side retention does the conclusion read the file back by the run's own identity.
     // These speak only for this attempt -- no phase, no claim; no run identity at conclusion, no read.
-    pre_power_retention_receipt_line(prefix: "mc-info", executed: attempt.mc_info, run: run, path_of: mtcollins1_boot_mc_info_path),
-    pre_power_retention_receipt_line(prefix: "fru", executed: attempt.fru, run: run, path_of: mtcollins1_boot_fru_print_path),
+    pre_power_retention_receipt_line(prefix: "mc-info", executed: attempt.mc_info, run: run,
+      path_of: a => mtcollins1_boot_mc_info_path(row: mtcollins1_boot_row_value, run_attempt: a)),
+    pre_power_retention_receipt_line(prefix: "fru", executed: attempt.fru, run: run,
+      path_of: a => mtcollins1_boot_fru_print_path(row: mtcollins1_boot_row_value, run_attempt: a)),
     concat("account=", join(findings.account.notes, "; ")),
     concat("coverage=", match findings.account.account { Present { value: a } => join(map(filter(a.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")  Absent => "no account read on this row" }),
     concat("harness=", if count(findings.harness) == 0 { "none" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "; ") }),
