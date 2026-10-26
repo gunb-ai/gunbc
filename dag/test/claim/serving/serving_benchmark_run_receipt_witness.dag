@@ -1,0 +1,386 @@
+module test.claim.serving.serving_benchmark_run_receipt_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.content_hash { Sha256Digest }
+import std.measure {
+  token_count, token_count_value, byte_size, mebibyte, milliwatt, hertz, celsius, bandwidth, millicore, cpu_core_count,
+  hardware_thread_count, millisecond, basis_point, microsecond_count, milli_tokens_per_second_count, events_per_hour_count, millicore_count, byte_size_count,
+  positive_slot_count, positive_measure_count,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import extdeps.linux.proc_cpuinfo { CpuArmMidr }
+import extdeps.uri { Uri, Https }
+import extdeps.storage.types { PcieLink, Gen4 }
+import extdeps.nvidia.management_library { nvml_clocks_event_mask, NvmlClocksEventSwThermalSlowdown, NvmlClocksEventSwPowerCap }
+import extdeps.strata.serve_flags {
+  StrataServeFlags, StrataKvQ4_0, StrataKvResidentWindow, StrataSplitStages, StrataLayerSplitAt, StrataExpertsMapped, StrataBatchGroupsAuto,
+}
+import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
+import gunbc.serving.serving_benchmark {
+  ServingBenchmarkVersion, ServingBenchmarkWorkload, serving_benchmark_v1, serving_benchmark_short_n4,
+  AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour,
+  GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower,
+}
+import gunbc.serving.serving_benchmark_run_receipt {
+  admit_serving_benchmark_run, serving_level_result, timed_requests, LevelRead, LevelRefused, ServingBenchmarkRunAdmitted, ServingBenchmarkRunRefused, ServingBenchmarkRunObservation, ServingBenchmarkGap,
+  ServingCellIdentity, ObservedCpu, ObservedGpu, ServingTopology, StrataEngineCell, ServingEngineBuild, ServingArtifact, ServingArtifactFile,
+  LevelTelemetry, GpuLevelTelemetry, WallPowerUnmetered, ServingLevelResult,
+  GapNoGpu, GapTopologyDoesNotCoverGpus, GapPoolWorkersUnpinned, GapSessionTextsNotDistinct, GapRequestFailed, GapFirstTokenUnread,
+  GapLevelRounds, GapTelemetryMissing, GapToolDelta, GapMaxTokens, GapSubmissionSpread, GapPrimeContextOutsideBand,
+  GapEngineCountersUnread, GapEngineCountersCoverOneEngine,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ADMISSION BOUNDARY, DRIVEN WITH SUPPLIED VALUES (DESIGN section 3, a witness discriminates at
+// one interface). The version is a two-session cut of serving-benchmark/1's contract (same retained
+// context, tool delta and output length, levels 1 and 2, one round each) so a run is five request/v4
+// lines; admission is parametric in the version, and the pinned serving_benchmark_v1 is exercised by
+// test.claim.serving.serving_benchmark_v4_inhabitance against the kit's real committed run.
+
+data fx_version: ServingBenchmarkVersion = ServingBenchmarkVersion {
+  name: "serving-benchmark/fixture" as NonEmptyStr,
+  workload: ServingBenchmarkWorkload {
+    retained_context: token_count(count: 199466),
+    retained_context_band: basis_point(count: 100),
+    tool_delta: token_count(count: 2000),
+    tool_delta_template_allowance: token_count(count: 64),
+    max_output: token_count(count: 1024),
+    retained_sessions: 2,
+    active_levels: [1, 2],
+    warmup_rounds_per_level: 0,
+    rounds_per_level: 1,
+    submission_spread_bound: millisecond(count: 1000),
+  },
+  quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
+  telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+}
+
+// The run, in seconds on the client's wall clock. Primes 199,466 and 199,500 tokens; each follow-up's
+// prompt is the previous prompt + previous reply + 2,000 tool tokens + 20 template tokens.
+//   level 1, round 1: session 0, 230.00 -> first 231.00 -> end 251.46: window 21.46 s, 1,024 tokens
+//   level 2, round 2: sessions 0 and 1 submitted at 260.0 and 260.1, last completion 301.0: window 41 s
+data fx_prime: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":199466,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":100000000,\"engine_cpu_usage_usec_end\":160000000,\"engine_memory_current_start\":60000000000,\"engine_memory_current_end\":60000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":160000000,\"engine_cpu_usage_usec_end\":220000000,\"engine_memory_current_start\":60000000000,\"engine_memory_current_end\":60000000000,\"engine_memory_peak\":null}\n"
+
+data fx_level_1: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"t_start\":230.0,\"t_first\":231.0,\"t_end\":251.46,\"prompt_tokens\":201487,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1000000000,\"engine_cpu_usage_usec_end\":1139490000,\"engine_memory_current_start\":64000000000,\"engine_memory_current_end\":64500000000,\"engine_memory_peak\":null}\n"
+
+data fx_level_2: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200000000,\"engine_cpu_usage_usec_end\":1400000000,\"engine_memory_current_start\":65000000000,\"engine_memory_current_end\":66000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200050000,\"engine_cpu_usage_usec_end\":1446000000,\"engine_memory_current_start\":65100000000,\"engine_memory_current_end\":66500000000,\"engine_memory_peak\":null}\n"
+
+// RED VARIANTS OF ONE LINE EACH, every other line as in the admitted run.
+data fx_level_2_no_first_token: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":null,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200000000,\"engine_cpu_usage_usec_end\":1400000000,\"engine_memory_current_start\":65000000000,\"engine_memory_current_end\":66000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200050000,\"engine_cpu_usage_usec_end\":1446000000,\"engine_memory_current_start\":65100000000,\"engine_memory_current_end\":66500000000,\"engine_memory_peak\":null}\n"
+
+data fx_level_2_failed: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200000000,\"engine_cpu_usage_usec_end\":1400000000,\"engine_memory_current_start\":65000000000,\"engine_memory_current_end\":66000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":null,\"t_end\":290.0,\"prompt_tokens\":null,\"completion_tokens\":null,\"cached_tokens\":null,\"status\":\"error\",\"error\":\"TimeoutError\",\"engine_cpu_usage_usec_start\":1200050000,\"engine_cpu_usage_usec_end\":1300000000,\"engine_memory_current_start\":65100000000,\"engine_memory_current_end\":65200000000,\"engine_memory_peak\":null}\n"
+
+data fx_level_2_short_delta: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":203031,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200000000,\"engine_cpu_usage_usec_end\":1400000000,\"engine_memory_current_start\":65000000000,\"engine_memory_current_end\":66000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200050000,\"engine_cpu_usage_usec_end\":1446000000,\"engine_memory_current_start\":65100000000,\"engine_memory_current_end\":66500000000,\"engine_memory_peak\":null}\n"
+
+data fx_level_2_serialized: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200000000,\"engine_cpu_usage_usec_end\":1400000000,\"engine_memory_current_start\":65000000000,\"engine_memory_current_end\":66000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":262.5,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200050000,\"engine_cpu_usage_usec_end\":1446000000,\"engine_memory_current_start\":65100000000,\"engine_memory_current_end\":66500000000,\"engine_memory_peak\":null}\n"
+
+data fx_level_1_short_output: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":2,\"session\":0,\"max_tokens\":512,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"t_start\":230.0,\"t_first\":231.0,\"t_end\":251.46,\"prompt_tokens\":201487,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1000000000,\"engine_cpu_usage_usec_end\":1139490000,\"engine_memory_current_start\":64000000000,\"engine_memory_current_end\":64500000000,\"engine_memory_peak\":null}\n"
+
+data fx_prime_short_context: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":180000,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":100000000,\"engine_cpu_usage_usec_end\":160000000,\"engine_memory_current_start\":60000000000,\"engine_memory_current_end\":60000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":160000000,\"engine_cpu_usage_usec_end\":220000000,\"engine_memory_current_start\":60000000000,\"engine_memory_current_end\":60000000000,\"engine_memory_peak\":null}\n"
+
+data fx_prime_same_text: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":199466,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":100000000,\"engine_cpu_usage_usec_end\":160000000,\"engine_memory_current_start\":60000000000,\"engine_memory_current_end\":60000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":160000000,\"engine_cpu_usage_usec_end\":220000000,\"engine_memory_current_start\":60000000000,\"engine_memory_current_end\":60000000000,\"engine_memory_peak\":null}\n"
+
+data fx_level_2_unsampled_engine: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1200000000,\"engine_cpu_usage_usec_end\":1400000000,\"engine_memory_current_start\":65000000000,\"engine_memory_current_end\":66000000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":null,\"engine_cpu_usage_usec_end\":null,\"engine_memory_current_start\":null,\"engine_memory_current_end\":null,\"engine_memory_peak\":null}\n"
+
+data fx_level_2_round_3: String = "{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":3,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"7777777777777777777777777777777777777777777777777777777777777777\",\"t_start\":310.0,\"t_first\":312.0,\"t_end\":330.0,\"prompt_tokens\":207575,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1500000000,\"engine_cpu_usage_usec_end\":1600000000,\"engine_memory_current_start\":67000000000,\"engine_memory_current_end\":67500000000,\"engine_memory_peak\":null}\n{\"schema\":\"gpu-bench/request/v4\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":3,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"8888888888888888888888888888888888888888888888888888888888888888\",\"t_start\":310.1,\"t_first\":313.0,\"t_end\":331.0,\"prompt_tokens\":204565,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null,\"engine_cpu_usage_usec_start\":1500050000,\"engine_cpu_usage_usec_end\":1626000000,\"engine_memory_current_start\":67000000000,\"engine_memory_current_end\":67200000000,\"engine_memory_peak\":null}\n"
+
+fn rows(text: String) -> List<GpuBenchRequestV4> {
+  match gpu_bench_parse_v4_jsonl(text: text) {
+    GpuBenchRequestV4Parsed { records: rs } => rs
+    GpuBenchRequestV4StreamUnreadable { line: _, cause: _ } => []
+  }
+}
+
+fn digest(hex: String) -> Sha256Digest {
+  Sha256Digest { hex: hex }
+}
+
+data fx_digest_a: Sha256Digest = digest(hex: "1111111111111111111111111111111111111111111111111111111111111111")
+data fx_digest_b: Sha256Digest = digest(hex: "2222222222222222222222222222222222222222222222222222222222222222")
+
+fn fx_gpu(uuid: String) -> ObservedGpu {
+  ObservedGpu {
+    name: "NVIDIA RTX 2000 Ada Generation" as NonEmptyStr,
+    uuid: uuid as NonEmptyStr,
+    vbios: "95.07.3A.00.00" as NonEmptyStr,
+    driver: "580.95.05" as NonEmptyStr,
+    memory: mebibyte(count: 16380),
+    power_limit: milliwatt(count: 70000),
+    link_max: PcieLink { generation: Gen4, lane_count: 8 },
+  }
+}
+
+fn fx_flags(pool_workers: Nat?) -> StrataServeFlags {
+  StrataServeFlags {
+    kv_format: StrataKvQ4_0,
+    kv_residency: StrataKvResidentWindow { tokens: token_count(count: 65536) },
+    max_context: token_count(count: 229376),
+    parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),
+    batch_groups: Present { value: StrataBatchGroupsAuto },
+    pool_workers: pool_workers,
+    stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
+    experts: StrataExpertsMapped,
+    vram_reserve: none,
+  }
+}
+
+fn fx_cell(gpus: List<ObservedGpu>, engines: Nat, gpus_per_engine: Nat, pool_workers: Nat?) -> ServingCellIdentity {
+  ServingCellIdentity {
+    host: operator_host_srv3,
+    cpu: ObservedCpu { model: CpuArmMidr { implementer: 65, variant: 3, part: 3340, revision: 1 }, logical_cpus: hardware_thread_count(count: 128) },
+    memory: byte_size(count: 549755813888),
+    gpus: gpus,
+    engine: StrataEngineCell {
+      build: ServingEngineBuild {
+        upstream: Uri { scheme: Https, locator: "github.com/Niko1221/Strata" as NonEmptyStr },
+        base_commit: "8183c6b67162340c09b67360860177c577a65f2e" as NonEmptyStr,
+        patches: [],
+        binary: fx_digest_a,
+      },
+      flags: fx_flags(pool_workers: pool_workers),
+    },
+    artifact: ServingArtifact { name: "fixture-weights" as NonEmptyStr, quantization: "IQ3_S" as NonEmptyStr, files: [ServingArtifactFile { name: "fixture-00001-of-00001.gguf" as NonEmptyStr, digest: fx_digest_b }] },
+    topology: ServingTopology { engines: engines, gpus_per_engine: gpus_per_engine },
+  }
+}
+
+data fx_two_gpus: List<ObservedGpu> = [fx_gpu(uuid: "GPU-aaaa"), fx_gpu(uuid: "GPU-bbbb")]
+
+fn fx_gpu_telemetry(uuid: String) -> GpuLevelTelemetry {
+  GpuLevelTelemetry {
+    uuid: uuid as NonEmptyStr,
+    power_mean: milliwatt(count: 52000),
+    power_peak: milliwatt(count: 70000),
+    sm_clock_mean: hertz(count: 2400000000),
+    memory_clock_mean: hertz(count: 8001000000),
+    temperature_peak: celsius(count: 71),
+    clocks_events: nvml_clocks_event_mask(mask: 4),
+    link_observed: PcieLink { generation: Gen4, lane_count: 8 },
+    pcie_rx_mean: bandwidth(count: 850000000),
+    pcie_tx_mean: bandwidth(count: 40000000),
+  }
+}
+
+fn fx_level_telemetry(active: Nat) -> LevelTelemetry {
+  LevelTelemetry {
+    active: active,
+    gpus: [fx_gpu_telemetry(uuid: "GPU-aaaa"), fx_gpu_telemetry(uuid: "GPU-bbbb")],
+    wall_power: WallPowerUnmetered,
+  }
+}
+
+data fx_telemetry: List<LevelTelemetry> = [fx_level_telemetry(active: 1), fx_level_telemetry(active: 2)]
+
+fn observe(cell: ServingCellIdentity, text: String, telemetry: List<LevelTelemetry>) -> ServingBenchmarkRunObservation {
+  ServingBenchmarkRunObservation { cell: cell, requests: rows(text: text), telemetry: telemetry }
+}
+
+data fx_cell_complete: ServingCellIdentity = fx_cell(gpus: fx_two_gpus, engines: 1, gpus_per_engine: 2, pool_workers: Present { value: 6 })
+data fx_run_text: String = join([fx_prime, fx_level_1, fx_level_2], "")
+
+fn gaps_of(observation: ServingBenchmarkRunObservation) -> List<ServingBenchmarkGap> {
+  match admit_serving_benchmark_run(version: fx_version, observation: observation) {
+    ServingBenchmarkRunAdmitted { receipt: _, levels: _ } => []
+    ServingBenchmarkRunRefused { gaps: g } => g
+  }
+}
+
+fn level(levels: List<ServingLevelResult>, active: Nat) -> ServingLevelResult? {
+  get(xs: levels |> filter(l => l.active == active), index: 0)
+}
+
+// ── POSITIVE CONTROL: the complete run is admitted, and each quantity is its own exact fold ─────
+
+test fn complete_run_is_admitted_with_three_separate_quantities() -> Bool {
+  match admit_serving_benchmark_run(version: fx_version, observation: observe(cell: fx_cell_complete, text: fx_run_text, telemetry: fx_telemetry)) {
+    ServingBenchmarkRunRefused { gaps: _ } => false
+    ServingBenchmarkRunAdmitted { receipt: r, levels: ls } =>
+      (r.version.name as String) == "serving-benchmark/fixture"
+        && count(ls) == 2
+        && match level(levels: ls, active: 1) {
+          Absent => false
+          // 1,024 tokens / 21.46 s; decode 1,023 / 20.46 s; one turn per 21.46 s = 167.75 per hour
+          Present { value: l } =>
+            milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 47716
+              && milli_tokens_per_second_count(r: l.decode_median) == 50000
+              && events_per_hour_count(r: l.completed_turns_per_hour) == 167
+              && microsecond_count(m: l.window) == 21460000
+              // 139.49 s of engine CPU over the 21.46 s window: 6.5 busy threads
+              && millicore_count(m: l.engine_cpu_busy) == 6500
+              && byte_size_count(b: l.engine_memory_current_max) == 64500000000
+        }
+        && match level(levels: ls, active: 2) {
+          Absent => false
+          // 2,048 tokens / (301.0 - 260.0 s): the window opens at the round's common submission, not at
+          // either request's own start; decode is each request's 1,023 / 38 s, median 26.921
+          Present { value: l } =>
+            milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 49951
+              && milli_tokens_per_second_count(r: l.decode_median) == 26921
+              && events_per_hour_count(r: l.completed_turns_per_hour) == 175
+              && token_count_value(t: l.generated) == 2048
+              // the round's CPU runs from the earliest start counter (1,200.0 s) to the latest end (1,446.0 s)
+              && millicore_count(m: l.engine_cpu_busy) == 6000
+              && byte_size_count(b: l.engine_memory_current_max) == 66500000000
+        }
+  }
+}
+
+// ── IDENTITY INCOMPLETE ─────────────────────────────────────────────────────────────────────────
+
+test fn unpinned_pool_workers_refuse() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell(gpus: fx_two_gpus, engines: 1, gpus_per_engine: 2, pool_workers: none), text: fx_run_text, telemetry: fx_telemetry))
+  count(g) == 1 && any(g, x => match x { GapPoolWorkersUnpinned => true, _ => false })
+}
+
+test fn no_gpu_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell(gpus: [], engines: 1, gpus_per_engine: 2, pool_workers: Present { value: 6 }), text: fx_run_text, telemetry: fx_telemetry))
+  any(g, x => match x { GapNoGpu => true, _ => false })
+}
+
+test fn a_row_without_engine_counters_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_unsampled_engine], ""), telemetry: fx_telemetry))
+  any(g, x => match x { GapEngineCountersUnread { round: r, session: s } => r == 2 && s == 1, _ => false })
+}
+
+test fn topology_that_does_not_cover_the_gpus_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell(gpus: fx_two_gpus, engines: 2, gpus_per_engine: 2, pool_workers: Present { value: 6 }), text: fx_run_text, telemetry: fx_telemetry))
+  any(g, x => match x { GapTopologyDoesNotCoverGpus { engines: e, gpus_per_engine: p, gpus: n } => e == 2 && p == 2 && n == 2, _ => false })
+    // the kit samples one engine cgroup, so two engines have no engine reading
+    && any(g, x => match x { GapEngineCountersCoverOneEngine { engines: e } => e == 2, _ => false })
+}
+
+test fn repeated_session_text_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime_same_text, fx_level_1, fx_level_2], ""), telemetry: fx_telemetry))
+  count(g) == 1 && any(g, x => match x { GapSessionTextsNotDistinct => true, _ => false })
+}
+
+// ── METRIC INCOMPLETE ───────────────────────────────────────────────────────────────────────────
+
+test fn missing_first_token_refuses_the_decode_metric() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_no_first_token], ""), telemetry: fx_telemetry))
+  any(g, x => match x { GapFirstTokenUnread { round: r, session: s } => r == 2 && s == 0, _ => false })
+}
+
+test fn failed_request_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_failed], ""), telemetry: fx_telemetry))
+  any(g, x => match x { GapRequestFailed { round: r, session: s } => r == 2 && s == 1, _ => false })
+}
+
+test fn a_level_the_version_names_but_the_run_lacks_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1], ""), telemetry: fx_telemetry))
+  any(g, x => match x { GapLevelRounds { active: a, observed: n } => a == 2 && n == 0, _ => false })
+}
+
+test fn serialized_submissions_have_no_common_submission() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_serialized], ""), telemetry: fx_telemetry))
+  any(g, x => match x { GapSubmissionSpread { round: r, spread: s } => r == 2 && microsecond_count(m: s) == 2500000, _ => false })
+}
+
+test fn missing_level_telemetry_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: fx_run_text, telemetry: [fx_level_telemetry(active: 1)]))
+  count(g) == 1 && any(g, x => match x { GapTelemetryMissing { active: a } => a == 2, _ => false })
+}
+
+// ── WORKLOAD NOT THIS VERSION ───────────────────────────────────────────────────────────────────
+
+test fn a_follow_up_without_the_tool_delta_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_short_delta], ""), telemetry: fx_telemetry))
+  count(g) == 1 && any(g, x => match x { GapToolDelta { round: r, session: s } => r == 2 && s == 0, _ => false })
+}
+
+test fn a_shorter_output_cap_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1_short_output, fx_level_2], ""), telemetry: fx_telemetry))
+  count(g) == 1 && any(g, x => match x { GapMaxTokens { round: r, observed: t } => r == 1 && token_count_value(t: t) == 512, _ => false })
+}
+
+test fn a_prime_outside_the_retained_band_refuses() -> Bool {
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime_short_context, fx_level_1, fx_level_2], ""), telemetry: fx_telemetry))
+  any(g, x => match x { GapPrimeContextOutsideBand { session: s, prompt: p } => s == 0 && token_count_value(t: p) == 180000, _ => false })
+}
+
+// ── THE PINNED VERSION ──────────────────────────────────────────────────────────────────────────
+
+test fn serving_benchmark_v1_pins_the_operator_workload() -> Bool {
+  let w = serving_benchmark_v1.workload
+  (serving_benchmark_v1.name as String) == "serving-benchmark/1"
+    && token_count_value(t: w.tool_delta) == 2000
+    && token_count_value(t: w.max_output) == 1024
+    && count(w.active_levels) == 4
+    && any(w.active_levels, l => l == 1) && any(w.active_levels, l => l == 2) && any(w.active_levels, l => l == 4) && any(w.active_levels, l => l == 8)
+    && w.retained_sessions == 8
+    && count(serving_benchmark_v1.quantities) == 3
+    && count(serving_benchmark_v1.telemetry) == 8
+}
+
+// ── NVML CLOCKS EVENT MASK: named bits and the unmodeled residue ────────────────────────────────
+
+test fn clocks_event_mask_keeps_named_bits_and_the_residue() -> Bool {
+  // 0x20 software thermal + 0x4 software power cap + 0x1000, a bit no arm names
+  let m = nvml_clocks_event_mask(mask: 4132)
+  count(m.reasons) == 2
+    && any(m.reasons, r => match r { NvmlClocksEventSwThermalSlowdown => true, _ => false })
+    && any(m.reasons, r => match r { NvmlClocksEventSwPowerCap => true, _ => false })
+    && m.unmodeled_bits == 4096
+}
+
+// ── WARM-UP ROUNDS ──────────────────────────────────────────────────────────────────────────────
+//
+// Level 2 run twice: round 2 as above, round 3 shorter (310.0 to 331.0 s). With one warm-up round the
+// level reads round 3 alone: 2,048 tokens over 21 s, each request's 1,023 decode tokens over 18 s, and
+// the engine's 126 s of CPU over the 21 s window.
+test fn a_warm_up_round_runs_and_is_not_measured() -> Bool {
+  match serving_level_result(requests: timed_requests(requests: rows(text: join([fx_prime, fx_level_1, fx_level_2, fx_level_2_round_3], ""))).requests, active: 2, warmup: 1) {
+    LevelRefused { gaps: _ } => false
+    LevelRead { result: l } =>
+      l.rounds == 1
+        && token_count_value(t: l.generated) == 2048
+        && milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 97523
+        && milli_tokens_per_second_count(r: l.decode_median) == 56833
+        && events_per_hour_count(r: l.completed_turns_per_hour) == 342
+        && millicore_count(m: l.engine_cpu_busy) == 6000
+  }
+}
+
+data fx_version_with_warmup: ServingBenchmarkVersion = ServingBenchmarkVersion {
+  name: "serving-benchmark/fixture-warmup" as NonEmptyStr,
+  workload: ServingBenchmarkWorkload {
+    retained_context: token_count(count: 199466),
+    retained_context_band: basis_point(count: 100),
+    tool_delta: token_count(count: 2000),
+    tool_delta_template_allowance: token_count(count: 64),
+    max_output: token_count(count: 1024),
+    retained_sessions: 2,
+    active_levels: [1, 2],
+    warmup_rounds_per_level: 1,
+    rounds_per_level: 1,
+    submission_spread_bound: millisecond(count: 1000),
+  },
+  quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
+  telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+}
+
+// The fixture run has one round per level, so a version demanding a warm-up round before each measured
+// one refuses it at both levels: the warm-up is part of the workload, not an option.
+test fn a_missing_warm_up_round_refuses() -> Bool {
+  match admit_serving_benchmark_run(version: fx_version_with_warmup, observation: observe(cell: fx_cell_complete, text: fx_run_text, telemetry: fx_telemetry)) {
+    ServingBenchmarkRunAdmitted { receipt: _, levels: _ } => false
+    ServingBenchmarkRunRefused { gaps: g } =>
+      any(g, x => match x { GapLevelRounds { active: a, observed: n } => a == 1 && n == 1, _ => false })
+        && any(g, x => match x { GapLevelRounds { active: a, observed: n } => a == 2 && n == 1, _ => false })
+  }
+}
+
+test fn the_short_run_is_its_own_version_at_one_level() -> Bool {
+  let w = serving_benchmark_short_n4.workload
+  (serving_benchmark_short_n4.name as String) != (serving_benchmark_v1.name as String)
+    && w.retained_sessions == 4
+    && count(w.active_levels) == 1 && any(w.active_levels, l => l == 4)
+    && w.warmup_rounds_per_level == 1 && w.rounds_per_level == 2
+    && token_count_value(t: w.max_output) == token_count_value(t: serving_benchmark_v1.workload.max_output)
+    && token_count_value(t: w.tool_delta) == token_count_value(t: serving_benchmark_v1.workload.tool_delta)
+    && token_count_value(t: w.retained_context) == token_count_value(t: serving_benchmark_v1.workload.retained_context)
+}
