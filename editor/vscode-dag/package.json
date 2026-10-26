@@ -1,0 +1,35 @@
+{
+  "name": "dag-language-support",
+  "displayName": "Dag Language Support",
+  "description": "Syntax highlighting and editor configuration for Dag files.",
+  "version": "0.0.1",
+  "publisher": "gunbc",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "dag",
+        "aliases": [
+          "Dag",
+          "dag"
+        ],
+        "extensions": [
+          ".dag"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dag",
+        "scopeName": "source.dag",
+        "path": "./syntaxes/dag.tmLanguage.json"
+      }
+    ]
+  }
+}
