@@ -112,7 +112,7 @@ fn gc_census_projection(r: GpuCardCensusReading) -> MarkdownTableRow {
 type GpuCardNodeId
   = GcD0 | GcD1 | GcD2 | GcD3 | GcD4
   | GcN0a | GcN0b | GcN0c | GcN0d | GcN0e
-  | GcN1 | GcN2a | GcN2b | GcN2c | GcN3a | GcN3b | GcN3c | GcN4a | GcN4b | GcN5 | GcN5b | GcN5c
+  | GcN1 | GcN2a | GcN2b | GcN2c | GcN3a | GcN3b | GcN3c | GcN4a | GcN4b | GcN4c | GcN5 | GcN5b | GcN5c
   | GcN6a | GcN6b | GcN6c | GcN6d | GcN7 | GcN8 | GcN9 | GcN10 | GcN11
   | GcN12a | GcN12b | GcN12c | GcN12d | GcN12e
   | GcN13 | GcN14
@@ -156,6 +156,7 @@ fn gc_node_label(id: GpuCardNodeId) -> String {
     GcN3c => "N3c"
     GcN4a => "N4a"
     GcN4b => "N4b"
+    GcN4c => "N4c"
     GcN5 => "N5"
     GcN5b => "N5b"
     GcN5c => "N5c"
@@ -242,7 +243,7 @@ data gpu_card_graph_rows: List<GpuCardGraphRow> = [
   gc_row(id: GcD1, what: "The fan posture for zones that reach a passive card (section 5.4).", home: GcOperatorDecides,
     done: "the posture is named and the fleet fan ruling is amended for it. The rows here are the rows of option (b); choosing (a) revises this carrier to add the enforcer before the posture is realized.", needs: []),
   gc_row(id: GcD2, what: "The NVIDIA driver branch, and open versus proprietary kernel modules.", home: GcOperatorDecides,
-    done: "one branch is named, and its release notes list every NVIDIA card in the census.", needs: [GcN0a]),
+    done: "one branch is named, and its release notes list every NVIDIA card whose census membership satisfies gpu_card_in_bound; a card outside the bound places no requirement on the branch.", needs: [GcN0a]),
   gc_row(id: GcD3, what: "The host for the R9700 pair, and therefore its kernel and distribution.", home: GcOperatorDecides,
     done: "a fleet host and its OS release are named.", needs: []),
   gc_row(id: GcD4, what: "Who owns the park and wake transition: a host watcher, the engine, or placement driving a host actuator.", home: GcOperatorDecides,
@@ -264,28 +265,31 @@ data gpu_card_graph_rows: List<GpuCardGraphRow> = [
     done: "the row states rung found at, ceiling and next trigger.", needs: []), standing: GcLanded { pr: "#15214" }),
   gc_at(r: gc_row(id: GcN1, what: "nvidia-smi power, clock, P-state, clock-event-reason and persistence queries and effects, with unsupported output as its own arm.",
     home: GcExtends { symbol: "extdeps.nvidia.system_management_interface::NvidiaComputeAppsRead" },
-    done: "each operation parses a captured output and refuses an unsupported one, in a witness.", needs: []), standing: GcInReview { pr: "#15218" }),
+    done: "each operation parses a captured output and refuses an unsupported one, in a witness.", needs: []), standing: GcLanded { pr: "#15218" }),
   gc_row(id: GcN2a, what: "Driver releases, distribution packages, kernel-module flavour, and the supported-GPU list per release.",
     home: GcCreates { module: "extdeps.nvidia.linux_driver" },
     done: "the chosen branch is cited, and its supported-GPU list is read from its release notes.", needs: [GcD2]),
   gc_at(r: gc_row(id: GcN2b, what: "nvidia-persistenced: the startup persistence mode its argv selects, as NVIDIA documents the flags.",
     home: GcCreates { module: "extdeps.nvidia.persistence_daemon" },
-    done: "a captured argv maps to its mode in a witness, and the two contradictory flags together are ambiguous.", needs: []), standing: GcInReview { pr: "#15215" }),
-  gc_row(id: GcN2c, what: "A unit's ExecStart argv, read from the property systemctl show reports.",
-    home: GcExtends { symbol: "extdeps.systemd.systemctl::systemctl_show_property_value" },
-    done: "a captured ExecStart property parses to its argv in a witness, and a value that does not split refuses.", needs: []),
+    done: "a captured argv maps to its mode in a witness, and the two contradictory flags together are ambiguous.", needs: []), standing: GcLanded { pr: "#15215" }),
+  gc_row(id: GcN2c, what: "A unit's ExecStart command line tokenized into its argv under systemd's command-line grammar, the inverse of the rendering that module owns. Retrieving the property text is the existing systemctl show reader's, and is not part of this row.",
+    home: GcExtends { symbol: "extdeps.systemd.service_exec::exec_command_line" },
+    done: "a captured ExecStart value tokenizes to its argv in a witness, a rendered command line tokenizes back to the argv it was rendered from, and a value that does not tokenize refuses.", needs: []),
   gc_at(r: gc_row(id: GcN3a, what: "A multi-GPU board shape beside the per-GPU row, with a configurable board power range distinct from TDP and the board's zero-power capability, admitted only when its invariants hold.",
     home: GcExtends { symbol: "extdeps.gpu.types::GpuModelCatalogRow" },
-    done: "a board with no GPU, an inverted range, or a default or named point outside the range has no row, each in a witness.", needs: []), standing: GcInReview { pr: "#15219" }),
+    done: "a board with no GPU, an inverted range, or a default or named point outside the range has no row, each in a witness.", needs: []), standing: GcLanded { pr: "#15219" }),
   gc_at(r: gc_row(id: GcN3b, what: "The A16 board row and its per-GPU row, every figure cited to the brief.",
     home: GcExtends { symbol: "extdeps.gpu.nvidia_a16::extdeps_model_scope" },
-    done: "the A16 is an admitted board row of four GA107-890 GPUs.", needs: [GcN3a]), standing: GcInReview { pr: "#15219" }),
+    done: "the A16 is an admitted board row of four GA107-890 GPUs.", needs: [GcN3a]), standing: GcLanded { pr: "#15219" }),
   gc_at(r: gc_row(id: GcN3c, what: "The RTX 2000 Ada catalog row, every figure cited.",
     home: GcExtends { symbol: "extdeps.gpu.nvidia::nvidia_rtx_pro_6000_workstation_catalog" },
-    done: "the card resolves to a cited catalog row.", needs: []), standing: GcInReview { pr: "#15219" }),
+    done: "the card resolves to a cited catalog row.", needs: []), standing: GcLanded { pr: "#15219" }),
   gc_at(r: gc_row(id: GcN4a, what: "Supermicro OEM fan-mode and zone-duty operations, with the firmware's behaviour when no host writes typed as unread.",
     home: GcCreates { module: "extdeps.bmc.supermicro_oem_fan" },
-    done: "get and set for mode and zone duty are modelled, with a readback parse and checked set arguments.", needs: []), standing: GcInReview { pr: "#15216" }),
+    done: "get and set for mode and zone duty are modelled, with a readback parse and checked set arguments.", needs: [GcN4c]), standing: GcLanded { pr: "#15216" }),
+  gc_at(r: gc_row(id: GcN4c, what: "The shared ipmitool raw byte format: a reply read as its bytes, and a request byte spelled only when it is a byte, with the existing master-write-read and SMpro readers moved onto it.",
+    home: GcCreates { module: "extdeps.bmc.ipmitool_raw_reply" },
+    done: "a value outside 0 to 255 has no request spelling and a malformed reply has no bytes, each in a witness, and no reader keeps its own byte parse.", needs: []), standing: GcLanded { pr: "#15216" }),
   gc_row(id: GcN4b, what: "A Supermicro arm of the BMC firmware family, so a host's fan interface is selected by its BMC.",
     home: GcExtends { symbol: "extdeps.bmc.endpoint::BmcFirmwareFamily" },
     done: "the H11's BMC resolves to the Supermicro arm, and the fan operations are selected through it.", needs: []),
@@ -352,7 +356,7 @@ data gpu_card_graph_rows: List<GpuCardGraphRow> = [
 
 fn gpu_card_host_program_body() -> List<MarkdownBlock> {
   [
-    p(text: "Status: **draft, under design with the operator; in review as PR #15207.** Nothing in this program has landed yet. Section 8 lists the decisions it needs first. The model lands before the converge leg, per DESIGN's model-before-implement rule, and the order is in section 7. The lane sits under the Mt. Collins worker."),
+    p(text: "Status: **draft, under design with the operator; in review as PR #15207.** Each row carries its standing, and section 7 derives what is ready from them; the converge leg has not started. Section 8 lists the decisions it needs first. The model lands before the converge leg, per DESIGN's model-before-implement rule, and the order is in section 7. The lane sits under the Mt. Collins worker."),
     h2(text: "0. The bound: every in-bound card converges"),
     p(text: "**The bound is one predicate, `gunbc.plans.gpu_card_host_program::gpu_card_in_bound`.** A card is in bound when it is **installed in an operator-owned fleet host, or committed to one**. Whether it is serving at the moment does not matter. Every other card names why it is outside. The program is finished when no census row is still only committed, and every in-bound card's independent readback holds on its host, through the real path. A committed card therefore keeps the program open: it cannot retire around a card that has not arrived yet."),
     p(text: "The working census below is the projection of `gunbc.plans.gpu_card_host_program::gpu_card_working_census`. It is a reading for the operator to confirm (D0). It is not the census authority: N0a creates the census in `gunbc.fleet`, moves the predicate there, and this carrier then imports it."),
@@ -430,11 +434,11 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
     h3(text: "5.1 Upstream facts (extdeps): one module per independently versioned upstream"),
     ul(items: [
       li(text: "**`extdeps.nvidia.system_management_interface`** (extended, since it is the same upstream): power queries (`power.draw`, `power.limit`, `power.min_limit`, `power.max_limit`, `pstate`, `clocks.gr`, `clocks.mem`, `persistence_mode`), `--query-supported-clocks`, `clocks_event_reasons.active`, and the effects `-pl`, `-pm`, `-lmc`/`-rmc` and `-lgc`/`-rgc`. Each operation's \"not supported\" output is its own arm, as `QueryComputeApps` already does, and so is an option the installed driver does not recognize. The option surface is a fact of the driver release (N2a), not of nvidia-smi in general: `-lmi` appears in NVIDIA's documentation, but 595.91.07 rejects it with exit 255."),
-      li(text: "**`extdeps.nvidia.persistence_daemon`** (new): the startup persistence mode an `nvidia-persistenced` argv selects, as NVIDIA documents the flags. What a distribution's packaged unit passes is not NVIDIA's: on Ubuntu's 595 server packages the unit is `static` and runs `--no-persistence-mode`, which is a receipt of the observing layer. Reading a unit's `ExecStart` argv is systemd's, through `extdeps.systemd.systemctl::systemctl_show_property_value`. So whether the daemon is running says nothing about whether persistence is on."),
+      li(text: "**`extdeps.nvidia.persistence_daemon`** (new): the startup persistence mode an `nvidia-persistenced` argv selects, as NVIDIA documents the flags. What a distribution's packaged unit passes is not NVIDIA's: on Ubuntu's 595 server packages the unit is `static` and runs `--no-persistence-mode`, which is a receipt of the observing layer. Reading a unit's `ExecStart` argv is systemd's, and it is two facts: `extdeps.systemd.systemctl::systemctl_show_property_value` retrieves the property, and `extdeps.systemd.service_exec::exec_command_line` owns the command-line grammar its tokenization inverts. So whether the daemon is running says nothing about whether persistence is on."),
       li(text: "**`extdeps.nvidia.linux_driver`** (new): driver branches and releases, the distribution package names, open versus proprietary kernel module, and the supported-GPU list per release, each cited to NVIDIA's release notes. It holds no version pin: a pin is policy."),
       li(text: "**`extdeps.amd.amdgpu_driver`** and **`extdeps.amd.rocm`** (new), plus **`extdeps.amd.amd_smi`** (new): the kernel driver and firmware the R9700 needs, the ROCm release that supports the card and on which distributions, and the power-cap and clock operations. The R9700's figures (architecture, memory, board power, PCIe) are read obligations until they are cited. None is transcribed here from memory."),
       li(text: "**Catalog rows**: every in-bound model not yet catalogued, which is the RTX 2000 Ada in `extdeps.gpu.nvidia` and the R9700 in a new `extdeps.gpu.amd`. `extdeps.gpu.types` gains a **configurable power range** distinct from TDP, the board's **zero-power capability** (the A16 brief states it is not supported, so a park policy cannot select it), and a **multi-GPU board** shape so the A16 can be catalogued as one board of four GA107-890 GPUs without pretending it is one GPU. A board row exists only through an admission that refuses a board with no GPU, an inverted range, or a default or named point outside it. The catalog owns capability ranges. It never owns an operating point."),
-      li(text: "**`extdeps.bmc.supermicro_oem_fan`** (new): Supermicro's OEM IPMI fan-mode get/set (`0x30 0x45`, with modes Standard, Full, Optimal, HeavyIO and PUE, read before they are typed) and per-zone duty get/set (`0x30 0x70 0x66`), bound to the `extdeps.bmc.ipmi` transport. Separately, `extdeps.bmc.endpoint::BmcFirmwareFamily` gains a Supermicro arm, so the operations are selected by the host's BMC."),
+      li(text: "**`extdeps.bmc.supermicro_oem_fan`** (new): Supermicro's OEM IPMI fan-mode get/set (`0x30 0x45`, with modes Standard, Full, Optimal, HeavyIO and PUE, read before they are typed) and per-zone duty get/set (`0x30 0x70 0x66`), bound to the `extdeps.bmc.ipmi` transport. Their byte format is not theirs: `extdeps.bmc.ipmitool_raw_reply` (new) owns the raw reply's bytes and a request byte's spelling, and the existing master-write-read and SMpro readers move onto it. Separately, `extdeps.bmc.endpoint::BmcFirmwareFamily` gains a Supermicro arm, so the operations are selected by the host's BMC."),
       li(text: "**`extdeps.boards.supermicro_h11ssl`** (extended): the two cooling zones, the fan headers and the BIOS slot labels the manual states. The manual does not state which headers each zone drives, or the physical slot order and pitch, so those are typed read obligations, each discharged by its own row."),
     ]),
     h3(text: "5.2 Physical placement (gunbc.fleet): what is plugged into what, on which host"),
