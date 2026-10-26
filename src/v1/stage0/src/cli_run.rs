@@ -3881,23 +3881,38 @@ impl ModuleIndexRefusal {
 /// unparseable arm always did; the header-less and unreadable causes join it. The exit class is
 /// those consumers' standing contract and is not changed here. A caller that answers "what did
 /// this observe" (`gunbc test`) takes the typed set from `try_with_module_path_index` instead.
-/// THE ONE REFUSAL FOR A CORPUS READER THAT CANNOT READ A SOURCE (DESIGN section 5, Stop visibly).
-/// Every walker over the source roots that needs a file's parse refuses through here, so two
-/// readers over the same roots cannot disagree on whether an unparsable file is a finding:
-/// `heading` names the reader, `lines` are the located per-file causes, and the line stops. Same
-/// rung as `refuse_module_index`: per-file typed and located, operation-level still a
-/// process exit.
-pub(crate) fn refuse_unparseable_corpus_sources(heading: &str, lines: &[String]) {
+/// THE ONE RENDER ARM FOR A CORPUS READER THAT CANNOT READ A SOURCE (DESIGN section 5, Stop
+/// visibly). Every walker over the source roots that needs a file's parse prints through here —
+/// `refuse_module_index` and the declaration-fact walk alike — so two readers over the same roots
+/// cannot disagree on whether an unreadable file is a finding: `heading` names the reader, `kinds`
+/// names what was lost, `lines` are the located per-file causes. Returns whether anything printed;
+/// the caller stops the line with the same `std::process::exit(1)`. Per-file typed and located,
+/// operation-level still a process exit.
+fn render_corpus_refusal(heading: &str, kinds: &str, lines: &[String]) -> bool {
     if lines.is_empty() {
-        return;
+        return false;
     }
-    eprintln!("{heading}: {} unparseable .dag source(s)", lines.len());
+    eprintln!("{heading}: {} {kinds}", lines.len());
     for line in lines {
         eprintln!("  {line}");
     }
-    std::process::exit(1);
+    true
 }
 
+/// The corpus walkers' entry: `heading` names the reader, `lines` are its located per-file
+/// causes. Prints through `render_corpus_refusal` — the one render arm, shared with
+/// `refuse_module_index` — and stops the line with exit 1 when anything was printed.
+pub(crate) fn refuse_unparseable_corpus_sources(heading: &str, lines: &[String]) {
+    if render_corpus_refusal(heading, "unparseable .dag source(s)", lines) {
+        std::process::exit(1);
+    }
+}
+
+/// The exit arm for the INFALLIBLE index consumers (floor, `claim_batch`, `claim_executor`,
+/// census, compile): a refusal set stops the line with exit 1, counted and located, exactly as the
+/// unparseable arm always did; the header-less and unreadable causes join it. The exit class is
+/// those consumers' standing contract and is not changed here. A caller that answers "what did
+/// this observe" (`gunbc test`) takes the typed set from `try_with_module_path_index` instead.
 fn refuse_module_index(refusals: &[ModuleIndexRefusal]) {
     if refusals.is_empty() {
         return;
@@ -3912,29 +3927,25 @@ fn refuse_module_index(refusals: &[ModuleIndexRefusal]) {
             _ => None,
         })
         .collect();
-    if !unparseable.is_empty() {
-        eprintln!(
-            "module index refused: {} unparseable .dag source(s)",
-            unparseable.len()
-        );
-        for refusal in &unparseable {
-            eprintln!("  {}", refusal.rendered());
-        }
-    }
+    let unparseable_lines: Vec<String> = unparseable.iter().map(|r| r.rendered()).collect();
     let others: Vec<&ModuleIndexRefusal> = refusals
         .iter()
         .filter(|r| !matches!(r, ModuleIndexRefusal::Unparseable(_)))
         .collect();
-    if !others.is_empty() {
-        eprintln!(
-            "module index refused: {} unreadable or module-less claim-root .dag source(s)",
-            others.len()
-        );
-        for refusal in others {
-            eprintln!("  {}", refusal.rendered());
-        }
+    let other_lines: Vec<String> = others.iter().map(|r| r.rendered()).collect();
+    let printed_unparseable = render_corpus_refusal(
+        "module index refused",
+        "unparseable .dag source(s)",
+        &unparseable_lines,
+    );
+    let printed_others = render_corpus_refusal(
+        "module index refused",
+        "unreadable or module-less claim-root .dag source(s)",
+        &other_lines,
+    );
+    if printed_unparseable || printed_others {
+        std::process::exit(1);
     }
-    std::process::exit(1);
 }
 
 /// Scratch index for one fixture-closure extension. Same `source_files` as the process-shared
