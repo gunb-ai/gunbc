@@ -1,0 +1,75 @@
+module test.claim.map_annotation_resolves_by_declaration_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLASS: A `Map<..>` ANNOTATION NAMES THE DECLARATION IT RESOLVES TO, NEVER THE KERNEL CONTAINER
+// BY LEAF NAME (ruling gunbc.design_ruling kernel_map_is_the_host_realization_of_the_finitely_supported_function,
+// the Map instance of text_crossings_go_through_the_unfold). The seed once minted every Map spelling
+// as the kernel container whatever the import said, so std.types Map = FinitelySupportedFunction
+// could not be the one concept.
+//
+// The fixture supplies its own `Map` declaration (a manifest has no corpus roots, so std.types is
+// unavailable, the same reason as undeclared_bare_type_reference_class_witness). The function
+// returns a value of the declaration's target type at a `Map<String, Int>` annotation: it compiles
+// only if the annotation resolved to the declaration; were it the kernel container the return would
+// mismatch.
+
+data mad_definer_source: String = "module mad.definer\n\ntype MadFunction<key, value> {\n  support: List<key>\n  codomain: List<value>\n}\n\ntype Map<key, value> = MadFunction<key, value>\n"
+
+data mad_user_imported_source: String = "module mad.user\n\nimport mad.definer { Map, MadFunction }\n\nfn mad_identity(f: MadFunction<String, Int>) -> Map<String, Int> {\n  f\n}\n"
+
+data mad_user_unimported_source: String = "module mad.user\n\nimport mad.definer { MadFunction }\n\nfn mad_identity(f: MadFunction<String, Int>) -> Map<String, Int> {\n  f\n}\n"
+
+fn mad_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("mad/definer.dag", mad_definer_source),
+      fixture_source("mad/user.dag", user_source)
+    ],
+    entry: "mad/user.dag"
+  })
+}
+
+fn mad_diagnosed_as(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: wanted),
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: wanted),
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn mad_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE POSITIVE CONTROL: the imported Map annotation is the declaration, so the declaration's own
+// target type inhabits it.
+test fn an_imported_map_annotation_resolves_to_its_declaration() -> Bool {
+  mad_completed_clean(mad_run(mad_user_imported_source))
+}
+
+// THE DISCRIMINATING RED: the same bytes minus the import edge. The Map spelling names no
+// declaration, so it refuses as unbound (UnresolvedType); it is not silently the kernel container.
+test fn a_map_annotation_without_an_import_refuses_as_unbound() -> Bool {
+  mad_diagnosed_as(mad_run(mad_user_unimported_source), "UnresolvedType")
+}

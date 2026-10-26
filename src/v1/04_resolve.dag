@@ -506,13 +506,35 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   }
 }
 
+// A container spelling whose use site resolves through the declaration it names when one is in scope
+// (std.types Map = FinitelySupportedFunction), instead of being minted as the kernel container by
+// leaf name. The kernel container survives only where no declaration resolves.
+fn declaration_resolved_container(name: String) -> Bool {
+  name == "Map"
+}
+
+// A declaration-resolved container spelling that reaches the kernel minting arm named no
+// declaration in scope: it is unbound, never silently the kernel container.
+fn unbound_container_diagnostics(env: TypeEnv, name: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  if declaration_resolved_container(name: name) {
+    [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: name, span: span), module_name: module_name)]
+  } else { [] }
+}
+
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
   else {
     let decl = resolve_generic_use_decl(env: env, n: n)
     if decl.params |> count > 0 {
-      if is_container_type(name: n.name) { false }
+      // LOOK-AHEAD-3 graft note: warm-crane-888's fused line on main reads
+      //   (is_container_type(..) && declaration_resolved_container(..) == false) || node_is_keyed_algebra_spelling(..)
+      // The `node_is_keyed_algebra_spelling` disjunct arrived on main via #14910 (1dd3eda5696a), which
+      // post-dates this measurement lineage's base ee7438b33823; the classifier does not exist here.
+      // Resolution keeps the FUSED rule (a Map spelling with a declaration in scope is not kernel-minted)
+      // and drops the main-only classifier, so this arm tests exactly the fused change against the
+      // look-ahead-2 control. Recorded per the brief's requirement to log every graft decision.
+      if is_container_type(name: n.name) && declaration_resolved_container(name: authored_name(env: env, node: n)) == false { false }
       else if decl.inferred != none { true }
       else { true }
     } else { false }
@@ -824,7 +846,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let resolved_val_child = Node { occurrence_identity: val_child_node.occurrence_identity, name: val_param_name, span: val_child_node.span, ident_span: val_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: val_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       NodeResolveResult {
         resolved: stamp_kernel_collection(n: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_key_child, resolved_val_child], connective: n.connective, params: n.params, inferred: none, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData }),
-        diagnostics: concat(key_diags, val_diags)
+        diagnostics: concat(unbound_container_diagnostics(env: env, name: type_name, span: n.span, module_name: module_name), key_diags, val_diags)
       }
     } else if n.children |> count == 1 {
     let type_name = authored_name(env: env, node: n)
