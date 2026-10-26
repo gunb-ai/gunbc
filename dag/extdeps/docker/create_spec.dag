@@ -1,7 +1,7 @@
 module extdeps.docker.create_spec
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
-import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
@@ -58,7 +58,10 @@ type DockerCreateSpec {
   image: NonEmptyStr
   network: DockerNamespaceMode
   ipc: DockerNamespaceMode
-  shm_size_bytes: Nat
+  // `HostConfig.ShmSize` reads back in bytes, so the spec holds the same quantity as std.measure's
+  // ByteSize -- the same carrier docker_memory_limit_flags uses in extdeps.docker.cli -- and the
+  // renderer below spells `--shm-size` from its count. A bare Nat here would stand in for that fact.
+  shm_size: ByteSize
   memlock_unlimited: Bool
   gpus_all: Bool
   devices: List<DockerDeviceMapping>
@@ -129,7 +132,7 @@ fn docker_container_identity_flags(spec: DockerCreateSpec) -> List<String> {
     "--name", spec.name as String,
     "--network", docker_namespace_mode_wire(m: spec.network) as String,
     "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
-    "--shm-size", to_string(spec.shm_size_bytes),
+    "--shm-size", to_string(byte_size_count(b: spec.shm_size)),
   ]
 }
 

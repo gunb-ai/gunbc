@@ -78,7 +78,7 @@ fn sb_engine_url() -> String { concat("http://127.0.0.1:", to_string(serving_ben
 
 fn spec(name: NonEmptyStr, image: NonEmptyStr, gpus: Bool, mounts: List<DockerMount>, env: List<DockerEnvAssignment>, command: List<String>) -> DockerCreateSpec {
   DockerCreateSpec {
-    name: name, image: image, network: NamespaceHost, ipc: NamespacePrivate, shm_size_bytes: 0, memlock_unlimited: false,
+    name: name, image: image, network: NamespaceHost, ipc: NamespacePrivate, shm_size: byte_size(count: 0), memlock_unlimited: false,
     gpus_all: gpus, devices: [], cap_add: [], restart: RestartNo, mounts: mounts, env: env, command: command,
   }
 }
