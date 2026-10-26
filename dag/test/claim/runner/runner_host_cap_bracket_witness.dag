@@ -1336,3 +1336,16 @@ test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
   bracket_holder_leaf(relative_path: "system.slice/actions-runner@srv3-02.service/") == "actions-runner@srv3-02.service"
     && bracket_holder_leaf(relative_path: "/system.slice//actions-runner@01.service///") == "actions-runner@01.service"
 }
+
+// TEMPORARY PROBE (calm-stag-693; delete before merge): name the frame refusal.
+fn flow_cause_once() -> String {
+  match flow_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: []) {
+    BracketRunEnded { cause: c } => c
+    BracketRunReturned { value: _, legs: _, calls: _ } => ""
+  }
+}
+
+test fn probe3_no_declaration_named() -> Bool { string_contains(s: flow_cause_once(), pattern: "no declaration named") }
+test fn probe3_realization_index() -> Bool { string_contains(s: flow_cause_once(), pattern: "operation_realization_index") }
+test fn probe3_realization_duplicate() -> Bool { string_contains(s: flow_cause_once(), pattern: "operation_realization_duplicate") }
+test fn probe3_handler_selection() -> Bool { string_contains(s: flow_cause_once(), pattern: "operation_handler_selection") }
