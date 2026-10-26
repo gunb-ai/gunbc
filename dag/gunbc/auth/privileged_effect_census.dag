@@ -1030,6 +1030,11 @@ data fleet_host_file_converge_edge_beside_the_broker_route: DivergenceReason = D
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the runner_host_file_converge mode files an access_request (gunbc.auth.access_request) for its re-derived per-host write and actuation set and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), with the existing post-apply readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone. A converge that stops being operator-dispatched and runs unattended on every provision is a different effect: its frequency changes, the selection re-derives the edge, and this reason no longer applies" as NonEmptyStr),
 }
 
+data host_primary_network_converge_edge_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the primary network converge replaces a fleet host's /etc/netplan inside a netplan try and writes cloud-init's network switch, as the administrator over the fleet SSH edge from an observer host, under a key released only to a main-pinned dispatch; every instance is a dispatch in which the operator names the target and the observer, so a human attends it, and the operator ruling of 2026-10-22 names the approval broker route as the only approval for attendable host-root reach. No authority adapter requests a capability for this mode, so the dispatch click and the merge to main are its only consent" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the host_primary_network_converge mode files an access_request (gunbc.auth.access_request) for its staged files and its netplan try on the named target and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), keeping its fresh-connection readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone" as NonEmptyStr),
+}
+
 fn fleet_host_root_effect_on_dispatch(subject: NonEmptyStr) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: subject,
@@ -1143,6 +1148,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming one fleet host, as the administrator over the fleet SSH edge: write what differs among the host's declared root-evaluated files (systemd drop-ins and unit fragment, needrestart conf.d, the job user's sudoers, slot cap drop-ins) with owner and mode readback, daemon-reload, and drain, mask, restart and re-admit runner slots inside the cap bracket" as NonEmptyStr),
     realized: RealizedAdministratorEdge,
     divergence_reason: Present { value: fleet_host_file_converge_edge_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.host_primary_network_apply", decl_name: "host_primary_network_converge_ci_wet"),
+    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming one target host and an observer, as the administrator over the fleet SSH edge from the observer: write cloud-init's network switch and the staged netplan population with owner and mode readback, then replace /etc/netplan inside a netplan try that is confirmed only by a fresh-connection readback and otherwise reverts" as NonEmptyStr),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: Present { value: host_primary_network_converge_edge_beside_the_broker_route },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_cap_release_ci_wet"),
