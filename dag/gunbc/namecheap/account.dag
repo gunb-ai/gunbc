@@ -1,6 +1,6 @@
 module gunbc.namecheap.account
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List }
 
 data namecheap_domain_sld: NonEmptyStr = "gunb"
 data namecheap_domain_tld: NonEmptyStr = "ai"
@@ -19,4 +19,27 @@ data namecheap_account_report: NamecheapAccountReport = NamecheapAccountReport {
   username: "briansrls", domain: join([namecheap_domain_sld as String, ".", namecheap_domain_tld as String], ""),
   api_allowlist_ipv4: "96.224.201.7", allowlist_label: "dev",
   source: "owner Namecheap API allowlist console report 2026-09-27",
+}
+
+// WHICH NAMESERVERS THE REGISTRAR DELEGATES gunb.ai TO. A registrar setting is a different fact
+// from what resolvers answer: the .ai parent zone serves the new NS set only after the registry
+// publishes it, which the operator expects to take a day or two. So the standing is two arms,
+// and this row holds only the first. The Cloudflare nameserver names are assigned per account by
+// Cloudflare. The comment on NamecheapAccountReport asks for the API allowlist to be re-observed when
+// the DNS controller changes; this change triggers that. Frontier: gunbc.plans.boot_origin_bmc_media B1
+// (BootOriginHostnameAllocated) and the fleet zone (gunbc.plans.fleet_naming_reach_access P7) consume
+// this row, and both require DelegationObservedInParent, never the registrar report alone.
+type RegistrarNameserverSetting
+  = RegistrarBasicDns
+  | RegistrarCustomNameservers { nameservers: List<NonEmptyStr> }
+
+type NameserverDelegationStanding
+  = DelegationReportedAtRegistrar { setting: RegistrarNameserverSetting, source: String }
+  | DelegationObservedInParent { setting: RegistrarNameserverSetting, source: String }
+
+data gunb_ai_nameserver_delegation: NameserverDelegationStanding = DelegationReportedAtRegistrar {
+  setting: RegistrarCustomNameservers {
+    nameservers: ["alexandra.ns.cloudflare.com" as NonEmptyStr, "austin.ns.cloudflare.com" as NonEmptyStr],
+  },
+  source: "operator Namecheap console report 2026-10-26: Custom DNS set to the two Cloudflare nameservers; parent-zone propagation pending",
 }
