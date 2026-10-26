@@ -1277,9 +1277,21 @@ fn roster_ends_module_header_line(before: String, at: Int) -> Bool {
   substring(s: line, start: 0, end: 7) == "module " && substring(s: before, start: at, end: at + 1) == "\n"
 }
 
+// THE BARE-IMPORT ANCHOR (the wave's measured defect, 2026-10-26): roster_import_names_edit zero-width-inserts at the
+// end of the LAST import declaration, and a BRACELESS top-level import (import extdeps.tools.openssl) ends at a letter,
+// not a brace -- the old guard refused the wave's own plan at extent-mismatch (measured: a single-leg apply over
+// dag/extdeps/crypto/seeded_filler.dag; 6 of the wave's 908 files have a braceless LAST import). The insertion is still
+// sound and stays its own line: the line AT the anchor is a top-level import line (column 0, where only top-level items
+// sit) and the anchor is that line's end, so the rendered import cannot join any construct. The guard learns the shape
+// the parser itself produces -- a hand anchor is not allowed -- and the REPLACEMENT arm is untouched.
+fn roster_ends_bare_import_line(before: String, at: Int) -> Bool {
+  let line = fold_list(xs: split(s: substring(s: before, start: 0, end: at), delimiter: "\n"), empty: "", cons: fn(_last, l) { l })
+  substring(s: line, start: 0, end: 7) == "import " && substring(s: before, start: at, end: at + 1) == "\n"
+}
+
 fn roster_extent_holds(before: String, start: Int, end: Int) -> Bool {
   if start == end {
-    substring(s: before, start: start - 1, end: start) == "}" || roster_ends_module_header_line(before: before, at: start)
+    substring(s: before, start: start - 1, end: start) == "}" || roster_ends_module_header_line(before: before, at: start) || roster_ends_bare_import_line(before: before, at: start)
   } else {
     substring(s: before, start: start, end: start + 7) == "import " && substring(s: before, start: end - 1, end: end) == "}"
   }
