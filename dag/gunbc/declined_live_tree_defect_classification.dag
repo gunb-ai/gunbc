@@ -1,8 +1,12 @@
 module gunbc.declined_live_tree_defect_classification
 
-import std.types { String, List }
+import std.types { String, List, CommitSha, NonEmptyStr }
 import v2.std.integer { Int }
-import std.algebra { list_snoc_item, count_where, length, fold_list }
+import std.execution_mode { ExecutionMode }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import std.algebra { list_snoc_item, count_where, length, fold_list, list_find_first, FreeSemigroup }
+import std.optional { Optional, Present, Absent }
 
 // WHY THIS CARRIER EXISTS. Thirteen witness identities were measured failing on
 // royal-cat-509's run 32794539384 -- the only tree in which the required floor's
@@ -75,9 +79,109 @@ type WrongWitnessFault =
 // rows are owned by a lane that is not this one, and repairing another lane's
 // authority from inside a classification pass is how a second authority gets
 // minted for one fact.
+// A CLOSED ROW IS STILL A ROW. A defect fixed by an earlier change keeps its identity, its
+// classification, and its measured evidence; only its disposition moves, and the disposition must
+// carry WHAT CLOSED IT: the commits that did the closing, and the head at which the claim was
+// RE-EXECUTED (not re-read) to confirm it holds. Prose does not close a row; the tuple here does,
+// because the re-measurement head is checkable against `git log` by anyone. Added for #14545
+// (manager ruling: a 'closed by' string under `RoutedToOwner` would be one name with two meanings,
+// DESIGN §3 nicknaming); `RepairedInThisChange` cannot carry it either — it names no repair and
+// this change does not perform one.
+// THE RE-MEASUREMENT, as the parts the prose string packed together: WHICH head, on WHICH calendar day,
+// over WHICH execution routes, with WHICH result, from WHICH instrument.
+// Each part is independently checkable and the witness reads every one of them: the head against
+// `commit_sha_text_holds`, the day against the calendar rule, the route and result against the sums
+// they belong to, and the instrument against the live declaration index. The previous spelling was one
+// String — "2026-10-21 at head a162e67d1af8: declared roots 27, admitted roots 27, claim PASS
+// (executed through the claim_batch host ...)" — which no program could check and which any non-empty
+// text satisfied (review 84071/84083; DESIGN §4c: a receipt belongs in a typed carrier).
+//
+// NO FIGURES FIELD EXISTS, deliberately. A receipt that copies "declared roots 27, admitted roots 27"
+// duplicates what the named instrument computes, so the copy can go stale while the instrument still
+// says otherwise -- review 84083's count-copy. What a carrier may assert is that the named instrument,
+// run on the named head over the named routes, produced the result. Anyone can re-run the instrument;
+// nobody can keep a stale number alive by editing a string.
+// THE OLD `outcome: ClaimDisposition` FIELD WAS DELETED (review 84472). Both arms of `Closure` record a
+// CLOSED row, so `Passed` was the only value the field could legally hold and `outcome_is_passed` was a
+// validator restating a constraint the type already carried -- DESIGN §5: "a check restating a constraint
+// the model already carries is a second representation of it." Deleting the field makes the non-Passed
+// receipt unwritable instead of refused, which is what the same PR did to `on_both_routes` (84231) and to
+// `standing_before`. Whether a closed row's claim still passes is established by EXECUTING it: the wet
+// schedule enrolment the retirement witness joins against, not by a field that could only say it passed.
+type ReMeasurement {
+  head: CommitSha
+  on: Iso8601CivilDate
+  // NONEMPTY BY CONSTRUCTION (review 86337, DESIGN §5 + §3b's FreeSemigroup model): a receipt naming
+  // zero routes is now unwritable, so the fold arm that used to refuse it is gone. How many routes --
+  // one or both -- is still carried exactly (DESIGN 4b(1)); only the EMPTY case lost its representation.
+  routes: FreeSemigroup<ExecutionMode>
+  instrument: DeclarationRef
+}
+
+// WHAT CLOSED THE ROW. TWO WAYS AND NO THIRD, which is what `closed_by: List<String>` could not say:
+// a list of prose satisfied every case including the one where nothing closed the row at all (review
+// 84083's concrete failure: the entry "no attributed fix commit: ... none is reachable from this head"
+// satisfied the arm that requires a closure).
+//  - AttributedToChange: a NAMED change closed it, cited by pull request number or by a name. Neither
+//    citation is checkable from the tree alone (a PR number is a GitHub fact, a name is prose), so BOTH
+//    arms carry `durable_account`: the in-tree declarations that record the event, which the witness
+//    resolves against the live declaration index. An attributed closure whose account is empty is a
+//    reference to a fact nobody can re-check, which is what reviews 84071/84083 refused.
+//  - RestsOnExecutedCheck: no change can be attributed — the history was rewritten, or the row's wall
+//    was never a defect at all — and what closes it instead is the executed re-measurement plus the
+//    durable account of why nothing is attributable. What closes the row is the executed re-measurement
+//    itself -- the named instrument, the named head, the named routes -- and nothing else;
+//    this arm is not a place to put an unverified row.
+// `RoutedToOwner` is deliberately NOT reused with a receipt: an owner who has not closed anything is a
+// different fact from a closure that rests on a check (DESIGN §3 — one name, one meaning).
+type ChangeCitation
+  = PullRequest { number: Int }
+  | NamedChange { name: NonEmptyStr }
+
+type Closure
+  = AttributedToChange { change: ChangeCitation, durable_account: FreeSemigroup<DeclarationRef>, re_measured: ReMeasurement }
+  | RestsOnExecutedCheck { why_no_change: NonEmptyStr, durable_account: FreeSemigroup<DeclarationRef>, re_measured: ReMeasurement }
+
+// THE CLOSURE A CLOSED ROW CARRIES. `RetiredExpectedRedRow` in v2.workflow.floor_expected_red reads this
+// one sum; the old `ClosureReceipt` record it replaces had two String fields and no readers. A row whose
+// closure now has NO representation for an empty `durable_account`: both arms carry a
+// `FreeSemigroup<DeclarationRef>` (review 86337 -- DESIGN §5 makes the empty account unwritable rather
+// than refused-then-validated), so a witness check for it would restate a constraint the type carries.
+
+// THE TYPED ALTERNATIVE TO PROSE GUIDANCE (review 86337, DESIGN 4c): where a ruling question used to
+// tell the operator in prose which closure a non-operator lane may take, the recommendation is a typed
+// route -- the carrier the drop would go under, an owner, and the restoration trigger it must name. The
+// row stays NeedsOperatorRuling: this is what the ruling SHOULD produce, not a closure the lane can take.
+type RecommendedDropRoute {
+  drop_carrier: NonEmptyStr
+  owner: NonEmptyStr
+  // THE TRIGGER NAMES THE CAPABILITY RESTORED (§4b(3)) AND MUST RESOLVE (§3): a DeclarationRef, the same
+  // checked reference every other reference this PR carries uses -- a bare string would let the field point
+  // at a symbol that no longer exists, which is exactly the defect review 86427 found in the first typed
+  // version of this field. The capability named is the restored g1 planted-control discriminators: the three
+  // retired ExpectedRed claims themselves, whose re-measurements execute green. NOT the lost
+  // v2.lens.cited_symbol_resolution.cited_symbol_planted_controls: #9181's re-homing module is gone from the
+  // tree (that is the AttributionWithheld reason below), so a trigger pointing at it would be a §3 citation
+  // defect -- and a witness pins this ref against the live declaration index, not against a literal.
+  restoration_trigger: DeclarationRef
+}
+
+// THE STATE OF THE PRIOR-CHANGE QUESTION, TYPED. `ClassificationDisposition` deliberately does not carry
+// `Closure`: `Closure.AttributedToChange` records a closure that COMPLETED, and this row's closure has not
+// completed while the ruling is open -- so the false statement "this PR carries no closed-by-prior-change
+// arm" that lived in the question String is replaced by this sum, which distinguishes "no prior change is
+// attributable, for this reason" from "a prior change closed it" WITHOUT letting either read as a closure.
+type PriorChangeAttribution
+  = AttributionWithheld { reason: NonEmptyStr }
+  | AttributionWritten { change: ChangeCitation }
+
 type ClassificationDisposition =
     RoutedToOwner { owner: String }
-  | NeedsOperatorRuling { question: String }
+  | NeedsOperatorRuling {
+      question: String
+      recommended_if_ruled: Optional<RecommendedDropRoute>
+      prior_change_attribution: PriorChangeAttribution
+    }
   | RepairedInThisChange
 
 // measured_evidence records what was EXECUTED to reach the verdict, never what
@@ -98,17 +202,34 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // secondaries. The 2026-08-24 measurement bankruptcy deleted docs/probes/ whole.
 // It did not update gunbc.doc_graph_roots, whose hand-authored ProbeDoc binds
 // still name 19 of the deleted files, and it did not update the prose that links
-// to them. Measured on main: 228 declared roots, 209 admitted (19 name no file,
-// every one of them under docs/probes/); 16 dangling markdown links, 12 of them
-// into docs/probes/ and 4 at docs/plans/ci-selection-vs-scheduling.md; 35 orphan
-// docs once the admitted roots are walked.
+// to them. MEASURED ON 2026-08-24: 228 declared roots, 209 admitted (19 name no
+// file, every one of them under docs/probes/); 16 dangling markdown links, 12 of
+// them into docs/probes/ and 4 at docs/plans/ci-selection-vs-scheduling.md; 35
+// orphan docs once the admitted roots are walked.
 //
-// THE PART THAT NEEDS A RULING RATHER THAN A REPAIR. Three of the 19 dead binds
-// are the g1-cited-symbol-control-* rows, which doc_graph_roots declares
-// PlanHasNoRetirement -- permanent discriminating evidence, kept under DESIGN
-// 4b(4) precisely so a climb cannot delete it. The bankruptcy deleted it anyway.
-// Deleting the binds finishes that deletion; restoring the files from history
-// reverses an operator cut. Neither is this session's call to make silently.
+// THE PART THAT NEEDS A RULING RATHER THAN A REPAIR, AND WHY IT IS STILL OPEN. Three
+// of the 19 dead binds were the g1-cited-symbol-control-* rows, which
+// doc_graph_roots declared PlanHasNoRetirement -- permanent discriminating
+// evidence, kept under DESIGN 4b(4) precisely so a climb could not delete it. The
+// bankruptcy deleted it anyway, by a sweep that took docs/probes/ whole. The two
+// available closures were NOT peers (manager ruling, swift-badger-524,
+// 2026-08-25): deleting the three binds FINISHED a deletion 4b(4) forbids and made
+// it invisible, while restoring the three files from history reversed part of an
+// operator cut -- only the second is reversible by anyone other than the operator,
+// which is why the question is theirs and no lane may quietly take the first.
+// #9181 (merged 2026-08-25, state verified via GitHub) took a third path: the three
+// controls were machine discriminators, not documents, so #9181 rehomed them into
+// `v2.lens.cited_symbol_resolution` as `cited_symbol_planted_controls` and only then deleted their
+// orphan binds atomically. THAT RE-HOMING HAS NO SURVIVING RECORD IN THIS TREE. The module it lived in
+// (v2.lens.cited_symbol_resolution) and the `cited_symbol_planted_controls` data it held are GONE: `git
+// grep` finds that name only in comments, and the module was removed after the 2026-08-25 operator
+// ruling and never carried across the 2026-10 mega-squash. So the g1 planted controls are lost evidence,
+// stated plainly, with no surviving typed record to cite. (An earlier draft of this comment claimed the
+// account "survives in data at ...cited_symbol_partition_third_bucket_note"; no declaration of that name
+// exists anywhere in the tree -- the citation was phantom and is removed. The mega-squash also dropped
+// #9181's merge commit from this branch's history -- `git merge-base --is-ancestor 0df5b4170c51 HEAD` is
+// NOT an ancestor -- so this row does not claim to be closed by it; it is an OPEN ruling, below.)
+// The other sixteen dead binds carried ordinary retirements and needed no ruling.
 // ---------------------------------------------------------------------------
 
 data permanent_evidence_ruling_question: String = "STATED AS A VIOLATION THAT ALREADY LANDED, NOT AS A NEUTRAL PAIR OF OPTIONS, BECAUSE THE FRAMING DECIDES WHO HAS TO ACT (manager ruling, swift-badger-524, 2026-08-25). DESIGN 4b(4) says a climb dissolves the redundant lower-rung PRODUCTION machinery and NEVER the evidence: the discriminating RED and its positive control stay enrolled, because deleting them recreates specification-without-execution one rung up. Three of the 19 dead binds are the g1-cited-symbol-control-* rows, declared PlanHasNoRetirement precisely so that a climb could not delete them. The 2026-08-24 measurement bankruptcy deleted them anyway, by a sweep that took docs/probes/ whole. So the two available closures are NOT peers. Deleting the three binds FINISHES a deletion 4b(4) forbids and makes it invisible; restoring the three files from history reverses part of an operator cut. Only the second is reversible by anyone other than the operator, which is why the question is theirs and why no lane may quietly take the first. The other sixteen dead binds carry ordinary retirements and need no ruling."
@@ -117,8 +238,37 @@ data doc_reachability_rows: List<ClassifiedRow> = [
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
-    measured_evidence: "228 declared roots, 209 admitted; the 19 unadmitted are exactly the docs/probes/ files the 2026-08-24 bankruptcy deleted, enumerated by walking doc_graph_roots_all() against the worktree",
-    disposition: NeedsOperatorRuling { question: permanent_evidence_ruling_question }
+    // MEASURED, NOT RESTATED-AS-GREEN. This claim runs in neither the wet nor the hermetic lane on this
+    // dispatch, so this row carries NO re-measurement: any ReMeasurement recorded here would assert an
+    // executed rung the claim has not earned (§4b(1) rung inflation). It stays on the roster as ExpectedRed
+    // with this 2026-08-24 measured statement of the population it failed on. The g1 controls' re-homing by
+    // #9181 has no surviving record in this tree (see the group-B header), so the row is NOT closed by that
+    // PR -- it is an OPEN ruling, and the typed `recommended_if_ruled` route below gives a non-operator
+    // lane the closure it may produce without reversing the operator's cut.
+    measured_evidence: "228 declared roots, 209 admitted on 2026-08-24; the 19 unadmitted are exactly the docs/probes/ files the bankruptcy deleted, enumerated by walking doc_graph_roots_all() against the worktree. Re-measurement 2026-10-21 was attempted but the claim is not wet- or hermetic-scheduled, so no executed outcome is recorded; it remains ExpectedRed.",
+    // STILL OPEN. Base held this on NeedsOperatorRuling; a prior draft of this PR closed it via a
+    // prior-change attribution to #9181, which review 84372/84397 rejected: #9181's re-homing module
+    // (v2.lens.cited_symbol_resolution) and its cited_symbol_planted_controls are gone from this tree, so
+    // that closure rested on a reference that does not resolve (§3), and it turned an operator-owned open
+    // ruling into a lane-owned closure. The guidance that used to live in the question String as prose is
+    // typed now: `recommended_if_ruled` names the rung-drop carrier, the owner, and the restoration
+    // trigger -- a `DeclarationRef` at the CAPABILITY restored (review 86427; §4b(3)), a declaration that
+    // resolves in this tree -- which a non-operator lane may act on without reversing the operator's cut
+    // (review 86337, DESIGN 4c), and `prior_change_attribution` states -- withheld, with its reason -- why no prior
+    // change closes this row while the ruling is open.
+    disposition: NeedsOperatorRuling {
+      question: permanent_evidence_ruling_question,
+      recommended_if_ruled: Present {
+        value: RecommendedDropRoute {
+          drop_carrier: "gunbc.rung_drop" as NonEmptyStr,
+          owner: "the operator who cut docs/probes/ in the 2026-08-24 measurement bankruptcy" as NonEmptyStr,
+          restoration_trigger: decl_ref(module_path: "test.claim.doc_reachability_witness", decl_name: "doc_graph_registered_plan_roots_all_admitted"),
+        },
+      },
+      prior_change_attribution: AttributionWithheld {
+        reason: "#9181 re-homed the three g1 controls into v2.lens.cited_symbol_resolution, but that module and its cited_symbol_planted_controls data are gone from this tree (removed after the 2026-08-25 ruling, lost again in the 2026-10 mega-squash; merge-base --is-ancestor 0df5b4170c51 HEAD is false), so a closure attributed to it would rest on a reference that does not resolve (DESIGN §3). While the ruling is open this row's closure is NOT completed; AttributionWritten would assert a closure that has not happened." as NonEmptyStr,
+      },
+    },
   },
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_dangling_links"),
@@ -226,6 +376,41 @@ fn declined_live_tree_classified_rows() -> List<ClassifiedRow> {
       fold_list(xs: group, empty: acc, cons: fn(inner, row) { list_snoc_item(xs: inner, item: row) })
     }
   )
+}
+
+// THE THREE PARTS OF THE RULING AS ONE VALUE, so a test can assert "the row is still an open ruling" and
+// read all three typed halves in one match instead of three independent optionals that could each drift.
+type RulingFields {
+  question: String
+  recommended_if_ruled: Optional<RecommendedDropRoute>
+  prior_change_attribution: PriorChangeAttribution
+}
+
+// THE OPEN RULING, READABLE AS DATA (review 86337). The g1 row's disposition is the one place in this
+// carrier where a lane must NOT act on its own, so its shape is read through these accessors rather than
+// matched in prose by whoever needs it: the row itself, its question String, the typed recommendation a
+// non-operator lane may produce if the ruling comes back "restore", and the typed state of the
+// prior-change question. `Absent` from the two field accessors means the row lost its NeedsOperatorRuling
+// disposition -- which test.claim.declined_live_tree_defect_classification_witness refuses.
+fn permanent_evidence_ruling_row() -> Optional<ClassifiedRow> {
+  list_find_first(
+    xs: declined_live_tree_classified_rows(),
+    predicate: fn(row) {
+      (row.identity.module_path == "test.claim.doc_reachability_witness")
+        && (row.identity.function == "doc_graph_registered_plan_roots_all_admitted")
+    }
+  )
+}
+
+fn permanent_evidence_ruling_fields() -> Optional<RulingFields> {
+  match permanent_evidence_ruling_row() {
+    Present { value: row } => match row.disposition {
+      NeedsOperatorRuling { question: q, recommended_if_ruled: rec, prior_change_attribution: pa } =>
+        Present { value: RulingFields { question: q, recommended_if_ruled: rec, prior_change_attribution: pa } }
+      _ => Absent {}
+    },
+    Absent {} => Absent {}
+  }
 }
 
 fn classified_row_count() -> Int {

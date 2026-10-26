@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.native_emit_renders_a_construct_the_build_refuses
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data native_emit_renders_a_construct_the_build_refuses: RecurringFailureMode = RecurringFailureMode {
+  identity: "native_emit_renders_a_construct_the_build_refuses" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+      trigger_capability: "emitter fixes for both constructs (below, receipts), after which a first-time rendering of std.bit or of a Nat-cast module builds; the further ceiling step is an emit-time check that renders and cargo-builds each newly pulled module when a new import first adds it to a native crate, so the refusal names the import that pulled it instead of arriving unattributed after a twenty-minute build",
+    },
+  },
+
+  receipts: [
+    "**a module that no native emitted crate renders today enters one for the first time, and the emitted crate's cargo build refuses constructs that have been latent in that module all along** (the refusal is loud but arrives as V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed with diagnostic=unattributed, far from the import that pulled the module in).",
+
+    "INVALID STATE: a PR adds an import that legitimately pulls an ordinary module into the emitted compiler crate, and the build dies on code the PR never touched. HARM: the PR is blocked by a defect it does not own, the refusal does not name the pull, and every future first-time rendering pays the same twenty-minute discovery. This is the silent-wrongness class below the ladder: the modules were always unrenderable, and main passed only because nothing pulled them.",
+
+    "RECEIPT ONE, Copy over an Rc heap field. dag/std/bit.dag renders as stage0/src/std_bit.rs with derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize) on the Word64 record whose bytes field is an Rc vector of Rc Byte -- not Copy -- so the derive emits error E0204, the trait Copy cannot be implemented for this type, at std_bit.rs line 40. Reproduced deterministically at gunbc#14545 head 028bb2349c89: the same seed binary emits 279 files, closure hash 4ab8fb7af608..., and refuses; the same binary at the PR's base content emits 255 files and passes; the delta was this PR's floor_expected_red import of v2.workflow.floor_terminal_ledger, which reaches std.bit through v2.std.integer. Dropping that import (its four names had zero code uses) removed the edge and the E0204 with it.",
+
+    "RECEIPT TWO, a Nat cast rendered as a panic in argument position. extdeps.units.iso8601_calendar renders iso8601_seconds_per_hour as v1_rt.int_mul applied to two panic expressions reading unsupported cast from Nat to i64 -- the Nat-to-Int cast has no native rendering -- so rustc reports error: unreachable expression at extdeps_units_iso8601_calendar.rs line 13 column 64 once that module is first rendered. Same reproduction: after Receipt One's edge was dropped the emitted set is 258 files, closure hash c6b081d85a1d..., and this is the next refusal on the same fresh-product build. Main never hits it because no native crate renders this module today.",
+
+    "RECEIPT THREE, the residual gap Charter 1 recorded at gunbc#14769 (head c3ec3f1c4bfd5e2bbb47bdeec602476c82669772; pre-existing, below ceiling). SHAPE: a cast outside the cast domain -- a user-declared type Nat spelled n as Int -- is skipped by validate_cast, is Accepted by the checker, and reaches emit's unsupported-cast arm, where it renders as a runtime panic. RUNG: mitigation at best (the program aborts at run time rather than being refused at compile time); the emit arm is a residual gap, not an invariant. CEILING AND TRIGGER: every as cast without a declared std.coercion route refuses at type check, after a corpus cast census (named as the next item in the panic-site PR at gunbc#14769). RESIDUE there: grounded_primitive_coproduct_identities and dag_cast_rules stay name-keyed. Scope note: gunbc#14769 attempted Receipt Two's declared route (std.nat Nat as Int as a declared widening realized as the identity, and a cast to a target with no declared route refusing at type check at the cast span), but it was REVERTED on main by gunbc#15188 at dfb597f9a36 -- its change broke Nat as String -- so Receipt Two is open again exactly as stated, and this third receipt records what a future fix must still leave open beyond it: the user-declared-name case the checker skips.",
+
+    "RUNG FOUND AT: silent wrongness below the ladder -- the defects sat in rendered-but-never-rendered modules, invisible to every required check. NOW: mitigatable -- each refusal is deterministic, locally reproducible in about fifteen minutes with the instrument self-host on GUNBC_NATIVE_PRODUCT_REUSE=fresh, and the retained probe root keeps the exact emitted line. CEILING: structurally guaranteed once the emitter renders Copy correctly and renders Nat casts without a panic in argument position, AND a newly-pulled module is emit-checked with attribution at the import that pulled it. NEXT-RUNG TRIGGER: the emitter fixes (routed to the emitter owner by the charter at gunbc#14545). POPULATION, stated honestly: any PR whose new import first pulls std.bit or a Nat-casting module into a native emitted crate is blocked until the emitter fix lands. The DEFECT is the emitter's, but the EDGE that activates it is the first puller's import, and this row's filing PR is that puller for receipt two: gunbc#14545's RetiredExpectedRedRow.enrolled_on: Optional<Iso8601CivilDate> (and ReMeasurement.on beside it) newly pulls extdeps.units.iso8601_calendar into the emitted compiler crate, so #14545's own content is the edge and its v2-bootstrap stays red until the emitter fix -- disclosed in its body, not hidden behind this row. The fields are kept because the date is a real executed obligation (§4b(1) round-trip check), and reshaping module boundaries around the emitter defect would be a workaround that hides it from the next puller (the ruling on gunbc#14545).",
+  ],
+
+  evidence: [],
+}

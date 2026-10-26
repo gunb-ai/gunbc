@@ -1,7 +1,25 @@
 module v2.workflow.floor_expected_red
 
 import std.types { List }
+import std.algebra { FreeSemigroup }
 import std.algebra { Cons, Empty, list_flat_map }
+// The retirement carrier below reuses the closure-receipt shape this repo already declares for a
+// defect closed by prior work, rather than minting a second one (DESIGN §2). No cycle: that module
+// never imports this one; its own imports are std.types, v2.std.integer, std.execution_mode,
+// std.decl_ref, extdeps.units.iso8601_calendar and std.algebra.
+import gunbc.declined_live_tree_defect_classification {
+  Closure,
+  ReMeasurement,
+  AttributedToChange,
+  RestsOnExecutedCheck,
+  PullRequest,
+}
+import std.types { CommitSha, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.execution_mode { Wet, Hermetic }
+import std.optional { Optional, Present, Absent }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity }
 
 // 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT — a fact about this
 // mechanism, not those rows, so it is recorded at the top where the next enrolling author reads it.
@@ -613,35 +631,37 @@ fn floor_expected_red_chunk_18() -> List<String> {
   Empty {}
 }
 
-fn floor_expected_red_chunk_19() -> List<String> {
-  Cons { head: "test.claim.direct_call_argument_type_witness.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Empty {} }
-}
+// THE chunk_19 DIRECT-CALL ARG-TYPE ROW IS NOT ENROLLED. Its full accounting — the standing it held,
+// why it left, and the closure receipt including the executed discrimination check that stands in for
+// an attributed fix (NO repair commit is established for this one; the weak case, disclosed rather
+// than dressed up) — is DATA in `floor_expected_red_retired_rows` above, and
+// `test.claim.floor_expected_red_retirement_witness` refuses on this lane if that data and the live
+// populations disagree. At the chunk site, only this has to be legible: the claim
+// (`test.claim.direct_call_argument_type_witness.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch`)
+// still exists and RUNS AS A PERMANENT REGRESSION CONTROL on the wet schedule, because DESIGN §4b(4)
+// says a probe that greens when its wall lands stays enrolled.
 
-// FIVE IDENTITIES ENROLLED 2026-08-22, by a route this roster has not carried before: not rows
-// someone broke, but rows the floor COULD NOT SEE. Both files declared their assertions as plain
-// `fn`, so floor discovery — keyed on the literal `test fn ` marker — enrolled nothing from
-// either. Marking them made these failures observable at all; unmarking them again would be the
-// same silence under a different justification, so they are enrolled here instead.
-//
-// The four bootstrap_footprint rows fail identically: `atom_identity_hash requires exactly one
-// string argument`. The file itself states the cause, having DEMOTED them on 2026-08-19 by
-// removing their markers — every bootstrap_footprint path hashes a closure embedding
-// rust_target_model().bundle, whose semantic-decl bundles store char CODE POINTS in
-// Atom.identity, and content_hash's atom fold routes that into an intrinsic requiring a string.
-// A substrate gap, not a defect in these rows, and the file names its own repair trigger: the
-// code-point encoding carries a string identity, or content_hash gains a non-symbol atom arm.
+// FOUR OF THE FIVE ENROLLED 2026-08-22 by 4b690897153 are gone; three of those four (the
+// `bootstrap_footprint_*_violates` family) left when their own repair trigger landed — the character
+// atom's string identity, which is precisely what this chunk's earlier header named as the discharge
+// condition — and the fourth, `bootstrap_footprint_canonical_holds`, is retired by this change onto
+// the wet schedule as a standing control; its trigger, receipt and re-measurement are rows in
+// `floor_expected_red_retired_rows`. What the enrolment was FOR stays recorded here: neither source
+// file declared its assertions as `test fn`, so floor discovery — keyed on that literal marker —
+// enrolled nothing from either, and marking them is what made the failures observable at all.
 //
 // nominal_distinct_control_compiles_ok returns false: the CONTROL fixture — the type-correct call
 // site — does not compile through compile_ingest_staging today. gunbc#8505 held this class back
 // from promotion for exactly this reason ("35 parse-reaching claims declared as residue"), so the
-// red is a known frontier fact, not news.
+// red is a known frontier fact, not news. It was re-verified red on the hermetic route at this head
+// (executed: eval_steps > 0, not a skipped claim), so it is not collateral of the removal above and
+// it keeps its standing.
 //
-// WHAT IS HONEST TO SAY, since this roster's header asks: nobody is actively fixing these five.
-// What enrolment buys over the demotion it replaces is the stale-quarantine arm — when the
-// substrate arm lands, these rows PASS and red the build naming themselves. The file's prose
-// trigger could not do that; this roster does it mechanically.
+// WHAT IS HONEST TO SAY, since this roster's header asks: nobody is actively fixing this row. What
+// enrolment buys over the demotion it replaces is the stale-quarantine arm — when the control
+// fixture starts compiling, it PASSES and reds the build naming itself.
 fn floor_expected_red_chunk_20() -> List<String> {
-  Cons { head: "v2.test.claim.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.claim.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } }
+  Cons { head: "v2.test.claim.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} }
 }
 
 // THREE IDENTITIES ENROLLED 2026-08-23, the first rows here AUTHORED red rather than discovered
@@ -1204,29 +1224,24 @@ fn floor_expected_red_chunk_shell_dag_live_deploy_install_owned() -> List<String
 // BEHAVIOR — the module's three positive controls pass on the same run. The worker rebinds both
 // steps to sudo_elevate_argv typed privileged argv; when the arm passes, this roster's
 // self-emptying arm names it for removal (DESIGN 4b(4)).
+// THE ingest_bridge IDENTITY THAT IS NOT ENROLLED (enrolled 2026-09-27 as
+// `floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded`). Its accounting — the arm it stood
+// for (`infer_algebra_ref_ungrounded`), the closure receipt (the kind-atom grounding repair, whose
+// body names this identity verbatim and lands the grounding in `src/v2/compiler/04_infer.dag`:
+// `algebra_ref_is_grounded` now admits a kind atom whose `kind_denoted_by_node` is Present), and the
+// re-measurement — is DATA in `floor_expected_red_retired_rows` above, checked on this lane by
+// `test.claim.floor_expected_red_retirement_witness`. The commit is named by its subject and PR, not
+// by hash: the 2026-10 history rewrite left that object unreachable from this head. The row was
+// enrolled on a named forecast and the forecast came true, which is the dissolution its own header
+// specified. At the chunk site: the claim now passes on BOTH routes and RUNS AS A PERMANENT
+// REGRESSION CONTROL on the wet schedule (DESIGN §4b(4)). The other two identities in that file stay
+// enrolled.
 fn floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale() -> List<String> {
   Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness.tree_sync_restart_step_renders_no_shell_control_word", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
   Cons { head: "test.claim.argument_shape_at_a_declared_position_probe.an_unapplied_function_at_a_concrete_position_is_refused", tail: Cons { head: "test.claim.argument_shape_at_a_declared_position_probe.a_string_at_a_generic_position_is_refused", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted", tail: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Cons { head: "test.claim.external_model_scope_witness.carriers_declare_scope_on_disk", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_is_still_silently_accepted", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_hole_receipt_records_acceptance_as_the_observation", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness.bare_none_generic_parameter_field_is_outside_the_wall_boundary", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.legacy_test_behavior_disposition_acceptance.legacy_test_behavior_unclassified_frontier_is_zero", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f13_variant_construction_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f19_record_lit_default_value_position_refuses", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_is_clean", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.claim.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
-
-}
-
-// ONE IDENTITY ENROLLED 2026-09-26, red on main and FIRST SELECTED by an unrelated edit. The
-// refinement-obligation carrier cut (deep-bee-18) had to edit this claim's file because infer's
-// return type changed, and that edit pulled the claim into the floor's changed-population selection
-// for the first time. It returns false at the carrier cut's merge base 21f4d0c and at origin/main
-// b1b7aea alike, measured by execution with the same seed: v2.compiler.infer canonical_grounding_for_node
-// refuses the fixture dag_fixture_emitted_add_fn with infer_algebra_ref_ungrounded, so the claim's
-// premise -- the emitted add fn's grounding derives from the authored roster -- no longer holds, and
-// the coercion half it exists to assert is never reached. An OBSERVED semantic red (the claim returns
-// a Bool and does not throw), not no-verdict debt. It also stays red with #12379's arrow-elimination
-// rule applied. NEXT-RUNG TRIGGER, the capability: infer grounds an emitted `add` arrow's algebra
-// reference from the authored inhabitants roster, so canonical_grounding_for_node admits
-// dag_fixture_emitted_add_fn. When that lands, this row passes and reds the build naming itself.
-fn floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded() -> List<String> {
-  Cons { head: "v2.test.claim.manual.ingest_bridge.ingest_identity_coercion_accepts_source_present_in_authored_roster", tail: Empty {} }
 }
 
 // TWO IDENTITIES ENROLLED 2026-10-01, AUTHORED red: the controls for top-down CHECKING MODE in
@@ -1328,7 +1343,219 @@ fn floor_expected_red_chunk_cas_outcome_seal() -> List<String> {
 // dry-lane reading; a leaf that fixes a claim should remove it from both rosters, or neither, or the
 // surviving one will be asserting a state the fix already removed.
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_cas_outcome_seal(), tail: Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
+  Cons { head: floor_expected_red_chunk_cas_outcome_seal(), tail: Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty { } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+}
+
+// WHO EXECUTES THE ROWS THIS CHANGE RETIRES, said because it is a real consequence of dropping a row
+// from this roster rather than from a schedule. DESIGN §4b(4) says a probe that greens when its wall
+// lands STAYS ENROLLED as a permanent regression control — so removing these from ExpectedRed without
+// re-homing them would have taken them off the only lane that ran them. The lane was THIS roster: the
+// instrument `//gunbc/instruments:known-red-derivation` dispatches every identity `known_red_subjects()`
+// owes, and that population is the union of the wet-scheduled identities and the identities THIS roster
+// enrols as ExpectedRed. A row deleted from here and absent from the schedule would leave the dispatch set
+// entirely.
+// THE THREE ROWS THIS CHANGE RETIRES (direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch,
+// bootstrap_footprint_canonical_holds, ingest_identity_coercion_accepts_source_present_in_authored_roster)
+// MOVED, IN THE SAME CHANGE, ONTO THE EXECUTING WET SCHEDULE (`v2.workflow.local_repo_wet_terminal`
+// `local_repo_wet_schedule`) with expectation ExpectedToHold, which is what an ordinary control is. Each
+// was verified green while enrolled here, so ExpectedToHold states an executed rung, not an aspiration.
+// They stay ordinary DISCOVERED claims too (their files sit under `gunbc.ci.ci_layer_roots`
+// `witness_discovery_scan_dirs`).
+// A TRIPWIRE THEREFORE EXISTS for each of the three, on two named paths. (a) THE LANE'S OWN GATE:
+// `v2.workflow.local_repo_wet_terminal` `local_repo_wet_identity_passed_on_candidate` (reached through
+// `local_repo_wet_finalize`) resolves a scheduled claim whose verdict is Failed to false, so the lane's
+// outcome reports the failure rather than swallowing it -- and `v2.test.claim.local_repo_wet_terminal`
+// asserts that gate. (b) THE INSTRUMENT, once `//gunbc/instruments:known-red-derivation` (PR #14464)
+// lands: it dispatches EVERY identity `known_red_subjects()` owes, which now includes these three as
+// unenrolled ExpectedToHold subjects, and a Failed verdict on an unenrolled identity is exactly
+// `known_red_unaccounted_reds` -> `UnaccountedRedWithoutEnrolment`, which exits 1 (`known_red_exit_code_of`).
+// So a regression is named by the gate, and named again with a definite finding by the instrument. What
+// remains true, and said plainly because it bounds the two: an instrument run is DISPATCHED
+// (`workflow_dispatch` on `instrument-dispatch.yml`), not a required-path job -- the same standing the
+// rest of this lane has, and stated next.
+// THE FOURTH doc-graph identity (doc_graph_registered_plan_roots_all_admitted) IS NOT RETIRED HERE and is
+// NOT on the schedule: its green was never observed (it runs in neither the wet nor the hermetic lane in
+// the base or head parity runs), so moving it to ExpectedToHold would state a rung the executed evidence
+// does not support (§4b(1)). It stays ENROLLED on THIS roster as ExpectedRed, on the open
+// NeedsOperatorRuling in `gunbc.declined_live_tree_defect_classification` `doc_reachability_rows`; the
+// permanent-evidence loss and its two closure options are recorded there and nowhere else (§3 single home).
+// It therefore stays in the instrument's dispatch set by roster membership, and a future declared-but-
+// unadmitted root still fails there.
+// Still true and worth keeping said: this lane is not the REQUIRED path. Required execution of the
+// witness population stays an outstanding capability under the existing authority
+// `gunbc.rung_drop.v1_required_lanes_withdrawn`, whose restoration trigger is a binary built from an
+// emission of v2 judging the population on the required path with a discriminating red.
+// THE RETIRED ROWS, SAID IN DATA RATHER THAN COMMENT. When a row leaves this roster, its reason and
+// its receipt used to live only in a `//` block above `floor_expected_red_chunks()`, where no fold
+// reads them and a reviewer cannot check them against the tree. Each retirement this roster records
+// now carries its own row here: the identity, why it left, and the typed
+// closure receipt (the commits that closed it, or the honest statement that none is established, plus
+// what was re-measured and where). The prose blocks above the chunks keep only what a reader needs at
+// the site (a pointer here); the ACCOUNTING is this data.
+//
+// THE READER, so this is a roster and not a comment in a `.dag` file:
+// `test.claim.floor_expected_red_retirement_witness.retired_rows_are_accounted_for` (its own file,
+// wet-scheduled, run on every dispatch of the lane) refuses if a retired identity is still enrolled
+// as ExpectedRed here, if a retired identity scheduled as a control is missing from
+// `local_repo_wet_schedule()` or carries the wrong expectation, or if a row here has no closure
+// receipt. That is also the join that makes the retirement safe: DESIGN §4b(4) says a probe that
+// greens stays enrolled as a permanent regression control, and this witness is what stops "retired"
+// from quietly meaning "nothing runs it any more".
+// WHY THERE IS NO `why: String` AND NO CHUNK-NAME STRING. The tuple this replaces had four
+// String fields and a reader that checked only two of them for non-emptiness; `why` and
+// `standing_before` were read by nobody (review 84071), which is DESIGN §4c's test for dead data:
+// a declaration whose only purpose is commentary. Everything the old `why` prose carried that a
+// program could CHECK is now a typed field: the standing, the enrollment date, the route coverage,
+// the named discharge condition, the closure and the re-measurement. What remains of the narrative
+// — why passing is legitimate rather than a stopped heartbeat — is prose, and prose lives in the
+// comment above each row, where it can be read by humans and cannot be mistaken for a receipt.
+//
+// FIELD-BY-FIELD, the witness (`retired_rows_are_accounted_for` + the three arm controls) reads
+// EVERY field of this record, so none can lie quietly:
+//  - identity: joined against the live roster (arm 1) and the wet schedule (arm 2).
+//  - (there is no standing field). A row of this type STOOD RED — that is what the type's name
+//    asserts, so the old `standing_before: ClaimExpectation` was DELETED (review 84472). It admitted
+//    exactly one legal value, `ExpectedRed`, and the witness refused every other one: a validator
+//    restating a constraint the model already carries, DESIGN §5's "correctness by construction, not
+//    validation". With the field gone the illegal standing is unwritable rather than refused.
+//  - enrolled_on: a real calendar date (the module's own civil-date round-trip) on or before the
+//    re-measurement day; Absent where the ledger never recorded one, which row 3 discloses.
+//  - (there is no route boolean). Which routes the row was measured on is a fact the closure's
+//    `re_measured.routes` carries ONCE. A `on_both_routes: Bool` beside it was deleted here: it was a
+//    second copy of a fact the record already held, and the witness had to check one against the other
+//    -- exactly the second representation DESIGN 5 names, and a review (84231) caught one row where
+//    the two copies disagreed. What a reader wants -- which routes were run -- is read off the receipt,
+//    and `routes` is non-empty BY CONSTRUCTION: it is a `FreeSemigroup<ExecutionMode>` (review 86337), so a
+//    receipt naming no route cannot be written and the fold carries no emptiness arm for it.
+//  - trigger: the declaration naming the row's OWN discharge condition, when it had one; when
+//    Present it must resolve, which is what stops a trigger being pacified by deleting the row it
+//    names.
+//  - closure: see gunbc.declined_live_tree_defect_classification — two arms, no third.
+type RetiredExpectedRedRow {
+  identity: WitnessIdentity,
+  enrolled_on: Optional<Iso8601CivilDate>,
+  trigger: Optional<DeclarationRef>,
+  closure: Closure,
+}
+
+fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
+  // THREE ROWS, AND EVERY FIELD BELOW IS READ. `test.claim.floor_expected_red_retirement_witness`
+  // joins each row against three live populations (this roster's own chunks, the wet lane's own
+  // schedule, and the declaration index) and reads every field of the closure; a field it does not
+  // read is a bug in one of the two files, not a convenience. The narrative that used to sit in
+  // `why:` sits in the comment above each row instead, where a human reads it and a program cannot
+  // mistake it for a receipt.
+  //
+  // HEAD AND DAY ARE THE SAME FOR ALL THREE, because all three were re-measured in one run of the wet
+  // lane at head a162e67d1af846dc8431329871e2297768284613 on 2026-10-21, through the same host the
+  // scheduled lane uses (`claim_batch --claim-run --wet`). The receipt NAMES the instrument rather
+  // than copying what it printed, so there is no figure here that can rot while the instrument says
+  // otherwise (review 84083: "the receipts copy measurement output instead of naming the instrument").
+  //
+  // WHY NO COMMIT HASH APPEARS ANYWHERE BELOW. The 2026-10 mega-squash rewrote history, so the
+  // commits that closed these rows are not reachable from this head; a hash would send a reader to an
+  // object they cannot check out, which is a citation nobody can check. Each closure instead carries
+  // `durable_account` -- declarations in this tree that record the same event -- and the witness
+  // resolves every one against the live index, so deleting or renaming an account fails a claim
+  // rather than leaving a graceful-looking sentence behind. Accounts name FNS, not `data` rows or
+  // `type` names: the keyed read `v2.std.decl_index` `decl_facts_at` answers "what does the corpus
+  // declare under this qualified name" over the whole corpus, so an fn account resolves from a
+  // production module while a `data` row would resolve only by accident of that same census.
+  //
+  // ENROLMENT DATES ARE `Absent` WHERE THE LEDGER NEVER RECORDED ONE. The old prose carried dates
+  // inside a sentence nobody parsed. Two of these rows were enrolled on a date their own chunk
+  // comment states; one states none. `Absent` is the honest value and the witness refuses an
+  // `enrolled_on` that post-dates its own re-measurement, so a date cannot be invented forward.
+  [
+    // THE WEAK CASE, DISCLOSED AS ONE. No repair commit is established for this row: nothing in the
+    // tree touches the claim's own file, and the guarantee that named it was itself retired by the
+    // declaration-bound formal carrier (see gunbc.guarantee_probe_corpus: "the former module-wide v2.*
+    // exemption is retired by the declaration-bound formal carrier"). So the closure is not attributed
+    // to a change at all -- it rests on the executed discrimination check, which is what
+    // `RestsOnExecutedCheck` exists to say. The durable account is the probe corpus the trio is
+    // declared in, so the check's subject cannot vanish silently.
+    RetiredExpectedRedRow {
+      identity: WitnessIdentity {
+        module_path: "test.claim.direct_call_argument_type_witness",
+        function: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch",
+      },
+      enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
+      trigger: Absent,
+      closure: RestsOnExecutedCheck {
+        why_no_change: "no attributed fix commit exists: no commit touches this claim's own file, and the guarantee that named it was retired by the declaration-bound formal carrier, so the removal rests on the executed check rather than on a change" as NonEmptyStr,
+        durable_account: FreeSemigroup {
+          head: decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "guarantee_probe_rows"),
+          tail: [
+          decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_ordinary_module_red_probe"),
+          decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_v2_module_red_probe"),
+        ],
+        },
+        re_measured: ReMeasurement {
+          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+          routes: FreeSemigroup { head: Wet, tail: [Hermetic] },
+          instrument: decl_ref(module_path: "test.claim.direct_call_argument_type_witness", decl_name: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch"),
+        },
+      },
+    },
+    // ITS OWN HEADER NAMED THE DISCHARGE CONDITION -- "the code-point encoding carries a string
+    // identity, or content_hash gains a non-symbol atom arm" -- and the first half landed: character
+    // atoms now carry a string identity through the scalar producer. The three sibling *_violates rows
+    // retired on the same trigger; this is the standing half of that family. Because the row named its
+    // own exit, `trigger` is Present and points at the capability it named: the witness resolves it, so
+    // deleting the thing this row was waiting for cannot pacify the row.
+    RetiredExpectedRedRow {
+      identity: WitnessIdentity {
+        module_path: "v2.test.claim.manual.bootstrap_footprint_anchor",
+        function: "bootstrap_footprint_canonical_holds",
+      },
+      enrolled_on: Absent,
+      trigger: Present { value: decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point") },
+      closure: AttributedToChange {
+        change: PullRequest { number: 9250 },
+        durable_account: FreeSemigroup {
+          head: decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point"),
+          tail: [
+          decl_ref(module_path: "gunbc.floor.floor_non_verdict_classification", decl_name: "non_verdict_row_identity"),
+        ],
+        },
+        re_measured: ReMeasurement {
+          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+          routes: FreeSemigroup { head: Wet, tail: [Hermetic] },
+          instrument: decl_ref(module_path: "v2.test.claim.manual.bootstrap_footprint_anchor", decl_name: "bootstrap_footprint_canonical_holds"),
+        },
+      },
+    },
+    // THE ONE ROW WITH A REAL FIX BEHIND IT, not a verdict alone. The repair names this identity
+    // verbatim in its body and lands the grounding: `algebra_ref_is_grounded` now admits a kind atom
+    // whose `kind_denoted_by_node` is Present, which is exactly the arm (`infer_algebra_ref_ungrounded`)
+    // this row stood for. It was enrolled on a named forecast and the forecast came true, so this is
+    // the dissolution its own header specified. The other two identities in that file stay enrolled.
+    RetiredExpectedRedRow {
+      identity: WitnessIdentity {
+        module_path: "v2.test.claim.manual.ingest_bridge",
+        function: "ingest_identity_coercion_accepts_source_present_in_authored_roster",
+      },
+      enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 9, day: 27 } },
+      trigger: Present { value: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_algebra_ref_ungrounded_diagnostic") },
+      closure: AttributedToChange {
+        change: PullRequest { number: 12919 },
+        durable_account: FreeSemigroup {
+          head: decl_ref(module_path: "v2.compiler.infer", decl_name: "algebra_ref_is_grounded"),
+          tail: [
+          decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_algebra_ref_ungrounded_diagnostic"),
+        ],
+        },
+        re_measured: ReMeasurement {
+          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+          routes: FreeSemigroup { head: Wet, tail: [Hermetic] },
+          instrument: decl_ref(module_path: "v2.test.claim.manual.ingest_bridge", decl_name: "ingest_identity_coercion_accepts_source_present_in_authored_roster"),
+        },
+      },
+    },
+  ]
 }
 
 // THE TWO CONSTRUCTOR-TAG QUARANTINE PROBES THAT ARE LIVE REDS, enrolled as expected reds. These are

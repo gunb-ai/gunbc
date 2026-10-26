@@ -1,0 +1,718 @@
+module test.claim.floor_expected_red_retirement_witness
+
+// EVERY RETIRED ExpectedRed ROW IS ACCOUNTED FOR, ON PROOF AND NOT ON PROSE.
+//
+// WHAT THIS CHANGED FROM, AND WHY THE OLD SHAPE WAS NOT A GATE. This claim used to check four things
+// about a row whose fields were all `String`: that the list was non-empty, that the identity was not
+// still enrolled, that the wet schedule held it, and that the receipt's two strings were not `""`.
+// Nothing read `why`, nothing read `standing_before`, and a `closed_by` entry whose text SAID THE ROW
+// HAS NO CLOSURE satisfied the receipt test as happily as a real citation (reviews 84071/84083). The
+// tuple could be satisfied by editing the declaration while the realization still lay, which is DESIGN
+// §5's tell that validation stood where construction was available.
+//
+// WHAT IT CHECKS NOW, FIELD BY FIELD. The fields are typed (RetiredExpectedRedRow in
+// v2.workflow.floor_expected_red, Closure in gunbc.declined_live_tree_defect_classification), so the
+// questions below are asked of data rather than of sentences:
+//   1. identity  -- not still enrolled in the roster's own chunks (a row cannot be both retired and
+//                   enrolled), and the wet lane's own schedule carries that same qualified name with
+//                   expectation ExpectedToHold (§4b meta-obligation 4: a row that went green when its
+//                   wall landed becomes a permanent regression control).
+//   2. (no field) -- a retired row STOOD RED; that is what the type says, so the old `standing_before`
+//                   field was DELETED (review 84472). It held one legal value, `ExpectedRed`, and the
+//                   witness refused every other one -- which is a check restating a constraint the model
+//                   already carried (DESIGN 5: correctness by construction, not validation), and it meant
+//                   the illegal `ExpectedToHold` row was writable at all. What is unwritable needs no
+//                   validator, so the field and its refusal arm went together.
+//   3. enrolled_on -- when Present, a real civil date (the calendar module's own round-trip) that does
+//                   not post-date its own re-measurement. When Absent, honest absence: two rows'
+//                   enrolling date was never recorded, and this claim does not let one be invented.
+//   4. re_measured.routes -- the ONE place route coverage lives, NONEMPTY BY CONSTRUCTION (review
+//                   86337, DESIGN §5 + §3b's FreeSemigroup model): `FreeSemigroup<ExecutionMode>` has no
+//                   empty inhabitant, so a receipt naming no route is unwritable and the fold checks no
+//                   emptiness. There is no companion boolean either: `on_both_routes: Bool` was deleted
+//                   (review 84231) as a second copy of the same fact. Which routes -- one or both -- the
+//                   list still carries exactly, per DESIGN 4b(1): the reported rung is the rung the
+//                   evidence established, never the rung that would read better.
+//   5. closure.durable_account -- non-empty BY CONSTRUCTION (FreeSemigroup, review 86337), and EVERY
+//                   ref resolves against the live declaration index
+//                   via the same host join `v2.std.decl_ref_resolution_host`
+//                   `cited_declaration_ref_refusal_count_live` the long-haul carrier witness uses. An
+//                   attributed closure that consists only of a pull-request number is a reference to a
+//                   fact nobody can check from the tree, which is what review 84071's first finding named.
+//   6. closure.re_measured -- a well-formed head, a real date, a non-empty route list, and the
+//                   instrument that produced it. The old `outcome` field was deleted with `standing_before`
+//                   (review 84472) for the same reason: `Closure` has exactly two arms and both record a
+//                   CLOSED row, so the only legal value was `Passed` and `outcome_is_passed` was a
+//                   validator restating the sum. Whether the row's claim actually passes is settled by
+//                   EXECUTING it -- the wet schedule enrolment checked by item 1 -- not by a field that
+//                   could only ever say it did.
+//   7. instrument -- named as the claim ITSELF: its module_path and decl_name must equal the retired
+//                   row's own identity, and its module must be a declared module the live module index
+//                   can name. A receipt crediting some unrelated claim with closing a row is exactly the
+//                   substitution a prose receipt invites, and here it is a field mismatch.
+//   8. trigger -- where the row NAMED its own discharge condition, that declaration must still resolve.
+//                   Deleting the capability a row was waiting for cannot pacify the row.
+//
+// WHY THE PREDICATE RETURNS NAMED REFUSALS INSTEAD OF A Bool. A single Bool across ten conjuncts
+// prints `FAIL <fn>` and nothing else: one bit for the whole fold, so an owner could not tell WHICH
+// obligation the tree is failing, and a future reviewer reading a green run could not tell whether the
+// conjuncts were still there. `retired_rows_refusal_reasons` returns one label per failing conjunct, the
+// live claim turns that list into `ProcessExit::ExitFailure` naming the count, the population and the
+// first offender as `arm: identity`, and every control below asserts that the SPECIFIC arm label fired
+// rather than merely that something refused. That is what makes the controls discriminate: an arm that
+// stops refusing shows up as its label missing from a list, instead of hiding behind a conjunction that
+// still fails for an unrelated reason.
+//
+// NO COUNT LITERAL APPEARS IN THIS FILE. Row counts come from the roster, the schedule and the carrier
+// rows themselves; completeness is an identity join, so nothing here collapses to measure() == measure().
+//
+// WHY THE CONTROLS EXIST. A fold this wide can go green by losing a conjunct, and a fixture whose BAD
+// arm and GOOD arm both fail proves nothing (the trap `test.claim.duplicate_record_field_refusal_witness`
+// records). Each control perturbs ONE field of one synthetic row and demands that exactly the named arm
+// appears while the control row's list stays empty.
+
+import std.types { Bool, List, NonEmptyStr, CommitSha, commit_sha_text_holds }
+import std.algebra { Cons, Empty, fold_list, list_append, length, list_map, FreeSemigroup, non_empty_to_list }
+import std.optional { Optional, Present, Absent }
+import std.execution_mode { Wet, Hermetic }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.integer { int_to_decimal_string }
+import std.decl_ref { DeclarationRef }
+import gunbc.declined_live_tree_defect_classification {
+  Closure,
+  ReMeasurement,
+  AttributedToChange,
+  RestsOnExecutedCheck,
+}
+import gunbc.doc_graph_roots { hand_authored_works_resolution_pool_roots }
+import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
+import v2.lens.module_graph { module_declaration_facts_at_live }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_days_from_civil, iso8601_civil_from_days }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_terminal_ledger { ClaimExpectation, ExpectedRed, ExpectedToHold }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
+import v2.workflow.wet_evidence { WetScheduledClaim }
+import v2.workflow.floor_expected_red {
+  RetiredExpectedRedRow,
+  floor_expected_red_retired_rows,
+  floor_expected_red_chunks,
+}
+
+// THE LIVE POPULATIONS, read rather than copied. Both come from the ledger's own producers, which is
+// what makes this a completeness join and not a count equality.
+fn enrolled_expected_red_identities() -> List<String> {
+  fold_list(
+    xs: floor_expected_red_chunks(),
+    empty: Empty {},
+    cons: fn(acc, chunk) { list_append(left: acc, right: chunk) }
+  )
+}
+
+fn expectation_is_expected_to_hold(e: ClaimExpectation) -> Bool {
+  match e {
+    ExpectedToHold => true
+    ExpectedRed => false
+  }
+}
+
+// A REAL CALENDAR DAY, checked by the calendar module's own round-trip rather than by a shape test
+// written here. A date that cannot survive days -> civil -> days is not a date, and the old
+// `re_measured_at` string accepted any text at all, including a blank.
+fn is_a_civil_date(d: Iso8601CivilDate) -> Bool {
+  iso8601_civil_from_days(days: iso8601_days_from_civil(y: d.year, m: d.month, d: d.day)) == d
+}
+
+// CALENDAR ORDER WITHOUT A SECOND CALENDAR. Both dates go through the module's own day number, so the
+// comparison cannot disagree with the arithmetic that defines the type.
+fn date_le(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
+  iso8601_days_from_civil(y: a.year, m: a.month, d: a.day)
+    <= iso8601_days_from_civil(y: b.year, m: b.month, d: b.day)
+}
+
+// THE TWO VIEWS THE SUM TYPE OFFERS. A `Closure` is a sum, so its shared fields are reached by MATCH,
+// not by a dot: adding a third arm to `Closure` makes these refuse to compile until this claim says
+// what the new way of closing a row means, instead of passing vacuously the way an `if` on a rendered
+// label would.
+fn closure_durable_account(closure: Closure) -> FreeSemigroup<DeclarationRef> {
+  match closure {
+    AttributedToChange { change: _, durable_account: a, re_measured: _ } => a
+    RestsOnExecutedCheck { why_no_change: _, durable_account: a, re_measured: _ } => a
+  }
+}
+
+fn closure_remeasurement(closure: Closure) -> ReMeasurement {
+  match closure {
+    AttributedToChange { change: _, durable_account: _, re_measured: r } => r
+    RestsOnExecutedCheck { why_no_change: _, durable_account: _, re_measured: r } => r
+  }
+}
+
+// WHY THE WHY-STRING IS CHECKED AT ALL, GIVEN THAT PROSE IS NOT A RECEIPT. `why_no_change` carries no
+// checkable fact -- that is precisely why the checkable half lives in `durable_account`, which the fold
+// resolves. What this conjunct refuses is the empty sentence: an unattributed closure that says nothing
+// about why nothing is attributed. Paired with arm 5 (an account that must resolve), the pair says the
+// row both explains itself and can be verified, which neither half does alone.
+fn refusal_labels_for_row(
+  r: RetiredExpectedRedRow,
+  enrolled: List<String>,
+  schedule: List<WetScheduledClaim>,
+  pool_roots: List<String>
+) -> List<String> {
+  let qn = witness_identity_qualified_name(identity: r.identity)
+  let rm = closure_remeasurement(closure: r.closure)
+  let durable = closure_durable_account(closure: r.closure)
+  let reasons = [
+    "still-enrolled",
+    "absent-from-wet-schedule",
+    "scheduled-under-wrong-expectation",
+    "enrolment-date-not-a-civil-date",
+    "enrolment-date-after-its-own-measurement",
+    "unresolvable-durable-account",
+    "head-not-a-commit-sha",
+    "instrument-is-not-the-row-itself",
+    "instrument-module-not-declared",
+    "trigger-declaration-does-not-resolve",
+  ]
+  fold_list(
+    xs: reasons,
+    empty: Empty {},
+    cons: fn(acc, label) {
+      if refusal_fires(label: label, qn: qn, r: r, rm: rm, durable: durable, enrolled: enrolled, schedule: schedule, pool_roots: pool_roots) {
+        Cons { head: label, tail: acc }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// ONE CONJUNCT, ADDRESSED BY NAME. Written as a dispatch over the label list rather than as ten
+// `&&`s so that the labels above are the complete list of obligations and cannot drift from the checks
+// below: adding a label with no branch, or a branch with no label, shows up as a refusal that never
+// fires or never appears.
+fn refusal_fires(
+  label: String,
+  qn: String,
+  r: RetiredExpectedRedRow,
+  rm: ReMeasurement,
+  durable: FreeSemigroup<DeclarationRef>,
+  enrolled: List<String>,
+  schedule: List<WetScheduledClaim>,
+  pool_roots: List<String>
+) -> Bool {
+  if label == "still-enrolled" {
+    any(xs: enrolled, predicate: fn(id) { id == qn })
+  } else if label == "absent-from-wet-schedule" {
+    !(any(xs: schedule, predicate: fn(s) { witness_identity_qualified_name(identity: s.identity) == qn }))
+  } else if label == "scheduled-under-wrong-expectation" {
+    any(
+      xs: schedule,
+      predicate: fn(s) {
+        (witness_identity_qualified_name(identity: s.identity) == qn)
+          && !(expectation_is_expected_to_hold(e: s.expectation))
+      }
+    )
+  } else if label == "enrolment-date-not-a-civil-date" {
+    match r.enrolled_on {
+      Absent => false
+      Present { value: d } => !(is_a_civil_date(d: d))
+    }
+  } else if label == "enrolment-date-after-its-own-measurement" {
+    match r.enrolled_on {
+      Absent => false
+      Present { value: d } => !(date_le(a: d, b: rm.on))
+    }
+    } else if label == "unresolvable-durable-account" {
+    cited_declaration_ref_refusal_count_live(refs: non_empty_to_list(xs: durable), pool_roots: pool_roots) != 0
+  } else if label == "head-not-a-commit-sha" {
+    !(commit_sha_text_holds(head: rm.head as String))
+  // (route coverage has no arm here any more: `re_measured.routes` is a FreeSemigroup, so the empty
+  // receipt that used to need refusing has no representation -- review 86337, DESIGN §5.)
+  } else if label == "instrument-is-not-the-row-itself" {
+    (rm.instrument.module_path as String != r.identity.module_path as String)
+      || (rm.instrument.decl_name as String != r.identity.function as String)
+  } else if label == "instrument-module-not-declared" {
+    length(
+      xs: module_declaration_facts_at_live(
+        pool_roots: pool_roots,
+        module_path: rm.instrument.module_path as String
+      )
+    ) == 0
+  } else if label == "trigger-declaration-does-not-resolve" {
+    match r.trigger {
+      Absent => false
+      Present { value: t } =>
+        cited_declaration_ref_refusal_count_live(refs: [t], pool_roots: pool_roots) != 0
+    }
+  } else {
+    // An unlabelled obligation. Refusing rather than passing keeps the label list and the check list
+    // from drifting apart silently; the label list above is the authority on what is checked.
+    true
+  }
+}
+
+// THE PREDICATE, AS NAMED REFUSALS. Empty list means accounted for.
+fn retired_rows_refusal_reasons(
+  rows: List<RetiredExpectedRedRow>,
+  enrolled: List<String>,
+  schedule: List<WetScheduledClaim>,
+  pool_roots: List<String>
+) -> List<String> {
+  fold_list(
+      xs: rows,
+      empty: Empty {},
+      cons: fn(acc, r) {
+        list_append(
+          left: acc,
+          right: map_refusals_to_identity(row: r, reasons: refusal_labels_for_row(r: r, enrolled: enrolled, schedule: schedule, pool_roots: pool_roots))
+        )
+      }
+    )
+}
+
+// EVERY REFUSAL CARRIES ITS ROW, so a failing run says which identity and which obligation. Without the
+// identity a reviewer sees a bare arm name across an unknown row.
+fn map_refusals_to_identity(row: RetiredExpectedRedRow, reasons: List<String>) -> List<String> {
+  let qn = witness_identity_qualified_name(identity: row.identity)
+  list_map(xs: reasons, f: fn(label) { concat(label, concat(": ", qn)) })
+}
+
+// EXACT LABEL EQUALITY, NOT A PREFIX SEARCH. A prefix test over decorated strings would let the arm
+// `head-not-a-commit-sha` be satisfied by a report for `head-not-a-commit-sha-ish`, and any future arm
+// whose name begins with another's would make two controls pass on each other's refusal. Controls
+// therefore read the UNDECORATED label list from `refusal_labels_for_row` and compare whole labels;
+// only the live claim's printed message carries the identity.
+fn arm_appears(labels: List<String>, arm: String) -> Bool {
+  any(xs: labels, predicate: fn(l) { l == arm })
+}
+
+// THE CARRIER'S OWN REFUSALS, UNDECORATED. Kept apart from the per-row labels so the emptiness control
+// compares whole labels the same way every other control does. PARAMETERISED, not hard-wired to the live
+// carrier: the live roster is never empty, so a fold that read it directly could only ever return the
+// non-empty branch -- an arm that can never fire is a decoration that reads as coverage (DESIGN §4b(1)),
+// which is exactly what a prior draft of this test was. Taking the rows lets `the_emptiness_arm...` feed the
+// empty case and still check the live case refuses nothing, so the arm is falsifiable in both directions.
+fn carrier_refusal_labels(rows: List<RetiredExpectedRedRow>) -> List<String> {
+  if length(xs: rows) == 0 {
+    [ "carrier-holds-no-rows" ]
+  } else {
+    Empty {}
+  }
+}
+
+// THE LIVE CLAIM. ExitSuccess when every row is accounted for; ExitFailure naming the count of failures,
+// the number of rows examined, and the first offender as `arm: identity` -- because one bit for the
+// whole fold would leave an owner unable to tell which of sixteen obligations the tree is failing.
+test fn retired_rows_are_accounted_for() -> ProcessExit {
+  let rows = floor_expected_red_retired_rows()
+  let reasons = list_append(
+    left: carrier_refusal_labels(rows: rows),
+    right: retired_rows_refusal_reasons(
+      rows: rows,
+      enrolled: enrolled_expected_red_identities(),
+      schedule: local_repo_wet_schedule(),
+      pool_roots: hand_authored_works_resolution_pool_roots()
+    )
+  )
+  if length(xs: reasons) == 0 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        concat(int_to_decimal_string(value: length(xs: reasons)), " refusal(s) over "),
+        concat(
+          int_to_decimal_string(value: length(xs: rows)),
+          concat(" retired row(s); first: ", first_or_none(xs: reasons))
+        )
+      ),
+    }
+  }
+}
+
+fn first_or_none(xs: List<String>) -> String {
+  fold_list(
+    xs: xs,
+    empty: "(none)",
+    cons: fn(acc, x) {
+      if acc == "(none)" {
+        x
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// THE CARRIER IS NOT SILENTLY EMPTY, and every row it holds is scheduled. The live claim could in
+// principle be satisfied by a roster that lost every row; this refuses the carrier going quietly, and it
+// reads the count off the roster rather than comparing it to a number written into this file.
+test fn the_carrier_is_not_silently_empty() -> ProcessExit {
+  let live = floor_expected_red_retired_rows()
+  if length(xs: live) == 0 {
+    ExitFailure { code: 1, reason: "the retirement carrier holds no rows at all" }
+  } else if length(
+      xs: filter(xs: live, predicate: fn(r) {
+        !(any(xs: local_repo_wet_schedule(), predicate: fn(s) {
+          (witness_identity_qualified_name(identity: s.identity) == witness_identity_qualified_name(identity: r.identity))
+            && expectation_is_expected_to_hold(e: s.expectation)
+        }))
+      })
+    ) != 0 {
+    ExitFailure { code: 1, reason: "a retired row is not held by the wet lane as a control" }
+  } else {
+    ExitSuccess
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE SYNTHETIC FIXTURE. Built here rather than read from a file so the arms below can differ from the
+// control by exactly ONE field; a shared file would let two arms differ in unseen ways. The fixture is
+// DATA, not a file on disk, so it never joins the corpus the ledger is checked against -- which is how a
+// falsifiable control is built without making this file part of what it audits.
+// ---------------------------------------------------------------------------
+
+// THE RECEIPT ONCE, NOT SIX TIMES. A named fn rather than a literal inside the closure, so the
+// perturbations below rebuild a receipt from the control's fields instead of reaching THROUGH the sum
+// type: `control_closure().re_measured` would be field access on a sum value, which this language does
+// not offer -- a `Closure` is read by `match`, exactly so a new arm cannot be ignored.
+fn control_remeasurement() -> ReMeasurement {
+  ReMeasurement {
+    head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+    on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+    routes: FreeSemigroup { head: Wet, tail: [Hermetic] },
+    // REAL AND RESOLVABLE, per the manager ruling. A control that must refuse nothing cannot rest on a
+    // fictional module: `instrument-module-not-declared` fires on any instrument whose module resolves to
+    // no declaration, and a control that fires it makes all seven arm controls fail (each demands the
+    // control's refusal list be empty). The instrument's module is the field the fold resolves; here it is
+    // a real, live declaration, so the control stays clean. It is deliberately NOT plan_doc_graph_roots --
+    // the `instrument-is-not-the-row-itself` arm swaps in exactly that, and the control must differ from it.
+    instrument: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "doc_graph_roots_all"),
+  }
+}
+
+fn control_account() -> FreeSemigroup<DeclarationRef> {
+  FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
+    tail: [],
+  }
+}
+
+fn control_closure() -> Closure {
+  RestsOnExecutedCheck {
+    why_no_change: "synthetic: no attributed fix commit, the check was executed" as NonEmptyStr,
+    durable_account: control_account(),
+    re_measured: control_remeasurement(),
+  }
+}
+
+fn control_row() -> RetiredExpectedRedRow {
+  RetiredExpectedRedRow {
+    // IDENTITY == INSTRUMENT. `instrument-is-not-the-row-itself` refuses when the receipt credits a claim
+    // other than the row itself, so the only clean control names the SAME live declaration in both places.
+    // It points at a real gunbc.doc_graph_roots declaration (not a fictional fixture module), so it is the
+    // one row the fold finds nothing to refuse.
+    identity: WitnessIdentity {
+      module_path: "gunbc.doc_graph_roots",
+      function: "doc_graph_roots_all",
+    },
+    enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
+    trigger: Absent,
+    closure: control_closure(),
+  }
+}
+
+data control_identity: String = "gunbc.doc_graph_roots.doc_graph_roots_all"
+data control_entry: String = "dag/gunbc/doc_graph_roots.dag"
+
+fn control_schedule(e: ClaimExpectation) -> List<WetScheduledClaim> {
+  [
+    WetScheduledClaim {
+      identity: WitnessIdentity {
+        module_path: "gunbc.doc_graph_roots",
+        function: "doc_graph_roots_all",
+      },
+      entry: control_entry,
+      function: "doc_graph_roots_all",
+      expectation: e
+    },
+  ]
+}
+
+fn pool() -> List<String> { hand_authored_works_resolution_pool_roots() }
+
+fn scheduled() -> List<WetScheduledClaim> { control_schedule(e: ExpectedToHold) }
+
+// THE CONTROL ITSELF, asserted rather than assumed: with nothing enrolled and the row scheduled as a
+// control, NOTHING refuses. Every arm control below is written as "the control row's list is empty AND
+// the perturbed row's list names exactly this arm", so an arm cannot pass by making both arms refuse.
+test fn the_control_row_refuses_nothing() -> ProcessExit {
+  let reasons = refusal_labels_for_row(r: control_row(), enrolled: Empty {}, schedule: scheduled(), pool_roots: pool()
+  )
+  if length(xs: reasons) == 0 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat("the untouched synthetic control must refuse nothing, but got: ", first_or_none(xs: reasons)),
+    }
+  }
+}
+
+// ONE CONTROL, WRITTEN ONCE. The row is rebuilt with the given fields swapped, the reasons are collected,
+// and BOTH directions are demanded: the control stays clean, and the perturbation makes exactly the
+// named arm fire. `must_not_fire` catches the over-eager fix as well -- a conjunct that refuses
+// everything fails here too, not only one that refuses nothing.
+fn arm_refuses_exactly(
+  arm: String,
+  row: RetiredExpectedRedRow
+) -> Bool {
+  let control_reasons = refusal_labels_for_row(
+    r: control_row(), enrolled: Empty {}, schedule: scheduled(), pool_roots: pool()
+  )
+  let perturbed = refusal_labels_for_row(
+    r: row, enrolled: Empty {}, schedule: scheduled(), pool_roots: pool()
+  )
+  (length(xs: control_reasons) == 0)
+    && arm_appears(labels: perturbed, arm: arm)
+}
+
+// ARM: still-enrolled. The SAME row passes when de-enrolled and refuses when its identity is enrolled.
+test fn the_enrolment_arm_refuses_a_still_enrolled_identity() -> Bool {
+  (length(
+    xs: refusal_labels_for_row(r: control_row(), enrolled: [control_identity], schedule: scheduled(), pool_roots: pool()
+    )
+  ) >= 1)
+    && arm_appears(
+      labels: refusal_labels_for_row(r: control_row(), enrolled: [control_identity], schedule: scheduled(), pool_roots: pool()
+      ),
+      arm: "still-enrolled"
+    )
+    && !(arm_appears(
+      labels: refusal_labels_for_row(r: control_row(), enrolled: Empty {}, schedule: scheduled(), pool_roots: pool()
+      ),
+      arm: "still-enrolled"
+    ))
+}
+
+// ARM: absent-from-wet-schedule, and ARM: scheduled-under-wrong-expectation. Two different failures of
+// the same obligation, distinguished by label -- which a Bool could not have done.
+test fn the_schedule_arms_distinguish_missing_from_mis_expectationed() -> Bool {
+  let missing = refusal_labels_for_row(r: control_row(), enrolled: Empty {}, schedule: Empty {}, pool_roots: pool()
+  )
+  let wrong = refusal_labels_for_row(r: control_row(), enrolled: Empty {}, schedule: control_schedule(e: ExpectedRed), pool_roots: pool()
+  )
+  arm_appears(labels: missing, arm: "absent-from-wet-schedule")
+    && !(arm_appears(labels: missing, arm: "scheduled-under-wrong-expectation"))
+    && arm_appears(labels: wrong, arm: "scheduled-under-wrong-expectation")
+    && !(arm_appears(labels: wrong, arm: "absent-from-wet-schedule"))
+}
+
+// ARMS: the two date arms are separate obligations. An absent date is honest absence and must refuse
+// NOTHING; a date that is not a civil date and a date after its own measurement each fire their own arm.
+test fn the_enrolment_date_arms_separate_absence_from_fabrication() -> Bool {
+  let base = control_row()
+  let absent = RetiredExpectedRedRow {
+    identity: base.identity,
+    enrolled_on: Absent,
+    trigger: base.trigger,
+    closure: base.closure,
+  }
+  let later = RetiredExpectedRedRow {
+    identity: base.identity,
+    enrolled_on: Present { value: Iso8601CivilDate { year: 2027, month: 1, day: 1 } },
+    trigger: base.trigger,
+    closure: base.closure,
+  }
+  let impossible = RetiredExpectedRedRow {
+    identity: base.identity,
+    enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 13, day: 45 } },
+    trigger: base.trigger,
+    closure: base.closure,
+  }
+  // honest absence is not punished as a defect
+  (length(
+    xs: refusal_labels_for_row(r: absent, enrolled: Empty {}, schedule: scheduled(), pool_roots: pool()
+    )
+  ) == 0)
+    && arm_refuses_exactly(arm: "enrolment-date-after-its-own-measurement", row: later)
+    && arm_refuses_exactly(arm: "enrolment-date-not-a-civil-date", row: impossible)
+}
+
+// ARM: the durable account, PHANTOM ONLY. The empty-account plant this test used to carry is GONE -- not
+// deleted as coverage but MOVED UP: `durable_account` is a `FreeSemigroup<DeclarationRef>` (review 86337,
+// DESIGN §5: "stronger than catching a wrong state is making it unwritable"), so the literal
+// `durable_account: []` the old fixture wrote has no representation and `an_empty_durable_account_is_unwritable`
+// below is the executing proof of that. The phantom plant stays, because a NON-EMPTY account of phantoms
+// is exactly the shape review 84071 named and the type cannot forbid it -- only the fold can.
+test fn the_durable_account_arm_refuses_a_phantom_ref() -> Bool {
+  let base = control_row()
+  let phantom_account = RetiredExpectedRedRow {
+    identity: base.identity,
+    enrolled_on: base.enrolled_on,
+    trigger: base.trigger,
+    closure: RestsOnExecutedCheck {
+      why_no_change: "synthetic" as NonEmptyStr,
+      durable_account: FreeSemigroup {
+        head: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "no_such_declaration_in_this_module"),
+        tail: [],
+      },
+      re_measured: control_remeasurement(),
+    },
+  }
+  arm_refuses_exactly(arm: "unresolvable-durable-account", row: phantom_account)
+}
+
+
+// THE WALL IS THE TYPE, AND A TYPE IS ONLY CLAIMED IF SOMETHING RUNS THAT TRIES TO DEFEAT IT. These two
+// arms ask the REAL compiler (compile_dag_rust_emit_check -- the same executing probe
+// test.claim.claim_cost_observation_type_wall_witness established) to build the carrier two ways. The
+// fixtures differ in ONE TOKEN each -- the shape of one field -- so a refusal that fires for both shapes
+// is a broken probe, not evidence about the wall, and the calibration arm below prices exactly that.
+// POSITIVE FIRST (the pattern's discipline): the FreeSemigroup account must compile, or the negative arm
+// below would be a refusal that was never falsifiable.
+test fn a_nonempty_durable_account_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fixture.durable_fs_ok\nimport std.types { NonEmptyStr, CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { Closure, RestsOnExecutedCheck, ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> Closure {\n  RestsOnExecutedCheck { why_no_change: \"synthetic\" as NonEmptyStr, durable_account: FreeSemigroup { head: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"plan_doc_graph_roots\"), tail: [] }, re_measured: ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: FreeSemigroup { head: Wet, tail: [] }, instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") } }\n}\n",
+    "src/fixture_durable_fs_ok.rs",
+    [],
+    []
+  )
+}
+
+// THE NEGATIVE: the same fixture with the ONE token changed -- the empty list literal in the account
+// position. It must be refused; before review 86337 it compiled, and that is the gap this closes.
+test fn an_empty_durable_account_is_unwritable() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.durable_fs_empty\nimport std.types { NonEmptyStr, CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { Closure, RestsOnExecutedCheck, ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> Closure {\n  RestsOnExecutedCheck { why_no_change: \"synthetic\" as NonEmptyStr, durable_account: [], re_measured: ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: FreeSemigroup { head: Wet, tail: [] }, instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") } }\n}\n",
+    "src/fixture_durable_fs_empty.rs",
+    [],
+    []
+  )
+}
+
+// THE ROUTE ARM OF THE SAME FINDING. `ReMeasurement.routes` is a `FreeSemigroup<ExecutionMode>` for the
+// same reason: the fold's `receipt-names-no-route` arm refused the empty receipt, so the empty receipt
+// gets no type, and the arm goes with it. POSITIVE then NEGATIVE, one token apart.
+test fn a_nonempty_route_receipt_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fixture.routes_fs_ok\nimport std.types { CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> ReMeasurement {\n  ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: FreeSemigroup { head: Wet, tail: [] }, instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") }\n}\n",
+    "src/fixture_routes_fs_ok.rs",
+    [],
+    []
+  )
+}
+
+test fn an_empty_route_receipt_is_unwritable() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.routes_fs_empty\nimport std.types { CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> ReMeasurement {\n  ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: [], instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") }\n}\n",
+    "src/fixture_routes_fs_empty.rs",
+    [],
+    []
+  )
+}
+
+// THE CALIBRATION, AND IT IS NOT CEREMONY: `compile_dag_rust_emit_check` collapses three outcomes --
+// refused, passed, and never-compiled-at-all -- into a Bool. A fixture naming a symbol that does not
+// exist must be refused by the SAME probe that accepts the two positives above; if it ever passed, the
+// probe would be broken and all four arms above would be vacuous (the reasoning is
+// claim_cost_observation_type_wall_witness's, imported here with its pattern).
+test fn the_wall_probe_refuses_an_unknown_symbol() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.durable_fs_calib\nimport std.types { NonEmptyStr, CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { Closure, RestsOnExecutedCheck, ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> Closure {\n  RestsOnExecutedCheck { why_no_change: \"synthetic\" as NonEmptyStr, durable_account: FreeSemigroup { head: no_such_fn_in_any_import(module_path: \"gunbc.doc_graph_roots\", decl_name: \"plan_doc_graph_roots\"), tail: [] }, re_measured: ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: FreeSemigroup { head: Wet, tail: [] }, instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") } }\n}\n",
+    "src/fixture_durable_fs_calib.rs",
+    [],
+    []
+  )
+}
+
+// ARM: instrument-is-not-the-row-itself. Crediting an unrelated claim with closing the row -- the exact
+// substitution a prose receipt invites -- is a field mismatch here.
+test fn the_instrument_arm_refuses_a_credit_to_another_claim() -> Bool {
+  let base = control_row()
+  let borrowed = RetiredExpectedRedRow {
+    identity: base.identity,
+    enrolled_on: base.enrolled_on,
+    trigger: base.trigger,
+    closure: RestsOnExecutedCheck {
+      why_no_change: "synthetic" as NonEmptyStr,
+      durable_account: control_account(),
+      re_measured: ReMeasurement {
+        head: control_remeasurement().head,
+        on: control_remeasurement().on,
+        routes: control_remeasurement().routes,
+        instrument: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
+      },
+    },
+  }
+  arm_refuses_exactly(arm: "instrument-is-not-the-row-itself", row: borrowed)
+}
+
+// ARM: the head. A head that is not a sha is refused. The outcome that used to be a field here was
+// deleted (review 84472): RetiredExpectedRedRow's closure only admits a row that actually closed, and
+// the ledger's own disposition now lives in the one place that can carry it, so there is no non-Passed
+// value left for a fixture to plant.
+test fn the_receipt_shape_arm_refuses_a_bad_head() -> Bool {
+  let base = control_row()
+  let bad_head = RetiredExpectedRedRow {
+    identity: base.identity,
+    enrolled_on: base.enrolled_on,
+    trigger: base.trigger,
+    closure: RestsOnExecutedCheck {
+      why_no_change: "synthetic" as NonEmptyStr,
+      durable_account: control_account(),
+      re_measured: ReMeasurement {
+        head: "not-a-sha" as CommitSha,
+        on: control_remeasurement().on,
+        routes: control_remeasurement().routes,
+        instrument: control_remeasurement().instrument,
+      },
+    },
+  }
+  arm_refuses_exactly(arm: "head-not-a-commit-sha", row: bad_head)
+}
+
+// ARM: trigger-declaration-does-not-resolve. The row's OWN named discharge condition must still exist:
+// deleting the capability a row was waiting for cannot pacify it.
+test fn the_trigger_arm_refuses_a_named_discharge_that_does_not_exist() -> Bool {
+  let base = control_row()
+  let real_trigger = RetiredExpectedRedRow {
+    identity: base.identity,
+    enrolled_on: base.enrolled_on,
+    trigger: Present { value: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots") },
+    closure: base.closure,
+  }
+  let phantom_trigger = RetiredExpectedRedRow {
+    identity: base.identity,
+    enrolled_on: base.enrolled_on,
+    trigger: Present { value: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "no_such_declaration_in_this_module") },
+    closure: base.closure,
+  }
+  // a resolvable trigger is legal and refuses nothing
+  (length(
+    xs: refusal_labels_for_row(r: real_trigger, enrolled: Empty {}, schedule: scheduled(), pool_roots: pool()
+    )
+  ) == 0)
+    && arm_refuses_exactly(arm: "trigger-declaration-does-not-resolve", row: phantom_trigger)
+}
+
+// NO "BLANK REASON" ARM, AND WHY: `why_no_change` is a `NonEmptyStr` (`String where string_non_empty`,
+// std/types.dag), so a blank reason is UNCONSTRUCTABLE -- the refinement refuses it at the literal. A claim
+// that tried to build one either failed to resolve (`"" as NonEmptyStr`) or, past that, tested
+// `!(string_non_empty(w))` on a value the type already proved non-empty: a refusal that can never fire. Per
+// DESIGN §4b(1), a check whose forbidden state is expressible nowhere it runs is a decoration that reads as
+// coverage. The type is the real, stronger check; the durable account is what the closure is held to, and
+// `the_durable_account_arm_refuses_a_phantom_ref` (below) is the executing check for the phantom shape,
+// and `an_empty_durable_account_is_unwritable` is the executing check that the empty shape has no type.
+
+// ARM: carrier-holds-no-rows. The empty-list refusal has its own control, because the other way the live
+// claim could go quiet is by the carrier holding nothing. It is checked in BOTH directions now: an empty
+// roster must fire the arm, and the live (non-empty) roster must NOT -- a one-directional check that only
+// ever saw the live roster could never distinguish "the arm works" from "the arm is dead".
+test fn the_emptiness_arm_refuses_a_carrier_with_nothing_in_it() -> Bool {
+  arm_appears(labels: carrier_refusal_labels(rows: Empty {}), arm: "carrier-holds-no-rows")
+    && !(arm_appears(
+      labels: carrier_refusal_labels(rows: floor_expected_red_retired_rows()),
+      arm: "carrier-holds-no-rows"
+    ))
+}

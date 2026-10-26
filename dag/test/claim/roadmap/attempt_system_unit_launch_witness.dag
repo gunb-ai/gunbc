@@ -96,7 +96,7 @@ import gunbc.cli_invoke {
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
-  HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ManualStepRequired, NoAdmissiblePattern,
+  HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ApprovedConvergenceGrant, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
 }
 import gunbc.auth.privileged_effect_census {
@@ -207,6 +207,7 @@ test fn the_launcher_effect_selects_federated_scoped_grant() -> Bool {
     PatternSelected { pattern: HumanOnlyStep { step: _ }, receipt: _ } => false
     PatternSelected { pattern: OperatorOwnSession, receipt: _ } => false
     PatternSelected { pattern: AdministratorEdge, receipt: _ } => false
+    PatternSelected { pattern: ApprovedConvergenceGrant, receipt: _ } => false
     ManualStepRequired { step: _, receipt: _ } => false
     NoAdmissiblePattern { causes: _, scope: _ } => false
     PatternSelectionNeedsEvidence { needs: _ } => false
