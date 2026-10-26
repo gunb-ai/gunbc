@@ -1,0 +1,225 @@
+module product.printed_chassis.card_cooling_route
+
+import std.types {Int, List, NonEmptyStr, String}
+import std.measure {Micrometer, micrometer}
+import std.optional {Present, Absent}
+import product.printed_chassis.chassis_clearances {ChassisGap, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display}
+import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um}
+import extdeps.fans.types {RadialBlowerEnvelope}
+import extdeps.fans.delta {delta_bfb1012m_envelope}
+
+// ═══ WHERE THE BLOWER CAN LIVE WHEN THE CHASSIS GIVES 70 mm BEHIND THE PLUG END ═══
+//
+// The operator's chassis (product.printed_chassis.chassis_clearances) gives about 70 mm from a card's
+// plug end to the rear chassis fan. The existing straight-back duct does not fit in it: with the outlet's
+// edge on Delta's drawing still unread (extdeps.fans.delta delta_bfb1012m_outlet_standing), the socket
+// bounds the housing at its LONGER edge behind the end -- product.printed_chassis.gpu_duct
+// blower_reach_behind = 97.2 mm -- plus the socket's 10 mm depth and a wall, so the straight-back home
+// asks the chassis for about 108 mm where it has 70. The duct has to curve.
+//
+// WHAT THE CURVE ACTUALLY BUYS, AND WHAT IT COSTS. A radial blower is a box whose intake axis is its
+// thickness axis and whose outlet lies on the periphery. Two orientations are available and each spends
+// a DIFFERENT chassis gap -- this is the whole design, and the model says so in the open:
+//
+//   PLANE-ON-END      the fan's face lies parallel to the card's end face, its intake looking straight
+//                     back. The extent along the card's length axis is the housing's THICKNESS -- 34 mm
+//                     with tolerance -- so the 70 mm is satisfied with room to spare. But the fan's face
+//                     (97.2 x 94.4 mm) now spans the slot direction, where the card is only 38.6 mm and
+//                     the neighbouring card's duct starts at the slot pitch, 40.64 mm: it spills about
+//                     54-57 mm into the neighbour's lane. The outlet points sideways or up, so a leg has
+//                     to turn the air forward into the window -- that turn is the curve.
+//
+//   PLANE-ACROSS-ROW  the fan stands on its side wall, its outlet facing the window directly, as the
+//                     existing duct does: only the 33 mm thickness crosses the slot, which the 40.64 mm
+//                     pitch tolerates. But then its 97.2 mm face is along the card's length axis and the
+//                     70 mm refuses -- unless the fan is lifted out of the lane: OVER THE ROW, or BESIDE
+//                     THE ROW, where its long face is no longer fighting the pitch.
+//
+// So the 70 mm is NOT the only constraint, and saying it is would send the operator to measure the wrong
+// thing. Every home that satisfies the 70 mm puts a 94-97 mm housing face somewhere the chassis has never
+// been measured, and every home refuses by naming the reading it needs. THE REFUSALS ARE THE DELIVERABLE.
+//
+// Frame (product.printed_chassis.gpu_duct): x along the end face from its TOP end, y across the face from
+// its BACK face (the deck side), z along the card's length with the plug end toward the rear fan.
+
+type BlowerHome
+  = PlaneOnEnd                       // 34 mm along the card axis; 94-97 mm across the slot
+  | PlaneAcrossRowStanding           // the existing straight-back home
+  | OverTheRow { riser: Micrometer } // fan above the card row on a riser, outlet leg turned down behind the end
+  | BesideTheRow                     // fan in a free lane beside the outermost card
+
+fn blower_home_display(h: BlowerHome) -> String {
+  match h {
+    PlaneOnEnd => "fan plane on the end (intake looking back, outlet turned by a leg)"
+    PlaneAcrossRowStanding => "fan on its side wall behind the plug end (straight back, as built today)"
+    OverTheRow {riser: r} => join(["fan over the card row on a ", to_string(value: um(m: r) / 1000), " mm riser, outlet leg turned down behind the end"], "")
+    BesideTheRow => "fan beside the row in a free lane"
+  }
+}
+
+// ═══ EVERY NUMBER BELOW IS DERIVED, NONE IS TYPED BY A PERSON ═══
+//
+// Read from the cited envelope (extdeps.fans.delta delta_bfb1012m_envelope: housing 97.2 x 94.4 x 33 mm,
+// housing edges +/-0.4, thickness +/-1) and the operator's caliper end face
+// (product.printed_chassis.gpu_duct a16_end_face: face 97.84 x 38.60 mm) and the design's own wall and
+// socket figures. A demand here that does not follow from those is a bug, not a preference.
+
+// Delta's table gives housing length/depth as printed figures with no stated tolerance and a tolerance
+// only on thickness (extdeps.fans.types RadialBlowerEnvelope has exactly these fields), so a face edge is
+// the printed number and the thickness carries its +/-: the model bounds what the drawing bounds.
+fn longest_face_edge(b: RadialBlowerEnvelope) -> Int { larger_i(a: um(m: b.housing_length), b: um(m: b.housing_depth)) }
+fn shortest_face_edge(b: RadialBlowerEnvelope) -> Int { smaller_i(a: um(m: b.housing_length), b: um(m: b.housing_depth)) }
+fn thickness_extent(b: RadialBlowerEnvelope) -> Int { um(m: b.thickness) + um(m: b.thickness_tolerance) }
+
+// PLANE-ON-END: the thickness is all that goes back, so the 70 mm buys it.
+fn plane_on_end_run_back(b: RadialBlowerEnvelope, d: GpuDuctDesign) -> Int { thickness_extent(b: b) + 2 * um(m: d.wall) }
+// ...but its face spans the slot, where the pitch is the only room.
+fn plane_on_end_slot_demand(b: RadialBlowerEnvelope) -> Int { longest_face_edge(b: b) }
+
+// PLANE-ACROSS-ROW (today): the socket bounds the housing at its longer edge behind the end while the
+// outlet's edge stays unread; the socket's own depth and a wall are added because the housing does not
+// sit flush with the deck.
+fn plane_across_row_run_back(b: RadialBlowerEnvelope, d: GpuDuctDesign) -> Int {
+  blower_reach_behind(b: a16_blower_duct_design) + um(m: a16_blower_duct_design.socket_depth) + um(m: d.wall)
+}
+// ...and its long face runs along the card axis, so across the slot it spends only the thickness.
+fn plane_across_row_slot_demand(b: RadialBlowerEnvelope) -> Int { thickness_extent(b: b) }
+
+// OVER-THE-ROW: the fan clears the card's front face by the riser, so the chassis needs the card's own
+// height across the face, plus the fan's vertical extent, plus the walls of the leg and the riser.
+fn over_the_row_height(f: EndFaceMeasurement, d: GpuDuctDesign, b: RadialBlowerEnvelope, riser: Micrometer) -> Int {
+  um(m: f.face_length) + um(m: riser) + thickness_extent(b: b) + 3 * um(m: d.wall)
+}
+// The leg behind the plug end is the only part of this home that spends the 70 mm: the fan's thickness
+// turned on its side plus the turn's walls.
+fn over_the_row_run_back(d: GpuDuctDesign, b: RadialBlowerEnvelope) -> Int { thickness_extent(b: b) + 2 * um(m: d.wall) }
+// And the fan's face still has to lie somewhere -- above the row it lies along the card row, so it is the
+// ROW LENGTH that has to be free, and the card's own length is the first claim on it.
+fn over_the_row_span(b: RadialBlowerEnvelope) -> Int { longest_face_edge(b: b) }
+
+// BESIDE-THE-ROW: the fan sits out of the lane entirely; the lane has to take its shorter face.
+fn beside_the_row_demand(b: RadialBlowerEnvelope, d: GpuDuctDesign) -> Int { shortest_face_edge(b: b) + 2 * um(m: d.wall) + 2 * um(m: d.band_clearance) }
+
+fn larger_i(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+fn smaller_i(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+
+// ═══ ADMISSION ═══
+
+type RouteAdmission
+  = RouteAdmitted { home: BlowerHome, needs: List<RouteDemand> }
+  | RouteProposalOnly { home: BlowerHome, needs: List<RouteDemand>, on_estimate: ChassisGap, margin: Micrometer }
+  | RouteRefusedByChassis { home: BlowerHome, unmet: RouteDemand, gap: ChassisGap }
+  | RouteHomeUnmeasured { home: BlowerHome, unmet: RouteDemand, gap: ChassisGap }
+
+type RouteDemand { name: NonEmptyStr, needed: Micrometer, of_gap: NonEmptyStr }
+
+fn demand_display(n: RouteDemand) -> String {
+  join([n.name as String, " ", to_string(value: um(m: n.needed) / 1000), " mm (against the gap named ", n.of_gap as String, ")"], "")
+}
+
+fn route_admission_display(a: RouteAdmission) -> String {
+  match a {
+    RouteAdmitted {home: h, needs: ns} => join([blower_home_display(h: h), ": ADMITTED -- ", join(map(ns, n => demand_display(n: n)), "; ")], "")
+    RouteProposalOnly {home: h, needs: ns, on_estimate: g, margin: mg} => join([blower_home_display(h: h), ": PROPOSED ONLY -- ", join(map(ns, n => demand_display(n: n)), "; "), "; fits by ", to_string(value: um(m: mg) / 1000), " mm against an ESTIMATE (", gap_display(g: g), "); re-read before printing"], "")
+    RouteRefusedByChassis {home: h, unmet: n, gap: g} => join([blower_home_display(h: h), ": REFUSED -- needs ", demand_display(n: n), " and the chassis gives ", gap_display(g: g)], "")
+    RouteHomeUnmeasured {home: h, unmet: n, gap: g} => join([blower_home_display(h: h), ": REFUSED -- needs ", demand_display(n: n), " and that gap is UNMEASURED -- ", gap_display(g: g)], "")
+  }
+}
+
+// THE ANSWER, FOR THE A16 ROW, AS RUN TEXT. Three homes, each with the reading it wants. A fourth card is
+// another call with another end face; nothing here branches on the card's name.
+fn a16_route_report() -> List<String> {
+  [route_admission_display(a: admit_home(home: PlaneOnEnd)),
+   route_admission_display(a: admit_home(home: PlaneAcrossRowStanding)),
+   route_admission_display(a: admit_home(home: OverTheRow {riser: micrometer(count: 6000)})),
+   route_admission_display(a: admit_home(home: BesideTheRow))]
+}
+
+fn a16_blower() -> RadialBlowerEnvelope { delta_bfb1012m_envelope }
+fn a16_wall_design() -> GpuDuctDesign { a16_duct_design }
+
+fn admit_home(home: BlowerHome) -> RouteAdmission {
+  let f = a16_end_face
+  let d = a16_wall_design()
+  let b = a16_blower()
+  match home {
+    PlaneOnEnd => {
+      // The slot first: a 97 mm face at a 40.64 mm pitch is not a near thing, and it is not fixed by
+      // re-reading the 70 mm. The run back is checked after, because it is the one the operator asked about.
+      let slot = RouteDemand { name: "across the slot (neighbour lane behind the ends)", needed: micrometer(count: plane_on_end_slot_demand(b: b)), of_gap: "lane between adjacent cards, behind the plug ends" }
+      match ask(gap: neighbour_lane_width, need: um(m: slot.needed), home: home, unmet: slot) {
+        Present { value: refused } => refused
+        Absent => {
+          let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_on_end_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
+          finish(home: home, needs: [slot, back], gap: card_end_rear_fan_clearance, need: um(m: back.needed))
+        }
+      }
+    }
+    PlaneAcrossRowStanding => {
+      let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_across_row_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
+      match ask(gap: card_end_rear_fan_clearance, need: um(m: back.needed), home: home, unmet: back) {
+        Present { value: refused } => refused
+        Absent => {
+          let slot = RouteDemand { name: "across the slot", needed: micrometer(count: plane_across_row_slot_demand(b: b)), of_gap: "lane between adjacent cards, behind the plug ends" }
+          match ask(gap: neighbour_lane_width, need: um(m: slot.needed), home: home, unmet: slot) {
+            Present { value: refused2 } => refused2
+            Absent => RouteAdmitted { home: home, needs: [back, slot] }
+          }
+        }
+      }
+    }
+    OverTheRow {riser: r} => {
+      // Height first: it is the reading this home exists to need, and it has never been taken.
+      let high = RouteDemand { name: "deck to lid above the row", needed: micrometer(count: over_the_row_height(f: f, d: d, b: b, riser: r)), of_gap: "deck to chassis lid, behind the plug end" }
+      match ask(gap: deck_to_lid_clearance, need: um(m: high.needed), home: home, unmet: high) {
+        Present { value: refused } => refused
+        Absent => {
+          let back = RouteDemand { name: "behind the plug end (the turned leg)", needed: micrometer(count: over_the_row_run_back(d: d, b: b)), of_gap: "plug end to rear chassis fan" }
+          match ask(gap: card_end_rear_fan_clearance, need: um(m: back.needed), home: home, unmet: back) {
+            Present { value: refused2 } => refused2
+            Absent => RouteAdmitted { home: home, needs: [high, back, RouteDemand { name: "fan face span along the row", needed: micrometer(count: over_the_row_span(b: b)), of_gap: "free row length behind the card ends" }] }
+          }
+        }
+      }
+    }
+    BesideTheRow => {
+      let lane = RouteDemand { name: "free lane beside the row", needed: micrometer(count: beside_the_row_demand(b: b, d: d)), of_gap: "free lane beside the card row" }
+      match ask(gap: side_lane_width, need: um(m: lane.needed), home: home, unmet: lane) {
+        Present { value: refused } => refused
+        Absent => RouteAdmitted { home: home, needs: [lane] }
+      }
+    }
+  }
+}
+
+fn ask(gap: ChassisGap, need: Int, home: BlowerHome, unmet: RouteDemand) -> RouteAdmission? {
+  match gap {
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => Present { value: RouteHomeUnmeasured { home: home, unmet: unmet, gap: gap } }
+    Measured {name: _, from_point: _, to_point: _, distance: dist, standing: _} => if um(m: dist) < need { Present { value: RouteRefusedByChassis { home: home, unmet: unmet, gap: gap } } } else { Absent }
+  }
+}
+
+// The last gap of a home: a caliper reading admits, an estimate proposes, a shortfall refuses. An
+// estimate never admits -- a 70 mm that turns out to be 64 mm is a cracked housing, so printing on one is
+// refused here even though a proposal is allowed to exist.
+fn finish(home: BlowerHome, needs: List<RouteDemand>, gap: ChassisGap, need: Int) -> RouteAdmission {
+  match ask(gap: gap, need: need, home: home, unmet: RouteDemand { name: "final gap", needed: micrometer(count: need), of_gap: "final gap" }) {
+    Present { value: refused } => refused
+    Absent => match gap {
+      Measured {name: _, from_point: _, to_point: _, distance: dist, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => RouteProposalOnly { home: home, needs: needs, on_estimate: gap, margin: micrometer(count: um(m: dist) - need) }
+      Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => RouteAdmitted { home: home, needs: needs }
+      NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => RouteHomeUnmeasured { home: home, unmet: RouteDemand { name: "final gap", needed: micrometer(count: need), of_gap: "final gap" }, gap: gap }
+    }
+  }
+}
+
+// ═══ THE ONE OBLIGATION THAT NO GEOMETRY HERE CAN CLOSE ═══
+//
+// The outlet has to line up with the cooler's window, and Delta's drawing does not attribute the outlet's
+// position on the housing (extdeps.fans.delta delta_bfb1012m_outlet_standing). Every home above assumes
+// the outlet CAN be aimed at the window; none of them can prove it. The straight-back duct already lives
+// with that ambiguity and says so (product.printed_chassis.gpu_duct); these homes inherit the same caveat
+// rather than inventing a check that would be a guess about where the fan blows.
+fn outlet_alignment_obligation() -> NonEmptyStr {
+  join(["operator or a clearer Delta drawing: where the outlet lies on the housing's periphery (its angle from the volute's tangent and its extent). Every home here needs the outlet aimed at the cooler window product.printed_chassis.gpu_duct a16_end_face records; the model refuses to guess the angle."], "")
+}
