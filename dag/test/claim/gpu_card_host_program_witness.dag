@@ -1,6 +1,7 @@
 module test.claim.gpu_card_host_program_witness
 
 import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
 import v2.std.decl_index { DeclFact }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { string_contains }
@@ -191,8 +192,9 @@ test fn every_node_is_an_ancestor_of_the_goal() -> Bool {
 }
 
 // ── THE BOUND PREDICATE. Installed and committed cards are in bound, and a card outside names why;
-// the fixtures pin each arm, and section 0 must cite the predicate it is derived from. Whether every
-// in-bound row names its host is NOT claimed here: an unconfirmed host is Absent, and D0 supplies it.
+// the fixtures pin each arm, and section 0 must cite the predicate it is derived from. A row outside
+// the bound carries its reason in OutsideBound and no host, so a reason cannot pose as a host. Whether
+// every in-bound row names its host is NOT claimed here: an unconfirmed host is Absent, and D0 supplies it.
 test fn the_bound_is_one_predicate_over_the_census() -> Bool {
   let census = gpu_card_working_census
   any(census, r => gpu_card_in_bound(m: r.membership))
@@ -201,7 +203,7 @@ test fn the_bound_is_one_predicate_over_the_census() -> Bool {
     && gpu_card_in_bound(m: CommittedToFleetHost)
     && !gpu_card_in_bound(m: OutsideBound { because: "rented" })
     && all(census, r => match r.membership {
-      OutsideBound { because } => because != ""
+      OutsideBound { because } => because != "" && match r.host { Absent => true  Present { value: _ } => false }
       InstalledInFleetHost => true
       CommittedToFleetHost => true
     })
