@@ -24625,7 +24625,7 @@ mod module_grain_affected_equivalence_tests {
 #[cfg(test)]
 mod underlay_identity_proof_tests {
     use super::{
-        build_module_index, default_source_roots, new_multi_entry_index_scratch_over,
+        build_module_index_or_refuse, default_source_roots, new_multi_entry_index_scratch_over,
         new_multi_entry_index_shell, scratch_underlay_if_proven,
     };
     use std::rc::Rc;
@@ -24654,7 +24654,7 @@ mod underlay_identity_proof_tests {
     #[test]
     fn underlay_identity_proof_refuses_drift_and_permits_the_proven_scratch() {
         let roots = default_source_roots();
-        let map = build_module_index(&roots);
+        let map = build_module_index_or_refuse(&roots);
         let base = Rc::new(new_multi_entry_index_shell(map.clone(), &roots));
 
         let scratch = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
