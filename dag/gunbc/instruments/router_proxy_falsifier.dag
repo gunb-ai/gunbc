@@ -375,6 +375,7 @@ fn falsifier_expected_identities() -> List<String> {
     "rows_rendering_follows_the_rows",
     "rows_the_rendered_text_holds_the_expected_fragments",
     "rows_red_unsafe_tokens_have_no_constructor_result",
+    "rows_pinned_a_forced_cast_bypasses_the_brand_and_renders_unescaped",
     "daemon_red_absent_daemon_reads_unavailable",
     "world_starts",
     "nginx_t_accepts_the_emitted_config",
@@ -415,21 +416,40 @@ fn case_row(c: FalsifierCase) -> String {
 // THE ROW CASES RUN FIRST AND ON EVERY HOST: they read the emitted rows and text and need no effect, so a
 // host without a daemon still reports them, and a red row case is not held there either. Only the process
 // cases wait on the daemon.
+// Completeness is an identity join, not a count equality (§5): the roster line is DERIVED from the cases
+// that ran (the precedent is gunbc.instruments.native_allocation_observation), so the harness's
+// one-for-one roster/rows join can never be fed a roster that drifted from the cases. The declared
+// expected list stays the denominator: it is joined against the ran identities by set equality, and a
+// case dropped, renamed or never run -- or an expectation no case carries -- refuses the terminal.
+fn strings_same_set(a: List<String>, b: List<String>) -> Bool {
+  count(a) == count(b) && all(a, x => any(b, y => x == y)) && all(b, x => any(a, y => x == y))
+}
+
+fn set_diff_text(a: List<String>, b: List<String>) -> String {
+  let missing = join(filter(a, x => !any(b, y => x == y)), ",")
+  let extra = join(filter(b, y => !any(a, x => x == y)), ",")
+  concat(if missing == "" { "" } else { concat(" ran-but-not-expected: ", missing) },
+         if extra == "" { "" } else { concat(" expected-but-not-run: ", extra) })
+}
+
 fn native_claim_report() -> NativeClaimReport {
   let rows_first = row_cases()
   let rows_failed = map(filter(rows_first, c => !c.held), c => c.identity)
   let probe = DockerCli.Version(docker: docker())
   match daemon_reading(exit_code: probe.exit_code, stderr: probe.stderr) {
     DaemonUnavailable { stderr: e } => NativeClaimReport {
-      stdout: join(map(rows_first, c => case_row(c: c)), ""),
+      stdout: concat(concat("roster ", join(map(rows_first, c => c.identity), ","), "\n"), join(map(rows_first, c => case_row(c: c)), "")),
       terminal: if count(rows_failed) == 0 { NativeClaimNoObservation { reason: concat("row cases held; docker daemon unavailable for the process cases: ", e) } } else { not_held_terminal(reason: concat("not held: ", join(rows_failed, ","))) },
     }
     DaemonAnswered => {
       let control = DockerCli.VersionAtHost(docker: docker(), host: absent_daemon())
       let cases = concat(rows_first, falsifier_cases(daemon_control: daemon_reading(exit_code: control.exit_code, stderr: control.stderr)))
-      let roster = join(["roster ", join(falsifier_expected_identities(), ","), "\n"], "")
+      let ran = map(cases, c => c.identity)
+      let roster = concat("roster ", join(ran, ","), "\n")
       let failed = map(filter(cases, c => !c.held), c => c.identity)
-      let terminal = if count(failed) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", join(failed, ","))) }
+      let expected = falsifier_expected_identities()
+      let roster_drift = if strings_same_set(a: ran, b: expected) { "" } else { concat(" roster does not join the declared expectations at: ", set_diff_text(a: ran, b: expected)) }
+      let terminal = if count(failed) == 0 && roster_drift == "" { held_terminal() } else { not_held_terminal(reason: concat("not held: ", join(failed, ","), roster_drift)) }
       NativeClaimReport { stdout: concat(roster, join(map(cases, c => case_row(c: c)), "")), terminal: terminal }
     }
   }
