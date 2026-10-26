@@ -16,9 +16,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{TextRepresentation, TypeDeclarationProvenance};
-use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{
-    decl_ref, declaration_ref_display_key, declaration_ref_eq, DeclField, DeclarationRef,
+    decl_ref, declaration_ref_display_key, declaration_ref_eq, DeclarationRef,
 };
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -3946,10 +3945,41 @@ pub fn settled_rhs(
             let mut fuel = __tco_loop_fuel;
             match alias_rhs_of_declaration(head.clone(), env.clone()) {
                 std::option::Option::None => {
-                    break Some(Rc::new(SettledType {
-                        head: head.clone(),
-                        args: rhs.children.clone(),
-                    }));
+                    match parameterized_alias_of_declaration(
+                        head.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                    ) {
+                        std::option::Option::None => {
+                            break Some(Rc::new(SettledType {
+                                head: head.clone(),
+                                args: rhs.children.clone(),
+                            }));
+                        }
+                        Some(pa) => {
+                            if (fuel.clone() <= 0) {
+                                break std::option::Option::None;
+                            } else {
+                                match settled_parameterized_alias(
+                                    pa.clone(),
+                                    rhs.children.clone(),
+                                    source_indices.clone(),
+                                    env.clone(),
+                                    v1_rt::int_sub(fuel.clone(), 1),
+                                ) {
+                                    Some(through) => {
+                                        break Some(through.clone());
+                                    }
+                                    std::option::Option::None => {
+                                        break Some(Rc::new(SettledType {
+                                            head: head.clone(),
+                                            args: rhs.children.clone(),
+                                        }));
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 Some(next) => match next.declaration.clone() {
                     Some(next_head) => {
@@ -4353,20 +4383,6 @@ pub fn kernel_settled_agree(
             std::option::Option::None => false,
             Some(r) => (l.clone() == r.clone()),
         },
-    }
-}
-
-pub fn carried_declaration_ref(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
-    match n.declaration.clone() {
-        Some(d) => match (*d.field.clone()).clone() {
-            DeclField::WholeDeclaration => Some(d.clone()),
-            _ => std::option::Option::None,
-        },
-        std::option::Option::None => type_reference_declaration_ref(n.clone(), source_indices, env),
     }
 }
 
