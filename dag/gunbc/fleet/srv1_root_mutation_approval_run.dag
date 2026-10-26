@@ -2,8 +2,10 @@ module gunbc.fleet.srv1_root_mutation_approval_run
 
 import std.optional { Absent, Present }
 import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.algebra { list_map }
 import std.measure { Second, second, second_count, Minute, minute }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.integer { int_to_decimal_string }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.effect_grant { Write, Execute, filesystem_position }
 import std.scoped_authorization {
@@ -43,6 +45,13 @@ import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 // to admit one approval and refuse one denial (the ruling's removal condition); until then both gate
 // the job.
 //
+// THE APPROVAL IS FOR WHAT THE JOB CONVERGES, NOT ONLY FOR THE JOB AT A COMMIT (review 5649820707).
+// Two dispatches at one commit select different plans through their dispatch inputs (the plan run, the
+// apply run, the plan artifact hash, the image runs), so each job names the inputs its later steps
+// consume, the gate step carries their values, and they enter the subject, the operator-visible
+// purpose and the intent hash. A decision for one selection does not admit another
+// (approval_decision_store request_revision_of is the intent hash).
+//
 // ONE REQUEST PER JOB ATTEMPT. The escalation names the job, the run and the run attempt, so a rerun
 // files its own request and an approval of one job is never spent on another. The execution revision
 // is part of the approved intent: an approval is for this job at this commit.
@@ -50,6 +59,20 @@ import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 data srv1_root_mutation_approval_receipt_path: String = "artifacts/srv1-root-mutation-approval-receipt.txt"
 data srv1_root_mutation_approval_artifact_glob: String = "artifacts/srv1-root-mutation-approval-*"
 data srv1_root_mutation_submit_body_file_name: String = "srv1-root-mutation-approval-submit.json"
+
+// THE SELECTION, CARRIED AS INDEXED PAIRS: the workflow sets NAME_i and VALUE_i for i from 0, and the
+// gate reads them until the first absent NAME_i. More than the bound refuses rather than truncating.
+data srv1_root_mutation_select_name_env_prefix: String = "GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_"
+data srv1_root_mutation_select_value_env_prefix: String = "GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_"
+data srv1_root_mutation_select_bound: Int = 8
+
+fn srv1_root_mutation_select_name_env(index: Int) -> String {
+  concat(srv1_root_mutation_select_name_env_prefix, int_to_decimal_string(value: index))
+}
+
+fn srv1_root_mutation_select_value_env(index: Int) -> String {
+  concat(srv1_root_mutation_select_value_env_prefix, int_to_decimal_string(value: index))
+}
 
 data srv1_root_mutation_poll_cadence: Second = second(count: 15)
 data srv1_root_mutation_poll_tick_budget: Int = 120
@@ -85,27 +108,43 @@ data srv1_root_mutation_approved_scopes: List<AuthorizationScope> = [
 ]
 
 // ── The request the operator approves ─────────────────────────────────────────────────────────
+// One dispatch input the job's later steps consume, and the value this dispatch gave it. An empty
+// value is the input left unset, and is bound as such: approving "not given" is not approving a value.
+type Srv1RootMutationSelect {
+  input: NonEmptyStr
+  value: String
+}
+
 type Srv1RootMutationApproval {
   job: NonEmptyStr
   execution_revision: NonEmptyStr
+  selects: List<Srv1RootMutationSelect>
 }
 
 fn srv1_root_mutation_intent_text(a: Srv1RootMutationApproval) -> String {
-  join(["srv1 root mutation job=", a.job as String, " execution_revision=", a.execution_revision as String], "")
+  join(concat(
+    ["srv1 root mutation job=", a.job as String, " execution_revision=", a.execution_revision as String],
+    list_map(a.selects, sel => join([" ", sel.input as String, "=", sel.value], "")),
+  ), "")
 }
 
 fn srv1_root_mutation_escalation_id(job: NonEmptyStr, run_id: NonEmptyStr, run_attempt: NonEmptyStr) -> NonEmptyStr {
   join(["srv1-root-mutation-", job as String, "-", run_id as String, "-", run_attempt as String], "") as NonEmptyStr
 }
 
-fn srv1_root_mutation_request(job: NonEmptyStr, escalation_id: NonEmptyStr, execution_revision: NonEmptyStr) -> AuthorizationRequest<Srv1RootMutationApproval> {
-  let subject = Srv1RootMutationApproval { job: job, execution_revision: execution_revision }
+fn srv1_root_mutation_request(
+  job: NonEmptyStr,
+  escalation_id: NonEmptyStr,
+  execution_revision: NonEmptyStr,
+  selects: List<Srv1RootMutationSelect>,
+) -> AuthorizationRequest<Srv1RootMutationApproval> {
+  let subject = Srv1RootMutationApproval { job: job, execution_revision: execution_revision, selects: selects }
   AuthorizationRequest {
     escalation_id: escalation_id,
     scopes: srv1_root_mutation_approved_scopes,
     subject: subject,
     purpose: join([
-      "Run one srv1 root-mutation job; its root writes under /etc and /usr/local and its apt-get installs inherit this approval: ",
+      "Run one srv1 root-mutation job on the selection below; its root writes under /etc and /usr/local and its apt-get installs inherit this approval: ",
       srv1_root_mutation_intent_text(a: subject),
     ], "") as NonEmptyStr,
     attempt: escalation_id as AttemptIdentity,
@@ -181,6 +220,25 @@ fn run_variable(name: String) -> String {
   }
 }
 
+type Srv1RootMutationSelectRead
+  = SelectsRead { selects: List<Srv1RootMutationSelect> }
+  | SelectsRefused { reason: String }
+
+fn srv1_root_mutation_selects_from(index: Int, acc: List<Srv1RootMutationSelect>) -> Srv1RootMutationSelectRead {
+  match actions_variable_read(name: srv1_root_mutation_select_name_env(index: index)) {
+    ActionsVariableAbsent { variable: _, detail: _ } => SelectsRead { selects: acc }
+    ActionsVariablePresent { value: name } =>
+      if index >= srv1_root_mutation_select_bound {
+        SelectsRefused { reason: join(["more than ", int_to_decimal_string(value: srv1_root_mutation_select_bound), " selected inputs; the selection is not truncated"], "") }
+      } else {
+        srv1_root_mutation_selects_from(
+          index: index + 1,
+          acc: concat(acc, [Srv1RootMutationSelect { input: name as NonEmptyStr, value: run_variable(name: srv1_root_mutation_select_value_env(index: index)) }]),
+        )
+      }
+  }
+}
+
 fn srv1_root_mutation_approval_on_srv1() -> ProcessExit
   uses net: std.resources.Network
 {
@@ -194,11 +252,15 @@ fn srv1_root_mutation_approval_on_srv1() -> ProcessExit
   if actions_variable_trimmed(name: approval_submission_mac_key_path_env) == "" {
     return exit_failure(reason: concat("srv1 root mutation: ", concat(approval_submission_mac_key_path_env as String, " is unset, so no approval can be filed; no root step runs")))
   }
-  srv1_root_mutation_file_and_wait(request: srv1_root_mutation_request(
-    job: job as NonEmptyStr,
-    escalation_id: srv1_root_mutation_escalation_id(job: job as NonEmptyStr, run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr),
-    execution_revision: sha as NonEmptyStr,
-  ))
+  match srv1_root_mutation_selects_from(index: 0, acc: []) {
+    SelectsRefused { reason: r } => exit_failure(reason: concat("srv1 root mutation: selection unreadable; nothing filed: ", r))
+    SelectsRead { selects: selects } => srv1_root_mutation_file_and_wait(request: srv1_root_mutation_request(
+      job: job as NonEmptyStr,
+      escalation_id: srv1_root_mutation_escalation_id(job: job as NonEmptyStr, run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr),
+      execution_revision: sha as NonEmptyStr,
+      selects: selects,
+    ))
+  }
 }
 
 fn srv1_root_mutation_approval_wet() -> ProcessExit

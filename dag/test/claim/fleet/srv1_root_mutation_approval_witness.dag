@@ -1,34 +1,45 @@
 module test.claim.fleet.srv1_root_mutation_approval_witness
 
 import std.types { Bool, Int, NonEmptyStr, String, List }
-import std.algebra { string_contains }
+import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.scoped_authorization { AuthorizationRequest }
 import extdeps.github.actions { Job, Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_request, srv1_root_mutation_escalation_id, srv1_root_mutation_after_gate,
-  srv1_root_mutation_approved_scopes, Srv1RootMutationApproval,
+  srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect,
 }
 import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row }
 import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job,
+  fleet_converge_dashboard_deploy_selected_inputs, fleet_converge_microvm_controller_install_selected_inputs,
+  fleet_converge_approval_broker_dark_install_selected_inputs,
 }
 
 // THE srv1 ROOT-MUTATION GATE (gunbc.fleet.srv1_root_mutation_approval_run), witnessed at the gate
 // fold with SUPPLIED poll standings (DESIGN section 3, a witness discriminates at one interface), and
 // at the emitted jobs for the inhabitance half: the real jobs carry the gate before their root step.
 
-fn fixture_request(job: String, attempt: String) -> AuthorizationRequest<Srv1RootMutationApproval> {
+fn fixture_selected_request(job: String, attempt: String, plan_hash: String) -> AuthorizationRequest<Srv1RootMutationApproval> {
   srv1_root_mutation_request(
     job: job as NonEmptyStr,
     escalation_id: srv1_root_mutation_escalation_id(job: job as NonEmptyStr, run_id: "4242" as NonEmptyStr, run_attempt: attempt as NonEmptyStr),
     execution_revision: "fixture-sha" as NonEmptyStr,
+    selects: [
+      Srv1RootMutationSelect { input: "plan_workflow_run_id" as NonEmptyStr, value: "100" },
+      Srv1RootMutationSelect { input: "plan_artifact_hash" as NonEmptyStr, value: plan_hash },
+    ],
   )
+}
+
+fn fixture_request(job: String, attempt: String) -> AuthorizationRequest<Srv1RootMutationApproval> {
+  fixture_selected_request(job: job, attempt: attempt, plan_hash: "plan-a")
 }
 
 // WHAT THE OPERATOR IS ASKED FOR IS WHAT THE INHERITING WRITES ARE ADMITTED AGAINST: one value, and
@@ -115,4 +126,78 @@ test fn the_gate_step_renders_from_nodes_and_exports_only_the_submission_key() -
     && !string_contains(s: text, pattern: "GUNBC_ORG_ADMIN_TOKEN")
     && !string_contains(s: text, pattern: "dissolve-on")
     && !string_contains(s: text, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
+}
+
+// THE APPROVAL BINDS THE SELECTION (review 5649820707): one job, one attempt, one commit, two plans.
+// The operator's decision on plan A does not admit plan B, and the purpose the operator reads names
+// the plan it is approving.
+test fn a_decision_for_one_plan_does_not_admit_another_at_the_same_commit() -> Bool {
+  let plan_a = fixture_selected_request(job: "dashboard_deploy", attempt: "1", plan_hash: "plan-a")
+  let plan_b = fixture_selected_request(job: "dashboard_deploy", attempt: "1", plan_hash: "plan-b")
+  let approved_a = PollApproved { revision: request_revision_of(request: plan_a), decided_by: "fixture-operator", decided_at: "2026-10-26T12:00:00Z", execute_by: "2026-10-26T12:30:00Z" }
+  string_contains(s: plan_a.purpose as String, pattern: "plan_artifact_hash=plan-a")
+    && (match approval_gate_from_poll(poll: approved_a, request: plan_a, observed_at: "2026-10-26T12:01:00Z") {
+      GateAdmitted { authorization: _ } => true
+      GateRefused { cause: _ } => false
+    })
+    && (match approval_gate_from_poll(poll: approved_a, request: plan_b, observed_at: "2026-10-26T12:01:00Z") {
+      GateAdmitted { authorization: _ } => false
+      GateRefused { cause: _ } => true
+    })
+}
+
+fn kv_strings(kvs: List<YamlKeyValue>?) -> List<String> {
+  match kvs {
+    Absent => []
+    Present { value: xs } => fold(xs, init: [], f: fn(acc, e) {
+      match e.value {
+        YamlString { value: v } => concat(acc, [v])
+        _ => acc
+      }
+    })
+  }
+}
+
+fn step_input_strings(st: Step) -> List<String> {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => kv_strings(kvs: e)
+    UsesStep { name: _, id: _, uses: _, with: w, env: e, if_condition: _, continue_on_error: _, timeout_minutes: _ } => concat(kv_strings(kvs: w), kv_strings(kvs: e))
+  }
+}
+
+// EVERY DISPATCH INPUT A ROOT STEP CONSUMES IS IN THE APPROVED SELECTION, read off the emitted job:
+// each env or with value after the gate that reads an input names one the gate binds, or host / mode,
+// which the job's own condition fixes. A step that starts reading a new input without the selection
+// naming it fails here, so the approved subject cannot silently fall behind what the job converges.
+fn later_inputs_are_selected(j: Job, selects: List<String>) -> Bool {
+  let bound = concat(selects, ["host", "mode"])
+  let after = fold(j.steps, init: [], f: fn(acc, st) {
+    if step_id_of(st: st) == "srv1_root_mutation_approval" { [st] } else if acc == [] { acc } else { concat(acc, [st]) }
+  })
+  after != []
+    && all(after.skip(n: 1), st => all(step_input_strings(st: st), v =>
+      !string_contains(s: v, pattern: "inputs.")
+        || any(bound, n => string_contains(s: v, pattern: join(["inputs.", n, " "], "")))))
+}
+
+test fn every_input_a_root_step_consumes_is_in_the_approved_selection() -> Bool {
+  later_inputs_are_selected(j: fleet_converge_dashboard_deploy_job(), selects: fleet_converge_dashboard_deploy_selected_inputs)
+    && later_inputs_are_selected(j: fleet_converge_microvm_controller_install_job(), selects: fleet_converge_microvm_controller_install_selected_inputs)
+    && later_inputs_are_selected(j: fleet_converge_approval_broker_dark_install_job(), selects: fleet_converge_approval_broker_dark_install_selected_inputs)
+    && !later_inputs_are_selected(j: fleet_converge_dashboard_deploy_job(), selects: ["plan_workflow_run_id"])
+}
+
+// A NON-srv1 DISPATCH NEVER REACHES THE CREDENTIAL (review 5649820707): the host check is the job's
+// own condition, so the WIF step and the submission-key fetch never run on another host's runner.
+fn job_admits_srv1_only(j: Job) -> Bool {
+  match j.if_condition {
+    Absent => false
+    Present { value: c } => string_contains(s: c, pattern: "github.event.inputs.host == 'srv1'")
+  }
+}
+
+test fn a_non_srv1_dispatch_never_reaches_the_credential_steps() -> Bool {
+  job_admits_srv1_only(j: fleet_converge_dashboard_deploy_job())
+    && job_admits_srv1_only(j: fleet_converge_approval_broker_dark_install_job())
+    && job_admits_srv1_only(j: fleet_converge_microvm_controller_install_job())
 }
