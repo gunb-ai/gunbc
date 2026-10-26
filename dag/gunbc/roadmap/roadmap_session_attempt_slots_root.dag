@@ -1,8 +1,7 @@
 module gunbc.roadmap.roadmap_session_attempt_slots_root
 
 import std.types { String, NonEmptyStr, FilePath }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
@@ -48,12 +47,9 @@ type SessionAttemptSlotsStoreReading
   | SessionAttemptSlotsStoreUnready { detail: String }
 
 fn session_attempt_slots_store(instance: HostDashboardInstance) -> SessionAttemptSlotsStoreReading {
-  let root = session_attempt_slots_path(instance: instance)
-  let listing = Filesystem.List(path: root as String)
-  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SessionAttemptSlotsStoreUnready { detail: join(["the ", session_attempt_slots.member as String, " store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => SessionAttemptSlotsStoreUnready { detail: join(["the ", session_attempt_slots.member as String, " store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore { instance: instance.instance_id, slots: file_slot_store(root: root) } }
+  match listed_slot_store(member: session_attempt_slots.member as String, root: session_attempt_slots_path(instance: instance)) {
+    SlotStoreRefused { detail: d } => SessionAttemptSlotsStoreUnready { detail: d }
+    SlotStoreListed { root: r } => SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
   }
 }
 

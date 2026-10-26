@@ -2,7 +2,7 @@ module gunbc.compute.compute_attempt_slots_root
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.optional { Optional, Present, Absent }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused }
 import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, DirectInvocation, OwnerUnrecorded }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
@@ -87,12 +87,9 @@ type ComputeSeatStoreReading
   | ComputeSeatStoreUnready { detail: String }
 
 fn compute_seat_store(instance: HostDashboardInstance, seat: ComputeSeat) -> ComputeSeatStoreReading {
-  let root = compute_seat_path(instance: instance, seat: seat)
-  let listing = Filesystem.List(path: root as String)
-  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ComputeSeatStoreUnready { detail: join(["the ", compute_attempt_slots.member as String, " store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => ComputeSeatStoreUnready { detail: join(["the ", compute_attempt_slots.member as String, " store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => ComputeSeatStoreReady { store: ComputeSeatStore { instance: instance.instance_id, seat: seat, slots: file_slot_store(root: root) } }
+  match listed_slot_store(member: compute_attempt_slots.member as String, root: compute_seat_path(instance: instance, seat: seat)) {
+    SlotStoreRefused { detail: d } => ComputeSeatStoreUnready { detail: d }
+    SlotStoreListed { root: r } => ComputeSeatStoreReady { store: ComputeSeatStore { instance: instance.instance_id, seat: seat, slots: file_slot_store(root: r) } }
   }
 }
 

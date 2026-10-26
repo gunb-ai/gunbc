@@ -1284,3 +1284,31 @@ fn slot_keys(store: SlotStore) -> CasSlotKeys {
 fn file_slot_store(root: NonEmptyStr) -> SlotStore {
   SlotStore { root: root }
 }
+
+// The listing outcome of one store's OWN directory, before any store record is minted. The
+// Listed arm carries the root whose listing the Filesystem answered for: readiness is evidence
+// that THIS directory was observed, not a caller assertion (DESIGN section 4b).
+type SlotStoreAdmission
+  = SlotStoreListed { root: NonEmptyStr }
+  | SlotStoreRefused { detail: String }
+
+// THE ONE LIST-THEN-FOLD for every sealed slot store (DESIGN section 6b root generalization: a
+// repeated rule gets ONE implementation; four stores folded this body verbatim before it moved
+// here). List `root`, fold the listing into a SlotStoreAdmission, and the caller mints its own
+// sealed record on Listed. `member` is the store's declaration name as spelled in its own module
+// (the member label of its OwnedDirectoryTarget declaration, e.g. the AttemptSlotsMember as
+// String), so the refusal says WHICH store was not admitted. Sharing costs no seal strength:
+// this exposes nothing `file_slot_store` does not already expose (a public path-taking builder),
+// and the sealed store record still has exactly one mint, in its own module -- the per-file seal
+// is where the store record lives, and that is untouched. A store whose directory must be
+// ensured before the fold (a store whose target is a fresh owned directory) passes through
+// gunbc.durable_cas_file_store's OWN ensure path first and calls this only for the readiness
+// evidence; no store gets a second copy of this fold.
+fn listed_slot_store(member: String, root: NonEmptyStr) -> SlotStoreAdmission {
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotStoreRefused { detail: join(["the ", member, " store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotStoreRefused { detail: join(["the ", member, " store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => SlotStoreListed { root: root }
+  }
+}
