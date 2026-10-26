@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_passive_accelerator_sits_in_a_zone_that_does_not_follow_it
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A PASSIVE ACCELERATOR UNDER A FAN ZONE THAT DOES NOT FOLLOW ITS TEMPERATURE. A passive card has no
+// fan of its own, so its cooling is whatever the board zone reaching its position does. When that
+// zone is driven by firmware that cannot see the card's temperature, nothing in the loop responds to
+// the part that is heating: the card climbs to its thermal limit, throttles, and then faults. The
+// harm is silent until the fault, so the class was found below the ladder.
+//
+// Home program: gunbc.plans.gpu_card_host_program (node N0d).
+
+data a_passive_accelerator_sits_in_a_zone_that_does_not_follow_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_passive_accelerator_sits_in_a_zone_that_does_not_follow_it" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the placement model joins every passive card's GPU positions to the zone that reaches them, and the GPU-card converge leg refuses a host whose reaching zone is not in the posture the fleet fan policy assigns to passive cards, read back from the BMC with the host controller stopped" } },
+
+  receipts: [
+    "THE INCIDENT: on the H11 host carrying two NVIDIA A16 boards, with the chassis lid off and the Supermicro BMC in its firmware fan control, the GPUs reached 87 to 92 C at idle and six of them raised Xid 154 (node reboot required). The firmware zone that reached the cards followed the CPU, not the GPUs. Read by the operator session holding the host, 2026-10-25.",
+
+    "WHY IT IS SILENT: the BMC reported nothing wrong, because by its own sensors nothing was. The fleet fan policy (product.fleet_fan_policy) rests every host in firmware automatic and trips toward automatic, which is the safe direction for parts the firmware sees and the unsafe one for a passive card it does not.",
+
+    "CURRENT MITIGATION: a hand-written host loop on the H11 puts the BMC in full mode and follows the hottest GPU with zone duty. It is outside the fleet ruling and fails open when the loop or the host dies, so it is a mitigation, not a guarantee. A later full-load reading shows heat varies by GPU position within a board (the first GPU of each board throttling at 87 to 88 C while its siblings ran 56 to 78 C, with the zone at 100 percent), so the reach must be resolved to GPU position, not to slot.",
+
+    "THE CEILING: structurally guaranteed over the declared model. Which fans cool which positions is an operator declaration nothing reads, so the guarantee holds over that declaration and the residual (airflow the declaration gets wrong) is outside the modelled guarantee and observed through the card temperatures.",
+  ],
+
+  evidence: [],
+}

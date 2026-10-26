@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.adjacent_passive_accelerators_starve_each_other
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// TWO PASSIVE DUAL-SLOT ACCELERATORS IN ADJACENT SLOTS. The second card's heat sink sits against the
+// first card's intake, so neither gets the airflow its rating assumes, and no clock or power setting
+// recovers it. The placement was a fact the board's slot order already implied, written nowhere, so
+// the failure was discovered by a GPU leaving the bus rather than refused at placement.
+//
+// Home program: gunbc.plans.gpu_card_host_program (node N0e).
+
+data adjacent_passive_accelerators_starve_each_other: RecurringFailureMode = RecurringFailureMode {
+  identity: "adjacent_passive_accelerators_starve_each_other" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the board's physical slot order and pitch are modelled, card residence derives adjacency from them, and a placement of two passive cards whose envelopes touch refuses at census admission rather than being observed in service" } },
+
+  receipts: [
+    "THE INCIDENT: on the H11 host, two NVIDIA A16 boards in adjacent x16-capable slots reached 96 to 99 C under load even at minimum clocks, and one GPU dropped off the PCIe bus. Read by the operator session holding the host, 2026-10-25.",
+
+    "THE MITIGATION THAT WORKED, BY HAND: moving the boards to SLOT2 and SLOT6, with a slot between them, removed the outright failure (48 to 81 C at idle and partial load). That move was an operator judgement with no model behind it, which is what keeps the class at mitigatable.",
+
+    "WHAT THE BOARD ALREADY SAYS: extdeps.boards.supermicro_h11ssl supermicro_h11ssl_pcie_slots lists the slots and their lane counts but not their physical order or pitch, so adjacency is not derivable from the model today. Lane count alone would have admitted the failing placement: both slots were x16.",
+
+    "THE CEILING: structurally guaranteed. Adjacency is decidable from slot order, pitch and the card's slot width, all of which are upstream or catalog facts; the residual is a chassis whose airflow defeats even a spaced placement, which the other class (a passive accelerator in a zone that does not follow it) covers.",
+  ],
+
+  evidence: [],
+}
