@@ -16,8 +16,9 @@ import std.types { Char, List }
 // second home. Only an operation that needs the host carrier lives here: equality, split, join,
 // replacement and folds over text are structural and stay with structural text.
 //
-// SIGNATURES USE DAG-LAYER TYPES (List<Char>, from std.types), because a dag/ module may not import
-// src/v2 (v2.std.cross_tree.import_model cross_tree_import_admitted).
+// SIGNATURES USE DAG-LAYER TYPES (List<Char>, from std.types). That was once forced by a tree direction
+// that no longer exists (v2.std.cross_tree.import_model cross_tree_import_admitted admits a crossing between
+// declared namespaces either way); it stays the right layer for a kernel carrier.
 type HostText
 
 // THE HOST-TO-STRUCTURAL CROSSING (operator ruling H4). The Unicode scalar values of the host text, in

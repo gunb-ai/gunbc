@@ -1,5 +1,7 @@
 module gunbc.instruments.compute_run_unit_cold
 
+import gunbc.compute.compute_attempt_slots_root { compute_seat_directory, ComputeFlatSeat }
+import gunbc.owned_directory { owned_directory_path }
 import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
 import std.algebra { trim, length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -442,7 +444,6 @@ fn layout_with_checkout(layout: ComputeLayout, checkout: String) -> ComputeLayou
     target_dir: layout.target_dir,
     log_path: layout.log_path,
     consumption_path: layout.consumption_path,
-    attempts_dir: layout.attempts_dir,
   }
 }
 
@@ -460,7 +461,6 @@ fn layout_with_target(layout: ComputeLayout, target: String) -> ComputeLayout {
     target_dir: target,
     log_path: layout.log_path,
     consumption_path: layout.consumption_path,
-    attempts_dir: layout.attempts_dir,
   }
 }
 
@@ -544,7 +544,7 @@ fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchain
           let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
             && mkdir_ok(instance: instance, path: layout.work_dir)
             && mkdir_ok(instance: instance, path: layout.target_dir)
-            && mkdir_ok(instance: instance, path: layout.attempts_dir)
+            && mkdir_ok(instance: instance, path: owned_directory_path(t: compute_seat_directory(instance: instance, seat: ComputeFlatSeat)) as String)
           if !roots_ok {
             CliWirePrintable {
               bytes: join(["compute-run-unit-cold: could not create layout under ", layout.root], ""),
