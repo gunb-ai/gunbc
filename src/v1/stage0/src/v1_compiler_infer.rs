@@ -13361,6 +13361,13 @@ pub fn infer_call_arguments_generic_pass(
             } else {
                 ar_inferred.clone()
             };
+            {
+                let __lbl_f = type_node_label(formal_raw.clone(), scope.type_env.source_indices.clone());
+                let __lbl_a = type_node_label(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), scope.type_env.source_indices.clone());
+                let __child_lbls: Vec<String> = { let ch = crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()).children.clone(); ch.iter().map(|c| type_node_label(c.clone(), scope.type_env.source_indices.clone())).collect() };
+                let __subst_pairs: Vec<String> = st.subst.iter().map(|(k,v)| format!("{}={}", k, type_node_label(v.clone(), scope.type_env.source_indices.clone()))).collect();
+                eprintln!("DIAGARG mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} actual={} children={:?} subst={:?}", scope.module_name, scope.caller_decl_name, pair.0, crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()), is_lambda_expr(crate::v1_std_core::arg_value(a.clone())), __lbl_f, __lbl_a, __child_lbls, __subst_pairs);
+            }
             let next_subst = if !has_formal.clone() {
                 st.subst.clone()
             } else {
