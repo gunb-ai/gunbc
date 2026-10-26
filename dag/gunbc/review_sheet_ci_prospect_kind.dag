@@ -1,0 +1,63 @@
+module gunbc.review_sheet_ci_prospect_kind
+
+import std.types { List, NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
+import gunbc.review_sheet_drive_converge { ci_prospect_sheet_marker_value }
+import gunbc.review_sheet_format_actuator {
+  FormatRule,
+  RuleTextContains,
+  standing_admitted_color,
+  standing_refused_color,
+}
+import gunbc.review_sheet_kind { ReviewSheetKind, ReviewSheetTab, TabRowsWrittenElsewhere }
+
+// THE CI PROSPECT SHEET AS ONE ROW OF THE KIND ROSTER. Its schema, Drive marker and colours were
+// literals inside the converge and the format actuator; they are this value now, and the converge
+// holds no name of this kind.
+//
+// THE TAB TITLE IS INFERRED, NOT READ, AND A WRONG INFERENCE REFUSES LOUDLY. The sheet was minted by
+// drive.Files.CreateFile, which gives its only tab upstream's default title, and for a spreadsheet
+// created without a locale that is "Sheet1"; no lane has read the live tab's title back. If the
+// live tab carries another title, the tab-set converge (gunbc.review_sheet_tab_set) refuses and
+// names it, because a tab holding rows is not the create's untouched tab and is never renamed --
+// so the cost of a wrong guess is one refused run and this one row, never a write to a wrong tab.
+data ci_prospect_sheet_name: NonEmptyStr = "CI prospect sheet"
+
+data ci_prospect_tab_title: NonEmptyStr = "Sheet1"
+
+// SUBSTRING RULES, NOT ONE PER STANDING, and that is a modelling choice rather than a shortcut.
+// Matching "Opportunity" colours CostOpportunity, ConcurrencyOpportunity and LatencyOpportunity
+// together because they are one thing to a reader -- a row worth acting on -- and because a
+// standing arm added to ci_acquisition later inherits the colour instead of arriving invisible.
+// An exact-match rule per arm would silently fail to cover the next arm anyone writes.
+//
+// Evidence-insufficient and no-commercial-signal rows match nothing here on purpose. They are most
+// of the sheet, and a colour spent on them is attention taken from the rows that earned it.
+fn ci_prospect_format_rules() -> List<FormatRule> {
+  [
+    FormatRule { column: "Standing" as NonEmptyStr, condition: RuleTextContains { fragment: "Opportunity" }, color: standing_admitted_color() },
+    FormatRule { column: "Standing" as NonEmptyStr, condition: RuleTextContains { fragment: "Arbitrage" }, color: standing_admitted_color() },
+    FormatRule { column: "Standing" as NonEmptyStr, condition: RuleTextContains { fragment: "Incompatible" }, color: standing_refused_color() },
+    FormatRule { column: "Standing" as NonEmptyStr, condition: RuleTextContains { fragment: "Required" }, color: standing_refused_color() },
+    FormatRule { column: "Standing" as NonEmptyStr, condition: RuleTextContains { fragment: "Replay" }, color: standing_refused_color() },
+  ]
+}
+
+fn ci_prospect_review_sheet_kind() -> ReviewSheetKind {
+  ReviewSheetKind {
+    kind_id: "ci-prospect" as NonEmptyStr,
+    sheet_name: ci_prospect_sheet_name,
+    marker_value: ci_prospect_sheet_marker_value,
+    tabs: FreeSemigroup {
+      head: ReviewSheetTab {
+        title: ci_prospect_tab_title,
+        schema: ci_prospect_sheet_schema(),
+        rules: ci_prospect_format_rules(),
+        content: [],
+        rows: TabRowsWrittenElsewhere { writer: "a writer outside this converge: the live rows were written once from outside the corpus, and the planned writer strategy.ci_prospect_sheet_write (gunbc-private) has not landed" as NonEmptyStr },
+      },
+      tail: [],
+    },
+  }
+}

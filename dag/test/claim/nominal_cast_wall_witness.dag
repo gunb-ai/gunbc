@@ -56,6 +56,8 @@ data none_as_optional_source: String = "module probe_nominal_cast_none\nimport s
 
 data foreign_unit_as_string_source: String = "module probe_nominal_cast_foreign_unit\nimport std.types { String, Int }\ntype Unit { v: Int }\nfn text(u: Unit) -> String { u as String }\n"
 
+data bool_as_string_source: String = "module probe_nominal_cast_bool\nimport std.types { String, Bool }\nfn text(b: Bool) -> String { b as String }\n"
+
 test fn a_foreign_declaration_spelled_unit_is_not_the_placeholder_and_is_refused() -> Bool {
   refusals(
     source: foreign_unit_as_string_source,
@@ -99,4 +101,11 @@ test fn control_nat_as_int_is_accepted() -> Bool {
 
 test fn control_none_as_optional_is_accepted() -> Bool {
   blocking_total(source: none_as_optional_source) == 0
+}
+
+test fn a_bool_cast_to_string_is_refused() -> Bool {
+  refusals(
+    source: bool_as_string_source,
+    subject: "invalid cast: Bool as String: a nominal value has no declared conversion",
+  ) == 1
 }

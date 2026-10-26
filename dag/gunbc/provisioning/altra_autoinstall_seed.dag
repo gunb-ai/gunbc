@@ -86,13 +86,7 @@ import std.os.types { NobleNumbat2404Lts, UbuntuDistribution }
 import std.measure { ByteSize, CharacterCount, byte_size_count, character_count, measure_le }
 import std.decl_ref { decl_ref }
 import std.optional { Optional, Absent, Present }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_eq_structural,
-  content_hash_tagged_structural,
-}
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_eq_structural, content_hash_tagged_structural, sha256_hex_of_text }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.debian.debconf {
   DebconfAnswerKind,

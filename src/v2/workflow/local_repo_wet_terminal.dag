@@ -1926,6 +1926,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_decision_store_wet_witness", function: "the_store_lists_only_the_open_unexpired_request_by_real_execution" },
+      entry: "dag/test/claim/approval_decision_store_wet_witness.dag",
+      function: "the_store_lists_only_the_open_unexpired_request_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution" },
       entry: "dag/test/claim/durable_cas_file_store_wet_witness.dag",
       function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution",
@@ -2373,6 +2379,48 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "w_refused_acquire_body_writes_a_marker_when_called_directly" },
       entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness.dag",
       function: "w_refused_acquire_body_writes_a_marker_when_called_directly",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_nonholder_release_without_completion_evidence_refuses_and_leaves_the_hold_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_nonholder_release_without_completion_evidence_refuses_and_leaves_the_hold_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "evidence_for_another_holder_or_a_moved_generation_refuses_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "evidence_for_another_holder_or_a_moved_generation_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "an_operator_release_without_a_permitting_grant_for_this_hold_refuses_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "an_operator_release_without_a_permitting_grant_for_this_hold_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_release_on_matching_completion_evidence_frees_the_hold_and_reads_back_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_release_on_matching_completion_evidence_frees_the_hold_and_reads_back_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_release_by_a_permitted_operator_grant_frees_the_hold_and_reads_back_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_release_by_a_permitted_operator_grant_frees_the_hold_and_reads_back_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_nonholder_release_committed_after_the_slot_moved_is_lost_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_nonholder_release_committed_after_the_slot_moved_is_lost_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_release_for_one_slot_refuses_against_another_slot_at_the_same_holder_and_generation_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_release_for_one_slot_refuses_against_another_slot_at_the_same_holder_and_generation_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

@@ -28,7 +28,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { node_same_occurrence, positional_child_target_nodes,
   ParameterReferenceBody,
   DeclarationReferenceKind,
   Symbol,
@@ -205,7 +205,7 @@ fn cref_node_in(xs: List<Node>, wanted: Node) -> Bool {
   fold_list(
     xs: xs,
     empty: false,
-    cons: fn(rest, item) { if item == wanted { true } else { rest } }
+    cons: fn(rest, item) { if node_same_occurrence(a: item, b: wanted) { true } else { rest } }
   )
 }
 

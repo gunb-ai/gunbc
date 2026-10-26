@@ -2,7 +2,7 @@ module test.claim.roadmap.dispatch_worker_confinement_witness
 
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance, dispatch_attempt_worker_log_path_for_instance, dispatch_worker_git_pointer_files, dispatch_worker_git_pointer_readonly_paths, dispatch_worker_writable_path_list, dispatch_worker_writable_paths, session_process_bounds }
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, dispatch_worker_path_is_writable, dispatch_worker_worktree_config, dispatch_worker_common_git_config, attempt_state_prepare_argv_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_launch_path_for_instance, attempt_unit_substate_has_exited, dispatch_review_unit_properties }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, dispatch_worker_path_is_writable, dispatch_worker_worktree_config, dispatch_worker_common_git_config, attempt_state_prepare_argvs_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_launch_path_for_instance, attempt_unit_substate_has_exited, dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_path_for_instance }
 import std.filesystem { path_parent_directory }
 import extdeps.systemd.systemd_run {
@@ -131,12 +131,12 @@ test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_dir
   let instance = srv2_deploy_dashboard_instance()
   let node_id = "belt-cause-probe" as RoadmapNodeId
   let key = "a0123456789abcdef"
-  let argv = attempt_state_prepare_argv_for_instance(
+  let argvs = attempt_state_prepare_argvs_for_instance(
     instance: instance,
     node_id: node_id,
     attempt_key: key,
   )
-  let wire = join(argv.args, separator: "\0")
+  let wire = join(fold(argvs, init: [], f: (acc, a) => concat(acc, a.args)), separator: "\0")
   let verification_dir = dispatch_attempt_verification_dir_for_instance(
     instance: instance,
     node_id: node_id,

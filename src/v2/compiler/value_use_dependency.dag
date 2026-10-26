@@ -50,7 +50,7 @@ import std.occurrence_identity { OccurrenceId }
 import std.optional { Absent, Optional, Present }
 import std.types { List, Map }
 import v2.std.dependency { DataDependsOn, DependencyView }
-import v2.std.node { Node, NodeOccurrenceIdentity, node_subtree_nodes }
+import v2.std.node { Node, node_same_occurrence, NodeOccurrenceIdentity, node_subtree_nodes }
 import v2.std.provenance { node_occurrence_id_optional, occurrence_identity_id_optional }
 import v2.compiler.lexical_scope { bind_binder, bind_value }
 import v2.compiler.resolve {
@@ -178,7 +178,7 @@ fn value_use_index_slot(prior: Optional<OccurrenceInTree>, node: Node) -> Occurr
   match prior {
     Absent => OccurrenceAt { node: node }
     Present { value: OccurrenceAt { node: seen } } =>
-      if seen == node {
+      if node_same_occurrence(a: seen, b: node) {
         OccurrenceAt { node: seen }
       } else {
         OccurrenceUnlocatable { why: OccurrenceConflicting }
@@ -258,7 +258,8 @@ fn value_use_dispose_record(
     BoundToParameter { path: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundToTypeParameter { canonical: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundToDeclaration { identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
-    BoundAmbient { table: _, identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
+// Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
+    BoundAmbient { table: _table, identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundByExpectedType { identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundByGeneratedReference { identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
   }

@@ -102,7 +102,8 @@ fn decisions() -> List<MarkdownBlock> {
     h3(text: "Phases"),
     ul(items: [
       li(text: "**1 (this carrier):** design and census."),
-      li(text: "**2:** the rows and the renames above, x86 admitted as data, the amd64 seed rendered, and hermetic witnesses: x86 admitted, ARM unchanged, a wrong-architecture RED, a hash-mismatch RED."),
+      li(text: "**2a:** the delivery rows: the loader-chain shape and its Ubuntu amd64, iPXE and Spark instances; the admitted client-class rows in the join; gunbc.site_pxe_edge with one pxe-service per served chain; per-chain pins and standings in the converge; the general UEFI boot selection with its parameter-5 bytes; and the media-origin rows with the amd64 pins. Its hermetic witnesses cover x86 admitted, ARM unchanged, wrong-architecture REDs and hash-mismatch REDs."),
+      li(text: "**2b:** the per-board seed (gunbc.provisioning.ubuntu_autoinstall_seed, with board seed profiles, each package admitted against the archive for its architecture) and the rendered amd64 seed. It also binds the grub.cfg rendering that turns the amd64 chain row from Unpinned to Pinned."),
       li(text: "**3, on merry-fox-82's go:** edge activation, the BMC override and power cycle, and a readback of the measured option-93 class, the served hashes, the installer reaching autoinstall, and the installed-to-disk receipt."),
     ]),
   ]

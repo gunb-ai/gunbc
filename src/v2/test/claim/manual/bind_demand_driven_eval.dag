@@ -49,7 +49,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Arrow,
   Bind,
@@ -201,7 +201,7 @@ fn bind_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome
   } else {
     match node.kind {
       ComputationNode { behavior: Value } =>
-        if node == bind_eval_counted_value_node {
+        if node_same_occurrence(a: node, b: bind_eval_counted_value_node) {
           if bind_eval_touch_from_env(env: env, key: bind_eval_touch_key()) >= 1 {
             outcome_rejected(d: bind_eval_diagnostic(n: node))
           } else {

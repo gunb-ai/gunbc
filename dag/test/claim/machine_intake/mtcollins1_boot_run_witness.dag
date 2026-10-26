@@ -53,7 +53,7 @@ import std.temporal_effect {
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, stock_installer_boot_medium }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, uefi_once_boot_selection }
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
@@ -720,12 +720,13 @@ fn step_inputs_text(s: Step) -> String {
 // the witness sits outside the gate closure (gunbc.recurring_failure_mode
 // witness_outside_gate_closure_falsified_by_other_file). It now asserts the mode's clause opens the
 // expression and that the clause resolves to github.sha before any dispatch input.
+// Re-contracted post-#14359: fleet_converge_checkout_ref widened to LogicalOr{needs.build.outputs.revision, github.sha}; the left arm is the gated plan-revision job's OUTPUT, never the raw dispatch input. The security conjuncts below (event-sha checkout + no expected_revision) are the wall; the old == github.sha literal here was #14359's stale contract, red on main (control run 7a9928584d).
 test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
   let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
   fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
     && !string_contains(s: inputs, pattern: "expected_revision")
     && string_contains(s: inputs, pattern: "${{ github.sha }}")
-    && fleet_converge_checkout_ref_expr == "${{ github.sha }}"
+    && fleet_converge_checkout_ref_expr == "${{ needs.build.outputs.revision || github.sha }}"
     && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
 }
 
@@ -768,7 +769,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
   let ended = mtcollins1_boot_run_record(
     media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-    stage: ActuationCensusEnded { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
+    stage: ActuationCensusEnded { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
     before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
     timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
   )
@@ -777,7 +778,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
     && (match ended.override { OverrideConsumedByCensusBoot => true _ => false })
     && (match mtcollins1_boot_run_record(
       media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-      stage: ActuationPoweredOn { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
+      stage: ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
       before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
       timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
@@ -1107,7 +1108,7 @@ fn gc_abandoned_reading() -> PoweredFanGate {
 }
 
 fn gc_decision(reading: PoweredFanGate) -> FanGateContinuation {
-  fan_gate_continuation(gate: reading, selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), at_power_on: smpro_probed_empty(), smpro_read: UptimeRefused { detail: "fixture" })
+  fan_gate_continuation(gate: reading, selection: uefi_once_boot_selection(device: IpmiBootCdrom), at_power_on: smpro_probed_empty(), smpro_read: UptimeRefused { detail: "fixture" })
 }
 
 fn gc_stopped_failure(reading: PoweredFanGate) -> Bool {

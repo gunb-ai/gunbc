@@ -3041,7 +3041,7 @@ impl RegenConvergenceModel {
             .ok_or_else(|| {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
-        let index = super::process_shared_index(source_roots);
+        let index = super::process_shared_index_or_refuse(source_roots);
         let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
             .map_err(|e| format!("refusal: convergence transaction model did not resolve: {e}"))?;
         Ok(Self { graph, indices })
@@ -3515,7 +3515,7 @@ fn rebuild_scope_decision_with(
 ) -> Result<ModelValue, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
     })?;
@@ -4286,7 +4286,7 @@ fn render_round_cost_receipt(
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
     })?;
@@ -4487,7 +4487,7 @@ fn partition_rebuild_actuation(
 ) -> Result<PartitionRebuildActuation, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
     })?;
@@ -7371,7 +7371,7 @@ pub fn regen_generation_role_population(
 > {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry)
         .map_err(|e| format!("refusal: {entry} did not resolve for generation roles: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -7547,7 +7547,7 @@ pub fn render_affected_set_bound(
 ) -> Result<AffectedSetBound, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
     })?;
@@ -7664,7 +7664,7 @@ pub fn render_scope_selection(
 ) -> Result<Vec<String>, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = required_regen_scope_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
     })?;
@@ -7746,7 +7746,7 @@ fn regen_scope_worktree_admitted(source_roots: &[String]) -> Result<(), String> 
                  observation sees every edit"
             )
         })?;
-    let index = super::process_shared_index(source_roots);
+    let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry)
         .map_err(|e| format!("refusal: {entry} did not resolve: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Wet);

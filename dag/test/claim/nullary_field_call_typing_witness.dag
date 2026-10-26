@@ -1,0 +1,133 @@
+module test.claim.nullary_field_call_typing_witness
+
+import std.types { Int, String }
+import gunbc.compile_census_probe { census_delta_verdict, total_blocking_census, census_exit, CensusVerdict }
+import std.process { ProcessExit }
+
+// A NULLARY CALL OF A CALLABLE-TYPED RECORD FIELD IS TYPED AS ITS APPLICATION
+// (gunbc.recurring_failure_mode a_nullary_callable_field_call_is_typed_as_the_callable). Each probe hands the
+// compiler a self-contained module -- a record with a nullary field `ask: fn() -> ProbeAnswer` and a unary field
+// `ask_with: fn(Int) -> ProbeAnswer` -- and compares its blocking census with a baseline that declares the same
+// items and makes no field call, so the shared declarations cancel (gunbc.compile_diagnostic_census).
+//
+// THE DISCRIMINATING REDS are the admitted cells over a nullary call: the named argument and the let binding
+// (filed as expecting-red probes and inverted, not deleted, when the checker repair landed), and their sibling
+// argument-like positions -- positional argument, return, record-literal field, method argument, list element,
+// an alias-typed field, a field read off the call's result, a nested receiver, and the non-field nullary
+// parameter call. THE CONTROLS bound the repair: the unary call and the nullary scrutinee are admitted as before,
+// and a nullary call still refuses where its application is wrong -- foreign match arms, a foreign codomain, the
+// field passed unapplied (that IS the callable), and a surplus argument.
+
+fn blocking_delta(hostile: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: baseline_source), holds: holds)
+}
+
+data nullary_named_argument_source: String = "module probe_nullary_field_call_nullary_named_argument\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: o.ask())\n}\n"
+
+data nullary_let_bound_source: String = "module probe_nullary_field_call_nullary_let_bound\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  let a = o.ask()\n  answered(a: a)\n}\n"
+
+data nullary_positional_argument_source: String = "module probe_nullary_field_call_nullary_positional_argument\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(o.ask())\n}\n"
+
+data nullary_return_position_source: String = "module probe_nullary_field_call_nullary_return_position\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn g(o: ProbeOps) -> ProbeAnswer {\n  o.ask()\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: g(o: o))\n}\n"
+
+data nullary_record_literal_field_source: String = "module probe_nullary_field_call_nullary_record_literal_field\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\ntype Holder { held: ProbeAnswer }\nfn g(o: ProbeOps) -> Holder {\n  Holder { held: o.ask() }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: g(o: o).held)\n}\n"
+
+data nullary_method_argument_source: String = "module probe_nullary_field_call_nullary_method_argument\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\ntype ConsumeOps { consume: fn(ProbeAnswer) -> Bool }\nfn f(o: ProbeOps, c: ConsumeOps) -> Bool {\n  c.consume(o.ask())\n}\n"
+
+data nullary_list_element_source: String = "module probe_nullary_field_call_nullary_list_element\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn g(o: ProbeOps) -> List<ProbeAnswer> {\n  [o.ask()]\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: ProbeYes)\n}\n"
+
+data alias_typed_nullary_field_source: String = "module probe_nullary_field_call_alias_typed_nullary_field\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\ntype AskOp = fn() -> ProbeAnswer\ntype AliasOps { ask_alias: AskOp }\nfn f(o: AliasOps) -> Bool {\n  answered(a: o.ask_alias())\n}\n"
+
+data nullary_result_field_access_source: String = "module probe_nullary_field_call_nullary_result_field_access\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\ntype Holder { held: ProbeAnswer }\ntype MakeOps { make: fn() -> Holder }\nfn f(m: MakeOps) -> Bool {\n  answered(a: m.make().held)\n}\n"
+
+data nullary_nested_receiver_source: String = "module probe_nullary_field_call_nullary_nested_receiver\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\ntype Outer { ops: ProbeOps }\nfn f(w: Outer) -> Bool {\n  answered(a: w.ops.ask())\n}\n"
+
+data nullary_parameter_call_source: String = "module probe_nullary_field_call_nullary_parameter_call\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(ask: fn() -> ProbeAnswer) -> Bool {\n  answered(a: ask())\n}\n"
+
+data unary_named_argument_source: String = "module probe_nullary_field_call_unary_named_argument\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: o.ask_with(1))\n}\n"
+
+data nullary_scrutinee_source: String = "module probe_nullary_field_call_nullary_scrutinee\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  match o.ask() {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\n"
+
+data unary_scrutinee_foreign_arms_source: String = "module probe_nullary_field_call_unary_scrutinee_foreign_arms\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  match o.ask_with(1) {\n    OtherYes => true\n    OtherNo => false\n  }\n}\n"
+
+data nullary_scrutinee_foreign_arms_source: String = "module probe_nullary_field_call_nullary_scrutinee_foreign_arms\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  match o.ask() {\n    OtherYes => true\n    OtherNo => false\n  }\n}\n"
+
+data nullary_foreign_codomain_source: String = "module probe_nullary_field_call_nullary_foreign_codomain\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\ntype OtherOps { ask_other: fn() -> OtherAnswer }\nfn f(q: OtherOps) -> Bool {\n  answered(a: q.ask_other())\n}\n"
+
+data unapplied_field_argument_source: String = "module probe_nullary_field_call_unapplied_field_argument\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: o.ask)\n}\n"
+
+data nullary_surplus_argument_source: String = "module probe_nullary_field_call_nullary_surplus_argument\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: o.ask(1))\n}\n"
+
+data baseline_source: String = "module probe_nullary_field_call_baseline\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: ProbeYes)\n}\n"
+
+test fn a_nullary_field_call_as_a_named_argument_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_named_argument_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_let_bound_nullary_field_call_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_let_bound_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_field_call_as_a_positional_argument_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_positional_argument_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_field_call_in_return_position_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_return_position_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_field_call_as_a_record_literal_field_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_record_literal_field_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_field_call_as_a_method_argument_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_method_argument_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_field_call_as_a_list_element_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_list_element_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn an_alias_typed_nullary_field_call_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: alias_typed_nullary_field_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_field_of_a_nullary_field_call_result_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_result_field_access_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_field_call_through_a_nested_receiver_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_nested_receiver_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_parameter_call_as_a_named_argument_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_parameter_call_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_unary_field_call_as_a_named_argument_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: unary_named_argument_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_field_call_matched_with_its_own_arms_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_scrutinee_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_match_over_a_nullary_field_call_refuses_foreign_arms() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_scrutinee_foreign_arms_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_match_over_a_unary_field_call_refuses_foreign_arms() -> ProcessExit {
+  census_exit(blocking_delta(hostile: unary_scrutinee_foreign_arms_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_nullary_field_call_of_a_foreign_codomain_refuses() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_foreign_codomain_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn an_unapplied_callable_field_as_an_argument_refuses() -> ProcessExit {
+  census_exit(blocking_delta(hostile: unapplied_field_argument_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_nullary_field_call_with_a_surplus_argument_refuses() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_surplus_argument_source, holds: fn(n) { n >= 1 }))
+}

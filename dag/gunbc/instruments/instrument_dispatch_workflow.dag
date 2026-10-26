@@ -35,9 +35,9 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude
 import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, dependency_demand_census_label, decl_ref_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
-  known_red_derivation_label, roster_reach_inhabitance_label,
-  ambient_name_census_label, roster_import_sweep_controls_label,
+  type_declaration_use_census_label, dependency_demand_census_label, self_host_frontier_label, decl_ref_census_label, effect_pair_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
+  known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label,
+  ambient_name_census_label, roster_import_sweep_controls_label, credential_acquisition_systemd_rows_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -199,7 +199,7 @@ data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unb
 // adds no job to any per-change workflow.
 fn instrument_dispatch_labels() -> List<Label> {
   [
-    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(),
+    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(),
     v2_native_census_label(), type_declaration_use_census_label(), regen_round_cost_label(),
     compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
@@ -219,6 +219,12 @@ fn instrument_dispatch_labels() -> List<Label> {
     // The import sweep's controls (v2.workflow.roster_import_sweep roster_controls_report) run the sweep's fixture controls
     // in the interpreter, past the free remote runner's cap; a fixture run, so it carries no memory row.
     roster_import_sweep_controls_label(),
+    // The router proxy falsifier needs a docker daemon, which no per-change lane declares; it is run on
+    // the fleet at the head of the change that cites it (plan gunbc.plans.fabric_serving_router, S1b).
+    router_proxy_falsifier_label(),
+    // The credential acquisition rows that start transient units through `systemd-run --user`: no session container or
+    // remote build runner has a user manager, so they run on a fleet runner on purpose; a fixture run, no memory row.
+    credential_acquisition_systemd_rows_label(),
   ]
 }
 
@@ -278,7 +284,11 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     // whole-tree row (DESIGN §3 meaning fork).
     InstrumentDispatchMemoryDemand { label: compute_dependency_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    InstrumentDispatchMemoryDemand { label: self_host_frontier_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: decl_ref_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    // The effect-pair census walks the same whole corpus through the same shared D13 walk, so it is the
+    // same subject at the same price as dependency-demand-census (a row of its own, not a shared one).
+    InstrumentDispatchMemoryDemand { label: effect_pair_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // The known-red derivation's subject is the whole corpus resolved claim by claim: the same price
     // class as the whole-tree censuses, and it shares their row rather than inventing a number of its

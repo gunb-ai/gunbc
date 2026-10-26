@@ -4,7 +4,7 @@ import std.types { List }
 import v2.std.compilers.lexing { Token }
 import v2.std.grammar { GrammarExpr, ModeledGrammar, GrammarProduction, GrammarRoot, Optional, Repeat, StampClass, Terminal, grammar_atom, grammar_empty_sync_tokens }
 import v2.compiler.parse { ParseExprAccepted, ParseExprRejected, PreparedModeled, PreparedVoidGrammar, parse_expr, parse_production_prepared, parse_prov_initial, parse_refusal_reason_diagnostic, parse_table_empty, prepare_grammar }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { diagnostic_eq, Accepted, Rejected }
 import v2.std.parse_refusal_reason { TokenStartsNotIncreasing }
 import std.algebra { Cons, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -72,7 +72,7 @@ test fn colliding_token_starts_refuse_at_the_first_offending_token_holds() -> Bo
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: ds } =>
-          ds.head == parse_refusal_reason_diagnostic(reason: TokenStartsNotIncreasing, file: ^rp_file, start: 0, end: 2)
+          diagnostic_eq(a: ds.head, b: parse_refusal_reason_diagnostic(reason: TokenStartsNotIncreasing, file: ^rp_file, start: 0, end: 2))
       }
   }
 }

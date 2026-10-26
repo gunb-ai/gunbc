@@ -11,10 +11,10 @@ import std.algebra { string_contains }
 import extdeps.network.mac { mac_address }
 import std.claim_evidence { EvidenceApplicable, EvidenceInsufficient, EvidenceSupports }
 import extdeps.external_authority { TranscribedUncited }
-import extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide { supermicro_ami_aptio_v_post_codes_guide_table }
 import extdeps.firmware.ami_aptio_status_codes { Decoded, Refused, Described, BdsPhase, NoCheckpointRange }
+import extdeps.cpu.amd { epyc_7702p_catalog }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
-  supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_unit_storage_projection,
+  supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_attested_hardware, supermicro_h11ssl_unit_storage_projection,
   UnitStorageRefusedVariantUnread, ServiceRootRefused,
 }
 import gunbc.machine_intake.supermicro_h11ssl_unit_observation {
@@ -23,8 +23,11 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation {
   supermicro_h11ssl_decoded_trace, supermicro_h11ssl_code_standing, CodeSampled, CodeNotSampled, SnoopPolledEvery, SnoopPollIntervalUnrecorded,
   supermicro_h11ssl_legacy_boot_handoff_code, supermicro_h11ssl_last_progress_code, supermicro_h11ssl_shared_ordered_tail,
   supermicro_h11ssl_psb_inferences, supermicro_h11ssl_prior_stall_inference, supermicro_h11ssl_prior_stall_inference_under, cpu_inference,
-  supermicro_h11ssl_unit1_prior_stall, H11sslPriorStall,
+  supermicro_h11ssl_unit1_prior_stall,
   PartNotPsbLockedToANonSupermicroVendor, PriorStallFollowedTheFirstCpu, supermicro_h11ssl_psb_losses,
+  supermicro_h11ssl_attested_cpu_parts, supermicro_h11ssl_cpu_history_attestation, H11sslAttestedCpuPart,
+  supermicro_h11ssl_psb_inference_under, supermicro_h11ssl_attested_lock_is_a_diagnosis_loss,
+  PartAttestedVendorLocked, PartAttestedUnlocked, PartLockNotAttested, PartFittedNow, PartRemoved, PremiseFigure, PremiseOperatorAttested,
 }
 
 fn trace_of(mac_is_unit1: Bool) -> H11sslPostTrace? {
@@ -116,44 +119,117 @@ test fn w_decoded_traces_carry_the_emitter_bet() -> Bool {
     }
 }
 
-// Both PSB inferences are applicable SUPPORTS links (bets), each carrying the not-read loss.
+// Both PSB inferences are applicable SUPPORTS links (bets). Each takes its fitted part's attestation
+// as a premise, so the attestation's unread comes first, then the not-read losses.
 test fn w_psb_inferences_are_supporting_bets_with_losses() -> Bool {
   let infs = supermicro_h11ssl_psb_inferences()
   (infs |> count) == 2 && all(infs, i => match i {
     Present { value: EvidenceApplicable { link: l } } =>
       l.direction == EvidenceSupports
         && l.freshness.maximum_conclusion.proposition == PartNotPsbLockedToANonSupermicroVendor
-        && l.fidelity.losses == supermicro_h11ssl_psb_losses
+        && l.fidelity.losses == concat([supermicro_h11ssl_cpu_history_attestation.unread], supermicro_h11ssl_psb_losses)
     _ => false
   })
 }
 
-// The prior-stall link is CONDITIONAL. As recorded, both premises (the historical attribution and
-// the fitted part) are the operator's account, so it is insufficient and names the attribution's
-// read obligation. With only the attribution grounded it stays insufficient (the fitted-part
-// premise). With both grounded, a supplied hypothesis, it is a Supports link that still carries
-// the BIOS confounder as a loss.
-test fn w_prior_stall_link_is_conditional_on_its_premises() -> Bool {
-  let grounded = supermicro_ami_aptio_v_post_codes_guide_table.standing
+// The operator's CPU history is rowed as attestation: unit 1's original part removed and recorded
+// as vendor-locked, and one new part fitted in each unit whose lock is NOT attested (the operator said
+// new, not unlocked), every row carrying the
+// 2026-10-24 attestation. No unit has two parts fitted now. Every model is the upstream 7702P catalog
+// row, and the original part's model number agrees with the 2026-10-17 first-contact attestation.
+test fn w_cpu_history_is_attested_with_the_original_part_locked() -> Bool {
+  let ps = supermicro_h11ssl_attested_cpu_parts
+  let u1_removed = ps |> filter(p => p.bmc_mac == supermicro_h11ssl_unit1_bmc_mac && p.tenure == PartRemoved)
+  (u1_removed |> count) == 1 && all(u1_removed, p => p.lock == PartAttestedVendorLocked)
+    && ((ps |> filter(p => p.bmc_mac == supermicro_h11ssl_unit1_bmc_mac && p.tenure == PartFittedNow)) |> count) == 1
+    && ((ps |> filter(p => p.bmc_mac == supermicro_h11ssl_unit2_bmc_mac && p.tenure == PartFittedNow)) |> count) == 1
+    && all(ps, p => p.model == epyc_7702p_catalog && ((p.tenure == PartRemoved) || (match p.lock { PartLockNotAttested { read_obligation: o } => string_contains(s: o, pattern: "not unlocked")  _ => false })))
+    && all(u1_removed, p => string_contains(s: supermicro_h11ssl_attested_hardware.cpu_installed, pattern: p.model.model_number))
+    && all(ps, p => p.attestation == supermicro_h11ssl_cpu_history_attestation && string_contains(s: p.attestation.unread, pattern: "Unknown"))
+}
+
+// The prior-stall link now READS SUPPORTS: both premises are the operator's attestation, which
+// admits the link, and what the attestation leaves unread is its FIRST loss, once, beside the
+// BIOS/IPMI and memory confounders. The claim's target is the CPU as read (serial Unknown), never
+// the attested identity. Drop either attested row and the link is insufficient, naming the
+// premise that row grounded.
+test fn w_prior_stall_link_reads_supports_on_the_attested_history() -> Bool {
+  let a = supermicro_h11ssl_cpu_history_attestation
   let stall = supermicro_h11ssl_unit1_prior_stall
   let as_recorded = match supermicro_h11ssl_prior_stall_inference() {
-    Present { value: EvidenceInsufficient { insufficiency: x } } =>
-      x.claim.proposition == PriorStallFollowedTheFirstCpu
-        && (match stall.unit_attribution { TranscribedUncited { read_obligation: o } => x.reason == o  _ => false })
-    _ => false
-  }
-  let half = match supermicro_h11ssl_prior_stall_inference_under(stall: H11sslPriorStall { receipt: stall.receipt, held_code: stall.held_code, unit_attribution: grounded }, fitted: TranscribedUncited { read_obligation: "fitted part unread" }) {
-    Present { value: EvidenceInsufficient { insufficiency: x } } => x.reason == "fitted part unread"
-    _ => false
-  }
-  let both = match supermicro_h11ssl_prior_stall_inference_under(stall: H11sslPriorStall { receipt: stall.receipt, held_code: stall.held_code, unit_attribution: grounded }, fitted: grounded) {
     Present { value: EvidenceApplicable { link: l } } =>
       l.direction == EvidenceSupports
+        && l.freshness.maximum_conclusion.proposition == PriorStallFollowedTheFirstCpu
         && l.freshness.maximum_conclusion.subject == supermicro_h11ssl_unit1_bmc_mac
+        && l.freshness.maximum_conclusion.target.serial_as_read == "Unknown"
+        && (match l.fidelity.losses |> first { Present { value: x } => x == a.unread  Absent => false })
+        && ((l.fidelity.losses |> filter(x => x == a.unread)) |> count) == 1
         && any(l.fidelity.losses, x => string_contains(s: x, pattern: "BIOS 3.7"))
+        && any(l.fidelity.losses, x => string_contains(s: x, pattern: "The memory changed"))
     _ => false
   }
-  as_recorded && half && both
+  let without_original = match supermicro_h11ssl_prior_stall_inference_under(stall: stall, parts: supermicro_h11ssl_attested_cpu_parts |> filter(p => p.tenure != PartRemoved)) {
+    Present { value: EvidenceInsufficient { insufficiency: x } } => string_contains(s: x.reason, pattern: "held at 0x22")
+    _ => false
+  }
+  let without_fitted = match supermicro_h11ssl_prior_stall_inference_under(stall: stall, parts: supermicro_h11ssl_attested_cpu_parts |> filter(p => p.tenure != PartFittedNow)) {
+    Present { value: EvidenceInsufficient { insufficiency: x } } => string_contains(s: x.reason, pattern: "fitted in this unit now")
+    _ => false
+  }
+  as_recorded && without_original && without_fitted
+}
+
+// RED: an attestation is not a machine read and an uncited figure is not an attestation. Over the
+// same real trace, an uncited premise leaves the link insufficient with its obligation; an
+// attested premise admits it and carries the attestation's unread as a loss; no premise admits it
+// with only the supplied losses.
+test fn w_attested_premise_admits_and_is_carried_uncited_refuses() -> Bool {
+  let a = supermicro_h11ssl_cpu_history_attestation
+  match trace_of(mac_is_unit1: true) {
+    Present { value: real } =>
+      (match cpu_inference(t: real, proposition: PriorStallFollowedTheFirstCpu, rule: "red", premises: [PremiseFigure { standing: TranscribedUncited { read_obligation: "uncited" } }], losses: []) {
+        Present { value: EvidenceInsufficient { insufficiency: x } } => x.reason == "uncited"
+        _ => false
+      })
+        && (match cpu_inference(t: real, proposition: PriorStallFollowedTheFirstCpu, rule: "attested", premises: [PremiseOperatorAttested { attestation: a }, PremiseOperatorAttested { attestation: a }], losses: []) {
+          Present { value: EvidenceApplicable { link: l } } => l.fidelity.losses == [a.unread]
+          _ => false
+        })
+        && (match cpu_inference(t: real, proposition: PriorStallFollowedTheFirstCpu, rule: "bare", premises: [], losses: []) {
+          Present { value: EvidenceApplicable { link: l } } => (l.fidelity.losses |> count) == 0
+          _ => false
+        })
+    Absent => false
+  }
+}
+
+// RED: the lock attestation is consumed. Flip unit 2's fitted part to vendor-locked and its PSB link
+// becomes insufficient, because the account and the trace disagree, while unit 1's link stands.
+// Flip unit 1's removed part to unlocked and the prior-stall link drops the "locked is a diagnosis"
+// loss that the recorded history carries.
+test fn w_lock_attestation_shapes_the_psb_and_prior_stall_links() -> Bool {
+  let ps = supermicro_h11ssl_attested_cpu_parts
+  let u2_locked = ps |> map(p => if p.bmc_mac == supermicro_h11ssl_unit2_bmc_mac && p.tenure == PartFittedNow { H11sslAttestedCpuPart { bmc_mac: p.bmc_mac, model: p.model, lock: PartAttestedVendorLocked, tenure: p.tenure, attestation: p.attestation } } else { p })
+  let u1_original_unlocked = ps |> map(p => if p.tenure == PartRemoved { H11sslAttestedCpuPart { bmc_mac: p.bmc_mac, model: p.model, lock: PartAttestedUnlocked, tenure: p.tenure, attestation: p.attestation } } else { p })
+  let psb = match trace_of(mac_is_unit1: false) {
+    Present { value: t } => match supermicro_h11ssl_psb_inference_under(t: t, parts: u2_locked) {
+      Present { value: EvidenceInsufficient { insufficiency: x } } => string_contains(s: x.reason, pattern: "disagree")
+      _ => false
+    }
+    Absent => false
+  } && match trace_of(mac_is_unit1: true) {
+    Present { value: t } => match supermicro_h11ssl_psb_inference_under(t: t, parts: u2_locked) { Present { value: EvidenceApplicable { link: _ } } => true  _ => false }
+    Absent => false
+  }
+  let carried = match supermicro_h11ssl_prior_stall_inference_under(stall: supermicro_h11ssl_unit1_prior_stall, parts: ps) {
+    Present { value: EvidenceApplicable { link: l } } => any(l.fidelity.losses, x => x == supermicro_h11ssl_attested_lock_is_a_diagnosis_loss)
+    _ => false
+  }
+  let dropped = match supermicro_h11ssl_prior_stall_inference_under(stall: supermicro_h11ssl_unit1_prior_stall, parts: u1_original_unlocked) {
+    Present { value: EvidenceApplicable { link: l } } => !any(l.fidelity.losses, x => x == supermicro_h11ssl_attested_lock_is_a_diagnosis_loss)
+    _ => false
+  }
+  psb && carried && dropped
 }
 
 // RED: the same inference over a supplied trace that HELD at 0x22 on unit 1 is insufficient, not
