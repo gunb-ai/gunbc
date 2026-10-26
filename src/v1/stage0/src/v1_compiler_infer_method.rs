@@ -856,7 +856,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "emit_host_environment".to_string(),
     }),
     })]),
-        returns: type_variable_node("emit_host_run_transport_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.std.host_run.EmitHostTransportResult".to_string()),
     }));
                 __m.insert("emit_host_run_transport_cached".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -890,7 +890,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "emit_host_environment".to_string(),
     }),
     })]),
-        returns: type_variable_node("emit_host_run_transport_result".to_string()),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.std.host_run.EmitHostTransportResult".to_string()),
     }));
                 __m.insert("emit_host_native_cache_evict".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {

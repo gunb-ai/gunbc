@@ -1,15 +1,19 @@
 module v2.test.claim.decl_ref_resolution_native_witness
 
-import std.algebra { Cons, Empty, FreeMonoid, contains, length }
+import std.algebra { Cons, Empty, FreeMonoid, contains, empty_map, fold_list, length, map_insert }
+import std.occurrence_identity { occurrence_id_allocator_initial }
+import v2.compiler.live_resolution_context { live_resolution_context }
+import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome }
+import v2.compiler.source_authority { source_root_set_from_ingest }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import v2.compiler.name_resolve { ResolutionContext, resolution_context }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.compiler.source_authority { SourceRootIngest }
-import v2.compiler.source_root_eval { native_test_context_from_ingest }
-import v2.test.claim.resolve.namespace_candidate_rule { ncr_double_read, ncr_home_a_read, ncr_home_b_read, ncr_relay_read, ncr_shadow_read }
+import v2.compiler.source_root_eval { native_test_context_from_ingest, native_test_front_end_prepare }
+import v2.test.claim.resolve.namespace_candidate_rule { ncr_read, ncr_double_read, ncr_home_a_read, ncr_home_b_read, ncr_relay_read, ncr_shadow_read }
 import std.optional { Absent, Optional, Present }
 import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefContested, DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefResolved, resolve_declaration_ref }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted, bind_outcome }
@@ -137,5 +141,90 @@ test fn re_exported_name_resolves_under_its_home_not_the_relay() -> Bool {
   match dr_ingest_resolution(ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
     Present { value: DeclarationRefResolved { declaration_identity: i } } => i.qualified_name == "v2.ncr_home_a.NcrTwin"
     _ => false
+  }
+}
+
+// AMBIGUOUS VERSUS CONTESTED, DECIDED BY EXECUTION. The retired host resolver's Ambiguous arm fired on
+// two declaration rows for one qualified name. This is that population on the native path: ONE module
+// declaring the same type name twice. It never reaches the resolver as two claimants: the ingest
+// refuses the file (one file refusal), so its module is not among the roots and the reference is
+// ModuleAbsent. The host arm's population is therefore refused one stage earlier, not renamed, and
+// Contested stays the arm for the other population (two claimants at a binding position, above).
+data dr_duplicate_declaration_source: String = "module v2.dr_dup\n\nimport std.types { Bool }\n\ntype DrTwin = Bool\n\ntype DrTwin = Bool\n"
+
+data dr_duplicate_ingest: SourceRootIngest = Cons {
+  head: ncr_read(source: dr_duplicate_declaration_source, id: ^dr_dup_artifact, unit: ^dr_dup_cu, path: "dag/dr_dup.dag"),
+  tail: Empty
+}
+
+test fn duplicate_declaration_is_refused_at_ingest_not_contested() -> Bool {
+  match native_test_context_from_ingest(ingest: dr_duplicate_ingest) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      match t.resolution {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: c, diagnostics: _ } =>
+          length(xs: t.file_refusals) == 1 &&
+          match resolve_declaration_ref(ref: dr_ref(module_path: "v2.dr_dup", decl_name: "DrTwin"), context: c) {
+            DeclarationRefModuleAbsent { reference: _ } => true
+            _ => false
+          }
+      }
+  }
+}
+
+// THE LIVE-TREE CONTEXT CLOSES OVER ONE RE-EXPORT HOP. The census cites a module by name and builds
+// the context from those modules only; a cited relay declares nothing, and its name resolves under the
+// HOME it imports it from. `v2.ncr_relay` is cited alone: its home `v2.ncr_home_a` is not a target, it
+// is reached because the relay imports it. Without the hop the home is not in the roots and the
+// reference cannot resolve under its home.
+data dr_relay_ingest: SourceRootIngest = Cons { head: ncr_relay_read(), tail: Cons { head: ncr_home_a_read(), tail: Empty } }
+
+fn dr_live_resolution(targets: List<String>, names: List<String>, ref: DeclarationRef) -> Optional<DeclarationRefResolution> {
+  match native_test_front_end_prepare() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: front, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: dr_relay_ingest) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: scope, diagnostics: _ } =>
+          let live = live_resolution_context(
+            by_name: map_insert(map_insert(empty_map(), "v2.ncr_relay", ncr_relay_read()), "v2.ncr_home_a", ncr_home_a_read()),
+            targets: targets,
+            names: fold_list(xs: names, empty: empty_map(), cons: fn(acc, n) { map_insert(acc, n, true) }),
+            lm: front.lm,
+            lex: front.lex,
+            prepared: front.prepared,
+            ingest_scope: scope,
+            seed: occurrence_id_allocator_initial(),
+            active_roots: source_root_set_from_ingest(ingest: dr_relay_ingest),
+            policy: ImportScoped
+          )
+          match live.context {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: c, diagnostics: _ } => Present { value: resolve_declaration_ref(ref: ref, context: c) }
+          }
+      }
+  }
+}
+
+test fn cited_relay_resolves_under_its_home_in_the_live_context() -> Bool {
+  match dr_live_resolution(targets: ["v2.ncr_relay"], names: ["NcrTwin"], ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
+    Present { value: DeclarationRefResolved { declaration_identity: i } } => i.qualified_name == "v2.ncr_home_a.NcrTwin"
+    _ => false
+  }
+}
+
+test fn live_context_loads_only_the_cited_modules_and_one_hop() -> Bool {
+  match dr_live_resolution(targets: ["v2.ncr_home_a"], names: ["NcrTwin"], ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
+    Present { value: DeclarationRefModuleAbsent { reference: _ } } => true
+    _ => false
+  }
+}
+
+test fn live_context_hops_only_for_cited_names() -> Bool {
+  match dr_live_resolution(targets: ["v2.ncr_relay"], names: [], ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
+    Present { value: DeclarationRefResolved { declaration_identity: _ } } => false
+    Present { value: _ } => true
+    Absent => false
   }
 }

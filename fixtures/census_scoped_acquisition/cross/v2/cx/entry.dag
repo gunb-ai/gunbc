@@ -1,6 +1,5 @@
 module v2.cx.entry
 
 import v2.cx.shared { shared_value }
-import cx.fromdag { from_dag_value }
 
 data entry_value: Int = shared_value
