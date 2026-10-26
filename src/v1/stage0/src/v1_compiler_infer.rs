@@ -13260,7 +13260,9 @@ pub fn infer_call_arguments_generic_pass(
                 let __lbl_f = type_node_label(formal_raw.clone(), scope.type_env.source_indices.clone());
                 let __lbl_a = type_node_label(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), scope.type_env.source_indices.clone());
                 let __lbl_e = match expected.clone() { Some(e) => type_node_label(e, scope.type_env.source_indices.clone()), None => "<none>".to_string() };
-                eprintln!("DIAGFOLD fn={:?} i={} formal={} expected={} actual={} subst_keys={:?}", "??", pair.0, __lbl_f, __lbl_e, __lbl_a, st.subst.keys().cloned().collect::<Vec<_>>());
+                let __aname = crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone());
+                let __islam = is_lambda_expr(crate::v1_std_core::arg_value(a.clone()));
+                eprintln!("DIAGFOLD i={} arg={:?} has_formal={} is_lambda={} formal={} expected={} actual={} subst_keys={:?}", pair.0, __aname, has_formal, __islam, __lbl_f, __lbl_e, __lbl_a, st.subst.keys().cloned().collect::<Vec<_>>());
             }
             let next_subst = if !has_formal.clone() {
                 st.subst.clone()
