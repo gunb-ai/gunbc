@@ -13,7 +13,20 @@ data native_emit_renders_a_construct_the_build_refuses: RecurringFailureMode = R
     standing: BelowCeiling {
       current: FoundOnRung { rung: Mitigatable },
       ceiling: StructurallyGuaranteed,
-      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+      // THE BLOCKER'S ARM, AND WHY IT IS UNDECLARED RATHER THAN A TYPED POINTER. A GroundingDeclared
+    // names a declaration that stands as the authority this class waits on; that arm is honest only if
+    // the named declaration actually holds the repair. Probed at main e02ae471737b, neither receipt has
+    // one: the std_bit class (a Copy derive over the Rc heap field of
+    // gunbc.mantle.kernel_execution.GroundingTrace) has NO row anywhere in the tree -- git grep over
+    // dag/gunbc/recurring_failure_mode/ for std_bit, Copy-over-Rc and E0204 returns only this row -- and
+    // the as-cast class has gunbc.recurring_failure_mode.as_cast_has_no_lowered_form, which is ITSELF an
+    // unregistered row below ceiling with no job on its path, so pointing the rung's only awaited
+    // authority at a second below-ceiling row would be two waiting claims grounding each other, and the
+    // required path would still reach nothing. rung_climb's header makes the consequence explicit: an
+    // awaiting row that cannot name a real authority is unbuilt, and unbuilt ranks below awaiting. The
+    // repair for the second receipt is now a live PR (gunbc#15033, the emitter's Nat rendering); the
+    // moment its claim lands on main, this arm becomes GroundingDeclared and the row should be repointed.
+    blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
       trigger_capability: "emitter fixes for both constructs (below, receipts), after which a first-time rendering of std.bit or of a Nat-cast module builds; the further ceiling step is an emit-time check that renders and cargo-builds each newly pulled module when a new import first adds it to a native crate, so the refusal names the import that pulled it instead of arriving unattributed after a twenty-minute build",
     },
   },
