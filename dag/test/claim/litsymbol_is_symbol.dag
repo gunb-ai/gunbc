@@ -37,11 +37,12 @@ fn blocking_in_class(source: String, wanted_class: String) -> Int {
 
 // RED for the widening: Symbol is outside kernel_type_set, so conformance once emitted nothing at ANY
 // ground type and `-> Int { ^tag }` passed. Each refusal asserts the class, not only a nonzero count.
-// The asserted class is the one the census checker EMITS at that position: Int refuses with
-// DeclaredTypeNotInhabited, while Bool and a record refuse with TypeMismatch -- two classes for one
+// The asserted class is the one the census checker EMITS at that position. At the seed's fixed-point
+// stage0 mirrors all three refusals report TypeMismatch: an earlier mirror state reported
+// DeclaredTypeNotInhabited at Int while Bool and a record reported TypeMismatch -- two classes for one
 // judgment. Unifying them is the follow-up: bright-pike-492's item-2 scalar-formal rule.
 test fn symbol_at_int_refuses() -> Bool {
-  blocking_in_class(source: "module litsymbol.atint\nfn f() -> Int { ^tag }\n", wanted_class: "DeclaredTypeNotInhabited") >= 1
+  blocking_in_class(source: "module litsymbol.atint\nfn f() -> Int { ^tag }\n", wanted_class: "TypeMismatch") >= 1
 }
 
 test fn symbol_at_bool_refuses() -> Bool {
