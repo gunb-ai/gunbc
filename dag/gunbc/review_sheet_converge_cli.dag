@@ -64,6 +64,7 @@ import gunbc.review_sheet_spreadsheet_actuator {
   spreadsheet_outcome_text,
 }
 import std.optional { Absent, Present }
+import gunbc.review_sheet_federation { WriterTokenStanding, WriterTokenMinted, WriterTokenRefused, observe_writer_token }
 import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.google.sheets { ValueRange }
 import gunbc.review_sheet_kind {
@@ -369,10 +370,12 @@ fn converge_report_exit(report: ReviewSheetConvergeReport) -> ProcessExit {
 
 
 // THE DRIVE HALF ALONE, AND THE ENTRY POINT THAT TAKES NO ARGUMENTS AT ALL. The GCP steps read a
-// token as an operation input, so an operator must still hand them one; the Drive operations read
-// theirs at the transport from GUNBC_REVIEW_SHEET_TOKEN, so this entry has nothing a caller could
-// put on a command line. That is the point: gunbc run passes arguments only as argv, and on this
-// fleet an argv word is readable by any job payload a pull request can influence.
+// token as an operation input, so this entry does not reach them; the Drive operations read theirs
+// at the transport from GUNBC_REVIEW_SHEET_TOKEN, which the review_sheet_converge mode's delegation
+// step sets, so this entry has nothing a caller could put on a command line. That is the point: gunbc
+// run passes arguments only as argv, and on this fleet an argv word is readable by any job payload a
+// pull request can influence. A hand-exported token is break-glass only
+// (gunbc.review_sheet_federation review_sheet_hand_minted_token_break_glass).
 //
 // IT CONVERGES EVERY KIND IN THE ROSTER, AND HOLDS THE NAME OF NONE. Which kinds exist is
 // gunbc.review_sheet_kind_roster; what each one is -- its file name, marker, tabs, schemas, rules
@@ -660,12 +663,19 @@ fn drive_half_text(r: DriveHalfReport) -> String {
   join(concat([join(["membership: ", membership_outcome_text(o: r.membership)], "")], map(r.kinds, k => kind_report_text(r: k))), "\n")
 }
 
+// THE WRITER TOKEN IS ESTABLISHED BEFORE ANY CALL, and it is minted by the run, not handed in. The
+// review_sheet_converge fleet-converge mode federates and delegates (gunbc.review_sheet_federation),
+// and a refused delegation stops here with the one cell that is missing, so a run with no grant
+// writes nothing and never reports success.
 fn converge_drive_half_cli() -> ProcessExit {
   let collisions = review_sheet_roster_collisions(kinds: review_sheet_kind_roster())
   if count(collisions) > 0 {
     exit_failure(reason: join(["the kind roster has kinds sharing an identity, marker or file name: ", join(map(collisions, k => k as String), ", ")], ""))
   } else {
-    converge_drive_half_roster()
+    match observe_writer_token() {
+      WriterTokenRefused { cause: c } => exit_failure(reason: c as String)
+      WriterTokenMinted => converge_drive_half_roster()
+    }
   }
 }
 

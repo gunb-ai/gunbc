@@ -243,7 +243,33 @@ fn unsafe_tokens_are_absent() -> Bool {
   let hash = token_absent(t: nginx_token(text: "x#"))
   let dash = variable_absent(t: nginx_variable(text: "a-b"))
   let safe = !token_absent(t: nginx_token(text: "x-seat-permit"))
-  quote && dollar && hash && dash && safe
+  // Refusals a blacklist lets through: the admitted class lists no punctuation but - . / : _, and a Lua
+  // variable must start at a letter. A value is admitted ONLY IF every character is in the class.
+  let question = token_absent(t: nginx_token(text: "a?b"))
+  let comma = token_absent(t: nginx_token(text: "a,b"))
+  let equals = token_absent(t: nginx_token(text: "a=b"))
+  let amp = token_absent(t: nginx_token(text: "a&b"))
+  let lt = token_absent(t: nginx_token(text: "a<b"))
+  let pipe = token_absent(t: nginx_token(text: "a|b"))
+  let backtick = token_absent(t: nginx_token(text: "a`b"))
+  let parens = token_absent(t: nginx_token(text: "a(b)"))
+  let digit_head = variable_absent(t: nginx_variable(text: "1abc"))
+  let dot = variable_absent(t: nginx_variable(text: "a.b"))
+  let underscore_ok = !variable_absent(t: nginx_variable(text: "a_b"))
+  quote && dollar && hash && dash && safe && question && comma && equals && amp && lt && pipe && backtick && parens
+    && digit_head && dot && underscore_ok
+}
+
+// The brand is not enforced: a forced cast reaches a row and renders unescaped. This case PINS the hole the
+// stall gunbc.guarantee_stall/nginx_token_validator_not_constructor carries, and is written to go RED when
+// the gap closes (constructor-only admission), not to certify the hole as fine.
+fn forced_cast_renders_unescaped() -> Bool {
+  let injected = render_nginx_directives(rows: [ProxyPassToHost {
+    host: "127.0.0.1'; os.exit(1)" as NginxToken,
+    port: 9001 as Port,
+    path: "/" as NginxToken,
+  }])
+  contains(s: injected, p: "'; os.exit(1)")
 }
 
 fn emitted_text() -> String {
@@ -256,6 +282,9 @@ fn fragments_held(t: String) -> Bool {
     && contains(s: t, p: "ngx.exit(503)") && contains(s: t, p: "s:connect('127.0.0.1', 19002)") && contains(s: t, p: "always_forward_body = true")
     && contains(s: t, p: "client_max_body_size 16777216;") && contains(s: t, p: "client_body_buffer_size 1048576;")
     && contains(s: t, p: "tonumber(string.match(v, ':(%d+)$')) <= 65535")
+    // The permit copied into the stream-end notice's raw request must be shaped like a token value, not
+    // merely non-empty: the notice interpolates it verbatim, so CR/LF would split the request.
+    && contains(s: t, p: "string.match(v, '^[A-Za-z0-9._:/%-]+$')") && !contains(s: t, p: "v ~= ''")
 }
 
 fn row_cases() -> List<FalsifierCase> {
@@ -269,6 +298,7 @@ fn row_cases() -> List<FalsifierCase> {
     case_of(identity: "rows_rendering_follows_the_rows", held: emitted_text() != "" && emitted_text() == render_nginx_directives(rows: rows()), observed: "rendered"),
     case_of(identity: "rows_the_rendered_text_holds_the_expected_fragments", held: fragments_held(t: emitted_text()), observed: "fragments"),
     case_of(identity: "rows_red_unsafe_tokens_have_no_constructor_result", held: unsafe_tokens_are_absent(), observed: "tokens"),
+    case_of(identity: "rows_pinned_a_forced_cast_bypasses_the_brand_and_renders_unescaped", held: forced_cast_renders_unescaped(), observed: "cast"),
   ]
 }
 
