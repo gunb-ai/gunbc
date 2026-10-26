@@ -42,6 +42,13 @@ type OpenRestyVersion = NonEmptyStr where brand("OpenRestyVersion")
 
 data openresty_1_27_1_1: OpenRestyVersion = "1.27.1.1" as OpenRestyVersion
 
+// The project's published container image of that release (hub.docker.com/r/openresty/openresty, tag
+// 1.27.1.1-bookworm), pinned by its multi-architecture index digest, read with `docker pull` on 2026-10-25.
+// The image's default command runs the server in the foreground over the configuration at
+// openresty_image_config_path; `openresty -t` tests that same file.
+data openresty_1_27_1_1_image: NonEmptyStr = "openresty/openresty@sha256:bbba7e0973dab3117e84aedf01622c34ef44bb8211bfcd987c9529f3083da545" as NonEmptyStr
+data openresty_image_config_path: NonEmptyStr = "/usr/local/openresty/nginx/conf/nginx.conf" as NonEmptyStr
+
 // The directives below are the ones that decide whether a response is relayed as it arrives and whether
 // the proxy may pick a second upstream. The log phase's outcome variables are not modeled: they were
 // observed unreliable on client abort in an uncommitted local run (no committed instrument yet), so release must not depend on them.
@@ -77,6 +84,7 @@ type HeaderSource
 // consumer's code, passed in as lines.
 type LuaPhase
   = | AccessPhase
+  | ContentPhase
   | LogPhase
 
 type LocationMatch
@@ -102,6 +110,7 @@ type NginxDirective
   | InternalLocationOnly
   | ProxyMethodPost
   | LuaPhaseBlock { phase: LuaPhase, lines: List<String> }
+  | LuaSharedDict { name: NginxToken, size: ByteSize }
   | ClientMaxBodySize { size: ByteSize }
   | ClientBodyBufferSize { size: ByteSize }
 
@@ -179,7 +188,7 @@ fn nginx_variable(text: String) -> Optional<NginxVariable> {
 }
 
 fn lua_phase_name(ph: LuaPhase) -> String {
-  match ph { AccessPhase => "access_by_lua_block" LogPhase => "log_by_lua_block" }
+  match ph { AccessPhase => "access_by_lua_block" ContentPhase => "content_by_lua_block" LogPhase => "log_by_lua_block" }
 }
 
 fn location_match_text(m: LocationMatch) -> String {
@@ -219,6 +228,7 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ClientBodyBufferSize { size: z } => nginx_line(text: "client_body_buffer_size " + to_string(byte_size_count(b: z)), indent: indent)
     LuaPhaseBlock { phase: ph, lines: ls } =>
       indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(ls, "\n" + indent + "  ") + "\n" + indent + "}\n"
+    LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + to_string(byte_size_count(b: z)), indent: indent)
   }
 }
 
