@@ -42,9 +42,9 @@ fn blocking_count(source: String) -> Int {
   }
 }
 
-data binder_at_wrong_type_source: String = "module probe_roster_result_binder_wrong_type\nimport std.types { Int, String }\nimport std.operation_argv { shell_materialize_operation_argv, ArgvMaterialized, ArgvMaterializationRefused }\nfn argv_of(op: String) -> Int {\n  match shell_materialize_operation_argv(op, \"w\", [], []) {\n    ArgvMaterialized { argv: a } => a\n    ArgvMaterializationRefused { at: _, cause: _ } => 0\n  }\n}\n"
+data binder_at_wrong_type_source: String = "module probe_roster_result_binder_wrong_type\nimport std.types { Int, String }\nimport std.operation_argv { shell_materialize_operation_argv, ArgvMaterialized, ArgvMaterializationRefused }\nfn argv_of(op: String) -> Int {\n  match shell_materialize_operation_argv(op, \"w\", \"op\", []) {\n    ArgvMaterialized { argv: a } => a\n    ArgvMaterializationRefused { at: _, cause: _ } => 0\n  }\n}\n"
 
-data binder_at_declared_type_source: String = "module probe_roster_result_binder_declared_type\nimport std.types { String, List }\nimport std.operation_argv { shell_materialize_operation_argv, ArgvMaterialized, ArgvMaterializationRefused }\nfn argv_of(op: String) -> List<String> {\n  match shell_materialize_operation_argv(op, \"w\", [], []) {\n    ArgvMaterialized { argv: a } => a\n    ArgvMaterializationRefused { at: _, cause: _ } => []\n  }\n}\n"
+data binder_at_declared_type_source: String = "module probe_roster_result_binder_declared_type\nimport std.types { String, List }\nimport std.operation_argv { shell_materialize_operation_argv, ArgvMaterialized, ArgvMaterializationRefused }\nfn argv_of(op: String) -> List<String> {\n  match shell_materialize_operation_argv(op, \"w\", \"op\", []) {\n    ArgvMaterialized { argv: a } => a\n    ArgvMaterializationRefused { at: _, cause: _ } => []\n  }\n}\n"
 
 test fn w_a_builtin_result_binder_at_the_wrong_type_is_refused() -> Bool {
   blocking_count(source: binder_at_wrong_type_source) >= 1
