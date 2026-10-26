@@ -270,7 +270,7 @@ fn dev_router_command() -> List<String> {
 }
 
 fn dev_site() -> RouterDevSite {
-  RouterDevSite { listen_address: "127.0.0.1", listen_port: 18445, state_dir: dev_state_dir(), alias: "flash-next" }
+  RouterDevSite { listen_address: "127.0.0.1", listen_port: 18445, state_dir: dev_state_dir(), model_alias: "flash-next" }
 }
 
 // The dev config, or the token it refused: a refusal is reported by name in dev_world_starts, never

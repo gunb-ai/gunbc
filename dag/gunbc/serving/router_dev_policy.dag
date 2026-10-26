@@ -138,7 +138,7 @@ fn router_dev_comparison_quotes() -> List<RouterDevComparisonQuote> {
   ]
 }
 
-fn router_dev_init_lines(state_dir: String, alias: String) -> List<String> {
+fn router_dev_init_lines(state_dir: String, model_alias: String) -> List<String> {
   list_append(left: router_dev_comparison_lines(), right: [
     "local cjson = require('cjson.safe')",
     "local dir = '" + state_dir + "'",
@@ -150,7 +150,7 @@ fn router_dev_init_lines(state_dir: String, alias: String) -> List<String> {
     "ROUTER_KEYS = \{}",
     "for line in (slurp(dir .. '/client_keys') or ''):gmatch('[^\\r\\n]+') do ROUTER_KEYS[line] = true end",
     "ROUTER_UPSTREAMS = cjson.decode(slurp(dir .. '/upstreams.json') or '[]') or \{}",
-    "ROUTER_ALIAS = '" + alias + "'",
+    "ROUTER_ALIAS = '" + model_alias + "'",
     // Reasoning-effort dialect per upstream MODEL, rendered from the effort_effects rows on the
     // upstream list. The alias and each engine accept a different set of effort names, and an engine
     // answers 400 on a name it does not implement, so the translation is data on the row, not a rule
@@ -539,7 +539,7 @@ type RouterDevSite {
   listen_address: String
   listen_port: Port
   state_dir: String
-  alias: String
+  model_alias: String
 }
 
 type RouterDevConfig
@@ -579,7 +579,7 @@ fn router_state_dict_size() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(coun
 
 fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: site.state_dir) { Absent => RouterDevConfigRefused { token: "state_dir" } Present { value: _ } =>
-  match tok(text: site.alias) { Absent => RouterDevConfigRefused { token: "alias" } Present { value: _ } =>
+  match tok(text: site.model_alias) { Absent => RouterDevConfigRefused { token: "model_alias" } Present { value: _ } =>
   match tok(text: site.listen_address) { Absent => RouterDevConfigRefused { token: "addr" } Present { value: addr } =>
   match tok(text: site.state_dir + "/tls/cert.pem") { Absent => RouterDevConfigRefused { token: "cert" } Present { value: cert } =>
   match tok(text: site.state_dir + "/tls/key.pem") { Absent => RouterDevConfigRefused { token: "certkey" } Present { value: certkey } =>
@@ -604,7 +604,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         ClientMaxBodySize { size: router_request_body_limit() },
         ClientBodyBufferSize { size: router_request_body_buffer() },
         LuaSharedDict { name: dict, size: router_state_dict_size() },
-        LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, alias: site.alias) },
+        LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, model_alias: site.model_alias) },
         ServerBlock { body: [
           ListenTlsOn { address: addr, port: site.listen_port },
           SslCertificate { path: cert },
@@ -621,7 +621,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
 // /etc/router in the container from /home/briansrls/router on the host, and the pool alias flash-next.
 fn router_dev_srv1_site() -> RouterDevSite {
-  RouterDevSite { listen_address: "192.168.1.203", listen_port: 18443, state_dir: "/etc/router", alias: "flash-next" }
+  RouterDevSite { listen_address: "192.168.1.203", listen_port: 18443, state_dir: "/etc/router", model_alias: "flash-next" }
 }
 
 // The hand-run deploy's render step: writes the proxy's nginx.conf into the host state directory the
