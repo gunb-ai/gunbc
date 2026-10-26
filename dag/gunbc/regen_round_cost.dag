@@ -128,8 +128,8 @@ type RegenRoundCostReceipt {
 // round's first seed build compiles the BASE ref's committed stage0 mirror, because the head's
 // mirror is the thing the PR's `.dag` edits exist to repair -- a head mirror that already carries
 // the refusal the `.dag` fixes stops the round before the regenerated seed can replace it (PR
-// #13936, run 40064940799, job 120786085841, step 7: `EmittedCompilerBuildFailed`,
-// `shared layer refused for 'Nat' ... TypeDeclNotDeclared`).
+// #13936, run 40064940799, job 120786085841, step 7: `stage seed build refused`, five rows of
+// `shared layer refused for 'Nat': TypeDeclNotDeclared` in the committed mirror.
 //
 // The commit id is what this names, not the ref: a ref is a moving name and a receipt is a record
 // of what a past run did, so the only honest thing to record is the commit it resolved to. A

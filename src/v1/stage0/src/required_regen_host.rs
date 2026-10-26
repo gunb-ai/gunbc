@@ -3931,8 +3931,14 @@ struct BaseRestore {
 /// what the PR's `.dag` edits exist to repair: when it already carries a refusal the fix removes,
 /// the installed compiler refuses in round 1 before the regenerated seed can produce the
 /// correction — the deadlock hit on PR #13936 (run 40064940799, job 120786085841, step 7:
-/// `EmittedCompilerBuildFailed`, `shared layer refused for 'Nat' … TypeDeclNotDeclared` at
-/// `src/v1/stage0/src/std_measure.rs:650:34` and four siblings).
+/// `regen-round-cost: refused: stage seed build refused … cargo build
+/// (round.rebuild_from_installed) failed with exit status: 101`, five rows of
+/// `error: shared layer refused for 'Nat': TypeDeclNotDeclared — wrap/deref/Copy of a user type
+/// requires one declaration identity`, each pointing at `../../stage0/src/std_measure.rs:650:34`,
+/// `:652:90`, `:1389:12` and `../../stage0/src/std_checked_arithmetic.rs:316:28`, `:320:70` — the
+/// committed mirror, compiled as `src/v1/stage0_std_core/src/../../stage0/src/…`. Those
+/// `compile_error!` rows are what the PR's `.dag` edits remove, so the round was refused by the
+/// artifact its own repair regenerates).
 ///
 /// THIS IS NOT A FALLBACK AND IS NEVER TAKEN AFTER A FAILURE. The heal round step passes
 /// `--base-mirror` unconditionally and the ref arrives as `HEAL_BASE_REF`; a round that is not a
@@ -6942,12 +6948,15 @@ pub fn run_regen_round_cost(
 ///
 /// These tests are the discriminating evidence for the heal round-1 deadlock hit on PR #13936
 /// (heal run 40064940799, job 120786085841, step 7 "Converge the stage0 mirrors to the seed's own
-/// fixed point"): the round refused with `EmittedCompilerBuildFailed` — `shared layer refused for
-/// 'Nat' … TypeDeclNotDeclared` at `src/v1/stage0/src/std_measure.rs:650:34`, `:652:90`,
-/// `:1389:12` and `std_checked_arithmetic.rs:316:28`, `:320:70` — inside
-/// `round.rebuild_from_installed`, compiling a mirror the PR's own `.dag` edits exist to repair.
-/// The refusal was in the very artifact the repair regenerates, so the round could not regenerate
-/// its way out: the fix's own committed mirror was the thing blocking the fix.
+/// fixed point"): the round refused with `stage seed build refused … cargo build
+/// (round.rebuild_from_installed) failed with exit status: 101`, and the build's own output was
+/// five rows of `error: shared layer refused for 'Nat': TypeDeclNotDeclared — wrap/deref/Copy of a
+/// user type requires one declaration identity`, at `../../stage0/src/std_measure.rs:650:34`,
+/// `:652:90`, `:1389:12` and `../../stage0/src/std_checked_arithmetic.rs:316:28`, `:320:70`. Those
+/// are rows of the COMMITTED MIRROR, compiled into `v1-stage0-std-core` through its
+/// `#[path = "../../stage0/src/std_measure.rs"]` include — and they are exactly what the PR's
+/// `.dag` edits remove. The round was refused by the artifact its own repair regenerates, so no
+/// amount of regenerating could reach the fix: the head's mirror was the thing blocking the fix.
 ///
 /// The fixture is a real git repo with a real base commit and a real PR-head commit, because the
 /// authority under test IS a commit. A string fake would test plumbing and prove nothing about
@@ -7053,13 +7062,15 @@ mod heal_round_one_base_mirror_tests {
         (root, stage0, base_commit)
     }
 
-    /// The subject a round journals under, read the way the round reads it.
+    /// The subject a round journals under. The three digests are fixed for one fixture: what the
+    /// tests exercise is that the bootstrap journalled under THE SUBJECT THE ROUND RESTORES, and
+    /// the identity formula has its own tests. `git` is left to the code under test, which is the
+    /// only thing here that must read a real commit.
     fn fixture_subject(root: &Path) -> RegenConvergenceCheckpointSubject {
-        let head = git_head_sha(root).expect("fixture head");
         RegenConvergenceCheckpointSubject {
-            starting_commit: head.clone(),
-            source_authority_digest: source_identity(root, &head).expect("fixture identity"),
-            stage_plan_authority_digest: "fixture-plan".to_string(),
+            starting_commit: git_head_sha(root).expect("fixture head"),
+            source_authority_digest: "fixture-source-authority".to_string(),
+            stage_plan_authority_digest: "fixture-plan-authority".to_string(),
         }
     }
 

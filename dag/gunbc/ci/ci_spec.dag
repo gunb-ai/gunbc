@@ -4218,8 +4218,10 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963): the head's
 // mirror is what the PR's `.dag` edits exist to repair, so a head mirror already carrying that
 // refusal stops the round before the regenerated seed can replace it (PR #13936, run
-// 40064940799, job 120786085841, step 7 -- `EmittedCompilerBuildFailed`, `shared layer refused
-// for 'Nat' ... TypeDeclNotDeclared`). The flag carries NO value: the ref is this step's
+// 40064940799, job 120786085841, step 7 -- `stage seed build refused ... cargo build
+// (round.rebuild_from_installed) failed with exit status: 101`, over five rows of `shared layer
+// refused for 'Nat': TypeDeclNotDeclared` in the committed mirror at std_measure.rs:650:34 and
+// its siblings). The flag carries NO value: the ref is this step's
 // `HEAL_BASE_REF` environment value, never argv, because a pull-request-controlled ref spliced
 // into a command line would be shell. It is passed unconditionally -- the round does not try the
 // head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
