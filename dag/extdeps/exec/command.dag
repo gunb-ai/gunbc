@@ -86,6 +86,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
   admit_callers: [
     decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_mode_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),
@@ -235,6 +236,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_regroup_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_group_writable_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_mode_readback_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_ungranted_entry_refusal_command"),
 
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
@@ -259,6 +261,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.mosquitto_rr", decl_name: "mosquitto_snapshot_command"),
     decl_ref(module_path: "extdeps.tools.gnu_time", decl_name: "gnu_time_max_rss_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_version_command"),
+    decl_ref(module_path: "extdeps.systemd.loginctl", decl_name: "loginctl_show_user_linger_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_manager_probe_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_list_all_service_units_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_daemon_reload_command"),
@@ -361,7 +364,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
-    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_argument_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),

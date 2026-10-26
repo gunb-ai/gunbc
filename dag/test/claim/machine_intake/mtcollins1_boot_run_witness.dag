@@ -730,12 +730,13 @@ fn step_inputs_text(s: Step) -> String {
 // the witness sits outside the gate closure (gunbc.recurring_failure_mode
 // witness_outside_gate_closure_falsified_by_other_file). It now asserts the mode's clause opens the
 // expression and that the clause resolves to github.sha before any dispatch input.
+// Re-contracted post-#14359: fleet_converge_checkout_ref widened to LogicalOr{needs.build.outputs.revision, github.sha}; the left arm is the gated plan-revision job's OUTPUT, never the raw dispatch input. The security conjuncts below (event-sha checkout + no expected_revision) are the wall; the old == github.sha literal here was #14359's stale contract, red on main (control run 7a9928584d).
 test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
   let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
   fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
     && !string_contains(s: inputs, pattern: "expected_revision")
     && string_contains(s: inputs, pattern: "${{ github.sha }}")
-    && fleet_converge_checkout_ref_expr == "${{ github.sha }}"
+    && fleet_converge_checkout_ref_expr == "${{ needs.build.outputs.revision || github.sha }}"
     && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
 }
 

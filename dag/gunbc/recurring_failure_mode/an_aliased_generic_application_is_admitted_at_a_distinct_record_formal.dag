@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.an_aliased_generic_application_is_admitted_at_a_distinct_record_formal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data an_aliased_generic_application_is_admitted_at_a_distinct_record_formal: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_aliased_generic_application_is_admitted_at_a_distinct_record_formal" as NonEmptyStr,
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a declared-type inhabitance judgment that resolves a type alias of a generic application to its declaration before comparing it with a record formal or argument, refusing a distinct record on the interpretation path in both directions" } },
+
+  receipts: [
+    "INVALID STATE: a value whose type is a TYPE ALIAS OF A GENERIC APPLICATION (std.measure CharacterCount = Measure<Count, One, Nat>, or a local `type BI = B<Int>`) is admitted at a formal declared as a different record (std.measure DisplayPixelCount), and a formal declared by such an alias admits any record. HARM: every Measure alias in std.measure (CharacterCount, TokenCount, Watt and the rest) is an alias of a generic application, so the declared unit at a parameter refuses nothing from a call whose argument carries such an alias; a character budget reaches a display-width parameter silently.",
+    "MEASURED (quick-seal-337, gunbc#14949, 2026-10-25, one remote dispatch building claim_batch from v1-compiler and running compile_dag_diagnostic_census on the interpretation path). At `fn width(w: DisplayPixelCount)` with DisplayPixelCount a nominal record `{ pixels: Nat }`: an argument of type CharacterCount (an alias) -> ZERO blocking rows; an argument of type Measure<Count, One, Nat> written UNALIASED -> refused; a distinct record `Other { pixels: Int }` -> refused; a generic `Box<Int>` written unaliased -> refused; a local alias `BI = B<Int>` -> ZERO blocking rows; a String -> refused. Reverse: at `fn chars(c: CharacterCount)` a DisplayPixelCount argument -> ZERO blocking rows. Changing the record's field from Nat to Int, or adding a second field, did not change the alias result, so this is not kernel grounding of a one-field Nat record.",
+    "DISTINGUISHING FACTS. It is NOT direct_generic_application_admits_a_distinct_phantom_argument: there two instantiations of ONE generic differ in a phantom argument; here the formal is a different declaration altogether, and the unaliased application of the same generic IS refused. It is NOT refined_alias_argument_exempt_from_declared_type_inhabitance: that alias is `where`-refined over String; these aliases carry no refinement. It is NOT a_phantom_composed_alias_formal_admits_a_bare_kernel_value: that formal admits an out-of-width kernel value; here a whole distinct record is admitted.",
+    "ENROLLED FORM: test.claim.display_pixel_count_refusal_witness carries the RED as an expecting-red tripwire (zero blocking rows at the parameter today, asserted, so it goes red when the judgment lands and is then rewritten to expect the refusal) beside the refusing control one term away (the same call with the unaliased Measure<Count, One, Nat>) and the positive control (a DisplayPixelCount at its own parameter, clean). RUNG FOUND AT: silent acceptance on interpretation, below the ladder. CEILING: structurally guaranteed; the alias resolves to a declaration the namespace tree already carries, and the unaliased form is already refused at the same position.",
+  ],
+
+  evidence: [],
+}

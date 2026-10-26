@@ -994,6 +994,20 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+// THE PRIMARY NETWORK CONVERGE RUNS ON AN OBSERVER AND ACTS ON A TARGET (gunbc.host.host_primary_network_apply):
+// a readback taken from the target itself never crosses the uplink it judges.
+data host_primary_network_receipt_path: String = "target/host-primary-network-receipt.txt"
+
+data gunbc_ci_host_primary_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_primary_network_apply.dag",
+  function: "host_primary_network_observe_ci_wet",
+}
+
+data gunbc_ci_host_primary_network_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_primary_network_apply.dag",
+  function: "host_primary_network_converge_ci_wet",
+}
+
 data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_cap_release_ci_wet",
@@ -1036,6 +1050,11 @@ data gunbc_ci_runner_browser_toolchain_converge_target: GunbcRunStepTarget = Gun
   function: "runner_browser_toolchain_converge_ci_wet",
 }
 
+data gunbc_ci_runner_user_session_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_user_session.dag",
+  function: "runner_user_session_converge_ci_wet",
+}
+
 data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/printer_workflow_run.dag",
   function: "run",
@@ -1044,6 +1063,13 @@ data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/namecheap/observe.dag",
   function: "namecheap_observe_ci_wet",
+}
+
+// The review sheets' argv-free converge entry (gunbc.review_sheet_converge_cli). It writes no receipt
+// file: its verdict is the exit and the per-kind report on stderr, which names no token.
+data gunbc_ci_review_sheet_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/review_sheet_converge_cli.dag",
+  function: "converge_drive_half_cli",
 }
 
 data gunbc_ci_arrival_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1461,12 +1487,16 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_host_cap_release_target,
+    gunbc_ci_host_primary_network_observe_target,
+    gunbc_ci_host_primary_network_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_runner_browser_toolchain_converge_target,
+    gunbc_ci_runner_user_session_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_review_sheet_converge_target,
     gunbc_ci_printer_workflow_target,
     gunbc_ci_spark_grants_observe_target,
 
@@ -3124,6 +3154,26 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
   )
 }
 
+fn gunbc_ci_host_primary_network_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_primary_network_observe_target.entry,
+    function: gunbc_ci_host_primary_network_observe_target.function,
+    claim_run: false,
+    receipt_rel: host_primary_network_receipt_path
+  )
+}
+
+fn gunbc_ci_host_primary_network_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_primary_network_converge_target.entry,
+    function: gunbc_ci_host_primary_network_converge_target.function,
+    claim_run: false,
+    receipt_rel: host_primary_network_receipt_path
+  )
+}
+
 fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -3224,6 +3274,16 @@ fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
     function: gunbc_ci_runner_browser_toolchain_converge_target.function,
     claim_run: false,
     receipt_rel: "target/runner-browser-toolchain-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_runner_user_session_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_user_session_converge_target.entry,
+    function: gunbc_ci_runner_user_session_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-user-session-converge-receipt.txt"
   )
 }
 
@@ -4278,6 +4338,16 @@ fn gunbc_ci_namecheap_observe_invoke() -> String {
     function: gunbc_ci_namecheap_observe_target.function,
     claim_run: false,
     receipt_rel: namecheap_observation_receipt_path
+  )
+}
+
+fn gunbc_ci_review_sheet_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_review_sheet_converge_target.entry,
+    function: gunbc_ci_review_sheet_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

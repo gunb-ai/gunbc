@@ -20,6 +20,8 @@ fn materialize_sheets_mock(case: PublishedMockCase) -> Outcome<MaterializedSheet
     outcome_accepted(value: MaterializedSheetsMock { tag: ^materialized_get_values })
   } else if case.operation_key == "sheets.Spreadsheets.BatchUpdateValues" {
     outcome_accepted(value: MaterializedSheetsMock { tag: ^materialized_batch_update_values })
+  } else if case.operation_key == "sheets.Spreadsheets.GetSpreadsheetMetadata" {
+    outcome_accepted(value: MaterializedSheetsMock { tag: ^materialized_get_spreadsheet_metadata })
   } else {
     mock_unhandled_rejection()
   }
