@@ -4,7 +4,7 @@ import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { mebibyte_count, byte_size, kibibyte_count, token_count_value, milli_tokens_per_second_count, events_per_hour_count, millicore_count, byte_size_count, microsecond_count, minute_count }
+import std.measure { mebibyte_count, byte_size, kibibyte_count, token_count_value, milli_tokens_per_second_count, events_per_hour_count, millicore_count, byte_size_count, microsecond_count, minute_count, Second, second }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.docker { DockerMount, BindMount }
@@ -74,6 +74,9 @@ fn sb_pcie_sampler_name() -> NonEmptyStr { "gunbc-sb-pcie" as NonEmptyStr }
 fn sb_kit_name() -> NonEmptyStr { "gunbc-sb-kit" as NonEmptyStr }
 fn sb_engine_cgroup_mount() -> String { "/engine-cgroup" }
 fn sb_run_id() -> String { "serving-benchmark-short-n4-srv3" }
+// How long `docker stop` waits before SIGKILLing a sampler. A duration, not a string: the
+// DockerCli.Stop operation takes a std.measure Second and renders docker's -t word itself.
+data sb_sampler_stop_grace: Second = second(count: 10)
 
 fn sb_engine_url() -> String { concat("http://127.0.0.1:", to_string(serving_benchmark_run_plan.engine_port)) }
 
@@ -225,8 +228,8 @@ fn run_world(cgroup_dir: String, inputs: PinnedInputs) -> RunEvidence {
     let s1 = DockerCli.Start(docker: sb_docker(), name: sb_gpu_sampler_name())
     let s2 = DockerCli.Start(docker: sb_docker(), name: sb_pcie_sampler_name())
     let ran = DockerCli.StartAttached(docker: sb_docker(), name: sb_kit_name())
-    let t1 = DockerCli.Stop(docker: sb_docker(), name: sb_gpu_sampler_name(), grace_seconds: "10" as NonEmptyStr)
-    let t2 = DockerCli.Stop(docker: sb_docker(), name: sb_pcie_sampler_name(), grace_seconds: "10" as NonEmptyStr)
+    let t1 = DockerCli.Stop(docker: sb_docker(), name: sb_gpu_sampler_name(), grace: sb_sampler_stop_grace)
+    let t2 = DockerCli.Stop(docker: sb_docker(), name: sb_pcie_sampler_name(), grace: sb_sampler_stop_grace)
     let requests = copy_out(name: sb_kit_name(), inner: "/tmp/run.jsonl", host_path: "/tmp/gunbc-sb-run.jsonl")
     let samples = copy_out(name: sb_gpu_sampler_name(), inner: "/tmp/gpu.csv", host_path: "/tmp/gunbc-sb-gpu.csv")
     let pcie = copy_out(name: sb_pcie_sampler_name(), inner: "/tmp/pcie.txt", host_path: "/tmp/gunbc-sb-pcie.txt")

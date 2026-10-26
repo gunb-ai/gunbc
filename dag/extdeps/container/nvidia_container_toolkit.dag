@@ -96,18 +96,27 @@ data nvidia_container_toolkit_install_dissolution_trigger: DissolutionCondition 
   )
 )
 
+// 🟡 dissolve-on: nvidia_container_toolkit_repo_install_script — RAW SHELL STEPS for an apt repo +
+// pinned-key install, admitted in the mainline shape of extdeps.container.docker_ce
+// docker_ce_repo_install_script (the same curl|gpg --dearmor, fingerprint grep, tee source line,
+// and apt update/install pipeline, with its own bound trigger). Every interpolated value goes
+// through posix_single_quote, so a fetched URL, path, or fingerprint cannot change what the script
+// does. The typed alternative (an apt-repo effect with keyring-fetch and fingerprint-verify arms)
+// is not realized yet — gunbc.host.host_effect_realize srv3_ensure_apt realizes package presence
+// only — so this scaffold ends by realizing its steps as typed host effects and deleting this
+// function, tracked by nvidia_container_toolkit_install_dissolution_trigger (bound).
 fn nvidia_container_toolkit_repo_install_script(repo: NvidiaContainerToolkitAptRepo, packages: List<NonEmptyStr>) -> String {
   join(
     [
       "set -e",
       join(
-        ["curl -fsSL ", repo.keyring_url as String, " | ", join(map(sudo_elevate_argv(command: ["gpg", "--dearmor", "--yes", "-o", repo.keyring_path as String]), w => posix_single_quote(spelling: w)), " ")],
+        ["curl -fsSL ", posix_single_quote(spelling: repo.keyring_url as String), " | ", join(map(sudo_elevate_argv(command: ["gpg", "--dearmor", "--yes", "-o", repo.keyring_path as String]), w => posix_single_quote(spelling: w)), " ")],
         "",
       ),
-      join(["chmod a+r ", repo.keyring_path as String], ""),
-      join(["gpg --show-keys --with-colons ", repo.keyring_path as String, " | grep -q ", repo.keyring_fingerprint as String, " || { echo 'NvidiaKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint as String, "' >&2; exit 1; }"], ""),
+      join(["chmod a+r ", posix_single_quote(spelling: repo.keyring_path as String)], ""),
+      join(["gpg --show-keys --with-colons ", posix_single_quote(spelling: repo.keyring_path as String), " | grep -q ", posix_single_quote(spelling: repo.keyring_fingerprint as String), " || { echo ", posix_single_quote(spelling: concat("NvidiaKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint as String)), " >&2; exit 1; }"], ""),
       join(
-        ["echo '", nvidia_container_toolkit_apt_source_line(repo: repo), "' | ", join(map(sudo_elevate_argv(command: ["tee", "/etc/apt/sources.list.d/nvidia-container-toolkit.list"]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"],
+        ["echo ", posix_single_quote(spelling: nvidia_container_toolkit_apt_source_line(repo: repo)), " | ", join(map(sudo_elevate_argv(command: ["tee", "/etc/apt/sources.list.d/nvidia-container-toolkit.list"]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"],
         "",
       ),
       join(map(sudo_elevate_argv(command: ["apt-get", "update", "-q"]), w => posix_single_quote(spelling: w)), " "),

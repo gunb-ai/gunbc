@@ -1,6 +1,7 @@
 module extdeps.docker.cli_service
 
 import std.types { String, Int, List, NonEmptyStr }
+import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -9,6 +10,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.docker.com/reference/cli/docker/"
   }
+}
+
+// The `-t` word of `docker stop` is docker's own rendering of a std.measure Second: the grace
+// period is a duration, and the seconds spelling exists only at this argv boundary (the same
+// posture as extdeps.http.client http_client_max_time_flag rendering curl's --max-time). A
+// caller cannot hand this operation a string and hope it parses as a number of seconds.
+fn docker_stop_grace_flag(grace: Second) -> NonEmptyStr {
+  to_string(second_count(s: grace)) as NonEmptyStr
 }
 
 // THE DOCKER CLI AS A SHELL-TRANSPORT SERVICE, one fixed argv per operation. extdeps.docker.cli builds the
@@ -131,13 +140,13 @@ service DockerCli {
   // `docker stop -t <seconds>`: SIGTERM, then SIGKILL after the grace, so a sampler flushes its file.
   operation Stop {
     requires opaque
-    input { docker: NonEmptyStr, name: NonEmptyStr, grace_seconds: NonEmptyStr }
+    input { docker: NonEmptyStr, name: NonEmptyStr, grace: Second }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: [docker, "stop", "-t", grace_seconds, name] }
+    transport shell { argv: [docker, "stop", "-t", docker_stop_grace_flag(grace: grace), name] }
   }
 
   // `docker inspect --format <template>`: one field of a container, read by template.
