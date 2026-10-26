@@ -98,10 +98,15 @@ type GpuSmCacheGeometry {
 // that system, never an add-in-card fact. IntegratedComputePackage is a GPU nested in an SoC
 // or superchip. The three stay separate so P4 feasibility can refuse to treat a B200 as a
 // purchasable dual-slot card.
+// GpuOnMultiGpuBoard is one GPU of an add-in card that carries several (the A16 carries four
+// GA107s behind an on-board PCIe switch). Its row describes ONE GPU; the card itself is a
+// GpuBoardCatalogRow, which owns the board-level facts (power, thermal, host link) that no single
+// GPU of it has.
 type GpuPackageForm
   = PcieAddInCard
   | SxmModule
   | IntegratedComputePackage
+  | GpuOnMultiGpuBoard
 
 // DENSE TENSOR-CORE THROUGHPUT IS A RATE PER DATATYPE, NOT A STRING AND NOT ONE NUMBER. Vendors print
 // a headline per datatype and print the SPARSE figure beside the dense one (sparsity doubles it), so a
@@ -218,4 +223,33 @@ type PcieCardSideOutline {
   length_without_bracket: Micrometer
   length_with_bracket: Micrometer
   height: Micrometer
+}
+
+// ── A CARD THAT CARRIES SEVERAL GPUs. Its power is a BOARD figure: the vendor states a range the
+// whole card may be set to, and how the driver divides it among the GPUs is a reading of the device,
+// not a catalog fact. Thermal solution is a board fact too, and the one the fan-zone policy needs:
+// a passive card depends on the chassis zone that reaches it.
+type GpuThermalSolution = PassiveThermalSolution | ActiveThermalSolution
+
+// The board power states a published default, the configurable range, and an optional named
+// operating point (NVIDIA's MaxQ on the A16). A range is a configurable span, distinct from a TDP.
+type GpuBoardPower {
+  default: Watt
+  minimum: Watt
+  maximum: Watt
+  named_points: List<GpuNamedPowerPoint>
+}
+
+type GpuNamedPowerPoint { name: NonEmptyStr, power: Watt }
+
+type GpuBoardCatalogRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  gpu: GpuModelCatalogRow
+  gpu_count: Nat
+  board_power: GpuBoardPower
+  thermal: GpuThermalSolution
+  host_link: PcieLink
+  pci_device_id: NonEmptyStr
+  figure_citations: List<FactCitation>
 }
