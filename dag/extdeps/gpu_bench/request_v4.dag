@@ -1,0 +1,458 @@
+module extdeps.gpu_bench.request_v4
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.algebra { string_concat_join }
+import std.decimal { ExactDecimal }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.measure { TokenCount, token_count, Microsecond, microsecond, ByteSize, byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.number { read_json_number, JsonNumberExact, JsonNumberOutsideExactFragment, json_number_fragment_refusal_text }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field, json_field_string, json_field_nat,
+  FieldRead, FieldAbsent, FieldMalformed,
+}
+import extdeps.gpu_bench.request_v2 {
+  GpuBenchPhase, gpu_bench_phase_of_wire, GpuBenchRequestStatus, GpuBenchRequestOk, GpuBenchRequestError,
+  GpuBenchOptionalTokenRead, GpuBenchOptionalTokenUnreadable, gpu_bench_optional_token_count,
+}
+
+// THE GPU-BENCH KIT'S PER-REQUEST LINE, VERSION 4. Its own schema identity, `gpu-bench/request/v4`, so
+// no v2 line changes meaning (extdeps.gpu_bench.request_v2 stays the v2 reader). The kit is cited at
+// gunbc-private commit bc50f631d0cdf65b953ccf69cd3b69802277107d, tools/gpu-bench/longctx.py and its
+// README.md (the srv2 repository has no remote, so that copy is the citable one). One line per attempted
+// request, failures included. v3 (189fea0e) has no reader here: v4 is v3 plus the engine members and
+// writes them null when unsampled, so it carries every v3 line's content.
+//
+// v4 = v2 plus eleven members, the v2 members keeping their v2 meaning, so the phase and status
+// vocabulary is v2's and is imported, not restated:
+//   delta_tokens    the DELTA_TOKENS setting: the server tokens the delta is sized to reach at least.
+//   delta_words     the delta's word count as sent.
+//   tokens_per_word_milli  the calibration that sized it, session 0's prime prompt_tokens x 1000 over its
+//                   history words; null on prime rows. The first v3 commit sized the delta in the kit's
+//                   own words-per-token guess and fell ~25% short on the server tokenizer, which is why
+//                   the calibration is a member. delta_tokens, delta_words and the calibration are the
+//                   kit's settings, not measurements: the delta actually sent is read from prompt growth
+//                   by the consumer (gunbc.serving.serving_benchmark_run_receipt).
+//   delta_sha256    sha256 of the delta text, null on the prime.
+//   messages_sha256 sha256 of the canonical JSON (sort_keys, compact separators) of every message sent in
+//                   that request: system, prior turns, delta and question.
+//   cached_tokens   the server's usage.prompt_tokens_details.cached_tokens, null when it is not reported.
+//   engine_cpu_usage_usec_start / _end   the engine cgroup's cpu.stat usage_usec at t_start and t_end:
+//                   CPU time of every thread in the engine's cgroup, in microseconds.
+//   engine_memory_current_start / _end   the engine cgroup's memory.current at t_start and t_end, in
+//                   bytes; it counts the engine's page cache too (mapped experts).
+//   engine_memory_peak  memory.peak at t_end, the cgroup's lifetime peak, absent where the kernel lacks it.
+//   All five are null when the kit runs without ENGINE_CGROUP or a file is unreadable.
+// Times are time.time() epoch seconds from the one client process: t_start before the request, t_first at
+// the first streamed content or reasoning delta (null when none came), t_end after the stream ends, on
+// error too. They are kept as the exact decimal the line wrote; wall-clock time is not monotonic, so only
+// differences between lines of one run mean anything.
+
+data gpu_bench_request_v4_schema: NonEmptyStr = "gpu-bench/request/v4" as NonEmptyStr
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc-private/blob/bc50f631d0cdf65b953ccf69cd3b69802277107d/tools/gpu-bench/longctx.py" as NonEmptyStr
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gpu_bench.request_v4",
+      decl_name: "gpu_bench_request_v4_schema",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data gpu_bench_request_v4_schema_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+type GpuBenchRequestV4 {
+  run: String
+  phase: GpuBenchPhase
+  round: Nat
+  n_active: Nat
+  retained: Nat
+  session: Nat
+  max_tokens: TokenCount
+  delta_tokens: TokenCount
+  delta_words: Nat
+  tokens_per_word_milli: Nat?
+  delta_sha256: Sha256Digest?
+  messages_sha256: Sha256Digest
+  t_start: ExactDecimal
+  t_first: ExactDecimal?
+  t_end: ExactDecimal
+  prompt_tokens: TokenCount?
+  completion_tokens: TokenCount?
+  cached_tokens: TokenCount?
+  status: GpuBenchRequestStatus
+  engine: V4EngineCounters
+}
+
+type V4EngineCounters {
+  cpu_usage_start: Microsecond?
+  cpu_usage_end: Microsecond?
+  memory_current_start: ByteSize?
+  memory_current_end: ByteSize?
+  memory_peak: ByteSize?
+}
+
+type GpuBenchRequestV4Read
+  = GpuBenchRequestV4Read { record: GpuBenchRequestV4 }
+  | GpuBenchRequestV4Unreadable { cause: NonEmptyStr }
+
+type GpuBenchRequestV4Stream
+  = GpuBenchRequestV4Parsed { records: List<GpuBenchRequestV4> }
+  | GpuBenchRequestV4StreamUnreadable { line: Nat, cause: NonEmptyStr }
+
+fn refused(cause: String) -> NonEmptyStr {
+  cause as NonEmptyStr
+}
+
+// ── MEMBER GROUPS, each read whole or refused with the member that failed ─────────────────────
+
+type V4Head {
+  run: String
+  phase: GpuBenchPhase
+  round: Nat
+  n_active: Nat
+  retained: Nat
+  session: Nat
+  max_tokens: TokenCount
+  delta_tokens: TokenCount
+  delta_words: Nat
+  tokens_per_word_milli: Nat?
+}
+
+type V4HeadRead
+  = V4HeadRead { head: V4Head }
+  | V4HeadUnreadable { cause: NonEmptyStr }
+
+type NatMemberRead
+  = NatMemberRead { value: Nat }
+  | NatMemberUnreadable { cause: NonEmptyStr }
+
+fn required_nat(obj: JsonValue, key: String) -> NatMemberRead {
+  match json_field_nat(obj: obj, key: key) {
+    FieldAbsent => NatMemberUnreadable { cause: refused(cause: string_concat_join(fields: [key, " member absent"], separator: "")) }
+    FieldMalformed { cause: c } => NatMemberUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: n } => NatMemberRead { value: n }
+  }
+}
+
+fn v4_head(obj: JsonValue) -> V4HeadRead {
+  match json_field_string(obj: obj, key: "run") {
+    FieldAbsent => V4HeadUnreadable { cause: "run member absent" as NonEmptyStr }
+    FieldMalformed { cause: c } => V4HeadUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: run } => match json_field_string(obj: obj, key: "phase") {
+      FieldAbsent => V4HeadUnreadable { cause: "phase member absent" as NonEmptyStr }
+      FieldMalformed { cause: c } => V4HeadUnreadable { cause: c as NonEmptyStr }
+      FieldRead { value: phase_wire } => match gpu_bench_phase_of_wire(s: phase_wire) {
+        Absent => V4HeadUnreadable { cause: "phase is not short, prime, or warm" as NonEmptyStr }
+        Present { value: phase } => match required_nat(obj: obj, key: "round") {
+          NatMemberUnreadable { cause: c } => V4HeadUnreadable { cause: c }
+          NatMemberRead { value: round } => match required_nat(obj: obj, key: "n_active") {
+            NatMemberUnreadable { cause: c } => V4HeadUnreadable { cause: c }
+            NatMemberRead { value: n_active } => match required_nat(obj: obj, key: "retained") {
+              NatMemberUnreadable { cause: c } => V4HeadUnreadable { cause: c }
+              NatMemberRead { value: retained } => match required_nat(obj: obj, key: "session") {
+                NatMemberUnreadable { cause: c } => V4HeadUnreadable { cause: c }
+                NatMemberRead { value: session } => match required_nat(obj: obj, key: "max_tokens") {
+                  NatMemberUnreadable { cause: c } => V4HeadUnreadable { cause: c }
+                  NatMemberRead { value: max_tokens } => match required_nat(obj: obj, key: "delta_tokens") {
+                    NatMemberUnreadable { cause: c } => V4HeadUnreadable { cause: c }
+                    NatMemberRead { value: delta_tokens } => match required_nat(obj: obj, key: "delta_words") {
+                      NatMemberUnreadable { cause: c } => V4HeadUnreadable { cause: c }
+                      NatMemberRead { value: delta_words } => match json_field_nat(obj: obj, key: "tokens_per_word_milli") {
+                        FieldMalformed { cause: c } => V4HeadUnreadable { cause: c as NonEmptyStr }
+                        FieldAbsent => V4HeadRead { head: V4Head { run: run, phase: phase, round: round, n_active: n_active, retained: retained, session: session, max_tokens: token_count(count: max_tokens), delta_tokens: token_count(count: delta_tokens), delta_words: delta_words, tokens_per_word_milli: none } }
+                        FieldRead { value: tpw } => V4HeadRead { head: V4Head { run: run, phase: phase, round: round, n_active: n_active, retained: retained, session: session, max_tokens: token_count(count: max_tokens), delta_tokens: token_count(count: delta_tokens), delta_words: delta_words, tokens_per_word_milli: Present { value: tpw } } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+type DigestMemberRead
+  = DigestMemberRead { value: Sha256Digest? }
+  | DigestMemberUnreadable { cause: NonEmptyStr }
+
+fn optional_digest(obj: JsonValue, key: String) -> DigestMemberRead {
+  match json_field_string(obj: obj, key: key) {
+    FieldAbsent => DigestMemberRead { value: none }
+    FieldMalformed { cause: c } => DigestMemberUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: hex } => match sha256_hex_digest(hex: hex) {
+      Present { value: d } => DigestMemberRead { value: Present { value: d } }
+      Absent => DigestMemberUnreadable { cause: refused(cause: string_concat_join(fields: [key, " is not 64 lower-case hex digits"], separator: "")) }
+    }
+  }
+}
+
+type V4Digests {
+  delta_sha256: Sha256Digest?
+  messages_sha256: Sha256Digest
+}
+
+type V4DigestsRead
+  = V4DigestsRead { digests: V4Digests }
+  | V4DigestsUnreadable { cause: NonEmptyStr }
+
+fn v4_digests(obj: JsonValue) -> V4DigestsRead {
+  match optional_digest(obj: obj, key: "delta_sha256") {
+    DigestMemberUnreadable { cause: c } => V4DigestsUnreadable { cause: c }
+    DigestMemberRead { value: delta } => match optional_digest(obj: obj, key: "messages_sha256") {
+      DigestMemberUnreadable { cause: c } => V4DigestsUnreadable { cause: c }
+      DigestMemberRead { value: Absent } => V4DigestsUnreadable { cause: "messages_sha256 member absent" as NonEmptyStr }
+      DigestMemberRead { value: Present { value: m } } => V4DigestsRead { digests: V4Digests { delta_sha256: delta, messages_sha256: m } }
+    }
+  }
+}
+
+type V4Tokens {
+  prompt_tokens: TokenCount?
+  completion_tokens: TokenCount?
+  cached_tokens: TokenCount?
+}
+
+type V4TokensRead
+  = V4TokensRead { tokens: V4Tokens }
+  | V4TokensUnreadable { cause: NonEmptyStr }
+
+fn v4_tokens(obj: JsonValue) -> V4TokensRead {
+  match gpu_bench_optional_token_count(obj: obj, key: "prompt_tokens") {
+    GpuBenchOptionalTokenUnreadable { cause: c } => V4TokensUnreadable { cause: c }
+    GpuBenchOptionalTokenRead { value: p } => match gpu_bench_optional_token_count(obj: obj, key: "completion_tokens") {
+      GpuBenchOptionalTokenUnreadable { cause: c } => V4TokensUnreadable { cause: c }
+      GpuBenchOptionalTokenRead { value: c } => match gpu_bench_optional_token_count(obj: obj, key: "cached_tokens") {
+        GpuBenchOptionalTokenUnreadable { cause: k } => V4TokensUnreadable { cause: k }
+        GpuBenchOptionalTokenRead { value: k } => V4TokensRead { tokens: V4Tokens { prompt_tokens: p, completion_tokens: c, cached_tokens: k } }
+      }
+    }
+  }
+}
+
+type EpochSecondsRead
+  = EpochSecondsRead { value: ExactDecimal? }
+  | EpochSecondsUnreadable { cause: NonEmptyStr }
+
+fn epoch_seconds(obj: JsonValue, key: String) -> EpochSecondsRead {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => EpochSecondsRead { value: none }
+    FieldMalformed { cause: c } => EpochSecondsUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: v } => match v {
+      JsonNull => EpochSecondsRead { value: none }
+      JsonNumber { lexeme: lx } => match read_json_number(lexeme: lx) {
+        JsonNumberExact { value: d } => EpochSecondsRead { value: Present { value: d } }
+        JsonNumberOutsideExactFragment { lexeme: _, refusal: r } => EpochSecondsUnreadable { cause: json_number_fragment_refusal_text(r: r) }
+      }
+      JsonBool { value: _ } => EpochSecondsUnreadable { cause: refused(cause: string_concat_join(fields: [key, " is a bool where epoch seconds were expected"], separator: "")) }
+      JsonString { value: _ } => EpochSecondsUnreadable { cause: refused(cause: string_concat_join(fields: [key, " is a string where epoch seconds were expected"], separator: "")) }
+      JsonArray { elements: _ } => EpochSecondsUnreadable { cause: refused(cause: string_concat_join(fields: [key, " is an array where epoch seconds were expected"], separator: "")) }
+      JsonObject { members: _ } => EpochSecondsUnreadable { cause: refused(cause: string_concat_join(fields: [key, " is an object where epoch seconds were expected"], separator: "")) }
+    }
+  }
+}
+
+type V4Times {
+  t_start: ExactDecimal
+  t_first: ExactDecimal?
+  t_end: ExactDecimal
+}
+
+type V4TimesRead
+  = V4TimesRead { times: V4Times }
+  | V4TimesUnreadable { cause: NonEmptyStr }
+
+fn v4_times(obj: JsonValue) -> V4TimesRead {
+  match epoch_seconds(obj: obj, key: "t_start") {
+    EpochSecondsUnreadable { cause: c } => V4TimesUnreadable { cause: c }
+    EpochSecondsRead { value: Absent } => V4TimesUnreadable { cause: "t_start member absent" as NonEmptyStr }
+    EpochSecondsRead { value: Present { value: s } } => match epoch_seconds(obj: obj, key: "t_end") {
+      EpochSecondsUnreadable { cause: c } => V4TimesUnreadable { cause: c }
+      EpochSecondsRead { value: Absent } => V4TimesUnreadable { cause: "t_end member absent" as NonEmptyStr }
+      EpochSecondsRead { value: Present { value: e } } => match epoch_seconds(obj: obj, key: "t_first") {
+        EpochSecondsUnreadable { cause: c } => V4TimesUnreadable { cause: c }
+        EpochSecondsRead { value: f } => V4TimesRead { times: V4Times { t_start: s, t_first: f, t_end: e } }
+      }
+    }
+  }
+}
+
+type V4StatusRead
+  = V4StatusRead { status: GpuBenchRequestStatus }
+  | V4StatusUnreadable { cause: NonEmptyStr }
+
+fn v4_status(obj: JsonValue) -> V4StatusRead {
+  match json_field_string(obj: obj, key: "status") {
+    FieldAbsent => V4StatusUnreadable { cause: "status member absent" as NonEmptyStr }
+    FieldMalformed { cause: c } => V4StatusUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: w } =>
+      if w == "ok" {
+        V4StatusRead { status: GpuBenchRequestOk }
+      } else if w == "error" {
+        match json_field_string(obj: obj, key: "error") {
+          FieldMalformed { cause: c } => V4StatusUnreadable { cause: c as NonEmptyStr }
+          FieldAbsent => V4StatusRead { status: GpuBenchRequestError { detail: Absent } }
+          FieldRead { value: e } => V4StatusRead { status: GpuBenchRequestError { detail: Present { value: e } } }
+        }
+      } else {
+        V4StatusUnreadable { cause: "status is not ok or error" as NonEmptyStr }
+      }
+  }
+}
+
+type V4EngineRead
+  = V4EngineRead { counters: V4EngineCounters }
+  | V4EngineUnreadable { cause: NonEmptyStr }
+
+type OptionalNatRead
+  = OptionalNatRead { value: Nat? }
+  | OptionalNatUnreadable { cause: NonEmptyStr }
+
+fn optional_nat(obj: JsonValue, key: String) -> OptionalNatRead {
+  match json_field_nat(obj: obj, key: key) {
+    FieldAbsent => OptionalNatRead { value: none }
+    FieldMalformed { cause: c } => OptionalNatUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: n } => OptionalNatRead { value: Present { value: n } }
+  }
+}
+
+fn as_micros(v: Nat?) -> Microsecond? {
+  match v { Present { value: n } => Present { value: microsecond(count: n) }, Absent => none }
+}
+
+fn as_bytes(v: Nat?) -> ByteSize? {
+  match v { Present { value: n } => Present { value: byte_size(count: n) }, Absent => none }
+}
+
+fn v4_engine(obj: JsonValue) -> V4EngineRead {
+  match optional_nat(obj: obj, key: "engine_cpu_usage_usec_start") {
+    OptionalNatUnreadable { cause: c } => V4EngineUnreadable { cause: c }
+    OptionalNatRead { value: cs } => match optional_nat(obj: obj, key: "engine_cpu_usage_usec_end") {
+      OptionalNatUnreadable { cause: c } => V4EngineUnreadable { cause: c }
+      OptionalNatRead { value: ce } => match optional_nat(obj: obj, key: "engine_memory_current_start") {
+        OptionalNatUnreadable { cause: c } => V4EngineUnreadable { cause: c }
+        OptionalNatRead { value: ms } => match optional_nat(obj: obj, key: "engine_memory_current_end") {
+          OptionalNatUnreadable { cause: c } => V4EngineUnreadable { cause: c }
+          OptionalNatRead { value: me } => match optional_nat(obj: obj, key: "engine_memory_peak") {
+            OptionalNatUnreadable { cause: c } => V4EngineUnreadable { cause: c }
+            OptionalNatRead { value: mp } => V4EngineRead {
+              counters: V4EngineCounters { cpu_usage_start: as_micros(v: cs), cpu_usage_end: as_micros(v: ce), memory_current_start: as_bytes(v: ms), memory_current_end: as_bytes(v: me), memory_peak: as_bytes(v: mp) }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn gpu_bench_request_v4_from_json(obj: JsonValue) -> GpuBenchRequestV4Read {
+  match json_field_string(obj: obj, key: "schema") {
+    FieldAbsent => GpuBenchRequestV4Unreadable { cause: "schema member absent" as NonEmptyStr }
+    FieldMalformed { cause: c } => GpuBenchRequestV4Unreadable { cause: c as NonEmptyStr }
+    FieldRead { value: schema } =>
+      if schema != (gpu_bench_request_v4_schema as String) {
+        GpuBenchRequestV4Unreadable { cause: "schema is not gpu-bench/request/v4" as NonEmptyStr }
+      } else {
+        match v4_head(obj: obj) {
+          V4HeadUnreadable { cause: c } => GpuBenchRequestV4Unreadable { cause: c }
+          V4HeadRead { head: h } => match v4_digests(obj: obj) {
+            V4DigestsUnreadable { cause: c } => GpuBenchRequestV4Unreadable { cause: c }
+            V4DigestsRead { digests: d } => match v4_times(obj: obj) {
+              V4TimesUnreadable { cause: c } => GpuBenchRequestV4Unreadable { cause: c }
+              V4TimesRead { times: t } => match v4_tokens(obj: obj) {
+                V4TokensUnreadable { cause: c } => GpuBenchRequestV4Unreadable { cause: c }
+                V4TokensRead { tokens: k } => match v4_status(obj: obj) {
+                  V4StatusUnreadable { cause: c } => GpuBenchRequestV4Unreadable { cause: c }
+                  V4StatusRead { status: st } => match v4_engine(obj: obj) {
+                  V4EngineUnreadable { cause: c } => GpuBenchRequestV4Unreadable { cause: c }
+                  V4EngineRead { counters: eng } => GpuBenchRequestV4Read {
+                    record: GpuBenchRequestV4 {
+                      run: h.run,
+                      phase: h.phase,
+                      round: h.round,
+                      n_active: h.n_active,
+                      retained: h.retained,
+                      session: h.session,
+                      max_tokens: h.max_tokens,
+                      delta_tokens: h.delta_tokens,
+                      delta_words: h.delta_words,
+                      tokens_per_word_milli: h.tokens_per_word_milli,
+                      delta_sha256: d.delta_sha256,
+                      messages_sha256: d.messages_sha256,
+                      t_start: t.t_start,
+                      t_first: t.t_first,
+                      t_end: t.t_end,
+                      prompt_tokens: k.prompt_tokens,
+                      completion_tokens: k.completion_tokens,
+                      cached_tokens: k.cached_tokens,
+                      status: st,
+                      engine: eng,
+                    }
+                  }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn gpu_bench_request_v4_from_line(line: String) -> GpuBenchRequestV4Read {
+  match parse_json_document(s: line) {
+    JsonDocumentUnreadable { gap: _ } => GpuBenchRequestV4Unreadable { cause: "line is not a JSON document" as NonEmptyStr }
+    JsonDocumentParsed { value: v } => gpu_bench_request_v4_from_json(obj: v)
+  }
+}
+
+type GpuBenchV4ParseFold
+  = GpuBenchV4ParseOpen { records: List<GpuBenchRequestV4>, next_line: Nat }
+  | GpuBenchV4ParseRefused { line: Nat, cause: NonEmptyStr }
+
+// Blank lines are skipped and counted, so a refusal names the file line it stopped at.
+fn gpu_bench_parse_v4_jsonl(text: String) -> GpuBenchRequestV4Stream {
+  let state = fold(
+    split(s: text, delimiter: "\n"),
+    init: GpuBenchV4ParseOpen { records: [], next_line: 1 },
+    f: fn(acc, line) {
+      match acc {
+        GpuBenchV4ParseRefused { line: n, cause: c } => GpuBenchV4ParseRefused { line: n, cause: c }
+        GpuBenchV4ParseOpen { records: rs, next_line: n } =>
+          if line == "" {
+            GpuBenchV4ParseOpen { records: rs, next_line: n + 1 }
+          } else {
+            match gpu_bench_request_v4_from_line(line: line) {
+              GpuBenchRequestV4Unreadable { cause: c } => GpuBenchV4ParseRefused { line: n, cause: c }
+              GpuBenchRequestV4Read { record: r } => GpuBenchV4ParseOpen { records: rs |> list_push(r), next_line: n + 1 }
+            }
+          }
+      }
+    },
+  )
+  match state {
+    GpuBenchV4ParseRefused { line: n, cause: c } => GpuBenchRequestV4StreamUnreadable { line: n, cause: c }
+    GpuBenchV4ParseOpen { records: rs, next_line: _ } => GpuBenchRequestV4Parsed { records: rs }
+  }
+}
