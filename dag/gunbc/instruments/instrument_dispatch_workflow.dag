@@ -941,48 +941,72 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     // PROVENANCE (side-chat review at 3c78dc9fa49, Q3 blocker, 2026-10-25): the repo-wide artifacts
     // endpoint filters by NAME only -- a DIFFERENT workflow could publish a same-named artifact whose
     // bytes satisfy the reader, and the fast path would download it. So the fast path PROVES the
-    // producing run's workflow identity per candidate BEFORE any download: the run's workflow.path
-    // must equal this workflow's file -- the same identity the fallback path enforces structurally by
-    // enumerating only this workflow's runs. Cached per run id; an identity check that errors is
-    // False: an unverifiable candidate is not ours (fail-closed).
+    // producing run's workflow identity per candidate BEFORE any download: the run's file path must
+    // equal this workflow's file -- the same identity the fallback path enforces structurally by
+    // enumerating only this workflow's runs. THE SHAPE IS THE RECORDED ONE, not an invented one
+    // (fleet defect 2026-10-26, wm707 kit-e2e shard 40290883213 + shards 40290874699/40290877223/
+    // 40290880333): the single-run endpoint /actions/runs/<id> returns 'workflow': null and carries
+    // the file at the TOP-LEVEL 'path' key ('.github/workflows/<file>'), verified against recorded
+    // responses runs/40219194854 (this workflow) and runs/40307182339 (heal.yml, must reject). The
+    // first version probed workflow.path from a hand-built fixture shape the API never emits, so
+    // EVERY real candidate failed identity and staging silently staged zero receipts. Cached per run
+    // id; an identity check that errors is False: an unverifiable candidate is not ours (fail-closed).
     "_workflow_cache = {}\n",
+    "_workflow_path_seen = {}\n",
     "def run_produced_by_this_workflow(rid):\n",
     "    if rid not in _workflow_cache:\n",
     "        try:\n",
     "            w = api('/repos/' + REPO + '/actions/runs/' + str(rid))\n",
-    "            _workflow_cache[rid] = (w.get('workflow') or {}).get('path') == 'workflows/' + WORKFLOW_FILE\n",
+    "            _workflow_path_seen[rid] = str(w.get('path'))\n",
+    "            _workflow_cache[rid] = w.get('path') == '.github/workflows/' + WORKFLOW_FILE\n",
     "        except urllib.error.HTTPError:\n",
+    "            _workflow_path_seen[rid] = 'HTTPError'\n",
     "            _workflow_cache[rid] = False\n",
     "    return _workflow_cache[rid]\n",
     "def artifact_candidates(role, head_ok):\n",
     "    target = role_artifact_name(role)\n",
     "    out = []\n",
+    // STAGER VERBOSITY (fleet defect 2026-10-26, wm707): when zero candidates staged, the step died
+    // silent (9s, exit 0) and the refusal surfaced only later as 'no base receipt'. Every examined
+    // candidate now prints its run, created_at, artifact id and the decision -- including WHY a
+    // run's workflow identity does not match this workflow (recorded runs/<id> path vs expected).
+    "    def _decide(tag, rid, created, aid, verdict, why):\n",
+    "        print('stager: ' + tag + ' run=' + str(rid) + ' created=' + str(created) + ' artifact=' + str(aid) + ' -> ' + str(verdict) + (' (' + why + ')' if why else ''))\n",
     "    try:\n",
     "        for a in api('/repos/' + REPO + '/actions/artifacts?name=' + target + '&per_page=100')['artifacts']:\n",
     "            wr = a.get('workflow_run') or {}\n",
     "            rid = wr.get('id')\n",
     "            if rid is None or rid == RUN:\n",
+    "                _decide('fast', rid, a.get('created_at'), a.get('id'), 'skip', 'own run or missing run id')\n",
     "                continue\n",
     "            if head_ok and (wr.get('head_sha') or '') != HEAD:\n",
+    "                _decide('fast', rid, a.get('created_at'), a.get('id'), 'skip', 'head_sha != HEAD')\n",
     "                continue\n",
     "            if not run_produced_by_this_workflow(rid):\n",
+    "                _decide('fast', rid, a.get('created_at'), a.get('id'), 'reject', 'producing-run path ' + str(_workflow_path_seen.get(rid)) + ' is not .github/workflows/' + WORKFLOW_FILE)\n",
     "                continue\n",
+    "            _decide('fast', rid, a.get('created_at'), a.get('id'), 'accept', 'identity proven')\n",
     "            out.append((str(a.get('created_at') or ''), rid))\n",
     "        out.sort(reverse=True)\n",
     "        return out\n",
     "    except urllib.error.HTTPError:\n",
-    "        pass\n",
+    "        print('stager: fast path raised HTTPError; falling back to per-run enumeration for ' + target)\n",
     "    for w in api('/repos/' + REPO + '/actions/workflows/' + WORKFLOW_FILE + '/runs?per_page=100')['workflow_runs']:\n",
     "        rid = w.get('id')\n",
     "        if rid is None or rid == RUN:\n",
+    "            _decide('fallback', rid, w.get('created_at'), None, 'skip', 'own run or missing run id')\n",
     "            continue\n",
     "        if head_ok and w.get('head_sha') != HEAD:\n",
+    "            _decide('fallback', rid, w.get('created_at'), None, 'skip', 'head_sha != HEAD')\n",
     "            continue\n",
     "        try:\n",
     "            arts = api('/repos/' + REPO + '/actions/runs/' + str(rid) + '/artifacts')['artifacts']\n",
     "        except urllib.error.HTTPError:\n",
+    "            _decide('fallback', rid, w.get('created_at'), None, 'skip', 'artifact listing HTTPError')\n",
     "            continue\n",
-    "        if any(a.get('name') == target and not a.get('expired') for a in arts):\n",
+    "        _hit = any(a.get('name') == target and not a.get('expired') for a in arts)\n",
+    "        _decide('fallback', rid, w.get('created_at'), None, 'accept' if _hit else 'skip', 'named non-expired receipt present' if _hit else 'no non-expired ' + target)\n",
+    "        if _hit:\n",
     "            out.append((str(w.get('created_at') or ''), rid))\n",
     "    out.sort(reverse=True)\n",
     "    return out\n",

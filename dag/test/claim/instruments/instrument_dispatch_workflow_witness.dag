@@ -376,13 +376,16 @@ test fn no_upper_edge_rung_drop_is_restored_holds() -> Bool {
 // The repo-wide artifacts endpoint filters by NAME only, so a different workflow's same-named
 // artifact would otherwise reach the reader's staging dir -- fail-open provenance. The emitted
 // transport must therefore prove the producing run's identity per candidate before download
-// (runs/<id> workflow.path == this workflow file, cached, errors closed), exactly what the fallback
-// path gets structurally by enumerating only this workflow's runs. A transport that drops the proof
-// REDs here; the budget for candidate attempts is the declared row, never an inline literal.
+// (runs/<id> TOP-LEVEL path == '.github/workflows/' + this workflow file -- the recorded response
+// shape: the single-run endpoint returns workflow: null; the earlier probe read workflow.path from
+// an invented fixture shape and rejected every real candidate, fleet defect 2026-10-26; cached,
+// errors closed), exactly what the fallback path gets structurally by enumerating only this
+// workflow's runs. A transport that drops the proof REDs here; the budget for candidate attempts
+// is the declared row, never an inline literal.
 test fn the_transport_proves_the_producing_workflow_before_download_holds() -> Bool {
   let t = generated_text()
   contains(t, "def run_produced_by_this_workflow(rid):")
-    && contains(t, "'workflows/' + WORKFLOW_FILE")
+    && contains(t, "'.github/workflows/' + WORKFLOW_FILE")
     && contains(t, "if not run_produced_by_this_workflow(rid):")
     && contains(t, "artifact_candidates('base', False)[:16]")
     && (instrument_dispatch_base_probe_budget == 16)
