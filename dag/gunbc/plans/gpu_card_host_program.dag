@@ -145,7 +145,7 @@ data gpu_card_graph_rows: List<GpuCardGraphRow> = [
     done: "every header maps to a zone, cited or typed as a read obligation.", needs: [], standing: GcUnstarted
   },
   GpuCardGraphRow {
-    id: GcN6, what: "Placement: card residence by slot, fan residence and topology by header, and the derived zone reach.",
+    id: GcN6, what: "Placement: card residence by slot and GPU position within a board, fan residence and topology by header, and the derived zone reach down to GPU position.",
     home: GcExtends { symbol: "gunbc.fleet.fleet_fan_wiring::InstalledFanModelStanding" },
     done: "an adjacent pair of passive cards and an unmapped header each refuse in a witness.", needs: [GcN0, GcN3, GcN5], standing: GcUnstarted
   },
@@ -155,7 +155,7 @@ data gpu_card_graph_rows: List<GpuCardGraphRow> = [
     done: "each active model has a receipt for every phase, including whole-host wall power.", needs: [GcN0, GcN1], standing: GcUnstarted
   },
   GpuCardGraphRow {
-    id: GcN8, what: "The power-state machine and a per-model cap and park selection through std.decision.",
+    id: GcN8, what: "The power-state machine and a cap and park selection through std.decision, per model and per GPU position, since a position that throttles under load may need a lower cap than its siblings.",
     home: GcCreates { module: "gunbc.serving.gpu_power_state_policy" },
     done: "each active model's policy is a selection receipt, and a cap outside the device range refuses.", needs: [GcN1, GcN3, GcN7], standing: GcUnstarted
   },
@@ -228,7 +228,7 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
       header: t3(a: "reading (A16, one GPU unless stated)", b: "figure", c: "standing"),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        t3(a: "no process", b: "P8, 15.6 W, 210 / 405 MHz", c: "measured"),
+        t3(a: "no process", b: "P8, 13.6–15.6 W, 210 / 405 MHz", c: "measured, range across GPUs"),
         t3(a: "bare CUDA context, no work", b: "P0, 27.0 W, 1755 / 6251 MHz", c: "measured. This happens with any context, not only Strata's"),
         t3(a: "Strata loaded, idle", b: "P0, 27.0 W", c: "measured"),
         t3(a: "Strata loaded, memory clock locked to its minimum", b: "P8, about 12.5–15.6 W, warm state retained, wake about 1–2 s", c: "measured. The wake time is approximate"),
@@ -238,8 +238,9 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
         t3(a: "warm decode bottleneck, 16 GB engine", b: "about 60% memory bandwidth, about 38% SM; PCIe about 0.5 GB/s average with 7 GB/s bursts", c: "measured, one sensitivity run"),
         t3(a: "lid off", b: "87–92 °C at idle, then Xid 154 on six GPUs", c: "incident"),
         t3(a: "two boards in adjacent slots", b: "96–99 °C under load at minimum clocks; one GPU dropped off the bus", c: "incident"),
-        t3(a: "SLOT2 + SLOT6, Ada removed, 3 × 120 mm on FANB", b: "48–81 °C", c: "measured, **not yet at full load**"),
-        t3(a: "RTX 2000 Ada, idle with the engine loaded", b: "about 7–8 W per card; it downclocks without help", c: "measured"),
+        t3(a: "SLOT2 + SLOT6, Ada removed, 3 × 120 mm on FANB, idle and partial load", b: "48–81 °C", c: "measured"),
+        t3(a: "same placement, full load, FANB at 100%", b: "the first GPU of each board (bus 85/86 and c5/c6) reaches 87–88 °C with SW thermal slowdown (210–585 MHz); the other GPUs stay at 56–78 °C", c: "measured. Heat is not uniform within a board: it depends on the GPU's position"),
+        t3(a: "RTX 2000 Ada, idle with the engine loaded", b: "4.1–4.2 W per card; it downclocks without help", c: "measured"),
       ]
     },
     p(text: "The two incidents are what force slot spacing and fan zones into the model. Adjacency is a placement fact that predicted a failure, and the lid-off Xid shows the harm of running a passive card under a zone that does not follow its temperature. Each incident files or updates a `gunbc.recurring_failure_mode` row (DESIGN §4b). The receipts for the other cards (A2, T10, PRO 6000 Max-Q and Workstation, R9700) do not exist yet; section 6 is the instrument that produces them."),
@@ -268,7 +269,7 @@ fn gpu_card_host_program_body() -> List<MarkdownBlock> {
       li(text: "An identity row for the H11 host. Under the 2026-10-07 rule it is opaque, not \"h11\"."),
       li(text: "**Card residence**: which card (by serial, with its catalog row) sits in which slot of which host. This extends `gunbc.fleet.fleet_physical_inventory`, which already binds assets to hosts. Adjacency is derived from the board's slot order, never authored, so that \"two passive boards in adjacent slots\" is a refusable placement and not something that is only discovered later."),
       li(text: "**Fan residence** extends `gunbc.fleet.fleet_fan_wiring`: each header's fans, how many, and their topology (direct, splitter or daisy chain). The tach expectation follows from the topology, so a chain is rotation expected with tach unreadable, which is a different state from a dead fan."),
-      li(text: "**Zone reach** is derived: header to zone from the board, joined with fan residence. The answer is \"zone 1 on this host drives these fans, and they cool these slots\". The last part, which fans cool which slots, is an operator declaration with its own standing, because nothing reads airflow."),
+      li(text: "**Zone reach** is derived: header to zone from the board, joined with fan residence. The answer is \"zone 1 on this host drives these fans, and they cool these slots\". Reach resolves to **a GPU position inside a board, not only to a slot**: at full load the first GPU of each A16 board throttles while its siblings on the same board stay 10–30 °C cooler, so a zone that follows only a per-slot or per-host maximum responds to the wrong population. The last part, which fans cool which positions, is an operator declaration with its own standing, because nothing reads airflow."),
     ]),
     h3(text: "5.3 Card power states (gunbc.serving): a state machine, not a set of constants"),
     TableBlock {
