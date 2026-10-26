@@ -162,7 +162,7 @@ fn lil_serve_launch_argv(launch: LilServeLaunch) -> List<String> {
   ]
   let env_spelled = list_flat_map(
     xs: launch.environment,
-    f: fn(e: LilServeEnvironmentEntry) -> List<String> { ["--env" as String, lil_serve_environment_wire(e: e)] },
+    f: e => lil_serve_environment_argv(e: e),
   )
   let passthrough_head = [
     "--" as String,
