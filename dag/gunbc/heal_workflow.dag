@@ -1,6 +1,6 @@
 module gunbc.heal_workflow
 
-import extdeps.github.expressions { Expression, ContextAccess, Inputs, Github, LogicalOr }
+import extdeps.github.expressions { Expression, ContextAccess, Inputs, Github, LogicalOr, interpolate }
 
 
 import std.types { Bool, Int, List, String }
@@ -123,6 +123,17 @@ data heal_dispatch_base_sha_input: DispatchInput = DispatchInput {
 // a different purpose; the round's seed needs a COMMIT and must not read a name another step owns.
 data heal_round_base_mirror_env: String = "HEAL_BASE_MIRROR_COMMIT"
 
+// THE BASE COMMIT, IMMUTABLE, AS A TYPED EXPRESSION NODE -- not as expression text in a string.
+// Which commit seeds the round is business policy (DESIGN section 3), so it is a fact in the model
+// and `interpolate` is the one handler that spells it for GitHub's transport. It reads `base.sha`,
+// never `base.ref`: a branch is a moving name two remotes can disagree about, and a receipt naming
+// such a pick "the base commit" would record a fact it did not establish (DESIGN section 5, no
+// plausible output is fabricated). The dispatch input is declared above as `base_sha`.
+data heal_base_sha_read: String = interpolate(expression: LogicalOr {
+  left: ContextAccess { context: Github, path: ["event", "pull_request", "base", "sha"] },
+  right: ContextAccess { context: Inputs, path: ["base_sha"] }
+})
+
 data heal_workflow_name: String = "heal"
 
 data heal_workflow_job_id: String = "heal-generated-artifacts"
@@ -201,7 +212,7 @@ fn heal_stage0_round_step() -> Step {
     shell: none,
     env: Present {
       value: [
-        kv(key: heal_round_base_mirror_env as String, value: yaml_string(s: "${{ github.event.pull_request.base.sha || inputs.base_sha }}"))
+        kv(key: heal_round_base_mirror_env as String, value: yaml_string(s: heal_base_sha_read))
       ]
     },
     working_directory: none,
