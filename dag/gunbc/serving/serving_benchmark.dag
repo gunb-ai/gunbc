@@ -1,0 +1,117 @@
+module gunbc.serving.serving_benchmark
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, Millisecond, millisecond, BasisPoint, basis_point }
+
+// THE SERVING BENCHMARK, ONE VERSION PER WORKLOAD AND METRIC CONTRACT (work item
+// node://adhoc-ffb4b5c7-4a5; plan gunbc.plans.serving_fleet_program row E0). It replaces the hand-run
+// stage scripts and the archived strata_bench.py of session calm-crab-645 (gunbc-private#239), whose
+// rows each defined their own workload and could not be compared without reading the script that made
+// them.
+//
+// A VERSION IS A CONTRACT, AND ITS NAME IS BOUND TO IT. Every run receipt
+// (gunbc.serving.serving_benchmark_run_receipt) carries the version value it was admitted against, and
+// admission refuses a run whose rows do not inhabit that version. Changing any field below is a
+// different benchmark under a different name (DESIGN section 3, meaning fork): a receipt of
+// serving-benchmark/1 and one of a successor are never compared as one quantity.
+//
+// THE WORKLOAD IS THE GPU-BENCH KIT'S SHAPE (extdeps.gpu_bench.request_v2): `retained` sessions are
+// primed once, cold, one at a time, and then rounds of `n_active` simultaneous warm follow-ups are run on
+// them, interleaved across the active levels. A warm follow-up appends one tool output of tool_delta
+// tokens to its session and generates up to max_output tokens.
+
+type ServingBenchmarkWorkload {
+  // The retained context each primed session holds: ~199.4k tokens on the Qwen3.8 tokenizer for the
+  // archived ~200k filler (Strata's parked-session log: 199,466 tokens). A prime whose prompt falls
+  // outside retained_context_band of this figure does not inhabit the version.
+  retained_context: TokenCount
+  retained_context_band: BasisPoint
+  tool_delta: TokenCount
+  // The chat template wraps each follow-up in a few tokens of its own; prompt growth beyond
+  // tool_delta by more than this is a different follow-up, not template overhead.
+  tool_delta_template_allowance: TokenCount
+  max_output: TokenCount
+  retained_sessions: Nat
+  active_levels: List<Nat>
+  // Each level's first rounds warm the engine's caches; they must run and succeed like every round, and
+  // no quantity is read from them. rounds_per_level counts the measured rounds after them.
+  warmup_rounds_per_level: Nat
+  rounds_per_level: Nat
+  // Requests of one round are submitted together; a round whose submissions spread wider than this
+  // was serialized somewhere and has no common submission instant.
+  submission_spread_bound: Millisecond
+}
+
+// THE THREE QUANTITIES, NEVER MIXED. Each is computed by its own fold in the run receipt and lands in
+// its own field; none is derived from another.
+//   AggregateEndToEnd: generated tokens of a level's rounds / the sum of their windows, a window running
+//     from the round's common submission to its last completion. It includes queueing, TTFT and the
+//     warm prefill of each tool delta.
+//   DecodeRate: the median over a level's requests of (completion_tokens - 1) / (t_end - t_first).
+//   CompletedTurnsPerHour: completed follow-ups of a level / the sum of its windows, per hour.
+type ServingBenchmarkQuantity
+  = AggregateEndToEnd
+  | DecodeRate
+  | CompletedTurnsPerHour
+
+// THE TELEMETRY EVERY LEVEL OWES. WallPower is the one channel a host may lack a meter for, and its
+// absence is a typed arm on the receipt, never a zero; every other channel is required.
+type ServingTelemetryChannel
+  = GpuPower
+  | GpuClocks
+  | GpuTemperature
+  | GpuClocksEventReasons
+  | GpuPcieLinkAndThroughput
+  | EngineCpuBusyThreads
+  | EngineCgroupMemoryCurrent
+  | WallPower
+
+type ServingBenchmarkVersion {
+  name: NonEmptyStr
+  workload: ServingBenchmarkWorkload
+  quantities: List<ServingBenchmarkQuantity>
+  telemetry: List<ServingTelemetryChannel>
+}
+
+data serving_benchmark_v1: ServingBenchmarkVersion = ServingBenchmarkVersion {
+  name: "serving-benchmark/1" as NonEmptyStr,
+  workload: ServingBenchmarkWorkload {
+    retained_context: token_count(count: 199466),
+    retained_context_band: basis_point(count: 100),
+    tool_delta: token_count(count: 2000),
+    tool_delta_template_allowance: token_count(count: 64),
+    max_output: token_count(count: 1024),
+    retained_sessions: 8,
+    active_levels: [1, 2, 4, 8],
+    warmup_rounds_per_level: 0,
+    rounds_per_level: 2,
+    submission_spread_bound: millisecond(count: 1000),
+  },
+  quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
+  telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+}
+
+// THE SHORT RUN THE OPERATOR ASKED FOR (2026-10-25): the same per-turn workload as serving-benchmark/1
+// -- the 199,466-token retained context, the 2,000-token delta, 1,024 tokens out -- at ONE concurrency
+// point, 4 active sessions, with one warm-up round and two measured rounds, about a fifth of the full
+// run's time on the srv3 pair. It is its own version because it is a different workload: its rows are
+// comparable turn for turn with serving-benchmark/1, and its one level is never read as the full curve or
+// extrapolated to another level.
+data serving_benchmark_short_n4: ServingBenchmarkVersion = ServingBenchmarkVersion {
+  name: "serving-benchmark/short-n4/1" as NonEmptyStr,
+  workload: ServingBenchmarkWorkload {
+    retained_context: token_count(count: 199466),
+    retained_context_band: basis_point(count: 100),
+    tool_delta: token_count(count: 2000),
+    tool_delta_template_allowance: token_count(count: 64),
+    max_output: token_count(count: 1024),
+    retained_sessions: 4,
+    active_levels: [4],
+    warmup_rounds_per_level: 1,
+    rounds_per_level: 2,
+    submission_spread_bound: millisecond(count: 1000),
+  },
+  quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
+  telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+}
