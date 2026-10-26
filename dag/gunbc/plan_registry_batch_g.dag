@@ -31,6 +31,7 @@ import gunbc.plans.fleet_naming_reach_access { fleet_naming_reach_access_plan }
 import gunbc.plans.site_segment_anchor_bmc_reach { site_segment_anchor_bmc_reach_plan }
 import gunbc.plans.boot_origin_bmc_media { boot_origin_bmc_media_plan }
 import gunbc.plans.gpu_card_host_program { gpu_card_host_program_plan }
+import gunbc.plans.logical_work_realization { logical_work_realization_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -62,5 +63,6 @@ data batch_g_plans: List<Plan> = [
   fleet_naming_reach_access_plan,
   site_segment_anchor_bmc_reach_plan,
   boot_origin_bmc_media_plan,
-  gpu_card_host_program_plan
+  gpu_card_host_program_plan,
+  logical_work_realization_plan
 ]
