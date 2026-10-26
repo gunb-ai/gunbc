@@ -21,6 +21,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
 import gunbc.roadmap.roadmap_dispatch_actuator {
   host_exec_argv, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitObservation, AttemptUnitStartRecorded, attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.worker_lifecycle { WorkerProcessExited }
 
 // THE EXIT DRAIN AND THE COLLECTED-WORKER READ, RUN OVER A REAL SPOOL. Each control makes a spool under
@@ -251,7 +252,8 @@ data obligation_exit: String = "wet-node+feedfacefeedface+obligation+0123456789a
 // the orphaned claim to queued, consumes the entry, starts the attempt, and the run adopts and settles.
 test fn a_claimant_killed_at_its_run_bound_is_rescued_by_its_stop_hook_entry() -> Bool {
   let root = fresh_spool(tag: "orphan-b")
-  let hook_renders = match attempt_exit_hook(instance_root: root, node_id: "wet-node", attempt_key: "feedfacefeedface", role: AttemptObligationRole) {
+  let inst = srv1_lab_dashboard_instance()
+  let hook_renders = match attempt_exit_hook(instance_root: root, node_id: "wet-node", attempt_key: "feedfacefeedface", role: AttemptObligationRole, record_owner: inst.directory_owner) {
     AttemptExitHookRendered { exec_line } => string_contains(s: exec_line as String, pattern: "+obligation+") && string_contains(s: exec_line as String, pattern: attempt_exit_inbox_dir(instance_root: root))
     AttemptExitHookRefused { reason: _ } => false
   }
