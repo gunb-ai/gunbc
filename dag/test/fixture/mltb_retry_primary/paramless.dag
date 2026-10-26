@@ -1,0 +1,8 @@
+module test.fixture.mltb_retry_primary.paramless
+
+// THE PARAMLESS PRIMARY of the retry-path pair: a real on-disk module (compile_dag_rust_emit_check
+// resolves a single virtual module against the real corpus, the same reason
+// test.fixture.cross_module_alias_handler.definer is one). It is imported, not declared locally: a local
+// module-scope definition of the same name is refused outright (ImportShadowedByLocalDefinition,
+// v1.core diagnostic_text) before the retry is ever reached.
+type Handler = Int

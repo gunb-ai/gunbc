@@ -65,6 +65,66 @@ test fn a_bare_function_type_alias_binds_and_a_bare_generic_one_refuses_test() -
     && !compile_dag_rust_emit_check(local_list_source(module_leaf: "genalias", body: "type Box<T> = Wrapped { inner: T }\n\nfn keep(b: Box) -> Int { 0 }\n"), "src/mltb_genalias.rs", [], [])
 }
 
+// THE RETRY PATH, DISCRIMINATED (side-chat finding on #15171, 2026-10-26). resolve_paramless_generic_use_decl_with_children
+// is the retry a use site WITH type arguments runs when its primary name lookup landed on a PARAMLESS
+// decl (parameterized_use_site_prefers_parameterized_decl). It asked "is the sibling binding a
+// declaration with TYPE parameters?" with the RAW read b.resolved.params |> count > 0 -- which is also
+// true of a resolved ARROW, whose `params` are the callable's VALUE parameters. A paramless primary
+// binding in front of a same-named DIRECT IMPORT that is a non-generic fn-type alias therefore put the
+// retry on the path that SELECTS the alias: the applied use `Handler<Int>` silently bound the callable
+// instead of keeping the paramless declaration it resolved to.
+//
+// THE PAIR differs only in the SHAPE of the same-named second import. Both arms import the paramless
+// primary FIRST (test.fixture.mltb_retry_primary.paramless: `type Handler = Int`), so the primary lookup
+// lands paramless and the retry fires, then import the sibling: the alias arm imports the fn-type alias
+// (test.fixture.mltb_retry_primary.alias, whose resolved node is an Arrow -- the helper answers []), the
+// control imports a real GENERIC declaration (test.fixture.mltb_retry_primary.generic -- the helper
+// answers [T]). THE PRIMARY IS AN IMPORT, NOT A LOCAL: a module-scope local definition beside a same-named
+// import is refused outright (ImportShadowedByLocalDefinition, v1.core) long before the retry is reached.
+//   ALIAS SIBLING -- the retry must NOT select the Arrow; the use keeps the paramless primary, and the
+//     body's field access on an Int refuses (the emitted-text check fails with an empty expectation list).
+//   GENERIC SIBLING -- the retry fires, reads [T] through the helper, and SELECTS the generic: the field
+//     access type-checks and the arm compiles. This arm is green before AND after the fix -- it goes red
+//     only if the repair silences the retry wholesale instead of routing its one read.
+// THE OBSERVABLE IS BEHAVIOR, not an arity message: the arity rule (type_use_arity_diagnostics) refuses
+// only when the declaration declares > 0 type parameters, so `Handler<Int>` against a paramless primary
+// is silent at the use; what the wrong selection changed, and what the right selection changes back, is
+// which declaration the parameter names -- the callable, or the Int.
+//
+// RED BEFORE THE FIX, GREEN AFTER: measured with each side's own regenerator-built binary (the declared
+// claim_executor --required-regen route, regenerator bootstrapped from main), on this branch's head.
+
+fn retry_pair_source(module_leaf: String, sibling_module: String, body: String) -> String {
+  concat(
+    concat(
+      concat(concat("module mltb.", module_leaf), "\n\nimport std.types { Int }\n\nimport test.fixture.mltb_retry_primary.paramless { Handler }\n\nimport test.fixture.mltb_retry_primary."),
+      concat(sibling_module, concat(" { Handler }\n\n", body))
+    ),
+    ""
+  )
+}
+
+// THE DISCRIMINATING ARM, positive shape: with the fn-type alias sibling, the retry must NOT select the
+// Arrow; the use keeps the paramless Int primary, so arithmetic on the parameter compiles. RED BEFORE
+// THE FIX (the raw read selected the Arrow, `x + 1` refused against a callable), GREEN after routing the
+// filter through the reader.
+test fn a_paramless_primary_in_front_of_a_fn_type_alias_sibling_keeps_the_paramless_declaration_test() -> Bool {
+  compile_dag_rust_emit_check(
+    retry_pair_source("retryalias", "alias", "fn applied(x: Handler<Int>) -> Int { x + 1 }\n"),
+    "src/mltb_retryalias.rs", [], []
+  )
+}
+
+// THE CONTROL: identical except the sibling is a real GENERIC declaration. The retry fires, reads [T]
+// through the helper, and selects it -- the field access on the wrapper type-checks. Green before AND
+// after the fix; it goes red only if the repair silences the retry instead of routing its one read.
+test fn a_paramless_primary_in_front_of_a_generic_sibling_still_selects_it_test() -> Bool {
+  compile_dag_rust_emit_check(
+    retry_pair_source("retrygeneric", "generic", "fn applied(x: Handler<Int>) -> Int { x.inner }\n"),
+    "src/mltb_retrygeneric.rs", [], []
+  )
+}
+
 // PIN, NOT A PASS: the seed still ACCEPTS a kernel list returned where the module's own List<Int> is
 // declared. The return position now binds the local List; what remains is deciding a kernel MINT
 // against a module-local DECLARATION, which needs the kernel-carrier relation (which declaration carries
