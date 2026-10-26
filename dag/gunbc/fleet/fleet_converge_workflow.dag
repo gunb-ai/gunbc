@@ -4158,6 +4158,17 @@ fn fleet_converge_srv1_root_mutation_approval_receipt_upload_step() -> Step {
   }
 }
 
+// THE ROOT-MUTATION JOBS' TOKEN PERMISSIONS: id-token write for the gate's WIF auth, actions read for
+// the receipt downloads from the plan and apply runs, contents read for the checkout. Declaring any
+// permission sets every undeclared one to none, so all three the jobs use are named.
+data fleet_converge_srv1_root_mutation_job_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: Present { value: PermRead },
+  id_token: Present { value: PermWrite },
+}
+
 fn fleet_converge_srv1_root_mutation_approval_steps() -> List<Step> {
   [
     ci_fleet_wif_auth_step(),
@@ -4218,7 +4229,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
         explicit_single: none
       }
     },
-    permissions: none,
+    permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
   }
 }
 
@@ -4332,7 +4343,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
         explicit_single: none
       }
     },
-    permissions: none,
+    permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
   }
 }
 
@@ -4366,7 +4377,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
         explicit_single: none
       }
     },
-    permissions: none,
+    permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
   }
 }
 
