@@ -40,7 +40,7 @@ fn phases() -> List<MarkdownBlock> {
     h2(text: "3. Phases"),
     ul(items: [
       li(text: "**B0. Settle the mtcollins1 media route.** An authenticated read of its VirtualMedia TransferProtocolType allowable values decides whether HTTPS is accepted (work item adhoc-9e4ea90a-fd0). The NFS leg needs a LAN name, not the pinned 192.168.1.201 (work item adhoc-37e2c372-ad5, through the endpoint authority)."),
-      li(text: "**B1. The custom domain**, after gunbc.namecheap.account gunb_ai_nameserver_delegation reaches DelegationObservedInParent: the BootOriginHostnameAllocated arm, with every existing gunb.ai record, which gunbc.namecheap observes today, copied before the move."),
+      li(text: "**B1. The custom domain**, after gunbc.namecheap.account gunb_ai_nameserver_delegation reads DelegationObservedInParent: the BootOriginHostnameAllocated arm, with every existing gunb.ai record, which gunbc.namecheap observes today, copied before the move."),
       li(text: "**B2. Publication and readback** of the runner ISO by digest."),
       li(text: "**B3. The NFS relay** on the segment's selected holder, with the share address resolved through the endpoint authority instead of srv2_lan_ipv4."),
       li(text: "**B4. A boot of mtcollins1** through the relay, with the digest checked."),

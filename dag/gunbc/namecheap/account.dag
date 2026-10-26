@@ -1,6 +1,7 @@
 module gunbc.namecheap.account
 
 import std.types { String, NonEmptyStr, List }
+import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name }
 
 data namecheap_domain_sld: NonEmptyStr = "gunb"
 data namecheap_domain_tld: NonEmptyStr = "ai"
@@ -31,15 +32,44 @@ data namecheap_account_report: NamecheapAccountReport = NamecheapAccountReport {
 // this row, and both require DelegationObservedInParent, never the registrar report alone.
 type RegistrarNameserverSetting
   = RegistrarBasicDns
-  | RegistrarCustomNameservers { nameservers: List<NonEmptyStr> }
+  | RegistrarCustomNameservers { nameservers: List<HostName> }
 
 type NameserverDelegationStanding
   = DelegationReportedAtRegistrar { setting: RegistrarNameserverSetting, source: String }
   | DelegationObservedInParent { setting: RegistrarNameserverSetting, source: String }
 
-data gunb_ai_nameserver_delegation: NameserverDelegationStanding = DelegationReportedAtRegistrar {
-  setting: RegistrarCustomNameservers {
-    nameservers: ["alexandra.ns.cloudflare.com" as NonEmptyStr, "austin.ns.cloudflare.com" as NonEmptyStr],
-  },
-  source: "operator Namecheap console report 2026-10-26: Custom DNS set to the two Cloudflare nameservers; parent-zone propagation pending",
+// The operator's report is transcribed text; each name reaches HostName only through the DNS
+// authority's parser, and a name it refuses is a typed reading, never a dropped row.
+type NameserverDelegationReading
+  = DelegationRead { standing: NameserverDelegationStanding }
+  | DelegationNameRefused { raw: NonEmptyStr, cause: DomainNameParseError }
+
+data gunb_ai_reported_nameservers: List<NonEmptyStr> = ["alexandra.ns.cloudflare.com", "austin.ns.cloudflare.com"]
+
+data gunb_ai_nameserver_report_source: String = "operator Namecheap console report 2026-10-26: Custom DNS set to the two Cloudflare nameservers; parent-zone propagation pending"
+
+type ParsedNameservers
+  = NameserversParsed { hosts: List<HostName> }
+  | NameserverRefused { raw: NonEmptyStr, cause: DomainNameParseError }
+
+fn parse_nameservers(raws: List<NonEmptyStr>) -> ParsedNameservers {
+  fold(raws, init: NameserversParsed { hosts: [] }, f: (acc, raw) => match acc {
+    NameserverRefused { raw: r, cause: c } => NameserverRefused { raw: r, cause: c }
+    NameserversParsed { hosts: hs } => match parse_host_name(raw: raw as String) {
+      Err { value: cause } => NameserverRefused { raw: raw, cause: cause }
+      Ok { value: host } => NameserversParsed { hosts: concat(hs, [host]) }
+    }
+  })
+}
+
+fn gunb_ai_nameserver_delegation() -> NameserverDelegationReading {
+  match parse_nameservers(raws: gunb_ai_reported_nameservers) {
+    NameserverRefused { raw: raw, cause: cause } => DelegationNameRefused { raw: raw, cause: cause }
+    NameserversParsed { hosts: hosts } => DelegationRead {
+      standing: DelegationReportedAtRegistrar {
+        setting: RegistrarCustomNameservers { nameservers: hosts },
+        source: gunb_ai_nameserver_report_source,
+      },
+    }
+  }
 }
