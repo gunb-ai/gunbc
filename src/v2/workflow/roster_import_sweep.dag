@@ -3352,3 +3352,4 @@ fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, 
       }
   }
 }
+// Probe row for attribution (valiant-deer-27): pre-#15080 baseline; same comment-only touch as R1.
