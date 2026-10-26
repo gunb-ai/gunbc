@@ -2405,7 +2405,7 @@ fn native_lane_acquire_listed(
 }
 
 fn native_lane_acquire_bound(bindings: List<SourceRootBinding>, pattern: TargetPattern) -> Outcome<NativeLaneAcquisition> {
-  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces()) {
+  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings) {
     BoundModulesRefused { subject: subject, cause: cause } =>
       native_lane_refused(reason: ^native_lane_population_unlisted, detail: concat(subject, ": ", cause))
     BoundModulesListed { modules: population } =>
@@ -2462,7 +2462,7 @@ fn native_lane_census_ingest(source_roots: FreeMonoid<String>) -> Outcome<Source
     SourceRootsBound { bindings: bindings } =>
       native_lane_census_listed(
         bindings: bindings,
-        listed: enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces())
+        listed: enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings)
       )
     SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
     SourceRootsDuplicated { argument: _ } => native_lane_roots_refusal(bindings: resolved)

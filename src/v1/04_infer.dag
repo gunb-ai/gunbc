@@ -1371,7 +1371,7 @@ fn constructor_call_admission_diags_for_outcome(
 // compile_error! where there is none.
 //
 // WHAT THIS FOLD IS NOT: it is not an admission wall. Whether a caller ESTABLISHES a resource is
-// owned by DESIGN D13's derived DependencyDemand (docs/plans/demand-engine-program.md), under which
+// owned by DESIGN D13's derived DependencyDemand (`gunbc.plans.demand_engine_program`), under which
 // a transparent function's demand is derived rather than authored. This fold reads the caller's
 // AUTHORED `uses` rows only because no derived carrier with a binding identity exists yet
 // (its return is the next-rung trigger on gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target). A caller whose
@@ -16755,7 +16755,7 @@ fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIn
 // DECLARED FRONTIER: the bare upgrade here is still eager over every bare name of the tree, while
 // a closure's typecheck reads only the names it looks up. Scoping it to those demands needs a
 // demand identity for "this lookup, in this closure" -- the demand-identity carriers of
-// docs/plans/demand-engine-program.md (M1). Until that capability exists, no key of `global_bare`
+// `gunbc.plans.demand_engine_program` (M1). Until that capability exists, no key of `global_bare`
 // can be marked undemanded without either a lazy cell or a new refusal arm in frozen v1 semantics,
 // both ruled out; this stays eager.
 fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
