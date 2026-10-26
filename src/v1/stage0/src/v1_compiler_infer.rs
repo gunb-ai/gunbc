@@ -11727,35 +11727,29 @@ pub fn validate_cast(
                                     span: span.clone(),
                                 });
                                 Some(crate::v1_std_core::make_error_node(
-                                    diag.clone(),
+                                    diag,
                                     module_name.clone(),
                                 ))
                             }
                         } else {
                             match (*source_reading.clone()).clone() {
                                 HostTextSourceReading::HostTextRouteAbsentNominal => {
-                                    let msg = v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "invalid cast: ".to_string(),
-                                                    source_name.clone(),
-                                                ),
-                                                " as ".to_string(),
-                                            ),
-                                            target_name.clone(),
-                                        ),
-                                        ": a nominal value has no declared conversion".to_string(),
-                                    );
-                                    let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                        message: msg.clone(),
-                                        span: span.clone(),
-                                    });
-                                    Some(crate::v1_std_core::make_error_node(
-                                        diag.clone(),
+                                    nominal_cast_refusal(
+                                        source_name.clone(),
+                                        target_name.clone(),
+                                        span.clone(),
                                         module_name.clone(),
-                                    ))
+                                    )
                                 }
+                                HostTextSourceReading::HostTextRouteAbsentKernel {
+                                    kernel: NonTextKernel::NonTextKernelBool,
+                                    ..
+                                } => nominal_cast_refusal(
+                                    source_name.clone(),
+                                    target_name.clone(),
+                                    span.clone(),
+                                    module_name.clone(),
+                                ),
                                 HostTextSourceReading::HostTextRouteAbsentKernel {
                                     kernel: _,
                                     ..
@@ -11780,6 +11774,33 @@ pub fn validate_cast(
             }
         }
         _ => std::option::Option::None,
+    }
+}
+
+pub fn nominal_cast_refusal(
+    source_name: String,
+    target_name: String,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Option<Rc<ErrorNode>> {
+    {
+        let msg = v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("invalid cast: ".to_string(), source_name.clone()),
+                    " as ".to_string(),
+                ),
+                target_name.clone(),
+            ),
+            ": a nominal value has no declared conversion".to_string(),
+        );
+        Some(crate::v1_std_core::make_error_node(
+            Rc::new(CompilerDiagnostic::InternalError {
+                message: msg.clone(),
+                span: span.clone(),
+            }),
+            module_name,
+        ))
     }
 }
 
