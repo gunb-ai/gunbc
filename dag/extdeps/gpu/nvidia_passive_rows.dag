@@ -1,10 +1,11 @@
 module extdeps.gpu.nvidia_passive_rows
 
 import std.types {NonEmptyStr, String, List}
-import std.measure {Micrometer, micrometer}
+import std.measure {Micrometer}
 import std.optional {Present, Absent}
 import extdeps.gpu.passive_card_row {CardRow, RowField, FromCitedFigure, NeedsReading, row_display, row_is_sealed, row_unread_fields}
 import extdeps.external_authority {TranscribedUncited}
+import product.printed_chassis.gpu_duct {a16_end_face}
 
 // ═══ THE ROWS BEYOND THE A16: T10 AND A2, AND THE SHAPE A FOURTH CARD ADDS ═══
 //
@@ -95,9 +96,8 @@ data a2_row: CardRow = CardRow {
   fin_face_depth: NeedsReading {read_obligation: fin_obligation(card: "A2")},
   tdp: NeedsReading {read_obligation: airflow_obligation(card: "A2")},
   required_airflow: NeedsReading {read_obligation: airflow_obligation(card: "A2")},
-  bracket: NeedsReading {read_obligation: bracket_obligation(card: "A2")},
+  bracket: NeedsReading {read_obligation: join([bracket_obligation(card: "A2"), " This row was opened on the operator's word that the A2 is low-profile and passive; that is an envelope class and a cooling method, not a height, and it was heard by this repository on 2026-10-26 -- it is a receipt in the observing layer (product.printed_chassis.chassis_clearances, product.printed_chassis.fit_observations) and cannot be asserted here as a property of NVIDIA."], " ")},
   sources: [
-    "operator, 2026-10-26: 'NVIDIA A2: low-profile, passive' -- an envelope class and a cooling method, no millimetres; recorded so the row is not mistaken for unsourced, and it seals nothing",
     "probe 2026-10-26: no NVIDIA datasheet reachable (see the module header for the verbatim statuses)",
   ],
 }
@@ -111,28 +111,32 @@ data a2_row: CardRow = CardRow {
 // chosen from the blower's own cited curve, not from an A107-per-GPU thermal requirement.
 data a16_row: CardRow = CardRow {
   id: "nvidia-a16",
-  end_face_length: a16_transcribed(field: "face_length", value: micrometer(count: 97840)),
-  end_face_width: a16_transcribed(field: "face_thickness", value: micrometer(count: 38600)),
-  card_thickness: a16_transcribed(field: "face_thickness", value: micrometer(count: 38600)),
-  fin_face_extent: a16_transcribed(field: "window_length", value: micrometer(count: 88030)),
-  fin_face_depth: a16_transcribed(field: "fin_setback", value: micrometer(count: 6000)),
+  end_face_length: a16_transcribed(field: "face_length", value: a16_end_face.face_length),
+  end_face_width: a16_transcribed(field: "face_thickness", value: a16_end_face.face_thickness),
+  card_thickness: a16_transcribed(field: "face_thickness", value: a16_end_face.face_thickness),
+  fin_face_extent: a16_transcribed(field: "window_length", value: a16_end_face.window_length),
+  fin_face_depth: a16_transcribed(field: "fin_setback", value: a16_end_face.fin_setback),
   tdp: NeedsReading {read_obligation: "NVIDIA A16 product brief PB-10518-001 v02: the brief is read (extdeps.gpu.nvidia_a16) and publishes no TDP; the TDP has to come from a document that does, or from the card's own label"},
   required_airflow: NeedsReading {read_obligation: airflow_obligation(card: "A16")},
   bracket: NeedsReading {read_obligation: "operator or document: the A16's bracket height and form. The brief says full-height full-length and no drawing backs it (extdeps.gpu.nvidia_a16 states the ambiguity rather than resolving it)"},
   sources: [
     "extdeps.gpu.nvidia_a16 -- NVIDIA A16 product brief PB-10518-001 v02, images.nvidia.com/content/Solutions/data-center/vgpu-a16-product-brief.pdf, read 2026-10-19: FHFL 10.5 dual-slot class, 266.70 mm stated length, no dimension drawing, no TDP, no airflow",
-    "operator caliper readings of a physical A16, 2026-10 (product.printed_chassis.gpu_duct a16_end_face, a16_duct_design): end face 97.84 x 38.60 mm, cooler window 88.03 x 23.94 mm, band 13.09 mm",
-    "operator fit observation 2026-10-26: the printed plug fit ring FITS the A16 (artifacts/printing/a16-plug-fit-ring/manual-start-2026-10-26.json), which is what confirms the end face is usable as the duct's datum",
   ],
 }
 
-// The A16's millimetres are the operator's caliper readings, recorded once in
-// product.printed_chassis.gpu_duct a16_end_face. Carrying them here makes this a TRANSCRIPTION, and the
-// corpus is emphatic about what an observation standing means: extdeps.external_authority
-// observed_receipt admits four named privileged callers and test.claim.observed_receipt_seal_witness
-// proves a literal minted outside one is a forgery. So the honest standing for a copy of someone else's
-// reading is TranscribedUncited, with the obligation to read it back against the record it was copied
-// from -- and this row is therefore NOT sealed, exactly as it should be: its figures are trusted one
+// The A16's millimetres are the operator's caliper readings, and they are recorded ONCE:
+// product.printed_chassis.gpu_duct a16_end_face. This row reads them off that record rather than
+// retyping them, because a second literal for one reading is two sources that can drift apart
+// (DESIGN.md section 3: minimization holds only if each fact lives in exactly one place) -- the folders
+// are browsing conventions and acyclicity is the import graph's only structural law, so importing the
+// observing layer's record from here is allowed and is the one way to keep the fact single.
+//
+// The standing stays TranscribedUncited with a read-back obligation, and the row is NOT sealed: the
+// reading itself belongs to the operator's caliper record, and a receipt this repository holds cannot be
+// minted as upstream fact here (extdeps.external_authority observed_receipt admits four named privileged
+// callers, and test.claim.observed_receipt_seal_witness proves a literal minted outside one is a
+// forgery). The operator's fit verdict likewise lives downstream, in
+// product.printed_chassis.fit_observations -- it is not a source line in an extdeps module. Its figures are trusted one
 // step removed until the reading is verified against a16_end_face and the fit ring that fits.
 fn a16_transcribed(field: NonEmptyStr, value: Micrometer) -> RowField<Micrometer> {
   FromCitedFigure {value: value, standing: TranscribedUncited {read_obligation: join(["read this back against product.printed_chassis.gpu_duct a16_end_face field ", field as String, ", the operator's caliper record it was copied from (2026-10-23), and against the physical fit: the printed plug fit ring FITS the A16 (artifacts/printing/a16-plug-fit-ring/manual-start-2026-10-26.json)"], "")}}
