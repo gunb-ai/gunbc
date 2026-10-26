@@ -3,7 +3,7 @@ module v2.test.claim.compiler.function_value_type
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
 import v2.test.claim.compiler.callback_argument_formal { caf_refused_at }
 import v2.test.claim.callexec.declaration_reference_eval { cref_the_call_to }
-import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_match_generic_formal, infer, infer_descent_witness_for_node, infer_function_value_signature, infer_instances_with_binder_generator, infer_node_is_function_value, inferred_facts_from_derived_type, inferred_facts_resolved_type_optional, infer_type_equal_ignoring_provenance }
+import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_match_generic_formal, infer, infer_descent_witness_for_node, infer_function_value_signature, infer_instances_with_binder_generator, infer_node_is_function_value, inferred_facts_from_derived_type, inferred_facts_resolved_type_optional }
 import v2.compiler.inferred_tree { FunctionValueSignatureUndetermined, GroundingNotDerived, DerivedGrounding, InferredFacts }
 import v2.compiler.fold_lowering { collection_roster_row, collection_roster_signature_arrow, collection_roster_carrier_type, RosterFreeMonoidPrimitiveCall }
 import v2.compiler.resolve { ResolvedTree }
@@ -13,11 +13,11 @@ import v2.std.type_binder { edge_is_type_params, type_param_names }
 import v2.std.integer { integer_int_type_node }
 import v2.std.node_query { binder_edge, binder_node_parts }
 import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_fatal, diagnostics_has_reason }
-import v2.std.node { Atom, Authored, Edge, Node, Symbol, TypeNode, arrow_body_target_lookup, Found, Ambiguous, NotFound, node_subtree_nodes, node_synthetic, positional_child_target_nodes, symbol_intern_lexeme }
+import v2.std.node { Atom, Authored, Edge, Node, Symbol, TypeNode, arrow_body_target_lookup, Found, Ambiguous, NotFound, node_equal_ignoring_provenance, node_subtree_nodes, node_synthetic, positional_child_target_nodes, symbol_intern_lexeme }
 import v2.test.claim.compiler.free_monoid_structure_bound { fmb_declared, fmb_list_of }
 import v2.std.symbol_index { empty_symbol_index }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_is_absent, optional_present }
 import std.algebra { Cons, Empty, collection_sort_by_shape, empty_map, list_at_optional, list_snoc_item, map_insert }
 import std.types { Bool, List, String }
 
@@ -113,7 +113,7 @@ fn fvt_same(a: Optional<Node>, b: Optional<Node>) -> Bool {
     Present { value: x } =>
       match b {
         Absent => false
-        Present { value: y } => infer_type_equal_ignoring_provenance(a: x, b: y)
+        Present { value: y } => node_equal_ignoring_provenance(a: x, b: y)
       }
   }
 }
@@ -229,7 +229,7 @@ test fn fvt_supplied_frame_instance_and_body_type_assemble_the_signature() -> Bo
 test fn fvt_supplied_uninstantiated_input_is_undetermined() -> Bool {
   match fvt_supplied_value() {
     Absent => false
-    Present { value: _ } => fvt_signature_with(instances_for: fn(_x) { [] }) == optional_absent()
+    Present { value: _ } => optional_is_absent(opt: fvt_signature_with(instances_for: fn(_x) { [] }))
   }
 }
 
@@ -277,7 +277,7 @@ test fn fvt_a_carrier_instance_fixes_its_generator() -> Bool {
 test fn fvt_no_carrier_instance_fixes_no_generator() -> Bool {
   match fvt_sort_by_signature() {
     Absent => false
-    Present { value: _ } => fvt_generator_after(instances: []) == optional_absent()
+    Present { value: _ } => optional_is_absent(opt: fvt_generator_after(instances: []))
   }
 }
 
@@ -405,5 +405,5 @@ test fn fvt_supplied_arrow_inputs_pair_in_declared_not_stored_order() -> Bool {
 // positional guess.
 test fn fvt_supplied_arrow_without_an_order_learns_nothing() -> Bool {
   let produced = fvt_without_order(declared: fvt_produced_g())
-  fvt_learned(produced: produced, binder: ^A) == optional_absent() && fvt_learned(produced: produced, binder: ^R) == optional_absent()
+  optional_is_absent(opt: fvt_learned(produced: produced, binder: ^A)) && optional_is_absent(opt: fvt_learned(produced: produced, binder: ^R))
 }
