@@ -78,23 +78,21 @@ pub fn fixed_point_wire(value: i64, decimals: i64) -> String {
 }
 
 pub fn fixed_point_trimmed_wire(mut __tco_loop_value: i64, mut __tco_loop_decimals: i64) -> String {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut value = __tco_loop_value;
-            #[allow(unused_mut)]
-            let mut decimals = __tco_loop_decimals;
-            if ((decimals.clone() > 0) && (v1_rt::int_rem(value.clone(), 10) == 0)) {
-                {
-                    let __tco_0 = v1_rt::int_div(value, 10);
-                    let __tco_1 = v1_rt::int_sub(decimals, 1);
-                    __tco_loop_value = __tco_0;
-                    __tco_loop_decimals = __tco_1;
-                    continue;
-                }
-            } else {
-                break fixed_point_wire(value.clone(), decimals.clone());
+    loop {
+        #[allow(unused_mut)]
+        let mut value = __tco_loop_value;
+        #[allow(unused_mut)]
+        let mut decimals = __tco_loop_decimals;
+        if ((decimals.clone() > 0) && (v1_rt::int_rem(value.clone(), 10) == 0)) {
+            {
+                let __tco_0 = v1_rt::int_div(value, 10);
+                let __tco_1 = v1_rt::int_sub(decimals, 1);
+                __tco_loop_value = __tco_0;
+                __tco_loop_decimals = __tco_1;
+                continue;
             }
+        } else {
+            break fixed_point_wire(value.clone(), decimals.clone());
         }
     }
 }
@@ -132,38 +130,36 @@ pub fn admit_exact_decimal(units: i64, fraction_digits: i64) -> Rc<ExactDecimalA
 }
 
 pub fn canonical_exact_decimal(mut __tco_loop_d: ExactDecimal) -> ExactDecimal {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut d = __tco_loop_d;
-            if (d.fraction_digits.clone() < 0) {
+    loop {
+        #[allow(unused_mut)]
+        let mut d = __tco_loop_d;
+        if (d.fraction_digits.clone() < 0) {
+            break ExactDecimal {
+                units: crate::std_error_primitives::pure_dag_seam_unreachable_int(),
+                fraction_digits: 0,
+            };
+        } else {
+            if (d.fraction_digits.clone() == 0) {
                 break ExactDecimal {
-                    units: crate::std_error_primitives::pure_dag_seam_unreachable_int(),
+                    units: d.units.clone(),
                     fraction_digits: 0,
                 };
             } else {
-                if (d.fraction_digits.clone() == 0) {
-                    break ExactDecimal {
-                        units: d.units.clone(),
-                        fraction_digits: 0,
-                    };
-                } else {
-                    if (v1_rt::int_sub(
-                        d.units.clone(),
-                        v1_rt::int_mul(v1_rt::int_div(d.units.clone(), 10), 10),
-                    ) == 0)
+                if (v1_rt::int_sub(
+                    d.units.clone(),
+                    v1_rt::int_mul(v1_rt::int_div(d.units.clone(), 10), 10),
+                ) == 0)
+                {
                     {
-                        {
-                            let __tco_0 = ExactDecimal {
-                                units: v1_rt::int_div(d.units.clone(), 10),
-                                fraction_digits: v1_rt::int_sub(d.fraction_digits.clone(), 1),
-                            };
-                            __tco_loop_d = __tco_0;
-                            continue;
-                        }
-                    } else {
-                        break d.clone();
+                        let __tco_0 = ExactDecimal {
+                            units: v1_rt::int_div(d.units.clone(), 10),
+                            fraction_digits: v1_rt::int_sub(d.fraction_digits.clone(), 1),
+                        };
+                        __tco_loop_d = __tco_0;
+                        continue;
                     }
+                } else {
+                    break d.clone();
                 }
             }
         }

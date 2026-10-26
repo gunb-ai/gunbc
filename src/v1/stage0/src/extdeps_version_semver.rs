@@ -123,41 +123,39 @@ pub fn semver_compare_digits_lexical(
     mut __tco_loop_a: Rc<Vec<i64>>,
     mut __tco_loop_b: Rc<Vec<i64>>,
 ) -> Ordering {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut a = __tco_loop_a;
-            #[allow(unused_mut)]
-            let mut b = __tco_loop_b;
-            if ((a.clone().len() as i64) == 0) {
-                break Ordering::Equal;
-            } else {
-                match a.clone().first().cloned() {
-                    Some(ac) => match b.clone().first().cloned() {
-                        Some(bc) => {
-                            if (ac.clone() < bc.clone()) {
-                                break Ordering::Less;
+    loop {
+        #[allow(unused_mut)]
+        let mut a = __tco_loop_a;
+        #[allow(unused_mut)]
+        let mut b = __tco_loop_b;
+        if ((a.clone().len() as i64) == 0) {
+            break Ordering::Equal;
+        } else {
+            match a.clone().first().cloned() {
+                Some(ac) => match b.clone().first().cloned() {
+                    Some(bc) => {
+                        if (ac.clone() < bc.clone()) {
+                            break Ordering::Less;
+                        } else {
+                            if (ac.clone() > bc.clone()) {
+                                break Ordering::Greater;
                             } else {
-                                if (ac.clone() > bc.clone()) {
-                                    break Ordering::Greater;
-                                } else {
-                                    {
-                                        let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
-                                        let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
-                                        __tco_loop_a = __tco_0;
-                                        __tco_loop_b = __tco_1;
-                                        continue;
-                                    }
+                                {
+                                    let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
+                                    let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
+                                    __tco_loop_a = __tco_0;
+                                    __tco_loop_b = __tco_1;
+                                    continue;
                                 }
                             }
                         }
-                        std::option::Option::None => {
-                            break Ordering::Greater;
-                        }
-                    },
-                    std::option::Option::None => {
-                        break Ordering::Less;
                     }
+                    std::option::Option::None => {
+                        break Ordering::Greater;
+                    }
+                },
+                std::option::Option::None => {
+                    break Ordering::Less;
                 }
             }
         }
@@ -197,44 +195,40 @@ pub fn semver_compare_identifiers(
     mut __tco_loop_a: Rc<Vec<Rc<SemVerIdentifier>>>,
     mut __tco_loop_b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut a = __tco_loop_a;
-            #[allow(unused_mut)]
-            let mut b = __tco_loop_b;
-            if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
-                break Ordering::Equal;
+    loop {
+        #[allow(unused_mut)]
+        let mut a = __tco_loop_a;
+        #[allow(unused_mut)]
+        let mut b = __tco_loop_b;
+        if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
+            break Ordering::Equal;
+        } else {
+            if ((a.clone().len() as i64) == 0) {
+                break Ordering::Less;
             } else {
-                if ((a.clone().len() as i64) == 0) {
-                    break Ordering::Less;
+                if ((b.clone().len() as i64) == 0) {
+                    break Ordering::Greater;
                 } else {
-                    if ((b.clone().len() as i64) == 0) {
-                        break Ordering::Greater;
-                    } else {
-                        match a.clone().first().cloned() {
-                            Some(ah) => match b.clone().first().cloned() {
-                                Some(bh) => {
-                                    match semver_compare_identifier(ah.clone(), bh.clone()) {
-                                        Ordering::Equal => {
-                                            let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
-                                            let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
-                                            __tco_loop_a = __tco_0;
-                                            __tco_loop_b = __tco_1;
-                                            continue;
-                                        }
-                                        other => {
-                                            break other.clone();
-                                        }
-                                    }
+                    match a.clone().first().cloned() {
+                        Some(ah) => match b.clone().first().cloned() {
+                            Some(bh) => match semver_compare_identifier(ah.clone(), bh.clone()) {
+                                Ordering::Equal => {
+                                    let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
+                                    let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
+                                    __tco_loop_a = __tco_0;
+                                    __tco_loop_b = __tco_1;
+                                    continue;
                                 }
-                                std::option::Option::None => {
-                                    break Ordering::Greater;
+                                other => {
+                                    break other.clone();
                                 }
                             },
                             std::option::Option::None => {
-                                break Ordering::Less;
+                                break Ordering::Greater;
                             }
+                        },
+                        std::option::Option::None => {
+                            break Ordering::Less;
                         }
                     }
                 }
@@ -471,31 +465,28 @@ pub fn semver_split_on(
     mut __tco_loop_cps: Rc<Vec<i64>>,
     mut __tco_loop_acc: Rc<Vec<Rc<Vec<i64>>>>,
 ) -> Rc<Vec<Rc<Vec<i64>>>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut cp = __tco_loop_cp;
-            #[allow(unused_mut)]
-            let mut cps = __tco_loop_cps;
-            #[allow(unused_mut)]
-            let mut acc = __tco_loop_acc;
-            match semver_index_of(cp.clone(), cps.clone()) {
-                Some(i) => {
-                    let __tco_0 = cp;
-                    let __tco_1 =
-                        Rc::new(v1_rt::list_skip(&cps.clone(), v1_rt::int_add(i.clone(), 1)));
-                    let __tco_2 = v1_rt::concat(
-                        acc,
-                        Rc::new(vec![Rc::new(v1_rt::list_take(&cps.clone(), i.clone()))]),
-                    );
-                    __tco_loop_cp = __tco_0;
-                    __tco_loop_cps = __tco_1;
-                    __tco_loop_acc = __tco_2;
-                    continue;
-                }
-                std::option::Option::None => {
-                    break v1_rt::concat(acc.clone(), Rc::new(vec![cps.clone()]));
-                }
+    loop {
+        #[allow(unused_mut)]
+        let mut cp = __tco_loop_cp;
+        #[allow(unused_mut)]
+        let mut cps = __tco_loop_cps;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        match semver_index_of(cp.clone(), cps.clone()) {
+            Some(i) => {
+                let __tco_0 = cp;
+                let __tco_1 = Rc::new(v1_rt::list_skip(&cps.clone(), v1_rt::int_add(i.clone(), 1)));
+                let __tco_2 = v1_rt::concat(
+                    acc,
+                    Rc::new(vec![Rc::new(v1_rt::list_take(&cps.clone(), i.clone()))]),
+                );
+                __tco_loop_cp = __tco_0;
+                __tco_loop_cps = __tco_1;
+                __tco_loop_acc = __tco_2;
+                continue;
+            }
+            std::option::Option::None => {
+                break v1_rt::concat(acc.clone(), Rc::new(vec![cps.clone()]));
             }
         }
     }

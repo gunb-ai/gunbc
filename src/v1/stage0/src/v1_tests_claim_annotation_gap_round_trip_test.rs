@@ -276,27 +276,25 @@ pub struct CharEdit {
 }
 
 pub fn line_start(mut __tco_loop_source: String, mut __tco_loop_offset: i64) -> i64 {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut source = __tco_loop_source;
-            #[allow(unused_mut)]
-            let mut offset = __tco_loop_offset;
-            if (offset.clone() <= 0) {
-                break 0;
+    loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source;
+        #[allow(unused_mut)]
+        let mut offset = __tco_loop_offset;
+        if (offset.clone() <= 0) {
+            break 0;
+        } else {
+            if (v1_rt::substring(&source, v1_rt::int_sub(offset.clone(), 1), offset.clone())
+                == "\n".to_string())
+            {
+                break offset.clone();
             } else {
-                if (v1_rt::substring(&source, v1_rt::int_sub(offset.clone(), 1), offset.clone())
-                    == "\n".to_string())
                 {
-                    break offset.clone();
-                } else {
-                    {
-                        let __tco_0 = source;
-                        let __tco_1 = v1_rt::int_sub(offset, 1);
-                        __tco_loop_source = __tco_0;
-                        __tco_loop_offset = __tco_1;
-                        continue;
-                    }
+                    let __tco_0 = source;
+                    let __tco_1 = v1_rt::int_sub(offset, 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_offset = __tco_1;
+                    continue;
                 }
             }
         }
@@ -304,27 +302,25 @@ pub fn line_start(mut __tco_loop_source: String, mut __tco_loop_offset: i64) -> 
 }
 
 pub fn line_end(mut __tco_loop_source: String, mut __tco_loop_offset: i64) -> i64 {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut source = __tco_loop_source;
-            #[allow(unused_mut)]
-            let mut offset = __tco_loop_offset;
-            if (offset.clone() >= v1_rt::string_length(&source)) {
+    loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source;
+        #[allow(unused_mut)]
+        let mut offset = __tco_loop_offset;
+        if (offset.clone() >= v1_rt::string_length(&source)) {
+            break offset.clone();
+        } else {
+            if (v1_rt::substring(&source, offset.clone(), v1_rt::int_add(offset.clone(), 1))
+                == "\n".to_string())
+            {
                 break offset.clone();
             } else {
-                if (v1_rt::substring(&source, offset.clone(), v1_rt::int_add(offset.clone(), 1))
-                    == "\n".to_string())
                 {
-                    break offset.clone();
-                } else {
-                    {
-                        let __tco_0 = source;
-                        let __tco_1 = v1_rt::int_add(offset, 1);
-                        __tco_loop_source = __tco_0;
-                        __tco_loop_offset = __tco_1;
-                        continue;
-                    }
+                    let __tco_0 = source;
+                    let __tco_1 = v1_rt::int_add(offset, 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_offset = __tco_1;
+                    continue;
                 }
             }
         }
@@ -343,31 +339,29 @@ pub fn indent_from(
     mut __tco_loop_at: i64,
     mut __tco_loop_acc: String,
 ) -> String {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut source = __tco_loop_source;
-            #[allow(unused_mut)]
-            let mut at = __tco_loop_at;
-            #[allow(unused_mut)]
-            let mut acc = __tco_loop_acc;
-            if (at.clone() >= v1_rt::string_length(&source)) {
-                break acc.clone();
-            } else {
-                let c = v1_rt::substring(&source, at.clone(), v1_rt::int_add(at.clone(), 1));
-                if ((c.clone() == " ".to_string()) || (c.clone() == "\t".to_string())) {
-                    {
-                        let __tco_0 = source;
-                        let __tco_1 = v1_rt::int_add(at, 1);
-                        let __tco_2 = v1_rt::concat(acc, c.clone());
-                        __tco_loop_source = __tco_0;
-                        __tco_loop_at = __tco_1;
-                        __tco_loop_acc = __tco_2;
-                        continue;
-                    }
-                } else {
-                    break acc.clone();
+    loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source;
+        #[allow(unused_mut)]
+        let mut at = __tco_loop_at;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        if (at.clone() >= v1_rt::string_length(&source)) {
+            break acc.clone();
+        } else {
+            let c = v1_rt::substring(&source, at.clone(), v1_rt::int_add(at.clone(), 1));
+            if ((c.clone() == " ".to_string()) || (c.clone() == "\t".to_string())) {
+                {
+                    let __tco_0 = source;
+                    let __tco_1 = v1_rt::int_add(at, 1);
+                    let __tco_2 = v1_rt::concat(acc, c.clone());
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_at = __tco_1;
+                    __tco_loop_acc = __tco_2;
+                    continue;
                 }
+            } else {
+                break acc.clone();
             }
         }
     }
@@ -389,28 +383,26 @@ pub fn comment_edit(source: String, capture: Rc<UnboundAnnotationCapture>) -> Rc
 }
 
 pub fn trailing_space_start(mut __tco_loop_source: String, mut __tco_loop_at: i64) -> i64 {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut source = __tco_loop_source;
-            #[allow(unused_mut)]
-            let mut at = __tco_loop_at;
-            if (at.clone() <= 0) {
-                break 0;
-            } else {
-                if (v1_rt::substring(&source, v1_rt::int_sub(at.clone(), 1), at.clone())
-                    == " ".to_string())
+    loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source;
+        #[allow(unused_mut)]
+        let mut at = __tco_loop_at;
+        if (at.clone() <= 0) {
+            break 0;
+        } else {
+            if (v1_rt::substring(&source, v1_rt::int_sub(at.clone(), 1), at.clone())
+                == " ".to_string())
+            {
                 {
-                    {
-                        let __tco_0 = source;
-                        let __tco_1 = v1_rt::int_sub(at, 1);
-                        __tco_loop_source = __tco_0;
-                        __tco_loop_at = __tco_1;
-                        continue;
-                    }
-                } else {
-                    break at.clone();
+                    let __tco_0 = source;
+                    let __tco_1 = v1_rt::int_sub(at, 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_at = __tco_1;
+                    continue;
                 }
+            } else {
+                break at.clone();
             }
         }
     }

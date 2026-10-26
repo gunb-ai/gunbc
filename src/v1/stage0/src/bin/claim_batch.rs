@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use v1_compiler::cli_run::{
     closure_subject_for_entry, entry_closure_source_paths, make_eval_context_with_runtime_options,
-    peak_rss_vhwm_bytes, precompute_whole_tree_published_mock_keys, process_shared_index,
+    peak_rss_vhwm_bytes, precompute_whole_tree_published_mock_keys, process_shared_index_or_refuse,
     resolve_entry_with_index_typed, run_claim_measured, ClaimOutcome, EntryResolveRefusal,
     MultiEntryIndex,
 };
@@ -795,7 +795,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(2));
         }
         let query_started = Instant::now();
-        let index = process_shared_index(&source_roots);
+        let index = process_shared_index_or_refuse(&source_roots);
         let mut emitted_paths = 0usize;
         for group in &parsed.entry_groups {
             let paths = entry_closure_source_paths(&index, &group.entry).map_err(|why| {
@@ -833,7 +833,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
 
     // The harness's real subject. Built here, ahead of the preparation that first reads it, so its
     // cost is its own row rather than part of whichever consumer touched it first.
-    let index = process_shared_index(&source_roots);
+    let index = process_shared_index_or_refuse(&source_roots);
     partition.mark("index_build");
 
     // SHARED-BUILD ATTRIBUTION (see `warm_bare_reference_edge_index`). The bare-reference edge
@@ -1208,11 +1208,10 @@ fn main() -> ExitCode {
     if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
         return ExitCode::FAILURE;
     }
-    // ONE DECLARATION CENSUS FOR THE RUN: the claims this binary evaluates are isolated frames that
-    // each ask keyed questions of one census (`decl_facts_at`). A fold inside a claim already asks
-    // all of its keys in one read; what this registration shares is the read ACROSS claims, whose
-    // least common ancestor is this invocation. With the memo closed each claim walks the corpus
-    // once of its own. The subject
+    // ONE DECLARATION CENSUS FOR THE RUN, for the same reason the required floor registers one:
+    // the witnesses this binary evaluates ask keyed questions of it (`decl_facts_at`), and a fold
+    // over N citations makes N demands of one census. With the memo closed each demand re-walks the
+    // corpus, so the keyed read would cost more than the population read it replaces. The subject
     // this hangs on is the invocation itself: one process, one tree, roots supplied on the command
     // line, and `clear_decl_census_memo` on the way out rather than a cell that outlives its
     // subject.

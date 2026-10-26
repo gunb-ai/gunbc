@@ -13,26 +13,24 @@ pub fn repeat_string_loop(
     mut __tco_loop_s: String,
     mut __tco_loop_remaining: i64,
 ) -> String {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut acc = __tco_loop_acc;
-            #[allow(unused_mut)]
-            let mut s = __tco_loop_s;
-            #[allow(unused_mut)]
-            let mut remaining = __tco_loop_remaining;
-            if (remaining.clone() <= 0) {
-                break acc.clone();
-            } else {
-                {
-                    let __tco_0 = v1_rt::concat(acc, s.clone());
-                    let __tco_1 = s.clone();
-                    let __tco_2 = v1_rt::int_sub(remaining, 1);
-                    __tco_loop_acc = __tco_0;
-                    __tco_loop_s = __tco_1;
-                    __tco_loop_remaining = __tco_2;
-                    continue;
-                }
+    loop {
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        #[allow(unused_mut)]
+        let mut s = __tco_loop_s;
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining;
+        if (remaining.clone() <= 0) {
+            break acc.clone();
+        } else {
+            {
+                let __tco_0 = v1_rt::concat(acc, s.clone());
+                let __tco_1 = s.clone();
+                let __tco_2 = v1_rt::int_sub(remaining, 1);
+                __tco_loop_acc = __tco_0;
+                __tco_loop_s = __tco_1;
+                __tco_loop_remaining = __tco_2;
+                continue;
             }
         }
     }

@@ -3331,6 +3331,9 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     // for it: the emission must be the one a clean dag tree gives, so the specimen is neither read into
     // the verdict nor into the output, while the population parse over the same two roots still refuses it
     // by file. Reading it would change the verdict, because the acquirer refuses a read nothing requested.
+    // The v2 member sits in a declared namespace (`v2.native_lane_fixture`): a member whose namespace has no
+    // `gunbc.source_layout` row refuses at enumeration (`v2.compiler.module_acquisition`
+    // `bound_modules_admitted`) before any parse, which would mask the parse refusal this control reads.
     let outside_two_v2 = workspace.join(NATIVE_INGEST_TWO_ROOTS_V2);
     let outside_clean_dag = workspace.join(NATIVE_INGEST_TWO_ROOTS_DAG);
     let emit_v2_entry = |dag_root: &Path| {
@@ -3339,7 +3342,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             &[
                 "emit".to_string(),
                 "--entry".to_string(),
-                "v2.native_ingest.v2_other".to_string(),
+                "v2.native_lane_fixture.two_roots_other".to_string(),
                 "--source-root".to_string(),
                 dag_root.display().to_string(),
                 "--source-root".to_string(),
@@ -7166,160 +7169,6 @@ mod emitted_build_not_clean_cause_tests {
             "{cause}"
         );
     }
-}
-
-/// THE SELF-HOST FRONTIER MODE OF THE EXISTING SELF-HOST STEP. The seed builds the emitted driver and
-/// runs the step's controls exactly as `run_self_host` does, then writes the three facts the driver's
-/// `self-host-frontier` mode folds: the controls verdict plus the executed closure (the emit basenames
-/// of the crate it built), the stage0 crate's declared emitted population, and its observed `.rs`
-/// files. Every standing is decided by `v2.compiler.self_host.seed_retention_frontier`
-/// `self_host_frontier_report`; this function only observes and relays.
-pub fn run_self_host_frontier(
-    source_roots: &[String],
-    stage0_crate_dir: &str,
-) -> Result<i32, String> {
-    let prepared = prepare_emitted_compiler(source_roots)?;
-    let calibration = run_runtime_calibration(&prepared);
-    let door = walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root());
-    for refusal in [calibration.as_ref().err(), door.as_ref().err()]
-        .into_iter()
-        .flatten()
-    {
-        eprintln!("[self-host-frontier] control refused: {refusal}");
-    }
-    let controls_passed = calibration.is_ok() && door.is_ok();
-    let emitted_dir = prepared.emitted_crate_dir.clone().ok_or_else(|| {
-        "V2-NATIVE REFUSAL cause=SelfHostFrontierNoWorkspace — a restored product has no emitted workspace to read the executed closure from"
-            .to_string()
-    })?;
-    let mut closure = Vec::new();
-    for entry in std::fs::read_dir(emitted_dir.join("src")).map_err(|e| {
-        format!(
-            "V2-NATIVE REFUSAL cause=SelfHostFrontierClosureUnreadable — {}: {e}",
-            emitted_dir.display()
-        )
-    })? {
-        let path = entry
-            .map_err(|e| {
-                format!("V2-NATIVE REFUSAL cause=SelfHostFrontierClosureUnreadable — {e}")
-            })?
-            .path();
-        if path.extension().and_then(|x| x.to_str()) == Some("rs") {
-            if let Some(stem) = path.file_stem().and_then(|x| x.to_str()) {
-                closure.push(stem.to_string());
-            }
-        }
-    }
-    closure.sort();
-    let verdict = format!(
-        "{}\n{}\n",
-        if controls_passed {
-            crate::gunbc_stage0_stage0_emitted_population_manifest::self_host_frontier_verdict_passed_word()
-        } else {
-            crate::gunbc_stage0_stage0_emitted_population_manifest::self_host_frontier_verdict_not_passed_word()
-        },
-        closure.join("\n")
-    );
-    let crate_dir = super::process_workspace_root().join(stage0_crate_dir);
-    let mut observed = Vec::new();
-    fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<(), String> {
-        for entry in std::fs::read_dir(dir).map_err(|e| {
-            format!(
-                "V2-NATIVE REFUSAL cause=SelfHostFrontierObservedUnreadable — {}: {e}",
-                dir.display()
-            )
-        })? {
-            let path = entry
-                .map_err(|e| {
-                    format!("V2-NATIVE REFUSAL cause=SelfHostFrontierObservedUnreadable — {e}")
-                })?
-                .path();
-            if path.is_dir() {
-                walk(&path, root, out)?;
-            } else if path.extension().and_then(|x| x.to_str()) == Some("rs") {
-                if let Ok(rel) = path.strip_prefix(root) {
-                    out.push(rel.to_string_lossy().into_owned());
-                }
-            }
-        }
-        Ok(())
-    }
-    walk(&crate_dir.join("src"), &crate_dir, &mut observed)?;
-    // The roster also names the crate's cargo test harnesses and build script, which live outside
-    // src/; the observed universe is every .rs file of the crate, not only the src tree.
-    // tests/ is not a required member of the crate layout, so its absence is an observation, not a
-    // refusal: no harness file is observed, and every roster row naming one under tests/ reaches the
-    // fold unmatched, where it is a counted stale row. Any other read failure still refuses.
-    let before_tests = observed.len();
-    let tests_dir = crate_dir.join("tests");
-    match std::fs::metadata(&tests_dir) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        _ => walk(&tests_dir, &crate_dir, &mut observed)?,
-    }
-    eprintln!(
-        "[self-host-frontier] observed tests/ harness files: {} ({})",
-        observed.len() - before_tests,
-        if tests_dir.is_dir() {
-            "tests/ present"
-        } else {
-            "tests/ absent"
-        }
-    );
-    if crate_dir.join("build.rs").is_file() {
-        observed.push("build.rs".to_string());
-    }
-    observed.sort();
-    let scratch = emitted_dir.join("self_host_frontier_operands");
-    std::fs::create_dir_all(&scratch).map_err(|e| {
-        format!(
-            "V2-NATIVE REFUSAL cause=SelfHostFrontierOperandsUnwritable — {}: {e}",
-            scratch.display()
-        )
-    })?;
-    let verdict_path = scratch.join("verdict.txt");
-    let observed_path = scratch.join("observed.txt");
-    std::fs::write(&verdict_path, verdict).map_err(|e| {
-        format!(
-            "V2-NATIVE REFUSAL cause=SelfHostFrontierOperandsUnwritable — {}: {e}",
-            verdict_path.display()
-        )
-    })?;
-    std::fs::write(&observed_path, observed.join("\n") + "\n").map_err(|e| {
-        format!(
-            "V2-NATIVE REFUSAL cause=SelfHostFrontierOperandsUnwritable — {}: {e}",
-            observed_path.display()
-        )
-    })?;
-    let manifest_path = crate_dir
-        .join("src")
-        .join(crate::gunbc_stage0_stage0_emitted_population_manifest::emitted_population_manifest_basename());
-    let output = Command::new(&prepared.binary_path)
-        .arg("self-host-frontier")
-        .arg(&manifest_path)
-        .arg(&verdict_path)
-        .arg(&observed_path)
-        .output()
-        .map_err(|e| {
-            format!(
-                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-                prepared.binary_path.display()
-            )
-        })?;
-    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!(
-            "V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — self-host-frontier stdout: {cause}"
-        )
-    })?;
-    for line in stdout.lines() {
-        println!("{line}");
-    }
-    for line in String::from_utf8_lossy(&output.stderr).lines() {
-        eprintln!("{line}");
-    }
-    output.status.code().ok_or_else(|| {
-        "V2-NATIVE REFUSAL cause=NativeRunKilled — the self-host-frontier child exited without a status"
-            .to_string()
-    })
 }
 
 /// A CENSUS RUN BY THE EMITTED COMPILER (`demand-census`, `decl-ref-census`: one relay, the verb is

@@ -13493,8 +13493,8 @@ mod cast_scope_index_tests {
     #[ignore = "real repository scope; run explicitly on a remote worker"]
     fn real_scope_cast_index_matches_the_retired_scan() {
         use crate::cli_run::{
-            claim_scope_for, evaluation_frame, prepare_repository_closure, process_shared_index,
-            witness_exclusion_substrings,
+            claim_scope_for, evaluation_frame, prepare_repository_closure,
+            process_shared_index_or_refuse, witness_exclusion_substrings,
         };
         // Locate the runtime checkout: remote builds can remap CARGO_MANIFEST_DIR to a
         // relative compilation path, which is not a usable execution-time source root.
@@ -13515,7 +13515,7 @@ mod cast_scope_index_tests {
         std::env::set_current_dir(root).expect("enter repository root");
         let roots = ["dag", "src/v2"].map(|path| root.join(path).to_string_lossy().into_owned());
         let entry = "test.claim.compiler_frontend_program_status_witness".to_string();
-        let index = process_shared_index(&roots);
+        let index = process_shared_index_or_refuse(&roots);
         let (prepared, _) = prepare_repository_closure(
             &roots,
             &witness_exclusion_substrings(),
@@ -16203,7 +16203,38 @@ fn compile_diagnostic_census_row_value(
     subject_name: String,
     blocking: bool,
     count: i64,
+    rendered_pair: Option<crate::cli_run::RenderedPair>,
 ) -> Value {
+    // The model's Optional<RenderedPair>: `None` here is the optional's OWN absence (a class the
+    // extractor's total match says carries no pair) projected to the model's Absent — never a
+    // stand-in for "the pair was equal", which is Uniform { expected, got } with expected == got.
+    let rendered_pair_value = match rendered_pair {
+        None => optional_absent(ctx),
+        Some(crate::cli_run::RenderedPair::Uniform { expected, got }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Uniform"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("expected"), str_value(expected)),
+                    (ctx.sym("got"), str_value(got)),
+                ])),
+            },
+            ctx,
+        ),
+        Some(crate::cli_run::RenderedPair::Varied {
+            distinct_pair_count,
+        }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Varied"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("distinct_pair_count"),
+                    Value::Int(distinct_pair_count),
+                )])),
+            },
+            ctx,
+        ),
+    };
     Value::Record {
         type_name: ctx.sym("CompileDiagnosticCensusRow"),
         fields: Rc::new(sorted_fields(vec![
@@ -16211,10 +16242,10 @@ fn compile_diagnostic_census_row_value(
             (ctx.sym("subject_name"), str_value(subject_name)),
             (ctx.sym("blocking"), Value::Bool(blocking)),
             (ctx.sym("count"), Value::Int(count)),
+            (ctx.sym("rendered_pair"), rendered_pair_value),
         ])),
     }
 }
-
 fn reference_derived_candidate_disposition_value(
     disposition: &crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition,
     ctx: &InterpContext,
@@ -16294,6 +16325,7 @@ fn compile_diagnostic_census_value(
                                 r.subject_name,
                                 r.blocking,
                                 r.count,
+                                r.rendered_pair,
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -16351,6 +16383,7 @@ fn claim_scope_fixture_value(
                             row.subject_name.clone(),
                             row.blocking,
                             row.count,
+                            row.rendered_pair.clone(),
                         )
                     })
                     .collect::<Vec<_>>(),
@@ -16396,6 +16429,7 @@ fn multi_module_compile_fixture_value(
                         r.subject_name,
                         r.blocking,
                         r.count,
+                        r.rendered_pair,
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -24470,15 +24504,26 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.decl_facts_at" { "decl_facts_at" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
-                let qualified_names =
-                    expect_str_list($positional.get(1).copied(), "decl_facts_at")?;
-                let type_names = expect_str_list($positional.get(2).copied(), "decl_facts_at")?;
+                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
                 Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
                     $ctx,
                     &pool_roots,
-                    &qualified_names,
-                    &type_names,
+                    qualified_name.as_str(),
                 )?))
+            },
+
+            arm "free_call.type_declarer_qualified_names" { "type_declarer_qualified_names" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "type_declarer_qualified_names")?;
+                let bare_name =
+                    expect_value_str($positional.get(1).copied(), "type_declarer_qualified_names")?;
+                Ok(Some(
+                    crate::coproduct_reflection::eval_type_declarer_qualified_names(
+                        $ctx,
+                        &pool_roots,
+                        bare_name.as_str(),
+                    )?,
+                ))
             },
 
             arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
@@ -27882,6 +27927,7 @@ mod map_shell_outputs_optional_stream_tests {
 
     fn bare_type_node(name: &str, span: Rc<crate::v1_std_core::SourceSpan>) -> Rc<Node> {
         Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(
                 crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
             ),
@@ -27964,6 +28010,7 @@ mod map_shell_outputs_optional_stream_tests {
         );
         Rc::make_mut(&mut field).properties = Rc::new(im_vec![from_key_prop]);
         let return_type = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(
                 crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
             ),
@@ -27990,6 +28037,7 @@ mod map_shell_outputs_optional_stream_tests {
             ident: None,
         });
         let op_node = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(
                 crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
             ),

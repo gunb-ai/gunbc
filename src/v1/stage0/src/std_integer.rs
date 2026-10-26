@@ -166,25 +166,23 @@ pub fn uint8_octets_of_ints(values: Rc<Vec<i64>>) -> Rc<QualifiedOctetsResult> {
 }
 
 pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Option<i64> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut remaining = __tco_loop_remaining;
-            match remaining.clone().first().cloned() {
-                std::option::Option::None => {
-                    break std::option::Option::None;
-                }
-                Some(head) => match (*uint8_of_int(head.clone())).clone() {
-                    UInt8Result::UInt8OutOfRange { observed: o, .. } => {
-                        break Some(o.clone());
-                    }
-                    UInt8Result::UInt8Ready { value: _, .. } => {
-                        let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
-                        __tco_loop_remaining = __tco_0;
-                        continue;
-                    }
-                },
+    loop {
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining;
+        match remaining.clone().first().cloned() {
+            std::option::Option::None => {
+                break std::option::Option::None;
             }
+            Some(head) => match (*uint8_of_int(head.clone())).clone() {
+                UInt8Result::UInt8OutOfRange { observed: o, .. } => {
+                    break Some(o.clone());
+                }
+                UInt8Result::UInt8Ready { value: _, .. } => {
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    __tco_loop_remaining = __tco_0;
+                    continue;
+                }
+            },
         }
     }
 }

@@ -450,13 +450,6 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     ))
 }
 
-pub fn centi_gibibyte_to_byte_size(centi: Nat) -> ByteSize {
-    byte_size(v1_rt::int_div(
-        v1_rt::int_mul(centi.clone(), gibibyte_scale_factor_bytes()),
-        100,
-    ))
-}
-
 pub fn kibibyte(count: Nat) -> Kibibyte {
     Rc::new(Measure {
         count: count.clone(),
@@ -503,11 +496,6 @@ pub type HardwareThreadMinute =
 pub type PhysicalCoreCount = Rc<Measure<Count, One, Nat>>;
 
 pub type CharacterCount = Rc<Measure<Count, One, Nat>>;
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DisplayPixelCount {
-    pub pixels: i64,
-}
 
 pub type TokenCount = Rc<Measure<Count, One, Nat>>;
 
@@ -710,15 +698,6 @@ pub fn positive_measure_count_from_int(count: i64) -> Rc<PositiveMeasureCountBui
 }
 
 pub fn positive_measure_count_value(count: Rc<PositiveMeasureCount>) -> i64 {
-    match (*count.clone()).clone() {
-        PositiveMeasureCount::PositiveMeasureSuccessor {
-            predecessor: predecessor,
-            ..
-        } => v1_rt::int_add(predecessor.clone(), 1),
-    }
-}
-
-pub fn positive_measure_count_nat(count: Rc<PositiveMeasureCount>) -> Nat {
     match (*count.clone()).clone() {
         PositiveMeasureCount::PositiveMeasureSuccessor {
             predecessor: predecessor,

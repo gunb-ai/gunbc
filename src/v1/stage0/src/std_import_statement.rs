@@ -177,30 +177,28 @@ pub fn import_module_start(
     mut __tco_loop_at: i64,
     mut __tco_loop_limit: i64,
 ) -> i64 {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut statement_text = __tco_loop_statement_text;
-            #[allow(unused_mut)]
-            let mut at = __tco_loop_at;
-            #[allow(unused_mut)]
-            let mut limit = __tco_loop_limit;
-            if (at.clone() >= limit.clone()) {
-                break at.clone();
-            } else {
-                if is_import_whitespace(v1_rt::char_at(&statement_text, at.clone())) {
-                    {
-                        let __tco_0 = statement_text;
-                        let __tco_1 = v1_rt::int_add(at, 1);
-                        let __tco_2 = limit;
-                        __tco_loop_statement_text = __tco_0;
-                        __tco_loop_at = __tco_1;
-                        __tco_loop_limit = __tco_2;
-                        continue;
-                    }
-                } else {
-                    break at.clone();
+    loop {
+        #[allow(unused_mut)]
+        let mut statement_text = __tco_loop_statement_text;
+        #[allow(unused_mut)]
+        let mut at = __tco_loop_at;
+        #[allow(unused_mut)]
+        let mut limit = __tco_loop_limit;
+        if (at.clone() >= limit.clone()) {
+            break at.clone();
+        } else {
+            if is_import_whitespace(v1_rt::char_at(&statement_text, at.clone())) {
+                {
+                    let __tco_0 = statement_text;
+                    let __tco_1 = v1_rt::int_add(at, 1);
+                    let __tco_2 = limit;
+                    __tco_loop_statement_text = __tco_0;
+                    __tco_loop_at = __tco_1;
+                    __tco_loop_limit = __tco_2;
+                    continue;
                 }
+            } else {
+                break at.clone();
             }
         }
     }

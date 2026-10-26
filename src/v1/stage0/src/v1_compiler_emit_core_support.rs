@@ -351,62 +351,60 @@ pub fn to_string_helper(
     mut __tco_loop_value: i64,
     mut __tco_loop_acc: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut value = __tco_loop_value;
-            #[allow(unused_mut)]
-            let mut acc = __tco_loop_acc;
-            if (value.clone() == 0) {
-                break acc.clone();
-            } else {
-                let rest = v1_rt::int_div(value.clone(), 10);
-                let digit = v1_rt::int_sub(value.clone(), v1_rt::int_mul(rest.clone(), 10));
-                let digit_chars = Rc::new(vec![
-                    "0".to_string(),
-                    "1".to_string(),
-                    "2".to_string(),
-                    "3".to_string(),
-                    "4".to_string(),
-                    "5".to_string(),
-                    "6".to_string(),
-                    "7".to_string(),
-                    "8".to_string(),
-                    "9".to_string(),
-                ]);
-                let ch = match Rc::new({
-                    let mut __result = Vec::new();
-                    for p in Rc::new(
-                        digit_chars
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .enumerate()
-                            .map(|(i, v)| (i as i64, v))
-                            .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
-                    {
-                        if (p.0.clone() == digit.clone()) {
-                            __result.push(p);
-                        }
-                    }
-                    __result
-                })
-                .first()
+    loop {
+        #[allow(unused_mut)]
+        let mut value = __tco_loop_value;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        if (value.clone() == 0) {
+            break acc.clone();
+        } else {
+            let rest = v1_rt::int_div(value.clone(), 10);
+            let digit = v1_rt::int_sub(value.clone(), v1_rt::int_mul(rest.clone(), 10));
+            let digit_chars = Rc::new(vec![
+                "0".to_string(),
+                "1".to_string(),
+                "2".to_string(),
+                "3".to_string(),
+                "4".to_string(),
+                "5".to_string(),
+                "6".to_string(),
+                "7".to_string(),
+                "8".to_string(),
+                "9".to_string(),
+            ]);
+            let ch = match Rc::new({
+                let mut __result = Vec::new();
+                for p in Rc::new(
+                    digit_chars
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
                 .cloned()
                 {
-                    Some(p) => p.1.clone(),
-                    std::option::Option::None => "?".to_string(),
-                };
-                {
-                    let __tco_0 = rest.clone();
-                    let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
-                    __tco_loop_value = __tco_0;
-                    __tco_loop_acc = __tco_1;
-                    continue;
+                    if (p.0.clone() == digit.clone()) {
+                        __result.push(p);
+                    }
                 }
+                __result
+            })
+            .first()
+            .cloned()
+            {
+                Some(p) => p.1.clone(),
+                std::option::Option::None => "?".to_string(),
+            };
+            {
+                let __tco_0 = rest.clone();
+                let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
+                __tco_loop_value = __tco_0;
+                __tco_loop_acc = __tco_1;
+                continue;
             }
         }
     }

@@ -490,46 +490,44 @@ pub fn v1_map_key_fixpoint_loop(
     mut __tco_loop_remaining: i64,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut round = __tco_loop_round;
-            #[allow(unused_mut)]
-            let mut declared_type_names = __tco_loop_declared_type_names;
-            #[allow(unused_mut)]
-            let mut type_decl_items = __tco_loop_type_decl_items;
-            #[allow(unused_mut)]
-            let mut remaining = __tco_loop_remaining;
-            #[allow(unused_mut)]
-            let mut source_indices = __tco_loop_source_indices;
-            if (remaining.clone() <= 0) {
-                break round.names.clone();
+    loop {
+        #[allow(unused_mut)]
+        let mut round = __tco_loop_round;
+        #[allow(unused_mut)]
+        let mut declared_type_names = __tco_loop_declared_type_names;
+        #[allow(unused_mut)]
+        let mut type_decl_items = __tco_loop_type_decl_items;
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        if (remaining.clone() <= 0) {
+            break round.names.clone();
+        } else {
+            let next = v1_map_key_propagate_round(
+                Rc::new(MapKeyRequirementRound {
+                    names: round.names.clone(),
+                    added: 0,
+                }),
+                declared_type_names.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            );
+            if (next.added.clone() == 0) {
+                break next.names.clone();
             } else {
-                let next = v1_map_key_propagate_round(
-                    Rc::new(MapKeyRequirementRound {
-                        names: round.names.clone(),
-                        added: 0,
-                    }),
-                    declared_type_names.clone(),
-                    type_decl_items.clone(),
-                    source_indices.clone(),
-                );
-                if (next.added.clone() == 0) {
-                    break next.names.clone();
-                } else {
-                    {
-                        let __tco_0 = next.clone();
-                        let __tco_1 = declared_type_names;
-                        let __tco_2 = type_decl_items;
-                        let __tco_3 = v1_rt::int_sub(remaining, 1);
-                        let __tco_4 = source_indices;
-                        __tco_loop_round = __tco_0;
-                        __tco_loop_declared_type_names = __tco_1;
-                        __tco_loop_type_decl_items = __tco_2;
-                        __tco_loop_remaining = __tco_3;
-                        __tco_loop_source_indices = __tco_4;
-                        continue;
-                    }
+                {
+                    let __tco_0 = next.clone();
+                    let __tco_1 = declared_type_names;
+                    let __tco_2 = type_decl_items;
+                    let __tco_3 = v1_rt::int_sub(remaining, 1);
+                    let __tco_4 = source_indices;
+                    __tco_loop_round = __tco_0;
+                    __tco_loop_declared_type_names = __tco_1;
+                    __tco_loop_type_decl_items = __tco_2;
+                    __tco_loop_remaining = __tco_3;
+                    __tco_loop_source_indices = __tco_4;
+                    continue;
                 }
             }
         }
@@ -4155,56 +4153,54 @@ pub fn v1_clone_bound_fixpoint_loop(
     mut __tco_loop_remaining: i64,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut generic_type_names = __tco_loop_generic_type_names;
-            #[allow(unused_mut)]
-            let mut type_decl_items = __tco_loop_type_decl_items;
-            #[allow(unused_mut)]
-            let mut bounds = __tco_loop_bounds;
-            #[allow(unused_mut)]
-            let mut remaining = __tco_loop_remaining;
-            #[allow(unused_mut)]
-            let mut source_indices = __tco_loop_source_indices;
-            if (remaining.clone() <= 0) {
-                break bounds.clone();
-            } else {
-                let round = generic_type_names.iter().cloned().fold(
-                    Rc::new(CloneBoundRound {
-                        bounds: bounds.clone(),
-                        added: 0,
-                    }),
-                    |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
-                        &type_decl_items.by_identity.clone(),
+    loop {
+        #[allow(unused_mut)]
+        let mut generic_type_names = __tco_loop_generic_type_names;
+        #[allow(unused_mut)]
+        let mut type_decl_items = __tco_loop_type_decl_items;
+        #[allow(unused_mut)]
+        let mut bounds = __tco_loop_bounds;
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        if (remaining.clone() <= 0) {
+            break bounds.clone();
+        } else {
+            let round = generic_type_names.iter().cloned().fold(
+                Rc::new(CloneBoundRound {
+                    bounds: bounds.clone(),
+                    added: 0,
+                }),
+                |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+                    &type_decl_items.by_identity.clone(),
+                    type_name.clone(),
+                ) {
+                    Some(item) => v1_clone_bound_round_for_item(
+                        acc.clone(),
                         type_name.clone(),
-                    ) {
-                        Some(item) => v1_clone_bound_round_for_item(
-                            acc.clone(),
-                            type_name.clone(),
-                            item.clone(),
-                            type_decl_items.clone(),
-                            source_indices.clone(),
-                        ),
-                        std::option::Option::None => acc.clone(),
-                    },
-                );
-                if (round.added.clone() == 0) {
-                    break round.bounds.clone();
-                } else {
-                    {
-                        let __tco_0 = generic_type_names;
-                        let __tco_1 = type_decl_items;
-                        let __tco_2 = round.bounds.clone();
-                        let __tco_3 = v1_rt::int_sub(remaining, 1);
-                        let __tco_4 = source_indices;
-                        __tco_loop_generic_type_names = __tco_0;
-                        __tco_loop_type_decl_items = __tco_1;
-                        __tco_loop_bounds = __tco_2;
-                        __tco_loop_remaining = __tco_3;
-                        __tco_loop_source_indices = __tco_4;
-                        continue;
-                    }
+                        item.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ),
+                    std::option::Option::None => acc.clone(),
+                },
+            );
+            if (round.added.clone() == 0) {
+                break round.bounds.clone();
+            } else {
+                {
+                    let __tco_0 = generic_type_names;
+                    let __tco_1 = type_decl_items;
+                    let __tco_2 = round.bounds.clone();
+                    let __tco_3 = v1_rt::int_sub(remaining, 1);
+                    let __tco_4 = source_indices;
+                    __tco_loop_generic_type_names = __tco_0;
+                    __tco_loop_type_decl_items = __tco_1;
+                    __tco_loop_bounds = __tco_2;
+                    __tco_loop_remaining = __tco_3;
+                    __tco_loop_source_indices = __tco_4;
+                    continue;
                 }
             }
         }

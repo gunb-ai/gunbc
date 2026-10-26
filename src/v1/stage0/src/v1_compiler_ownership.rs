@@ -1202,34 +1202,32 @@ pub fn collect_callable_refs(
 }
 
 pub fn fold_terminal_expr(mut __tco_loop_body: Rc<Node>) -> Rc<Node> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut body = __tco_loop_body;
-            match (*body.expr_data.clone()).clone() {
-                ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
-                    Some(inner) => {
-                        let __tco_0 = inner.clone();
-                        __tco_loop_body = __tco_0;
-                        continue;
-                    }
-                    std::option::Option::None => {
-                        break body.clone();
-                    }
-                },
-                ExprData::ExprBlock => match body.children.clone().last().cloned() {
-                    Some(last_child) => {
-                        let __tco_0 = last_child.clone();
-                        __tco_loop_body = __tco_0;
-                        continue;
-                    }
-                    std::option::Option::None => {
-                        break body.clone();
-                    }
-                },
-                _ => {
+    loop {
+        #[allow(unused_mut)]
+        let mut body = __tco_loop_body;
+        match (*body.expr_data.clone()).clone() {
+            ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
+                Some(inner) => {
+                    let __tco_0 = inner.clone();
+                    __tco_loop_body = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
                     break body.clone();
                 }
+            },
+            ExprData::ExprBlock => match body.children.clone().last().cloned() {
+                Some(last_child) => {
+                    let __tco_0 = last_child.clone();
+                    __tco_loop_body = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break body.clone();
+                }
+            },
+            _ => {
+                break body.clone();
             }
         }
     }

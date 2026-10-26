@@ -27,9 +27,6 @@ pub use crate::gunbc_rust_crate_package_ident::{
     PackageIdentBinding, PackageIdentRefusalCause, PackageIdentSetOutcome,
 };
 pub use crate::gunbc_rust_emitted_crate::EmittedCrateDependencyDemand;
-pub use crate::gunbc_stage0_stage0_cargo_manifest::{
-    stage0_package_root, stage0_source_dir_relative_to_package,
-};
 use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedEmitCoreCrate, GeneratedFacadeCrate, GeneratedFoundationCrate,
     GeneratedLayeredCoreCrate,
@@ -113,16 +110,7 @@ pub fn stage0_foundation_header_doc() -> String {
         "//!".to_string(),
         "//! Foundation crate for the derived ~8-crate stage0 partition.".to_string(),
         "//!".to_string(),
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    "//! Module bodies remain generated into `".to_string(),
-                    stage0_package_root(),
-                ),
-                stage0_source_dir_relative_to_package(),
-            ),
-            "`. The root".to_string(),
-        ),
+        "//! Module bodies remain generated into `src/v1/stage0/src`. The root".to_string(),
         "//! `NonEmpty*` wrappers are mirrored here because generated modules address".to_string(),
         "//! them as `crate::NonEmptyVec` and `crate::NonEmptyBTreeSet`.".to_string(),
     ])

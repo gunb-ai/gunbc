@@ -1010,6 +1010,7 @@ pub fn parse_context_with_intern_table(
 
 pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
     Rc::new(Node {
+            application_role: node.application_role.clone(),
         occurrence_identity: node.occurrence_identity.clone(),
         name: node.name.clone(),
         ident: Some(ident.clone()),
@@ -2276,6 +2277,7 @@ pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
                 let span = token_span(token_stream_first(tokens.clone()));
                 return Rc::new(ItemResult {
                     item: Rc::new(Node {
+            application_role: std::option::Option::None,
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: "<unknown>".to_string(),
                         span: span.clone(),
@@ -2315,6 +2317,7 @@ pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
         let n = r.item.clone();
         Rc::new(ItemResult {
             item: Rc::new(Node {
+            application_role: n.application_role.clone(),
                 occurrence_identity: n.occurrence_identity.clone(),
                 name: n.name.clone(),
                 ident: n.ident.clone(),
@@ -3142,6 +3145,7 @@ pub fn leaf_type_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
@@ -3177,6 +3181,7 @@ pub fn literal_width_nat_type_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+            application_role: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
@@ -4458,6 +4463,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             }),
         );
         let base_mod = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: minted.identity.clone(),
             name: mod_name.clone(),
             span: start_span.clone(),
@@ -4915,6 +4921,7 @@ pub fn parse_unmarked_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
     Some(f) => parse_item_by_form(tokens.clone(), ctx.clone(), f.clone()),
     std::option::Option::None => Rc::new(ItemResult {
     item: Rc::new(Node {
+            application_role: std::option::Option::None,
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: "<unknown>".to_string(),
     span: span.clone(),
@@ -5102,6 +5109,7 @@ pub fn parse_item_by_form(
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
@@ -5212,6 +5220,7 @@ pub fn field_to_child_node(
     {
         let ret_type = crate::v1_std_core::field_node_type_expr(field.clone());
         Rc::new(Node {
+            application_role: field.application_role.clone(),
             occurrence_identity: field.occurrence_identity.clone(),
             name: crate::v1_std_core::field_node_name_at(field.clone(), source_indices),
             span: field.span.clone(),
@@ -5254,6 +5263,7 @@ pub fn variant_to_child_node(
             __result
         });
         Rc::new(Node {
+            application_role: variant.application_role.clone(),
             occurrence_identity: variant.occurrence_identity.clone(),
             name: crate::v1_std_core::variant_node_name_at(variant.clone(), source_indices.clone()),
             span: variant.span.clone(),
@@ -5292,6 +5302,7 @@ pub fn outputs_to_inferred(
     if ((outputs.clone().len() as i64) > 0) {
         Some(Rc::new(InferredNode::Resolved {
             node: Rc::new(Node {
+            application_role: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "".to_string(),
                 span: span.clone(),
@@ -5350,6 +5361,7 @@ pub fn make_operation_node(
             mock_props.clone(),
         );
         Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
@@ -5399,6 +5411,7 @@ pub fn make_capability_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        application_role: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
@@ -5444,6 +5457,7 @@ pub fn parse_type_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
@@ -5495,6 +5509,7 @@ pub fn parse_type_after_kw(
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
                 let named_dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: name.clone(),
                     span: start_span.clone(),
@@ -5558,6 +5573,7 @@ pub fn parse_type_after_kw(
                     }),
                 );
                 let item = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: minted.identity.clone(),
                     name: name.clone(),
                     span: start_span.clone(),
@@ -5618,6 +5634,7 @@ pub fn parse_type_after_kw(
                             }),
                         );
                         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
                             occurrence_identity: item_mint.identity.clone(),
                             name: name.clone(),
                             span: start_span.clone(),
@@ -5670,6 +5687,7 @@ pub fn parse_type_body_from_prefix(
         let type_params = prefix.type_params.clone();
         let ctx = prefix.ctx.clone();
         let named_dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: start_span.clone(),
@@ -5745,6 +5763,7 @@ pub fn parse_type_body_from_prefix(
                     }),
                 );
                 let item = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: minted.identity.clone(),
                     name: name.clone(),
                     span: start_span.clone(),
@@ -5805,6 +5824,7 @@ pub fn parse_type_body_from_prefix(
                             }),
                         );
                         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
                             occurrence_identity: item_mint.identity.clone(),
                             name: name.clone(),
                             span: start_span.clone(),
@@ -5864,6 +5884,7 @@ pub fn type_item_from_alias_rhs(
 ) -> Rc<Node> {
     if alias_rhs_is_anonymous_record(te.clone()) {
         Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: start_span.clone(),
@@ -5889,6 +5910,7 @@ pub fn type_item_from_alias_rhs(
         })
     } else {
         Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: start_span.clone(),
@@ -5928,6 +5950,7 @@ pub fn parse_type_body_after_eq(
     {
         let rhs_from = tokens.clone();
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: start_span.clone(),
@@ -6008,6 +6031,7 @@ pub fn parse_type_body_after_eq(
                     }),
                 );
                 let item = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: minted.identity.clone(),
                     name: name.clone(),
                     span: start_span.clone(),
@@ -6105,6 +6129,7 @@ pub fn parse_type_body_after_eq(
                                     }),
                                 );
                                 let item = Rc::new(Node {
+            application_role: std::option::Option::None,
                                     occurrence_identity: minted.identity.clone(),
                                     name: name.clone(),
                                     span: start_span.clone(),
@@ -6293,6 +6318,7 @@ pub fn try_where_clause(
                     }),
                 );
                 let predicate_node = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: predicate_mint.identity.clone(),
                     name: "".to_string(),
                     span: start_span.clone(),
@@ -6317,6 +6343,7 @@ pub fn try_where_clause(
                     ident: None,
                 });
                 let refined = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: refined_mint.identity.clone(),
                     name: "".to_string(),
                     span: start_span.clone(),
@@ -7277,6 +7304,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     }),
                 );
                 let te = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: minted.identity.clone(),
                     name: "".to_string(),
                     span: span.clone(),
@@ -7445,6 +7473,7 @@ pub fn parse_callable_type_expr(
         let minted =
             mint_parsed_node_identity(ret.ctx.clone(), Rc::new(ParsedExtentAt::CompletedLater));
         let te = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: minted.identity.clone(),
             name: "Callable".to_string(),
             span: start_span.clone(),
@@ -7598,6 +7627,7 @@ pub fn finish_type_expr_from_name(
                     Rc::new(ParsedExtentAt::CompletedLater),
                 );
                 let te = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: minted.identity.clone(),
                     name: type_name.clone(),
                     span: start_span.clone(),
@@ -7805,6 +7835,7 @@ pub fn with_type_param_kind_property(param: Rc<Node>, kind: Option<Rc<Node>>) ->
                 crate::v1_std_core::no_span(),
             );
             Rc::new(Node {
+            application_role: param.application_role.clone(),
                 occurrence_identity: param.occurrence_identity.clone(),
                 name: param.name.clone(),
                 span: param.span.clone(),
@@ -7902,6 +7933,7 @@ pub fn maybe_optional(
                 __ec.clone(),
             );
             let ote = Rc::new(Node {
+            application_role: te.application_role.clone(),
                 occurrence_identity: te.occurrence_identity.clone(),
                 name: te.name.clone(),
                 span: te.span.clone(),
@@ -8316,6 +8348,7 @@ pub fn parse_fn_body_from_prefix(
         );
         let all_params = v1_rt::concat(type_params.clone(), params.clone());
         let named_dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: start_span.clone(),
@@ -8412,6 +8445,7 @@ pub fn parse_fn_body_from_prefix(
             }),
         );
         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: minted.identity.clone(),
             name: name.clone(),
             span: start_span.clone(),
@@ -8456,6 +8490,7 @@ pub fn parse_block_body_from_prefix(
         let uses = prefix.uses.clone();
         let ctx = prefix.ctx.clone();
         let named_dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: start_span.clone(),
@@ -8497,6 +8532,7 @@ pub fn parse_block_body_from_prefix(
             }),
         );
         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: minted.identity.clone(),
             name: name.clone(),
             span: start_span.clone(),
@@ -8542,6 +8578,7 @@ pub fn parse_no_body_from_prefix(
             }),
         );
         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: minted.identity.clone(),
             name: prefix.name.clone(),
             span: start_span.clone(),
@@ -8722,6 +8759,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     });
                 }
                 let res_node = Rc::new(Node {
+                    application_role: r3.type_expr.application_role.clone(),
                     occurrence_identity: r3.type_expr.occurrence_identity.clone(),
                     name: r3.type_expr.name.clone(),
                     span: r3.type_expr.span.clone(),
@@ -8936,6 +8974,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
@@ -8984,6 +9023,7 @@ pub fn parse_service_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
@@ -9026,6 +9066,7 @@ pub fn parse_service_after_kw(
         let name = r.name.clone();
         let svc_name_span = r.span.clone();
         let named_dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: start_span.clone(),
@@ -9125,6 +9166,7 @@ pub fn parse_service_after_kw(
             std::option::Option::None => Rc::new(vec![]),
         };
         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: item_mint.identity.clone(),
             name: name.clone(),
             span: start_span.clone(),
@@ -12564,6 +12606,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
@@ -12612,6 +12655,7 @@ pub fn parse_resource_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
@@ -12647,6 +12691,7 @@ pub fn parse_resource_after_kw(
         let name = r.name.clone();
         let name_span = r.span.clone();
         let named_dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: start_span.clone(),
@@ -12713,6 +12758,7 @@ pub fn parse_resource_after_kw(
             }),
         );
         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: minted.identity.clone(),
             name: name.clone(),
             span: start_span.clone(),
@@ -13364,6 +13410,7 @@ pub fn parse_alias_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
@@ -13399,6 +13446,7 @@ pub fn parse_alias_after_kw(
         let name = r.name.clone();
         let name_span = r.span.clone();
         let named_dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: start_span.clone(),
@@ -13481,6 +13529,7 @@ pub fn parse_alias_after_kw(
             crate::v1_std_core::no_span(),
         );
         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: item_mint.identity.clone(),
             name: name.clone(),
             span: start_span.clone(),
@@ -13520,6 +13569,7 @@ pub fn parse_data_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
@@ -13555,6 +13605,7 @@ pub fn parse_data_after_kw(
         let name = r.name.clone();
         let name_span = r.span.clone();
         let named_dummy = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: start_span.clone(),
@@ -13628,6 +13679,7 @@ pub fn parse_data_after_kw(
             }),
         );
         let item = Rc::new(Node {
+            application_role: std::option::Option::None,
             occurrence_identity: minted.identity.clone(),
             name: name.clone(),
             span: start_span.clone(),
@@ -14451,6 +14503,7 @@ pub fn parse_constrained_assignment(
         }
         parsed_expr_result(entry, r3.tokens.clone(), r3.ctx.clone(), |identity| {
             Rc::new(Node {
+            application_role: std::option::Option::None,
                 occurrence_identity: identity.clone(),
                 name: name.clone(),
                 span: span.clone(),
@@ -14542,6 +14595,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
         }
         parsed_expr_result(entry, ret.tokens.clone(), ret.ctx.clone(), |identity| {
             Rc::new(Node {
+            application_role: std::option::Option::None,
                 occurrence_identity: identity.clone(),
                 name: name.clone(),
                 span: span.clone(),
@@ -14609,6 +14663,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
         }
         parsed_expr_result(entry, cr.tokens.clone(), cr.ctx.clone(), |identity| {
             Rc::new(Node {
+            application_role: std::option::Option::None,
                 occurrence_identity: identity.clone(),
                 name: name.clone(),
                 span: span.clone(),
@@ -18172,6 +18227,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     }),
                 );
                 let node = Rc::new(Node {
+            application_role: std::option::Option::None,
                     occurrence_identity: minted.identity.clone(),
                     name: name.clone(),
                     span: span.clone(),

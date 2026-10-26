@@ -528,13 +528,12 @@ thread_local! {
 /// `claim_batch` registered it too would be a §3 nickname: one concept answering to a name that
 /// says it belongs to one of its callers.
 ///
-/// WHY A SECOND REGISTRANT EXISTS AT ALL. A keyed read (`decl_facts_at`) is one demand of one
-/// census, and a fold that holds N keys asks them in ONE read (its keys are a set), so within an
-/// evaluation the demands are shared at their ancestor by construction, not by this cell. What the
-/// cell serves is ISOLATED demands: the claims of one `claim_batch` invocation are separate frames,
-/// each reading the same roots once, and their least common ancestor is the invocation itself. With
-/// the cell closed (`gunbc run` registers none) `decl_facts_for_roots_shared` returns early and each
-/// such demand walks once — which is the cost of one undeclared pure demand, not a re-walk per key.
+/// WHY A SECOND REGISTRANT EXISTS AT ALL. Keyed reads (`decl_facts_at`) ask about one qualified
+/// name, so a fold over N citations makes N demands of one census. Under a registration those are
+/// one walk and N lookups; with the cell closed, `decl_facts_for_roots_shared` returns early and
+/// each demand walks the corpus again — the keyed read would then be strictly worse than the
+/// population read it replaces, which hoisted its one walk into a `data` row by hand. The provider
+/// has to reach the ancestor or the keyed read is not a repair.
 pub fn register_decl_census_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
@@ -2064,39 +2063,27 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     eval_decl_facts_rows(ctx, &facts)
 }
 
-/// The KEYED read of the same declaration census `decl_facts` publishes: the rows a caller names by
-/// key, and nothing else. A row is returned when its `qualified_name` is one of `qualified_names`,
-/// or when it is a type declaration whose bare `name` is one of `type_names`; each row at most once,
-/// in the census's own canonical order.
+/// The KEYED read of the same declaration census `decl_facts` publishes: the rows whose
+/// `qualified_name` is exactly `qualified_name`, and nothing else.
 ///
-/// One law, two directions — this is `decl_facts` composed with membership filters the substrate
-/// already authored (`v2.std.decl_facts_skeleton` `decl_facts_matching_qualified_name`, and the
-/// type-declarer join in `v2.std.decl_index`), moved to the side of the seam where the population
-/// still exists as raw rows. It is not a second census: both reads answer from
-/// `decl_facts_for_roots_shared`, so a row this returns is the row `decl_facts` would have
-/// returned, byte for byte.
+/// One law, two directions — this is `decl_facts` composed with the exact-equality filter the
+/// substrate already authored (`v2.std.decl_facts_skeleton` `decl_facts_matching_qualified_name`),
+/// moved to the side of the seam where the population still exists as raw rows. It is not a second
+/// census: both reads answer from `decl_facts_for_roots_shared`, so a row this returns is the row
+/// `decl_facts` would have returned, byte for byte.
 ///
-/// WHY THE KEYS ARE SETS. A keyed question — does this citation name a declaration — had to mint
-/// the whole population to ask it, so the read was keyed; but a keyed read that takes ONE key is
-/// asked once per element by every fold over citations, and with no census provider registered
-/// (`gunbc run` registers none) each ask re-walked and re-parsed the whole pool. Measured on
-/// BuildBuddy 2026-10-25: one lookup 91s, six lookups 506s. The demands share their least common
-/// ancestor — the fold already holds every key — so the fold reads once with all of them and joins
-/// each key against the returned rows in the substrate (DESIGN section 2, the materialization
-/// ladder's first question: carry the value at the ancestor, never cache the later asks). The
-/// bare-name read that used to be its own seam (`type_declarer_qualified_names`) was the same rule
-/// at a sibling leaf and is this read's `type_names` arm, so a reflection that needs a type by bare
-/// spelling and then its node reads the pool once rather than twice.
+/// WHY IT EXISTS. A keyed question — does this citation name a declaration — had to mint the whole
+/// population to ask it: every row's `node` marshalled into interpreter `Value`s, then folded away
+/// in the interpreter. The marshal is the cost, and it is paid per ASK, so N citations cost N
+/// corpus marshals. Filtering before the marshal makes the keyed question cost one.
 ///
-/// Multiplicity is PRESERVED per key, not collapsed to a first hit: two rows under one logical
-/// qualified name is what `DeclarationRefAmbiguous` is derived from, and a keyed read that returned
-/// the first would silently resolve an ambiguous citation. Widening the key from equality to
-/// membership changes which keys are asked in one read, never how many rows answer one key.
+/// Multiplicity is PRESERVED, not collapsed to a first hit: two rows under one logical qualified
+/// name is what `DeclarationRefAmbiguous` is derived from, and a keyed read that returned the first
+/// would silently resolve an ambiguous citation.
 pub fn eval_decl_facts_at(
     ctx: &InterpContext,
     pool_roots: &[String],
-    qualified_names: &[String],
-    type_names: &[String],
+    qualified_name: &str,
 ) -> InterpResult<Value> {
     // Same line-stop as `eval_decl_facts`, and for the same reason: a root that contributes
     // nothing is invisible in a keyed answer too — an empty result is exactly what a genuine miss
@@ -2111,19 +2098,58 @@ pub fn eval_decl_facts_at(
             },
         );
     }
-    let qualified: std::collections::HashSet<&str> =
-        qualified_names.iter().map(String::as_str).collect();
-    let typed: std::collections::HashSet<&str> = type_names.iter().map(String::as_str).collect();
     let facts = decl_facts_for_roots_shared(pool_roots);
     let matching: Vec<DeclFactRaw> = facts
         .iter()
-        .filter(|f| {
-            qualified.contains(f.qualified_name.as_str())
-                || (f.kind == ItemKind::TypeItem && typed.contains(f.name.as_str()))
-        })
+        .filter(|f| f.qualified_name == qualified_name)
         .cloned()
         .collect();
     eval_decl_facts_rows(ctx, &matching)
+}
+
+/// THE KEYED BARE-NAME READ BEHIND `v2.std.decl_index` `type_declarer_qualified_names`.
+///
+/// It exists because the question it answers cannot be asked of `decl_facts_at`: that one is keyed
+/// by QUALIFIED name, and a bare spelling has no module. The substrate-only alternative was to fold
+/// the whole corpus, measured at ~3.6s per call against ~1ms for a keyed read and sharing at no
+/// grain, which put the guard that makes reflection sound above the floor's per-claim ceiling.
+///
+/// TWO PROPERTIES ARE LOAD-BEARING AND ARE WHY THIS ARM WAS ADMITTED.
+///
+/// It reads the SAME memoized pool `eval_decl_facts_at` reads, via `decl_facts_for_roots_shared` —
+/// no second parse, no second memo, nothing for the two to disagree about.
+///
+/// It NEVER PICKS A MATCH. It returns every qualified name declaring this bare spelling as a type,
+/// so multiplicity and candidate identity both go back to the substrate and the refusal is decided
+/// and located there. The moment this function chose among them it would be the bare-name identity
+/// defect it was written to remove, one layer down. It also marshals no declaration nodes, which is
+/// where the whole-pool cost actually lived.
+pub fn eval_type_declarer_qualified_names(
+    _ctx: &InterpContext,
+    pool_roots: &[String],
+    bare_name: &str,
+) -> InterpResult<Value> {
+    // Same line-stop as `eval_decl_facts_at`, and for the same reason: a root that contributes
+    // nothing is invisible in a keyed answer, because an empty result is what a genuine miss looks
+    // like — so the refusal fires against the DECLARED roots, before the read.
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "type_declarer_qualified_names",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let facts = decl_facts_for_roots_shared(pool_roots);
+    let mut names: Vec<Value> = Vec::new();
+    for fact in facts.iter() {
+        if fact.name == bare_name && fact.kind == ItemKind::TypeItem {
+            names.push(str_value(fact.qualified_name.clone()));
+        }
+    }
+    Ok(crate::v1_interpreter::list_value(names))
 }
 
 fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {

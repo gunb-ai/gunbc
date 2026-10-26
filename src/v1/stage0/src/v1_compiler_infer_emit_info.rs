@@ -1000,7 +1000,6 @@ pub struct EmitGraphInfo {
     pub expected_type: Option<Rc<Node>>,
     pub tco_cursor_params: Rc<Vec<String>>,
     pub tco_cursor_tails: Rc<HashMap<String, i64>>,
-    pub trmc_out: bool,
     pub dying_base_sites: Rc<HashMap<String, String>>,
     pub item_leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
@@ -1046,7 +1045,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         expected_type: std::option::Option::None,
         tco_cursor_params: Rc::new(vec![]),
         tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
-        trmc_out: false,
         dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
     })
 }
@@ -1086,8 +1084,7 @@ pub fn emit_info_with_fn_type_context(
         let __rb_26_0 = emit_info.expected_type.clone();
         let __rb_27_0 = emit_info.tco_cursor_params.clone();
         let __rb_28_0 = emit_info.tco_cursor_tails.clone();
-        let __rb_29_0 = emit_info.trmc_out.clone();
-        let __rb_30_0 = emit_info.dying_base_sites.clone();
+        let __rb_29_0 = emit_info.dying_base_sites.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1120,8 +1117,7 @@ pub fn emit_info_with_fn_type_context(
                 __rb_r.expected_type = __rb_26_0;
                 __rb_r.tco_cursor_params = __rb_27_0;
                 __rb_r.tco_cursor_tails = __rb_28_0;
-                __rb_r.trmc_out = __rb_29_0;
-                __rb_r.dying_base_sites = __rb_30_0;
+                __rb_r.dying_base_sites = __rb_29_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1154,8 +1150,7 @@ pub fn emit_info_with_fn_type_context(
                     expected_type: __rb_26_0,
                     tco_cursor_params: __rb_27_0,
                     tco_cursor_tails: __rb_28_0,
-                    trmc_out: __rb_29_0,
-                    dying_base_sites: __rb_30_0,
+                    dying_base_sites: __rb_29_0,
                 });
             }
         }
@@ -1197,8 +1192,7 @@ pub fn emit_info_with_fn_return(
         let __rb_26_0 = fn_return_type.clone();
         let __rb_27_0 = emit_info.tco_cursor_params.clone();
         let __rb_28_0 = emit_info.tco_cursor_tails.clone();
-        let __rb_29_0 = emit_info.trmc_out.clone();
-        let __rb_30_0 = emit_info.dying_base_sites.clone();
+        let __rb_29_0 = emit_info.dying_base_sites.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1231,8 +1225,7 @@ pub fn emit_info_with_fn_return(
                 __rb_r.expected_type = __rb_26_0;
                 __rb_r.tco_cursor_params = __rb_27_0;
                 __rb_r.tco_cursor_tails = __rb_28_0;
-                __rb_r.trmc_out = __rb_29_0;
-                __rb_r.dying_base_sites = __rb_30_0;
+                __rb_r.dying_base_sites = __rb_29_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1265,8 +1258,7 @@ pub fn emit_info_with_fn_return(
                     expected_type: __rb_26_0,
                     tco_cursor_params: __rb_27_0,
                     tco_cursor_tails: __rb_28_0,
-                    trmc_out: __rb_29_0,
-                    dying_base_sites: __rb_30_0,
+                    dying_base_sites: __rb_29_0,
                 });
             }
         }
@@ -1308,8 +1300,7 @@ pub fn emit_info_with_expected_type(
         let __rb_26_0 = expected_type.clone();
         let __rb_27_0 = emit_info.tco_cursor_params.clone();
         let __rb_28_0 = emit_info.tco_cursor_tails.clone();
-        let __rb_29_0 = emit_info.trmc_out.clone();
-        let __rb_30_0 = emit_info.dying_base_sites.clone();
+        let __rb_29_0 = emit_info.dying_base_sites.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1342,8 +1333,7 @@ pub fn emit_info_with_expected_type(
                 __rb_r.expected_type = __rb_26_0;
                 __rb_r.tco_cursor_params = __rb_27_0;
                 __rb_r.tco_cursor_tails = __rb_28_0;
-                __rb_r.trmc_out = __rb_29_0;
-                __rb_r.dying_base_sites = __rb_30_0;
+                __rb_r.dying_base_sites = __rb_29_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1376,8 +1366,7 @@ pub fn emit_info_with_expected_type(
                     expected_type: __rb_26_0,
                     tco_cursor_params: __rb_27_0,
                     tco_cursor_tails: __rb_28_0,
-                    trmc_out: __rb_29_0,
-                    dying_base_sites: __rb_30_0,
+                    dying_base_sites: __rb_29_0,
                 });
             }
         }
@@ -2123,82 +2112,79 @@ pub fn fn_reaching_names_fixpoint(
     mut __tco_loop_structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
     mut __tco_loop_reached: Rc<BTreeSet<String>>,
 ) -> Rc<BTreeSet<String>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut candidates = __tco_loop_candidates;
-            #[allow(unused_mut)]
-            let mut summaries = __tco_loop_summaries;
-            #[allow(unused_mut)]
-            let mut structural_alias_fn_surface_names =
-                __tco_loop_structural_alias_fn_surface_names;
-            #[allow(unused_mut)]
-            let mut structural_alias_direct_fn_names = __tco_loop_structural_alias_direct_fn_names;
-            #[allow(unused_mut)]
-            let mut reached = __tco_loop_reached;
-            let round = candidates.iter().cloned().fold(
-                Rc::new(FnReachRound {
-                    reached: reached.clone(),
-                    grew: false,
-                }),
-                |acc: Rc<FnReachRound>, name: String| {
-                    if v1_rt::set_contains(&acc.reached.clone(), name.clone()) {
-                        acc.clone()
-                    } else {
-                        if (fn_reach_holds_directly(
+    loop {
+        #[allow(unused_mut)]
+        let mut candidates = __tco_loop_candidates;
+        #[allow(unused_mut)]
+        let mut summaries = __tco_loop_summaries;
+        #[allow(unused_mut)]
+        let mut structural_alias_fn_surface_names = __tco_loop_structural_alias_fn_surface_names;
+        #[allow(unused_mut)]
+        let mut structural_alias_direct_fn_names = __tco_loop_structural_alias_direct_fn_names;
+        #[allow(unused_mut)]
+        let mut reached = __tco_loop_reached;
+        let round = candidates.iter().cloned().fold(
+            Rc::new(FnReachRound {
+                reached: reached.clone(),
+                grew: false,
+            }),
+            |acc: Rc<FnReachRound>, name: String| {
+                if v1_rt::set_contains(&acc.reached.clone(), name.clone()) {
+                    acc.clone()
+                } else {
+                    if (fn_reach_holds_directly(
+                        name.clone(),
+                        summaries.clone(),
+                        structural_alias_direct_fn_names.clone(),
+                    ) || {
+                        let mut __found = false;
+                        for target in fn_reach_targets(
                             name.clone(),
                             summaries.clone(),
-                            structural_alias_direct_fn_names.clone(),
-                        ) || {
-                            let mut __found = false;
-                            for target in fn_reach_targets(
-                                name.clone(),
-                                summaries.clone(),
-                                structural_alias_fn_surface_names.clone(),
-                            )
-                            .iter()
-                            .cloned()
+                            structural_alias_fn_surface_names.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
+                            if (v1_rt::set_contains(&acc.reached.clone(), target.clone())
+                                || fn_reach_holds_directly(
+                                    target.clone(),
+                                    summaries.clone(),
+                                    structural_alias_direct_fn_names.clone(),
+                                ))
                             {
-                                if (v1_rt::set_contains(&acc.reached.clone(), target.clone())
-                                    || fn_reach_holds_directly(
-                                        target.clone(),
-                                        summaries.clone(),
-                                        structural_alias_direct_fn_names.clone(),
-                                    ))
-                                {
-                                    __found = true;
-                                    break;
-                                }
+                                __found = true;
+                                break;
                             }
-                            __found
-                        }) {
-                            Rc::new(FnReachRound {
-                                reached: v1_rt::rc_set_insert(acc.reached.clone(), name.clone()),
-                                grew: true,
-                            })
-                        } else {
-                            acc.clone()
                         }
+                        __found
+                    }) {
+                        Rc::new(FnReachRound {
+                            reached: v1_rt::rc_set_insert(acc.reached.clone(), name.clone()),
+                            grew: true,
+                        })
+                    } else {
+                        acc.clone()
                     }
-                },
-            );
-            if round.grew.clone() {
-                {
-                    let __tco_0 = candidates;
-                    let __tco_1 = summaries;
-                    let __tco_2 = structural_alias_fn_surface_names;
-                    let __tco_3 = structural_alias_direct_fn_names;
-                    let __tco_4 = round.reached.clone();
-                    __tco_loop_candidates = __tco_0;
-                    __tco_loop_summaries = __tco_1;
-                    __tco_loop_structural_alias_fn_surface_names = __tco_2;
-                    __tco_loop_structural_alias_direct_fn_names = __tco_3;
-                    __tco_loop_reached = __tco_4;
-                    continue;
                 }
-            } else {
-                break round.reached.clone();
+            },
+        );
+        if round.grew.clone() {
+            {
+                let __tco_0 = candidates;
+                let __tco_1 = summaries;
+                let __tco_2 = structural_alias_fn_surface_names;
+                let __tco_3 = structural_alias_direct_fn_names;
+                let __tco_4 = round.reached.clone();
+                __tco_loop_candidates = __tco_0;
+                __tco_loop_summaries = __tco_1;
+                __tco_loop_structural_alias_fn_surface_names = __tco_2;
+                __tco_loop_structural_alias_direct_fn_names = __tco_3;
+                __tco_loop_reached = __tco_4;
+                continue;
             }
+        } else {
+            break round.reached.clone();
         }
     }
 }

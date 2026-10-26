@@ -1443,25 +1443,86 @@ pub fn infer_parser_always_advancing_members_worklist(
     mut __tco_loop_proven: Rc<HashMap<String, bool>>,
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, bool>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut queue = __tco_loop_queue;
-            #[allow(unused_mut)]
-            let mut func_index = __tco_loop_func_index;
-            #[allow(unused_mut)]
-            let mut parser_name_set = __tco_loop_parser_name_set;
-            #[allow(unused_mut)]
-            let mut reverse_graph = __tco_loop_reverse_graph;
-            #[allow(unused_mut)]
-            let mut proven = __tco_loop_proven;
-            #[allow(unused_mut)]
-            let mut si = __tco_loop_si;
-            match queue.clone().first().cloned() {
-                Some(name) => {
-                    let rest = Rc::new(v1_rt::list_skip(&queue.clone(), 1));
-                    if set_has(proven.clone(), name.clone()) {
-                        {
+    loop {
+        #[allow(unused_mut)]
+        let mut queue = __tco_loop_queue;
+        #[allow(unused_mut)]
+        let mut func_index = __tco_loop_func_index;
+        #[allow(unused_mut)]
+        let mut parser_name_set = __tco_loop_parser_name_set;
+        #[allow(unused_mut)]
+        let mut reverse_graph = __tco_loop_reverse_graph;
+        #[allow(unused_mut)]
+        let mut proven = __tco_loop_proven;
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si;
+        match queue.clone().first().cloned() {
+            Some(name) => {
+                let rest = Rc::new(v1_rt::list_skip(&queue.clone(), 1));
+                if set_has(proven.clone(), name.clone()) {
+                    {
+                        let __tco_0 = rest.clone();
+                        let __tco_1 = func_index;
+                        let __tco_2 = parser_name_set;
+                        let __tco_3 = reverse_graph;
+                        let __tco_4 = proven;
+                        let __tco_5 = si;
+                        __tco_loop_queue = __tco_0;
+                        __tco_loop_func_index = __tco_1;
+                        __tco_loop_parser_name_set = __tco_2;
+                        __tco_loop_reverse_graph = __tco_3;
+                        __tco_loop_proven = __tco_4;
+                        __tco_loop_si = __tco_5;
+                        continue;
+                    }
+                } else {
+                    match v1_rt::map_get(&func_index, name.clone()) {
+                        Some(entry) => {
+                            if parser_member_is_always_advancing(
+                                entry.clone(),
+                                parser_name_set.clone(),
+                                proven.clone(),
+                                si.clone(),
+                            ) {
+                                let callers = match v1_rt::map_get(&reverse_graph, name.clone()) {
+                                    Some(members) => members.clone(),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                };
+                                {
+                                    let __tco_0 =
+                                        deduplicate(v1_rt::concat(rest.clone(), callers.clone()));
+                                    let __tco_1 = func_index;
+                                    let __tco_2 = parser_name_set;
+                                    let __tco_3 = reverse_graph;
+                                    let __tco_4 = v1_rt::rc_map_insert(proven, name.clone(), true);
+                                    let __tco_5 = si;
+                                    __tco_loop_queue = __tco_0;
+                                    __tco_loop_func_index = __tco_1;
+                                    __tco_loop_parser_name_set = __tco_2;
+                                    __tco_loop_reverse_graph = __tco_3;
+                                    __tco_loop_proven = __tco_4;
+                                    __tco_loop_si = __tco_5;
+                                    continue;
+                                }
+                            } else {
+                                {
+                                    let __tco_0 = rest.clone();
+                                    let __tco_1 = func_index;
+                                    let __tco_2 = parser_name_set;
+                                    let __tco_3 = reverse_graph;
+                                    let __tco_4 = proven;
+                                    let __tco_5 = si;
+                                    __tco_loop_queue = __tco_0;
+                                    __tco_loop_func_index = __tco_1;
+                                    __tco_loop_parser_name_set = __tco_2;
+                                    __tco_loop_reverse_graph = __tco_3;
+                                    __tco_loop_proven = __tco_4;
+                                    __tco_loop_si = __tco_5;
+                                    continue;
+                                }
+                            }
+                        }
+                        std::option::Option::None => {
                             let __tco_0 = rest.clone();
                             let __tco_1 = func_index;
                             let __tco_2 = parser_name_set;
@@ -1476,78 +1537,11 @@ pub fn infer_parser_always_advancing_members_worklist(
                             __tco_loop_si = __tco_5;
                             continue;
                         }
-                    } else {
-                        match v1_rt::map_get(&func_index, name.clone()) {
-                            Some(entry) => {
-                                if parser_member_is_always_advancing(
-                                    entry.clone(),
-                                    parser_name_set.clone(),
-                                    proven.clone(),
-                                    si.clone(),
-                                ) {
-                                    let callers = match v1_rt::map_get(&reverse_graph, name.clone())
-                                    {
-                                        Some(members) => members.clone(),
-                                        std::option::Option::None => Rc::new(vec![]),
-                                    };
-                                    {
-                                        let __tco_0 = deduplicate(v1_rt::concat(
-                                            rest.clone(),
-                                            callers.clone(),
-                                        ));
-                                        let __tco_1 = func_index;
-                                        let __tco_2 = parser_name_set;
-                                        let __tco_3 = reverse_graph;
-                                        let __tco_4 =
-                                            v1_rt::rc_map_insert(proven, name.clone(), true);
-                                        let __tco_5 = si;
-                                        __tco_loop_queue = __tco_0;
-                                        __tco_loop_func_index = __tco_1;
-                                        __tco_loop_parser_name_set = __tco_2;
-                                        __tco_loop_reverse_graph = __tco_3;
-                                        __tco_loop_proven = __tco_4;
-                                        __tco_loop_si = __tco_5;
-                                        continue;
-                                    }
-                                } else {
-                                    {
-                                        let __tco_0 = rest.clone();
-                                        let __tco_1 = func_index;
-                                        let __tco_2 = parser_name_set;
-                                        let __tco_3 = reverse_graph;
-                                        let __tco_4 = proven;
-                                        let __tco_5 = si;
-                                        __tco_loop_queue = __tco_0;
-                                        __tco_loop_func_index = __tco_1;
-                                        __tco_loop_parser_name_set = __tco_2;
-                                        __tco_loop_reverse_graph = __tco_3;
-                                        __tco_loop_proven = __tco_4;
-                                        __tco_loop_si = __tco_5;
-                                        continue;
-                                    }
-                                }
-                            }
-                            std::option::Option::None => {
-                                let __tco_0 = rest.clone();
-                                let __tco_1 = func_index;
-                                let __tco_2 = parser_name_set;
-                                let __tco_3 = reverse_graph;
-                                let __tco_4 = proven;
-                                let __tco_5 = si;
-                                __tco_loop_queue = __tco_0;
-                                __tco_loop_func_index = __tco_1;
-                                __tco_loop_parser_name_set = __tco_2;
-                                __tco_loop_reverse_graph = __tco_3;
-                                __tco_loop_proven = __tco_4;
-                                __tco_loop_si = __tco_5;
-                                continue;
-                            }
-                        }
                     }
                 }
-                std::option::Option::None => {
-                    break proven.clone();
-                }
+            }
+            std::option::Option::None => {
+                break proven.clone();
             }
         }
     }
@@ -2491,49 +2485,47 @@ pub fn expr_descending_witness_source(
     mut __tco_loop_descending_witness_names: Rc<HashMap<String, String>>,
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut expr = __tco_loop_expr;
-            #[allow(unused_mut)]
-            let mut descending_witness_names = __tco_loop_descending_witness_names;
-            #[allow(unused_mut)]
-            let mut si = __tco_loop_si;
-            match (*expr.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    break v1_rt::map_get(
-                        &descending_witness_names,
-                        crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone()),
-                    );
+    loop {
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr;
+        #[allow(unused_mut)]
+        let mut descending_witness_names = __tco_loop_descending_witness_names;
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si;
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
+                break v1_rt::map_get(
+                    &descending_witness_names,
+                    crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone()),
+                );
+            }
+            ExprData::ExprBinOp { op, .. } => match op.clone() {
+                BinOp::Sub => {
+                    let __tco_0 = crate::v1_std_core::binop_left(expr);
+                    let __tco_1 = descending_witness_names;
+                    let __tco_2 = si;
+                    __tco_loop_expr = __tco_0;
+                    __tco_loop_descending_witness_names = __tco_1;
+                    __tco_loop_si = __tco_2;
+                    continue;
                 }
-                ExprData::ExprBinOp { op, .. } => match op.clone() {
-                    BinOp::Sub => {
-                        let __tco_0 = crate::v1_std_core::binop_left(expr);
-                        let __tco_1 = descending_witness_names;
-                        let __tco_2 = si;
-                        __tco_loop_expr = __tco_0;
-                        __tco_loop_descending_witness_names = __tco_1;
-                        __tco_loop_si = __tco_2;
-                        continue;
-                    }
-                    BinOp::Div => {
-                        let __tco_0 = crate::v1_std_core::binop_left(expr);
-                        let __tco_1 = descending_witness_names;
-                        let __tco_2 = si;
-                        __tco_loop_expr = __tco_0;
-                        __tco_loop_descending_witness_names = __tco_1;
-                        __tco_loop_si = __tco_2;
-                        continue;
-                    }
-                    _ => {
-                        break std::option::Option::None;
-                    }
-                },
+                BinOp::Div => {
+                    let __tco_0 = crate::v1_std_core::binop_left(expr);
+                    let __tco_1 = descending_witness_names;
+                    let __tco_2 = si;
+                    __tco_loop_expr = __tco_0;
+                    __tco_loop_descending_witness_names = __tco_1;
+                    __tco_loop_si = __tco_2;
+                    continue;
+                }
                 _ => {
                     break std::option::Option::None;
                 }
+            },
+            _ => {
+                break std::option::Option::None;
             }
         }
     }
@@ -2832,61 +2824,59 @@ pub fn is_children_of_param(
     mut __tco_loop_vars: Rc<HashMap<String, bool>>,
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut expr = __tco_loop_expr;
-            #[allow(unused_mut)]
-            let mut param_name = __tco_loop_param_name;
-            #[allow(unused_mut)]
-            let mut vars = __tco_loop_vars;
-            #[allow(unused_mut)]
-            let mut si = __tco_loop_si;
-            match (*expr.expr_data.clone()).clone() {
-                ExprData::ExprFieldAccess { .. } => {
-                    let base = crate::v1_std_core::field_access_base(expr.clone());
-                    let field = crate::v1_std_core::field_access_field_at(expr.clone(), si.clone());
-                    break (crate::v1_std_core::is_children_list_field(field)
-                        && match (*base.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => {
-                                (crate::v1_std_core::expr_var_name_at(base.clone(), si.clone())
-                                    == param_name.clone())
-                            }
-                            _ => false,
-                        });
+    loop {
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr;
+        #[allow(unused_mut)]
+        let mut param_name = __tco_loop_param_name;
+        #[allow(unused_mut)]
+        let mut vars = __tco_loop_vars;
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si;
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprFieldAccess { .. } => {
+                let base = crate::v1_std_core::field_access_base(expr.clone());
+                let field = crate::v1_std_core::field_access_field_at(expr.clone(), si.clone());
+                break (crate::v1_std_core::is_children_list_field(field)
+                    && match (*base.expr_data.clone()).clone() {
+                        ExprData::ExprVar {
+                            binding_kind: _, ..
+                        } => {
+                            (crate::v1_std_core::expr_var_name_at(base.clone(), si.clone())
+                                == param_name.clone())
+                        }
+                        _ => false,
+                    });
+            }
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
+                break set_has(
+                    vars.clone(),
+                    crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone()),
+                );
+            }
+            ExprData::ExprMethodCall {
+                method_semantics: ms,
+                ..
+            } => match method_size_effect(ms.clone()) {
+                Some(CollectionSizeEffect::ShrinkEffect) => {
+                    let __tco_0 = crate::v1_std_core::method_receiver(expr);
+                    let __tco_1 = param_name;
+                    let __tco_2 = vars;
+                    let __tco_3 = si;
+                    __tco_loop_expr = __tco_0;
+                    __tco_loop_param_name = __tco_1;
+                    __tco_loop_vars = __tco_2;
+                    __tco_loop_si = __tco_3;
+                    continue;
                 }
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    break set_has(
-                        vars.clone(),
-                        crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone()),
-                    );
-                }
-                ExprData::ExprMethodCall {
-                    method_semantics: ms,
-                    ..
-                } => match method_size_effect(ms.clone()) {
-                    Some(CollectionSizeEffect::ShrinkEffect) => {
-                        let __tco_0 = crate::v1_std_core::method_receiver(expr);
-                        let __tco_1 = param_name;
-                        let __tco_2 = vars;
-                        let __tco_3 = si;
-                        __tco_loop_expr = __tco_0;
-                        __tco_loop_param_name = __tco_1;
-                        __tco_loop_vars = __tco_2;
-                        __tco_loop_si = __tco_3;
-                        continue;
-                    }
-                    _ => {
-                        break false;
-                    }
-                },
                 _ => {
                     break false;
                 }
+            },
+            _ => {
+                break false;
             }
         }
     }
@@ -3160,104 +3150,102 @@ pub fn is_tokens_input_expr(
     mut __tco_loop_vars: Rc<HashMap<String, bool>>,
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut expr = __tco_loop_expr;
-            #[allow(unused_mut)]
-            let mut param_name = __tco_loop_param_name;
-            #[allow(unused_mut)]
-            let mut vars = __tco_loop_vars;
-            #[allow(unused_mut)]
-            let mut si = __tco_loop_si;
-            match (*expr.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    let vname = crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone());
-                    break ((vname.clone() == param_name.clone())
-                        || set_has(vars.clone(), vname.clone()));
-                }
-                ExprData::ExprFieldAccess { .. } => {
-                    let field = crate::v1_std_core::field_access_field_at(expr.clone(), si.clone());
-                    if (field.clone() == param_name.clone()) {
-                        break true;
-                    } else {
-                        let base = crate::v1_std_core::field_access_base(expr.clone());
-                        match (*base.expr_data.clone()).clone() {
-                            ExprData::ExprVar {
-                                binding_kind: _, ..
-                            } => {
-                                let bname =
-                                    crate::v1_std_core::expr_var_name_at(base.clone(), si.clone());
-                                break ((bname.clone() == param_name.clone())
-                                    || set_has(vars.clone(), bname.clone()));
-                            }
-                            _ => {
-                                break false;
-                            }
+    loop {
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr;
+        #[allow(unused_mut)]
+        let mut param_name = __tco_loop_param_name;
+        #[allow(unused_mut)]
+        let mut vars = __tco_loop_vars;
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si;
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
+                let vname = crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone());
+                break ((vname.clone() == param_name.clone())
+                    || set_has(vars.clone(), vname.clone()));
+            }
+            ExprData::ExprFieldAccess { .. } => {
+                let field = crate::v1_std_core::field_access_field_at(expr.clone(), si.clone());
+                if (field.clone() == param_name.clone()) {
+                    break true;
+                } else {
+                    let base = crate::v1_std_core::field_access_base(expr.clone());
+                    match (*base.expr_data.clone()).clone() {
+                        ExprData::ExprVar {
+                            binding_kind: _, ..
+                        } => {
+                            let bname =
+                                crate::v1_std_core::expr_var_name_at(base.clone(), si.clone());
+                            break ((bname.clone() == param_name.clone())
+                                || set_has(vars.clone(), bname.clone()));
+                        }
+                        _ => {
+                            break false;
                         }
                     }
                 }
-                ExprData::ExprMethodCall {
-                    method_semantics: ms,
-                    ..
-                } => match method_size_effect(ms.clone()) {
-                    Some(CollectionSizeEffect::ShrinkEffect) => {
-                        let __tco_0 = crate::v1_std_core::method_receiver(expr);
-                        let __tco_1 = param_name;
-                        let __tco_2 = vars;
-                        let __tco_3 = si;
-                        __tco_loop_expr = __tco_0;
-                        __tco_loop_param_name = __tco_1;
-                        __tco_loop_vars = __tco_2;
-                        __tco_loop_si = __tco_3;
-                        continue;
-                    }
-                    _ => {
-                        break false;
-                    }
-                },
-                ExprData::ExprCall { .. } => {
-                    if is_list_passthrough_call(expr.clone(), si.clone()) {
-                        match list_passthrough_inner_arg(expr.clone(), si.clone()) {
-                            Some(inner) => {
-                                let __tco_0 = inner.clone();
-                                let __tco_1 = param_name;
-                                let __tco_2 = vars;
-                                let __tco_3 = si;
-                                __tco_loop_expr = __tco_0;
-                                __tco_loop_param_name = __tco_1;
-                                __tco_loop_vars = __tco_2;
-                                __tco_loop_si = __tco_3;
-                                continue;
-                            }
-                            std::option::Option::None => {
-                                break false;
-                            }
-                        }
-                    } else {
-                        match consuming_tokens_arg(expr.clone(), si.clone()) {
-                            Some(tokens_arg) => {
-                                let __tco_0 = tokens_arg.clone();
-                                let __tco_1 = param_name;
-                                let __tco_2 = vars;
-                                let __tco_3 = si;
-                                __tco_loop_expr = __tco_0;
-                                __tco_loop_param_name = __tco_1;
-                                __tco_loop_vars = __tco_2;
-                                __tco_loop_si = __tco_3;
-                                continue;
-                            }
-                            std::option::Option::None => {
-                                break false;
-                            }
-                        }
-                    }
+            }
+            ExprData::ExprMethodCall {
+                method_semantics: ms,
+                ..
+            } => match method_size_effect(ms.clone()) {
+                Some(CollectionSizeEffect::ShrinkEffect) => {
+                    let __tco_0 = crate::v1_std_core::method_receiver(expr);
+                    let __tco_1 = param_name;
+                    let __tco_2 = vars;
+                    let __tco_3 = si;
+                    __tco_loop_expr = __tco_0;
+                    __tco_loop_param_name = __tco_1;
+                    __tco_loop_vars = __tco_2;
+                    __tco_loop_si = __tco_3;
+                    continue;
                 }
                 _ => {
                     break false;
                 }
+            },
+            ExprData::ExprCall { .. } => {
+                if is_list_passthrough_call(expr.clone(), si.clone()) {
+                    match list_passthrough_inner_arg(expr.clone(), si.clone()) {
+                        Some(inner) => {
+                            let __tco_0 = inner.clone();
+                            let __tco_1 = param_name;
+                            let __tco_2 = vars;
+                            let __tco_3 = si;
+                            __tco_loop_expr = __tco_0;
+                            __tco_loop_param_name = __tco_1;
+                            __tco_loop_vars = __tco_2;
+                            __tco_loop_si = __tco_3;
+                            continue;
+                        }
+                        std::option::Option::None => {
+                            break false;
+                        }
+                    }
+                } else {
+                    match consuming_tokens_arg(expr.clone(), si.clone()) {
+                        Some(tokens_arg) => {
+                            let __tco_0 = tokens_arg.clone();
+                            let __tco_1 = param_name;
+                            let __tco_2 = vars;
+                            let __tco_3 = si;
+                            __tco_loop_expr = __tco_0;
+                            __tco_loop_param_name = __tco_1;
+                            __tco_loop_vars = __tco_2;
+                            __tco_loop_si = __tco_3;
+                            continue;
+                        }
+                        std::option::Option::None => {
+                            break false;
+                        }
+                    }
+                }
+            }
+            _ => {
+                break false;
             }
         }
     }
@@ -4341,37 +4329,35 @@ pub fn all_self_calls_descend_inc(
 }
 
 pub fn unwrap_to_match(mut __tco_loop_body: Rc<Node>) -> Option<Rc<Node>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut body = __tco_loop_body;
-            match (*body.expr_data.clone()).clone() {
-                ExprData::ExprMatch => {
-                    break Some(body.clone());
+    loop {
+        #[allow(unused_mut)]
+        let mut body = __tco_loop_body;
+        match (*body.expr_data.clone()).clone() {
+            ExprData::ExprMatch => {
+                break Some(body.clone());
+            }
+            ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
+                Some(b) => {
+                    let __tco_0 = b.clone();
+                    __tco_loop_body = __tco_0;
+                    continue;
                 }
-                ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
-                    Some(b) => {
-                        let __tco_0 = b.clone();
-                        __tco_loop_body = __tco_0;
-                        continue;
-                    }
-                    std::option::Option::None => {
-                        break std::option::Option::None;
-                    }
-                },
-                ExprData::ExprBlock => match body.children.clone().last().cloned() {
-                    Some(last_stmt) => {
-                        let __tco_0 = last_stmt.clone();
-                        __tco_loop_body = __tco_0;
-                        continue;
-                    }
-                    std::option::Option::None => {
-                        break std::option::Option::None;
-                    }
-                },
-                _ => {
+                std::option::Option::None => {
                     break std::option::Option::None;
                 }
+            },
+            ExprData::ExprBlock => match body.children.clone().last().cloned() {
+                Some(last_stmt) => {
+                    let __tco_0 = last_stmt.clone();
+                    __tco_loop_body = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+            },
+            _ => {
+                break std::option::Option::None;
             }
         }
     }
@@ -6023,73 +6009,71 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
 }
 
 pub fn extract_unknown_reason(mut __tco_loop_expr: Rc<CostExpr>) -> String {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut expr = __tco_loop_expr;
-            match (*expr.clone()).clone() {
-                CostExpr::CostUnknown { reason: r, .. } => {
-                    break r.clone();
-                }
-                CostExpr::CostAdd {
-                    left: l, right: r, ..
-                } => {
-                    if is_unknown_cost(l.clone()) {
-                        {
-                            let __tco_0 = l.clone();
-                            __tco_loop_expr = __tco_0;
-                            continue;
-                        }
-                    } else {
-                        {
-                            let __tco_0 = r.clone();
-                            __tco_loop_expr = __tco_0;
-                            continue;
-                        }
+    loop {
+        #[allow(unused_mut)]
+        let mut expr = __tco_loop_expr;
+        match (*expr.clone()).clone() {
+            CostExpr::CostUnknown { reason: r, .. } => {
+                break r.clone();
+            }
+            CostExpr::CostAdd {
+                left: l, right: r, ..
+            } => {
+                if is_unknown_cost(l.clone()) {
+                    {
+                        let __tco_0 = l.clone();
+                        __tco_loop_expr = __tco_0;
+                        continue;
+                    }
+                } else {
+                    {
+                        let __tco_0 = r.clone();
+                        __tco_loop_expr = __tco_0;
+                        continue;
                     }
                 }
-                CostExpr::CostMul {
-                    left: l, right: r, ..
-                } => {
-                    if is_unknown_cost(l.clone()) {
-                        {
-                            let __tco_0 = l.clone();
-                            __tco_loop_expr = __tco_0;
-                            continue;
-                        }
-                    } else {
-                        {
-                            let __tco_0 = r.clone();
-                            __tco_loop_expr = __tco_0;
-                            continue;
-                        }
+            }
+            CostExpr::CostMul {
+                left: l, right: r, ..
+            } => {
+                if is_unknown_cost(l.clone()) {
+                    {
+                        let __tco_0 = l.clone();
+                        __tco_loop_expr = __tco_0;
+                        continue;
+                    }
+                } else {
+                    {
+                        let __tco_0 = r.clone();
+                        __tco_loop_expr = __tco_0;
+                        continue;
                     }
                 }
-                CostExpr::CostMax {
-                    left: l, right: r, ..
-                } => {
-                    if is_unknown_cost(l.clone()) {
-                        {
-                            let __tco_0 = l.clone();
-                            __tco_loop_expr = __tco_0;
-                            continue;
-                        }
-                    } else {
-                        {
-                            let __tco_0 = r.clone();
-                            __tco_loop_expr = __tco_0;
-                            continue;
-                        }
+            }
+            CostExpr::CostMax {
+                left: l, right: r, ..
+            } => {
+                if is_unknown_cost(l.clone()) {
+                    {
+                        let __tco_0 = l.clone();
+                        __tco_loop_expr = __tco_0;
+                        continue;
+                    }
+                } else {
+                    {
+                        let __tco_0 = r.clone();
+                        __tco_loop_expr = __tco_0;
+                        continue;
                     }
                 }
-                CostExpr::CostSum { body: bd, .. } => {
-                    let __tco_0 = bd.clone();
-                    __tco_loop_expr = __tco_0;
-                    continue;
-                }
-                _ => {
-                    break "unknown".to_string();
-                }
+            }
+            CostExpr::CostSum { body: bd, .. } => {
+                let __tco_0 = bd.clone();
+                __tco_loop_expr = __tco_0;
+                continue;
+            }
+            _ => {
+                break "unknown".to_string();
             }
         }
     }
@@ -8154,53 +8138,48 @@ pub fn receiver_size_var(
     mut __tco_loop_recv: Rc<Node>,
     mut __tco_loop_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SizeExpr> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut recv = __tco_loop_recv;
-            #[allow(unused_mut)]
-            let mut si = __tco_loop_si;
-            match (*recv.expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => {
-                    break Rc::new(SizeExpr::SizeLen {
-                        collection: crate::v1_std_core::expr_var_name_at(recv.clone(), si.clone()),
-                    });
-                }
-                ExprData::ExprFieldAccess { .. } => {
-                    break Rc::new(SizeExpr::SizeLen {
-                        collection: crate::v1_std_core::field_access_field_at(
-                            recv.clone(),
-                            si.clone(),
-                        ),
-                    });
-                }
-                ExprData::ExprMethodCall {
-                    method_semantics: method_semantics,
-                    ..
-                } => {
-                    let inner_recv = match recv.children.clone().first().cloned() {
-                        Some(r) => r.clone(),
-                        std::option::Option::None => recv.clone(),
-                    };
-                    if method_preserves_collection_size(method_semantics.clone()) {
-                        {
-                            let __tco_0 = inner_recv;
-                            let __tco_1 = si;
-                            __tco_loop_recv = __tco_0;
-                            __tco_loop_si = __tco_1;
-                            continue;
-                        }
-                    } else {
-                        break Rc::new(SizeExpr::SizeLen {
-                            collection: "__expr".to_string(),
-                        });
+    loop {
+        #[allow(unused_mut)]
+        let mut recv = __tco_loop_recv;
+        #[allow(unused_mut)]
+        let mut si = __tco_loop_si;
+        match (*recv.expr_data.clone()).clone() {
+            ExprData::ExprVar { .. } => {
+                break Rc::new(SizeExpr::SizeLen {
+                    collection: crate::v1_std_core::expr_var_name_at(recv.clone(), si.clone()),
+                });
+            }
+            ExprData::ExprFieldAccess { .. } => {
+                break Rc::new(SizeExpr::SizeLen {
+                    collection: crate::v1_std_core::field_access_field_at(recv.clone(), si.clone()),
+                });
+            }
+            ExprData::ExprMethodCall {
+                method_semantics: method_semantics,
+                ..
+            } => {
+                let inner_recv = match recv.children.clone().first().cloned() {
+                    Some(r) => r.clone(),
+                    std::option::Option::None => recv.clone(),
+                };
+                if method_preserves_collection_size(method_semantics.clone()) {
+                    {
+                        let __tco_0 = inner_recv;
+                        let __tco_1 = si;
+                        __tco_loop_recv = __tco_0;
+                        __tco_loop_si = __tco_1;
+                        continue;
                     }
-                }
-                _ => {
+                } else {
                     break Rc::new(SizeExpr::SizeLen {
                         collection: "__expr".to_string(),
                     });
                 }
+            }
+            _ => {
+                break Rc::new(SizeExpr::SizeLen {
+                    collection: "__expr".to_string(),
+                });
             }
         }
     }

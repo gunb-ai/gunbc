@@ -57,22 +57,20 @@ pub fn zero_padded(n: i64, width: i64) -> String {
 }
 
 pub fn zero_padded_with(mut __tco_loop_digits: String, mut __tco_loop_width: i64) -> String {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut digits = __tco_loop_digits;
-            #[allow(unused_mut)]
-            let mut width = __tco_loop_width;
-            if (v1_rt::string_length(&digits) >= width.clone()) {
-                break digits.clone();
-            } else {
-                {
-                    let __tco_0 = v1_rt::concat("0".to_string(), digits);
-                    let __tco_1 = width;
-                    __tco_loop_digits = __tco_0;
-                    __tco_loop_width = __tco_1;
-                    continue;
-                }
+    loop {
+        #[allow(unused_mut)]
+        let mut digits = __tco_loop_digits;
+        #[allow(unused_mut)]
+        let mut width = __tco_loop_width;
+        if (v1_rt::string_length(&digits) >= width.clone()) {
+            break digits.clone();
+        } else {
+            {
+                let __tco_0 = v1_rt::concat("0".to_string(), digits);
+                let __tco_1 = width;
+                __tco_loop_digits = __tco_0;
+                __tco_loop_width = __tco_1;
+                continue;
             }
         }
     }
@@ -107,32 +105,30 @@ pub fn close_regions_ending_by(
     mut __tco_loop_open: Rc<Vec<Rc<SweptRegion>>>,
     mut __tco_loop_at: i64,
 ) -> Rc<Vec<Rc<SweptRegion>>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut open = __tco_loop_open;
-            #[allow(unused_mut)]
-            let mut at = __tco_loop_at;
-            match open.clone().last().cloned() {
-                Some(top) => {
-                    if (top.extent.end.clone() <= at.clone()) {
-                        {
-                            let __tco_0 = Rc::new(v1_rt::list_take(
-                                &open,
-                                v1_rt::int_sub((open.len() as i64), 1),
-                            ));
-                            let __tco_1 = at;
-                            __tco_loop_open = __tco_0;
-                            __tco_loop_at = __tco_1;
-                            continue;
-                        }
-                    } else {
-                        break open.clone();
+    loop {
+        #[allow(unused_mut)]
+        let mut open = __tco_loop_open;
+        #[allow(unused_mut)]
+        let mut at = __tco_loop_at;
+        match open.clone().last().cloned() {
+            Some(top) => {
+                if (top.extent.end.clone() <= at.clone()) {
+                    {
+                        let __tco_0 = Rc::new(v1_rt::list_take(
+                            &open,
+                            v1_rt::int_sub((open.len() as i64), 1),
+                        ));
+                        let __tco_1 = at;
+                        __tco_loop_open = __tco_0;
+                        __tco_loop_at = __tco_1;
+                        continue;
                     }
-                }
-                std::option::Option::None => {
+                } else {
                     break open.clone();
                 }
+            }
+            std::option::Option::None => {
+                break open.clone();
             }
         }
     }
