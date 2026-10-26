@@ -1385,10 +1385,11 @@ test fn a_job_off_the_subject_host_brackets_every_desired_unit() -> Bool {
   length(kept) == 3 && all(wanted, x => any(kept, y => x == y))
 }
 
-// A LEAF WITH NOTHING IN IT -- a job in the slice root or the root cgroup -- occupies no unit either, and
-// is named as such instead of being cast to a string that has nothing to name.
+// A LEAF WITH NOTHING IN IT -- a job sitting in the root cgroup, whose unified line carries only slashes
+// -- occupies no unit either, and is named as such instead of being cast to a string that has nothing to
+// name. (A job in a SLICE root still has that slice's name as its leaf, and lands in the arm above.)
 test fn an_empty_leaf_says_the_job_holds_no_slot() -> Bool {
-  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice///")) {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "///")) {
     HolderNotOnSubject { why: w } => string_contains(s: w, pattern: "no leaf unit")
     HolderIdentified { unit: _ } => false
     HolderUnidentified { cause: _ } => false
