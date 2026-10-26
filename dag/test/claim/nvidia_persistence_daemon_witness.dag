@@ -1,0 +1,45 @@
+module test.claim.nvidia_persistence_daemon_witness
+
+import std.types { Bool, List, String }
+import extdeps.nvidia.persistence_daemon {
+  PersistenceDaemonStartupMode,
+  DaemonStartsPersistenceEnabled,
+  DaemonStartsPersistenceDisabled,
+  DaemonStartupModeAmbiguous,
+  persistence_daemon_startup_mode,
+  persistence_daemon_exec_argv
+}
+
+// CAPTURED, NOT AUTHORED: the ExecStart of the unit Ubuntu's nvidia-compute-utils-595-server ships,
+// read verbatim from `systemctl cat nvidia-persistenced` on the H11 A16 host, 2026-10-26, driver
+// 595.91.07. It is the shape the converge leg will read, and it starts the daemon with persistence off.
+data h11_packaged_exec_start: String = "/usr/bin/nvidia-persistenced --user nvidia-persistenced --no-persistence-mode --verbose"
+
+fn mode_of(line: String) -> PersistenceDaemonStartupMode? {
+  match persistence_daemon_exec_argv(command_line: line) {
+    Absent => none
+    Present { value: argv } => Present { value: persistence_daemon_startup_mode(argv: argv) }
+  }
+}
+
+fn is_disabled(m: PersistenceDaemonStartupMode?) -> Bool {
+  match m { Present { value: DaemonStartsPersistenceDisabled } => true  _ => false }
+}
+
+fn is_enabled(m: PersistenceDaemonStartupMode?) -> Bool {
+  match m { Present { value: DaemonStartsPersistenceEnabled } => true  _ => false }
+}
+
+fn is_ambiguous(m: PersistenceDaemonStartupMode?) -> Bool {
+  match m { Present { value: DaemonStartupModeAmbiguous } => true  _ => false }
+}
+
+// The packaged unit starts persistence OFF; the same line without the flag is the documented default
+// (ON); both flags have no documented meaning; a quoted line is not split into flags at all.
+test fn the_startup_mode_is_read_from_the_argv() -> Bool {
+  is_disabled(m: mode_of(line: h11_packaged_exec_start))
+    && is_enabled(m: mode_of(line: "/usr/bin/nvidia-persistenced --user nvidia-persistenced --verbose"))
+    && is_ambiguous(m: mode_of(line: "/usr/bin/nvidia-persistenced --persistence-mode --no-persistence-mode"))
+    && is_enabled(m: mode_of(line: "/usr/bin/nvidia-persistenced --persistence-mode"))
+    && match mode_of(line: "/usr/bin/nvidia-persistenced \"--no-persistence-mode\"") { Absent => true  Present { value: _ } => false }
+}
