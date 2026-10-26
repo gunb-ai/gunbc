@@ -58,3 +58,47 @@ test fn symbol_at_record_refuses() -> Bool {
 test fn symbol_at_string_stays_accepted() -> Bool {
   blocking_count(source: "module litsymbol.atstr\nfn f() -> String { ^tag }\n") == 0
 }
+
+// ── THE BOUNDARY IS THE MINTED CARRIER, NOT THE SPELLING (gunbc#14082 review, DESIGN §3b) ──
+//
+// THE DISCRIMINATING RED. The judgment admits Symbol by node equality against the seed's own minted
+// carrier (v1.std.core symbol_type), never by the leaf name "Symbol". A user-declared `type Symbol`
+// carries its own DeclarationRef, so it is an ordinary declared type and must be judged exactly like
+// the same shape declared under any other name. This row compares the two verdicts: it fails the
+// moment a spelling comparison is reintroduced, because the name `Symbol` would then buy kernel
+// treatment for a user declaration. The two sources differ ONLY in the declared head's name.
+test fn caret_symbol_named_type_is_not_the_minted_carrier() -> Bool {
+  blocking_count(source: "module litsymbol.usersym\ntype Symbol { x: Int }\nfn takes_int(v: Int) -> Int { v }\nfn leak(v: Symbol) -> Int { takes_int(v: v) }\n")
+    == blocking_count(source: "module litsymbol.useroth\ntype Other { x: Int }\nfn takes_int(v: Int) -> Int { v }\nfn leak(v: Other) -> Int { takes_int(v: v) }\n")
+}
+
+// THE DECLARED GAP IS BOUNDED TO SYMBOL-AT-STRING ONLY (operator ruling, 2026-10-26): no other
+// text-like or kernel formal is a target. Each of these must refuse, so the exemption cannot widen
+// to "anything text-shaped".
+//
+// WHY `NonEmptyStr` IS NOT A TARGET ROW OF ITS OWN: it is declared `type NonEmptyStr = String where
+// string_non_empty` (dag/std/types.dag), and this judgment peels a where-refinement to the kernel it
+// is represented by BEFORE comparing -- the peel is the seed's own declared rule (see the
+// gunbc#12695 note above this function, which peels `"x" as NonEmptyStr` to judge it as the kernel
+// String). Asserting a refusal there would contradict that rule and would name a second kernel, not
+// bound the gap. The rows below are therefore the text-like and kernel formals that are NOT
+// refinements of String: a free semigroup over text, and the remaining kernel ground names.
+test fn symbol_at_free_semigroup_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atfsg\nfn f() -> FreeSemigroup<String> { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_secret_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atsecret\nfn f() -> Secret { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_bytes_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atbytes\nfn f() -> Bytes { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_float_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atfloat\nfn f() -> Float { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_json_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atjson\nfn f() -> Json { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
