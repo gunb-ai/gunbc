@@ -340,6 +340,7 @@ fn occurrence_binding_is_module_level(binding: OccurrenceBinding) -> Bool {
 // emitter rendered the all-wildcard pattern `BoundAmbient { table: _, identity: _ }` as the bare unit
 // path `OccurrenceBinding::BoundAmbient` (E0533 in the emitted crate, PR #14112), and binding the
 // table keeps the pattern a struct pattern.
+// Workaround row: gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x); delete when the emitter keeps the braces.
 fn ambient_table_is_module_level(table: AmbientBindingTable) -> Bool {
   match table {
     AmbientKernelTypeSpelling => true

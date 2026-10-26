@@ -1,0 +1,276 @@
+module gunbc.provisioning.ubuntu_network_origin_observation
+
+// SEAM: extdeps keeps what Canonical publishes; gunbc keeps what we concluded. The kernel and
+// initrd digests below were extracted by us from inside the ISO by a procedure we wrote, with no
+// upstream digest to cite, so we are the authority for them (hence TranscribedUncited), and what a
+// mirror served when we fetched and hashed it is our observation (DESIGN 3, External upstream
+// decomposition; 3b External facts). The verdict is descriptive only: it never says an origin is
+// admitted or selected; the first thing that decides from it is the later install step.
+// CONSUMER (DESIGN 3c): consumed by its witness in this change; executing consumer is a declared
+// later change of cut 6 of gunbc.plans.physical_machine_boot_program (the PXE-edge provisioning arm
+// and the wet install step that calls verify_ubuntu_network_origin).
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { ByteSize, FiniteByteSize, byte_size_count, finite_byte_size, finite_byte_size_count, positive_measure_count }
+import std.content_hash { sha256_hex_digest }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.provisioning.ubuntu_install_media {
+  UbuntuInstallMediaArtifactRow,
+  noble_numbat_2404_5_live_server_arm64,
+  noble_numbat_2404_3_live_server_amd64,
+  ubuntu_install_media_publishing_mirror,
+  ubuntu_install_media_row_is_published,
+  ubuntu_cd_image_signing_key_fingerprint,
+  ubuntu_casper_kernel_member_path,
+  ubuntu_casper_initrd_member_path,
+  ubuntu_install_media_filename,
+  ubuntu_install_media_mirror_url,
+}
+
+// MIXED PROVENANCE, SO TWO STANDINGS. A pin's digest and its size can come from different places:
+// for the ISO the digest is Canonical's (CitedToAuthority, SHA256SUMS) while the byte count is
+// OUR measurement of what the mirror served; for the casper members both are ours. One standing
+// for the pin would let a measured size wear a citation it does not have (DESIGN 4d). The size is
+// std.measure FiniteByteSize, so an empty artefact has no constructor rather than a check. The
+// constructor takes the hex, not a Digest, so a sha512 pin has no spelling, and a hex that
+// std.content_hash sha256_hex_digest refuses returns absence; the stored digest is built from the
+// validated value. A second algorithm is a second constructor when an upstream publishes one.
+type PinnedArtefact sole_constructor {
+  digest: Digest
+  digest_standing: CitedFigureStanding
+  size: FiniteByteSize
+  size_standing: CitedFigureStanding
+}
+
+fn pinned_artefact(sha256_hex: NonEmptyStr, digest_standing: CitedFigureStanding, size: FiniteByteSize, size_standing: CitedFigureStanding) -> PinnedArtefact? {
+  match sha256_hex_digest(hex: sha256_hex as String) {
+    Present { value: validated } => Present { value: PinnedArtefact { digest: sha256_digest(hex: validated.hex as NonEmptyStr), digest_standing: digest_standing, size: size, size_standing: size_standing } }
+    Absent => Absent
+  }
+}
+
+type OriginArtefactRole
+  = OriginKernel
+  | OriginInitrd
+  | OriginInstallerFilesystem
+
+// THE ARCHITECTURE IS NOT A PARAMETER. It is read from the installer-media row (the one Ubuntu
+// architecture authority, extdeps.provisioning.ubuntu_install_media) instead of a second field that
+// could disagree with it, so an arm64 origin and an amd64 origin are two rows of pins through one
+// constructor, never two constructors. The installer filesystem pin is derived from the media
+// row, whose digest and SHA256SUMS authority are Canonical's, so no second ISO digest is authored
+// here; only its size is ours, read from the mirror.
+type UbuntuNetworkOrigin sole_constructor {
+  installer_media: UbuntuInstallMediaArtifactRow
+  kernel: PinnedArtefact
+  initrd: PinnedArtefact
+  installer_filesystem: PinnedArtefact
+}
+
+// AN ORIGIN IS BUILT ONLY OVER A PUBLISHED MEDIA ROW: one assembled elsewhere is absence, never an origin.
+fn ubuntu_network_origin(media: UbuntuInstallMediaArtifactRow, installer_size: FiniteByteSize, kernel: PinnedArtefact, initrd: PinnedArtefact) -> UbuntuNetworkOrigin? {
+  if ubuntu_install_media_row_is_published(row: media) == false {
+    Absent
+  } else {
+  match pinned_artefact(
+    sha256_hex: media.content_sha256 as NonEmptyStr,
+    digest_standing: CitedToAuthority { authority: media.sha256sums_authority },
+    size: installer_size,
+    size_standing: TranscribedUncited { read_obligation: ubuntu_origin_read_obligation(media: media) },
+  ) {
+    Absent => Absent
+    Present { value: f } => Present {
+      value: UbuntuNetworkOrigin { installer_media: media, kernel: kernel, initrd: initrd, installer_filesystem: f }
+    }
+  }
+  }
+}
+
+// WHAT A FETCH-AND-HASH PRODUCED FOR ONE ARTEFACT. Not fetching is a reading, not an error.
+type ArtefactReading
+  = ArtefactRead { digest: Digest, size: ByteSize }
+  | ArtefactNotFetched { why: NonEmptyStr }
+
+// VERIFIABLE OR REFUSED. Observed means every artefact was read and equals its pin; a mirror that
+// serves other bytes is Mismatch, which can never be mistaken for Observed, and an artefact nobody
+// fetched is Unfetched, which is not a pass either. A mismatch outranks an unfetched artefact: a
+// known-wrong file must not be hidden behind one that was not read.
+type OriginVerification
+  = OriginObserved { origin: UbuntuNetworkOrigin }
+  | OriginUnfetched { role: OriginArtefactRole, why: NonEmptyStr }
+  | OriginMismatch { role: OriginArtefactRole, expected: PinnedArtefact, actual: ArtefactReading }
+
+fn origin_digest_equal(a: Digest, b: Digest) -> Bool {
+  a == b
+}
+
+fn origin_reading_mismatches(pin: PinnedArtefact, reading: ArtefactReading) -> Bool {
+  match reading {
+    ArtefactRead { digest: d, size: s } => origin_digest_equal(a: d, b: pin.digest) == false || byte_size_count(b: s) != finite_byte_size_count(size: pin.size)
+    ArtefactNotFetched { why: _ } => false
+  }
+}
+
+fn origin_reading_unfetched(reading: ArtefactReading) -> NonEmptyStr? {
+  match reading {
+    ArtefactRead { digest: _, size: _ } => Absent
+    ArtefactNotFetched { why: w } => Present { value: w }
+  }
+}
+
+fn verify_ubuntu_network_origin(origin: UbuntuNetworkOrigin, kernel: ArtefactReading, initrd: ArtefactReading, installer_filesystem: ArtefactReading) -> OriginVerification {
+  if origin_reading_mismatches(pin: origin.kernel, reading: kernel) {
+    OriginMismatch { role: OriginKernel, expected: origin.kernel, actual: kernel }
+  } else if origin_reading_mismatches(pin: origin.initrd, reading: initrd) {
+    OriginMismatch { role: OriginInitrd, expected: origin.initrd, actual: initrd }
+  } else if origin_reading_mismatches(pin: origin.installer_filesystem, reading: installer_filesystem) {
+    OriginMismatch { role: OriginInstallerFilesystem, expected: origin.installer_filesystem, actual: installer_filesystem }
+  } else {
+    match origin_reading_unfetched(reading: kernel) {
+      Present { value: w } => OriginUnfetched { role: OriginKernel, why: w }
+      Absent => match origin_reading_unfetched(reading: initrd) {
+        Present { value: w } => OriginUnfetched { role: OriginInitrd, why: w }
+        Absent => match origin_reading_unfetched(reading: installer_filesystem) {
+          Present { value: w } => OriginUnfetched { role: OriginInstallerFilesystem, why: w }
+          Absent => OriginObserved { origin: origin }
+        }
+      }
+    }
+  }
+}
+
+// The re-derivation procedure for every figure here that is ours: the ISO's byte count and the
+// casper members' digests and byte counts. The URL and file name derive from the media row through
+// ubuntu_install_media (the cdimage path redirects, hence -fL).
+fn ubuntu_origin_read_obligation(media: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  let url = ubuntu_install_media_mirror_url(artifact: media, mirror: ubuntu_install_media_publishing_mirror(arch: media.architecture))
+  let file = ubuntu_install_media_filename(artifact: media)
+  concat(
+    concat(
+      concat(concat("Re-derive: curl -fL -O ", url as String), concat(" && sha256sum ", file as String)),
+      concat(" && wc -c ", file as String),
+    ),
+    concat(
+      concat(
+        concat(" (the digest must equal the SHA256SUMS line; the byte count is the pinned size); then extract ", ubuntu_casper_kernel_member_path() as String),
+        concat(" and ", ubuntu_casper_initrd_member_path() as String),
+      ),
+      " (xorriso -osirrox on -extract, or 7z e) and run sha256sum and wc -c on each. Read on 2026-10-17 by parsing the ISO9660 casper directory directly. SHA256SUMS.gpg was not verified against the Ubuntu archive key.",
+    ),
+  ) as NonEmptyStr
+}
+
+fn ubuntu_noble_arm64_kernel_pin() -> PinnedArtefact? {
+  pinned_artefact(
+    sha256_hex: "b4567593bda98a0723d9234603ec51d6ec7ee0553e1f36793a9da3956a68183e",
+    digest_standing: TranscribedUncited { read_obligation: ubuntu_origin_read_obligation(media: noble_numbat_2404_5_live_server_arm64) },
+    size: finite_byte_size(count: positive_measure_count(predecessor: 18581402)),
+    size_standing: TranscribedUncited { read_obligation: ubuntu_origin_read_obligation(media: noble_numbat_2404_5_live_server_arm64) },
+  )
+}
+
+fn ubuntu_noble_arm64_initrd_pin() -> PinnedArtefact? {
+  pinned_artefact(
+    sha256_hex: "993024a4daa493bd297ca34a6ed60efaf932225b25f901a3734d2ee6c57af187",
+    digest_standing: TranscribedUncited { read_obligation: ubuntu_origin_read_obligation(media: noble_numbat_2404_5_live_server_arm64) },
+    size: finite_byte_size(count: positive_measure_count(predecessor: 76091507)),
+    size_standing: TranscribedUncited { read_obligation: ubuntu_origin_read_obligation(media: noble_numbat_2404_5_live_server_arm64) },
+  )
+}
+
+// The origin row, absent if any literal above fails a constructor's own admission.
+fn ubuntu_noble_arm64_network_origin() -> UbuntuNetworkOrigin? {
+  match ubuntu_noble_arm64_kernel_pin() {
+    Present { value: k } => match ubuntu_noble_arm64_initrd_pin() {
+      Present { value: i } => ubuntu_network_origin(
+        media: noble_numbat_2404_5_live_server_arm64,
+        installer_size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
+        kernel: k,
+        initrd: i,
+      )
+      Absent => Absent
+    }
+    Absent => Absent
+  }
+}
+
+// ── amd64 ────────────────────────────────────────────────────────────────────────────────────────
+// Read on 2026-10-24 from ubuntu-24.04.3-live-server-amd64.iso, whose sha256 equals the line in
+// releases.ubuntu.com/24.04.3/SHA256SUMS under a good signature from the CD image key named in
+// extdeps.provisioning.ubuntu_install_media ubuntu_cd_image_signing_key_fingerprint. The casper members
+// were read out of the ISO9660 tree. The loader members were read out of the pool .debs, each of whose
+// sha256 equals its line in the ISO's main/binary-amd64/Packages.gz, whose sha256 equals its line in the
+// ISO's dists/noble/Release, which verifies under the same key.
+fn ubuntu_amd64_member_read_obligation(member: NonEmptyStr) -> NonEmptyStr {
+  join([
+    ubuntu_origin_read_obligation(media: noble_numbat_2404_3_live_server_amd64) as String,
+    " For ", member as String,
+    ": gpg --verify the ISO's dists/noble/Release.gpg against Release (key ", ubuntu_cd_image_signing_key_fingerprint as String,
+    "), check Packages.gz and the pool .deb against the sha256 lines they are listed under, then extract the member from the .deb's data tarball and run sha256sum and wc -c on it.",
+  ], "") as NonEmptyStr
+}
+
+fn amd64_pin(hex: NonEmptyStr, size: Int, member: NonEmptyStr) -> PinnedArtefact? {
+  pinned_artefact(
+    sha256_hex: hex,
+    digest_standing: TranscribedUncited { read_obligation: ubuntu_amd64_member_read_obligation(member: member) },
+    size: finite_byte_size(count: positive_measure_count(predecessor: size - 1)),
+    size_standing: TranscribedUncited { read_obligation: ubuntu_amd64_member_read_obligation(member: member) },
+  )
+}
+
+fn ubuntu_noble_amd64_kernel_pin() -> PinnedArtefact? {
+  amd64_pin(hex: "f82754bc29f710b2f0143fe0b19a2b2f40652c026cc6de44d75f3f991019c1ff", size: 15006088, member: "casper/vmlinuz")
+}
+
+fn ubuntu_noble_amd64_initrd_pin() -> PinnedArtefact? {
+  amd64_pin(hex: "c3753a6cd135366f5399dcdad8d611c90f61d95988369ea55c94a79d26bf300c", size: 74245462, member: "casper/initrd")
+}
+
+fn ubuntu_noble_amd64_shim_pin() -> PinnedArtefact? {
+  amd64_pin(hex: "6fe6e1bcbe6cf6baec8e056d40361ca1aa715cc04ddcc2855351de060b84350b", size: 966664, member: "usr/lib/shim/shimx64.efi.signed.latest")
+}
+
+fn ubuntu_noble_amd64_network_grub_pin() -> PinnedArtefact? {
+  amd64_pin(hex: "b457801e0f4cfd77fe375ecf8dcf098786e540706d81f552c8e58949755c62e8", size: 2344840, member: "usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed")
+}
+
+fn ubuntu_noble_amd64_network_origin() -> UbuntuNetworkOrigin? {
+  match ubuntu_noble_amd64_kernel_pin() {
+    Present { value: k } => match ubuntu_noble_amd64_initrd_pin() {
+      Present { value: i } => ubuntu_network_origin(
+        media: noble_numbat_2404_3_live_server_amd64,
+        installer_size: finite_byte_size(count: positive_measure_count(predecessor: 3303444479)),
+        kernel: k,
+        initrd: i,
+      )
+      Absent => Absent
+    }
+    Absent => Absent
+  }
+}
+
+// A SERVED MEMBER OF A PINNED BLOB, by the path the chain serves it at. grub.cfg has no pin here: it is
+// rendered by the edge, so its digest is the digest of that rendering, never a transcribed figure.
+type UbuntuNetworkBootMemberPin {
+  served_path: NonEmptyStr
+  pin: PinnedArtefact
+}
+
+fn member_pin(served_path: NonEmptyStr, pin: PinnedArtefact?) -> List<UbuntuNetworkBootMemberPin> {
+  match pin {
+    Present { value: p } => [UbuntuNetworkBootMemberPin { served_path: served_path, pin: p }]
+    Absent => []
+  }
+}
+
+// One pin per pinned blob member of the amd64 chain; a literal a constructor refuses drops out, and a
+// consumer that needs every member refuses on the missing path rather than serving without it.
+fn ubuntu_noble_amd64_network_boot_member_pins() -> List<UbuntuNetworkBootMemberPin> {
+  member_pin(served_path: "bootx64.efi", pin: ubuntu_noble_amd64_shim_pin())
+    + member_pin(served_path: "grubx64.efi", pin: ubuntu_noble_amd64_network_grub_pin())
+    + member_pin(served_path: "vmlinuz", pin: ubuntu_noble_amd64_kernel_pin())
+    + member_pin(served_path: "initrd", pin: ubuntu_noble_amd64_initrd_pin())
+}

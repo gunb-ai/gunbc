@@ -64,7 +64,7 @@ type HostEffect =
   | Srv3InstallMediaFetch
   | Srv3SeededInstallMediaRemaster
   | Srv3SeededInstallMediaToolchainEnsure
-  | Srv3BmcwebSessionLogin
+  | Srv3BmcwebSessionLogin { request_body_file: NonEmptyStr }
   | Srv3BmcwebTokenExtract
   | Srv3NbdProxyServe {
       intent: NbdProxyServeTransportIntent,

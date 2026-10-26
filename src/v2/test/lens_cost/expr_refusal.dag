@@ -11,7 +11,7 @@ import v2.lens.cost.expr {
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat, Succ, Zero }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   TypeNode,
@@ -70,7 +70,7 @@ test fn valid_log_base_two_projects_log_cost() -> Bool {
       argument: size_of(variable: expr_refusal_log_variable)
     )
   ) {
-    LogCost { variable: v } => v.source == expr_refusal_log_leaf
+    LogCost { variable: v } => node_same_occurrence(a: v.source, b: expr_refusal_log_leaf)
     _ => false
   }
 }

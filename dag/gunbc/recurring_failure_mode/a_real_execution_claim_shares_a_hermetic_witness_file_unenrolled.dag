@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.a_real_execution_claim_shares_a_hermetic_witness_file_unenrolled
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+
+data a_real_execution_claim_shares_a_hermetic_witness_file_unenrolled: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_real_execution_claim_shares_a_hermetic_witness_file_unenrolled" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn", field: WholeDeclaration } } },
+      trigger_capability: "the native compiler executing every discovered witness identity on the required path under Hermetic, where v2.workflow.floor_route_gap already refuses an UNENROLLED route gap -- sufficient for a real-execution claim authored into a hermetic file without its triple to red the change that adds it",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a claim whose subject is a real effect -- shell.Exec.RunArgv over emitted bash, Filesystem over real paths, none carrying a mock_response, as extdeps.shell.exec requires -- is authored into a witness file beside supplied-value claims, and carries none of the three enrollments v2.workflow.floor_route_gap names (its expectation row, a WetScheduledClaim in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, a gunbc.ci.ci_layer_roots LocalRepoWetLane exclusion row). Its author measures it --wet and reports the file green; every other reader runs the file under Hermetic and reads the claim as a route-gap red (NoMockResponse or UnpublishedMockCase). HARM: the red is permanent from birth, so later lanes learn to record it as pre-existing and stop reading it, and a real regression in the same file can hide behind it. The claim is also enrolled nowhere, so no census counts it as unexecuted.",
+
+    "SPECIMEN (2026-10-24, bright-pike-171): test.claim.machine_intake.fan_observe_witness read 11 PASS and 10 UNOBSERVED under claim_batch --hermetic on main 2ed6f1a161ea: six refused at Filesystem Write (NoMockResponse), four at shell.Exec.RunArgv (UnpublishedMockCase), each printed by the interpreter as a route gap with 're-run with --wet'. Every refused claim executes the mtcollins1 fan step's credential prelude or outcome tail in real bash, or writes and reads real files, and has done so since it landed (#14026, #14204, #14263, each measured --claim-run --wet as 21/21), after the RunArgv mock arms were deleted in August. At least two lanes recorded the ten as a pre-existing failure class (#15012's evidence table among them) before anyone owned it. The brief that assigned it guessed a missing IPMI/SDR response in a shared dry realization, by analogy with #14980; no realization was on the route at all.",
+
+    "WHY IT IS NOT a_witness_population_reds_on_main_with_nothing_gating_it: there a correct change grew an entry's effect demand past the realization its claims share, and the remedy is to extend that realization. Here nothing changed under the claims and no realization exists to extend: the claims call the host effect directly, by design, so the remedy is classification -- the claims move to their own file and take the triple -- never a mock and never an edit to what they assert.",
+
+    "RECOGNITION RULE: when a witness reads N PASS plus M route-gap refusals under Hermetic and its author reports it green, check whether the M claims call shell.Exec or Filesystem directly. If they do, the claims are real-execution claims missing their enrollment, not a realization gap: split them into a *_local_wet file and supply all three rows. Enrollment is a roster entry, not execution: no scheduled job runs local_repo_wet_schedule today (gunbc.rung_drop v1_required_lanes_withdrawn), so say so wherever the move is reported.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.machine_intake.fan_observe_local_wet", decl_name: "a_real_writer_host_off_series_is_unestablished_and_boots_by_execution", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.floor_route_gap", decl_name: "floor_route_gap_expectation_chunk_46", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn", field: WholeDeclaration },
+  ],
+}

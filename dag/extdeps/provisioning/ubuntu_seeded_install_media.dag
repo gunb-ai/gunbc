@@ -245,6 +245,25 @@ fn ubuntu_seeded_install_media_image_name(image_stem: NonEmptyStr, output_digest
   ) as NonEmptyStr
 }
 
+// THE STEM IS A FACT OF THE NAME, NEVER A SECOND INPUT: a caller holding an image name and its
+// digest derives the stem from them, and only when the name is exactly the one this digest and that
+// stem produce through ubuntu_seeded_install_media_image_name. A name that does not decompose so
+// answers none, so a stem that disagrees with its medium is unwritable rather than checked.
+fn ubuntu_seeded_install_media_image_stem(image_name: NonEmptyStr, output_digest: NonEmptyStr) -> NonEmptyStr? {
+  let name = image_name as String
+  let suffix_width = 1 + seeded_install_media_name_digest_width + ".iso".length()
+  if name.length() <= suffix_width {
+    none
+  } else {
+    let stem = substring(s: name, start: 0, end: name.length() - suffix_width)
+    if (ubuntu_seeded_install_media_image_name(image_stem: stem as NonEmptyStr, output_digest: output_digest) as String) == name {
+      Present { value: stem as NonEmptyStr }
+    } else {
+      none
+    }
+  }
+}
+
 // THE INVERSE OF THE NAME, so "is this one of that stem's images" is answered by the naming
 // authority rather than by a caller's prefix test. A name is of the stem exactly when it is what
 // ubuntu_seeded_install_media_image_name would produce for SOME output digest: the stem, a hyphen,

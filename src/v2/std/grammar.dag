@@ -10,7 +10,7 @@ import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Diagnostic, CorrectionNotModeled, ExternalContractUnknown, Outcome, Rejected, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.lexing { LexRules }
-import v2.std.node { Arrow, Atom, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Positional, Symbol, TypeNode, StructuralLabel, symbol_intern_lexeme, fold_list_node, NotADeclaration }
+import v2.std.node { node_equal_ignoring_provenance, Arrow, Atom, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Positional, Symbol, TypeNode, StructuralLabel, symbol_intern_lexeme, fold_list_node, NotADeclaration }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model { BoundToken, FixedToken, ConcreteSyntaxToken, concrete_syntax_token_class, concrete_syntax_token_list_from_node, concrete_syntax_token_to_node }
 import v2.std.text { String }
@@ -3048,7 +3048,7 @@ fn grammar_relation_row_emitted_reverse_parse_matches(
     }
   } else {
     match grammar_relation_row_emitted_fixture(row: row) {
-      Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
+      Accepted { value: row_emitted, diagnostics: _ } => node_equal_ignoring_provenance(a: row_emitted, b: emitted)
       Rejected { diagnostics: _ } => false
     }
   }

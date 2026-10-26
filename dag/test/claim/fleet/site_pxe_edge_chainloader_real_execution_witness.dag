@@ -4,18 +4,20 @@ import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.shell
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.retained_shell_script { retained_runtime }
-import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
+import std.algebra { non_empty_to_list }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderObservation,
   SitePxeEdgeEmbeddedRevision,
-  SitePxeEdgeProbeHeld,
+  SitePxeEdgeMemberObservation,
+  SitePxeEdgeEmbeddedObservation,
+  SitePxeEdgeChainServable,
+  SitePxeEdgeChainWithheld,
   site_pxe_edge_chainloader_pin,
+  site_pxe_edge_arm64_ipxe_chain_pin,
+  site_pxe_edge_chain_standing,
+  site_pxe_edge_chain_cause_text,
   site_pxe_edge_digest_observation,
   site_pxe_edge_embedded_revision,
-  site_pxe_edge_gate_causes,
-  site_pxe_edge_gate_cause_text,
-  site_pxe_edge_segment_network,
-  site_pxe_edge_tftp_server_address,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -24,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE COMMITTED CHAINLOADER BY REAL EXECUTION. The pin's digest and embedded revision are read here from
 // artifacts/ipxe/snponly-arm64.efi by the same two commands production runs on srv4 (`sha256sum`, and
 // `grep -a -o -E "[(]g[0-9a-f]{5}[)]"`), and their stdout goes through the production parsers and the
-// production gate. Swapping the blob, or flipping a byte inside its revision markers, reds here. The
+// production per-chain fold. Swapping the blob, or flipping a byte inside its revision markers, reds here. The
 // srv4 copy is still a different, later observation; this one is the checkout's.
 // Refused by the hermetic envelope (shell.Exec and shell.Mktemp.Dir have no mock_response), so it is
 // excluded from discovery and enrolled in gunbc.ci.ci_layer_roots as a real-execution witness.
@@ -42,27 +44,26 @@ fn embedded_revision(path: String) -> SitePxeEdgeEmbeddedRevision {
   site_pxe_edge_embedded_revision(success: r.success, output: r.stdout)
 }
 
+// The arm64 chain's standing from the production per-chain fold, with the member read at `path`.
 fn causes_for(path: String) -> String {
-  join(map(site_pxe_edge_gate_causes(
-    tftp_server: site_pxe_edge_tftp_server_address,
-    segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
-    pin: site_pxe_edge_chainloader_pin,
-    chainloader: digest_observation(path: path),
-    embedded: embedded_revision(path: path),
-    dnsmasq_binary: SitePxeEdgeProbeHeld,
-    privilege: SitePxeEdgeProbeHeld,
-  ), c => site_pxe_edge_gate_cause_text(cause: c)), "\n")
+  match site_pxe_edge_chain_standing(
+    pin: site_pxe_edge_arm64_ipxe_chain_pin(pin: site_pxe_edge_chainloader_pin),
+    observations: [SitePxeEdgeMemberObservation { served_path: "snponly.efi", digest: digest_observation(path: path) }],
+    embedded: [SitePxeEdgeEmbeddedObservation { served_path: "snponly.efi", revision: embedded_revision(path: path) }],
+  ) {
+    SitePxeEdgeChainServable { chain: _ } => ""
+    SitePxeEdgeChainWithheld { architecture: _, causes: cs } => join(map(non_empty_to_list(xs: cs), c => site_pxe_edge_chain_cause_text(cause: c)), "\n")
+  }
 }
 
 // POSITIVE CONTROL: the committed image satisfies the pin's digest and revision; only the Secure Boot
 // standing (genuinely unobserved) remains.
 test fn the_committed_image_satisfies_the_pin_by_real_execution() -> Bool {
   let causes = causes_for(path: committed_image_path)
-  contains(causes, "chainloader-secure-boot-unobserved")
-    && !contains(causes, "chainloader-digest-mismatch")
-    && !contains(causes, "chainloader-embedded-revision")
-    && !contains(causes, "chainloader-unobservable")
+  contains(causes, "ipxe-secure-boot-unobserved")
+    && !contains(causes, "member-digest-mismatch snponly.efi")
+    && !contains(causes, "ipxe-embedded-revision")
+    && !contains(causes, "member-unobservable")
 }
 
 // RED: a copy with one byte flipped inside each of the THREE "(gc51ca)" markers (sed's /g changes all three, so three bytes) is refused as both a different digest
@@ -77,8 +78,8 @@ test fn a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_e
     let causes = causes_for(path: copy)
     let cleaned = shell.Remove.RecursiveForce(path: dir.path)
     made.success
-      && contains(causes, "chainloader-embedded-revision-mismatch: image carries c51cb, pinned c51ca")
-      && contains(causes, "chainloader-digest-mismatch")
+      && contains(causes, "ipxe-embedded-revision-mismatch: image carries c51cb, pinned c51ca")
+      && contains(causes, "member-digest-mismatch snponly.efi")
       && cleaned.success
   }
 }

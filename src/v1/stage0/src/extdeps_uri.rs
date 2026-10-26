@@ -94,7 +94,7 @@ pub fn uri_wire(uri: Rc<Uri>) -> String {
 
 pub fn uri_from_wire(url: String) -> Option<Rc<Uri>> {
     {
-        let s = crate::std_algebra::trim(url.clone());
+        let s = crate::std_algebra::trim(url);
         match (*parse_href_scheme(s.clone())).clone() {
             ParsedHrefScheme::RelativeHref => std::option::Option::None,
             ParsedHrefScheme::UnknownHref => std::option::Option::None,
@@ -152,7 +152,7 @@ pub fn href_is_relative_reference(s: String) -> bool {
 
 pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
     {
-        let s = crate::std_algebra::trim(url.clone());
+        let s = crate::std_algebra::trim(url);
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
             Rc::new(ParsedHrefScheme::UnknownHref)
         } else {

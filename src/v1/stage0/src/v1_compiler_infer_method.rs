@@ -9,9 +9,9 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
-    algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
-    kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate,
-    ContainerSource,
+    algebra_templates_for_profile, all_algebra_profiles, collection_join_shape,
+    free_monoid_scalar_templates, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
+    AlgebraTypeTemplate, ContainerSource,
 };
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -88,7 +88,7 @@ pub fn algebra_param_templates_in(
 ) -> Rc<Vec<Rc<AlgebraTypeTemplate>>> {
     match Rc::new({
         let mut __result = Vec::new();
-        for t in crate::std_algebra::algebra_templates_for_profile(profile.clone())
+        for t in crate::std_algebra::algebra_templates_for_profile(profile)
             .iter()
             .cloned()
         {
@@ -180,11 +180,7 @@ pub fn derived_signature_and_return(
     names: Rc<Vec<String>>,
     method: String,
 ) -> Rc<BuiltinSignature> {
-    derived_signature(
-        names.clone(),
-        method.clone(),
-        algebra_named_return(method.clone()),
-    )
+    derived_signature(names, method.clone(), algebra_named_return(method.clone()))
 }
 
 pub fn derived_signature(
@@ -193,7 +189,7 @@ pub fn derived_signature(
     returns: Rc<Node>,
 ) -> Rc<BuiltinSignature> {
     Rc::new(BuiltinSignature {
-        params: pair_declared_names(names.clone(), algebra_param_templates(method.clone())),
+        params: pair_declared_names(names, algebra_param_templates(method)),
         returns: returns.clone(),
     })
 }
@@ -205,10 +201,7 @@ pub fn derived_signature_in(
     returns: Rc<Node>,
 ) -> Rc<BuiltinSignature> {
     Rc::new(BuiltinSignature {
-        params: pair_declared_names(
-            names.clone(),
-            algebra_param_templates_in(profile.clone(), method.clone()),
-        ),
+        params: pair_declared_names(names, algebra_param_templates_in(profile, method)),
         returns: returns.clone(),
     })
 }
@@ -262,16 +255,13 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_container_type(
-        "List".to_string(),
-        type_variable_node(id.clone()),
-    )
-    .ty
-    .clone()
+    crate::v1_compiler_infer_types::make_container_type("List".to_string(), type_variable_node(id))
+        .ty
+        .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_container_type("List".to_string(), element.clone())
+    crate::v1_compiler_infer_types::make_container_type("List".to_string(), element)
         .ty
         .clone()
 }
@@ -1645,6 +1635,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: type_variable_node("roadmap_acceptance_history_projection".to_string()),
     }));
+                __m.insert("witness_deferral_freeze_population_census".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![]),
+        returns: string_type(),
+    }));
                 __m.insert("commit_witness_claim_roster_unresolvable_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: int_type(),
@@ -1956,9 +1950,24 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     }), Rc::new(BuiltinParam {
-        name: "qualified_name".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "qualified_names".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
         name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "type_names".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
     }),
     })]),
         returns: list_of_type_variable("decl_fact_elem".to_string()),
@@ -2135,7 +2144,7 @@ pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
 }
 
 pub fn builtin_param_names(name: String) -> Rc<Vec<String>> {
-    match builtin_signature(name.clone()) {
+    match builtin_signature(name) {
         Some(sig) => Rc::new({
             let mut __result = Vec::new();
             for p in sig.params.clone().iter().cloned() {
@@ -2192,15 +2201,82 @@ pub fn builtin_host_text_param_names(name: String) -> Rc<Vec<String>> {
     }
 }
 
-pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
+pub fn template_renders_receiver_elements_as_host_text(template: Rc<AlgebraFieldTemplate>) -> bool {
+    (template.clone() == crate::std_algebra::collection_join_shape())
+}
+
+pub fn builtin_receiver_self_host_text_param_names(name: String) -> Rc<Vec<String>> {
     match builtin_signature(name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(sig) => {
+            if {
+                let mut __found = false;
+                for t in crate::std_algebra::free_monoid_scalar_templates()
+                    .iter()
+                    .cloned()
+                {
+                    if (t.name.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in Rc::new({
+                        let mut __result = Vec::new();
+                        for p in sig.params.clone().iter().cloned() {
+                            if match (*p.ty.clone()).clone() {
+                                AlgebraTypeTemplate::ReceiverSelf => true,
+                                _ => false,
+                            } {
+                                __result.push(p);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(p.name.clone());
+                    }
+                    __result
+                })
+            } else {
+                Rc::new(vec![])
+            }
+        }
+    }
+}
+
+pub fn host_display_deferred_formals() -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<Vec<String>>>> = {
+            let mut __m = HashMap::new();
+            __m.insert("to_string".to_string(), Rc::new(vec!["value".to_string()]));
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Vec<String>>>>| c.clone())
+}
+
+pub fn builtin_host_display_deferred_param_names(name: String) -> Rc<Vec<String>> {
+    match v1_rt::map_get(&host_display_deferred_formals(), name.clone()) {
+        Some(names) => names.clone(),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
+    match builtin_signature(name) {
         Some(sig) => Some(sig.returns.clone()),
         std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
-    match infer_builtin_call_type(name.clone()) {
+    match infer_builtin_call_type(name) {
         Some(v) => v.clone(),
         std::option::Option::None => unit_type(),
     }

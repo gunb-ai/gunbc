@@ -4,11 +4,13 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
-import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested }
+import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, HostCommandDone, HostCommandFailed }
+import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.provisioning.seeded_install_media_publish { SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused }
-import gunbc.runner.runner_host_medium { RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, runner_host_medium_image }
+import gunbc.runner.runner_host_medium { RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image }
 import gunbc.runner.runner_host_medium_publish {
   mtcollins1_runner_host, RunnerImageNotDerived, RunnerImagePublishRan, runner_image_attempt_holds, render_runner_image_attempt,
+  ServedLinkReading, ServedLinkPointsAt, ServedLinkNotSet, ServedLinkDisagrees, served_link_after,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -33,14 +35,15 @@ test fn a_derivation_that_does_not_render_publishes_nothing_and_does_not_hold() 
 }
 
 test fn a_refused_publication_does_not_hold() -> Bool {
-  !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: SeededImagePublicationRefused { reason: "r", work: CreationNotRequested } })
+  !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: SeededImagePublicationRefused { reason: "r", work: CreationNotRequested }, link: ServedLinkNotSet { reason: "r" } })
 }
 
 test fn an_already_published_image_holds_and_its_receipt_names_the_digest() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host) {
     RunnerHostMediumImageDerived { input: i, runner: _ } => {
-      let a = RunnerImagePublishRan { publication: SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr } }
+      let a = RunnerImagePublishRan { publication: SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr }, link: ServedLinkPointsAt { link_path: boot_medium_served_link_path(), target: "/srv/bmc/x.iso" as NonEmptyStr } }
       runner_image_attempt_holds(a: a) && contains(render_runner_image_attempt(a: a), "output_digest=0123456789abcdef")
+        && contains(render_runner_image_attempt(a: a), concat("served_link_target=", "/srv/bmc/x.iso"))
     }
     _ => false
   }
@@ -50,7 +53,39 @@ test fn a_published_image_with_an_unremoved_build_directory_does_not_hold() -> B
   match runner_host_medium_image(host: mtcollins1_runner_host) {
     RunnerHostMediumImageDerived { input: i, runner: _ } =>
       !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: SeededImagePublished {
-        built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr, work: RemovalUnconfirmed { dir: "/tmp/w" as NonEmptyStr, exit_code: 1, stderr: "r" }, staging_residue: none } })
+        built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr, work: RemovalUnconfirmed { dir: "/tmp/w" as NonEmptyStr, exit_code: 1, stderr: "r" }, staging_residue: none }, link: ServedLinkNotSet { reason: "r" } })
     _ => false
+  }
+}
+
+fn link_word(l: ServedLinkReading) -> String {
+  match l {
+    ServedLinkPointsAt { link_path: _, target: _ } => "points"
+    ServedLinkNotSet { reason: _ } => "unset"
+    ServedLinkDisagrees { link_path: _, expected: _, read: _ } => "disagrees"
+  }
+}
+
+// THE SERVED LINK FOLLOWS ONLY A HOLDING PUBLICATION, AND ITS READBACK MUST NAME THE PUBLISHED PATH. RED: a
+// readlink naming any other target disagrees, and the attempt over it does not hold; a link that could not
+// be set does not hold; a refused publication leaves the link unset. CONTROL: readlink naming the published
+// path points the link at it.
+test fn the_served_link_is_set_after_a_holding_publication_and_read_back_exactly() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host) {
+    RunnerHostMediumImageDerived { input: i, runner: _ } => {
+      let held = SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr }
+      let pointed = served_link_after(publication: held, set: fn(path) { HostCommandDone { stdout: "" } }, read: fn() { HostCommandDone { stdout: "/srv/bmc/x.iso\n" } })
+      let elsewhere = served_link_after(publication: held, set: fn(path) { HostCommandDone { stdout: "" } }, read: fn() { HostCommandDone { stdout: "/srv/bmc/older.iso\n" } })
+      let unset = served_link_after(publication: held, set: fn(path) { HostCommandFailed { exit_code: 1, stderr: "ln: Permission denied" } }, read: fn() { HostCommandDone { stdout: "/srv/bmc/x.iso" } })
+      let refused = served_link_after(publication: SeededImagePublicationRefused { reason: "r", work: CreationNotRequested }, set: fn(path) { HostCommandDone { stdout: "" } }, read: fn() { HostCommandDone { stdout: "/srv/bmc/x.iso" } })
+      link_word(l: pointed) == "points"
+        && link_word(l: elsewhere) == "disagrees"
+        && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: elsewhere })
+        && link_word(l: unset) == "unset"
+        && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: unset })
+        && link_word(l: refused) == "unset"
+    }
+    RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
+    RunnerHostMediumUserDataRefused { reason: _ } => false
   }
 }

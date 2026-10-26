@@ -107,14 +107,14 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_type_declaration_use_census_runs, run_v2_census_verb, run_v2_native_census,
-    run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier,
-    CensusInferRun, MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord,
-    NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun,
-    NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases,
-    NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
-    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
-    MEASURED_SPAWN_RECEIPT_ENV,
+    run_self_host, run_self_host_frontier, run_type_declaration_use_census_runs,
+    run_v2_census_verb, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
+    run_v2_native_cli_emit, run_v2_native_frontier, run_v2_select_spelled_modules, CensusInferRun,
+    MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured,
+    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
+    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
@@ -173,7 +173,11 @@ pub use emit_host::{
     compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
 };
 pub use emit_host::{
-    compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
+    compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
+    compile_dag_rust_emit_check_memo_counts, reset_compile_dag_diagnostic_census_cost_counts,
+};
+pub use emit_host::{
+    emit_resolved_for_target_counting, every_module_render_calls, non_empty_selected_render_calls,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -3797,6 +3801,12 @@ fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
 fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
     let layers = witness_layer_roots();
     let shared = entry_resolve::try_process_shared_index(&layers)?;
+    // STEP 0 (census cost): per-call clone of the corpus-length source-file vec.
+    CENSUS_COST_SHARED_VEC_CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    CENSUS_COST_SHARED_VEC_LEN.fetch_add(
+        shared.source_files.len() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     let scratch = entry_resolve::new_multi_entry_index_scratch_over(
         shared.source_files.clone(),
         &shared.source_roots,
@@ -3823,6 +3833,12 @@ fn fixture_imported_corpus_sources(
             if let Some(rel_path) = module_index.get(&module_path) {
                 let abs_path = ws.join(rel_path);
                 if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    // STEP 0 (census cost): a real corpus read on the census resolve path.
+                    CENSUS_COST_DISK_READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    CENSUS_COST_DISK_READ_BYTES.fetch_add(
+                        file_content.len() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     seen.insert(
                         module_path,
                         Rc::new(v1_compiler_compile::SourceFile {
@@ -3836,6 +3852,12 @@ fn fixture_imported_corpus_sources(
                 let rel_path = format!("fixtures/fixture_closure_rustc/{rest}.dag");
                 let abs_path = ws.join(&rel_path);
                 if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    // STEP 0 (census cost): a real corpus read on the census resolve path.
+                    CENSUS_COST_DISK_READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    CENSUS_COST_DISK_READ_BYTES.fetch_add(
+                        file_content.len() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     seen.insert(
                         module_path,
                         Rc::new(v1_compiler_compile::SourceFile {
@@ -3956,15 +3978,42 @@ pub enum CompileDiagnosticCensus {
     NotRunnable(String),
 }
 
-thread_local! {
-    static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, CompileDiagnosticCensus>,
-    > = std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS: std::sync::atomic::AtomicU64 =
+// STEP 0 COST COUNTERS (census cost-shape scoping — measurement only, no behavior change).
+// Process-wide, atomic, read/reset through the pub fns in emit_host; a receipt is
+// process-differential (deltas around calls in one process).
+// What each one sees is the point of each one:
+//  * INDEX_CLONES / INDEX_CLONED_ENTRIES — every `build_module_path_index` call deep-clones
+//    the whole corpus-keyed module-path index (one String key + one String path per corpus
+//    module, allocated fresh per clone). The index itself is memoized (MODULE_PATH_INDEX_CACHE);
+//    these count what the memo does NOT remove: the per-call materialization of its bytes.
+//  * SHARED_VEC_CLONES / SHARED_VEC_LEN — the scratch route clones the process-shared index's
+//    corpus-length Vec<Rc<SourceFile>> per census call (Rc bumps, but corpus-length per call).
+//  * DISK_READS / DISK_READ_BYTES — every actual fs::read_to_string the census's resolve path
+//    performs (the import-closure seeds). These are the "files and bytes materialized per call"
+//    the census is accused of paying corpus-scale for; the counters settle whether that
+//    accusation is closure-scale or corpus-scale with numbers, not adjectives.
+pub static CENSUS_COST_INDEX_CLONES: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
-static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES: std::sync::atomic::AtomicU64 =
+pub static CENSUS_COST_INDEX_CLONED_ENTRIES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_SHARED_VEC_CLONES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_SHARED_VEC_LEN: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_DISK_READS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static CENSUS_COST_DISK_READ_BYTES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+/// Times the underlay identity proof REFUSED -- i.e. a scratch tried to read the pool out of its
+/// underlay and was denied, with the refusal PROPAGATED (`?`), not swallowed and not downgraded to
+/// "build it yourself". Zero is the expected value for a census call; a nonzero count means either
+/// the pool drifted (the correct refusal, and the census call surfaces it as NotRunnable) or the
+/// proof is wrong about a legitimate scratch (which would be a loud red, not a silent loss of the
+/// fix, because the refusal propagates). `census_cost_step0_measurement` asserts it at zero over
+/// the warm series (a local cargo test, not a required-path gate -- see that file's
+/// execution-locus block), and cli_run's own `underlay_identity_proof_tests` drives it nonzero on
+/// drifted facts -- which is what keeps the proof from being code that never runs.
+pub static CENSUS_COST_IDENTITY_REFUSALS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
 /// One supplied module of a [`compile_dag_multi_module_fixture`] manifest: the path the compile
@@ -5886,11 +5935,30 @@ fn workspace_relative_entry_path(path: &str) -> String {
     norm
 }
 
+/// Identity mint for one BUILD of `ModuleGraphFactsLive` -- allocated where the corpus is
+/// actually scanned, never at a use site. A `Clone` of a built value keeps its mint, so a value
+/// that came out of the facts memo shares its parent's mint; two independent scans of the same
+/// pool get two different mints even when their content agrees. See the field's doc.
+pub(crate) fn next_facts_build_id() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
 /// set. Built once per `MultiEntryIndex` / resolve pass so closure queries do not re-scan the
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
+    /// Identity of the BUILD that produced this value, minted where the corpus is actually read
+    /// (`build_module_graph_facts_live_uncached`, `resolve_entry_graph_demand_acquired`) and
+    /// carried by `Clone`. Two values with the SAME id are the same scan of the same pool -- the
+    /// process-level facts memo hands out clones of one build, so a scratch that acquired its
+    /// facts from the memo shares the base's id, while two independent scans never share one.
+    /// That makes it the release-live witness for "this scratch's facts ARE the underlay's
+    /// facts": a content comparison of two clones could agree while the underlying builds
+    /// differed, and a `debug_assert_eq!` is compiled out exactly where the census runs
+    /// (every `claim_batch` build is `--release`). Read by `MultiEntryIndex::pool_identity_proof`.
+    pub(crate) build_id: u64,
     pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
     pub(crate) adjacency: HashMap<String, Vec<String>>,
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
@@ -7765,7 +7833,15 @@ fn parsed_file_references_of(
     if let Some(hit) = index.parsed_references.borrow().get(&file) {
         return hit.clone();
     }
-    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+    // The same identity fact the census read-throughs rest on, so the same gate: reading a
+    // per-file parse out of the underlay is answering a question about THE POOL from a pool the
+    // caller must prove it shares. A refusal PROPAGATES via `?` -- it does not fall through to
+    // parsing it here -- because reading a pool you cannot prove you share is the failure this
+    // overlay exists to prevent, and §5 fail-closed means refusing loudly (the builtin reports
+    // the located Err, the census reports NotRunnable, CI goes red) rather than proceeding on a
+    // guess. The pre-underlay behavior of parsing it here is what an index with NO underlay
+    // still does; that path is the `Ok(None)` branch of the gate, not a refusal.
+    if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(hit) = base.parsed_references.borrow().get(&file) {
             return hit.clone();
         }
@@ -8030,7 +8106,11 @@ fn admit_bare_references_of_file(
     if let Some(verdict) = index.bare_reference_admission.borrow().get(&file) {
         return verdict.clone();
     }
-    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+    // Gated on the underlay identity proof, as every other read-through is (see
+    // `scratch_underlay_if_proven`). A refusal propagates via `?` rather than falling through to
+    // computing this index's own verdict below -- fail-closed, §5; the fall-through below is only
+    // reached by an index with no underlay (the gate's `Ok(None`).
+    if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(verdict) = base.bare_reference_admission.borrow().get(&file) {
             return verdict.clone();
         }
@@ -8562,7 +8642,12 @@ fn build_both_closure_edge_index(
             return Ok(hit.clone());
         }
     }
-    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+    // Gated on the underlay identity proof like every other read-through. On refusal the `?`
+    // propagates the located Err (fail-closed, §5) -- this index does NOT quietly build its own
+    // edge index, because a scratch that cannot prove its pool is exactly the state where "build
+    // it yourself from local data" would answer the wrong question. The build-below path is for
+    // an index with no underlay at all.
+    if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(hit) = base.both_closure_edges.borrow().as_ref() {
             if hit.ref_out.contains_key(&file) {
                 return Ok(hit.clone());
@@ -10771,7 +10856,7 @@ impl BudgetKind {
 /// the seam.
 ///
 /// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
-/// `HermeticHostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
+/// `HostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
 /// pre-mapped `EvaluationBudgetExceeded` each have their OWN `ClaimOutcome` arm and are consumed
 /// by earlier arms of the match in `run_claim`, so they cannot reach this classifier. They are
 /// not silently folded into a neighbour: all five map to `MappedOutcomeEscaped`, a typed,
@@ -10895,7 +10980,7 @@ impl WitnessRuntimeCause {
             E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
-            | E::HermeticHostEffectRefused { .. }
+            | E::HostEffectRefused { .. }
             | E::EvalBudgetExceeded { .. }
             | E::WitnessWallBudgetExceeded { .. }
             | E::EvaluationBudgetExceeded { .. }
@@ -10985,7 +11070,7 @@ pub enum ClaimOutcome {
     /// execute it.
     HostEffectRefused {
         operation: String,
-        ground: v1_interpreter::HermeticEffectGround,
+        ground: v1_interpreter::EffectRefusalGround,
     },
     /// THE HOST UNWOUND. Not a `RuntimeError`: that arm carries an `InterpError` the evaluator
     /// RAISED and this runner CAUGHT, a value held in hand. A panic is the evaluator failing to
@@ -11650,6 +11735,13 @@ pub struct MultiEntryIndex {
     both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
     /// Fixture-scratch read-through: the process-shared index. Writes stay on this index.
     scratch_underlay: RefCell<Option<Rc<MultiEntryIndex>>>,
+    /// Memoized verdict of `scratch_underlay_identity_proof` for THIS scratch: `None` = not yet
+    /// computed, `Some(None)` = proven, `Some(Some(reason))` = refused. Memoized because the
+    /// proof walks the corpus by pointer and one of the five read-throughs
+    /// (`parsed_file_references_of`) runs once per DEMANDED FILE -- recomputing it per file would
+    /// cost more than the read-through saves. A scratch is per census call, so it is one proof
+    /// per call.
+    underlay_identity: RefCell<Option<Option<String>>>,
     /// Admission and edge selection need declaration heads, not resolved signatures.
     /// None identifies the whole-pool name census; Some(root) the existing tree/import view.
     closure_name_censuses: RefCell<HashMap<Option<String>, Rc<SymbolIndex>>>,
@@ -11872,6 +11964,109 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
 fn next_index_generation() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Proves the ONE fact every `scratch_underlay` read-through rests on: that a scratch's pool IS
+/// its underlay's pool, so answering a scratch's query from the underlay cannot answer a
+/// different question than the scratch would have answered for itself.
+///
+/// WHAT IT CHECKS, and why each half is needed:
+/// * every module path the scratch maps is the underlay's, BY `Rc` POINTER, not by content. The
+///   scratch's map is built by cloning the shared map, and this type is a persistent
+///   `im::HashMap<String, Rc<SourceFile>>`, so a clone hands out the SAME `Rc` allocations --
+///   pointer identity therefore means "the same pool", and a scratch whose entry was replaced
+///   with an equal-content-but-different value still fails. Comparing contents would be both
+///   slower and weaker: two independent scans of a pool that happens not to have changed agree
+///   on content while proving nothing about which scan the answer came from.
+/// * the graph facts carry the underlay's `build_id`. Facts are NOT shared by pointer because
+///   `ReferenceSelectionTier` has interior mutability (`OnceCell`/`RefCell` memos) and a scratch
+///   must not fill the shared index's caches -- so the pointer trick is unavailable there, and
+///   the minted build id is the release-live substitute: only a clone of the same build can share
+///   an id.
+///
+/// WHY THIS IS NOT ANOTHER `debug_assert_eq!`. It runs in `--release`, which is the only shape
+/// that exists here: every `claim_batch` build, and therefore every census call in CI, is
+/// `--release`. A `debug_assert_eq!` beside a pool read is a decoration -- it never executes
+/// where the thing it guards runs (DESIGN §4b, "a check whose forbidden state is expressible
+/// nowhere it runs is a decoration, green by construction and later cited as coverage"). It
+/// returns a located `Err` rather than panicking, so a drift makes the builtin refuse the way
+/// every other refusal here does instead of aborting the process.
+///
+/// COST: O(#pool files) pointer comparisons, once per census call (a scratch is built per call),
+/// against the ~336 ms a warm call takes -- and it is what lets the two read-throughs below
+/// delete the pool rebuilds instead of paying them.
+pub(crate) fn scratch_underlay_identity_proof(
+    scratch: &MultiEntryIndex,
+    base: &MultiEntryIndex,
+) -> Result<(), String> {
+    if scratch.source_files.len() != base.source_files.len() {
+        CENSUS_COST_IDENTITY_REFUSALS.fetch_add(1, Ordering::Relaxed);
+        return Err(format!(
+            "scratch underlay identity refused: scratch maps {} module paths, its underlay maps {}",
+            scratch.source_files.len(),
+            base.source_files.len()
+        ));
+    }
+    for (path, source) in scratch.source_files.iter() {
+        match base.source_files.get(path) {
+            // Pointer equality, not `==`: see the doc. A missing key is drift too.
+            Some(base_source) if Rc::ptr_eq(source, base_source) => {}
+            Some(_) => {
+                CENSUS_COST_IDENTITY_REFUSALS.fetch_add(1, Ordering::Relaxed);
+                return Err(format!(
+                    "scratch underlay identity refused: {path} is a different source value than \
+                     the underlay's, so the underlay cannot answer for this scratch"
+                ));
+            }
+            None => {
+                CENSUS_COST_IDENTITY_REFUSALS.fetch_add(1, Ordering::Relaxed);
+                return Err(format!(
+                    "scratch underlay identity refused: scratch maps {path}, the underlay does not"
+                ));
+            }
+        }
+    }
+    if scratch.module_graph_facts.build_id != base.module_graph_facts.build_id {
+        CENSUS_COST_IDENTITY_REFUSALS.fetch_add(1, Ordering::Relaxed);
+        return Err(format!(
+            "scratch underlay identity refused: scratch's graph facts were built by scan {} and \
+             the underlay's by scan {}, so reading through would mix two scans of the pool",
+            scratch.module_graph_facts.build_id, base.module_graph_facts.build_id
+        ));
+    }
+    Ok(())
+}
+
+/// THE GATE EVERY UNDERLAY READ-THROUGH MUST PASS. Returns the underlay to read through, or
+/// `None` when this index has no underlay (an ordinary index, which simply answers for itself),
+/// or a located `Err` when the identity proof refused.
+///
+/// There are five read-throughs of `scratch_underlay` -- `pool_parse`, `closure_name_census`,
+/// `parsed_file_references_of`, `admit_bare_references_of_file` and
+/// `build_both_closure_edge_index` -- and all five answer a question about THE POOL from the
+/// underlay's caches, so all five rest on the same fact and all five go through here. A refusal
+/// is returned rather than swallowed: a scratch that cannot prove its pool would otherwise be
+/// handed an answer from a pool it does not share, which is the failure the overlay exists to
+/// avoid; and it is not silently downgraded to "rebuild it yourself", because a false refusal on
+/// a legitimate scratch should be LOUD (the builtin refuses, CI goes red) rather than invisible
+/// (the fix quietly stops applying and the census just gets slow again).
+pub(crate) fn scratch_underlay_if_proven(
+    index: &MultiEntryIndex,
+) -> Result<Option<Rc<MultiEntryIndex>>, String> {
+    let base = index.scratch_underlay.borrow().clone();
+    let Some(base) = base else { return Ok(None) };
+    let memo = index.underlay_identity.borrow().clone();
+    if let Some(verdict) = memo {
+        return match verdict {
+            None => Ok(Some(base)),
+            Some(reason) => Err(reason),
+        };
+    }
+    let verdict = scratch_underlay_identity_proof(index, &base);
+    // The memo stores the verdict as `Option<String>` (None = proven); the proof speaks `Result`.
+    *index.underlay_identity.borrow_mut() = Some(verdict.as_ref().err().cloned());
+    verdict?;
+    Ok(Some(base))
 }
 
 /// One `MultiEntryIndex` construction: the module-name set it indexes (as a digest over the sorted
@@ -12665,8 +12860,14 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // `_inner`), `CostPartitionRow`, `InclusiveCostRow`, `CostAccountingVerdict`,
 // `CostAccountingRefusal`, `ExclusiveCostPartition`, `exclusive_cost_partition`,
 // `exclusive_cost_partition_from`, `render_exclusive_cost_partition_json`, `json_num`, the
-// `exclusive_cost_partition_law` test module, and the three `[cost-partition]` emissions
-// (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`) — ~700 LOC incl. tests.
+// `exclusive_cost_partition_law` test module, `out_of_span_rows`, and the three
+// `[cost-partition]` emissions (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`)
+// — ~700 LOC incl. tests. The probe is no longer print-only in `claim_batch`: a Refused
+// verdict decides the batch exit (`NoSpans` -> 2, any other refusal -> 1), through the
+// third parameter of `claim_batch`'s `batch_exit_code` (an already-admitted declaration; no
+// new one), its call site in `main`, and the `a_refused_partition_joins_the_batch_exit` test.
+// At deletion the parameter, call-site argument and test go with the probe, and removing the
+// probe while they stand fails to compile.
 // Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
@@ -13973,6 +14174,22 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     if let Some(cached) = index.pool_parse.borrow().clone() {
         return Ok(cached);
     }
+    // POOL FACT, READ THROUGH THE UNDERLAY -- gated on the identity proof, IN RELEASE. A
+    // fixture scratch's `source_files` is the process-shared slot's map cloned verbatim (its only
+    // constructor, `scratch_index_for_fixture_closure_extension`, does exactly
+    // `shared.source_files.clone()` and the fixture is never inserted here -- it is appended to
+    // the returned source Vec after the fixpoint), so `scratch_underlay: Some(base)` can only mean
+    // "my pool IS base's pool". That is the claim `scratch_underlay_if_proven` CHECKS rather than
+    // assumes; see its doc for why a check that only exists in debug builds is no check at all
+    // here (every `claim_batch` is `--release`).
+    // Falling through makes the ~4 s pool parse build once per process on the shared slot instead
+    // of once per census call. Isolation is unaffected: this READS base's warm copy and writes
+    // nothing to it -- the fixture's writes stay on the scratch's own parse/typed caches
+    // (RFM `fixture_compile_retained_on_the_process_shared_index`). The digest-equality,
+    // collision-stability and RFM arbiters in tests/census_cost_step0_measurement.rs judge it.
+    if let Some(base) = scratch_underlay_if_proven(index)? {
+        return pool_parse(&base);
+    }
     // Deterministic pool order (sorted module paths keeps every derived census
     // build reproducible — determinism gate).
     let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
@@ -14225,6 +14442,30 @@ fn closure_name_census(
     let key = root.map(str::to_string);
     if let Some(hit) = index.closure_name_censuses.borrow().get(&key) {
         return Ok(hit.clone());
+    }
+    // THE CENSUS IS A POOL FACT, SO IT IS BUILT ONCE PER PROCESS AND READ THROUGH THE
+    // UNDERLAY — on BOTH keys. WHAT MAKES THIS SOUND, per key:
+    // * The whole-pool (None) key is built over `pool.nodes_by_file` + `pool.combined_si`
+    //   and nothing per-index (see the `None =>` arm below), and `pool_parse` already shares
+    //   the underlay's warm copy.
+    // * The PER-ROOT (Some) key reads `pool_parse` plus `index.module_graph_facts.adjacency`
+    //   (`tree_census_nodes`) — and reads NOTHING from `index.source_files`. A scratch's
+    //   `module_graph_facts` is not its own computation: `new_multi_entry_index_scratch_over`
+    //   passes `acquired_facts = None`, so the shell body takes
+    //   `build_module_graph_facts_live(source_roots)` — the SAME thread-local memo the shared
+    //   index hit, under the SAME root key the scratch was handed (`shared.source_roots`).
+    //   Same key, same memo, therefore the SAME facts value: the per-root answer on the
+    //   scratch is bit-identical to the base's. The fixture can no more enter it here than it
+    //   can enter `pool_parse`.
+    // NOT "per-index just because the field is a struct member": the field is a COPY OF A
+    // SHARED MEMO. The identity is a CHECKED FACT in every profile --
+    // `scratch_underlay_if_proven` compares the minted `build_id`s (and the pool map by pointer),
+    // so a scratch whose pool or facts drifted from its underlay's refuses to read through. The
+    // guard used to be two `debug_assert_eq!`s here and at `pool_parse`; those compiled out in
+    // `--release`, which is the only profile the census ever runs in, and a guard that never
+    // executes where the thing it guards runs is a decoration (DESIGN §4b).
+    if let Some(base) = scratch_underlay_if_proven(index)? {
+        return closure_name_census(&base, root);
     }
     let pool = pool_parse(index)?;
     // Timed NET of `pool_parse`, which is forced above and carries its own row: this is the
@@ -16409,7 +16650,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
                 ClaimOutcome::HostToolUnresolved { name, probed }
             }
-            v1_interpreter::InterpError::HermeticHostEffectRefused { operation, ground } => {
+            v1_interpreter::InterpError::HostEffectRefused { operation, ground } => {
                 ClaimOutcome::HostEffectRefused { operation, ground }
             }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
@@ -16521,35 +16762,22 @@ enum ExpectedRedArm {
     HostEffectRefused,
 }
 
-/// One label per `HermeticEffectGround`, in one place. The ground names the REMEDY, so a
-/// caller that re-spells it per site is re-deriving the remedy per site.
-pub fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
-    match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
-            "no published mock case for a corpus-governed service"
-        }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => {
-            "operation declares no mock_response"
-        }
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
-            "filesystem removal has no mock arm; only a wet route can run it"
-        }
-    }
-}
-
 /// The seam between the hand-Rust interpreter carrier and the `.dag`-modeled roster-join
 /// carrier for the same closed ground. Total in both directions by construction — adding an
 /// arm to either side fails to compile here rather than falling through to a default.
-fn hermetic_effect_ground_verdict(
-    ground: &v1_interpreter::HermeticEffectGround,
-) -> crate::v1_compiler_expected_red_roster_join::HermeticEffectGround {
-    use crate::v1_compiler_expected_red_roster_join::HermeticEffectGround as Modeled;
+pub fn effect_refusal_ground_verdict(
+    ground: &v1_interpreter::EffectRefusalGround,
+) -> crate::v1_compiler_expected_red_roster_join::EffectRefusalGround {
+    use crate::v1_compiler_expected_red_roster_join::EffectRefusalGround as Modeled;
     match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+        v1_interpreter::EffectRefusalGround::UnpublishedMockCase { .. } => {
             Modeled::UnpublishedMockCase
         }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::NoMockResponse => Modeled::NoMockResponse,
+        v1_interpreter::EffectRefusalGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
+            Modeled::FrameNotRealizableUnderMode
+        }
     }
 }
 
@@ -19980,8 +20208,15 @@ pub fn project_witness_cost_receipt(
                     args.push((
                         Some("error".to_string()),
                         str_value(format!(
-                            "hermetic route has no arm for {operation} ({})",
-                            hermetic_effect_ground_label(ground)
+                            "{} {operation} ({})",
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_mode_label(
+                                crate::v1_compiler_expected_red_roster_join::effect_refusal_mode(
+                                    effect_refusal_ground_verdict(ground)
+                                )
+                            ),
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_ground_label(
+                                effect_refusal_ground_verdict(ground)
+                            )
                         )),
                     ));
                     "witness_cost_seed_refused_event"
@@ -20967,6 +21202,38 @@ fn read_frozen_roster_at_commit(
         ));
     }
     Ok(Some(String::from_utf8_lossy(&shown.stdout).into_owned()))
+}
+
+/// THE INSTRUMENT'S THIN READOUT over the SAME authority the required floor consults:
+/// `collect_frozen_path_deferral_additions`, which joins the live tree's typed
+/// FrozenPathDeferral entries (via `frozen_path_deferral_head_keys`) against the resolved diff
+/// baseline. This function adds NO judgment of its own — no second parser, no second comparison
+/// (DESIGN §5: a check restating a constraint the model already carries is a second representation
+/// of it). It renders the join's verdict as one tagged String for the dag instrument program
+/// `dag/gunbc/instruments/witness_deferral_freeze_population.dag`:
+/// * `refused|<cause>` — the join itself could not run (the baseline or a file read failed); the
+///   instrument refuses with a located diagnostic, never a silent pass (§5: every path succeeds
+///   fully or fails with a typed, located diagnostic).
+/// * `bounded` — no live identity sits outside the baseline population: the frozen list is bounded
+///   and shrinking only (an identity REMOVED from the roster shrinks the live set, so the join
+///   still holds — this is the removal arm's permit).
+/// * `unbounded|<identity>;;...` — at least one identity is outside the baseline population: a
+///   deferral was ADDED without its identity being in the drop row's declared population, which is
+///   the additions arm's refusal.
+/// Fixture determinism comes from the resolver's operator-override input (GUNBC_CI_DIFF_BASE), not
+/// from a test-only code path: a head-built run with the override pinned at HEAD self-compares, so
+/// the join reduces to exactly the working-tree identities — the planted entry, or its absence.
+pub fn witness_deferral_freeze_population_census() -> String {
+    match collect_frozen_path_deferral_additions() {
+        Err(reason) => format!("refused|{reason}"),
+        Ok(additions) => {
+            if additions.is_empty() {
+                "bounded".to_string()
+            } else {
+                format!("unbounded|{}", additions.join(";;"))
+            }
+        }
+    }
 }
 
 fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), String> {
@@ -24021,6 +24288,105 @@ mod module_grain_affected_equivalence_tests {
     }
 }
 
+#[cfg(test)]
+mod underlay_identity_proof_tests {
+    use super::{
+        build_module_index, default_source_roots, new_multi_entry_index_scratch_over,
+        new_multi_entry_index_shell, scratch_underlay_if_proven,
+    };
+    use std::rc::Rc;
+
+    /// THE GUARD RUNS WHERE THE GUARDED THING RUNS (mgr finding on #14675: the guard that used
+    /// to sit on these read-throughs was two `debug_assert_eq!`s, which are compiled out of
+    /// `--release` -- and `Cargo.toml` additionally sets `debug-assertions = false` for this
+    /// crate in dev, so they compiled out in EVERY profile the census runs in, and every
+    /// `claim_batch` build is `--release`. A guard that never executes where the thing it guards
+    /// runs is a decoration, DESIGN §4b).
+    ///
+    /// ARMS, one per forgery the proof has to catch:
+    /// * DRIFTED FACTS refuse. This is the arm no content comparison can provide: the scratch's
+    ///   facts are doctored to be CONTENT-EQUAL to the underlay's, differing only in the minted
+    ///   `build_id`. Two independent scans of an unchanged pool agree on every byte and still
+    ///   answer different questions, because each carries its own warm caches. So the witness has
+    ///   to be identity, and this asserts the refusal. Delete the `build_id` comparison, or turn
+    ///   it back into a `debug_assert_eq!`, and this arm goes red.
+    /// * A REPLACED POOL ENTRY refuses, by pointer. One entry is swapped for an equal-content
+    ///   copy: a content check would pass, the pointer witness does not.
+    /// * THE PROVEN SCRATCH PASSES and reads through. Without this arm the RED above could be
+    ///   satisfied by a guard that always refuses -- which is the silent-revert failure mode
+    ///   (correct output, the ~10 s back, nothing red), so the pair is what makes the guard live
+    ///   in both directions.
+    /// * AN ORDINARY INDEX has no underlay: not a refusal, just itself.
+    #[test]
+    fn underlay_identity_proof_refuses_drift_and_permits_the_proven_scratch() {
+        let roots = default_source_roots();
+        let map = build_module_index(&roots);
+        let base = Rc::new(new_multi_entry_index_shell(map.clone(), &roots));
+
+        let scratch = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
+        *scratch.scratch_underlay.borrow_mut() = Some(Rc::clone(&base));
+        assert!(
+            scratch_underlay_if_proven(&scratch)
+                .expect(
+                    "a legitimate scratch must be PERMITTED: an always-refusing guard would                      satisfy every other assertion in this test, so this arm is what stops the                      RED from being satisfied by a guard that simply never lets anything through"
+                )
+                .is_some(),
+            "a scratch that IS its underlay's pool must be allowed to read through it"
+        );
+        assert!(
+            scratch_underlay_if_proven(&scratch).unwrap().is_some(),
+            "the verdict is memoized and stays proven"
+        );
+
+        let mut drifted = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
+        drifted.module_graph_facts.build_id = base.module_graph_facts.build_id + 1;
+        *drifted.scratch_underlay.borrow_mut() = Some(Rc::clone(&base));
+        assert_eq!(
+            drifted.module_graph_facts.adjacency,
+            base.module_graph_facts.adjacency,
+            "precondition: the drift must be CONTENT-equal, or this arm only proves a content              comparison would have caught it -- which is the witness that cannot work"
+        );
+        let err = scratch_underlay_if_proven(&drifted)
+            .err()
+            .expect("facts minted by a different scan must refuse to read through the underlay");
+        assert!(
+            err.contains("scratch underlay identity refused") && err.contains("scan"),
+            "the refusal must name itself and the drift, got: {err}"
+        );
+
+        let mut replaced = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
+        let some_path = base
+            .source_files
+            .keys()
+            .next()
+            .expect("the pool is not empty")
+            .clone();
+        // A FRESH allocation of equal content: deref to the SourceFile and clone the value, so
+        // the Rc is not the underlay's Rc even though the bytes are identical.
+        let copy = Rc::new(
+            (**base
+                .source_files
+                .get(&some_path)
+                .expect("the pool lists a key it holds"))
+            .clone(),
+        );
+        replaced.source_files.insert(some_path.clone(), copy);
+        *replaced.scratch_underlay.borrow_mut() = Some(Rc::clone(&base));
+        let err = scratch_underlay_if_proven(&replaced)
+            .err()
+            .expect("a pool entry that is not the underlay's allocation must refuse");
+        assert!(
+            err.contains("different source value") && err.contains(&some_path),
+            "the refusal must name the drifted module path, got: {err}"
+        );
+
+        let plain = new_multi_entry_index_shell(map, &roots);
+        assert!(scratch_underlay_if_proven(&plain)
+            .expect("having no underlay is not an error")
+            .is_none());
+    }
+}
+
 // SCAFFOLD: folds into a .dag execution witness when the discovery/diff seed plumbing
 // migrates off the v1 host layer (§6 dissolution trigger)
 #[cfg(test)]
@@ -24950,6 +25316,7 @@ mod module_graph_read_refusal_tests {
             })
             .collect();
         ModuleGraphFactsLive {
+            build_id: super::next_facts_build_id(),
             nodes: node_rows,
             adjacency: adjacency.clone(),
             selection: std::rc::Rc::new(super::ReferenceSelectionTier::supplied(adjacency)),
@@ -26970,9 +27337,19 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
     FunctionNotFound,
+    /// A file-grain row (`check_fns: []`) whose entry file carries no TEST MARKER: the sentinel
+    /// promises every marked declaration in the file, and a marked-empty file promises nothing,
+    /// so the row holds no witness. Its own cause, distinct from a named function going missing.
+    FileGrainEntryHasNoMarkedDeclarations,
+    /// A file-grain row whose entry file cannot be read to enumerate markers.
+    FileGrainEntryUnreadable,
 }
 
 #[derive(Debug, Clone)]
@@ -33089,7 +33466,6 @@ pub fn release_process_caches_at_exit() {
     MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
-    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(
         "[floor-teardown] released process caches without freeing them in {} ms (the residue after \
          this line is whatever main's return still drops)",
@@ -33687,6 +34063,7 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
         ItemKind::TypeItem => "type",
         ItemKind::DataItem => "data",
         ItemKind::ServiceItem => "service",
+        ItemKind::ResourceItem => "resource",
         ItemKind::OtherItem => "other",
     }
 }
@@ -34898,7 +35275,7 @@ fn witness_eval_verdict_from_claim_outcome(
         ClaimOutcome::HostEffectRefused { operation, ground } => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostEffectRefused {
                 operation: operation.clone(),
-                ground: hermetic_effect_ground_verdict(ground),
+                ground: effect_refusal_ground_verdict(ground),
             }
         }
         // THE WIRE VERDICT STILL CARRIES THE AXIS AS DATA, which is why `BudgetCompletion`

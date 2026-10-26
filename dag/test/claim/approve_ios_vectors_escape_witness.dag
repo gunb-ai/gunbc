@@ -51,7 +51,7 @@ fn module_source(path: String) -> String {
 // POSITIVE: the fixture carries specimens, so the emitted loop is not iterating nothing and passing.
 // This is the guard the emission boundary also enforces (a refusal, not a green vacuous file), asserted
 // here from the claim side.
-fn fixture_carries_escape_specimens_helper() -> Bool {
+test fn fixture_carries_escape_specimens_helper() -> Bool {
   count(escape_specimens) > 0
 }
 
@@ -63,7 +63,7 @@ fn fixture_carries_escape_specimens_helper() -> Bool {
 // row's object_json expectation with a hand-typed string still passed it — the fragment was satisfied by
 // an unrelated row's serializer call elsewhere in the file. Anchoring on the full member means the claim
 // is about THIS row's expectation, and the control reddens it.
-fn fixture_builds_expectations_from_the_serializer_helper() -> Bool {
+test fn fixture_builds_expectations_from_the_serializer_helper() -> Bool {
   let fx = module_source(path: fixture_module_path)
   fx != ""
     && fx.contains("json_kv(key: \"string_json\", value: json_string(s: serialize_json(v: json_string(s: input))))")
@@ -74,7 +74,7 @@ fn fixture_builds_expectations_from_the_serializer_helper() -> Bool {
 // POSITIVE, the carrier side: the emitted escape test iterates the fixture's rows and compares the
 // runtime emitter's output against the row's own two expectation fields. It is the rows that carry the
 // expectations, so the carrier cannot hold a literal and still satisfy this.
-fn carrier_asserts_against_the_rows_helper() -> Bool {
+test fn carrier_asserts_against_the_rows_helper() -> Bool {
   let src = module_source(path: carrier_module_path)
   src != ""
     && src.contains("sw_for(n: \"v\", e: sw_id(n: \"vectors\")")
@@ -86,7 +86,7 @@ fn carrier_asserts_against_the_rows_helper() -> Bool {
 // POSITIVE, the lens over the file the carrier produces: no specimen and no expectation is spelled in
 // the emitted Swift. WireJson.string(" is the shape a hand-typed input takes, and \u00 is the shape a
 // hand-typed expected escape took; the driven form is WireJson.string(v.input), which must be there.
-fn emitted_bytes_carry_no_hand_typed_escape_helper() -> Bool {
+test fn emitted_bytes_carry_no_hand_typed_escape_helper() -> Bool {
   let text = emission_text()
   text != ""
     && !text.contains("WireJson.string(\"")
@@ -101,7 +101,7 @@ fn emitted_bytes_carry_no_hand_typed_escape_helper() -> Bool {
 // the read) because a loose `load().escape` substring survives renaming the field to `escapes` — which is
 // the regression this claim has to catch: the loop would then read a section the fixture does not emit,
 // XCTUnwrap would fail on every Mac, and nothing in the merge path runs the tests.
-fn emitted_bytes_read_the_escape_section_helper() -> Bool {
+test fn emitted_bytes_read_the_escape_section_helper() -> Bool {
   let text = emission_text()
   text != ""
     && text.contains("var escape: [Escape]?")

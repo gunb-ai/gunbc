@@ -1,0 +1,448 @@
+module gunbc.runner.runner_host_withdraw
+
+// HOST WITHDRAW AND RESTORE: take a runner host OUT of admission and LEAVE it out, then bring it back.
+//
+// WHY THIS EXISTS. srv3's runner slots carry no memory.max, so main's memory envelope refuses there
+// (MemoryEnvelopeAbsent), and the only masking route inside the fleet-converge job is the cap bracket --
+// which drains and masks ONLY inside its own window, then re-admits on its always() release. An operator
+// masking srv3 for real does it by hand, and a hand action is invisible: a later cap converge cannot tell
+// a hand mask from a bracket mask, and a hand restore is whatever the operator remembers. This pair
+// replaces that hand action with a declared mode INSIDE the same fleet-converge job (the job roster is
+// closed to growth): withdraw drains, masks, and re-admits NOTHING, then reads the mask back; restore
+// unmasks, activates, and reads admission back open.
+//
+// THE DRAIN IS NOT FORKED. Withdraw walks the bracket's own legs, in the bracket's own order:
+// bracket_start_over (the declared step budget must cover the declared wait; the deadline starts before
+// anything is masked), acquire_bracket_over (read ownership, record the obligation owed), and
+// drain_until_quiescent_over -- the bracket's own drain, called exactly the way the cap converge calls
+// it, over the exact-identity listener join the bracket owns. The policy row is passed through UNREAD
+// and UNCOPIED: the same runner_host_cap_drain_policy the cap converge reads, never a second bound,
+// never a locally-written wait value (the operator's ruling: the bound belongs to the policy row alone).
+// What withdraw changes is the TAIL: where the bracket would write caps and re-admit, withdraw records
+// why the host is out and stops there.
+//
+// NEVER HALF-WITHDRAWN SILENTLY. The bracket's first drain pass READS ONLY, so a listener racing
+// admission refuses before anything is masked. A drain that exceeds its bound refuses with the bracket's
+// own bound verdict, and every unit THIS attempt masked is put back with the bracket's own undo
+// (release_owned_slots_over -- the same undo it runs when its cap writes fail). Then the host is READ
+// AGAIN: the refusal reports the state the reads found (`left`), never the state the undo was expected to
+// produce. The obligation stays owed after a refusal, so a later cap converge or the release finalizer
+// still sees what this attempt masked.
+//
+// THE WITHDRAWN STATE IS A RECORD THE OBSERVER READS. Its file, codec and four-way reading live in
+// gunbc.runner.runner_host_withdraw_record -- under the host's converged state directory
+// (gunbc.fleet.fleet_converge_state_path fleet_converge_state_root), the durable authority the
+// fleet-converge job already owns on the host, where the allocation operations already publish their own
+// JSON and the host-wide grant rows ensure the directory exists and is owned by the converge job user.
+// A WITHDRAWAL OUTLIVES ITS RUN -- the restore is a later dispatch, under a different run id -- so the
+// record is keyed by the HOST, never by a run, and it is NOT in RUNNER_TEMP, which belongs to one job.
+// A host is reported `withdrawn` only when BOTH authorities agree: the record says the drain certified
+// it, AND every slot of the host reads masked and inactive. One authority alone is either a file lying
+// about the host (record without masks) or an unexplained state (masks without a record -- a hand mask,
+// which is what this mode retires).
+
+import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs }
+import std.optional { Absent, Present }
+import std.measure { Second, second, second_count }
+import std.algebra { trim, list_flat_map }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.host_identity { HostIdentity }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path }
+import gunbc.runner.runner_slot_actuation {
+  read_slot_over, SlotReadOutcome, SlotRead, SlotReadRefused, slot_is_masked, slot_state_active,
+  slot_actuation_settled, slot_actuation_outcome_wire, SlotActuationOutcome,
+}
+import gunbc.runner.runner_host_file_converge {
+  runner_host_file_subject, RunnerHostFileSubjectAdmission, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused,
+  RunnerHostFileSubject, runner_host_file_converge_attempt_raw,
+}
+import gunbc.runner.runner_host_cap_bracket {
+  // THE DRAIN AND ITS BOOKKEEPING, imported rather than reimplemented (the brief: do not fork a second drain).
+  bracket_start_over, BracketStartAt, BracketStartRefused,
+  acquire_bracket_over, BracketAcquisition, BracketAcquired, BracketNotAcquired,
+  drain_until_quiescent_over, BracketWaitStep, BracketDrained, BracketWaiting, BracketAdmissionNotClosed, BracketBoundExceeded,
+  release_owned_slots_over,
+  stop_admitted_listener_over, ListenerRestart, ListenerStopRefused, listener_restart_unit, listener_restart_refusal,
+  runner_host_cap_drain_policy, host_cap_drain_ticks, runner_host_cap_step_budget_env_name,
+  bracket_refusal_wire, HostCapBracketRefusal,
+  CertifiedListener,
+}
+import gunbc.runner.runner_host_withdraw_record {
+  WithdrawnRecord, WithdrawnCertification, WithdrawnRecordReading,
+  WithdrawnRecordAbsent, WithdrawnRecordUnreadable, WithdrawnRecordForeign, WithdrawnRecordOurs,
+  read_withdrawn_record, write_withdrawn_record, clear_withdrawn_record,
+  host_slots_all_masked_and_inactive_over,
+  runner_host_withdraw_identity, host_is_withdrawn, runner_host_withdraw_record_observe_line,
+}
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_precheck, fleet_converge_split_read, SplitPrecheck, SplitOk, SplitRefused, SplitRefusalReason, fleet_converge_split_refusal_line }
+
+// ── The outcomes, typed ──────────────────────────────────────────────────────────────────────────
+
+// WHY WITHDRAWAL REFUSED, as a sum whose arms carry their own evidence (the bracket's busy/unproven
+// lists, the racing listeners) -- each is a distinct diagnosis with a distinct next action (§5). NO arm
+// can mean "half withdrawn": every refusal reports, in `left`, what the host was READ to be after the
+// undo -- never what the undo was expected to produce.
+type WithdrawalRefusal = WithdrawalRefusalSubject { cause: String } | WithdrawalRefusalSplit { reason: String } | WithdrawalRefusalBudget { cause: String } | WithdrawalRefusalUnrecordable { cause: String } | WithdrawalRefusalHeldRecord { cause: String } | WithdrawalRefusalOwnershipUnproven { cause: String } | WithdrawalRefusalDrainNotClosed { listeners: List<NonEmptyStr>, causes: List<String> } | WithdrawalRefusalDrainBound { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second } | WithdrawalRefusalMaskNotHeld { units: List<NonEmptyStr> } | WithdrawalRefusalStopRefused { units: List<NonEmptyStr>, causes: List<String> }
+
+// WHAT THE HOST WAS READ TO BE AFTER A REFUSAL. HostLeftReadAdmitting only when every unit was read
+// again and reads unmasked; otherwise the read-back itself found units still masked or unreadable, and
+// the detail names them -- the host is reported AS READ, never as smoothly restored.
+type HostLeftAfterRefusal = HostLeftReadAdmitting | HostLeftAsRead { detail: String }
+
+// Drained, masked, recorded, and READ BACK: every slot of the host reads masked AND inactive.
+type WithdrawalOutcome = Withdrawn { units: List<NonEmptyStr>, certified: List<WithdrawnCertification>, record_written: Bool } | WithdrawalRefused { refusal: WithdrawalRefusal, left: HostLeftAfterRefusal }
+
+type RestorationRefusal = RestorationRefusalSubject { cause: String } | RestorationRefusalSplit { reason: String } | RestorationRefusalNotWithheld { cause: String } | RestorationRefusalRecordForeign { key: String } | RestorationRefusalNotActive { units: List<NonEmptyStr>, detail: String } | RestorationRefusalRecordNotCleared { cause: String }
+
+// Unmasked, activated, and READ BACK admitting: every slot reads unmasked AND its unit active.
+type RestorationOutcome = Restored { units: List<NonEmptyStr>, record_cleared: Bool } | RestorationRefused { refusal: RestorationRefusal }
+
+// ── The reads over the ssh edge ──────────────────────────────────────────────────────────────────
+
+// THE RESTORE READBACK: unmasked AND active. That pair IS admitting -- the mask is gone and the listener
+// is running, which is the state that takes jobs again. (The masked-and-inactive readback withdraw needs
+// is the record module's host_slots_all_masked_and_inactive_over -- one join for observe and withdraw.)
+fn slot_reads_admitting_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> Bool {
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotRead { reading: r } => !slot_is_masked(r: r) && slot_state_active(active: r.active)
+    SlotReadRefused { reason: _ } => false
+  }
+}
+
+// ── The withdraw, composed from the bracket's own legs ───────────────────────────────────────────
+
+// ORDER, and why: (1) the budget verdict BEFORE anything is masked, from the DECLARED step budget -- the
+// same declared variable the cap converge reads, never a number this module copies; (2) the RECORD
+// checked before the first mask: a record held under another identity is refused by name (never
+// overwritten -- two converges must not fight over one host through one file), and an unreadable record
+// is refused rather than completed over; (3) acquire reads ownership and records the obligation owed --
+// nothing is masked by it; (4) THE BRACKET'S DRAIN, called the cap converge's way, with the policy row
+// passed through and the tick count read from the row itself; (5) on drained, the record is written and
+// EVERY unit of the host is read back -- including units a foreign mask already holds, which read masked
+// truthfully; (6) on any refusal, undo what THIS attempt masked with the bracket's own undo and READ THE
+// HOST AGAIN before reporting.
+fn withdraw_host_over(target: SshTarget, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>, executor_runner_name: String?) -> WithdrawalOutcome {
+  // THE SPLIT, FIRST, before the budget, the record, and every leg: a withdrawal whose executor is the
+  // subject is refused as a typed value with NOTHING touched (operator ruling 2026-10-24, refused run
+  // 40085967610 -- the bracket waited for actions-runner@srv3-13, the slot running the converge itself).
+  // An absent executor identity refuses too: fail-open here is the deadlock again. The refusal is checked
+  // BEFORE the budget read and the record check, so the SplitRefused arm below can only be reached with
+  // zero legs dispatched -- the witness pins that with an empty actuation ledger.
+  match fleet_converge_split_precheck(executor_runner_name: executor_runner_name, subject_host: Present { value: host }) {
+    SplitRefused { reason: why } => WithdrawalRefused { refusal: WithdrawalRefusalSplit { reason: fleet_converge_split_refusal_line(reason: why) }, left: HostLeftAsRead { detail: "nothing was masked: the split precondition refused before the first leg" } }
+    SplitOk { executor_runner_name: _, subject_host: _ } => withdraw_host_split_ok(target: target, context: context, host: host, units: units)
+  }
+}
+
+fn withdraw_host_split_ok(target: SshTarget, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>) -> WithdrawalOutcome {
+  match step_budget_seconds() {
+    Absent => WithdrawalRefused { refusal: WithdrawalRefusalBudget { cause: join(["the enclosing step did not declare its budget (the declared budget variable ", runner_host_cap_step_budget_env_name, " is unset or is not an integer)"], "") }, left: HostLeftAsRead { detail: "nothing was masked: the budget was unreadable before the first leg" } }
+    Present { value: seconds } =>
+      match bracket_start_over(policy: runner_host_cap_drain_policy, given: second(count: seconds)) {
+        // The bracket's start refusal means NOTHING was masked and the host was never touched; the
+        // wire text says so, and `left` repeats it rather than pretending a read was taken.
+        BracketStartRefused { refusal: rf } =>
+          WithdrawalRefused { refusal: WithdrawalRefusalBudget { cause: bracket_refusal_wire(r: rf) }, left: HostLeftAsRead { detail: "nothing was masked: the budget verdict refused before the first leg" } }
+        BracketStartAt { started: started } =>
+          match read_withdrawn_record(host: host, expected_key: runner_host_withdraw_identity(host: host)) {
+            // A record naming another host, or one that cannot be read at all, BLOCKS this withdraw:
+            // acting under a record nobody can account for is exactly the half-withdrawn silence this
+            // mode forbids. Nothing is masked on these paths -- the refusal comes before the first leg.
+            WithdrawnRecordForeign { key: held } =>
+              WithdrawalRefused { refusal: WithdrawalRefusalHeldRecord { cause: join(["the withdrawn record names another identity: ", held, "; withdraw refuses to overwrite a claim it cannot account for"], "") }, left: HostLeftAsRead { detail: "nothing was masked: the held record was refused before the first leg" } }
+            WithdrawnRecordUnreadable { cause: c } =>
+              WithdrawalRefused { refusal: WithdrawalRefusalHeldRecord { cause: join(["the withdrawn record exists but cannot be read, so its owner is unknown: ", c], "") }, left: HostLeftAsRead { detail: "nothing was masked: the unreadable record was refused before the first leg" } }
+            // Not withdrawn yet, or already withdrawn through this mode (an idempotent re-dispatch
+            // refreshes the record with today's certification): walk the bracket's legs either way.
+            WithdrawnRecordAbsent => withdraw_legs(target: target, context: context, key: runner_host_withdraw_identity(host: host), host: host, units: units, started: started)
+            WithdrawnRecordOurs { record: _ } => withdraw_legs(target: target, context: context, key: runner_host_withdraw_identity(host: host), host: host, units: units, started: started)
+          }
+      }
+  }
+}
+
+// THE BRACKET'S OWN LEGS, walked in the bracket's own order: acquire (read ownership, record the
+// obligation owed -- nothing masks here), then THE DRAIN, called exactly the way the cap converge calls
+// it, with the policy row passed through and the tick count read from the row itself. Drained completes
+// the withdrawal; every drain refusal undoes what THIS attempt masked before reporting.
+fn withdraw_legs(target: SshTarget, context: FleetSshExecutionContext, key: String, host: String, units: List<NonEmptyStr>, started: EpochMs) -> WithdrawalOutcome {
+  match acquire_bracket_over(target: target, context: context, host: host, units: units) {
+    // Acquisition masks nothing, so the host is as it was; `left` still reports what was READ, so the
+    // receipt never claims more than the run observed.
+    BracketNotAcquired { refusal: r } =>
+      WithdrawalRefused { refusal: WithdrawalRefusalOwnershipUnproven { cause: bracket_refusal_wire(r: r) }, left: read_back_host_state(target: target, context: context, units: units) }
+    BracketAcquired { owned: owned } =>
+      match drain_until_quiescent_over(target: target, context: context, observed: units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
+        BracketDrained { certified: cs } => complete_withdraw(target: target, context: context, key: key, host: host, units: units, owned: owned, certified: cs)
+        BracketAdmissionNotClosed { listeners: ls, causes: cs } =>
+          undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainNotClosed { listeners: ls, causes: cs })
+        BracketWaiting { ticks_left: _ } =>
+          undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainBound { busy: [], unproven: [], waited: runner_host_cap_drain_policy.wait_bound })
+        BracketBoundExceeded { busy: b, unproven: u } =>
+          undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainBound { busy: b, unproven: u, waited: runner_host_cap_drain_policy.wait_bound })
+      }
+  }
+}
+
+// THE NAMING HELPER for a refusal: a slot fails if the record module's join says it is not
+// masked-and-inactive (one predicate, so the refusal's `units` list and the withdrawn judgment can never
+// disagree about which slots are the problem).
+fn slot_reads_masked_and_inactive(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> Bool {
+  host_slots_all_masked_and_inactive_over(target: target, context: context, units: [unit])
+}
+
+// THE COMPLETION: write the record, then read EVERY unit of the host back (not just the owned ones --
+// the claim is about the host). A slot that fails the readback while the record claims otherwise is a
+// refusal that clears its own record and names the slots; the obligation stays owed, which is the truth:
+// this host is out of admission and the release finalizer must still see what this attempt masked.
+fn complete_withdraw(target: SshTarget, context: FleetSshExecutionContext, key: String, host: String, units: List<NonEmptyStr>, owned: List<NonEmptyStr>, certified: List<CertifiedListener>) -> WithdrawalOutcome {
+  let rows = map(certified, c => WithdrawnCertification { unit: c.unit, registration: c.registration })
+  // THE CERTIFIED LISTENERS ARE STOPPED, THROUGH THE BRACKET'S OWN STOP LEG -- the drain masks but never
+  // stops (a slot leaves service when its own job ends), and cap converge stops-and-restarts them; here
+  // there is no restart, which IS the withdrawal. stop_admitted_listener_over re-takes the three readings
+  // immediately before the stop (a listener whose reading no longer holds is refused by name, not stopped
+  // blind), and the mask blocks systemd from bringing it back. The stop happens BEFORE the record: a
+  // record claiming a still-running host would be a file lying about the host.
+  let admitted = map(certified, c => c.unit)
+  let stops = map(filter(owned, x => any(admitted, a => a == x)), x => stop_admitted_listener_over(target: target, context: context, unit: x))
+  let stop_refused = filter(stops, r => match r { ListenerStopRefused { unit: _, cause: _ } => true _ => false })
+  if length(stop_refused) > 0 {
+    // A listener the bracket refuses to stop is reported by name; the refusal path unmasks what this
+    // attempt owned, so nothing is left half-withdrawn, and the obligation stays owed for the finalizer.
+    undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalStopRefused { units: map(stop_refused, r => listener_restart_unit(r: r)), causes: list_flat_map(stop_refused, r => match listener_restart_refusal(r: r) { Present { value: why } => [why] Absent => [] }) })
+  } else {
+  let written = write_withdrawn_record(host: host, r: WithdrawnRecord { key: key, host: host, units: units, certified: rows, at: clock_now_probed_at_or_unknown() as String })
+  if !written {
+    undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalUnrecordable { cause: "the withdrawn record could not be written to the converged state directory; the host's converge state root may never have been converged" })
+  } else if host_slots_all_masked_and_inactive_over(target: target, context: context, units: units) {
+    Withdrawn { units: units, certified: rows, record_written: true }
+  } else {
+    // An unmasking race at the last instant is REPORTED, not retried, and the record claiming what the
+    // host contradicts is cleared -- an observe over a stale record would report withdrawn on an
+    // admitting host, which is a lie by file.
+    let _cleared = clear_withdrawn_record(host: host)
+    undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalMaskNotHeld { units: filter(units, u => !slot_reads_masked_and_inactive(target: target, context: context, unit: u)) })
+  }
+  }
+}
+
+// THE UNDO the bracket itself runs on its failed paths, applied to exactly the units THIS attempt owned
+// -- then the host is read again so the refusal's `left` is what the reads found. The record is cleared
+// with the undo: an undone withdraw that still had a record would have observe report withdrawn on an
+// admitting host. The obligation is deliberately NOT touched: a refused withdraw leaves it owed, and the
+// release route (or a later withdraw's acquire) is the only thing that may discharge it.
+fn undo_then_refuse(target: SshTarget, context: FleetSshExecutionContext, host: String, owned: List<NonEmptyStr>, units: List<NonEmptyStr>, refusal: WithdrawalRefusal) -> WithdrawalOutcome {
+  let outcomes = release_owned_slots_over(target: target, context: context, units: owned)
+  let _kept = outcomes
+  let _cleared = clear_withdrawn_record(host: host)
+  WithdrawalRefused { refusal: refusal, left: read_back_host_state(target: target, context: context, units: units) }
+}
+
+// THE READ OF THE HOST AFTER AN UNDO: HostLeftReadAdmitting only when every unit was actually read and
+// reads unmasked; anything else names the units that still read masked or could not be read.
+fn read_back_host_state(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> HostLeftAfterRefusal {
+  let still_masked_or_unread = filter(units, u => match read_slot_over(target: target, context: context, unit: u) {
+    SlotRead { reading: r } => slot_is_masked(r: r)
+    SlotReadRefused { reason: _ } => true
+  })
+  if length(still_masked_or_unread) == 0 {
+    HostLeftReadAdmitting
+  } else {
+    HostLeftAsRead { detail: join(["the read-back after the undo found these units still masked or unreadable: ", join(map(still_masked_or_unread, u => u as String), ","), "; they were NOT confirmed admitting"], "") }
+  }
+}
+
+// ── The restore ──────────────────────────────────────────────────────────────────────────────────
+
+// RESTORE: read the record, and only for a record THIS identity matches, run the bracket's own
+// unmask-activate-read-back release on the RECORDED units, then clear the record LAST. The release IS
+// the bracket's own route (release_owned_slots_over -- the same legs, the same typed outcomes), so
+// restore does not fork a second activation either. An outcome that fails to settle refuses WITHOUT
+// clearing the record: a host that did not come back is still out of admission and must keep saying so.
+// The units come from the RECORD, not from the caller: restoring whatever the deploy says today would
+// activate units the withdrawal never touched.
+fn restore_host_over(target: SshTarget, context: FleetSshExecutionContext, host: String, executor_runner_name: String?) -> RestorationOutcome {
+  // THE SPLIT, FIRST (the withdraw's own rule): an executor on its subject cannot safely activate slots
+  // there either -- it would be admitting work onto the host it runs on, mid-mode. Refused before the
+  // record read and every leg; the witness pins the empty actuation ledger.
+  match fleet_converge_split_precheck(executor_runner_name: executor_runner_name, subject_host: Present { value: host }) {
+    SplitRefused { reason: why } => RestorationRefused { refusal: RestorationRefusalSplit { reason: fleet_converge_split_refusal_line(reason: why) } }
+    SplitOk { executor_runner_name: _, subject_host: _ } => restore_host_split_ok(target: target, context: context, host: host)
+  }
+}
+
+fn restore_host_split_ok(target: SshTarget, context: FleetSshExecutionContext, host: String) -> RestorationOutcome {
+  match read_withdrawn_record(host: host, expected_key: runner_host_withdraw_identity(host: host)) {
+    WithdrawnRecordAbsent => RestorationRefused { refusal: RestorationRefusalNotWithheld { cause: "no withdrawn record is present: the host was never withdrawn through this mode (a hand mask is not this route's to lift)" } }
+    WithdrawnRecordUnreadable { cause: c } => RestorationRefused { refusal: RestorationRefusalNotWithheld { cause: concat("the withdrawn record is not trustworthy: ", c) } }
+    WithdrawnRecordForeign { key: k } => RestorationRefused { refusal: RestorationRefusalRecordForeign { key: k } }
+    WithdrawnRecordOurs { record: r } =>
+      if length(r.units) == 0 {
+        RestorationRefused { refusal: RestorationRefusalNotWithheld { cause: "the withdrawn record names no units" } }
+      } else {
+        run_restore(target: target, context: context, host: host, units: r.units)
+      }
+  }
+}
+
+fn run_restore(target: SshTarget, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>) -> RestorationOutcome {
+  let outcomes = release_owned_slots_over(target: target, context: context, units: units)
+  let unsettled = filter(outcomes, o => !slot_actuation_settled(o: o))
+  if length(unsettled) > 0 {
+    // Still out of admission, still recorded -- the truth the observer must keep seeing.
+    RestorationRefused { refusal: RestorationRefusalNotActive { units: units, detail: join(map(unsettled, o => slot_actuation_outcome_wire(o: o)), "; ") } }
+  } else if all(units, u => slot_reads_admitting_over(target: target, context: context, unit: u)) {
+    if clear_withdrawn_record(host: host) { Restored { units: units, record_cleared: true } }
+    else { RestorationRefused { refusal: RestorationRefusalRecordNotCleared { cause: "the units read admitting but the withdrawn record could not be cleared; observe will keep reporting the host withdrawn until the record goes" } } }
+  } else {
+    RestorationRefused { refusal: RestorationRefusalNotActive { units: filter(units, u => !slot_reads_admitting_over(target: target, context: context, unit: u)), detail: "the release settled but the read-back does not show every unit unmasked and active" } }
+  }
+}
+
+// ── The CI wet entrypoints, dispatched as fleet-converge modes ──────────────────────────────────
+
+// One host per run, named by the dispatch -- the same envelope, subject admission, and ssh context the
+// cap converge uses. There is deliberately NO re-admit tail on withdraw (that is what makes a withdrawal
+// a withdrawal), and the workflow gates its always() cap-release step OFF for the withdraw mode: a
+// release route that unmasked a withdrawn host would undo the mode's whole point.
+
+fn runner_host_withdraw_ci_wet() -> ProcessExit {
+  // THE SUBJECT, BY NAME, AND THE SPLIT, FIRST (operator ruling 2026-10-24 after refused run
+  // 40085967610): the withdrawal drains and masks the SUBJECT host, never the executor the job is
+  // pinned to, and the two must differ -- an executor draining its own subject waits for its own
+  // slot forever. fleet_converge_split_read is both checks at once (subject present, executor not
+  // proven on it), and it runs before the subject admission and the ssh context: a refusal dispatches
+  // no leg at all, which the witness pins against an unchanged world.
+  match fleet_converge_split_read() {
+    SplitRefused { reason: why } => exit_failure(reason: fleet_converge_split_refusal_line(reason: why))
+    SplitOk { executor_runner_name: executor_name, subject_host: raw_host } =>
+      match runner_host_file_subject(host: raw_host as HostIdentity) {
+        RunnerHostFileSubjectRefused { cause: c } => finish_withdraw(host: raw_host, context_receipt: "", outcome: WithdrawalRefused { refusal: WithdrawalRefusalSubject { cause: c }, left: HostLeftAsRead { detail: "the subject was refused before any leg was issued" } })
+        RunnerHostFileSubjectAdmitted { subject: s } =>
+          match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {
+            FleetSshContextRefused { cause: c } => finish_withdraw(host: raw_host, context_receipt: "", outcome: WithdrawalRefused { refusal: WithdrawalRefusalSubject { cause: concat("the ssh context refused: ", c) }, left: HostLeftAsRead { detail: "the ssh context refused before any leg was issued" } })
+            FleetSshContextReady { context: context, receipt: context_receipt } =>
+              finish_withdraw(host: raw_host, context_receipt: context_receipt, outcome: withdraw_host_over(target: s.target, context: context, host: raw_host, units: s.desired_units, executor_runner_name: executor_name))
+          }
+      }
+  }
+}
+
+fn runner_host_restore_ci_wet() -> ProcessExit {
+  // THE SUBJECT, BY NAME, AND THE SPLIT, FIRST -- the restore's mirror of the withdraw's rule (see
+  // above). It restores the host NAMED BY THE DISPATCH, which after a split is not the executor.
+  match fleet_converge_split_read() {
+    SplitRefused { reason: why } => exit_failure(reason: fleet_converge_split_refusal_line(reason: why))
+    SplitOk { executor_runner_name: executor_name, subject_host: raw_host } =>
+      match runner_host_file_subject(host: raw_host as HostIdentity) {
+        RunnerHostFileSubjectRefused { cause: c } => finish_restore(host: raw_host, context_receipt: "", outcome: RestorationRefused { refusal: RestorationRefusalSubject { cause: c } })
+        RunnerHostFileSubjectAdmitted { subject: s } =>
+          match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {
+            FleetSshContextRefused { cause: c } => finish_restore(host: raw_host, context_receipt: "", outcome: RestorationRefused { refusal: RestorationRefusalSubject { cause: concat("the ssh context refused: ", c) } })
+            FleetSshContextReady { context: context, receipt: context_receipt } =>
+              finish_restore(host: raw_host, context_receipt: context_receipt, outcome: restore_host_over(target: s.target, context: context, host: raw_host, executor_runner_name: executor_name))
+          }
+      }
+  }
+}
+
+// THE RECEIPTS. One finisher each, following the release route's discipline: the exit follows what was
+// read, and a receipt write that fails fails the step (a fleet converge that cannot show what it did
+// does not get to claim it did nothing). The withdrawn line uses the same words observe uses (the record
+// module's one renderer), so the two can never disagree about the state.
+fn withdraw_receipt_text(host: String, outcome: WithdrawalOutcome) -> String {
+  join([
+    "runner_host_withdraw host=", host, " probed_at=", clock_now_probed_at_or_unknown() as String, "\n",
+    match outcome {
+      Withdrawn { units: us, certified: cs, record_written: w } =>
+        join(["state=withdrawn units=", join(map(us, u => u as String), ","), " record=", if w { "written" } else { "unwritten" }, "\ncertified=", join(map(cs, c => join([c.unit as String, "=", c.registration as String], "")), ","), "\n"], "")
+      WithdrawalRefused { refusal: r, left: l } =>
+        join(["state=refused refusal=", withdrawal_refusal_wire(r: r), " left=", host_left_after_wire(l: l), "\n"], "")
+    },
+  ], "")
+}
+
+fn restore_receipt_text(host: String, outcome: RestorationOutcome) -> String {
+  join([
+    "runner_host_restore host=", host, " probed_at=", clock_now_probed_at_or_unknown() as String, "\n",
+    match outcome {
+      Restored { units: us, record_cleared: c } => join(["state=admitting units=", join(map(us, u => u as String), ","), " record=", if c { "cleared" } else { "held" }, "\n"], "")
+      RestorationRefused { refusal: r } => join(["state=refused refusal=", restoration_refusal_wire(r: r), "\n"], "")
+    },
+  ], "")
+}
+
+fn withdrawal_refusal_wire(r: WithdrawalRefusal) -> String {
+  match r {
+    WithdrawalRefusalSubject { cause: c } => join(["subject: ", c], "")
+    WithdrawalRefusalSplit { reason: r } => join(["split: ", r], "")
+    WithdrawalRefusalBudget { cause: c } => join(["budget: ", c], "")
+    WithdrawalRefusalUnrecordable { cause: c } => join(["unrecordable: ", c], "")
+    WithdrawalRefusalHeldRecord { cause: c } => join(["held-record: ", c], "")
+    WithdrawalRefusalOwnershipUnproven { cause: c } => join(["ownership-unproven: ", c], "")
+    WithdrawalRefusalDrainNotClosed { listeners: ls, causes: cs } => join(["drain-admission-not-closed listeners=", join(map(ls, u => u as String), ","), " causes=[", join(cs, "; "), "]"], "")
+    WithdrawalRefusalDrainBound { busy: b, unproven: u, waited: w } => join(["drain-bound busy=", join(map(b, x => x as String), ","), " unproven=", join(map(u, x => x as String), ","), " waited=", to_string(second_count(s: w))], "")
+    WithdrawalRefusalMaskNotHeld { units: us } => join(["mask-not-held units=", join(map(us, u => u as String), ",")], "")
+    WithdrawalRefusalStopRefused { units: us, causes: cs } => join(["listener-stop-refused units=", join(map(us, u => u as String), ","), " causes=[", join(cs, "; "), "]"], "")
+  }
+}
+
+fn host_left_after_wire(l: HostLeftAfterRefusal) -> String {
+  match l {
+    HostLeftReadAdmitting => "admitting(read-back)"
+    HostLeftAsRead { detail: d } => join(["as-read: ", d], "")
+  }
+}
+
+fn restoration_refusal_wire(r: RestorationRefusal) -> String {
+  match r {
+    RestorationRefusalSubject { cause: c } => join(["subject: ", c], "")
+    RestorationRefusalSplit { reason: r } => join(["split: ", r], "")
+    RestorationRefusalNotWithheld { cause: c } => join(["not-withdrawn: ", c], "")
+    RestorationRefusalRecordForeign { key: k } => join(["foreign-record written under ", k, "; restore refuses to lift a mask it cannot account for"], "")
+    RestorationRefusalNotActive { units: us, detail: d } => join(["not-active units=", join(map(us, u => u as String), ","), " detail=", d], "")
+    RestorationRefusalRecordNotCleared { cause: c } => join(["record-not-cleared: ", c], "")
+  }
+}
+
+fn finish_withdraw(host: String, context_receipt: String, outcome: WithdrawalOutcome) -> ProcessExit {
+  let body = join([context_receipt, withdraw_receipt_text(host: host, outcome: outcome)], "")
+  let w = Filesystem.Write(path: gunbc_ci_runner_host_withdraw_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["runner_host_withdraw: receipt write failed: ", w.error, "\n", body], ""))
+  } else if withdrawal_succeeded(o: outcome) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: body)
+  }
+}
+
+fn finish_restore(host: String, context_receipt: String, outcome: RestorationOutcome) -> ProcessExit {
+  let body = join([context_receipt, restore_receipt_text(host: host, outcome: outcome)], "")
+  let w = Filesystem.Write(path: gunbc_ci_runner_host_restore_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["runner_host_restore: receipt write failed: ", w.error, "\n", body], ""))
+  } else if restoration_succeeded(o: outcome) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: body)
+  }
+}
+
+fn withdrawal_succeeded(o: WithdrawalOutcome) -> Bool { match o { Withdrawn { units: us, certified: _, record_written: w } => length(us) > 0 && w _ => false } }
+fn restoration_succeeded(o: RestorationOutcome) -> Bool { match o { Restored { units: us, record_cleared: c } => length(us) > 0 && c _ => false } }
+
+// The step budget the bracket's start judgment needs, read from the declared environment exactly the way
+// the cap converge reads it (same declared variable, same integer check): one authority for the number,
+// and a missing or non-integer budget refuses rather than defaulting to a number this module invented.
+fn step_budget_seconds() -> Int? {
+  match actions_variable_read(name: runner_host_cap_step_budget_env_name) {
+    ActionsVariablePresent { value: v } => parse_int(s: trim(s: v))
+    ActionsVariableAbsent { variable: _, detail: _ } => none
+  }
+}

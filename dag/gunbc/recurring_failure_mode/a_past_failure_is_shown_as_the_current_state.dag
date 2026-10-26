@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_past_failure_is_shown_as_the_current_state
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_past_failure_is_shown_as_the_current_state: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_past_failure_is_shown_as_the_current_state" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a macOS lane on the required gate that compiles apps/approve-ios and runs ApproveTests (the capability gunbc.approve_ios_app approve_ios_build_unexecuted_frontier names), SUFFICIENT FOR OperationErrorsTests to red the merge path when the generated lifetime rule or its table drifts from error_scenarios",
+    },
+  },
+
+  receipts: [
+    "**an error surface written by every operation and cleared by none presents a past failure as the current state.** INVALID STATE: a screen showing an operation's failure after that operation's next attempt succeeded. HARM: the operator reads a resolved fault as live and spends time on a cause already fixed; DESIGN section 5's silent wrongness, because nothing about the stale message distinguishes it from a current one.",
+    "SPECIMEN, 2026-10-24, apps/approve-ios: AppState's single lastError slot was set by every failing operation and reset only by signIn, so an inbox read refused 503 while the srv1 assertion-counter directory was missing stayed at the bottom of the inbox long after the directory was restored by hand and reads answered again.",
+    "DISTINGUISHING FACTS: the slot was not keyed by operation (an unrelated success could not clear it and a related success did not), and successes were not recorded at all, so the slot was a log of the last failure rather than a reading of the present.",
+    "REPAIR: gunbc.approve_ios_operation_errors keys the error by operation and makes the slot a function of the latest attempt's outcome alone (slot_after), with relevance by enrolment phase; Approve/OperationErrors.swift is printed from it and every operation records its outcome, success included.",
+    "RUNG NOW: mitigatable -- the rule is witnessed on the .dag model (test.claim.approve_ios_operation_errors_witness) and the generated XCTest states the same literal ruling, but nothing on the merge path compiles Swift, so the realization's check executes only on an operator's Mac. CEILING: mechanically preventable while the Swift glue that records each outcome is hand-authored; a glue edit that forgets to record a success stays writable until that glue is printed.",
+  ],
+
+  evidence: [],
+}

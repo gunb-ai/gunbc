@@ -5,7 +5,19 @@ import extdeps.uri { Uri, Https, uri_wire }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.firmware.kernel_cmdline { KernelFlag, KernelKeyValue, kernel_cmdline_render }
-import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
+import std.algebra { FreeSemigroup }
+import extdeps.provisioning.network_boot {
+  ClientNetworkBootMode,
+  UefiPxe,
+  NetworkBootLoaderChain,
+  NetworkBootLoaderMember,
+  FirstStageLoader,
+  LoaderConfiguration,
+  KernelImage,
+  InitrdImage,
+  FirmwareSignatureDatabase,
+  NotAuthenticated,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,7 +37,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
-      decl_name: "spark_pxe_bootloader_filename",
+      decl_name: "spark_pxe_loader_chain",
       field: WholeDeclaration
     }
   },
@@ -39,28 +51,24 @@ type SparkPxeBootImageKind
   = FastOsRecoveryTarball
   | DgxOsIsoImage
 
-type SparkPxeTftpRelativePath
-  = TftpBootloader
-  | TftpGrubConfig
-  | TftpKernelImage
-  | TftpInitrdImage
-
-fn spark_pxe_tftp_relative_path(p: SparkPxeTftpRelativePath, image: SparkPxeBootImageKind) -> NonEmptyStr {
-  match image {
-    FastOsRecoveryTarball =>
-      match p {
-        TftpBootloader => spark_pxe_bootloader_filename
-        TftpGrubConfig => "grub/grub.cfg"
-        TftpKernelImage => "fastos/vmlinuz"
-        TftpInitrdImage => "fastos/initrd"
-      }
-    DgxOsIsoImage =>
-      match p {
-        TftpBootloader => spark_pxe_bootloader_filename
-        TftpGrubConfig => "grub/grub.cfg"
-        TftpKernelImage => "baseos/vmlinuz"
-        TftpInitrdImage => "baseos/initrd"
-      }
+// THE CHAIN NVIDIA DOCUMENTS FOR DGX Spark, from one TFTP root: the signed network GRUB as the first stage
+// (checked by the firmware's signature database, which is why the page offers enrolling it or disabling Secure
+// Boot), grub/grub.cfg, and the image's kernel and initrd. The page states no verifier for the kernel or the
+// initrd, so neither is claimed: they are NotAuthenticated until a citation says otherwise.
+fn spark_pxe_loader_chain(image: SparkPxeBootImageKind) -> NetworkBootLoaderChain {
+  let stem = match image {
+    FastOsRecoveryTarball => "fastos"
+    DgxOsIsoImage => "baseos"
+  }
+  NetworkBootLoaderChain {
+    members: FreeSemigroup {
+      head: NetworkBootLoaderMember { role: FirstStageLoader, served_path: spark_pxe_bootloader_filename, verifier: FirmwareSignatureDatabase },
+      tail: [
+        NetworkBootLoaderMember { role: LoaderConfiguration, served_path: "grub/grub.cfg", verifier: NotAuthenticated },
+        NetworkBootLoaderMember { role: KernelImage, served_path: concat(stem, "/vmlinuz") as NonEmptyStr, verifier: NotAuthenticated },
+        NetworkBootLoaderMember { role: InitrdImage, served_path: concat(stem, "/initrd") as NonEmptyStr, verifier: NotAuthenticated },
+      ],
+    },
   }
 }
 

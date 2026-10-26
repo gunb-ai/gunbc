@@ -390,7 +390,7 @@ fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservati
     chassis: ChassisPowerRead { power_on: true },
     chassis_raw: "",
     thermal: ThermalRead { publication: publication, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] },
-    fans: FanSensorsRead { lines: [], undecoded_lines: [] },
+    fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] },
   }
 }
 
@@ -404,6 +404,7 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
     fans: FanSensorsRead {
       lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
       undecoded_lines: [],
+      failure_rows: [],
     },
   }
 }
@@ -449,7 +450,7 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
     chassis: ChassisUnreadable,
     chassis_raw: "",
     thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] },
-    fans: FanSensorsRead { lines: [], undecoded_lines: [] },
+    fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] },
   }
 }
 
@@ -938,7 +939,7 @@ test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
 // reds here.
 test fn witness_unread_fan_list_is_not_a_fanless_chassis() -> Bool {
   let unread = witness_round_fans(fans: FanSensorsUnreadable)
-  let empty_read = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: [] })
+  let empty_read = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] })
   round_fan_lines(round: unread).length() == 0
     && round_fan_lines(round: empty_read).length() == 0
     && string_contains(render_series(rounds: [unread]), "fans=UNREAD")
@@ -950,8 +951,8 @@ test fn witness_unread_fan_list_is_not_a_fanless_chassis() -> Bool {
 // in the text of one unstructured line; a revision that renders the count alone makes them identical
 // and reds the second conjunct, and one that drops the line from the render reds the first.
 test fn witness_unstructured_fan_line_text_is_rendered() -> Bool {
-  let one = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: ["FAN0_Failure | 17h | ok | 29.0 | State Deasserted"] })
-  let other = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: ["FAN0_Failure | 17h | ok | 29.0 | State Asserted"] })
+  let one = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: ["FAN0_Failure | 17h | ok | 29.0 | State Deasserted"], failure_rows: [] })
+  let other = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: ["FAN0_Failure | 17h | ok | 29.0 | State Asserted"], failure_rows: [] })
   string_contains(render_series(rounds: [one]), "fan_undecoded_line=[FAN0_Failure | 17h | ok | 29.0 | State Deasserted]")
     && string_contains(render_series(rounds: [one]), "undecoded=1")
     && !string_contains(render_series(rounds: [one]), "State Asserted")

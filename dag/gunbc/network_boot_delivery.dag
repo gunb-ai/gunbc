@@ -5,17 +5,15 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.content_hash { ContentHash, content_hash_equal }
+import std.list { first_where }
 import extdeps.uri { Uri }
 import extdeps.crypto.mac { MacKeyId }
-import extdeps.toolchain.types { Architecture, Aarch64 }
+import std.algebra { FreeSemigroup, non_empty_to_list }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.provisioning.dhcp_client_arch {
   DhcpProcessorArchitecture,
-    UefiArm64,
-  UefiX86_64,
-  BiosX86,
-  HttpBootX86_64,
-  HttpBootArm64,
   dhcp_client_processor_architecture,
+  uefi_processor_architecture,
 }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import product.placement_supply { SiteIdentity, site_identity_eq }
@@ -131,12 +129,12 @@ type NetworkBootManifestRefusal
   | ManifestJoinWrongFirmwareClass
   | ManifestJoinBundleDigestDisagrees { member: BootBundleMember }
 
+// A loader for another architecture than the client's has no constructor: the edge's transport is
+// selected BY the client's (or the ticket's) architecture, so the two cannot disagree.
 type NetworkBootArchitectureRefusal
   = ClientArchitectureNotAdmitted { architecture: Architecture }
-  | ChainloaderMismatch { client: Architecture, chainloader: Architecture }
-  | LoaderNotAdmittedOnSlice { architecture: Architecture }
   | TicketNotAdmittedOnEdge { architecture: Architecture }
-  | TicketNotAdmittedOnSlice { architecture: Architecture }
+  | TicketArchitectureNotAdmitted { architecture: Architecture }
 
 data network_boot_requirements_all: List<NetworkBootRequirement> = [
   NetworkBootBootSourceOverride,
@@ -196,11 +194,12 @@ type GlobalHttpsReachability
     }
   | GlobalHttpsEndpointUnreachable
 
+// ONE TRANSPORT PER ARCHITECTURE THE EDGE SERVES, nonempty by construction. Which architectures the
+// edge admits is read off these transports, never kept beside them as a second list.
 type SitePxeEdge {
   site: SiteIdentity
-  admitted_architectures: List<Architecture>
   discovery: SiteBootstrapDiscovery
-  bootstrap_transport: SiteBootstrapTransport
+  bootstrap_transports: FreeSemigroup<SiteBootstrapTransport>
   global_endpoint_reachability: GlobalHttpsReachability
 }
 
@@ -214,12 +213,36 @@ type SitePxeEdgeStanding
   = SitePxeEdgeEstablished { receipt: SitePxeEdgeReceipt }
   | SitePxeEdgeUnestablished
   | SitePxeEdgeClientArchitectureNotAdmitted { architecture: Architecture }
-  | SitePxeEdgeChainloaderMismatch { client: Architecture, chainloader: Architecture }
 
-data first_slice_admitted_architectures: List<Architecture> = [Aarch64]
+// THE ARCHITECTURES UEFI PXE DELIVERY ADMITS, as rows. A client class is admitted exactly when it is
+// the UEFI projection (extdeps.provisioning.dhcp_client_arch uefi_processor_architecture) of one of
+// these, so a new architecture is a row here, never an arm in the join. Legacy BIOS and HTTP boot
+// classes project from no row and are refused by name at the measured code.
+data uefi_pxe_admitted_architectures: List<Architecture> = [Aarch64, X86_64]
 
-fn architecture_admitted_on_edge(arch: Architecture, admitted: List<Architecture>) -> Bool {
-  admitted |> any(a => a == arch)
+fn architecture_admitted_for_delivery(arch: Architecture) -> Bool {
+  uefi_pxe_admitted_architectures |> any(a => a == arch)
+}
+
+fn admitted_architecture_for_client(client: DhcpProcessorArchitecture) -> Architecture? {
+  first_where(xs: uefi_pxe_admitted_architectures, keep: a => match uefi_processor_architecture(arch: a) {
+    Present { value: c } => c == client
+    Absent => false
+  })
+}
+
+fn site_bootstrap_transport_architecture(t: SiteBootstrapTransport) -> Architecture {
+  match t {
+    ArchitectureChainloader { architecture: a, filename_hint: _, chainloader_digest: _, tftp_root: _ } => a
+  }
+}
+
+fn site_pxe_edge_transports(edge: SitePxeEdge) -> List<SiteBootstrapTransport> {
+  non_empty_to_list(xs: edge.bootstrap_transports)
+}
+
+fn site_pxe_edge_transport_for(edge: SitePxeEdge, arch: Architecture) -> SiteBootstrapTransport? {
+  first_where(xs: site_pxe_edge_transports(edge: edge), keep: t => site_bootstrap_transport_architecture(t: t) == arch)
 }
 
 fn site_pxe_edge_standing(edge: SitePxeEdge, client_architecture: Architecture, observation: DeclarationRef, observed_at: EpochMs) -> SitePxeEdgeStanding {
@@ -234,26 +257,19 @@ fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Archite
   match edge.global_endpoint_reachability {
     GlobalHttpsEndpointUnreachable => SitePxeEdgeUnestablished
     GlobalHttpsEndpointReachable { broker_endpoint: _, artifact_origin: _, observation: _, observed_at: _ } =>
-      match edge.bootstrap_transport {
-        ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: _, tftp_root: _ } =>
-          if architecture_admitted_on_edge(arch: client_architecture, admitted: edge.admitted_architectures) == false {
-            SitePxeEdgeClientArchitectureNotAdmitted { architecture: client_architecture }
-          } else {
-            if loader_arch == client_architecture {
-              SitePxeEdgeEstablished {
-                receipt: SitePxeEdgeReceipt { edge: edge, observation: observation, observed_at: observed_at },
-              }
-            } else {
-              SitePxeEdgeChainloaderMismatch { client: client_architecture, chainloader: loader_arch }
-            }
+      match site_pxe_edge_transport_for(edge: edge, arch: client_architecture) {
+        Absent => SitePxeEdgeClientArchitectureNotAdmitted { architecture: client_architecture }
+        Present { value: _ } =>
+          SitePxeEdgeEstablished {
+            receipt: SitePxeEdgeReceipt { edge: edge, observation: observation, observed_at: observed_at },
           }
       }
   }
 }
 
-// Client firmware class as measured on the wire (RFC 4578 option 93). The join admits exactly one
-// class this slice, UefiArm64 (code 11, UEFI PXE), served over the site edge TFTP root; every other
-// measured class is a located NetworkBootDeliveryClientModeRefused, not an absent row.
+// Client firmware class as measured on the wire (DHCP option 93, IANA Processor Architecture Types).
+// The join admits the UEFI class of each row of uefi_pxe_admitted_architectures, served over the site
+// edge TFTP root; every other measured class is a located NetworkBootDeliveryClientModeRefused.
 type ObservedDhcpPxeClient {
   vendor_class: NonEmptyStr
   arch: DhcpProcessorArchitecture
@@ -557,8 +573,6 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
         SitePxeEdgeUnestablished => NetworkBootDeliverySiteUnestablished
         SitePxeEdgeClientArchitectureNotAdmitted { architecture: a } =>
           NetworkBootDeliveryArchitectureRefused { cause: ClientArchitectureNotAdmitted { architecture: a } }
-        SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } =>
-          NetworkBootDeliveryArchitectureRefused { cause: ChainloaderMismatch { client: c, chainloader: l } }
         SitePxeEdgeEstablished { receipt: site } =>
           if !site_identity_eq(a: site.edge.site, b: inputs.expected_site) {
             NetworkBootDeliverySiteMismatch { axis: SiteEdgeSite, expected: inputs.expected_site, observed: site.edge.site }
@@ -568,12 +582,9 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
             ClientBootModePredecessor { observation: o } =>
               NetworkBootDeliveryEvidenceRefused { axis: NetworkBootClientBootMode, observation: o }
             ClientBootModeObserved { receipt: client } =>
-              match client.client.arch {
-                UefiX86_64 => NetworkBootDeliveryClientModeRefused { arch: UefiX86_64 }
-                BiosX86 => NetworkBootDeliveryClientModeRefused { arch: BiosX86 }
-                HttpBootX86_64 => NetworkBootDeliveryClientModeRefused { arch: HttpBootX86_64 }
-                HttpBootArm64 => NetworkBootDeliveryClientModeRefused { arch: HttpBootArm64 }
-                UefiArm64 =>
+              match admitted_architecture_for_client(client: client.client.arch) {
+                Absent => NetworkBootDeliveryClientModeRefused { arch: client.client.arch }
+                Present { value: _ } =>
                   if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
                     NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
                   } else {
@@ -668,17 +679,12 @@ fn join_verified_ticket_after_trust(
   manifest_at: EpochMs,
   trust: EstablishedBootstrapTrust,
 ) -> NetworkBootDeliveryStanding {
-  match site.edge.bootstrap_transport {
-    ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: loader_digest, tftp_root: edge_tftp } =>
-      if architecture_admitted_on_edge(arch: loader_arch, admitted: first_slice_admitted_architectures) == false {
-        NetworkBootDeliveryArchitectureRefused { cause: LoaderNotAdmittedOnSlice { architecture: loader_arch } }
-      } else {
-        if architecture_admitted_on_edge(arch: id.architecture, admitted: site.edge.admitted_architectures) == false {
-          NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnEdge { architecture: id.architecture } }
-        } else {
-          if architecture_admitted_on_edge(arch: id.architecture, admitted: first_slice_admitted_architectures) == false {
-            NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnSlice { architecture: id.architecture } }
-          } else {
+  if architecture_admitted_for_delivery(arch: id.architecture) == false {
+    NetworkBootDeliveryArchitectureRefused { cause: TicketArchitectureNotAdmitted { architecture: id.architecture } }
+  } else {
+    match site_pxe_edge_transport_for(edge: site.edge, arch: id.architecture) {
+      Absent => NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnEdge { architecture: id.architecture } }
+      Present { value: ArchitectureChainloader { architecture: _, filename_hint: _, chainloader_digest: loader_digest, tftp_root: edge_tftp } } =>
             if content_hash_equal(left: loader_digest, right: id.chainloader_digest) == false {
               NetworkBootDeliveryManifestRefused { cause: ManifestJoinChainloaderDigestDisagrees }
             } else {
@@ -728,8 +734,6 @@ fn join_verified_ticket_after_trust(
                 }
               }
             }
-          }
-        }
       }
   }
 }

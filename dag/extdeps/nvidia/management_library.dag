@@ -22,7 +22,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [nvml_clocks_event_reasons_authority]
+}
+
+data nvml_clocks_event_reasons_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/deploy/nvml-api/group__nvmlClocksEventReasons.html"
+  }
 }
 
 // ── A DEVICE-MEMORY QUERY THAT CAN REFUSE, MODELLED SO THE REFUSAL CANNOT BECOME A NUMBER ─────
@@ -92,4 +99,62 @@ fn device_memory_note(o: DeviceMemoryObservation) -> NonEmptyStr {
     DeviceMemoryUnread { because: _ } =>
       "nobody asked, which is distinct from asking and being refused" as NonEmptyStr
   }
+}
+
+// ── WHY THE CLOCKS ARE BELOW THEIR MAXIMUM: NVML'S CLOCKS EVENT REASONS ────────────────────────
+//
+// nvmlDeviceGetCurrentClocksEventReasons returns a bit mask (nvml.h nvmlClocksEventReason*, the
+// group linked above; nvidia-smi prints the same mask as clocks_event_reasons.active, formerly
+// clocks_throttle_reasons.active). One arm per documented bit, the bit value beside it. A mask bit no
+// arm names is kept as a residue, never dropped: a newer driver's reason is still a reason.
+type NvmlClocksEventReason
+  = NvmlClocksEventGpuIdle
+  | NvmlClocksEventApplicationsClocksSetting
+  | NvmlClocksEventSwPowerCap
+  | NvmlClocksEventHwSlowdown
+  | NvmlClocksEventSyncBoost
+  | NvmlClocksEventSwThermalSlowdown
+  | NvmlClocksEventHwThermalSlowdown
+  | NvmlClocksEventHwPowerBrakeSlowdown
+  | NvmlClocksEventDisplayClockSetting
+
+fn nvml_clocks_event_reason_bit(r: NvmlClocksEventReason) -> Nat {
+  match r {
+    NvmlClocksEventGpuIdle => 1
+    NvmlClocksEventApplicationsClocksSetting => 2
+    NvmlClocksEventSwPowerCap => 4
+    NvmlClocksEventHwSlowdown => 8
+    NvmlClocksEventSyncBoost => 16
+    NvmlClocksEventSwThermalSlowdown => 32
+    NvmlClocksEventHwThermalSlowdown => 64
+    NvmlClocksEventHwPowerBrakeSlowdown => 128
+    NvmlClocksEventDisplayClockSetting => 256
+  }
+}
+
+data nvml_clocks_event_reasons: List<NvmlClocksEventReason> = [
+  NvmlClocksEventGpuIdle,
+  NvmlClocksEventApplicationsClocksSetting,
+  NvmlClocksEventSwPowerCap,
+  NvmlClocksEventHwSlowdown,
+  NvmlClocksEventSyncBoost,
+  NvmlClocksEventSwThermalSlowdown,
+  NvmlClocksEventHwThermalSlowdown,
+  NvmlClocksEventHwPowerBrakeSlowdown,
+  NvmlClocksEventDisplayClockSetting,
+]
+
+type NvmlClocksEventMask {
+  reasons: List<NvmlClocksEventReason>
+  unmodeled_bits: Nat
+}
+
+fn nvml_mask_has_bit(mask: Nat, bit: Nat) -> Bool {
+  (mask / bit) - ((mask / bit) / 2) * 2 == 1
+}
+
+fn nvml_clocks_event_mask(mask: Nat) -> NvmlClocksEventMask {
+  let set = nvml_clocks_event_reasons |> filter(r => nvml_mask_has_bit(mask: mask, bit: nvml_clocks_event_reason_bit(r: r)))
+  let named = fold(set, init: 0, f: (acc, r) => acc + nvml_clocks_event_reason_bit(r: r))
+  NvmlClocksEventMask { reasons: set, unmodeled_bits: mask - named }
 }

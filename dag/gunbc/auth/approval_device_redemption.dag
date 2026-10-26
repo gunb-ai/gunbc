@@ -6,6 +6,8 @@ import std.effect_grant { Read, Write, Execute }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import std.types { NonEmptyStr, String, Timestamp, Int, List, FilePath }
 import std.logic { Bool }
+import std.optional { Absent, Present }
+import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.crypto.signature { VerifyingKey, SignatureVerification, SignatureVerified }
 import extdeps.apple.apns {
@@ -42,17 +44,19 @@ import gunbc.auth.approval_decision_store {
 import gunbc.auth.approval_device_wire {
   RedemptionResponse, EnrolmentReadback, EnrolmentStandingActive, EnrolmentStandingRevoked, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
+  PushRegistration, push_update_json, decode_push_update, WireDecoded, WireRefused,
 }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   file_compare_and_set, observe_cas_slot_state,
+  file_compare_and_set_windowed, observe_cas_slot_state_windowed, cas_generation_window, CasGenerationWindow,
+  CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
 }
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
   CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_count,
 }
-import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 
 // ── What this module is ──────────────────────────────────────────────────────────────────────
 // The protocol between the roadmap server and the operator's phone for redeeming an approval with
@@ -541,14 +545,91 @@ fn list_google_enrolments(root: NonEmptyStr) -> GoogleEnrolmentListing {
   }
 }
 
-// ── The provider key ─────────────────────────────────────────────────────────────────────────
-// The .p8 APNs auth key lives in Secret Manager, pinned. It is NOT yet a row in
-// gunbc.auth.fleet_secret_accessor_roster: that fold stops at the first refusal, so a row for a
-// secret that does not exist yet would red every accessor converge. The row lands with the key.
-data approval_apns_auth_key_secret_ref: SecretRef = secret_ref_pin_version(
-  ref: fleet_secret_ref(secret_id: "approval-apns-auth-key"),
-  version: "1",
-)
+// ── The push registration slot ───────────────────────────────────────────────────────────────
+// A PUSH REGISTRATION IS A HEAD-ONLY FACT: the token the enrolled app last presented. Its history is
+// not an audit trail -- a rotated token is dead, and who decided is the enrolment's record, not this
+// one's -- so it is a WINDOWED compare-and-set slot in the device store (gunbc.durable_cas_file_store
+// file_compare_and_set_windowed), never a growing generation line and never a last-write-wins file.
+// It used to be the second: an owner-only create-new file under a root nothing ensured, so a ROTATED
+// token -- the frontier's own case (approval_device_routes_frontier: "a rotated APNs token to reach
+// the server without a new enrolment") -- refused on the existing file. The key is server-derived from
+// the verified enrolment's id, and its "push-" prefix keeps it out of list_google_enrolments.
+data approval_push_slot_window_k: Int = 2
+
+fn push_registration_key(enrollment_id: NonEmptyStr) -> NonEmptyStr {
+  join(["push-", enrollment_id as String], "") as NonEmptyStr
+}
+
+type PushRegistrationSlot
+  = PushRegistrationAbsent
+  | PushRegistrationStored { registration: PushRegistration, generation: CasGeneration }
+  | PushRegistrationUnreadable { detail: NonEmptyStr }
+
+type PushRegistrationWrite
+  = PushRegistrationWritten
+  | PushRegistrationUnchanged
+  | PushRegistrationRaced
+  | PushRegistrationRefused { detail: NonEmptyStr }
+
+fn push_slot_window() -> CasGenerationWindow? {
+  match cas_generation_window(k: approval_push_slot_window_k) {
+    CasGenerationWindowAdmitted { window: w } => Present { value: w }
+    CasGenerationWindowTooNarrow { k: _ } => none
+  }
+}
+
+fn observe_push_registration(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> PushRegistrationSlot {
+  match push_slot_window() {
+    Absent => PushRegistrationUnreadable { detail: "the push slot window is narrower than the store admits" }
+    Present { value: w } =>
+      match observe_cas_slot_state_windowed(root: root, key: push_registration_key(enrollment_id: enrollment_id), window: w) {
+        CasObservedUnreadable { cause: c } => PushRegistrationUnreadable { detail: concat("push registration slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
+        CasObservedReadable { readable: r } => match r {
+          CasReadableAbsent => PushRegistrationAbsent
+          CasReadablePresent { version: ver } => match decode_push_update(text: ver.value as String) {
+            WireRefused { at: a, cause: c } => PushRegistrationUnreadable { detail: join(["stored push registration refused at ", a as String, ": ", c as String], "") as NonEmptyStr }
+            WireDecoded { value: reg } => PushRegistrationStored { registration: reg, generation: ver.generation }
+          }
+        }
+      }
+  }
+}
+
+// THE PUT IS ONE CAS FROM WHAT WAS READ: absent expects absent, stored expects its generation, and
+// the same registration again writes nothing (the app re-presents its token on every launch). A lost
+// race is its own answer, so the route can say "retry" rather than "stored".
+fn commit_push_registration(root: NonEmptyStr, enrollment_id: NonEmptyStr, push: PushRegistration) -> PushRegistrationWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_push_update_response_at"),
+  ]
+{
+  let payload = push_update_json(p: push) as NonEmptyStr
+  match observe_push_registration(root: root, enrollment_id: enrollment_id) {
+    PushRegistrationUnreadable { detail: d } => PushRegistrationRefused { detail: d }
+    PushRegistrationAbsent => push_registration_cas(root: root, enrollment_id: enrollment_id, expected: ExpectSlotAbsent, payload: payload)
+    PushRegistrationStored { registration: stored, generation: g } =>
+      if push_update_json(p: stored) == (payload as String) { PushRegistrationUnchanged }
+      else { push_registration_cas(root: root, enrollment_id: enrollment_id, expected: ExpectSlotGeneration { generation: g }, payload: payload) }
+  }
+}
+
+// The window's reclamation of generations below the head is the store's: an incomplete one leaves
+// an extra generation that the next commit reclaims, and the head this answer reports is unaffected.
+fn push_registration_cas(root: NonEmptyStr, enrollment_id: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> PushRegistrationWrite {
+  match push_slot_window() {
+    Absent => PushRegistrationRefused { detail: "the push slot window is narrower than the store admits" }
+    Present { value: w } =>
+      match admit_cas_attempt_for_derived_payload(key: push_registration_key(enrollment_id: enrollment_id), expected: expected, proposed: payload) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => PushRegistrationRefused { detail: "push registration key is not slot-addressable" }
+        DerivedPayloadAdmitted { verified: v } =>
+          match file_compare_and_set_windowed(root: root, publication: OwnerOnlyCreateOnly, verified: v, window: w).outcome {
+            CasCommitted { committed: _ } => PushRegistrationWritten
+            CasPreconditionFailed { expected: _, observed: _ } => PushRegistrationRaced
+            CasStoreRefused { cause: _ } => PushRegistrationRefused { detail: "device store refused the push registration" }
+          }
+      }
+  }
+}
 
 // ── Frontiers ────────────────────────────────────────────────────────────────────────────────
 data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution(

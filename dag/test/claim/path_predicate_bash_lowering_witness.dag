@@ -1,0 +1,189 @@
+module test.claim.path_predicate_bash_lowering_witness
+
+// EXECUTED COVERAGE FOR THE PATH-PREDICATE AND ASCENT LOWERING, moved here from
+// test.claim.proc_self_cgroup_witness rather than left unrun.
+//
+// WHY THIS FILE EXISTS. The lowering below is the only route from std.path_intent's typed
+// PathPredicate / DirnameAscent to a bash test command. Before this change its assertions lived in
+// three tests in test.claim.proc_self_cgroup_witness (`cgroup_locate_cond_preserves_predicate_shape_holds`,
+// `cgroup_locate_body_preserves_ascent_holds`, `nearest_ancestor_predicate_uses_regular_file_peak_holds`),
+// which reached it through `bash_nearest_ancestor_locate_cond_command` / `…_body_command` -- the
+// located-assign emitters whose only production consumer was deleted as a §3c bridge with no caller.
+// Deleting those tests and citing the surviving ones instead would have been dishonest: measured
+// tree-wide, the ONLY other place any test asserts on these emitted bytes is
+// v2.workflow.orchestration_while_emit `orch_while_path_kind_discriminates_regular_directory_missing_holds`,
+// and that module sits outside `witness_discovery_scan_dirs`, so CI never runs it. A mutation of the
+// `PathEntryKind` arm below would then have turned nothing red anywhere. So the claims are ported to a
+// discovered directory and run for real; the deletion is safe only because this file is in it.
+//
+// WHAT IS PINNED IS THE OPERATOR'S OWN TEXT, not a paraphrase: every expected string is the bytes the
+// token tables in v2.extdeps.languages.bash_orch_if produce, and the composite `[ -n "$d" ] && … &&
+// ! [ -f "$d/memory.peak" ]` below is the same condition the (unrun) while-loop golden in
+// v2.workflow.orchestration_while_emit carries. Per DESIGN section 4b, a claim whose forbidden state
+// is expressible nowhere it runs is a decoration: each assertion here fails on a specific mutation,
+// and the pairwise distinctness is what stops a lowering that lost the kind from passing by emitting
+// one bracket for every EntryKind.
+
+import v2.extdeps.languages.bash_orch_if {
+  bash_path_predicate_target_model,
+  bash_dirname_ascent_target_model
+}
+import std.path_intent {
+  And,
+  DirnameAscent,
+  Or,
+  Not,
+  PathEntryKind,
+  PathIntent,
+  PathJoin,
+  PathLiteral,
+  PathNonempty,
+  PathNotEq,
+  PathPredicate,
+  PathRef
+}
+import std.filesystem.types { Directory, Missing, Other, RegularFile, Symlink }
+import std.types { FilePathParts, NonEmptyStr }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.compilers.target_model { TargetModel }
+
+// The same subject the deleted located-assign spec described: walking up from `$d` looking for a
+// regular-file `memory.peak`, stopping before the `/sys/fs/cgroup` mount root. Spelled here as
+// PathPredicate values directly, because the spec type that used to carry it
+// (std.path_intent NearestAncestorContaining) had no constructor outside the deleted chain.
+data walk_var: NonEmptyStr = "d" as NonEmptyStr
+
+data mount_root: PathIntent = PathLiteral {
+  parts: FilePathParts { segments: ["sys", "fs", "cgroup"] }
+}
+
+data peak_path: PathIntent = PathJoin {
+  base: PathRef { name: walk_var },
+  suffix: FilePathParts { segments: ["memory.peak"] }
+}
+
+// THE ONE RENDERING READER IN THIS FILE. A refusal renders as the sentinel `REFUSED` rather than the
+// empty string, so no byte pin below can pass on a refusal and no refusal can be mistaken for a
+// rendering of something. It is also what makes the `Other` assertion meaningful: the sentinel is a
+// value this file can only ever see by the lowering refusing.
+fn lowered(predicate: PathPredicate) -> String {
+  match bash_path_predicate_target_model(predicate: predicate) {
+    Accepted { value: source, diagnostics: None } => source.authority_source_text
+    _ => "REFUSED"
+  }
+}
+
+// THE KIND DISCRIMINATOR. One bracket operator per EntryKind, and each must be its own text: a
+// lowering that dropped the kind, or folded one kind onto another, makes at least one of these red.
+// This is the assertion the deleted `nearest_ancestor_predicate_uses_regular_file_peak_holds` made
+// structurally on the predicate; here it is made on the emitted operator, which is what a shell
+// consumer actually reads.
+test fn path_entry_kind_lowers_one_operator_per_kind() -> Bool {
+  (lowered(predicate: PathEntryKind { path: peak_path, kind: RegularFile })
+    == "[ -f \"$d/memory.peak\" ]")
+    && (lowered(predicate: PathEntryKind { path: peak_path, kind: Directory })
+      == "[ -d \"$d/memory.peak\" ]")
+    && (lowered(predicate: PathEntryKind { path: peak_path, kind: Symlink })
+      == "[ -L \"$d/memory.peak\" ]")
+    && (lowered(predicate: PathEntryKind { path: peak_path, kind: Missing })
+      == "[ ! -e \"$d/memory.peak\" ]")
+}
+
+// The distinctness half, separated from the pins above so a mutation that keeps one pin but collapses
+// two kinds is reported as the collapse and not as a wrong constant.
+test fn path_entry_kind_operators_are_pairwise_distinct() -> Bool {
+  let regular = lowered(predicate: PathEntryKind { path: peak_path, kind: RegularFile })
+  let directory = lowered(predicate: PathEntryKind { path: peak_path, kind: Directory })
+  let symlink = lowered(predicate: PathEntryKind { path: peak_path, kind: Symlink })
+  let missing = lowered(predicate: PathEntryKind { path: peak_path, kind: Missing })
+  (regular != directory)
+    && (regular != symlink)
+    && (regular != missing)
+    && (directory != symlink)
+    && (directory != missing)
+    && (symlink != missing)
+}
+
+// EntryKind.Other has no bash test operator, so the arm must REFUSE rather than emit a bracket.
+// Asserting a refusal here is the difference between "unrepresentable" and "silently tested as a
+// regular file": a lowering that defaulted the unknown kind to `-f ` would pass the pin above.
+test fn path_entry_kind_other_has_no_bash_operator_and_refuses() -> Bool {
+  lowered(predicate: PathEntryKind { path: peak_path, kind: Other }) == "REFUSED"
+}
+
+// PathNotEq lowers to a string inequality on both operands, quoted -- the guard that stops the ascent
+// at the mount root. A lowering that dropped the quotes or compared the wrong pair is red here.
+test fn path_not_eq_lowers_a_quoted_inequality() -> Bool {
+  lowered(predicate: PathNotEq { lhs: PathRef { name: walk_var }, rhs: mount_root })
+    == "[ \"$d\" != \"/sys/fs/cgroup\" ]"
+}
+
+// THE COMPOSITE THE DELETED WITNESS USED TO PIN BY SUBSTRING. `&&` associativity and the `! `
+// placement are the parts a paraphrase loses, so the whole condition is pinned as one string.
+test fn the_ascent_guard_lowers_a_double_ampersand_chain() -> Bool {
+  lowered(
+    predicate: And {
+      lhs: PathNonempty { path: PathRef { name: walk_var } },
+      rhs: And {
+        lhs: PathNotEq { lhs: PathRef { name: walk_var }, rhs: mount_root },
+        rhs: Not { inner: PathEntryKind { path: peak_path, kind: RegularFile } }
+      }
+    }
+  )
+    == "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]"
+}
+
+// Or is the other and-or operator the same lowering carries; if it shared `&&`'s spelling the two
+// arms would be interchangeable and no consumer of Or could be trusted.
+test fn path_or_lowers_double_pipe_not_double_ampersand() -> Bool {
+  lowered(
+    predicate: Or {
+      lhs: PathEntryKind { path: peak_path, kind: RegularFile },
+      rhs: PathEntryKind { path: peak_path, kind: Directory }
+    }
+  )
+    == "[ -f \"$d/memory.peak\" ] || [ -d \"$d/memory.peak\" ]"
+}
+
+// THE ASCENT. Pinning what the deleted `cgroup_locate_body_preserves_ascent_holds` pinned, through the
+// model that stays: one command-substitution assignment to the ascent target from `dirname` of the
+// walked variable. Refusal cases matter as much as the accepted one, because the target and the name
+// both go through the POSIX-name rule.
+test fn dirname_ascent_lowers_a_dirname_command_substitution() -> Bool {
+  match bash_dirname_ascent_target_model(
+    ascent: DirnameAscent { path: PathRef { name: walk_var }, target: "d" as NonEmptyStr }
+  ) {
+    Accepted { value: source, diagnostics: None } => source.authority_source_text == "d=$(dirname \"$d\")"
+    _ => false
+  }
+}
+
+// THE GUARD THE DELETED TEST COULD NOT REACH. An ascent target and a walked variable both go through
+// the POSIX-name rule before any byte is emitted, because both are interpolated RAW into
+// `target=$(dirname "$name")` -- a value like `d;rm -rf /` would otherwise land in the emitted
+// program. Split into two assertions so a regression in one check is not masked by the other.
+fn refused(model: Outcome<TargetModel>) -> Bool {
+  match model {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: source, diagnostics: _ } => false
+  }
+}
+
+test fn dirname_ascent_refuses_a_non_posix_target() -> Bool {
+  refused(
+    model: bash_dirname_ascent_target_model(
+      ascent: DirnameAscent { path: PathRef { name: walk_var }, target: "1d" as NonEmptyStr }
+    )
+  )
+}
+
+test fn dirname_ascent_refuses_a_non_posix_walked_name() -> Bool {
+  refused(
+    model: bash_dirname_ascent_target_model(
+      ascent: DirnameAscent {
+        path: PathRef { name: "d-x" as NonEmptyStr },
+        target: "d" as NonEmptyStr
+      }
+    )
+  )
+}

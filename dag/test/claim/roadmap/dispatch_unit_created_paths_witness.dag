@@ -1,0 +1,130 @@
+module test.claim.roadmap.dispatch_unit_created_paths_witness
+
+import std.types { String, NonEmptyStr, FilePath, Bool }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text }
+import std.optional { Present, Absent }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.roadmap.dispatch_unit_created_paths {
+  UnitCreatedPath,
+  ConsumerRenames,
+  ConsumerReads,
+  ConsumerAppends,
+  DispatchUnitCreatedPathConsumable,
+  DispatchUnitCreatedPathUnconsumable,
+  dispatch_unit_created_path_judge,
+  dispatch_unit_created_path_wire,
+  dispatch_unit_created_paths_judge,
+  dispatch_worker_created_paths,
+  created_path_mode_of_octal,
+}
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole }
+import gunbc.roadmap.roadmap_belt_actuate { belt_worker_created_paths_outcome }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+
+// srv1 lab, 2026-10-21: the worker unit's "+" ExecStopPost created the exit record as root:root 0755,
+// and the drain (the service user) could not rename it inbox -> queued. RED is that creation, supplied
+// as a hypothesis; GREEN is the real producer's census for the real lab instance. They differ in who
+// owns the record.
+
+fn service_user() -> PosixOwnerNames {
+  PosixOwnerNames { user: "briansrls" as NonEmptyStr, group: "briansrls" as NonEmptyStr }
+}
+
+fn root_owner() -> PosixOwnerNames {
+  PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+}
+
+fn exit_record(owner: PosixOwnerNames) -> UnitCreatedPath {
+  UnitCreatedPath {
+    path: "/i/attempt-exit-spool/inbox/n+k+worker+x",
+    is_directory: true,
+    created_owner: owner,
+    created_mode: created_path_mode_of_octal(text: "0755"),
+    consumer: "the belt exit drain",
+    consumer_principal: service_user(),
+    operation: ConsumerRenames,
+  }
+}
+
+fn lab_plan() -> DispatchWorkerUnitPlan {
+  DispatchWorkerUnitPlan {
+    systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+    unit: "gunbc-attempt-n-k.service" as NonEmptyStr,
+    node_id: "n",
+    attempt_key: "k",
+    working_directory: "/wt",
+    attempt_worktree: "/wt",
+    stdout_path: "/state/n/k/worker/worker-stdout.log",
+    stderr_path: "/state/n/k/worker/worker-stdout.log",
+    inner_argv: ["true"],
+    exit_hook: "true" as NonEmptyStr,
+  }
+}
+
+test fn a_root_created_record_the_service_user_must_rename_refuses_and_no_spawn_follows() -> Bool {
+  let verdict = dispatch_unit_created_path_judge(created: exit_record(owner: root_owner()))
+  match verdict {
+    DispatchUnitCreatedPathConsumable => false
+    DispatchUnitCreatedPathUnconsumable { created: c } =>
+      c.path == "/i/attempt-exit-spool/inbox/n+k+worker+x"
+        && string_contains(s: dispatch_unit_created_path_wire(verdict: verdict), pattern: "root:root")
+        && string_contains(s: dispatch_unit_created_path_wire(verdict: verdict), pattern: "rename")
+        && match belt_worker_created_paths_outcome(verdict: verdict) {
+          ExecStepFailed { step: s, detail: _ } => s == "worker-created-path"
+          ExecStepsOk => false
+        }
+  }
+}
+
+test fn the_record_created_owned_by_the_drain_principal_holds() -> Bool {
+  match dispatch_unit_created_path_judge(created: exit_record(owner: service_user())) {
+    DispatchUnitCreatedPathConsumable => true
+    DispatchUnitCreatedPathUnconsumable { created: _ } => false
+  }
+}
+
+// PAIRING: the real producer. The census for the real lab instance holds, and the real hook is built
+// from the same owner the census judges, so the judged creation is the rendered one.
+test fn the_real_lab_census_holds_and_the_real_hook_creates_the_record_owned_by_the_drain() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  (match dispatch_unit_created_paths_judge(created: dispatch_worker_created_paths(instance: inst, plan: lab_plan())) {
+    DispatchUnitCreatedPathConsumable => true
+    DispatchUnitCreatedPathUnconsumable { created: _ } => false
+  })
+    && (match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: "n", attempt_key: "k", role: AttemptWorkerRole, record_owner: inst.directory_owner) {
+      AttemptExitHookRendered { exec_line } =>
+        starts_with(s: exec_line as String, prefix: "+install -d")
+          && string_contains(s: exec_line as String, pattern: join(["-o ", inst.directory_owner.user as String, " -g ", inst.directory_owner.group as String], ""))
+      AttemptExitHookRefused { reason: _ } => false
+    })
+}
+
+// The log target is created root:root 0644: the service user reads it, but would not append to it.
+test fn a_root_created_log_is_readable_by_the_service_user_and_not_appendable() -> Bool {
+  let log = UnitCreatedPath {
+    path: "/state/n/k/worker/worker-stdout.log",
+    is_directory: false,
+    created_owner: root_owner(),
+    created_mode: created_path_mode_of_octal(text: "0644"),
+    consumer: "a log reader",
+    consumer_principal: service_user(),
+    operation: ConsumerReads,
+  }
+  (match dispatch_unit_created_path_judge(created: log) {
+    DispatchUnitCreatedPathConsumable => true
+    DispatchUnitCreatedPathUnconsumable { created: _ } => false
+  })
+    && (match dispatch_unit_created_path_judge(created: UnitCreatedPath {
+      path: log.path,
+      is_directory: false,
+      created_owner: log.created_owner,
+      created_mode: log.created_mode,
+      consumer: "a log writer",
+      consumer_principal: service_user(),
+      operation: ConsumerAppends,
+    }) {
+      DispatchUnitCreatedPathConsumable => false
+      DispatchUnitCreatedPathUnconsumable { created: _ } => true
+    })
+}

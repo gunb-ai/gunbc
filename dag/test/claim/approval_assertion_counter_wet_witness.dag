@@ -6,10 +6,7 @@ import std.types { String, NonEmptyStr, Int }
 import std.durable_compare_and_set { ExpectSlotGeneration, cas_attempt, CasPreconditionFailed, CasReadablePresent }
 import std.content_hash { content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_create_new }
-import gunbc.durable_cas_file_store {
-  CasSlotProbe, ProbedHead, cas_probe_bisect, cas_outcome_from_create, observe_cas_slot_state, cas_file_slot_path,
-  CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation,
-}
+import gunbc.durable_cas_file_store { CasSlotProbe, ProbedHead, cas_probe_bisect, cas_outcome_from_create, observe_cas_slot_state, cas_file_slot_path, CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation }
 import gunbc.auth.approval_assertion_counter {
   AssertionCounterAdmission, AssertionCounterAdmitted, AssertionCounterReplayed, AssertionCounterRaced, AssertionCounterStoreRefused,
   admit_assertion_counter, assertion_counter_commit, assertion_counter_refusal_status,

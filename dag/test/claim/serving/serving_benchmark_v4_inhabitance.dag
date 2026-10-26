@@ -1,0 +1,142 @@
+module test.claim.serving.serving_benchmark_v4_inhabitance
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { token_count, millisecond, basis_point, milli_tokens_per_second_count, events_per_hour_count, microsecond_count, millicore_count, byte_size_count, hardware_thread_count_value }
+import extdeps.filesystem.filesystem_io
+import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
+import gunbc.serving.serving_benchmark {
+  ServingBenchmarkVersion, ServingBenchmarkWorkload, serving_benchmark_v1, AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour,
+  GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower,
+}
+import gunbc.serving.serving_benchmark_run_receipt {
+  admit_serving_benchmark_run, ServingBenchmarkRunAdmitted, ServingBenchmarkRunRefused, ServingBenchmarkRunObservation, ServingLevelResult,
+  GapMaxTokens, GapPrimeContextOutsideBand,
+}
+import test.claim.serving.serving_benchmark_run_receipt_witness { fx_cell_complete, fx_telemetry }
+import extdeps.linux.proc_cpuinfo { parse_proc_cpuinfo, ProcCpuinfoParsed, ProcCpuinfoUnreadable, CpuArmMidr, CpuModelNamed }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE INHABITANCE CLAIM OF THE PER-REQUEST BOUNDARY (DESIGN section 3, the pairing obligation). The
+// receipt witness supplies request/v4 lines; this claim reads lines the kit itself wrote against the srv3
+// Strata upstream (IQ3_S on 2x RTX 2000 Ada) with the engine's cgroup mounted: gunbc-private
+// tools/gpu-bench/runs/v4-smoke-srv3-strata.jsonl at bc50f631d0cdf65b953ccf69cd3b69802277107d (S=2,
+// levels 1 and 2, one round each, CTX 8000, DELTA_TOKENS 2000, MAX_TOKENS 128), copied byte for byte. It
+// asserts the ROUTE: the real lines parse, a version of the run's own shape ADMITS them through every
+// check (prime band, server-token delta read from prompt growth, common submission, distinct session
+// texts, engine counters on every row), the quantities and the engine's CPU and memory come out at the
+// values the rows imply, and serving-benchmark/1 refuses the same run as a different workload. Deleting
+// the file makes these claims red.
+//
+// The serving cell and GPU telemetry here are supplied: their first real producer is the srv3 realization
+// (work item node://adhoc-ffb4b5c7-4a5, PR 2), whose receipt adds the cell's inhabitance claim.
+
+data kit_v4_run_path: String = "fixtures/gpu_bench/v4_smoke_srv3_strata/v4-smoke-srv3-strata.jsonl"
+
+fn kit_rows() -> List<GpuBenchRequestV4> {
+  match gpu_bench_parse_v4_jsonl(text: filesystem_read(path: kit_v4_run_path).content) {
+    GpuBenchRequestV4Parsed { records: rs } => rs
+    GpuBenchRequestV4StreamUnreadable { line: _, cause: _ } => []
+  }
+}
+
+// The smoke run's own shape: primes of 6,361 and 6,353 tokens (band 100 bp around 6,357), 2,000 server
+// tokens of delta, 128 tokens out.
+data smoke_version: ServingBenchmarkVersion = ServingBenchmarkVersion {
+  name: "serving-benchmark/smoke-shape" as NonEmptyStr,
+  workload: ServingBenchmarkWorkload {
+    retained_context: token_count(count: 6357),
+    retained_context_band: basis_point(count: 100),
+    tool_delta: token_count(count: 2000),
+    tool_delta_template_allowance: token_count(count: 64),
+    max_output: token_count(count: 128),
+    retained_sessions: 2,
+    active_levels: [1, 2],
+    warmup_rounds_per_level: 0,
+    rounds_per_level: 1,
+    submission_spread_bound: millisecond(count: 1000),
+  },
+  quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
+  telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+}
+
+fn observation() -> ServingBenchmarkRunObservation {
+  ServingBenchmarkRunObservation { cell: fx_cell_complete, requests: kit_rows(), telemetry: fx_telemetry }
+}
+
+fn level(levels: List<ServingLevelResult>, active: Nat) -> ServingLevelResult? {
+  get(xs: levels |> filter(l => l.active == active), index: 0)
+}
+
+test fn the_kit_run_parses_all_five_lines() -> Bool {
+  count(kit_rows()) == 5
+}
+
+// Expected values are the floor arithmetic over the committed timestamps and counters: level 1 is one
+// request, 128 tokens over 3.542952 s; level 2 is 256 tokens from the round's common submission to its
+// last completion, 6.122524 s. The engine ran 6.66 and 6.12 busy threads (6 pool workers), and
+// memory.current, page cache included, was ~105 GiB at its largest boundary reading.
+test fn the_kit_run_is_admitted_against_its_own_shape() -> Bool {
+  match admit_serving_benchmark_run(version: smoke_version, observation: observation()) {
+    ServingBenchmarkRunRefused { gaps: _ } => false
+    ServingBenchmarkRunAdmitted { receipt: _, levels: ls } =>
+      match level(levels: ls, active: 1) {
+        Absent => false
+        Present { value: l } =>
+          microsecond_count(m: l.window) == 3542952
+            && milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 36128
+            && milli_tokens_per_second_count(r: l.decode_median) == 39149
+            && events_per_hour_count(r: l.completed_turns_per_hour) == 1016
+            && millicore_count(m: l.engine_cpu_busy) == 6663
+            && byte_size_count(b: l.engine_memory_current_max) == 112746569728
+      }
+      && match level(levels: ls, active: 2) {
+        Absent => false
+        Present { value: l } =>
+          microsecond_count(m: l.window) == 6122524
+            && milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 41812
+            && milli_tokens_per_second_count(r: l.decode_median) == 23765
+            && events_per_hour_count(r: l.completed_turns_per_hour) == 1175
+            && millicore_count(m: l.engine_cpu_busy) == 6122
+            && byte_size_count(b: l.engine_memory_current_max) == 112853544960
+      }
+  }
+}
+
+test fn serving_benchmark_v1_refuses_the_smoke_run_as_another_workload() -> Bool {
+  match admit_serving_benchmark_run(version: serving_benchmark_v1, observation: observation()) {
+    ServingBenchmarkRunAdmitted { receipt: _, levels: _ } => false
+    ServingBenchmarkRunRefused { gaps: g } =>
+      any(g, x => match x { GapMaxTokens { round: _, observed: t } => true, _ => false })
+        && any(g, x => match x { GapPrimeContextOutsideBand { session: _, prompt: _ } => true, _ => false })
+  }
+}
+
+// ── THE CELL'S CPU READING, FROM THE HOST'S OWN /proc/cpuinfo ───────────────────────────────────
+//
+// The first 40 lines of srv3's /proc/cpuinfo, captured raw (gunbc-private tools/gpu-bench/captures/
+// srv3-2026-10-25, raw.txt section 4): arm64 prints the MIDR fields and no model name. Part 0xd0c is
+// read as 3340 and kept as the number; the logical CPU count is the processor entries present, five in
+// this head (the full file lists 128).
+data srv3_cpuinfo_head_path: String = "fixtures/serving_benchmark/srv3_captures_2026_10_25/proc_cpuinfo_head.txt"
+
+test fn srv3_cpuinfo_reads_as_arm_midr() -> Bool {
+  match parse_proc_cpuinfo(text: filesystem_read(path: srv3_cpuinfo_head_path).content) {
+    ProcCpuinfoUnreadable { cause: _ } => false
+    ProcCpuinfoParsed { model: m, logical_cpus: n } =>
+      hardware_thread_count_value(t: n) == 5 && match m {
+        CpuArmMidr { implementer: i, variant: v, part: p, revision: r } => i == 65 && v == 3 && p == 3340 && r == 1
+        CpuModelNamed { name: _ } => false
+      }
+  }
+}
+
+test fn cpuinfo_with_neither_name_nor_midr_refuses() -> Bool {
+  match parse_proc_cpuinfo(text: "processor\t: 0\nBogoMIPS\t: 50.00\n") {
+    ProcCpuinfoUnreadable { cause: _ } => true
+    ProcCpuinfoParsed { model: _, logical_cpus: _ } => false
+  }
+}
