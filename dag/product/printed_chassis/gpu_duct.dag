@@ -1,16 +1,21 @@
 module product.printed_chassis.gpu_duct
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { Micrometer, micrometer, micrometer_count, rpm }
+import std.measure { Micrometer, micrometer, micrometer_count, rpm, milliampere_count, millilitre_per_second_count, pascal_count }
 import std.euclidean_geometry { Axis3Z }
 import extdeps.gpu.nvidia_a16 { a16_stated_length }
 import extdeps.fans.types {
-  FanMountingPattern, fan_sound_pressure_at,
+  FanMountingPattern, RadialBlowerEnvelope, fan_sound_pressure_at,
   FanSoundPressurePublished, FanSoundPressureNotPublishedAtSpeed, FanSoundPressureUnderdetermined,
 }
 import extdeps.fans.noctua {
   noctua_nf_a9_pwm_catalog, noctua_nf_a9_pwm_mounting_pattern, noctua_nf_a9_pwm_frame_depth,
   noctua_nf_a9_pwm_figures_standing,
+}
+import extdeps.fans.delta {
+  delta_bfb1012m_envelope, delta_bfb1012m_envelope_standing, delta_bfb1012m_outlet_standing, delta_bfb1012m_rating,
+  delta_bfb1012m_rating_standing, delta_bfb1012m_listing_current, delta_bfb1012m_current_reconciliation,
+  delta_bfb_series_datasheet_sha256,
 }
 import extdeps.units.iec_61672 { dba_tenths }
 import product.printed_chassis.coupon { OpThroughHole }
@@ -21,7 +26,7 @@ import product.printed_chassis.fan_mount {
 }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, Clearance, FixedFrame, LayOnXY,
-  FanSelfTappingScrew, FrictionFitPlug, FrictionFitSleeve, M3IntoCardInsert, Proposed, block, round, part, mechanical_interface,
+  FanSelfTappingScrew, FrictionFitPlug, FrictionFitSleeve, LocatingSleeveNoRetention, M3IntoCardInsert, Proposed, block, round, part, mechanical_interface,
 }
 import product.printed_chassis.board_mechanical_reference { cited_figure_json }
 import product.printed_chassis.printable_assembly { part_json, interface_json }
@@ -246,12 +251,7 @@ fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, ext
   let wd = um(m: f.window_depth)
   let window_x = top - um(m: f.window_from_top) - wl / 2
   let window_y = 0 - wd / 2
-  let fl = um(m: d.flange_thickness)
-  let keep_len = connector_keepout_length(f: f, d: d)
-  let insert_y = band - um(m: f.insert_near_edge_from_back) - um(m: insert_bore) / 2
-  let upper_x = top - um(m: f.upper_insert_near_edge_from_top) - um(m: insert_bore) / 2
-  let insert_xs = [upper_x, upper_x - um(m: f.insert_spacing)]
-  let screw_holes = map(insert_xs, x => round(diameter: um(m: m3_clearance), length: fl + 2000, axis: Axis3Z, x: x, y: insert_y, z: face_z - fl / 2))
+  let screw_holes = card_screw_holes(f: f, d: d, face_z: face_z)
   let interface = card_interface(f: f, d: d, mount: mount, face_z: face_z, window_x: window_x, window_y: window_y, card_y: card_y, top: top)
   let fan_y = 0 - edge / 2 - bc
   let plug_w = wl - 2 * um(m: d.plug_clearance)
@@ -274,8 +274,6 @@ fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, ext
     OpThroughHole { diameter: dd, center_x: cx, center_y: cy } =>
       round(diameter: um(m: dd), length: um(m: d.fan_depth) + 2000, axis: Axis3Z, x: um(m: cx) - edge / 2, y: fan_y + um(m: cy) - edge / 2, z: 0 - um(m: d.fan_depth) / 2)
   })
-  let fs = um(m: f.fin_setback)
-  let card_length = um(m: a16_stated_length)
   let printed = match extent {
     FullDuct => part(id: "DUCT", name: match mount { PlugAndFlange => "Inlet duct, 92 mm fan to fin window, plug lip and screw flange" SleeveOverCardEnd => "Inlet duct, 92 mm fan to fin window, sleeve over the card end" },
       kind: Printed, scope: FixedFrame,
@@ -298,11 +296,42 @@ fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, ext
       notes: "Pushes into the duct. Frame and hole spacing are transcribed figures; see the fan standing.")]
     CardFitRing => []
   }
-  concat(concat([printed], fan_part), [
+  concat(concat([printed], fan_part), card_reference_parts(f: f, d: d, face_z: face_z))
+}
+
+// THE CARD'S INSERT POSITIONS IN THE PART FRAME, read from the top end and the back face as measured.
+fn insert_y(f: EndFaceMeasurement) -> Int {
+  um(m: f.window_from_back) - um(m: f.insert_near_edge_from_back) - um(m: insert_bore) / 2
+}
+
+fn insert_xs(f: EndFaceMeasurement) -> List<Int> {
+  let upper_x = um(m: f.face_length) / 2 - um(m: f.upper_insert_near_edge_from_top) - um(m: insert_bore) / 2
+  [upper_x, upper_x - um(m: f.insert_spacing)]
+}
+
+fn card_screw_holes(f: EndFaceMeasurement, d: GpuDuctDesign, face_z: Int) -> List<Primitive> {
+  let fl = um(m: d.flange_thickness)
+  map(insert_xs(f: f), x => round(diameter: um(m: m3_clearance), length: fl + 2000, axis: Axis3Z, x: x, y: insert_y(f: f), z: face_z - fl / 2))
+}
+
+// The card envelope and the 8-pin keep-out, shared by every duct whose card face is at face_z.
+fn card_reference_parts(f: EndFaceMeasurement, d: GpuDuctDesign, face_z: Int) -> List<AssemblyPart> {
+  let len = um(m: f.face_length)
+  let top = len / 2
+  let band = um(m: f.window_from_back)
+  let card_y = band - um(m: f.face_thickness) / 2
+  let wl = um(m: f.window_length)
+  let wd = um(m: f.window_depth)
+  let window_x = top - um(m: f.window_from_top) - wl / 2
+  let window_y = 0 - wd / 2
+  let keep_len = connector_keepout_length(f: f, d: d)
+  let fs = um(m: f.fin_setback)
+  let card_length = um(m: a16_stated_length)
+  [
     part(id: "CARD", name: "NVIDIA A16 envelope (measured end face, stated length)", kind: Purchased, scope: FixedFrame,
       adds: [block(w: len, h: um(m: f.face_thickness), d: card_length, x: 0, y: card_y, z: face_z + card_length / 2)],
       cuts: concat([block(w: wl, h: wd, d: fs, x: window_x, y: window_y, z: face_z + fs / 2)],
-        map(insert_xs, x => round(diameter: um(m: insert_bore), length: 2000, axis: Axis3Z, x: x, y: insert_y, z: face_z + 1000))),
+        map(insert_xs(f: f), x => round(diameter: um(m: insert_bore), length: 2000, axis: Axis3Z, x: x, y: insert_y(f: f), z: face_z + 1000))),
       x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 60000, plane: LayOnXY,
       notes: "Envelope only. The fin window is carried as a recess as deep as the measured fin setback; the inserts as 2 mm M3 bores."),
     part(id: "POWER-KEEPOUT", name: "8-pin power plug and cable keep-out", kind: Clearance, scope: FixedFrame,
@@ -310,7 +339,247 @@ fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, ext
       cuts: [],
       x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, plane: LayOnXY,
       notes: "Keep printed material out of this envelope in front of the 8-pin header. It runs from the top end past the measured outer pin by a design allowance; the depth is a design allowance."),
-  ])
+  ]
+}
+
+// ═══ THE BLOWER VARIANT ═══
+//
+// A RADIAL BLOWER WHOSE HOUSING STAYS INSIDE THE CARD'S THICKNESS, outlet into the same plug lip and
+// screw flange as the axial duct (operator, 2026-10-25, after a seller's reference photograph). The
+// housing lies with its broad face along the card's side, so cards in adjacent double-width slots can
+// each carry one; the outlet edge faces the card and the duct is a socket that takes the housing's
+// end, a chamber that spreads the outlet across the fin window, and the existing card interface.
+//
+// THE CHAMBER IS AS DEEP AS THE 8-PIN KEEP-OUT, and that is the variant's depth cost. The housing is
+// nearly the face's full length and sits across the power band, so it must start behind the keep-out
+// envelope; in front of it the chamber stays below the band over the keep-out's span.
+//
+// THE DUCT CONSUMES ONLY THE CITED HOUSING. The outlet's size, offset and edge are not yet attributable
+// on Delta's drawing (extdeps.fans.delta delta_bfb1012m_outlet_standing), so the socket floor is open
+// over the housing's whole end from the bottom end up to the keep-out boundary, and the chamber rises
+// over that whole span. An outlet anywhere in that span feeds the window; the blower goes in outlet
+// toward the bottom end, and an outlet beyond the span is what the fit print and the drawing reading
+// would show.
+//
+// THE CARD-INSERT SCREWS ARE DRIVEN THROUGH THE OPEN SOCKET before the blower is pushed in: both
+// inserts lie inside the open span, so no access hole is needed and none is cut.
+//
+// N CARDS ARE A REPEAT AT THE SLOT PITCH, and only one is admitted. Adjacent housings face each
+// other's intake across pitch minus thickness, which starves every blower but the last; that is a
+// stated limitation of this model, not a solved one, so a count above one refuses with the gap.
+// WHICH HOUSING EDGE CARRIES THE OUTLET is a reading of Delta's drawing that has not been made
+// (extdeps.fans.delta delta_bfb1012m_outlet_standing). While it is unread the socket takes either
+// edge: its cavity is sized to the longer one, the envelope bounds both orientations, and each
+// orientation's real clearance along the face is derived rather than claimed as one fit.
+type BlowerOutletEdge = OutletOnLengthEdge | OutletOnDepthEdge | OutletEdgeUnread
+
+type BlowerDuctDesign {
+  blower: RadialBlowerEnvelope
+  outlet_edge: BlowerOutletEdge
+  socket_clearance: Micrometer
+  socket_depth: Micrometer
+  screw_tool_clearance_radius: Micrometer
+  card_count: Int
+  slot_pitch: Micrometer
+}
+
+// The screw-tool radius is a design allowance: an M3 x 4 pan head (about 5.5 mm) and the driver tip
+// reaching it through the open socket, with room to spare.
+data a16_blower_duct_design: BlowerDuctDesign = BlowerDuctDesign {
+  blower: delta_bfb1012m_envelope,
+  outlet_edge: OutletEdgeUnread,
+  socket_clearance: micrometer(count: 500),
+  socket_depth: micrometer(count: 10000),
+  screw_tool_clearance_radius: micrometer(count: 3500),
+  card_count: 1,
+  slot_pitch: micrometer(count: 40640),
+}
+
+fn larger_um(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+fn smaller_um(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+
+// The socket cavity takes the longest edge the outlet could be on.
+fn blower_cavity_edge(b: BlowerDuctDesign) -> Int {
+  match b.outlet_edge {
+    OutletOnLengthEdge => um(m: b.blower.housing_length)
+    OutletOnDepthEdge => um(m: b.blower.housing_depth)
+    OutletEdgeUnread => larger_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
+  }
+}
+
+// The shortest edge that may enter the cavity, which sets the loosest fit along the face.
+fn blower_shortest_entering_edge(b: BlowerDuctDesign) -> Int {
+  match b.outlet_edge {
+    OutletOnLengthEdge => um(m: b.blower.housing_length)
+    OutletOnDepthEdge => um(m: b.blower.housing_depth)
+    OutletEdgeUnread => smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
+  }
+}
+
+// How far the housing reaches back from the socket floor, bounded over the orientations admitted.
+fn blower_reach_behind(b: BlowerDuctDesign) -> Int {
+  match b.outlet_edge {
+    OutletOnLengthEdge => um(m: b.blower.housing_depth)
+    OutletOnDepthEdge => um(m: b.blower.housing_length)
+    OutletEdgeUnread => larger_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
+  }
+}
+
+fn blower_face_clearance_loosest(b: BlowerDuctDesign) -> Int {
+  (blower_cavity_edge(b: b) + 2 * um(m: b.socket_clearance) - blower_shortest_entering_edge(b: b)) / 2
+}
+
+type BlowerDuctAdmission
+  = BlowerDuctAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
+  | BlowerDuctCardInterfaceRefused { refusal: GpuDuctAdmission }
+  | BlowerThickerThanCard { socket_thickness: Micrometer, face_thickness: Micrometer }
+  | BlowerPassageClosedByKeepout { passage_length: Micrometer, keepout_low: Micrometer }
+  | BlowerInsertNotReachable { insert_x: Micrometer, insert_y: Micrometer, passage_low: Micrometer, passage_high: Micrometer, tool_radius: Micrometer }
+  | BlowerCardCountUnsupported { card_count: Int, intake_gap: Micrometer }
+
+// The open passage's span along the face: from the cavity's bottom end (cavity centred on the face's
+// length) to one wall and one band clearance short of the keep-out.
+fn blower_passage_low(b: BlowerDuctDesign) -> Int {
+  0 - blower_cavity_edge(b: b) / 2
+}
+
+// Each card insert must be reachable through the open socket: its axis plus the tool radius inside the
+// passage along the face and inside the cavity across the thickness. The first insert that is not is
+// the refusal.
+fn blower_unreachable_insert(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> BlowerDuctAdmission? {
+  let r = um(m: b.screw_tool_clearance_radius)
+  let lo = blower_passage_low(b: b)
+  let hi = blower_passage_high(f: f, d: d, b: b)
+  let card_y = um(m: f.window_from_back) - um(m: f.face_thickness) / 2
+  let half_open_y = um(m: b.blower.thickness) / 2 + um(m: b.socket_clearance)
+  let y = insert_y(f: f)
+  fold(insert_xs(f: f), init: none, f: (found, x) => match found {
+    Present { value: v } => Present { value: v }
+    Absent => if x - r < lo || x + r > hi || y - r < card_y - half_open_y || y + r > card_y + half_open_y {
+      Present { value: BlowerInsertNotReachable { insert_x: micrometer(count: x), insert_y: micrometer(count: y), passage_low: micrometer(count: lo), passage_high: micrometer(count: hi), tool_radius: b.screw_tool_clearance_radius } }
+    } else { none }
+  })
+}
+
+fn blower_passage_high(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> Int {
+  um(m: f.face_length) / 2 - connector_keepout_length(f: f, d: d) - um(m: d.band_clearance) - um(m: d.wall) - um(m: b.socket_clearance)
+}
+
+fn blower_socket_thickness(b: BlowerDuctDesign, d: GpuDuctDesign) -> Int {
+  um(m: b.blower.thickness) + 2 * um(m: b.socket_clearance) + 2 * um(m: d.wall)
+}
+
+fn admit_blower_duct(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> BlowerDuctAdmission {
+  if b.card_count != 1 {
+    return BlowerCardCountUnsupported { card_count: b.card_count, intake_gap: micrometer(count: um(m: b.slot_pitch) - um(m: b.blower.thickness)) }
+  }
+  if !insert_readings_agree(f: f) {
+    return BlowerDuctCardInterfaceRefused { refusal: GpuDuctInsertReadingsDisagree { implied_face_length: micrometer(count: implied_face_length(f: f)), face_length: f.face_length } }
+  }
+  match admit_mount_interface(f: f, d: d, mount: PlugAndFlange) { Present { value: refused } => return BlowerDuctCardInterfaceRefused { refusal: refused } Absent => {} }
+  if blower_socket_thickness(b: b, d: d) > um(m: f.face_thickness) {
+    return BlowerThickerThanCard { socket_thickness: micrometer(count: blower_socket_thickness(b: b, d: d)), face_thickness: f.face_thickness }
+  }
+  let passage = blower_passage_high(f: f, d: d, b: b) - blower_passage_low(b: b)
+  if passage < um(m: minimum_plug_passage) {
+    return BlowerPassageClosedByKeepout { passage_length: micrometer(count: passage), keepout_low: micrometer(count: um(m: f.face_length) / 2 - connector_keepout_length(f: f, d: d)) }
+  }
+  match blower_unreachable_insert(f: f, d: d, b: b) { Present { value: refused } => return refused Absent => {} }
+  BlowerDuctAdmitted {
+    parts: blower_duct_parts(f: f, d: d, b: b),
+    interfaces: concat([mechanical_interface(id: "blower-to-duct", members: ["FAN", "DUCT"], fastener: LocatingSleeveNoRetention, quantity: 1, status: Proposed,
+      requirement: join(["The blower's outlet end slides into the socket. Across the thickness it is a sleeve fit, ", to_string(value: um(m: b.socket_clearance)), " um over the cited 33.0 +/- 0.5 mm per side. Along the face the cavity takes the longest edge the outlet may be on, so the fit there is up to ", to_string(value: blower_face_clearance_loosest(b: b)), " um loose per side and the blower is located by hand against the bottom end, not held by the sleeve, until the outlet edge is read."], ""))],
+      card_joints(mount: PlugAndFlange, printed_id: "DUCT")),
+  }
+}
+
+// Part-local frame as the axial duct's, except that the socket's open end is on the bed at Z = 0:
+// the socket takes the housing to Z = socket depth, a floor wall follows, and the chamber runs to the
+// flange so that the housing begins one band clearance behind the keep-out envelope.
+fn blower_duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> List<AssemblyPart> {
+  let wall = um(m: d.wall)
+  let bc = um(m: d.band_clearance)
+  let fl = um(m: d.flange_thickness)
+  let sc = um(m: b.socket_clearance)
+  let sd = um(m: b.socket_depth)
+  let face_z = sd + wall + um(m: d.connector_keepout_depth) + bc
+  let chamber_lo_z = sd + wall
+  let chamber_d = face_z - fl - chamber_lo_z
+  let top = um(m: f.face_length) / 2
+  let band = um(m: f.window_from_back)
+  let card_y = band - um(m: f.face_thickness) / 2
+  let wl = um(m: f.window_length)
+  let wd = um(m: f.window_depth)
+  let window_x = top - um(m: f.window_from_top) - wl / 2
+  let window_y = 0 - wd / 2
+  let pc = um(m: d.plug_clearance)
+  let plug_w = wl - 2 * pc
+  let plug_h = wd - 2 * pc
+  let hl = blower_cavity_edge(b: b)
+  let behind = blower_reach_behind(b: b)
+  let th = um(m: b.blower.thickness)
+  let o_lo = blower_passage_low(b: b) + sc
+  let o_hi = blower_passage_high(f: f, d: d, b: b)
+  let oh = th
+  let o_y_lo = card_y - oh / 2
+  let o_y_hi = card_y + oh / 2
+  let y_lo = if window_y - plug_h / 2 - wall < o_y_lo - wall { window_y - plug_h / 2 - wall } else { o_y_lo - wall }
+  let a_top = 0 - bc
+  let b_top = o_y_hi + sc + wall
+  let b_lo_x = o_lo - sc - wall
+  let b_hi_x = o_hi + sc + wall
+  let chamber_mid_z = chamber_lo_z + chamber_d / 2
+  let cut_d = chamber_d + 1000
+  let cut_mid_z = chamber_lo_z + chamber_d / 2 + 500
+  let interface = card_interface(f: f, d: d, mount: PlugAndFlange, face_z: face_z, window_x: window_x, window_y: window_y, card_y: card_y, top: top)
+  let socket_w = hl + 2 * sc + 2 * wall
+  let socket_h = th + 2 * sc + 2 * wall
+  let duct = part(id: "DUCT", name: "Inlet duct, BFB1012M radial blower to fin window, plug lip and screw flange",
+    kind: Printed, scope: FixedFrame,
+    adds: concat([
+      block(w: socket_w, h: socket_h, d: sd + wall, x: 0, y: card_y, z: (sd + wall) / 2),
+      block(w: plug_w, h: a_top - y_lo, d: chamber_d, x: window_x, y: (a_top + y_lo) / 2, z: chamber_mid_z),
+      block(w: b_hi_x - b_lo_x, h: b_top - y_lo, d: chamber_d, x: (b_hi_x + b_lo_x) / 2, y: (b_top + y_lo) / 2, z: chamber_mid_z),
+    ], interface.adds),
+    cuts: concat(concat([
+      block(w: hl + 2 * sc, h: th + 2 * sc, d: sd + 1000, x: 0, y: card_y, z: (sd - 1000) / 2),
+      block(w: o_hi - o_lo + 2 * sc, h: oh + 2 * sc, d: wall + 2000, x: (o_hi + o_lo) / 2, y: card_y, z: sd + wall / 2),
+      block(w: plug_w - 2 * wall, h: a_top - y_lo - 2 * wall, d: cut_d, x: window_x, y: (a_top + y_lo) / 2, z: cut_mid_z),
+      block(w: b_hi_x - b_lo_x - 2 * wall, h: b_top - y_lo - 2 * wall, d: cut_d, x: (b_hi_x + b_lo_x) / 2, y: (b_top + y_lo) / 2, z: cut_mid_z),
+    ], interface.cuts), card_screw_holes(f: f, d: d, face_z: face_z)),
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -60000, plane: LayOnXY,
+    notes: "Print socket-down; the socket floor and the flange bridge the chamber and need support. PLA is admitted for an unpowered fit prototype only; service use needs PETG or ASA. Drive both M3 x 4 screws into the end cap through the open socket, then push the blower in, outlet toward the bottom end. The 8-pin connector stays clear.")
+  let blower = part(id: "FAN", name: "Delta BFB1012M radial blower envelope", kind: Purchased, scope: FixedFrame,
+    adds: [block(w: hl, h: th, d: behind, x: 0, y: card_y, z: sd - behind / 2)],
+    cuts: [],
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -120000, plane: LayOnXY,
+    notes: "Bounding envelope over both orientations the unread outlet edge admits (the longer housing edge across the face and behind the socket). Outlet edge into the socket, outlet toward the bottom end; the broad intake face must stay open. Housing cited to Delta's BFB sheet; the outlet's edge and position are uncited.")
+  concat([duct, blower], card_reference_parts(f: f, d: d, face_z: face_z))
+}
+
+fn blower_presentation_members() -> List<JsonKeyValue> {
+  [
+    json_kv(key: "axes", value: json_string(s: "Z along airflow, socket open end on the bed at Z = 0; X along the end face, 8-pin (top) end toward +X; Y = 0 at the fin window's back edge, power cap toward +Y")),
+    json_kv(key: "material_admission", value: json_string(s: "PLA admitted for an unpowered fit prototype only; PETG or ASA required for service; no powered A16 operation admitted")),
+    json_kv(key: "end_face", value: face_json(f: a16_end_face)),
+    json_kv(key: "blower_model", value: json_string(s: a16_blower_duct_design.blower.model as String)),
+    json_kv(key: "blower_housing_figures", value: cited_figure_json(standing: delta_bfb1012m_envelope_standing)),
+    json_kv(key: "blower_outlet_figures", value: cited_figure_json(standing: delta_bfb1012m_outlet_standing)),
+    json_kv(key: "blower_rating", value: json_object(members: [
+      json_kv(key: "standing", value: cited_figure_json(standing: delta_bfb1012m_rating_standing)),
+      json_kv(key: "datasheet_sha256", value: json_string(s: delta_bfb_series_datasheet_sha256 as String)),
+      json_kv(key: "rated_current_milliamperes", value: json_int(n: milliampere_count(i: delta_bfb1012m_rating.rated_current) as Int)),
+      json_kv(key: "listing_current_milliamperes", value: json_int(n: milliampere_count(i: delta_bfb1012m_listing_current) as Int)),
+      json_kv(key: "free_air_flow_millilitres_per_second", value: json_int(n: millilitre_per_second_count(f: delta_bfb1012m_rating.free_air_flow) as Int)),
+      json_kv(key: "zero_flow_pressure_pascals", value: json_int(n: pascal_count(p: delta_bfb1012m_rating.zero_flow_pressure) as Int)),
+      json_kv(key: "tenths_dba", value: json_int(n: dba_tenths(level: delta_bfb1012m_rating.sound_pressure))),
+      json_kv(key: "current_reconciliation", value: cited_figure_json(standing: delta_bfb1012m_current_reconciliation)),
+    ])),
+  ]
+}
+
+fn blower_readme() -> String {
+  "A16 inlet duct for a Delta BFB1012M radial blower (plug lip and screw flange). Generated from product.printed_chassis.gpu_duct.\nEnd face from caliper readings on the held card; the blower's housing (97.2 x 94.4 x 33.0 mm) is cited to Delta's BFB sheet, and its outlet's position is uncited, so the socket is open over the housing end up to the 8-pin keep-out. Fit the blower outlet toward the bottom end. Read the received unit's label: the listing's 0.48 A disagrees with the sheet's 0.57 A.\nDUCT.stl prints socket-down and needs support under the socket floor and the flange.\n"
 }
 
 type CardInterface { adds: List<Primitive>, cuts: List<Primitive> }

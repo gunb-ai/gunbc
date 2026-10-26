@@ -30,6 +30,7 @@ module gunbc.roadmap.attempt_system_unit_launch
 // world-writable, sha-addressed, with the service ExecStart pinned to that path. The requester can
 // edit instance.serve_binary and the checkout; those paths are not what root runs.
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, CommitSha, path_segment_is_safe }
 import std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_array, json_string, serialize_json }
@@ -64,7 +65,7 @@ import gunbc.host.host_layout {
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
   attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
-import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
+import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
@@ -81,6 +82,7 @@ import extdeps.systemd.systemd_run {
   systemd_run_command_of, systemd_run_property_options_short,
   systemd_run_command_argument_words, systemd_run_option_words_refused_cause_detail,
   RunUnit, Wait, Quiet, Collect, EndOfOptions,
+  SystemdSetenvBinding, systemd_run_setenv_options,
 }
 import extdeps.systemd.systemctl
 import gunbc.cli_invoke {
@@ -96,18 +98,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceForInstanceRoot, DashboardInstanceInstanceRootUnknown,
 }
 import extdeps.exec.command { ArgvCommand }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
-  dispatch_worker_unit_properties_for_plan,
-  dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
-  dispatch_pane_working_directory, GunbcHarnessProvider,
-}
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
   attempt_exit_entry_separator,
 }
-import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_swap_max, attempt_worker_slice_unit_name,
 }
@@ -129,7 +124,7 @@ fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: R
 }
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
-  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance service user, with the typed confinement property set and no other unit, user, property, or program" as NonEmptyStr
+  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance worker user, with the typed confinement property set -- for a dedicated worker, that set includes the instance's root-owned credstore file the manager loads as the unit's credential, and its environment carries git's safe.directory grant for the attempt's own worktree -- and no other unit, user, property, credential, environment, or program" as NonEmptyStr
 }
 
 fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
@@ -333,14 +328,23 @@ fn attempt_system_unit_systemd_run_command(instance: HostDashboardInstance, plan
   attempt_system_unit_systemd_run_command_of(
     unit: plan.unit,
     properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: granted, user: user),
+    environment: attempt_system_unit_worker_environment(instance: instance, plan: plan),
     command_argv: plan.inner_argv,
     wait: false,
   )
 }
 
+// THE WORKER'S ENVIRONMENT, derived here like every other privileged fact: its git trust in its own worktree
+// (gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_git_trust_environment). Each setting is one
+// --setenv.
+fn attempt_system_unit_worker_environment(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<SystemdSetenvBinding> {
+  map(dispatch_worker_git_trust_environment(instance: instance, attempt_worktree: plan.attempt_worktree), g => SystemdSetenvBinding { name: g.name, value: g.value })
+}
+
 fn attempt_system_unit_systemd_run_command_of(
   unit: NonEmptyStr,
   properties: List<SystemdRunProperty>,
+  environment: List<SystemdSetenvBinding>,
   command_argv: List<String>,
   wait: Bool,
 ) -> SystemdRunCommandReading {
@@ -350,7 +354,7 @@ fn attempt_system_unit_systemd_run_command_of(
     [RunUnit { unit: unit }]
   }
   systemd_run_command_of(
-    options: concat(head, concat(systemd_run_property_options_short(properties: properties), [EndOfOptions])),
+    options: concat(head, concat(systemd_run_setenv_options(bindings: environment), concat(systemd_run_property_options_short(properties: properties), [EndOfOptions]))),
     command_argv: command_argv,
   )
 }
@@ -929,6 +933,7 @@ fn attempt_system_unit_run_admitted_start(
   match attempt_system_unit_systemd_run_command_of(
     unit: plan.unit,
     properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: facts.granted, user: facts.user),
+    environment: attempt_system_unit_worker_environment(instance: instance, plan: plan),
     command_argv: plan.inner_argv,
     wait: wait,
   ) {
@@ -1038,7 +1043,7 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
 type AttemptUnitEntryOutcome
   = AttemptUnitEntrySkipped
   | AttemptUnitEntryHandled { handled: AttemptUnitHandled }
-  | AttemptUnitEntryUnmovable { entry: String, step: String, cause: String }
+  | AttemptUnitEntryUnmovable { entry: String, step: SpoolStallStep, cause: String }
 
 fn attempt_unit_handled_failure(handled: AttemptUnitHandled) -> List<ProcessExit> {
   match handled {
@@ -1062,7 +1067,7 @@ fn attempt_unit_outcome_failure(outcome: AttemptUnitEntryOutcome) -> List<Proces
   match outcome {
     AttemptUnitEntryHandled { handled: h } => attempt_unit_handled_failure(handled: h)
     AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } =>
-      [exit_failure(reason: join([entry, ": unmovable at ", step, " (stays in requests/): ", cause], ""))]
+      [exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))]
     AttemptUnitEntrySkipped => [] as List<ProcessExit>
   }
 }
@@ -1112,7 +1117,7 @@ fn attempt_unit_pass_of(outcomes: List<AttemptUnitEntryOutcome>) -> AttemptUnitD
 fn attempt_unit_entry_outcome(instance_root: String, instance: HostDashboardInstance?, entry: String) -> AttemptUnitEntryOutcome {
   match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
     AttemptSystemUnitAlreadyClaimed { entry: _ } => AttemptUnitEntrySkipped
-    AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: "claim", cause: c }
+    AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: SpoolStallClaim, cause: c }
     AttemptSystemUnitClaimSymlink { entry: e } =>
       AttemptUnitEntryHandled { handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: "request entry is a symlink") }
     AttemptSystemUnitClaimRefused { entry: e, reason: why } =>
@@ -1128,7 +1133,7 @@ fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
     AttemptSystemUnitRequestListRefused { reason } =>
-      attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: "list-requests", cause: reason }])
+      attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: SpoolStallListRequests, cause: reason }])
     AttemptSystemUnitRequestNames { names: entries } =>
       attempt_unit_pass_of(outcomes: map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry)))
   }

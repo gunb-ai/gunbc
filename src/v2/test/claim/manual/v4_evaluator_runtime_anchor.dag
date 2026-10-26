@@ -66,7 +66,12 @@ data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool = interpretati
 
 data witness_v4_evaluator_interpretation_fresh_call_eq: Bool = interpretation_algebra_slot_identities_equal(a: v2_evaluator_anchor_interpretation, b: v2_evaluator_interpretation())
 
-data witness_v4_evaluator_model_core_wired: Bool = v2_evaluator_anchor_core == bool_model_core() && v2_evaluator_anchor_core_standalone == bool_model_core()
+// ModelCore reaches Node; its == is held by gunbc.rung_drop.node_reaching_composite_equality at this declaration.
+fn v4_anchor_model_core_same(a: ModelCore, b: ModelCore) -> Bool {
+  a == b
+}
+
+data witness_v4_evaluator_model_core_wired: Bool = v4_anchor_model_core_same(a: v2_evaluator_anchor_core, b: bool_model_core()) && v4_anchor_model_core_same(a: v2_evaluator_anchor_core_standalone, b: bool_model_core())
 
 data witness_v4_evaluator_semantics_fail_closed: Bool = match v2_eval_call_primitive(
   node: v2_eval_unit_type_node(),

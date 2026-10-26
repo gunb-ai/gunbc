@@ -602,6 +602,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
   WitnessExclusionRow {
+    pattern: "posix_quoted_remote_word_real_execution_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
     pattern: "site_pxe_edge_chainloader_real_execution_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -975,6 +980,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: "SUBSTANTIATED per-row: one fn reads a committed artifact through Filesystem.Read, one reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe, and one drives gunbc.provisioning.seeded_install_media_publish resolve_seeded_image against a shell.Mktemp.Dir directory; none carries a mock_response, so hermetic discovery REFUSES rather than skipping. Their subjects are a real file's bytes and a real process's output: the attempt=3 host capture parsed under the reconstructed envelope grammar, and the capture program the renderer writes executed under `sh -c` and parsed back. A mocked read or a mocked stdout would re-check the parser against authored data, which is the supplied-input half test.claim.machine_intake.mtcollins1_census_image_witness already covers; this file is the inhabitance half DESIGN section 3 requires beside it. THE EXECUTION IS PURELY LOCAL -- one file read inside the checkout and `sh -c` over echo/printf with a halt of `true`, no network, no remote host, no Cargo -- which is why it belongs on the local-repo wet lane." as String,
     dissolution: unbound_dissolution(description: "Filesystem.Read and shell.Exec.RunArgv gain input-varying mock_response coverage over a checkout file and a process's stdout -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-output mock does NOT discharge it: the parser would be re-checked against the fixture rather than against what the renderer's program prints")},
   WitnessExclusionRow {
+    pattern: "fan_observe_local_wet.dag",
+    classification: LocalRepoWetLane,
+    reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv or extdeps.filesystem.filesystem_io Filesystem.Write/Read/Delete at its first effect, and the hermetic route has no arm for either, so hermetic discovery REFUSES (Filesystem Write: NoMockResponse; shell.Exec.RunArgv: UnpublishedMockCase) rather than skipping. Their subject is what bash itself does with the mtcollins1 fan step's emitted text: the credential prelude's EXIT trap under set -u, and the outcome tail (rendered from the model and extracted from the committed fleet-converge.yml) reading a receipt the real writer fan_write_boot_phase_observation produced. A mocked exit status or file would re-check authored data, which is the supplied-value half test.claim.machine_intake.fan_observe_witness already covers hermetically. THE EXECUTION IS PURELY LOCAL -- bash, sed and rm over claim-private flat paths and target/mtcollins1-fan-observation.txt inside the checkout, WIF_ACCESS_TOKEN unset so no credential fetch is reached; no network, no BMC, no Cargo." as String,
+    dissolution: unbound_dissolution(description: "shell.Exec.RunArgv and Filesystem gain input-varying mock_response coverage that can express what bash does with an emitted script under set -euo pipefail -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-output mock does NOT discharge it: the tail would be re-checked against the fixture rather than against what bash does with the bytes the step ships")},
+  WitnessExclusionRow {
     pattern: "approval_broker_helper_readback_real_execution.dag",
     classification: LocalRepoWetLane,
     reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe over extdeps.languages.bash.invocation bash_program_command, and RunArgv carries no mock_response, so hermetic discovery refuses. Its subject is the exit status of a real bash under set -euo pipefail running the approval broker's helper snapshot readback (gunbc.live_deploy.emit helper_snapshot_readback_command_at): a find that FAILS must stop the stage before the grant, which is a fact about errexit semantics that no in-process assertion observes and no mock honestly supplies (side-chat review on 15f470cfc8). THE EXECUTION IS PURELY LOCAL: mktemp -d, mkdir, chmod, ln, mv, find and test inside a temp directory the program removes on exit; no network, no remote host, no Cargo. SIZE IS DERIVED: six invocations, the clean control plus one per refusal arm (missing snapshot, missing ancestor, writable entry, snapshot symlink, symlinked ancestor)." as String,
@@ -1026,6 +1036,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "materialized_ssh_key_file_real_execution_witness.dag",
+    classification: BinWitnessWet,
+    reason: excl_install_media_reason,
+    dissolution: excl_install_media_dissolve},
+  WitnessExclusionRow {
+    pattern: "bmc_credential_off_disk_real_execution_witness.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
@@ -1317,6 +1332,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "approval_decision_store_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "approval_google_enrolment_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1333,6 +1353,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_blackjack_shuffle_dissolve},
   WitnessExclusionRow {
     pattern: "durable_exclusive_hold_file_store_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "durable_exclusive_hold_nonholder_release_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
@@ -1828,14 +1853,19 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness.dag", f: "compile_clean_shard_verdict_compose_laws_hold"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness.dag", f: "compile_clean_shard_verdict_compose_RED_on_injected_failure"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness.dag", f: "compile_clean_shard_a_exemplar_compile_green"),
-  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness.dag", f: "compile_clean_shard_roster_is_well_formed"),
-  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness.dag", f: "compile_clean_shard_totality_algebra_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness.dag", f: "cross_shard_seam_algebra_holds"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host/host_build_cache_provision_real_execution_witness.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag", f: "witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag", f: "witness_write_owner_only_refuses_when_path_already_exists"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_netrc_is_owner_only_and_gone_after_a_call_that_succeeded"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_netrc_is_owner_only_and_gone_after_a_call_that_failed"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_srv3_login_body_is_owner_only_and_gone_after_a_login_that_succeeded"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_srv3_login_body_is_owner_only_and_gone_after_a_login_that_failed"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "a_failed_rotation_reaches_the_bmc_call_and_leaves_no_credential_behind"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_password_body_reaches_curl_on_stdin_and_never_as_a_path"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "a_file_name_that_leaves_the_bracket_directory_is_refused_and_touches_nothing_outside"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
   bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness.dag", f: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution"),
   bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness.dag", f: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution"),

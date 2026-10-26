@@ -1,0 +1,303 @@
+module gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt
+
+import std.types { List, NonEmptyStr }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import gunbc.fleet.provider_acquisition { AcquisitionRealization }
+import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure }
+
+// THE HAND OS INSTALL OF SUPERMICRO H11SSL UNIT 1, RECORDED AS A RECEIPT OF AN OPERATOR-DECLARED
+// PROCEDURE -- not a converged state, and (until the operator relays completion) not a completed
+// effect either (DESIGN §4d, §5; 2026-10-24).
+//
+// On 2026-10-24 the operator ruled: this unit's OS goes on BY HAND this time -- the install is an
+// effect performed at the physical console, OUTSIDE any modeled route. No modeled route produced it:
+// the x86 autoinstall seed does not exist (gunbc.provisioning.altra_autoinstall_seed admits
+// Aarch64 targets only), the install-to-disk actuator is srv3/MegaRAC-scoped
+// (gunbc.srv3.srv3_os_install_actuate), and there is no x86 network-boot admission at the srv4 PXE
+// edge (gunbc.network_boot_delivery admits Aarch64 clients only). Recording the finished install as
+// an OsInstalled standing or a host_identity_assimilation converged state would claim an effect no
+// route realized, which §4d forbids. What is TRUE is narrower and is what this module holds: THE
+// OPERATOR DECLARED THE INSTALL, and relayed the facts below; each relayed figure is carried by the
+// SAME figure type the unit observation uses for operator-relayed figures
+// (gunbc.machine_intake.supermicro_h11ssl_unit_observation H11sslReportedFigure -- imported, not
+// re-declared), and every field the operator has not relayed stays an explicit unknown with its
+// reading obligation attached -- never a default, never a plausible value.
+//
+// THE EXISTING HOMES THIS RECORD REUSES, checked before inventing anything:
+//   - WHO PERFORMED a step outside an automated route: gunbc.fleet.provider_acquisition
+//     AcquisitionRealization OperatorPerformed -- imported, and reused for exactly one arm of
+//     HandInstallRealization: Completed. It is a COMPLETED-STEP carrier (it times a step that was
+//     performed, at the day granularity the operator relays, the provider_acquisition precedent's
+//     "2026-10-07"). The operator's 2026-10-24 ruling stated the INTENT to install by hand and has
+//     NOT said the install completed -- operator_stated_phase is NotRelayed below -- so recording
+//     the install's state today through OperatorPerformed would assert a completed effect nobody
+//     reported (§4d; merry-fox-82's side-chat hold). Divergence stated (§3b): the planned-not-
+//     completed state is a new arm, DeclaredByOperator; a "started, not yet finished" relay would
+//     land as its own arm in the change that adds it (provider_acquisition's precedent is no arms
+//     without producers). An earlier draft also branded performed_on as an Rfc3339 INSTANT, which
+//     was a fabricated precision (§5, review 85697); every date here is a RelayedDay. An arm for a
+//     route-performed install is absent by design: no producer exists);
+//   - the operator-relayed figure: gunbc.machine_intake.supermicro_h11ssl_unit_observation
+//     H11sslReportedFigure { value, standing: CitedFigureStanding }, imported here for the relayed
+//     arm of HandInstallRecordedField;
+//   - the arrival/provisioning phase vocabulary: gunbc.machine_intake.phase (the receipt NAMES the
+//     phase the operator believes the install reached; it does not CONVERGE that phase --
+//     convergence remains the fold's, and its evidence rules are why the arms stay reported here);
+//   - the unit's prior-life and identity record: gunbc.machine_intake.prior_life_boundary and
+//     gunbc.machine_intake.supermicro_h11ssl_first_contact (unit 1 = BMC 192.168.1.252), which this
+//     receipt keys on; and
+//   - the fleet adoption path gunbc.host.host_identity_adopt / host_identity_assimilation, which this
+//     record deliberately does NOT call: adoption consumes a probed live host, and until the operator
+//     says the host is up and the BMC intake reads it, there is nothing to adopt. The frontier for
+//     that adoption capability is filed in gunbc.machine_intake.h11ssl_x86_bringup_frontier.
+//
+// CONSUMER (DESIGN §3c): test.claim.supermicro_h11ssl_unit1_hand_install_witness exercises the folds
+// below. The post-upgrade BMC intake row this receipt anticipates lands in
+// gunbc.machine_intake.supermicro_h11ssl_unit_observation as its own reading, not here.
+
+// THE DAY, at the granularity the operator relays. Spelled as the non-empty day string
+// provider_acquisition's OperatorPerformed performed_on already carries ("2026-10-07"); the witness
+// for this receipt refuses anything shaped like an instant (containing 'T' or ':'), so a fabricated
+// midnight-UTC can never be reintroduced without the claim going red (review 85697).
+type RelayedDay = NonEmptyStr
+
+// A FIELD THE OPERATOR RELAYED, OR ITS EXPLICIT UNKNOWN WITH THE READ IT OWES. This is deliberately
+// NOT std.optional: std.optional::Optional<T>'s Absent carries nothing, while §4d requires every
+// unrelayed field here to carry the reading obligation that will close it (the observation module's
+// own Absent fields state the gap in prose only; this record's checklist needs the obligation IN the
+// type, because the checklist's completeness is a checked claim, not a comment). Presence is still
+// decided through std.optional via hand_install_field_figure, never through a hand-rolled Bool
+// predicate. The as_of is a RelayedDay -- the date of the relay, not a fabricated instant.
+type HandInstallRecordedField
+  = OperatorRelayed { figure: H11sslReportedFigure }
+  | NotRelayed { as_of_relayed_day: RelayedDay, read_obligation: NonEmptyStr }
+
+// The medium the OS was installed from, as the operator relays it. The digest is the operator's
+// transcribed string, never a recomputed claim: nothing in this repository observed the bytes.
+type InstallMedia {
+  iso_name: HandInstallRecordedField
+  version: HandInstallRecordedField
+  sha256: HandInstallRecordedField
+}
+
+// The disk and partition layout as relayed: the boot drive (an SSD the operator added 2026-10-24,
+// model and capacity unrelayed) and the layout written onto it. Layout detail is relayed text kept
+// whole -- inventing a partition-schema type before the first relay would be modeling a figure no
+// one has reported, and a relay that does not fit an invented schema gets squeezed, which is the
+// §4d failure in the other direction.
+type InstallDiskLayout {
+  boot_drive_report: HandInstallRecordedField
+  partition_layout_report: HandInstallRecordedField
+}
+
+// The system as the operator left it: hostname, the accounts installed with their SSH keying, and
+// the network configuration. SSH private key material NEVER appears here (standing rule: keys are
+// referenced, secrets never printed); a relayed authorized key is a fingerprint at most.
+type InstallSystemState {
+  hostname: HandInstallRecordedField
+  accounts_and_ssh_keys_report: HandInstallRecordedField
+  network_config_report: HandInstallRecordedField
+}
+
+// THE REALIZATION STATE OF THE HAND INSTALL: what the operator has DECLARED, never more.
+// DeclaredByOperator is the state as of the 2026-10-24 ruling -- the operator ruled the unit be
+// installed by hand; completion has NOT been relayed, and this arm must not be readable as a
+// completed effect (§4d). The only arm that asserts a finished install is Completed, and it can be
+// built ONLY when the operator relays completion, wrapping the corpus's one completed-step carrier,
+// gunbc.fleet.provider_acquisition AcquisitionRealization (imported here, not mirrored) -- with the
+// day granularity that carrier already carries (§5: a precision nobody relayed stays unfilled).
+// A "started, not yet finished" relay would land as its own arm in the change that adds it: the
+// provider_acquisition precedent is no arms without producers.
+type HandInstallRealization
+  = DeclaredByOperator { ruled_on: RelayedDay, relayed: NonEmptyStr }
+  | Completed { performed: AcquisitionRealization }
+
+// COMPLETEDNESS GOES THROUGH std.optional: callers ask whether the install was completed and get an
+// Optional over the shared completed-step carrier -- nothing re-derives "completed" by naming arms.
+fn hand_install_completed_step(realization: HandInstallRealization) -> Optional<AcquisitionRealization> {
+  match realization {
+    DeclaredByOperator { ruled_on: _, relayed: _ } => Absent
+    Completed { performed: p } => Present { value: p }
+  }
+}
+
+// THE HAND INSTALL ITSELF: one typed receipt of one operator-DECLARED procedure on one unit.
+// This is a DECLARED DEPARTURE from the modeled bring-up, not a converged provisioning phase and
+// not (yet) a performed effect: `realization` records the ruling, and `operator_stated_phase`
+// records what the operator stated the install reached -- the modeled folds keep their own verdicts
+// (which, with no route having run and no completion relayed, stay at their honest arms until the
+// read-only intake lands).
+type SupermicroH11sslUnit1HandInstall {
+  unit_key: NonEmptyStr
+  bmc_ipv4: Ipv4Address
+  ruling: NonEmptyStr
+  realization: HandInstallRealization
+  install_media: InstallMedia
+  disk_layout: InstallDiskLayout
+  system_state: InstallSystemState
+  // The phase the operator states the install reached, spelled from the arrival vocabulary. Kept as
+  // a stated claim with its reading obligation, NOT as a gunbc.machine_intake.phase standing.
+  operator_stated_phase: HandInstallRecordedField
+  // Hardware changes the operator announced as happening in the same session: the heatsink fitting
+  // and the RAM + SSD addition. Relayed text, because the census that would ground part numbers is
+  // itself a filed gap (gunbc.machine_intake.h11ssl_x86_bringup_frontier).
+  companion_hardware_report: HandInstallRecordedField
+}
+
+// PRESENCE GOES THROUGH std.optional -- the corpus's one presence concept. Callers that need to know
+// whether a field was relayed match the Optional; nothing re-derives presence by naming variants.
+fn hand_install_field_figure(field: HandInstallRecordedField) -> Optional<H11sslReportedFigure> {
+  match field {
+    OperatorRelayed { figure: f } => Present { value: f }
+    NotRelayed { as_of_relayed_day: _, read_obligation: _ } => Absent
+  }
+}
+
+// THE RECORD, as of the operator's 2026-10-24 ruling. The relays this first pass carries are exactly
+// the statements the ruling itself contained -- the install is by hand, on this date, on the unit at
+// BMC 192.168.1.252 (unit 1 per gunbc.machine_intake.supermicro_h11ssl_first_contact), with the
+// heatsink fitted and more RAM and an SSD boot drive being added. Everything an install record also
+// needs -- ISO and version, digest, disk and partition layout, hostname, accounts and SSH keys,
+// network configuration, and the phase stated reached -- is NOT yet relayed and sits in its
+// NotRelayed arm with the reading obligation that will close it (the post-upgrade read-only intake,
+// plus an operator relay). Refreshing a field from NotRelayed to OperatorRelayed happens ONLY with
+// the operator's relay in hand; the intake may corroborate a relayed figure but never fills an
+// unrelayed field by inference.
+data supermicro_h11ssl_unit1_hand_install: SupermicroH11sslUnit1HandInstall = SupermicroH11sslUnit1HandInstall {
+  unit_key: "supermicro-h11ssl-unit1",
+  bmc_ipv4: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 252),
+  ruling: "operator, 2026-10-24: install by hand this time; record the gaps, fill them afterwards",
+  realization: DeclaredByOperator {
+    ruled_on: "2026-10-24",
+    relayed: "operator ruled 2026-10-24: install this unit's OS by hand; the ruling states intent -- the install's completion has not been relayed, so this record is not a completed effect",
+  },
+  install_media: InstallMedia {
+    iso_name: NotRelayed {
+      as_of_relayed_day: "2026-10-24",
+      read_obligation: "the operator names the ISO the install booted from",
+    },
+    version: NotRelayed {
+      as_of_relayed_day: "2026-10-24",
+      read_obligation: "the operator states the ISO's version",
+    },
+    sha256: NotRelayed {
+      as_of_relayed_day: "2026-10-24",
+      read_obligation: "the operator relays the sha256 they hold for that ISO",
+    },
+  },
+  disk_layout: InstallDiskLayout {
+    boot_drive_report: NotRelayed {
+      as_of_relayed_day: "2026-10-24",
+      read_obligation: "the operator names the SSD boot drive added 2026-10-24 and which disk it is on the board",
+    },
+    partition_layout_report: NotRelayed {
+      as_of_relayed_day: "2026-10-24",
+      read_obligation: "the operator relays the partition layout written to the boot drive",
+    },
+  },
+  system_state: InstallSystemState {
+    hostname: NotRelayed {
+      as_of_relayed_day: "2026-10-24",
+      read_obligation: "the operator states the hostname the install answers to",
+    },
+    accounts_and_ssh_keys_report: NotRelayed {
+      as_of_relayed_day: "2026-10-24",
+      read_obligation: "the operator lists the accounts installed and which authorized keys they carry (fingerprints only; no key material)",
+    },
+    network_config_report: NotRelayed {
+      as_of_relayed_day: "2026-10-24",
+      read_obligation: "the operator states the host's address assignment (DHCP lease or static, address, gateway, DNS)",
+    },
+  },
+  operator_stated_phase: NotRelayed {
+    as_of_relayed_day: "2026-10-24",
+    read_obligation: "the operator states what the install reached (installer finished, rebooted to the installed system, reachable) -- a stated phase is a relay, not a converged gunbc.machine_intake.phase standing",
+  },
+  companion_hardware_report: OperatorRelayed {
+    figure: H11sslReportedFigure {
+      value: "heatsink fitted; more RAM and an SSD boot drive being added in the same session (2026-10-24); part numbers and population not relayed",
+      standing: TranscribedUncited {
+        read_obligation: "the read-only BMC intake's DIMM and storage census (gunbc.machine_intake.supermicro_h11ssl_unit_observation) corroborates population once its reader gaps are filled; part numbers still need the operator",
+      },
+    },
+  },
+}
+
+// The ISO identity is relayed only when name, version, and digest have all been relayed; today none
+// has, and this fold says so (Absent) rather than leaving an empty figure to be read as complete.
+fn supermicro_h11ssl_unit1_install_media_held(media: InstallMedia) -> Optional<InstallMedia> {
+  match hand_install_field_figure(media.iso_name) {
+    Present { value: _ } =>
+      match hand_install_field_figure(media.version) {
+        Present { value: _ } =>
+          match hand_install_field_figure(media.sha256) {
+            Present { value: _ } => Present { value: media }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+// THE TRACKED FIELDS OF EACH SUBSTRUCTURE, bound BY NAME from the record pattern -- not typed out as
+// a parallel list (review 85697: a hand-enumerated checklist can silently miss a field). Each fold
+// destructures its record and names every field; the checklist below visits exactly what these folds
+// return, and the witness pins each substructure's tracked count to the record's arity, so a field
+// added without joining the checklist goes red there rather than reading as complete.
+fn supermicro_h11ssl_unit1_install_media_tracked_fields(media: InstallMedia) -> List<HandInstallRecordedField> {
+  match media {
+    InstallMedia { iso_name: i, version: v, sha256: s } => [i, v, s]
+  }
+}
+
+fn supermicro_h11ssl_unit1_disk_layout_tracked_fields(layout: InstallDiskLayout) -> List<HandInstallRecordedField> {
+  match layout {
+    InstallDiskLayout { boot_drive_report: b, partition_layout_report: p } => [b, p]
+  }
+}
+
+fn supermicro_h11ssl_unit1_system_state_tracked_fields(state: InstallSystemState) -> List<HandInstallRecordedField> {
+  match state {
+    InstallSystemState { hostname: h, accounts_and_ssh_keys_report: a, network_config_report: n } => [h, a, n]
+  }
+}
+
+// Every tracked field of the record, gathered through the by-name folds above plus the record's own
+// stated-phase field. This is the single source the checklist derives from.
+fn supermicro_h11ssl_unit1_tracked_fields() -> List<HandInstallRecordedField> {
+  concat(
+    supermicro_h11ssl_unit1_install_media_tracked_fields(supermicro_h11ssl_unit1_hand_install.install_media),
+    concat(
+      supermicro_h11ssl_unit1_disk_layout_tracked_fields(supermicro_h11ssl_unit1_hand_install.disk_layout),
+      concat(
+        supermicro_h11ssl_unit1_system_state_tracked_fields(supermicro_h11ssl_unit1_hand_install.system_state),
+        [supermicro_h11ssl_unit1_hand_install.operator_stated_phase],
+      ),
+    ),
+  )
+}
+
+// THE UNCLOSED FIELDS OF THE RECORD -- the checklist the post-upgrade intake and the operator's next
+// relay work through, DERIVED from supermicro_h11ssl_unit1_tracked_fields (the by-name folds), so it
+// cannot drift from the record's shape. Presence is tested through std.optional; each entry kept is
+// a NotRelayed's read_obligation, so the deficit is countable and never defaults.
+fn supermicro_h11ssl_unit1_hand_install_open_obligations() -> List<NonEmptyStr> {
+  flat_map(supermicro_h11ssl_unit1_tracked_fields(), f => match f {
+    NotRelayed { as_of_relayed_day: _, read_obligation: o } => [o]
+    OperatorRelayed { figure: _ } => [] as List<NonEmptyStr>
+  })
+}
+
+// THE DAY GUARD (review 85697): a relayed day is the operator's day, spelled as a date -- an
+// instant, with its 'T' or ':', is a precision nobody relayed, and an instant here could only be
+// fabricated. Consumers (witness, and the intake when it reconciles BMC-side logs against this
+// receipt) get this to check the day shape with, rather than trusting a spelling.
+fn supermicro_h11ssl_unit1_relayed_day_is_day_granularity(day: RelayedDay) -> Bool {
+  !string_contains(s: day as String, pattern: "T")
+    && !string_contains(s: day as String, pattern: ":")
+    && string_contains(s: day as String, pattern: "-")
+}

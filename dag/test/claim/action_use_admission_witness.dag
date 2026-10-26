@@ -29,6 +29,7 @@ import gunbc.action_use_admission {
   action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
   admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
   upload_artifact_action, checkout_action, setup_rust_action, cache_save_action,
+  download_artifact_action, google_auth_action,
   realized_use_is_a_repository_selection,
 }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
@@ -289,7 +290,8 @@ fn census_holds(c: RealizedCensus) -> Bool {
 // eval-step budget. This join is what makes the per-file claims the census: a workflow added without
 // a claim, or a claim naming a file that is gone, refuses here, by name.
 data realized_workflow_files: List<String> = [
-  "fleet-converge.yml", "heal.yml", "instrument-dispatch.yml", "microvm-shakedown.yml", "witnesses.yml"
+  "fleet-converge.yml", "heal.yml", "instrument-dispatch.yml", "microvm-shakedown.yml", "witnesses.yml",
+  "branch-run-grant-broker.yml", "drift-watch.yml", "heal-publish.yml"
 ]
 
 fn listed_workflow_files() -> List<String> {
@@ -406,6 +408,44 @@ test fn census_witnesses_uses_are_modeled_and_executed_exactly() -> Bool {
   census_holds(c: c)
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+}
+
+// THE GRANT BROKER RUNS THE BROKER FROM A CHECKOUT, NOT FROM AN ARTIFACT. Its one job checks the
+// repository out and builds the broker under the pinned toolchain (its .github/workflows header and
+// gunbc's run-grant flow); a census that skipped this file would admit a tag-pin or an unmodeled
+// action reintroduced there unseen. The claim pins both admissions by name, so it is this file's
+// reader, not the roster's echo: census_file reads the bytes from the checkout.
+test fn census_branch_run_grant_broker_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "branch-run-grant-broker.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+}
+
+// DRIFT-WATCH READS THE TREE TO COMPARE IT. It is the scheduled lane that refuses silent main drift
+// (#13724); it uses the same two admitted releases as the broker. The pin distinguishes a real read
+// from a vacuous no-refusal: an empty census_file would satisfy census_holds only through uses > 0
+// and would have nothing in admitted_texts to match here.
+test fn census_drift_watch_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "drift-watch.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+}
+
+// HEAL-PUBLISH IS THE ONLY WORKFLOW THAT DOWNLOADS AND AUTHENTICATES. It carries the heal artifact's
+// publish path (#13641): checkout, the download-artifact step the heal job's upload is paired with,
+// the pinned toolchain, and google-github-actions/auth in front of the push. All four are admitted
+// releases (gunbc.action_use_admission download_artifact_action, google_auth_action); pinning them
+// here is what makes this file's per-file claim its own census -- dropping any one of the four from
+// the admission set reds exactly this claim, and no other.
+test fn census_heal_publish_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "heal-publish.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: download_artifact_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: google_auth_action))
 }
 
 // ADMITTED IS NOT SELECTED. Swatinem/rust-cache v2.9.1 declares node24 and is admitted exactly, but

@@ -117,10 +117,10 @@ data direct_windowed_compare_and_set_source: String = "module probe_direct_windo
 data direct_windowed_hold_source: String = "module probe_direct_windowed_hold\nimport std.types { NonEmptyStr }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport gunbc.durable_cas_file_store { CasGenerationWindow }\nimport gunbc.durable_exclusive_hold_file_store { FileHoldAcquireOutcome, file_hold_acquire_windowed }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, o: DurableHoldOwnerRef, w: CasGenerationWindow) -> FileHoldAcquireOutcome {\n  file_hold_acquire_windowed(root: r, slot_key: k, requested_owner: o, window: w)\n}\n"
 
 // the raw commit with a caller-chosen retention
-data direct_raw_outcome_source: String = "module probe_direct_raw_outcome\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasGenerationPublication, VerifiedCasAttempt, CasSlotRetention, cas_compare_and_set_outcome_over }\nimport gunbc.filesystem_interface { local_filesystem }\nimport std.durable_compare_and_set { CasOutcome }\nfn direct(r: NonEmptyStr, p: CasGenerationPublication, t: CasSlotRetention, v: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {\n  cas_compare_and_set_outcome_over(fs: local_filesystem, root: r, publication: p, retention: t, verified: v)\n}\n"
+data direct_raw_outcome_source: String = "module probe_direct_raw_outcome\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasGenerationPublication, VerifiedCasAttempt, CasSlotRetention, cas_compare_and_set_outcome }\nimport std.durable_compare_and_set { CasOutcome }\nfn direct(r: NonEmptyStr, p: CasGenerationPublication, t: CasSlotRetention, v: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {\n  cas_compare_and_set_outcome(root: r, publication: p, retention: t, verified: v)\n}\n"
 
 // the raw observation with a caller-chosen retention
-data direct_raw_observe_source: String = "module probe_direct_raw_observe\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasSlotRetention, CasSlotProbe, cas_observe_retained_slot_over }\nimport gunbc.filesystem_interface { local_filesystem }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, t: CasSlotRetention) -> CasSlotProbe {\n  cas_observe_retained_slot_over(fs: local_filesystem, root: r, key: k, retention: t)\n}\n"
+data direct_raw_observe_source: String = "module probe_direct_raw_observe\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasSlotRetention, CasSlotProbe, cas_observe_retained_slot }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, t: CasSlotRetention) -> CasSlotProbe {\n  cas_observe_retained_slot(root: r, key: k, retention: t)\n}\n"
 
 // deleting an audit slot's generations below a caller-chosen head
 data direct_raw_reclaim_source: String = "module probe_direct_raw_reclaim\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.durable_cas_file_store { CasGenerationWindow, CasWindowReclamation, cas_reclaim_below }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, w: CasGenerationWindow, h: CasGeneration) -> CasWindowReclamation {\n  cas_reclaim_below(root: r, key: k, window: w, head: h)\n}\n"
@@ -134,11 +134,11 @@ test fn a_direct_windowed_hold_call_is_an_admission_refusal() -> ProcessExit {
 }
 
 test fn a_direct_raw_outcome_call_is_an_admission_refusal() -> ProcessExit {
-  census_exit(census_verdict(census: admission_refusals(source: direct_raw_outcome_source, callee: "cas_compare_and_set_outcome_over"), holds: fn(n) { n == 1 }))
+  census_exit(census_verdict(census: admission_refusals(source: direct_raw_outcome_source, callee: "cas_compare_and_set_outcome"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_direct_raw_observe_call_is_an_admission_refusal() -> ProcessExit {
-  census_exit(census_verdict(census: admission_refusals(source: direct_raw_observe_source, callee: "cas_observe_retained_slot_over"), holds: fn(n) { n == 1 }))
+  census_exit(census_verdict(census: admission_refusals(source: direct_raw_observe_source, callee: "cas_observe_retained_slot"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_direct_raw_reclaim_call_is_an_admission_refusal() -> ProcessExit {

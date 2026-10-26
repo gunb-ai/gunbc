@@ -59,6 +59,7 @@ type TargetProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
   | NativeCensusVerbProducer { verb: NativeCensusVerbWord }
+  | SelfHostFrontierProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
   | SharedTypeLeafCollisionCensusProducer
@@ -101,6 +102,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
     NativeCensusVerbProducer { verb: _ } => optional_absent()
+    SelfHostFrontierProducer {} => optional_absent()
     GenericIdentityCensusProducer {} => optional_absent()
     InterpolationHoleCensusProducer {} => optional_absent()
     SharedTypeLeafCollisionCensusProducer {} => optional_absent()

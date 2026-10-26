@@ -21,9 +21,11 @@ held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors
 | `Approve/Wire.swift` | GENERATED (`gunbc.approve_ios_swift_wire`). Mirror of the modeled HTTP wire: emitter, strict readers, routes, headers; `URLSession` over the tailnet |
 | `Approve/DeviceKeys.swift` | enclave decision key (`[.privateKeyUsage, .biometryCurrentSet]` at creation), App Attest, and the one keychain item shape |
 | `Approve/EnrolmentState.swift` | the durable enrolment state: signedOut → enrolled → revoked (phases from `gunbc.approve_ios_enrolment_machine`; a key the enclave refuses reads as signedOut; revoked leaves only by signing in with a new key) |
-| `Approve/AppState.swift` | transitions, APNs token forwarding, authenticated reads, redemption |
+| `Approve/OperationErrors.swift` | GENERATED (`gunbc.approve_ios_swift_operation_errors` over `gunbc.approve_ios_operation_errors`). One current error per operation: the operation's next success removes it, a new failure replaces it, and leaving the phases it is relevant in drops it. Never a log |
+| `ApproveTests/OperationErrorsTests.swift` | GENERATED (same module). The error lifetime against `error_scenarios` / `expected_relevance`, the literal ruling the `.dag` witness also runs |
+| `Approve/AppState.swift` | transitions, APNs token forwarding, authenticated reads, redemption; records every operation's outcome into `OperationErrors` |
 | `Approve/ApproveApp.swift` | entry point, APNs token delivery, push wakes the list |
-| `Approve/Views.swift` | Enrol, Inbox, Detail |
+| `Approve/Views.swift` | Enrol, Revoked, and the deck: one full-screen request card at a time (swipe right approves, left denies, two large buttons as the non-gesture equivalent) |
 | `ApproveTests/ProtocolVectorTests.swift` | GENERATED (`gunbc.approve_ios_swift_protocol_vector_tests`; its surface-name set is built from the fixture's `surface_vectors`). Byte builders and envelopes vs the emitted vectors; absence of the fixture FAILS |
 | `Approve/Assets.xcassets/AppIcon.appiconset/` | the generated 1024 PNG (script projection of the mark.svg geometry) |
 
@@ -63,9 +65,9 @@ fixes on first build.
   (enrolment, token) pair stops, and the next token delivery or enrolment adoption starts a fresh loop. `adopt()` (enrolment) re-registers for APNs and runs the loop, so
   a token delivered before the enrolment answered is forwarded.
 - **Wire.swift** is a mechanical mirror of `gunbc.auth.approval_device_wire` "The HTTP wire": an ordered emitter matching `serialize_json` byte for byte, strict readers (unknown/missing/empty member and unadmitted `kind` refuse at their path), path segments spelled `id-` + padded base64url of the identity's UTF-8 bytes (total, injective, never refused) and transported verbatim. `ApproveTests` round-trips every request envelope in `vectors.json` through decoder → encoder and matches the bytes. **Standing of that check:** authored and un-enrolled — no lane here compiles Swift, so it executes only when the operator runs it (`gunbc.approve_ios_app` `approve_ios_vector_check_unenrolled_frontier` names what would enrol it).
-- **Inbox**: `GET /approve/device/pending` on open, pull-to-refresh, and on push, authenticated by an App Attest assertion over `device_read_client_data` (headers `X-Approval-Assertion`, `X-Approval-Enrollment`, `X-Approval-Requested-At`; 60 s skew). The push carries only
+- **Deck** (operator direction 2026-10-24, "one giant button"): ONE request card at a time, full screen, the first of the server's answer; swipe right to approve, left to deny, or the large Approve/Deny buttons; when nothing needs attention the screen says so and shows nothing else. Deciding re-lists, so the decided request leaves and the next card appears. The set is exactly what the server answers, replaced on every read: the requests that still need the operator, i.e. pending and not yet expired (`gunbc.auth.approval_decision_store` `pending_escalations`; a decided or expired request is not returned, the expiry boundary being the one redemption refuses at). `GET /approve/device/pending` on open, pull-to-refresh, and on push, authenticated by an App Attest assertion over `device_read_client_data` (headers `X-Approval-Assertion`, `X-Approval-Enrollment`, `X-Approval-Requested-At`; 60 s skew). The push carries only
   `notification_id`; nothing from it is displayed as the request.
-- **Detail**: `GET /approve/device/requests/<escalation_id>` returns the stored request byte for byte
+- **Card**: `GET /approve/device/requests/<escalation_id>` returns the stored request byte for byte
   plus a stateless `RedemptionChallenge` and both verbs' capabilities. The screen strictly decodes
   `requester`, `purpose`, `destructive` and `expires_at` from the stored request (any missing member
   refuses the presentation and disables both buttons; typed `ApprovalTarget` and the access lifetime

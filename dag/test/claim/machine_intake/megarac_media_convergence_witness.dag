@@ -18,6 +18,8 @@ import gunbc.machine_intake.mount_establishment {
   mount_standing_as_of,
 }
 import gunbc.machine_intake.megarac_media_attach {
+  MegaRacShareBinding,
+  MegaRacShareNfs,
   AttachReadiness,
   ConvergeStepAttachFromListing,
   ConvergeStepAwaitReadiness,
@@ -117,6 +119,8 @@ import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { EndReleaseKeptHostOn, media_attach_text, media_attach_outcome_reason, MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, MediaAttachNotAttempted, StalePowerOffNotNeeded, end_media_is_owed, HandoffMediaWithheldAtRecheck, handoff_media_harness, harness_finding_text, MtCollins1HandoffMedia, MtCollins1EndMedia, EndMediaObserved, EndMediaNotTaken, media_loss_after_handoff, outcome_attributing_media_loss }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_boot_media_gate }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
+import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
+import extdeps.network.ipv4 { render_ipv4_address }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -449,43 +453,59 @@ fn general_with(server: String, path: String, kind: String, mount: String, error
   join(["{ \"cd_remote_server_address\": \"", server, "\", \"cd_remote_source_path\": \"", path, "\", \"cd_remote_share_type\": \"", kind, "\", \"remote_media_support\": 0, \"mount_cd\": ", mount, ", \"cd_error_code\": ", error, " }"], "")
 }
 
-// The binding the production caller passes is derived from srv2's address and the export row, and
-// the controller's own answer binds to it: the morning read (error 0) is bound.
-test fn the_derived_share_binds_the_controllers_own_answer() -> Bool {
-  (mtcollins1_media_share.server_address as String) == "192.168.1.188"
+// THE RECEIPTS BELOW ARE DATED, AND SO IS THE BINDING THEY ARE JUDGED AGAINST. On 2026-09-27 srv2
+// served the export at 192.168.1.188; on 2026-10-24 the operator moved srv2 to its 1G NIC (now .201).
+// The captures stay verbatim, so they are judged against the binding of their own day, not the live
+// one -- otherwise every mismatch test below would mismatch on the server first and stop
+// discriminating the path, type and mount member it names.
+data share_as_of_2026_09_27: MegaRacShareBinding = MegaRacShareBinding {
+  server_address: "192.168.1.188" as NonEmptyStr,
+  source_path: "/srv/bmc" as NonEmptyStr,
+  share_type: MegaRacShareNfs,
+}
+
+// The binding the production caller passes is DERIVED from srv2's address row and the export row:
+// it renders gunbc.fleet.fleet_reach srv2_lan_ipv4, never a literal copied here.
+test fn the_production_share_is_derived_from_srv2s_address_row() -> Bool {
+  (mtcollins1_media_share.server_address as String) == (render_ipv4_address(addr: srv2_lan_ipv4) as String)
     && (mtcollins1_media_share.source_path as String) == "/srv/bmc"
-    && (match share_binding_standing(body: mtcollins1_media_general_2026_09_27_morning_as_reported, expected: mtcollins1_media_share) { ShareBound => true _ => false })
+}
+
+// The controller's own answer of that day binds to that day's binding: the morning read (error 0) is bound.
+test fn the_derived_share_binds_the_controllers_own_answer() -> Bool {
+  (share_as_of_2026_09_27.source_path as String) == "/srv/bmc"
+    && (match share_binding_standing(body: mtcollins1_media_general_2026_09_27_morning_as_reported, expected: share_as_of_2026_09_27) { ShareBound => true _ => false })
 }
 
 // The code is judged at readiness, not in the share binding: the evening read, cd_error_code 16, still binds.
 test fn a_nonzero_cd_error_is_not_a_share_mismatch() -> Bool {
-  match share_binding_standing(body: mtcollins1_media_general_2026_09_27, expected: mtcollins1_media_share) {
+  match share_binding_standing(body: mtcollins1_media_general_2026_09_27, expected: share_as_of_2026_09_27) {
     ShareBound => true
     _ => false
   }
 }
 
 test fn another_server_is_a_mismatch_naming_it() -> Bool {
-  match share_binding_standing(body: general_with(server: "192.168.1.99", path: "/srv/bmc", kind: "nfs", mount: "1", error: "0"), expected: mtcollins1_media_share) {
+  match share_binding_standing(body: general_with(server: "192.168.1.99", path: "/srv/bmc", kind: "nfs", mount: "1", error: "0"), expected: share_as_of_2026_09_27) {
     ShareMismatch { observed: o } => o.server_address == "192.168.1.99"
     _ => false
   }
 }
 
 test fn another_path_is_a_mismatch_naming_it() -> Bool {
-  match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/other", kind: "nfs", mount: "1", error: "0"), expected: mtcollins1_media_share) {
+  match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/other", kind: "nfs", mount: "1", error: "0"), expected: share_as_of_2026_09_27) {
     ShareMismatch { observed: o } => o.source_path == "/srv/other"
     _ => false
   }
 }
 
 test fn a_cifs_share_or_an_unmounted_share_is_a_mismatch() -> Bool {
-  (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "cifs", mount: "1", error: "0"), expected: mtcollins1_media_share) { ShareMismatch { observed: o } => o.share_type == "cifs" _ => false })
-    && (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "nfs", mount: "0", error: "0"), expected: mtcollins1_media_share) { ShareMismatch { observed: o } => o.mount_cd == "0" _ => false })
+  (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "cifs", mount: "1", error: "0"), expected: share_as_of_2026_09_27) { ShareMismatch { observed: o } => o.share_type == "cifs" _ => false })
+    && (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "nfs", mount: "0", error: "0"), expected: share_as_of_2026_09_27) { ShareMismatch { observed: o } => o.mount_cd == "0" _ => false })
 }
 
 test fn a_general_document_missing_a_member_is_unreadable_not_bound() -> Bool {
-  match share_binding_standing(body: "{ \"cd_remote_server_address\": \"192.168.1.188\", \"mount_cd\": 1 }", expected: mtcollins1_media_share) {
+  match share_binding_standing(body: "{ \"cd_remote_server_address\": \"192.168.1.188\", \"mount_cd\": 1 }", expected: share_as_of_2026_09_27) {
     ShareUnreadable { detail: _ } => true
     _ => false
   }
@@ -647,7 +667,7 @@ test fn nothing_presented_with_a_code_outside_the_table_and_the_host_on_refuses_
 fn observed(general: String, configurations: String) -> MegaRacAttachResult {
   MegaRacAttachResult {
     outcome: MegaRacPresentationObserved {
-      share: share_binding_standing(body: general, expected: mtcollins1_media_share),
+      share: share_binding_standing(body: general, expected: share_as_of_2026_09_27),
       readiness: attach_readiness(answered: true, body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32),
       cd_error: cd_error_reading(body: general, firmware: megarac_firmware_0_32),
       general: MegaRacRawRead { answered: true, body: general, observed_at: Present { value: 5000 } },
@@ -981,14 +1001,16 @@ test fn an_unconfirmed_handoff_is_reported_as_attempted() -> Bool {
   count(findings) == 1 && (match findings.first() { Present { value: f } => string_contains(s: f, pattern: "attempted and not confirmed")  Absent => false })
 }
 
-// The raw, timed settings read reaches the rendered artifact.
+// The raw, timed settings read reaches the rendered artifact, bound to readiness: the code before any
+// write differs (16), so a render that swapped the two fields or dropped the timestamp reds. A nonzero
+// code renders as observed with no meaning, the standing MegaRacCdErrorCode gives every nonzero value.
 test fn the_rendered_artifact_keeps_the_raw_timed_settings_at_readiness() -> Bool {
   let rendered = media_attach_text(record: attempted(result: MegaRacAttachResult {
-    outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_42, cd_at_ready: cd_42, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) },
+    outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_42, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) },
     session_release: SessionReleased,
     baseline: none,
   }))
-  string_contains(s: rendered, pattern: "13100") && string_contains(s: rendered, pattern: "42 (uncatalogued)")
+  string_contains(s: rendered, pattern: "and at readiness 42 (observed; no meaning established) (general settings answered at 13100: ")
 }
 
 // THE VERDICT IS THE TYPED EXIT CODE, NOT STDERR WORDING (review 71971): a complete HTTP error with

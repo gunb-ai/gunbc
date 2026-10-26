@@ -7,9 +7,11 @@ import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.exec.command { argv_words }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
-import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { fleet_known_hosts_rows, ssh_target_wire }
+import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path, boot_medium_reader_ssh_key, boot_medium_reader_ssh_key_fingerprint }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.host.boot_medium { BootMedium, BootMediumReadbackHeld, BootMediumReadbackDigestDiffers, boot_medium_readback }
+import gunbc.host.boot_medium { BootMedium, BootMediumReadbackHeld, BootMediumReadbackDigestDiffers, boot_medium_readback, bmc_boot_image_export }
 import gunbc.machine_intake.boot_image_fetch { boot_image_published_path }
 
 // THE BOOT-TIME READBACK OF THE SELECTED MEDIUM, whichever medium that is. The medium row carries the
@@ -44,6 +46,8 @@ type BootMediumServedReadback
   | BootMediumServedRecordMalformed { record_path: NonEmptyStr, content: String }
   | BootMediumServedRecordDisagrees { record_path: NonEmptyStr, recorded: NonEmptyStr, selected: NonEmptyStr }
   | BootMediumServedNotAdmitted { cause: String }
+  | BootMediumServedHeldThroughLink { host: NonEmptyStr, link_path: NonEmptyStr, target_name_derived: NonEmptyStr, measured_digest: NonEmptyStr }
+  | BootMediumServedNoReaderForRecord { record_path: NonEmptyStr }
 
 type BootMediumServedCheck
   = BootMediumServedMeasureOnly
@@ -138,6 +142,9 @@ fn boot_medium_served_refusal(subject: NonEmptyStr, readback: BootMediumServedRe
     BootMediumServedRecordDisagrees { record_path: p, recorded: r, selected: sel } =>
       Present { value: concat(subject as String, " boot: the derivation record ", p as String, " names ", r as String, " but the medium row selects ", sel as String, "; the row does not describe the current derivation") }
     BootMediumServedNotAdmitted { cause: c } => Present { value: concat(subject as String, " boot: ", c) }
+    BootMediumServedHeldThroughLink { host: _, link_path: _, target_name_derived: _, measured_digest: _ } => none
+    BootMediumServedNoReaderForRecord { record_path: p } =>
+      Present { value: concat(subject as String, " boot: the medium owes its derivation record ", p as String, " before it is measured, and the boot medium reader key reads only the served link; no reader exists for that record, so refusing rather than reaching for the fleet key") }
   }
 }
 
@@ -215,3 +222,71 @@ fn boot_medium_served_readback(medium: BootMedium, check: BootMediumServedCheck,
 }
 
 data boot_medium_served_attempt_raw: String = "boot-medium-served-readback"
+
+// ── THE SAME READBACK OVER THE BOOT MEDIUM READER KEY (gunbc.host.boot_medium_reader_key) ──────────
+// For a boot that does not hold the fleet key. The key is forced to one command, sha256sum of the
+// served link, so its answer must be exactly that command's one line: "<hex>  <link path>". Anything
+// else -- a second line, another path, a line that is not a digest -- is not the forced command's output
+// and refuses, which is what any other command run under the key would produce. The digest is then
+// judged by the one readback rule, so a link pointing at another image diverges and refuses. The
+// target's name is never read: when the digests agree the receipt carries the medium's image name as
+// target_name_derived, derived from that match.
+fn boot_medium_served_reader_join(medium: BootMedium, host: NonEmptyStr, link_path: NonEmptyStr, measure: RemoteAnswer) -> BootMediumServedReadback {
+  if measure.exit_code != 0 {
+    BootMediumServedUnreadable { host: host, served_path: link_path, reason: concat("exit=", to_string(measure.exit_code), " ", trim(s: measure.stderr)) }
+  } else {
+    let line = trim(s: measure.stdout)
+    match sha256sum_digest(line: line) {
+      Absent => BootMediumServedMeasureMalformed { served_path: link_path, content: line }
+      Present { value: measured } =>
+        if line != join([measured, "  ", link_path as String], "") {
+          BootMediumServedMeasureMalformed { served_path: link_path, content: line }
+        } else {
+          match boot_medium_readback(medium: medium, observed: measured as NonEmptyStr) {
+            BootMediumReadbackHeld => BootMediumServedHeldThroughLink { host: host, link_path: link_path, target_name_derived: medium.image_name, measured_digest: measured as NonEmptyStr }
+            BootMediumReadbackDigestDiffers { image_name: _, expected: e, observed: o } => BootMediumServedDiverged { served_path: link_path, expected: e, measured: o }
+          }
+        }
+    }
+  }
+}
+
+// THE CHECK OVER THE READER: only a measure-only medium can be read; a medium that owes its record first
+// refuses by that name, and the link lives on the one export the reader key is authorized for.
+fn boot_medium_served_reader_after_check(medium: BootMedium, check: BootMediumServedCheck, host: NonEmptyStr, measure: fn() -> RemoteAnswer) -> BootMediumServedReadback {
+  match check {
+    BootMediumServedCheckRefused { cause: c } => BootMediumServedNotAdmitted { cause: c }
+    BootMediumServedRecordFirst { record_path: rp } => BootMediumServedNoReaderForRecord { record_path: rp }
+    BootMediumServedMeasureOnly =>
+      if (medium.export.dir as String) != (bmc_boot_image_export.dir as String) || (ssh_target_wire(target: medium.export.target) as String) != (ssh_target_wire(target: bmc_boot_image_export.target) as String) {
+        BootMediumServedNotAdmitted { cause: concat("the medium is served from an export the boot medium reader key is not authorized on: ", medium.export.dir as String) }
+      } else {
+        boot_medium_served_reader_join(medium: medium, host: host, link_path: boot_medium_served_link_path(), measure: measure())
+      }
+  }
+}
+
+// THE PRODUCER OVER THE READER KEY. CONSUMPTION (DESIGN section 3c): a declared frontier. The boot selects
+// it when its credential source no longer holds the fleet key -- the branch account narrowed to the BMC
+// credential and this key -- which is the third change of the mtcollins1 approval-free branch boot plan
+// (work item adhoc-0abea207-7ec); until then the boot reads over the fleet key, and this producer refuses
+// while the key is unminted.
+fn boot_medium_served_readback_over_reader(medium: BootMedium, check: BootMediumServedCheck, attempt: NonEmptyStr) -> BootMediumServedReadback {
+  let target = medium.export.target
+  let host = known_hosts_host_field(address: target.address) as NonEmptyStr
+  let link = boot_medium_served_link_path()
+  match boot_medium_reader_ssh_key {
+    Absent => boot_medium_served_reader_after_check(medium: medium, check: check, host: host, measure: fn() { RemoteAnswer { exit_code: 255, stdout: "", stderr: "the boot medium reader key is not minted (gunbc.host.boot_medium_reader_key)" } })
+    Present { value: key } =>
+      match boot_medium_reader_ssh_key_fingerprint {
+        Absent => boot_medium_served_reader_after_check(medium: medium, check: check, host: host, measure: fn() { RemoteAnswer { exit_code: 255, stdout: "", stderr: "the boot medium reader key has no recorded fingerprint (gunbc.host.boot_medium_reader_key)" } })
+        Present { value: fp } =>
+          match prepare_ssh_agent_context(attempt_raw: attempt, key: key, fingerprint: fp, rows: fleet_known_hosts_rows()) {
+            FleetSshContextRefused { cause: c } => boot_medium_served_reader_after_check(medium: medium, check: check, host: host, measure: fn() { RemoteAnswer { exit_code: 255, stdout: "", stderr: c } })
+            FleetSshContextReady { context: context, receipt: _ } =>
+              boot_medium_served_reader_after_check(medium: medium, check: check, host: host,
+                measure: fn() { remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: boot_medium_served_argv(path: link))) })
+          }
+      }
+  }
+}
