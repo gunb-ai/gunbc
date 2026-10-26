@@ -82,7 +82,6 @@ pub enum EvalBuiltinArm {
     FreeCallExportSignatureFacts,
     FreeCallDeclFacts,
     FreeCallDeclFactsAt,
-    FreeCallTypeDeclarerQualifiedNames,
     FreeCallModuleDeclarationFacts,
     FreeCallModuleDeclarationFactsAt,
     FreeCallFactCardinalityDeclFacts,
@@ -123,7 +122,6 @@ pub enum EvalBuiltinArm {
     FreeCallRequiredFloorNominalSubjectModuleIdentities,
     FreeCallEntryClosureModuleIdentities,
     FreeCallCompileDagCallFormLeafGuard,
-    FreeCallObserveDeclaredImportClosureSymbolBinding,
     FreeCallWitnessLayerRootsCompileCleanCheck,
     FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
     FreeCallRecordGeneratedArtifactDriftGateClean,
@@ -231,7 +229,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
         "decl_facts" => Some(EvalBuiltinArm::FreeCallDeclFacts),
         "decl_facts_at" => Some(EvalBuiltinArm::FreeCallDeclFactsAt),
-        "type_declarer_qualified_names" => Some(EvalBuiltinArm::FreeCallTypeDeclarerQualifiedNames),
         "module_declaration_facts" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFacts),
         "module_declaration_facts_at" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFactsAt),
         "fact_cardinality_decl_facts" => Some(EvalBuiltinArm::FreeCallFactCardinalityDeclFacts),
@@ -272,7 +269,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "required_floor_nominal_subject_module_identities" => Some(EvalBuiltinArm::FreeCallRequiredFloorNominalSubjectModuleIdentities),
         "entry_closure_module_identities" => Some(EvalBuiltinArm::FreeCallEntryClosureModuleIdentities),
         "compile_dag_call_form_leaf_guard" => Some(EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard),
-        "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
         "witness_layer_roots_compile_clean_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck),
         "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
         "record_generated_artifact_drift_gate_clean" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean),
@@ -378,7 +374,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
     ("free_call.decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFacts };
     ("free_call.decl_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFactsAt };
-    ("free_call.type_declarer_qualified_names") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTypeDeclarerQualifiedNames };
     ("free_call.module_declaration_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFacts };
     ("free_call.module_declaration_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFactsAt };
     ("free_call.fact_cardinality_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFactCardinalityDeclFacts };
@@ -419,7 +414,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.required_floor_nominal_subject_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRequiredFloorNominalSubjectModuleIdentities };
     ("free_call.entry_closure_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEntryClosureModuleIdentities };
     ("free_call.compile_dag_call_form_leaf_guard") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard };
-    ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };
     ("free_call.witness_layer_roots_compile_clean_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck };
     ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
     ("free_call.record_generated_artifact_drift_gate_clean") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean };

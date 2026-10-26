@@ -463,6 +463,7 @@ fn boot_credential_source_from_pattern(on_reviewed_main: Bool, p: AuthorizationP
     HumanOnlyStep { step: _ } => BootCredentialSourceRefused { cause: "the selection named a human-only step, which no workflow credential can perform" as NonEmptyStr }
     OperatorOwnSession => BootCredentialSourceRefused { cause: "the selection named the operator's own session, which a workflow run does not hold" as NonEmptyStr }
     AdministratorEdge => BootCredentialSourceRefused { cause: "the selection named the administrator edge, which a boot credential does not use" as NonEmptyStr }
+    ApprovedConvergenceGrant => BootCredentialSourceRefused { cause: "the selection named a convergence-inherited approval, which no boot credential source realizes" as NonEmptyStr }
   }
 }
 
