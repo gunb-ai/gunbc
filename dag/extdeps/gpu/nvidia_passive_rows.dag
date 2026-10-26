@@ -51,7 +51,7 @@ fn thickness_obligation(card: NonEmptyStr) -> NonEmptyStr {
 }
 
 fn airflow_obligation(card: NonEmptyStr) -> NonEmptyStr {
-  join(["NVIDIA document, not yet read by this repository: the ", card as String, " product brief or datasheet (PB number and version), its thermal/cooling section -- TDP, the airflow the passive heatsink needs (CFM or m3/h, and at what static pressure if the document gives it), and the maximum inlet air temperature. The card is passive: forced air is the ONLY cooling path, so the duct's blower is sized from this figure and from nothing else. Record the document's exact URL, its version, and the page/section the figures are on."], "")
+  join(["NVIDIA document, not yet read by this repository: the ", card as String, " product brief or datasheet (PB number and version), its thermal/cooling section -- TDP, the airflow the passive heatsink needs (CFM or m3/h, and at what static pressure if the document gives it), and the maximum inlet air temperature. The figure lands in this row's required_airflow field, which carries std.measure.MillilitrePerSecond -- convert CFM or m3/h to ml/s when transcribing, do not store the raw number under the field's name. The card is passive: forced air is the ONLY cooling path, so the duct's blower is sized from this figure and from nothing else. Record the document's exact URL, its version, and the page/section the figures are on."], "")
 }
 
 fn bracket_obligation(card: NonEmptyStr) -> NonEmptyStr {
@@ -72,7 +72,7 @@ data t10_row: CardRow = CardRow {
   fin_face_extent: NeedsReading {read_obligation: fin_obligation(card: "Tesla T10")},
   fin_face_depth: NeedsReading {read_obligation: fin_obligation(card: "Tesla T10")},
   tdp: NeedsReading {read_obligation: airflow_obligation(card: "Tesla T10")},
-  required_airflow_ml_per_s: NeedsReading {read_obligation: airflow_obligation(card: "Tesla T10")},
+  required_airflow: NeedsReading {read_obligation: airflow_obligation(card: "Tesla T10")},
   bracket: NeedsReading {read_obligation: bracket_obligation(card: "Tesla T10")},
   sources: [
     "probe 2026-10-26: no NVIDIA product brief or datasheet reachable (nvidia.com and images.nvidia.com 404; resources.nvidia.com serves the site shell without spec content; archive.org unavailable) -- see the module header for the verbatim statuses",
@@ -94,7 +94,7 @@ data a2_row: CardRow = CardRow {
   fin_face_extent: NeedsReading {read_obligation: fin_obligation(card: "A2")},
   fin_face_depth: NeedsReading {read_obligation: fin_obligation(card: "A2")},
   tdp: NeedsReading {read_obligation: airflow_obligation(card: "A2")},
-  required_airflow_ml_per_s: NeedsReading {read_obligation: airflow_obligation(card: "A2")},
+  required_airflow: NeedsReading {read_obligation: airflow_obligation(card: "A2")},
   bracket: NeedsReading {read_obligation: bracket_obligation(card: "A2")},
   sources: [
     "operator, 2026-10-26: 'NVIDIA A2: low-profile, passive' -- an envelope class and a cooling method, no millimetres; recorded so the row is not mistaken for unsourced, and it seals nothing",
@@ -117,7 +117,7 @@ data a16_row: CardRow = CardRow {
   fin_face_extent: a16_transcribed(field: "window_length", value: micrometer(count: 88030)),
   fin_face_depth: a16_transcribed(field: "fin_setback", value: micrometer(count: 6000)),
   tdp: NeedsReading {read_obligation: "NVIDIA A16 product brief PB-10518-001 v02: the brief is read (extdeps.gpu.nvidia_a16) and publishes no TDP; the TDP has to come from a document that does, or from the card's own label"},
-  required_airflow_ml_per_s: NeedsReading {read_obligation: airflow_obligation(card: "A16")},
+  required_airflow: NeedsReading {read_obligation: airflow_obligation(card: "A16")},
   bracket: NeedsReading {read_obligation: "operator or document: the A16's bracket height and form. The brief says full-height full-length and no drawing backs it (extdeps.gpu.nvidia_a16 states the ambiguity rather than resolving it)"},
   sources: [
     "extdeps.gpu.nvidia_a16 -- NVIDIA A16 product brief PB-10518-001 v02, images.nvidia.com/content/Solutions/data-center/vgpu-a16-product-brief.pdf, read 2026-10-19: FHFL 10.5 dual-slot class, 266.70 mm stated length, no dimension drawing, no TDP, no airflow",

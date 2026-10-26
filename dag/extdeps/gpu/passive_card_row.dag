@@ -1,7 +1,7 @@
 module extdeps.gpu.passive_card_row
 
 import std.types {Bool, Int, NonEmptyStr, String, List}
-import std.measure {Micrometer, Watt}
+import std.measure {Micrometer, MillilitrePerSecond, Watt}
 import std.optional {Present, Absent}
 import extdeps.external_authority {CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt}
 
@@ -66,7 +66,7 @@ type CardRow {
   // Power and air. TDP without airflow is not a cooling requirement, and airflow without TDP is not a
   // claim about this card -- both are separate fields with separate obligations.
   tdp: RowField<Watt>
-  required_airflow_ml_per_s: RowField<Int>
+  required_airflow: RowField<MillilitrePerSecond>
   bracket: RowField<NonEmptyStr>
   // The documents this row was built from, or the probe that looked for them and found nothing. A row
   // with no sources asserts nothing and says where to look.
@@ -78,7 +78,7 @@ fn row_fields(row: CardRow) -> List<RowField<Int>> {
   // conjunction does. The Int here is a witness only; the fields' values are never read through it.
   [witness(field: row.end_face_length), witness(field: row.end_face_width), witness(field: row.card_thickness),
    witness(field: row.fin_face_extent), witness(field: row.fin_face_depth), witness(field: row.tdp),
-   witness(field: row.required_airflow_ml_per_s), witness(field: row.bracket)]
+   witness(field: row.required_airflow), witness(field: row.bracket)]
 }
 
 fn witness<V>(field: RowField<V>) -> RowField<Int> {
@@ -99,7 +99,7 @@ fn row_unread_fields(row: CardRow) -> List<String> {
     concat(concat(unread(name: "end face length", field: witness(field: row.end_face_length)), unread(name: "end face width", field: witness(field: row.end_face_width))),
            concat(unread(name: "card thickness", field: witness(field: row.card_thickness)), unread(name: "fin face extent", field: witness(field: row.fin_face_extent)))),
     concat(concat(unread(name: "fin depth behind fin face", field: witness(field: row.fin_face_depth)), unread(name: "TDP", field: witness(field: row.tdp))),
-           concat(unread(name: "required airflow", field: witness(field: row.required_airflow_ml_per_s)), unread(name: "bracket", field: witness(field: row.bracket)))))
+           concat(unread(name: "required airflow", field: witness(field: row.required_airflow)), unread(name: "bracket", field: witness(field: row.bracket)))))
 }
 
 // A row prints only when EVERY field carries a value AND every value carries a standing that permits
