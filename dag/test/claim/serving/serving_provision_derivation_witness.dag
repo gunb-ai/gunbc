@@ -13,15 +13,16 @@ import gunbc.serving.serving_launch {
   ServingServeNotListening, ServingServeKeyUnbound, serving_startup_program, serving_startup_program_text,
 }
 import gunbc.serving.serving_provision_derivation {
-  ServingProvisionDerived, ServingProvisionDerivedVllm, ServingProvisionRefusedStartSource, ServingProvisionRefusedNoServedModelId,
+  ServingProvisionDerived, ServingProvisionDerivedVllm, ServingProvisionRefusedStartSource, ServingProvisionRefusedVllmDeployment, ServingProvisionRefusedNoServedModelId,
   serving_provision_derive,
 }
+import std.algebra { length }
 import product.fabric.serving_recipe {
   ServingRecipe, ServingModelArtifact, ServingStartRoute, WeightsNamedUnpinned, StartRouteUnread, StartFromObjectStoreObserved,
   SettingOperatorPolicy, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
 }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
-import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, qwen3_8_flash_next_pins_cohere }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -130,6 +131,30 @@ test fn a_vllm_recipe_derives_from_the_modeled_launch_and_never_falls_back() -> 
         && (match i.launch.engine.max_model_len { Absent => true, _ => false })
         && (match i.launch.engine.kv_cache_dtype { Absent => true, _ => false })
         && (match i.launch.engine.served_model_name { Absent => true, _ => false })
+        // The provision names the bytes it starts from shard by shard: the derived per-file roster is
+        // the publisher's pinned 23, and it folds against the manifest it accompanies.
+        && length(xs: i.weights_digests) == 23
+        && qwen3_8_flash_next_pins_cohere()
+    _ => false
+  }
+}
+
+// THE LAUNCH BINDS TO THE RECIPE BY IDENTITY, NOT BY ENGINE (review 86738). A SECOND vLLM recipe — a
+// different checkpoint, a different host — must not be handed srv1's deployment: its wrapper models one
+// host, one key file, one TLS pair and one LMCache sizing, so borrowing it would produce a provision
+// contradicting that recipe's own weights, with no refusal. This is the fabricated-plausible-output
+// path DESIGN §5 rules out; it refuses with a typed cause instead.
+test fn a_second_vllm_recipe_does_not_borrow_srv1_s_launch() -> Bool {
+  let flash = serving_recipe_flash_next_lab_vllm
+  let other_host = ServingRecipe {
+    id: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_a_second_vllm_deployment"),
+    model: flash.model, engine: flash.engine, catalog_unit: flash.catalog_unit,
+    published_tcp_port: flash.published_tcp_port, cards: flash.cards, driver_floor: flash.driver_floor,
+    disk: flash.disk, cache: flash.cache,
+    start: flash.start, throughput: flash.throughput,
+  }
+  match serving_provision_derive(recipe: other_host) {
+    ServingProvisionRefusedVllmDeployment { cause: c } => (c as String) != ""
     _ => false
   }
 }

@@ -1,10 +1,11 @@
 module extdeps.local_inference_lab.qwen3_8_flash_next
 
 import std.types { Bool, List, NonEmptyStr }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest, HubFileDigest, hub_file_digest }
+import std.algebra { list_append, length, string_contains }
 
 // THE LOCAL-INFERENCE-LAB QWEN3.8-FLASH-NEXT NVFP4 CHECKPOINT, AS ITS PUBLISHER'S OWN EXTDEPS AUTHORITY.
 // This is the carrier gunbc.plans.flex_supplier_generalization generalization_55 declared and nothing
@@ -110,4 +111,31 @@ data qwen3_8_flash_next_shard_pins: List<HubFileDigest> = [
 
 fn qwen3_8_flash_next_pinned_files() -> List<HubFileDigest> {
   [qwen3_8_flash_next_config_pin, qwen3_8_flash_next_index_pin]
+}
+
+// THE WHOLE PIN ROSTER the provision route carries: 21 shards + config.json + the index = 23 digested
+// files at the pinned revision. This is the CONSUMER that makes the per-file digests load-bearing:
+// gunbc.serving.serving_provision_derivation's vllm arm puts it into VllmServingProvisionInputs
+// (weights_digests), so a route DOES hold the shard digests a verifier checks against, and the witness
+// test.claim.serving.srv1_serving_launch_witness folds it against the manifest totals below. Without a
+// consumer these rows would be dead text (review 86738); the fold here is the first, cheapest check
+// that the rows and the manifest cannot drift apart silently.
+fn qwen3_8_flash_next_pin_roster() -> List<HubFileDigest> {
+  list_append(left: qwen3_8_flash_next_shard_pins, right: qwen3_8_flash_next_pinned_files())
+}
+
+// The roster folded against the manifest: 23 files, one revision everywhere, shard bytes summing to
+// the manifest's safetensors total and all bytes summing to the repository total. Pure rows — this is
+// decidable without the network, and the witness asserts it. Shards are recognised by the "-of-00021"
+// segment their names carry (config.json and the index do not contain it), so no path-prefix vocabulary
+// is needed here.
+fn qwen3_8_flash_next_pins_cohere() -> Bool {
+  let roster = qwen3_8_flash_next_pin_roster()
+  let shard_sum = fold(roster, init: 0, f: (acc, d) => if string_contains(s: d.path_in_repo as String, pattern: "-of-00021") { acc + (byte_size_count(b: d.bytes) as Int) } else { acc })
+  let total_sum = fold(roster, init: 0, f: (acc, d) => acc + (byte_size_count(b: d.bytes) as Int))
+  let one_revision = fold(roster, init: true, f: (acc, d) => acc && ((d.revision as String) == (qwen3_8_flash_next_manifest.revision as String)))
+  length(xs: roster) == 23
+    && one_revision
+    && shard_sum == (byte_size_count(b: qwen3_8_flash_next_manifest.safetensors_bytes) as Int)
+    && total_sum == (byte_size_count(b: qwen3_8_flash_next_manifest.repository_total_bytes) as Int)
 }
