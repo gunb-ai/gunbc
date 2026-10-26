@@ -4670,8 +4670,7 @@ fn ct_seed_build_reproducibility_falsifier_test() -> String {
     "             has stopped discriminating and must be re-aimed, not deleted.\"\n",
     "        );\n",
     "        let _ = std::fs::remove_dir_all(&work);\n",
-    "    }\n",
-  ))
+    "    }\n\n")
 }
 
 fn ct_shared_roster_follows_declaration_test() -> String {

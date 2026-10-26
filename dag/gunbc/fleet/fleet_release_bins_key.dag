@@ -684,9 +684,7 @@ fn axis_line(axis: GenerationAxis, product: ReleaseBinsProduct) -> List<Node> {
       lit(t: "build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\\n"),
       lit(t: product.build_line), var(n: "SOURCE_CLOSURE"), words(ws: [lit(t: "sha256:"), var(n: "AXIS_ENVIRONMENT_DIGEST")]),
       lit(t: release_bins_roster_text(product: product)),
-    ])]
-    // THE SEED-BUILD ENVIRONMENT, AS ITS OWN ROW: see release_bins_seed_build_environment_digest.
-    BuildConfigurationAxis => [cmd(ws: [
+    ]), cmd(ws: [
       lit(t: "printf"),
       lit(t: "seed_build_environment=%s\\n"),
       lit(t: release_bins_seed_build_environment_digest()),
