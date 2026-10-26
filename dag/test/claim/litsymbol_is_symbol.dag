@@ -37,16 +37,19 @@ fn blocking_in_class(source: String, wanted_class: String) -> Int {
 
 // RED for the widening: Symbol is outside kernel_type_set, so conformance once emitted nothing at ANY
 // ground type and `-> Int { ^tag }` passed. Each refusal asserts the class, not only a nonzero count.
+// The asserted class is the one the census checker EMITS at that position: Int refuses with
+// DeclaredTypeNotInhabited, while Bool and a record refuse with TypeMismatch -- two classes for one
+// judgment. Unifying them is the follow-up: bright-pike-492's item-2 scalar-formal rule.
 test fn symbol_at_int_refuses() -> Bool {
   blocking_in_class(source: "module litsymbol.atint\nfn f() -> Int { ^tag }\n", wanted_class: "DeclaredTypeNotInhabited") >= 1
 }
 
 test fn symbol_at_bool_refuses() -> Bool {
-  blocking_in_class(source: "module litsymbol.atbool\nfn f() -> Bool { ^tag }\n", wanted_class: "DeclaredTypeNotInhabited") >= 1
+  blocking_in_class(source: "module litsymbol.atbool\nfn f() -> Bool { ^tag }\n", wanted_class: "TypeMismatch") >= 1
 }
 
 test fn symbol_at_record_refuses() -> Bool {
-  blocking_in_class(source: "module litsymbol.atrec\ntype P { x: Int }\nfn f() -> P { ^tag }\n", wanted_class: "DeclaredTypeNotInhabited") >= 1
+  blocking_in_class(source: "module litsymbol.atrec\ntype P { x: Int }\nfn f() -> P { ^tag }\n", wanted_class: "TypeMismatch") >= 1
 }
 
 // The declared gap stays open and is a control, not a refusal: Symbol at String is accepted
