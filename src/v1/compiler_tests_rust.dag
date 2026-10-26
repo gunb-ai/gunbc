@@ -2347,6 +2347,9 @@ fn ct_nat_beyond_the_64_bit_range_refuses_on_both_routes_test() -> String {
     "        let _ = std::fs::remove_dir_all(&dir);\n",
     "    }\n",
     "\n"
+  )
+}
+
 // What a type's spelling names is read from its arguments, never from a declaration's members or arms.
 // The RED is supplied at the walks' own interface: the shape infer hands the emitter for a call whose
 // result is a record (the declaration item itself), with a member the fn's environment cannot bind.
