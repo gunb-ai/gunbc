@@ -57,8 +57,11 @@ data pool_front_chat_completions_path: NonEmptyStr = "/pool/v1/chat/completions"
 data pool_front_models_path: NonEmptyStr = "/pool/v1/models" as NonEmptyStr
 
 // The model id a request names. "slop" is the front's alias for any card; this module declares both because
-// the front accepts both, and which one a consumer sends is that consumer's policy.
-data pool_front_model_id: NonEmptyStr = "Qwen3.8-Flash-Next" as NonEmptyStr
+// the front accepts both, and which one a consumer sends is that consumer's policy. The card model's id is the
+// one the front's GET /pool/v1/models returned on 2026-10-26 ("flash-next, slop", read from the srv1 lab's
+// roster probe); the operator's 2026-10-17 statement had spelled it "Qwen3.8-Flash-Next", which the live list
+// does not carry.
+data pool_front_model_id: NonEmptyStr = "flash-next" as NonEmptyStr
 data pool_front_any_card_model_id: NonEmptyStr = "slop" as NonEmptyStr
 
 // The header that keeps one conversation on the card holding its cache. Its value is the caller's

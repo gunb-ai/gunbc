@@ -30,7 +30,7 @@ import gunbc.harness.harness_reasoning_wire {
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 import std.measure { token_count_value }
 import extdeps.external_authority { CitedFigure, cited_figure_read }
-import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_model_id, pool_front_session_header_name }
+import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_model_id, pool_front_any_card_model_id, pool_front_session_header_name }
 import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
 import gunbc.harness.harness_cli { harness_turn_exit }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -57,16 +57,41 @@ fn w_models_body(id: String) -> String {
   join(["{\"data\":[{\"id\":\"", id, "\",\"max_model_len\":262144,\"owned_by\":\"ninfer\"}]}"], "")
 }
 
+// The front's list as read live on 2026-10-26: the card model and the any-card alias.
+fn w_models_body_two(a: String, b: String) -> String {
+  join(["{\"data\":[{\"id\":\"", a, "\",\"owned_by\":\"pool\"},{\"id\":\"", b, "\",\"owned_by\":\"pool\"}]}"], "")
+}
+
+fn w_models_body_three(a: String, b: String, c: String) -> String {
+  join(["{\"data\":[{\"id\":\"", a, "\"},{\"id\":\"", b, "\"},{\"id\":\"", c, "\"}]}"], "")
+}
+
 fn w_roster_after(reading: OperatorModelsReading) -> HarnessBackendRoster {
   harness_roster_of(folded: harness_operator_roster_step(acc: w_empty_fold(), route: harness_operator_route, standing: operator_route_standing(route: harness_operator_route, reading: reading)))
 }
 
 // ── 1. THE ROSTER SEES THE ROUTE ────────────────────────────────────────────────────────────────
 test fn the_roster_sees_the_operator_route_when_models_answers_with_its_model() -> Bool {
-  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "Qwen3.8-Flash-Next") }) {
+  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body_two(a: "flash-next", b: "slop") }) {
     HarnessRosterServing { serving: s, declined: d, unresolved: _ } =>
       count(s) == 1 && count(d) == 0
     HarnessRosterNoneServing { declined: _, unresolved: _ } => false
+  }
+}
+
+// RED: the alias is not admitted when it could land on a family whose wire the unit does not carry.
+test fn the_alias_is_refused_when_the_front_lists_another_family_behind_it() -> Bool {
+  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body_three(a: "flash-next", b: "slop", c: "glm-5.3-flash") }) {
+    HarnessRosterServing { serving: _, declined: _, unresolved: _ } => false
+    HarnessRosterNoneServing { declined: d, unresolved: _ } => count(d) == 1
+  }
+}
+
+// RED: the card model alone, without the alias the request names, is not admitted.
+test fn the_card_model_without_the_alias_is_not_admitted() -> Bool {
+  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "flash-next") }) {
+    HarnessRosterServing { serving: _, declined: _, unresolved: _ } => false
+    HarnessRosterNoneServing { declined: d, unresolved: _ } => count(d) == 1
   }
 }
 
@@ -190,7 +215,7 @@ test fn the_route_urls_are_the_pool_fronts_origin_plus_its_declared_paths() -> B
 
 test fn the_route_carries_the_fronts_card_concurrency_and_the_served_model_id() -> Bool {
   harness_operator_route.concurrency_ceiling == 7
-    && (harness_unit_model_id(unit: Qwen38FlashNextOnPoolFront) as String) == "Qwen3.8-Flash-Next"
+    && (harness_unit_model_id(unit: Qwen38FlashNextOnPoolFront) as String) == "slop"
 }
 
 test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_read() -> Bool {
@@ -243,7 +268,7 @@ test fn a_request_on_the_pool_route_carries_the_bearer_the_session_and_the_model
     Present { value: t } =>
       (t as String) == "Authorization: Bearer k-123\nx-pool-session: attempt-77\n"
     Absent => false
-  }) && (harness_unit_model_id(unit: Qwen38FlashNextOnPoolFront) as String) == (pool_front_model_id as String)
+  }) && (harness_unit_model_id(unit: Qwen38FlashNextOnPoolFront) as String) == (pool_front_any_card_model_id as String)
     && (pool_front_session_header_name as String) == "x-pool-session"
 }
 

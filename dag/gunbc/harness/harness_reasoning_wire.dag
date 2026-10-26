@@ -21,7 +21,7 @@ import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import std.nat { Nat }
 import extdeps.external_authority { CitedFigure, cited_figure_read }
-import extdeps.pool.pool_front { pool_front_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token }
+import extdeps.pool.pool_front { pool_front_any_card_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token }
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
   deepseek_v4_thinking_end_token, deepseek_v4_chat_reasoning_field,
@@ -411,6 +411,11 @@ fn harness_unit_thinking_requested(unit: HarnessServingUnit, level: HarnessReaso
   }
 }
 
+// THE POOL ARM ASKS FOR ANY CARD (operator direction 2026-10-26: use the slop pool generously). The front
+// places "slop" on whichever card is free; the unit's wire facts (reasoning member, tool-call parser) are the
+// card model's, so the alias is admitted only while every card the front lists is that model
+// (gunbc.harness.harness_operator_route operator_route_standing), and a front that adds another family refuses
+// rather than being misparsed.
 // THE MODEL IDENTITY, ONCE. This is the seam's answer to "what do I put in the request's model
 // field", and each arm delegates to its own upstream authority rather than spelling a string here.
 fn harness_unit_model_id(unit: HarnessServingUnit) -> NonEmptyStr {
@@ -419,7 +424,7 @@ fn harness_unit_model_id(unit: HarnessServingUnit) -> NonEmptyStr {
     Glm53FlashOnVllm => glm_5_3_flash_model_id
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_model_id
     Qwen3_8_27bOnNinfer => operator_pod_ninfer_launch.model_id
-    Qwen38FlashNextOnPoolFront => pool_front_model_id
+    Qwen38FlashNextOnPoolFront => pool_front_any_card_model_id
   }
 }
 
