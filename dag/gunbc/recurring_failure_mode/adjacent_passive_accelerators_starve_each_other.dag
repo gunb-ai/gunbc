@@ -9,8 +9,6 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // first card's intake, so neither gets the airflow its rating assumes, and no clock or power setting
 // recovers it. The placement was a fact the board's slot order already implied, written nowhere, so
 // the failure was discovered by a GPU leaving the bus rather than refused at placement.
-//
-// Home program: gunbc.plans.gpu_card_host_program (node N0e).
 
 data adjacent_passive_accelerators_starve_each_other: RecurringFailureMode = RecurringFailureMode {
   identity: "adjacent_passive_accelerators_starve_each_other" as NonEmptyStr,
