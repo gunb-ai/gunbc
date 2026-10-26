@@ -20,7 +20,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.service_exec { ServiceResultExitCode }
-import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_attempt_state_path_for_instance }
 import gunbc.roadmap.roadmap_belt_actuate { belt_exec, ExecOk, ExecFailed, ExecRefused }
 import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitRecord, AttemptProcessExitedWith }
 import gunbc.dispatch_replay_recording {
@@ -35,7 +35,6 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_dashboard_lab_id,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_outcome_receipt_json, belt_commit_outcome_receipt, belt_commit_outcome_last_basename, CommitRecorded, CommitDeferred, BeltCommitOutcome,
 }
