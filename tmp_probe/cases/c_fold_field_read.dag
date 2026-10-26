@@ -1,9 +1,8 @@
 module tprobe.c_fold_field_read
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
-import std.list { distinct_by_key, duplicated_by_key, list_map }
-import std.algebra { fold, list_push }
-import std.io { filesystem_listing_entry_names }
+import std.list { distinct_by_key, duplicated_by_key }
+import std.algebra { list_push, list_map }
 
 type probe_point {
   name: NonEmptyStr
