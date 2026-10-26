@@ -32,7 +32,8 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The bracket's obligations in this file, kept OUT of the data row per DESIGN §4c: the file-mode
+// The bracket's obligations in this file, carried as // annotation per DESIGN §4c (no commentary
+// is stored in data rows): the file-mode
 // and directory-mode checks are TYPED (Charter 2, 2026-10-19) -- the bracket classifies
 // coreutils.Stat.PathMode's output (coreutils_stat_path_mode -> PathModeObservation) only through
 // owner_only_mode_verdict, whose three arms are distinct values, so at a refusal site an unreadable
@@ -49,7 +50,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // claim_batch --wet --source-root dag --source-root src/v2 --entry
 // dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag --functions
 // witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target
-data real_execution_home_doc: String = "Wet execution witnesses for SECRETREF-WIRE-0 ssh key materialization"
 
 data ssh_key_owner_only_mode: FileMode = FileMode {
   owner: PermissionBits { read: true, write: true, execute: false },
@@ -106,7 +106,7 @@ fn owner_only_mode_verdict(observation: PathModeObservation, owed: FileMode) -> 
 }
 
 // DISCRIMINATING, dry (no host effects; the file is wet-excluded, so this runs only through
-// explicit claim_batch --functions, not discovery — see the annotations above real_execution_home_doc). It drives the SAME
+// explicit claim_batch --functions, not discovery — see the annotation block at the top of this file). It drives the SAME
 // owner_only_mode_verdict the wet bracket calls, from a supplied PathModeObserved{zero mode} and a
 // PathModeUnobservable{reason}, and asserts they land on DIFFERENT arms: the zero mode must arrive
 // as WrongModeObserved still carrying the zero FileMode (so a producer that reported read-failure as
@@ -199,10 +199,6 @@ type BracketModeReadback {
   diagnostic: String
 }
 
-// The accepted arm's obligations, at top level (not nested inside the outcome match): each carried
-// observation IS its owed mode (file 600, directory 700), the accepted arms are the only arms with
-// an empty diagnostic, the paths come from the producer's own scoped root, and nothing sits under
-// target/.
 // The accepted arm's one check, parameterized by the owed FileMode (§6b). A refusal arm answers
 // false, so only an accepted arm carries its observation onward.
 fn verdict_accepted_against(verdict: SshKeyModeVerdict, owed: FileMode) -> Bool {
@@ -213,6 +209,10 @@ fn verdict_accepted_against(verdict: SshKeyModeVerdict, owed: FileMode) -> Bool 
   }
 }
 
+// The accepted arm's obligations, at top level (not nested inside the outcome match): each carried
+// observation IS its owed mode (file 600, directory 700), the accepted arms are the only arms with
+// an empty diagnostic, the paths come from the producer's own scoped root, and nothing sits under
+// target/.
 fn bracket_readback_accepted(readback: BracketModeReadback) -> Bool {
   // One accepted-arm check, applied to each verdict with its owed mode (DESIGN §6b: one
   // implementation, not a per-mode copy).
