@@ -6,7 +6,13 @@ import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   TerminationProof
 }
+import std.types { List, Set }  // PROVISIONAL
+// Union of both sides: main added list_push to this import since the la-2 base; the la-3 delta adds
+// the PROVISIONAL std.types List/Set bindings (Map stays unbound; look-ahead-3 withdrew the Map binding).
 import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
+// PROVISIONAL (measure/n7-lookahead-2, census probe, NEVER LANDS): bind the kernel container
+// spellings used bare in this module to their H1 homes in std.types (List, Set). Map is NOT bound
+// here (look-ahead-3: the Map binding is withdrawn; Map sites stay unbound and are what the census counts).
 
 type GraphEdge {
   caller: String
