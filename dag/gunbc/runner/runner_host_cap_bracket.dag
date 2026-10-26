@@ -1043,22 +1043,51 @@ type BracketAcquisition
 // A slot added after the last converge, or one whose registration moved under the job, fails leg 3 and
 // withholds: an unverifiable holder is an unverifiable exclusion, and a wrong exclusion lets the bracket
 // unmask or restart a slot it never drained -- the accident class this whole module is built to refuse.
+// WHO THE BRACKET MUST LEAVE ALONE, as three arms (review 86600; DESIGN §5: every path succeeds fully or
+// fails with a typed, located diagnostic -- a case whose answer is DECIDABLE is not a failure):
+//  - HolderIdentified: the job provably runs on this named desired slot of the subject host, so THAT unit
+//    is excluded from the bracket and judged by its live cgroup read-back.
+//  - HolderNotOnSubject: the job provably runs nowhere this pass manages (its cgroup leaf is not a runner
+//    unit at all, or names a slot this pass does not manage). The exclusion set is then EMPTY -- bracket
+//    every desired unit, exactly as before the holder work existed. Refusing this case would narrow the
+//    target (a host could only ever be converged from its own slots) with no safety to show for it.
+//  - HolderUnidentified: the job looks like it runs inside a runner slot of this host but the facts will
+//    not join (unreadable cgroup, ambiguous/malformed membership, missing RUNNER_NAME, unreadable or
+//    disagreeing registration). An unverifiable holder means an unverifiable EXCLUSION, and a wrong
+//    exclusion stops the job mid-run -- so only THIS arm refuses.
 type BracketHolder
   = HolderIdentified { unit: NonEmptyStr }
+  | HolderNotOnSubject { why: String }
   | HolderUnidentified { cause: String }
+
+// THE ONE EXPRESSION OF THE EXCLUSION SET (review 86600, §3): which units the bracket may touch. An
+// identified holder removes exactly its own unit; a job not on the subject host removes nothing, so the
+// remote converge keeps bracketing EVERY desired unit. Nothing else in the route may re-derive this list.
+fn bracket_units_to_bracket(units: List<NonEmptyStr>, holder: BracketHolder) -> List<NonEmptyStr>
+{
+  match holder {
+    HolderIdentified { unit: h } => filter(units, u => u != h)
+    // Both other arms remove NOTHING, for two different reasons that the wire keeps distinct: an
+    // off-subject job occupies no unit this pass manages, and an unidentified holder never reaches this
+    // function at all (the entry withholds first). Spelled out rather than a catch-all so a future arm on
+    // BracketHolder cannot inherit "exclude nothing" by accident.
+    HolderNotOnSubject { why: _ } => units
+    HolderUnidentified { cause: _ } => units
+  }
+}
+
+fn bracket_holder_leaf(relative_path: String) -> String {
+  fold(split(s: relative_path, delimiter: "/"), init: "", f: (acc, part) => if trim(s: part) == "" { acc } else { trim(s: part) })
+}
 
 // THE LEAF-TO-UNIT STEP, PURE. The cgroup leaf of a runner job is the unit name itself
 // (systemd.slice/actions-runner@<instance>.service); the ONE parser in gunbc.runner.runner_unit decides
 // whether the leaf is a runner unit at all, and the unit string is rebuilt from the parser's own
 // instance, so what comes out is exactly the name the bracket speaks in its argv and refusals.
-fn bracket_holder_leaf(relative_path: String) -> String {
-  fold(split(s: relative_path, delimiter: "/"), init: "", f: (acc, part) => if trim(s: part) == "" { acc } else { trim(s: part) })
-}
-
 fn bracket_holder_unit_of_leaf(leaf: String) -> BracketHolder
 {
   match read_runner_unit_name(observed: leaf as NonEmptyStr) {
-    NotARunnerUnit { observed: o } => HolderUnidentified { cause: join(["the cgroup leaf '", o as String, "' is not an actions-runner@ unit: this job is not running inside a runner slot on the subject host"], "") }
+    NotARunnerUnit { observed: o } => HolderNotOnSubject { why: join(["the cgroup leaf '", o as String, "' is not an actions-runner@ unit: this job runs outside every runner slot of the subject host, so there is nothing to exclude"], "") }
     RunnerUnitInstanceMalformed { observed: o, cause: c } => HolderUnidentified { cause: join(["the cgroup leaf '", o as String, "' names an actions-runner@ instance that cannot be parsed: ", c as String], "") }
     RunnerUnitInstance { registration_name: i } => HolderIdentified { unit: runner_unit_name_of_registration(registration_name: i) }
   }
@@ -1067,8 +1096,10 @@ fn bracket_holder_unit_of_leaf(leaf: String) -> BracketHolder
 // THE FULL IDENTIFICATION. Each refusal names the leg that failed, because an operator reading a withheld
 // converge has to be able to tell "this job was not dispatched from a slot" apart from "the slot's
 // registration moved underneath the job" -- the first is a dispatch-shape bug and the second is a race.
-// EVERY failure leg answers HolderUnidentified, and the driver withholds on it: identification is what
-// makes the holder's exclusion safe, so a job that cannot say who it is converges nobody.
+// A job that cannot say who it is answers HolderUnidentified and the driver withholds on it:
+// identification is what makes the holder's exclusion safe, so an ambiguous holder converges nobody.
+// A job that positively says "I am not on a slot of this host" answers HolderNotOnSubject instead, which
+// is a decidable outcome, not a failure -- see bracket_units_to_bracket.
 fn bracket_holder_identify(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> BracketHolder
 {
   let self_read = Filesystem.Read(path: procfs_path_literal(p: ProcSelfCgroup) as String)
@@ -1077,12 +1108,16 @@ fn bracket_holder_identify(target: SshTarget, context: FleetSshExecutionContext,
       CurrentCgroupObserved { relative_path: rel } =>
         match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: rel as String)) {
           HolderUnidentified { cause: c } => HolderUnidentified { cause: c }
+          // The leaf names something that is not a runner unit: the job occupies no slot this pass manages.
+          HolderNotOnSubject { why: w } => HolderNotOnSubject { why: w }
           HolderIdentified { unit: unit } =>
             // THE UNIT MUST BE ONE THIS PASS MANAGES. If the job runs on a slot the desired shape does not
             // list (a slot mid-decommission, or a dispatch landed on a leftover runner), excluding it from
             // the bracket is meaningless -- withhold instead of converging a host around a slot nobody owns.
             if length(filter(units, u => u == unit)) == 0 {
-              HolderUnidentified { cause: join(["the job's own unit '", unit as String, "' is not a desired slot of this host: the converge job is running somewhere this pass does not manage"], "") }
+              // The bracket only ever touches DESIRED units, so a job sitting on a leftover or
+              // mid-decommission slot has nothing of this pass's to drain -- the exclusion set is empty.
+              HolderNotOnSubject { why: join(["the job's own unit '", unit as String, "' is not a desired slot of this host: this pass manages no unit the job occupies"], "") }
             } else {
               match actions_variable_read(name: github_runner_name_variable_name) {
                 ActionsVariableAbsent { variable: v, detail: d } => HolderUnidentified { cause: join(["the job carries no ", v, " (", d, "): a converge job dispatched outside a runner job has no verifiable holder"], "") }

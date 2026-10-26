@@ -630,7 +630,7 @@ fn holder_at_desired_rows() -> SlotCapLive {
 }
 
 test fn a_holder_whose_live_cgroup_reads_back_at_desired_is_converged_and_settled() -> Bool {
-  match slot_cap_holder_verdict(unit: unit(n: "02"), live: holder_at_desired_rows(), desired: desired()) {
+  match slot_cap_holder_verdict(unit: unit(n: "02"), live: holder_at_desired_rows(), desired: desired(), ledger: LedgerFresh) {
     SlotCapsSelfAtDesired { unit: u } => (u as String) == "actions-runner@srv3-02.service" && slot_cap_outcome_settled(o: SlotCapsSelfAtDesired { unit: u })
     _ => false
   }

@@ -101,6 +101,13 @@ import gunbc.runner.runner_host_cap_bracket {
   ReleaseFitsEnvelope,
   ReleaseMayOutliveCancellation,
   HostCapDrainPolicy,
+  BracketHolder,
+  HolderIdentified,
+  HolderNotOnSubject,
+  HolderUnidentified,
+  bracket_holder_leaf,
+  bracket_holder_unit_of_leaf,
+  bracket_units_to_bracket,
 }
 
 // THE CONTROLS FOR THE DRAIN BRACKET'S DECISIONS, over supplied readings (the boundary these claims
@@ -1264,7 +1271,7 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
       // gated or foreign sets these controls read. The holder claims themselves run against the judgment
       // layer (slot_cap_holder_verdict) in runner_slot_cap_converge_witness, where every read-back shape
       // is a control rather than a leg sequence.
-      holder: u(n: "02"))
+      holder: HolderIdentified { unit: u(n: "02") })
   })
 }
 
@@ -1338,29 +1345,56 @@ test fn a_withheld_cap_phase_renders_no_certification() -> Bool {
 // ─── THE HOLDER, PARSED FROM ITS OWN CGROUP PATH (the pure legs of bracket_holder_identify) ───────
 // THE BRACKET REFUSES UNLESS IT CAN SAY WHICH SLOT IT RUNS ON, and the step from the job's own cgroup
 // leaf to a unit name is decided here, by the fleet's ONE runner-unit parser. These are the fail-closed
-// legs: a converge job dispatched somewhere that is not an actions-runner@ unit gets a refusal that
-// names the leaf, never a bracket around a stranger. (The join to the environment and the host's
-// registration -- Filesystem.Read of /proc/self/cgroup, RUNNER_NAME, the .runner file -- runs in
-// production over the same legs the bracket's other ssh claims script; the pure fold below is what
-// decides, given a leaf, who the holder is.)
+// legs: given a leaf, who is the holder? A runner leaf names its unit; a leaf that is not a runner unit
+// says the job is not on the subject host (naming the leaf); a malformed runner leaf refuses. (The join to
+// the environment and the host's registration -- Filesystem.Read of /proc/self/cgroup, RUNNER_NAME, the
+// .runner file -- runs in production over the same legs the bracket's other ssh claims script.)
 test fn a_runner_cgroup_leaf_identifies_the_holder_unit() -> Bool {
   match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-02.service")) {
     HolderIdentified { unit: u } => (u as String) == "actions-runner@srv3-02.service"
     HolderUnidentified { cause: c } => string_contains(s: c, pattern: "zzz-never")
+    HolderNotOnSubject { why: _ } => false
   }
 }
 
-test fn a_non_runner_leaf_refuses_naming_the_leaf() -> Bool {
+// A LEAF THAT IS NOT A RUNNER UNIT IS NOT A FAILURE. A dispatcher job (or any other unit on the host)
+// provably occupies no slot this pass manages, so there is nothing to exclude and the bracket takes every
+// desired unit -- the pre-holder behaviour. Folding this into the refusal arm would mean a host could only
+// ever be cap-converged from one of its own slots, a narrowed target with no safety to show for it.
+test fn a_non_runner_leaf_says_the_job_is_not_on_the_subject_host() -> Bool {
   match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/nginx.service")) {
-    HolderUnidentified { cause: c } => string_contains(s: c, pattern: "not an actions-runner@ unit") && string_contains(s: c, pattern: "nginx.service")
+    HolderNotOnSubject { why: w } => string_contains(s: w, pattern: "not an actions-runner@ unit") && string_contains(s: w, pattern: "nginx.service")
     HolderIdentified { unit: _ } => false
+    HolderUnidentified { cause: _ } => false
   }
+}
+
+// THE EXCLUSION SET, EXPRESSED ONCE (review 86600; DESIGN §3: each fact lives in exactly one place).
+// An identified holder removes exactly its own unit and nothing else; a job that is not on the subject
+// host removes nothing, so the remote converge still brackets EVERY desired unit. A pass that dropped a
+// second unit here, or dropped none for an identified holder, fails one of these two.
+test fn an_identified_holder_removes_only_its_own_unit() -> Bool {
+  let wanted = [u(n: "01"), u(n: "02"), u(n: "03")]
+  let kept = bracket_units_to_bracket(units: wanted, holder: HolderIdentified { unit: u(n: "02") })
+  length(kept) == 2 && !any(kept, x => x == u(n: "02")) && any(kept, x => x == u(n: "01")) && any(kept, x => x == u(n: "03"))
+}
+
+test fn a_job_off_the_subject_host_brackets_every_desired_unit() -> Bool {
+  let wanted = [u(n: "01"), u(n: "02"), u(n: "03")]
+  let kept = bracket_units_to_bracket(units: wanted, holder: HolderNotOnSubject { why: "the job runs on a dispatcher" })
+  length(kept) == 3 && all(wanted, x => any(kept, y => x == y))
+}
+
+test fn a_holder_outside_the_desired_units_removes_nothing() -> Bool {
+  let wanted = [u(n: "01"), u(n: "02")]
+  length(bracket_units_to_bracket(units: wanted, holder: HolderIdentified { unit: u(n: "09") })) == 2
 }
 
 test fn a_malformed_instance_leaf_refuses_naming_the_leaf() -> Bool {
   match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/actions-runner@.service")) {
     HolderUnidentified { cause: c } => string_contains(s: c, pattern: "cannot be parsed")
     HolderIdentified { unit: _ } => false
+    HolderNotOnSubject { why: _ } => false
   }
 }
 
