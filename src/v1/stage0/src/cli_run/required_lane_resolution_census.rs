@@ -93,6 +93,90 @@ pub fn required_floor_nominal_subject_module_identities(
     ModuleIdentityPopulation::Observed { modules }
 }
 
+/// THE TYPED ADMISSION ANSWER FOR ONE IDENTITY. The census's old receipt reported "never
+/// admitted" only as ABSENCE from both the admitted and the unreached lines -- an inferred
+/// exclusion a reader had to derive themselves (DESIGN section 5: every path fails or reports
+/// with a typed, located diagnostic, not silence). This arm makes the state itself the carrier:
+/// a queried identity the ingestion does not know PRIVES its state and its evidence, it does not
+/// go quiet. `IndexRefused` exists so an ingestion failure is never misread as a never-admitted
+/// verdict -- an unobserved identity is not an absent one.
+pub enum ModuleAdmission {
+    /// The ingestion admits the identity: some file under the source roots declares it.
+    Admitted { module: String },
+    /// No file in the tree at the run's SHA declares the identity. `deleting_commit` is DERIVED
+    /// (a pickaxe over the module header: the newest commit that changed the header's occurrence
+    /// count, verified to have found it in its parent), never hand-written; `None` means either
+    /// the identity never existed in the reachable history or the history is too shallow to
+    /// prove which -- the state still holds, the attribution just stays silent.
+    NeverAdmitted {
+        module: String,
+        run_sha: String,
+        deleting_commit: Option<String>,
+    },
+    /// The ingestion itself refused, so the identity's state was never observed. The census
+    /// must decide on this arm; reading it as never-admitted would be absence-as-evidence
+    /// smuggled back in through the error path.
+    IndexRefused { module: String, cause: String },
+}
+
+fn git_output(args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new("git").args(args).output().ok()?;
+    if out.status.success() {
+        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        None
+    }
+}
+
+fn regex_escape_identity(module: &str) -> String {
+    let mut out = String::new();
+    for c in module.chars() {
+        if ".^$*+?()[]{}|\\".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Query ONE identity against the ingestion, deriving the never-admitted evidence at run time.
+pub fn module_admission(source_roots: &[String], identity: &str) -> ModuleAdmission {
+    let identities = match source_root_ingest_module_identities_for_ci(source_roots) {
+        Ok(identities) => identities,
+        Err(cause) => {
+            return ModuleAdmission::IndexRefused {
+                module: identity.to_string(),
+                cause,
+            }
+        }
+    };
+    if identities.iter().any(|module| module == identity) {
+        return ModuleAdmission::Admitted {
+            module: identity.to_string(),
+        };
+    }
+    // The identity is in no file's `module` header. Establish WHERE it went, by derivation:
+    // the newest commit whose diff changed the occurrence count of the exact header line, and
+    // whether its parent still had it (only a commit that FOUND it in the parent deleted it --
+    // without this check, a commit that merely ADDED the header elsewhere would be accused).
+    let run_sha = git_output(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".to_string());
+    let header = format!("module {identity}\n");
+    let deleting_commit =
+        git_output(&["log", "-1", "--format=%H", "-S", &header, "--"]).and_then(|sha| {
+            let pattern = format!("^module {}\\s*$", regex_escape_identity(identity));
+            let parent = format!("{sha}^");
+            match git_output(&["grep", "-l", "-E", &pattern, &parent, "--"]) {
+                Some(_) => Some(sha),
+                None => None,
+            }
+        });
+    ModuleAdmission::NeverAdmitted {
+        module: identity.to_string(),
+        run_sha,
+        deleting_commit,
+    }
+}
+
 /// The loader closure of one `--entry` file: what `gunbc run --entry <path>` resolves before it
 /// evaluates anything. `entry_path` is workspace-relative, as the `run:` line spells it.
 pub fn entry_closure_module_identities(
@@ -122,4 +206,38 @@ pub fn entry_closure_module_identities(
     modules.sort();
     modules.dedup();
     ModuleIdentityPopulation::Observed { modules }
+}
+
+#[cfg(test)]
+mod tests {
+    /// THE DELETING COMMIT IS DERIVED, NOT WRITTEN. The instrument attributes a deletion by
+    /// running git over the module header; a hard-coded 40-hex SHA anywhere in this file's own
+    /// text would be a hand-written observation posing as a derived one (DESIGN 4b: a written-
+    /// down value is never evidence). This test scans THIS SOURCE FILE for any 40-hex run.
+    #[test]
+    fn the_instrument_carries_no_hand_written_commit_sha() {
+        let text = std::fs::read_to_string("src/cli_run/required_lane_resolution_census.rs")
+            .expect("instrument source readable from crate root");
+        let is_hex = |c: char| c.is_ascii_hexdigit();
+        let mut run = 0usize;
+        for c in text.chars() {
+            run = if is_hex(c) { run + 1 } else { 0 };
+            assert!(
+                run < 40,
+                "a 40-hex literal appears in the instrument source"
+            );
+        }
+    }
+
+    /// The escape class is real: an identity with regex metacharacters cannot crash or spoof
+    /// the `git grep` pattern used for the parent-contains check.
+    #[test]
+    fn identity_escaping_neutralises_metacharacters() {
+        // A regex metacharacter inside an identity must not reach `git grep -E` raw: `a.b*c`
+        // must match ONLY itself, so every metacharacter is escaped -- dots included.
+        let escaped = super::regex_escape_identity("a.b*c");
+        assert_eq!(escaped, "a\\.b\\*c");
+        // An identity with no metacharacters passes through untouched.
+        assert_eq!(super::regex_escape_identity("plainname"), "plainname");
+    }
 }
