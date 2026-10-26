@@ -85,6 +85,9 @@ import gunbc.target_invocation {
   admit_test_operand, test_operand_refusal_rendered, test_operand_set_form_refusal_rendered,
   TestOperandClaimRoute, ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved,
   claim_route_termination,
+  ClaimSourceRefusalCause, ClaimSourceUnparseable, ClaimSourceModuleHeaderAbsent,
+  ClaimSourceUnreadable, ClaimSourceRootUnreadable, ClaimSourceDirectoryNamedDag, ClaimSourceModuleCollision,
+  claim_source_refusal_rendered,
 }
 // `TargetPattern` IS DELIBERATELY NOT IMPORTED HERE, and the omission is the point. This module
 // already imports `extdeps.bazel.label`'s `TargetPattern`, which is a `LabelRefusal` CONSTRUCTOR
@@ -946,6 +949,18 @@ test fn the_claim_route_termination_maps_to_the_three_exit_statuses() -> Bool {
     && invocation_exit_status(t: claim_route_termination(verdicts: [ClaimUnobserved {}, ClaimDidNotHold {}])) == 1
     && invocation_exit_status(t: claim_route_termination(verdicts: [ClaimHeld {}, ClaimUnobserved {}])) == 2
     && invocation_exit_status(t: claim_route_termination(verdicts: [])) == 2
+}
+
+// A BROKEN CLAIM SOURCE IS LOCATED AND NAMES ITS CAUSE; THE TWO CAUSES RENDER DIFFERENTLY.
+test fn a_claim_source_refusal_names_the_file_and_its_cause() -> Bool {
+  claim_source_refusal_rendered(path: "dag/test/claim/x.dag", cause: ClaimSourceUnparseable { diagnostic: "d" })
+    == "claim source refused: dag/test/claim/x.dag: the file does not parse: d"
+    && claim_source_refusal_rendered(path: "dag/test/claim/y.dag", cause: ClaimSourceModuleHeaderAbsent {})
+      == "claim source refused: dag/test/claim/y.dag: a .dag under the claim root declares no module, so no claim label can name it (paths follow names)"
+    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceUnreadable { reason: "r" }) == "claim source refused: p: unreadable: r"
+    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceRootUnreadable { reason: "r" }) == "claim source refused: p: unreadable source root: r"
+    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceDirectoryNamedDag) == "claim source refused: p: a directory named like a .dag source; a source path is a file"
+    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceModuleCollision { other: "q" }) == "claim source refused: p: declares a module also declared by q; one module, one authority (DESIGN section 3), so de-fork or rename one side"
 }
 
 // THE CONTAINMENT DECIDES THE EXECUTOR, AND BOTH DIRECTIONS ARE PINNED.

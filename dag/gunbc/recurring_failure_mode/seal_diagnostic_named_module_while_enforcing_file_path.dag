@@ -1,0 +1,100 @@
+module gunbc.recurring_failure_mode.seal_diagnostic_named_module_while_enforcing_file_path
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// WHY THIS ROW EXISTS, AND WHY ITS RUNG IS LATENT RATHER THAN REACHED. The seal that protects a
+// `sole_constructor` type tells the author one thing and enforces another: the diagnostic names a
+// MODULE, the code compares FILE paths. Read alone that is a meaning fork, and the class is the one
+// this ledger already tracks -- a diagnostic whose text describes a boundary the check does not
+// implement, so a reader who trusts the sentence models the wrong wall. What separates this row
+// from `diagnostic_asserts_standing_no_check_evaluated` is that here a check DOES run; only its
+// NAME is wrong.
+//
+// The distinction that keeps this row honest is that today the fork is UNREACHABLE, and it is
+// unreachable by an executed refusal rather than by convention. warm-wolf-570 asked that this be
+// checked before a trigger was named, because naming a trigger the layout rule already forbids is
+// the error. So each separating input was driven through the sanctioned driver and the REFUSAL was
+// read AT ITS PRODUCER, which is where DESIGN §6 says a measurement lives: "Name the instrument,
+// never transcribe its output… a transcribed number rots unreachably." Nothing below quotes a run;
+// each claim names the code that re-derives it, and a grep that finds it.
+//
+//   - a second `module` header inside one `.dag` file never reaches an inference rule: the item loop
+//     `parse_unmarked_item` (src/v1/02_parse.dag) declines the stray header as a non-item, and
+//     `refuse_unparseable_module_sources` (src/v1/stage0/src/cli_run.rs) refuses the whole run rather
+//     than skipping the file. Re-derive: git grep -n 'fn parse_unmarked_item' -- src, and the same for
+//     fn refuse_unparseable_module_sources.
+//   - two `.dag` files declaring ONE module name are refused where the module index is built, at the
+//     `module-path collision` site in src/v1/stage0/src/cli_run.rs, which names both offending paths
+//     and cites the §3 single-authority rule it enforces. Re-derive: git grep -n 'module-path
+//     collision' -- src.
+//
+// Each of the two ways the carriers could separate is therefore refused at its own producer, so file
+// and module are equal and the seal cannot currently tell them apart: a LATENT meaning fork, where the
+// wall and its name agree for every input the compiler accepts today.
+//
+// WHAT THOSE TWO REFUSALS ARE, AND WHAT THEY ARE NOT (review 86393). They are what holds the fork closed
+// TODAY; they are neither this row's rung nor its ceiling. The reported rung stays BELOW the ladder
+// because no lens, gate, or red inspects a diagnostic whose sentence names one boundary while its
+// predicate enforces another -- and §4b rung 2 would report exactly such a mechanism. The ceiling is
+// where the class could be made unwritable by deriving both readings from one modelled boundary. The
+// two separate cleanly: relaxing a refusal makes the class REACHABLE to exercise; only the missing
+// capability, stated once, is what would close it. The collision refusal additionally settles what a
+// relaxed rule must still not permit (no last-root-wins shadowing).
+data seal_diagnostic_named_module_while_enforcing_file_path: RecurringFailureMode = RecurringFailureMode {
+  identity: "seal_diagnostic_named_module_while_enforcing_file_path" as NonEmptyStr,
+  // WHY CEILING IS `StructurallyGuaranteed` AND NOT `MechanicallyPreventable` (review 86393). The two
+  // ingest refusals this row cites are NOT rung 2 for THIS class: §4b rung 2 requires a mechanism that
+  // exposes and blocks the class's own invalid state, and nothing exposes or blocks a diagnostic whose
+  // sentence names a different boundary than its predicate enforces. Those two refusals block the
+  // PRECONDITION (file differing from module) that would make the divergence harmful; crediting them as
+  // this row's ceiling would hand the ledger a gate it never built, and §4b ob. 1 asks for a
+  // discriminating RED and an accepted control established FOR THE CLASS, which do not exist. The class
+  // is decidable and fully modelled, so §4b's "a decidable, fully modeled class may reach structural
+  // impossibility" applies and the ceiling is rung 3: one modelled boundary from which both the sentence
+  // and the predicate are derived leaves no room for them to disagree. Rung 4 is not claimed -- the
+  // sentence is an authored String, so a constructor-free model of agreement would need the wording
+  // generated rather than written, which is a modelling change beyond this class.
+  // WHY `current` STAYS BELOW THE LADDER: nothing is misjudged today, and the divergence has no gate of
+  // its own -- below the ladder, not rung 2. `ClimbableButUnbuilt` is then coherent: the remedy (state
+  // the boundary once) is writable now and nobody has written it.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "stating a boundary once -- one modelled boundary value from which both the diagnostic's sentence and the mint's predicate are derived, so a seal that binds a file cannot say it binds a module. Its absence, not the two ingest refusals, is what keeps this class below its ceiling: no mechanism today exposes or blocks the wording-versus-predicate divergence itself." } },
+
+
+  receipts: [
+    "**a seal that binds a FILE says it binds a MODULE** (INVALID STATE: `SoleConstructorViolation` is emitted when the CONSTRUCTION site's file differs from the sealed type's defining FILE -- `sole_constructor_construction_diags` compares `decl.span.file` against the construction `span.file` -- while the wording emitted for that class is built by `CompilerDiagnostic`'s renderer for `SoleConstructorViolation` (src/v1/00_core.dag, mirrored in src/v1/stage0/src/v1_std_core.rs), which names a MODULE as the boundary. Do not copy that wording in here; re-derive it from those two renderers. A reader who takes the sentence at face value believes the seal separates a construction from anything not in the type's own module. It does not: the comparison is on `span.file`, so any construction sharing the sealed type's FILE passes, and a construction that is outside the defining module yet still in that file is admitted. That divergence is unreachable today only because ingest enforces one module per file (see the CEILING receipt) -- file and module coincide BY ENFORCEMENT, not by the seal; relax that and a construction in another module but the same file slips through a check whose own name says it should not. INVALID: the wording and the check disagree about the boundary. VALID: they must state the same boundary -- reword to name the file, or compare the defining module instead of the file.)",
+
+    "THE FORK IS LATENT, NOT REACHED, AND THAT IS AN EXECUTED FACT, READ AT ITS PRODUCER RATHER THAN QUOTED FROM A RUN. warm-wolf-570's check before writing this row: is a file hosting two modules already unwritable? Two separating inputs were driven through the sanctioned driver, and what this row records is each refusal and WHERE it is produced, per DESIGN §6: \"Name the instrument, never transcribe its output... a transcribed number rots unreachably.\" The wording of each refusal is therefore left where it is generated instead of copied here, where it would rot. (a) A `.dag` file carrying a second `module` header never reaches an inference rule: the item loop `parse_unmarked_item` (src/v1/02_parse.dag) declines the stray header as a non-item, and `refuse_unparseable_module_sources` (src/v1/stage0/src/cli_run.rs) refuses the run whole rather than silently skipping the file. (b) Two `.dag` FILES declaring ONE module name are refused at module-index build at the `module-path collision` site in src/v1/stage0/src/cli_run.rs, which names both offending paths and cites the §3 single-authority rule it enforces and the shadowing incident that motivated it. Re-derive either from the greps named in this row's header comment. So for every tree the compiler accepts today, a file and a module are the same extent, and the seal's file-test and module-test select the same set.",
+
+    "DISTINGUISHING FACT: not `diagnostic_asserts_standing_no_check_evaluated` -- that class is a diagnostic whose asserted check NEVER RAN. Here a check runs, is located, and is correctly fail-closed; only its NAME describes a different boundary than the one it enforces. Also not `two_source_files_claiming_one_module_path_misdiagnosed` -- that row is about INGEST refusing a duplicate module path (arm (b) above, which it already owns); this row borrows that refusal as its LATENCY PROOF and concerns the seal's wording, which no existing row names.",
+
+    "RECOGNITION RULE: a diagnostic that names a boundary -- module, file, package, tree, namespace, root -- must be read next to the predicate that raises it, because the sentence is authored and the predicate is what runs. The tell is cheap and available before any experiment: the text contains a boundary NOUN while the code compares a different carrier (`span.file` against a `span.file`, a path string against a path string). Where the two disagree, the disagreement is only dangerous to the extent some input can separate the carriers -- so the next question is which executed refusal today makes them inseparable, and a row that cannot name one is asserting a live defect it has not shown to be reachable.",
+
+    "RUNG FOUND AT: BELOW THE LADDER -- latent (below, not outside: section 4b puts silent wrongness below the ladder, where there is no GuaranteeRung to be found at, and guarantee_rung's OutsideTheLadder is a different fact -- an external reality observed at a boundary. The class is below the ladder today and the CEILING receipt below states where it could be closed TO by derivation -- reaching it is not an event that happens to the class, it is the fix being written). No artifact is misjudged today: the file/module carriers are held equal by `parse_unmarked_item` and by the module-path-collision refusal, so the seal's wrong noun selects nothing it should not. The defect is real in the text and harmless only for as long as those two refusals hold.",
+
+    "CEILING: `StructurallyGuaranteed` — rung 3 of gunbc.guarantee_rung, numbered by `guarantee_rung_index`; read the number there rather than from a numeral copied into this row, which is the transcription DESIGN §6 refuses. Derived, not aspirational, in §4b's sense: the boundary at issue is ONE modelled fact, and both the diagnostic's sentence and the mint's predicate are readings of it. A change that derives the wording and the comparison from that one value leaves no room for the two to disagree, so the class becomes unwritable rather than merely exposed. The remedy is already named in the INVALID STATE receipt — compare the defining module instead of `span.file`, or reword to name the file — and either one is writable today, which is why the blocker is `ClimbableButUnbuilt` and not a grounding or a capability. Rung 4 is NOT claimed: the sentence is an authored String, so refusing a divergence outright would need the wording generated from the model rather than written by an author — a modelling change outside this class.",
+
+    "WHAT HOLDS IT CLOSED TODAY IS NOT THIS ROW'S RUNG AND NOT ITS CEILING (review 86393 caught the two being conflated). Two ingest refusals, each at its own producer, keep the carriers equal: the parse-side item refusal `parse_unmarked_item` (src/v1/02_parse.dag), surfaced whole-run by `refuse_unparseable_module_sources` (src/v1/stage0/src/cli_run.rs), and the index-side `module-path collision` refusal (same file). They make the fork unexerciseable, so nothing is misjudged — but they enforce a precondition of this class, not the class itself: no lens, gate, or red inspects a diagnostic whose sentence names one boundary while its predicate enforces another. That is why the reported rung is below the ladder and not rung 2 — rung 2 would report a gate for this class that does not exist, and §4b ob. 1 requires the discriminating RED and the accepted control to be established for the class being reported. If either refusal is relaxed without a replacement, the precondition stops holding and the divergence becomes live; the wording, not the check, is what would mislead the author who relaxed it. WHY THE FORK STAYS OPEN IN A LEDGER ROW RATHER THAN BEING CLOSED HERE: the remedy edits the sealing boundary's own renderer (src/v1/02_parse.dag and src/v1/stage0/src/v1_std_core.rs, whose wording 17 tree files carry, two of them pinning it verbatim in an artifact field (gunbc.self_compile_blocking_disposition and gunbc.emit_stage_blocking_population_census), so a reword is a change those fields must be updated with), which is a change to the security boundary rather than a change to the ledger, and it belongs in a PR that reviews the seal and its witnesses together. Today's exposure is a wrong noun in a message nobody can currently act on, which is exactly what a section 4b row is for: naming the class, its harm, and its remedy before the change that needs it exists.",
+
+    "CLIMB TRIGGER — THE CAPABILITY RESTORED, per §4b ob. 3 (a trigger naming an artifact states what happened, not what became possible): the capability is STATING A BOUNDARY ONCE, one modelled boundary value feeding both the diagnostic's sentence and the mint's predicate, so the two cannot be authored apart. What makes the class reachable to exercise is a different event and is NOT the climb: a change that lets one `.dag` file carry two modules, or two files declare one module name, WITHOUT a replacement for `parse_unmarked_item`'s item refusal or the module-path-collision refusal would take the class from latent to live, and at that moment the missing capability is what turns a harmless wrong noun into a misread seal. NOTE WHAT THE TRIGGER MUST NOT BE: merely authoring a two-module file, or two files with one module name -- both are already refused, so naming them as the trigger would credit the ledger with a wall it did not have to build. The second refusal also constrains the relaxation: a relaxed rule may not reintroduce last-root-wins shadowing, which is what the collision refusal exists to prevent (extdeps.shell, 2026-07-01).",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster, which `gunbc.rostered_row_join` derives for `RecurringFailureMode` -- so the row is read by being in the tree, with no hand-listed entry to update.",
+  ],
+
+  evidence: [
+    // The seal's own mint and the fixture that shows both seal shapes side by side: an unrostered
+    // mint exported to anyone, and a rostered one whose only caller is a named foreign declaration.
+    DeclarationRef { module_path: "test.fixture.sole_constructor_sealed.definer", decl_name: "mint_sealed_local", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.fixture.sole_constructor_sealed.admitted_caller", decl_name: "admitted_mint_call", field: WholeDeclaration },
+    // The other half of the wall, and the file-agnostic side a reader must not confuse with it.
+    DeclarationRef { module_path: "extdeps.external_authority", decl_name: "observed_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.compile_diagnostic_census", decl_name: "census_rows_of_class", field: WholeDeclaration },
+    // The layout authority whose §3 the collision refusal cites, and whose governed roots bound the
+    // file/module carriers the seal would otherwise be free to separate.
+    DeclarationRef { module_path: "gunbc.source_layout", decl_name: "layout_governed_roots", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "authored", field: WholeDeclaration },
+  ],
+}

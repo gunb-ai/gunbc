@@ -417,7 +417,7 @@ pub fn merge_emitted_edges(
                 present: present.clone(),
                 refusal: std::option::Option::None,
             }),
-            |acc: _, edge: Rc<EmittedEdge>| {
+            |acc: Rc<EmittedEdgeMergeFold>, edge: Rc<EmittedEdge>| {
                 emitted_edge_merge_step(acc, edge.clone(), module_set.clone(), reach.clone())
             },
         );
@@ -593,7 +593,7 @@ pub fn assignment_first_omitted_module(
 ) -> Option<NonEmptyStr> {
     modules.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, module_id: NonEmptyStr| match acc.clone() {
+        |acc: Option<NonEmptyStr>, module_id: NonEmptyStr| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 match assignment_owner(assignment.clone(), module_id.clone()) {
@@ -621,7 +621,7 @@ pub fn assignment_first_stranger(
             .cloned()
             .fold(
                 std::option::Option::None,
-                |acc: _, module_id: ModuleId| match acc.clone() {
+                |acc: Option<NonEmptyStr>, module_id: ModuleId| match acc.clone() {
                     Some(_) => acc.clone(),
                     std::option::Option::None => match v1_rt::map_get(&known, module_id.clone()) {
                         Some(_) => std::option::Option::None,
@@ -949,7 +949,7 @@ pub fn unit_package_name(
 ) -> Option<String> {
     rows.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, row: Rc<Stage0PartitionCrateRow>| match acc.clone() {
+        |acc: Option<String>, row: Rc<Stage0PartitionCrateRow>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if (row.unit_id.clone() == unit_id.clone()) {

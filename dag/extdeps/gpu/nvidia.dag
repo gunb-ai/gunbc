@@ -6,7 +6,7 @@ import extdeps.gpu.types {
   cuda_compute_capabilities_authority, PcieAddInCard, SxmModule,
 }
 import extdeps.memory.types { MemoryFacts, Dram, Hbm }
-import extdeps.storage.types { PcieLink, PcieGeneration }
+import extdeps.storage.types { PcieLink, PcieGeneration, Gen4 }
 import extdeps.vendor.nvidia { nvidia }
 import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size, giga_tensor_operations_per_second }
 
@@ -613,3 +613,42 @@ data nvidia_h200_nvl_dense_tensor_throughput: List<DenseTensorThroughput> = [
     standing: TranscribedUncited { read_obligation: h200_nvl_dense_obligation },
   },
 ]
+
+// NVIDIA RTX 2000 Ada Generation product page, specifications table, read 2026-10-26: "16GB GDDR6
+// with error-correcting code (ECC)", "Max Power Consumption: 70 W", "Graphics Bus: PCIe Gen 4 x 8",
+// "2.7\" (H) x 6.6\" (L) dual slot", "Thermal: Active", and "Powered by the NVIDIA Ada Lovelace
+// Architecture". The page states no CUDA core count, memory bandwidth or boost clock, and the
+// datasheet link on it redirected away when read, so those fields stay absent rather than recalled.
+data rtx_2000_ada_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/design-visualization/rtx-2000/"
+  }
+}
+
+data nvidia_rtx_2000_ada_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "RTX 2000 Ada Generation",
+  microarchitecture: "Ada Lovelace",
+  package: PcieAddInCard,
+  execution_lane_count: none,
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: none,
+  boost_clock: none,
+  tdp_watts: watt(count: 70),
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  interconnect: Present { value: PcieLink { generation: Gen4, lane_count: 8 } },
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_catalog", field_name: "memory"), authority: rtx_2000_ada_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_catalog", field_name: "tdp_watts"), authority: rtx_2000_ada_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_catalog", field_name: "interconnect"), authority: rtx_2000_ada_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_catalog", field_name: "microarchitecture"), authority: rtx_2000_ada_authority },
+  ],
+  dense_tensor_throughput: [],
+}
