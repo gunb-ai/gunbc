@@ -765,7 +765,7 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
     {
         let step_return = t.param_types.clone().iter().cloned().fold(
             std::option::Option::None,
-            |acc: _, p: Rc<AlgebraTypeTemplate>| match acc.clone() {
+            |acc: Option<Rc<AlgebraTypeTemplate>>, p: Rc<AlgebraTypeTemplate>| match acc.clone() {
                 Some(_) => acc.clone(),
                 std::option::Option::None => match (*p.clone()).clone() {
                     AlgebraTypeTemplate::CallableOf { return_type: r, .. } => Some(r.clone()),

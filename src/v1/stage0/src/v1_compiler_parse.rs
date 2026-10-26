@@ -3018,7 +3018,7 @@ pub fn parser_helper_state_arg_expr(
     .cloned()
     .fold(
         std::option::Option::None,
-        |acc: _, pair: (i64, Rc<Node>)| {
+        |acc: Option<Rc<Node>>, pair: (i64, Rc<Node>)| {
             if (acc.clone() != std::option::Option::None) {
                 acc.clone()
             } else {

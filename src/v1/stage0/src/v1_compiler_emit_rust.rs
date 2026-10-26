@@ -32337,25 +32337,22 @@ pub fn fm_plan_open_len(plan: Rc<FmArmPlan>) -> Option<i64> {
 }
 
 pub fn fm_min_open_len(plans: Rc<Vec<Rc<FmArmPlan>>>) -> Option<i64> {
-    plans
-        .iter()
-        .cloned()
-        .fold(
-            std::option::Option::None,
-            |acc: _, p: Rc<FmArmPlan>| match fm_plan_open_len(p.clone()) {
-                std::option::Option::None => acc.clone(),
-                Some(l) => match acc.clone() {
-                    std::option::Option::None => Some(l.clone()),
-                    Some(best) => {
-                        if (l.clone() < best.clone()) {
-                            Some(l.clone())
-                        } else {
-                            acc.clone()
-                        }
+    plans.iter().cloned().fold(
+        std::option::Option::None,
+        |acc: Option<i64>, p: Rc<FmArmPlan>| match fm_plan_open_len(p.clone()) {
+            std::option::Option::None => acc.clone(),
+            Some(l) => match acc.clone() {
+                std::option::Option::None => Some(l.clone()),
+                Some(best) => {
+                    if (l.clone() < best.clone()) {
+                        Some(l.clone())
+                    } else {
+                        acc.clone()
                     }
-                },
+                }
             },
-        )
+        },
+    )
 }
 
 pub fn fm_first_uncovered_len(

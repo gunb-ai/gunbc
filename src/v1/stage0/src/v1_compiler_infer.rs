@@ -305,13 +305,14 @@ pub use crate::v1_compiler_infer_types::{
     callable_inferred, callable_return_type, child_type_node, collection_carrier_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
-    is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
-    method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
-    template_return_is_receiver_self, KernelTypeBuild, TextJudgment, TextNotAskedReason,
+    is_type_expr_annotation, join_operand_element_is_unit, kernel_profile_lookup,
+    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
+    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
+    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
+    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
+    resolved_type, structural_carrier_template_name, subtraction_refinement_of,
+    template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild, TextJudgment,
+    TextNotAskedReason,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
@@ -2919,27 +2920,55 @@ pub fn variant_literal_expected_application(
         }
         match expected.clone() {
             Some(exp) => {
-                if ((exp.connective.clone() != Connective::NoConnective)
-                    || ((exp.children.clone().len() as i64) == 0))
-                {
-                    std::option::Option::None
+                if type_applies_declaration(exp.clone(), owner.clone(), scope.type_env.clone()) {
+                    Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
                 } else {
-                    match crate::v1_compiler_infer_env::lookup_type_for(
-                        scope.type_env.clone(),
-                        exp.clone(),
-                    ) {
-                        Some(head) => {
-                            if v1_rt::rc_ptr_eq(head.clone(), owner.clone()) {
-                                Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
-                            } else {
-                                std::option::Option::None
-                            }
-                        }
-                        std::option::Option::None => std::option::Option::None,
-                    }
+                    std::option::Option::None
                 }
             }
             std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
+pub fn type_applies_declaration(
+    application: Rc<Node>,
+    declaration: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    if ((application.connective.clone() != Connective::NoConnective)
+        || ((application.children.clone().len() as i64) == 0))
+    {
+        false
+    } else {
+        match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), application.clone()) {
+            Some(head) => {
+                if v1_rt::rc_ptr_eq(head.clone(), declaration.clone()) {
+                    true
+                } else {
+                    match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                        head.clone(),
+                        env.source_indices.clone(),
+                        env.clone(),
+                    ) {
+                        Some(head_ref) => {
+                            match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                                declaration.clone(),
+                                env.source_indices.clone(),
+                                env.clone(),
+                            ) {
+                                Some(declaration_ref) => crate::std_decl_ref::declaration_ref_eq(
+                                    head_ref.clone(),
+                                    declaration_ref.clone(),
+                                ),
+                                std::option::Option::None => false,
+                            }
+                        }
+                        std::option::Option::None => false,
+                    }
+                }
+            }
+            std::option::Option::None => false,
         }
     }
 }
@@ -4517,13 +4546,15 @@ pub fn arm_is_bare_declaration_of_sibling(
     t: Rc<Node>,
     siblings: Rc<Vec<Rc<Node>>>,
     optional_owner: Option<Rc<Node>>,
+    env: Rc<TypeEnv>,
 ) -> bool {
     ((t.connective.clone() == Connective::Disj) && {
         let mut __found = false;
         for s in siblings.iter().cloned() {
-            if ((((s.clone() != t.clone())
+            if (((((s.clone() != t.clone())
                 && (t.declaration.clone() != std::option::Option::None))
                 && (s.declaration.clone() == t.declaration.clone()))
+                || type_applies_declaration(s.clone(), t.clone(), env.clone()))
                 || ((s.return_cardinality.clone() == Cardinality::CardOptional)
                     && type_is_kernel_optional_declaration(t.clone(), optional_owner.clone())))
             {
@@ -4546,6 +4577,7 @@ pub fn inhabited_join_types(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> 
                     t.clone(),
                     types.clone(),
                     optional_owner.clone(),
+                    scope.type_env.clone(),
                 ) {
                     __result.push(t);
                 }
@@ -4556,6 +4588,27 @@ pub fn inhabited_join_types(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> 
             types.clone()
         } else {
             kept.clone()
+        }
+    }
+}
+
+pub fn branch_join_type(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    {
+        let joined = inhabited_join_types(types, scope.clone());
+        match joined.clone().first().cloned() {
+            Some(first_type) => Some(
+                Rc::new(v1_rt::list_skip(&joined.clone(), 1))
+                    .iter()
+                    .cloned()
+                    .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
+                        crate::v1_compiler_infer_types::prefer_specific_type(
+                            acc,
+                            t.clone(),
+                            scope.type_env.source_indices.clone(),
+                        )
+                    }),
+            ),
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
@@ -4571,6 +4624,7 @@ pub fn fold_init_joined_with_expected(
                 init_type.clone(),
                 Rc::new(vec![exp.clone()]),
                 kernel_optional_owner_declaring(scope.type_env.clone(), "Absent".to_string()),
+                scope.type_env.clone(),
             ) {
                 exp.clone()
             } else {
@@ -5241,7 +5295,7 @@ pub fn equality_member_fields_refusal(
 ) -> Option<Rc<EqualityAdmissionRefusal>> {
     fields.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, ch: Rc<Node>| match acc.clone() {
+        |acc: Option<Rc<EqualityAdmissionRefusal>>, ch: Rc<Node>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => equality_field_refusal(
                 owner_name.clone(),
@@ -5328,7 +5382,7 @@ pub fn equality_operand_admission(
                                             )
                                         } else {
                                             if (peeled.connective.clone() == Connective::Disj) {
-                                                peeled.children.clone().iter().cloned().fold(std::option::Option::None, |acc: _, v: Rc<Node>| match acc.clone() {
+                                                peeled.children.clone().iter().cloned().fold(std::option::Option::None, |acc: Option<Rc<EqualityAdmissionRefusal>>, v: Rc<Node>| match acc.clone() {
     Some(_) => acc.clone(),
     std::option::Option::None => equality_member_fields_refusal(v1_rt::concat(v1_rt::concat(name.clone(), ".".to_string()), crate::v1_std_core::authored_name_at(source_indices.clone(), v.clone())), v.children.clone(), scope.clone(), visited2.clone(), v1_rt::int_add(depth.clone(), 1)),
 })
@@ -5342,7 +5396,7 @@ pub fn equality_operand_admission(
                                                     ) {
                                                         Some(extensional) => {
                                                             if extensional.clone() {
-                                                                peeled.children.clone().iter().cloned().fold(std::option::Option::None, |acc: _, ch: Rc<Node>| match acc.clone() {
+                                                                peeled.children.clone().iter().cloned().fold(std::option::Option::None, |acc: Option<Rc<EqualityAdmissionRefusal>>, ch: Rc<Node>| match acc.clone() {
     Some(_) => acc.clone(),
     std::option::Option::None => equality_operand_admission(crate::v1_compiler_infer_types::child_type_node(ch.clone()), scope.clone(), visited2.clone(), v1_rt::int_add(depth.clone(), 1)),
 })
@@ -5497,7 +5551,7 @@ pub fn equality_ambiguous_candidate_by_identity(
 ) -> Option<Rc<Node>> {
     cs.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, c: Rc<GlobalBareCandidate>| match acc.clone() {
+        |acc: Option<Rc<Node>>, c: Rc<GlobalBareCandidate>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if (crate::v1_compiler_infer_types::node_declaration_identity(
@@ -5630,7 +5684,7 @@ pub fn equality_resolved_declaration_structure(
             if (rt.connective.clone() == Connective::Disj) {
                 rt.children.clone().iter().cloned().fold(
                     std::option::Option::None,
-                    |acc: _, v: Rc<Node>| match acc.clone() {
+                    |acc: Option<Rc<EqualityAdmissionRefusal>>, v: Rc<Node>| match acc.clone() {
                         Some(_) => acc.clone(),
                         std::option::Option::None => equality_member_fields_refusal(
                             v1_rt::concat(
@@ -12536,10 +12590,127 @@ pub fn extend_scope_with_pattern_node(
     })
 }
 
-pub fn fold_accumulator_is_unapplied_generic(n: Rc<Node>) -> bool {
-    (((n.params.clone().len() as i64) > 0)
-        && ((n.connective.clone() == Connective::Disj)
-            || (n.connective.clone() == Connective::Conj)))
+pub fn fold_carrier_is_open(carrier: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let si = scope.type_env.source_indices.clone();
+        ((!crate::v1_compiler_infer_types::is_fully_resolved(carrier.clone(), si.clone())
+            || crate::v1_compiler_infer_types::join_operand_element_is_unit(
+                carrier.clone(),
+                si.clone(),
+            ))
+            || (((carrier.params.clone().len() as i64) > 0)
+                && ((carrier.connective.clone() == Connective::Disj)
+                    || (carrier.connective.clone() == Connective::Conj))))
+    }
+}
+
+pub fn fold_step_produced_type(typed_args: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for a in typed_args.iter().cloned() {
+            if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
+                __result.push(a);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(lambda_arg) => Some(crate::v1_compiler_infer_types::resolved_type(
+            crate::v1_std_core::arg_value(lambda_arg.clone()),
+        )),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn fold_carrier_closed_at_step(
+    carrier: Rc<Node>,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Node> {
+    if !fold_carrier_is_open(carrier.clone(), scope.clone()) {
+        carrier.clone()
+    } else {
+        match fold_step_produced_type(typed_args) {
+            Some(produced) => match branch_join_type(
+                Rc::new(vec![carrier.clone(), produced.clone()]),
+                scope.clone(),
+            ) {
+                Some(joined) => joined.clone(),
+                std::option::Option::None => carrier.clone(),
+            },
+            std::option::Option::None => carrier.clone(),
+        }
+    }
+}
+
+pub fn infer_fold_step_args(
+    method_name: Option<String>,
+    method_args: Rc<Vec<Rc<Node>>>,
+    fold_info: Option<Rc<ArgInferResult>>,
+    fold_acc_type: Option<Rc<Node>>,
+    element_type: Rc<Node>,
+    elem_provenance: Rc<SubValueRelation>,
+    arg_contract: Rc<DeclaredArgContract>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ArgInferResult>>> {
+    {
+        let carrier_open = match fold_acc_type.clone() {
+            Some(carrier) => fold_carrier_is_open(carrier.clone(), scope.clone()),
+            std::option::Option::None => false,
+        };
+        let round_one = infer_method_args_with_fold(
+            method_name.clone(),
+            method_args.clone(),
+            fold_info.clone(),
+            fold_acc_type.clone(),
+            !carrier_open.clone(),
+            element_type.clone(),
+            elem_provenance.clone(),
+            arg_contract.clone(),
+            scope.clone(),
+        );
+        match fold_acc_type.clone() {
+            Some(carrier) => {
+                if !carrier_open.clone() {
+                    round_one.clone()
+                } else {
+                    {
+                        let closed = fold_carrier_closed_at_step(
+                            carrier.clone(),
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for r in round_one.iter().cloned() {
+                                    __result.push(r.typed_arg.clone());
+                                }
+                                __result
+                            }),
+                            scope.clone(),
+                        );
+                        if ((closed.clone() != carrier.clone())
+                            && !fold_carrier_is_open(closed.clone(), scope.clone()))
+                        {
+                            infer_method_args_with_fold(
+                                method_name.clone(),
+                                method_args.clone(),
+                                fold_info.clone(),
+                                Some(closed.clone()),
+                                true,
+                                element_type.clone(),
+                                elem_provenance.clone(),
+                                arg_contract.clone(),
+                                scope.clone(),
+                            )
+                        } else {
+                            round_one.clone()
+                        }
+                    }
+                }
+            }
+            std::option::Option::None => round_one.clone(),
+        }
+    }
 }
 
 pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
@@ -12682,6 +12853,7 @@ pub fn infer_method_args_with_fold(
     method_args: Rc<Vec<Rc<Node>>>,
     fold_info: Option<Rc<ArgInferResult>>,
     fold_acc_type: Option<Rc<Node>>,
+    step_declares_return: bool,
     element_type: Rc<Node>,
     elem_provenance: Rc<SubValueRelation>,
     arg_contract: Rc<DeclaredArgContract>,
@@ -12725,9 +12897,13 @@ let fold_callable = Rc::new(Node {
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: fold_params.clone(),
-    inferred: Some(Rc::new(InferredNode::Resolved {
+    inferred: if step_declares_return.clone() {
+                            Some(Rc::new(InferredNode::Resolved {
     node: fold_acc.clone(),
-})),
+}))
+                        } else {
+                            std::option::Option::None
+                        },
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
     body: std::option::Option::None,
@@ -14946,7 +15122,7 @@ Rc::new(InferResult {
                                                 elem_type.clone(),
                                                 scope.clone(),
                                             );
-                                            let remaining_results = infer_method_args_with_fold(
+                                            let remaining_results = infer_fold_step_args(
                                                 call_method_name.clone(),
                                                 call_method_args.clone(),
                                                 call_fold_info.clone(),
@@ -15244,41 +15420,11 @@ Rc::new(InferResult {
                                     ),
                                 };
                                 let refined_call_fold_acc_type = match call_fold_acc_type.clone() {
-                                    Some(acc) => {
-                                        if (!crate::v1_compiler_infer_types::is_fully_resolved(
-                                            acc.clone(),
-                                            scope.type_env.source_indices.clone(),
-                                        ) || fold_accumulator_is_unapplied_generic(acc.clone()))
-                                        {
-                                            match Rc::new({
-                                                let mut __result = Vec::new();
-                                                for a in typed_args.iter().cloned() {
-                                                    if is_lambda_expr(
-                                                        crate::v1_std_core::arg_value(a.clone()),
-                                                    ) {
-                                                        __result.push(a);
-                                                    }
-                                                }
-                                                __result
-                                            })
-                                            .first()
-                                            .cloned()
-                                            {
-                                                Some(lambda_arg) => Some(
-                                                    crate::v1_compiler_infer_types::resolved_type(
-                                                        crate::v1_std_core::arg_value(
-                                                            lambda_arg.clone(),
-                                                        ),
-                                                    ),
-                                                ),
-                                                std::option::Option::None => {
-                                                    call_fold_acc_type.clone()
-                                                }
-                                            }
-                                        } else {
-                                            call_fold_acc_type.clone()
-                                        }
-                                    }
+                                    Some(acc) => Some(fold_carrier_closed_at_step(
+                                        acc.clone(),
+                                        typed_args.clone(),
+                                        scope.clone(),
+                                    )),
                                     std::option::Option::None => std::option::Option::None,
                                 };
                                 let method_resolution = if crate::v1_compiler_infer_env::listed_import_required_bare_call_blocked(scope.type_env.clone(), func_name.clone()) {
@@ -15912,7 +16058,7 @@ Rc::new(InferResult {
                                 .clone()
                             },
                         );
-                    let mc_arg_infer_results = infer_method_args_with_fold(
+                    let mc_arg_infer_results = infer_fold_step_args(
                         mc_method_name.clone(),
                         mc_args.clone(),
                         fold_info.clone(),
@@ -15937,35 +16083,11 @@ Rc::new(InferResult {
                         __result
                     }));
                     let refined_fold_acc_type = match fold_acc_type.clone() {
-                        Some(acc) => {
-                            if !crate::v1_compiler_infer_types::is_fully_resolved(
-                                acc.clone(),
-                                scope.type_env.source_indices.clone(),
-                            ) {
-                                match Rc::new({
-                                    let mut __result = Vec::new();
-                                    for a in typed_mc_args.iter().cloned() {
-                                        if is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
-                                        {
-                                            __result.push(a);
-                                        }
-                                    }
-                                    __result
-                                })
-                                .first()
-                                .cloned()
-                                {
-                                    Some(lambda_arg) => {
-                                        Some(crate::v1_compiler_infer_types::resolved_type(
-                                            crate::v1_std_core::arg_value(lambda_arg.clone()),
-                                        ))
-                                    }
-                                    std::option::Option::None => fold_acc_type.clone(),
-                                }
-                            } else {
-                                fold_acc_type.clone()
-                            }
-                        }
+                        Some(acc) => Some(fold_carrier_closed_at_step(
+                            acc.clone(),
+                            typed_mc_args.clone(),
+                            scope.clone(),
+                        )),
                         std::option::Option::None => std::option::Option::None,
                     };
                     let method_resolution =
@@ -16232,18 +16354,8 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     }
                 },
             };
-            let joined_arm_types = inhabited_join_types(arm_body_types, scope.clone());
-            let unified_arm_type = match joined_arm_types.clone().first().cloned() {
-                Some(first_type) => Rc::new(v1_rt::list_skip(&joined_arm_types.clone(), 1))
-                    .iter()
-                    .cloned()
-                    .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
-                        crate::v1_compiler_infer_types::prefer_specific_type(
-                            acc,
-                            t.clone(),
-                            scope.type_env.source_indices.clone(),
-                        )
-                    }),
+            let unified_arm_type = match branch_join_type(arm_body_types, scope.clone()) {
+                Some(joined) => joined.clone(),
                 std::option::Option::None => scrut_rt.clone(),
             };
             let arm_infer_results = if crate::v1_compiler_infer_types::is_fully_resolved(
@@ -16579,18 +16691,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     );
                     let branch_declaration_yields =
                         ((inhabited_branch_types.clone().len() as i64) == 1);
-                    let unified = match inhabited_branch_types.clone().first().cloned() {
-                        Some(only) => {
-                            if branch_declaration_yields.clone() {
-                                only.clone()
-                            } else {
-                                crate::v1_compiler_infer_types::prefer_specific_type(
-                                    then_rt.clone(),
-                                    else_rt.clone(),
-                                    scope.type_env.source_indices.clone(),
-                                )
-                            }
-                        }
+                    let unified = match branch_join_type(
+                        Rc::new(vec![then_rt.clone(), else_rt.clone()]),
+                        scope.clone(),
+                    ) {
+                        Some(joined) => joined.clone(),
                         std::option::Option::None => {
                             crate::v1_compiler_infer_types::prefer_specific_type(
                                 then_rt.clone(),
@@ -21676,8 +21781,10 @@ pub fn classify_call_via_provenance(
         );
         Rc::new(v1_rt::map_keys(&param_map)).iter().cloned().fold(
             std::option::Option::None,
-            |result: _, callee_pname: String| match v1_rt::map_get(&param_map, callee_pname.clone())
-            {
+            |result: Option<Rc<SubValueRelation>>, callee_pname: String| match v1_rt::map_get(
+                &param_map,
+                callee_pname.clone(),
+            ) {
                 Some(callee_rel) => match v1_rt::map_get(&arg_by_name, callee_pname.clone()) {
                     Some(arg_expr) => {
                         let arg_rel = classify_call_arg_provenance(arg_expr.clone(), ctx.clone());
@@ -33689,7 +33796,7 @@ pub fn grounded_arm_chain(
 ) -> Option<Rc<Node>> {
     v1_rt::reverse(arms.clone()).iter().cloned().fold(
         std::option::Option::None,
-        |rest: _, a: Rc<GroundedArm>| {
+        |rest: Option<Rc<Node>>, a: Rc<GroundedArm>| {
             let body = grounded_arm_body(
                 a.arm.clone(),
                 a.reading.clone(),
