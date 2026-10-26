@@ -819,6 +819,54 @@ pub(crate) fn process_termination_value(
     }
 }
 
+/// Build `v2.std.host_run` `EmitHostTransportResult`, the one shape both emit-host transports
+/// return. `phase` is an `EmitHostTransportPhase` variant name; termination is already a
+/// `ProcessTermination`; the octets are `std.types` `Bytes` (a list of 0..255 ints, the value
+/// `bytes_octets` reads); the log lines are a `BuildLog`.
+fn emit_host_transport_result_value(
+    phase: &str,
+    termination: Value,
+    stdout: &[u8],
+    stderr: &[u8],
+    build_log: Vec<Value>,
+    ctx: &InterpContext,
+) -> Value {
+    let octets = |bytes: &[u8]| {
+        list_value(
+            bytes
+                .iter()
+                .map(|b| Value::Int(*b as i64))
+                .collect::<Vec<Value>>(),
+        )
+    };
+    Value::Record {
+        type_name: ctx.sym("EmitHostTransportResult"),
+        // fields_get is a binary search by Symbol id, so a multi-field record
+        // MUST be sorted at construction; declaration order is interning-order-
+        // dependent and broke .success lookups when #6904 shifted interning.
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("phase"),
+                Value::Variant {
+                    type_name: ctx.sym("EmitHostTransportPhase"),
+                    variant_name: ctx.sym(phase),
+                    fields: Rc::new(Vec::new()),
+                },
+            ),
+            (ctx.sym("termination"), termination),
+            (ctx.sym("stdout_bytes"), octets(stdout)),
+            (ctx.sym("stderr_bytes"), octets(stderr)),
+            (
+                ctx.sym("build_log"),
+                Value::Record {
+                    type_name: ctx.sym("BuildLog"),
+                    fields: Rc::new(vec![(ctx.sym("lines"), list_value(build_log))]),
+                },
+            ),
+        ])),
+    }
+}
+
 /// Human-facing rendering of a termination for a build log line. Kept beside the
 /// projection above so the two spellings of one observation cannot drift.
 pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> String {
@@ -17169,65 +17217,6 @@ fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext)
     }
 }
 
-fn unlisted_import_binding_source_value(
-    source: crate::cli_run::UnlistedImportBindingSource,
-    ctx: &InterpContext,
-) -> Value {
-    let variant = match source {
-        crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
-        crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
-        crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
-        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
-    };
-    Value::Variant {
-        type_name: ctx.sym("UnlistedImportBindingSource"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![]),
-    }
-}
-
-fn declared_import_closure_binding_value(
-    observation: crate::cli_run::DeclaredImportClosureBindingObservation,
-    ctx: &InterpContext,
-) -> Value {
-    match observation {
-        crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
-            let binding_source = match observed.binding_source {
-                Some(source) => {
-                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
-                }
-                None => optional_absent(ctx),
-            };
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingObserved"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("binding_source"), binding_source),
-                    (
-                        ctx.sym("definer_module"),
-                        str_value(observed.definer_module.unwrap_or_default()),
-                    ),
-                    (
-                        ctx.sym("symbol_resolves"),
-                        Value::Bool(observed.symbol_resolves),
-                    ),
-                    (
-                        ctx.sym("blocking_hard_diagnostic_count"),
-                        Value::Int(observed.blocking_hard_diagnostic_count),
-                    ),
-                ])),
-            }
-        }
-        crate::cli_run::DeclaredImportClosureBindingObservation::NotRunnable(cause) => {
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingNotRunnable"),
-                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-            }
-        }
-    }
-}
-
 fn argv_materialization_value(
     result: Result<Vec<String>, ArgvRefusalCause>,
     path: &str,
@@ -23260,7 +23249,6 @@ fn emit_host_run_transport_cached_in_workspace(
 ) -> InterpResult<Value> {
     let ready_marker = workspace.join(".native_ready");
     let cold_compile_receipt = workspace.join(".native_cold_compile_nanos");
-    let artifact_lookup_started = std::time::Instant::now();
     // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
     // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
     // pattern). Not an escape hatch: no value of the env makes the run do less.
@@ -23285,7 +23273,6 @@ fn emit_host_run_transport_cached_in_workspace(
     let compile_skipped = !cold_control
         && ready_marker.exists()
         && (!require_transition_timing || recorded_cold_compile_nanos.is_some());
-    let artifact_lookup_nanos = artifact_lookup_started.elapsed().as_nanos();
     eprintln!(
         "[native-cache] key={} compile_skipped={} cold_control={}",
         workspace
@@ -23295,59 +23282,6 @@ fn emit_host_run_transport_cached_in_workspace(
         compile_skipped,
         cold_control
     );
-
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool,
-                            cold_compile_nanos: u128,
-                            native_execution_nanos: u128|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("artifact_lookup_nanos"),
-                    Value::Int(artifact_lookup_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("cold_compile_nanos"),
-                    Value::Int(cold_compile_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("native_execution_nanos"),
-                    Value::Int(native_execution_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
@@ -23375,23 +23309,19 @@ fn emit_host_run_transport_cached_in_workspace(
             )));
             if !out.status.success() {
                 build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-                return Ok(transport_result(
-                    "build",
+                return Ok(emit_host_transport_result_value(
+                    "EmitHostBuildStepFailed",
                     process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
                     build_log,
-                    false,
-                    compile_started.elapsed().as_nanos(),
-                    0,
+                    ctx,
                 ));
             }
         }
 
         let cold_compile_nanos = compile_started.elapsed().as_nanos();
-        let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
-        let native_execution_nanos = native_started.elapsed().as_nanos();
         build_log.push(str_value(format!(
             "{} -> {}",
             run_argv.join(" "),
@@ -23413,36 +23343,30 @@ fn emit_host_run_transport_cached_in_workspace(
                 )
             })?;
         }
-        return Ok(transport_result(
-            "run",
+        return Ok(emit_host_transport_result_value(
+            "EmitHostRanCold",
             process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
             build_log,
-            false,
-            cold_compile_nanos,
-            native_execution_nanos,
+            ctx,
         ));
     }
 
-    let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
-    let native_execution_nanos = native_started.elapsed().as_nanos();
     let mut build_log: Vec<Value> = Vec::new();
     build_log.push(str_value(format!(
         "{} -> {}",
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run_cached",
+    Ok(emit_host_transport_result_value(
+        "EmitHostRanWarm",
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        true,
-        recorded_cold_compile_nanos.unwrap_or(0),
-        native_execution_nanos,
+        ctx,
     ))
 }
 
@@ -23487,45 +23411,6 @@ fn emit_host_run_transport_in_workspace(
             .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };
 
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
-
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
@@ -23536,13 +23421,13 @@ fn emit_host_run_transport_in_workspace(
         )));
         if !out.status.success() {
             build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-            return Ok(transport_result(
-                "build",
+            return Ok(emit_host_transport_result_value(
+                "EmitHostBuildStepFailed",
                 process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
                 build_log,
-                false,
+                ctx,
             ));
         }
     }
@@ -23553,13 +23438,13 @@ fn emit_host_run_transport_in_workspace(
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run",
+    Ok(emit_host_transport_result_value(
+        "EmitHostRanCold",
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        false,
+        ctx,
     ))
 }
 
@@ -25193,22 +25078,6 @@ macro_rules! v1_builtin_arms {
                         &pool_roots,
                         &target_leaves,
                         &exact_resolved_roots,
-                    ),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
-                let pool_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                let consumer_module = expect_str($positional.get(2).copied(), $name)?;
-                let symbol = expect_str($positional.get(3).copied(), $name)?;
-                Ok(Some(declared_import_closure_binding_value(
-                    crate::cli_run::observe_declared_import_closure_symbol_binding(
-                        &pool_roots,
-                        &entry_path,
-                        &consumer_module,
-                        &symbol,
                     ),
                     $ctx,
                 )))
