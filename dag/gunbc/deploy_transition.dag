@@ -14,7 +14,6 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.deploy_transition_lease_store {
   TransitionLeaseHeld,
-  TransitionLeaseAcquire,
   TransitionLeaseAcquired,
   TransitionLeaseRefused,
   TransitionLeaseRefusal,
@@ -500,20 +499,13 @@ type LeaseAcquisition
 // second acquirer would then be admitted into a live critical section by the very mechanism meant to
 // serialize it. Staleness is resolved by EVIDENCE, never by duration.
 //
-// AND THE GUARD MINT STAYS IN ONE FOLD, over the store's outcome. Its acquired arm carries the store's
-// sealed proof of the hold, so the only way to reach `LeaseAcquired` is a committed acquire.
-fn lease_acquisition_of(
-  context: TransitionContext,
-  subject: TransitionSubject,
-  holder: TransitionActor,
-  outcome: TransitionLeaseAcquire,
-) -> LeaseAcquisition {
-  match outcome {
-    TransitionLeaseAcquired { held: h } =>
-      LeaseAcquired(TransitionGuard { context: context, subject: subject, holder: holder, lease: h })
-    TransitionLeaseRefused { refusal: r } => lease_acquisition_refused(refusal: r)
-  }
-}
+// AND THERE IS NO PUBLIC GUARD MINT OVER AN OUTCOME. The guard's acquired arm used to live here as
+// `lease_acquisition_of(context, subject, holder, outcome)`, taking the acquire outcome as an argument: any
+// module could write `TransitionLeaseAcquired { held: <whatever held it could get its hands on> }` and be handed
+// a TransitionGuard for whatever context, subject and holder it named beside it -- a second laundering route,
+// one layer up from the store's. It is deleted. The only mint of a guard is inline in acquire_transition_lease
+// below, over the outcome that call's own transition_lease_acquire returned, so a guard exists only where a
+// committed acquire happened in the context's own lease store.
 
 // THE FOUR REFUSED ARMS, which need no context: a refusal carries no held proof, so this fold cannot mint a
 // guard and is decided by the store's refusal alone.
@@ -536,19 +528,24 @@ fn transition_lease_owner(holder: TransitionActor) -> NonEmptyStr {
   serialize_json(v: JsonArray { elements: [json_string(s: holder.actor), json_string(s: holder.invocation)] }) as NonEmptyStr
 }
 
-// THE LEASE IS THE CONTEXT'S. Acquire takes the context and no store: the lease acquired is
-// `context.lease`, so the guard it mints names one instance in both its context and its hold.
+// THE LEASE IS THE CONTEXT'S, AND THIS IS THE ONLY MINT OF A GUARD. Acquire takes the context and no store: the
+// lease acquired is `context.lease`, so the guard names one instance in both its context and its hold.
+//
+// THE ADMITTING ARM IS INLINED HERE ON PURPOSE, beside the transition_lease_acquire call whose return value it
+// reads. The guard is paired with this call's context, subject and holder only where the outcome is THIS call's
+// own acquired arm; the refusal arms carry no proof and fold through the public refusal-only fold. No callable in
+// this module or any other takes an acquire outcome and returns a guard, so an authored
+// `TransitionLeaseAcquired { held: ... }` -- or a genuine one taken from some other acquire -- reaches nothing.
 fn acquire_transition_lease(
   context: TransitionContext,
   subject: TransitionSubject,
   holder: TransitionActor,
 ) -> LeaseAcquisition {
-  lease_acquisition_of(
-    context: context,
-    subject: subject,
-    holder: holder,
-    outcome: transition_lease_acquire(store: context.lease, owner: transition_lease_owner(holder: holder)),
-  )
+  match transition_lease_acquire(store: context.lease, owner: transition_lease_owner(holder: holder)) {
+    TransitionLeaseAcquired { held: h } =>
+      LeaseAcquired(TransitionGuard { context: context, subject: subject, holder: holder, lease: h })
+    TransitionLeaseRefused { refusal: r } => lease_acquisition_refused(refusal: r)
+  }
 }
 
 type TransitionActuation

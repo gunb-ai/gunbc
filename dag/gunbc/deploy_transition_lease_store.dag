@@ -156,11 +156,24 @@ fn transition_lease_location(store: TransitionLeaseStore) -> String {
   join(["the transition lease of instance ", store.instance as String], "")
 }
 
-fn transition_lease_acquire_of(store: TransitionLeaseStore, outcome: FileHoldAcquireOutcome) -> TransitionLeaseAcquire {
-  let location = transition_lease_location(store: store)
+// THE REFUSIONS, read off the hold library's acquire outcome. PUBLIC AND REFUSAL-ONLY by design: the arms below
+// carry no proof, so folding them is safe for any caller. What is deliberately NOT here is the admitted arm, and
+// there is no public function anywhere that turns an acquire outcome -- authored, or genuine and taken from some
+// other store or slot -- into a held lease. The admitting arm used to live here as
+// `transition_lease_acquire_of(store, outcome)`, and it was a laundering route: it ignored the outcome's
+// slot_key and paired whatever outcome it was handed with whatever STORE the caller named beside it, so a real
+// acquire at store A slot X minted a held lease for the transition store B with no CAS in B at all. It now lives
+// only inside transition_lease_acquire below, where the outcome is this call's own file_hold_acquire.
+// The acquired arm is typed here too, and REFUSES: an outcome that says "acquired" reaching a refusal fold is a
+// caller substituting a value, and it gets no lease.
+fn transition_lease_acquire_refused(location: String, outcome: FileHoldAcquireOutcome) -> TransitionLeaseAcquire {
   match outcome {
-    FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
-      TransitionLeaseAcquired { held: TransitionLeaseHeld { store: store, owner: o, generation: g } }
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } =>
+      TransitionLeaseRefused {
+        refusal: TransitionLeaseUnavailable {
+          detail: join([location, ": an acquire outcome that reports success never reaches this fold; transition_lease_acquire is the only mint of a held lease"], ""),
+        },
+      }
     FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
       TransitionLeaseRefused { refusal: TransitionLeaseOccupied { holder: h as String, generation: cas_generation_count(g: g) } }
     FileHoldSlotUndecodable { slot_key: _, generation: g, detail: d } =>
@@ -178,14 +191,30 @@ fn transition_lease_acquire_of(store: TransitionLeaseStore, outcome: FileHoldAcq
   }
 }
 
-// THE ACQUIRE. The owner is the caller's identity, derived by gunbc.deploy_transition from the actor it
-// already names; the hold library reads the slot, admits only absent or free, and writes the next
-// generation exclusively, so two racing acquirers cannot both win.
+// THE ACQUIRE, AND THE ONLY MINT OF A HELD LEASE. The owner is the caller's identity, derived by
+// gunbc.deploy_transition from the actor it already names; the hold library reads the slot, admits only absent or
+// free, and writes the next generation exclusively, so two racing acquirers cannot both win.
+//
+// THE ADMITTING ARM IS INLINED HERE ON PURPOSE, beside the file_hold_acquire call whose return value it reads.
+// A held lease is paired with `store` only where the outcome is THIS call's own acquire over THIS store's root
+// and its declared slot key -- which the arm checks by name, so an outcome for another slot is refused rather
+// than rebound. There is no callable that accepts an outcome and a store: taking the admit out of any such
+// function is what closes the route the deleted transition_lease_acquire_of left open.
 fn transition_lease_acquire(store: TransitionLeaseStore, owner: NonEmptyStr) -> TransitionLeaseAcquire {
-  transition_lease_acquire_of(
-    store: store,
-    outcome: file_hold_acquire(root: store.root, slot_key: transition_lease_slots.member, requested_owner: owner as DurableHoldOwnerRef),
-  )
+  let outcome = file_hold_acquire(root: store.root, slot_key: transition_lease_slots.member, requested_owner: owner as DurableHoldOwnerRef)
+  match outcome {
+    FileHoldAcquired { slot_key: k, owner: o, generation: g } =>
+      if (k as String) == (transition_lease_slots.member as String) {
+        TransitionLeaseAcquired { held: TransitionLeaseHeld { store: store, owner: o, generation: g } }
+      } else {
+        TransitionLeaseRefused {
+          refusal: TransitionLeaseUnavailable {
+            detail: join([transition_lease_location(store: store), ": the acquire answered for slot ", k as String, ", not ", transition_lease_slots.member as String], ""),
+          },
+        }
+      }
+    _ => transition_lease_acquire_refused(location: transition_lease_location(store: store), outcome: outcome)
+  }
 }
 
 type TransitionLeaseRelease
