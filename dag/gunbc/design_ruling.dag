@@ -56,6 +56,13 @@ data one_approval_route_for_every_privileged_action: DesignRuling = DesignRuling
   provenance: "Operator ruling on the policy question gunbc#14694 left open: \"i prefer everything to go thru one route\". Every disruptive or privileged action, including FleetOnce actions with host-root reach on srv1, is approved through the approval broker route AccessRequest -> ApprovalCapability -> redeem_capability (gunbc.auth.access_request, approval_capability, approval_broker), fronted by the iOS approval app; the administrator edge is not a second approval route. Applied in gunbc.auth.authorization_pattern_selection candidate_patterns (the edge is a candidate only for an effect that must run unattended), so FleetOnce plus host-root reach selects OperatorApprovedCapability.",
 }
 
+data the_initial_convergence_is_the_only_approval: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_initial_convergence_is_the_only_approval"),
+  decided: "2026-10-25",
+  section: "3b",
+  provenance: "Operator ruling, refining one_approval_route_for_every_privileged_action for effects that recur: \"ultimately the initial convergence is the only thing being approved, everything else is just granted THAT approval (assuming its sufficient)\", with the aim that \"anything sensitive [is] done through an approval\" rather than through revision or branch pinning. The operator approves one convergence through the broker route; each effect that convergence entails runs inside the attempt that claimed that approval and is admitted against its std.scoped_authorization OperatorGrant (plan identity, scopes, expiry, claim), and an insufficient approval is a fresh request, never a widening. Applied in gunbc.auth.authorization_pattern_selection as WitnessDischarge EntailedByApprovedConvergence and the ApprovedConvergenceGrant candidate, and in gunbc.auth.privileged_effect_census convergence_lineage_defects, which admits a lineage root only where the root itself selects OperatorApprovedCapability; the srv1 host-root writes take the srv1 root-mutation job's approval as their root.",
+}
+
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "coercion_is_the_implicit_safe_subset"),
   decided: "2026-09-26",
@@ -390,6 +397,7 @@ fn design_rulings() -> List<DesignRuling> {
     instrument_is_a_row_not_a_flag,
     authorization_pattern_is_a_selection,
     one_approval_route_for_every_privileged_action,
+    the_initial_convergence_is_the_only_approval,
     coercion_is_the_implicit_safe_subset,
     text_crossings_go_through_the_unfold,
     v2_better_than_the_seed,

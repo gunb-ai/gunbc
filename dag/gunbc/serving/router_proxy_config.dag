@@ -104,9 +104,15 @@ fn router_proxy_vocabulary() -> Optional<RouterProxyVocabulary> {
 // stream-end notice (fire-and-forget from the log phase, only when a permit was issued). The loopback host,
 // the HTTP framing and the reading of 200 as admitted are router decisions, so they live here and reach
 // OpenResty only as the lines of a phase block.
-// What a copied answer header must hold: any non-empty text, or a host:port upstream address.
+// What a copied answer header must hold: a host:port upstream address, or a value in the model's admitted
+// token class. A copied value is interpolated VERBATIM into hand-written output — the permit reaches the
+// stream-end notice as 'header: ' .. value — so "any non-empty text" is not a shape: a value carrying CR/LF
+// would split that request into extra headers or a second request against the stream-end service. The
+// admitted class is the one nginx_token admits (alphanumerics and - . / : _), which a seat permit (a JWT
+// compact serialization) lives in and which excludes every character that could break HTTP or Lua framing.
+// The '+' quantifier also makes the value non-empty, which is what the shape used to be the only check for.
 type HeaderShape
-  = NonEmptyHeader
+  = AdmittedTokenHeader
   | HostPortHeader
 
 type HeaderCopy {
@@ -115,9 +121,12 @@ type HeaderCopy {
   shape: HeaderShape
 }
 
+// The character class is the one class the model admits (extdeps.proxy.openresty nginx_token: alphanumerics
+// and code points - . / : _), written as the Lua pattern its emitted check needs. Same class, not a second
+// rule about which characters are safe.
 fn header_shape_check(shape: HeaderShape) -> String {
   match shape {
-    NonEmptyHeader => "v ~= ''"
+    AdmittedTokenHeader => "string.match(v, '^[A-Za-z0-9._:/%-]+$') ~= nil"
     HostPortHeader => "string.match(v, '^[%w%.%-]+:%d+$') ~= nil and tonumber(string.match(v, ':(%d+)$')) >= 1 and tonumber(string.match(v, ':(%d+)$')) <= 65535"
   }
 }
@@ -171,7 +180,7 @@ fn router_authz_hook(v: RouterProxyVocabulary) -> RouterCalloutHook {
     failure_status: 503 as HttpStatus,
     copies: [
       HeaderCopy { header: v.upstream_answer_header, variable: v.upstream_variable, shape: HostPortHeader },
-      HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable, shape: NonEmptyHeader },
+      HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable, shape: AdmittedTokenHeader },
     ],
   } }
 }

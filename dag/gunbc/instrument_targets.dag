@@ -1431,7 +1431,7 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),

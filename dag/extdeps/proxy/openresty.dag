@@ -67,9 +67,11 @@ type ProxyRequestBuffering
 type ProxyTarget
   = | ProxyTargetFromUpstreamVariable
 
-// A name, path or header token interpolated into emitted text. nginx_token and nginx_variable return Absent for
-// a value holding a character that could end the literal it sits in. This is a validator at those constructors,
-// not a guarantee: the brand is not enforced, so a cast elsewhere (the two constructors cast) bypasses it.
+// A name, path or header token interpolated into emitted text. nginx_token and nginx_variable ADMIT BY
+// CONSTRUCTION: a value is refused unless every character is in the class named below. This is a validator at
+// the two constructors, not a guarantee: the brand is not enforced, so a cast elsewhere bypasses it (the
+// witness shows what such a cast then renders), and the standing of that gap is a stall row in
+// gunbc.guarantee_stall.roster, not an unrecorded wall.
 type NginxToken = NonEmptyStr where brand("NginxToken")
 
 // An nginx variable name, written $name in the conf and ngx.var.name in Lua.
@@ -127,23 +129,73 @@ type NginxDirective
   | ClientMaxBodySize { size: ByteSize }
   | ClientBodyBufferSize { size: ByteSize }
 
+// The admitted token class, as code points (the std primitive char_at + code_point, per-character, like
+// extdeps.auth.jwt's scheme check): alphanumeric plus the five punctuation code points - (45) . (46) / (47)
+// : (58) _ (95). That is exactly what the vocabulary's tokens need (host, header names, the /v1/ and /_authz
+// paths, the host:port answer shape) and excludes every character that could end a quoted argument, start a
+// comment, open a block, interpolate a variable, or introduce whitespace in emitted nginx text. Admission is
+// per character and single-sourced: a value is admitted ONLY IF each of its characters is listed here, and
+// nothing else decides safety.
+fn nginx_token_code_point_allowed(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 45
+    || cp == 46
+    || cp == 47
+    || cp == 58
+    || cp == 95
+}
+
+fn nginx_token_chars_allowed(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else if !nginx_token_code_point_allowed(cp: code_point(c: char_at(s, i))) {
+    false
+  } else {
+    nginx_token_chars_allowed(s: s, i: i + 1, len: len)
+  }
+}
+
+// Safety is ONE rule: the per-character admitted class. Every delimiter a blacklist would name (quote,
+// backslash, CR/LF, space, tab, semicolon, braces, dollar, hash, double quote) is already outside that class,
+// so restating them here would be a second representation of a constraint the model already carries (§2/§3).
 fn nginx_text_is_safe(t: String) -> Bool {
-  !(string_contains(t, "'") || string_contains(t, "\\") || string_contains(t, "\n") || string_contains(t, "\r")
-    || string_contains(t, " ") || string_contains(t, ";") || string_contains(t, "\{") || string_contains(t, "}")
-    || string_contains(t, "$") || string_contains(t, "#") || string_contains(t, "\t") || string_contains(t, "\"") || t == "")
+  let len = string_length(s: t)
+  len > 0 && nginx_token_chars_allowed(s: t, i: 0, len: len)
 }
 
 fn nginx_token(text: String) -> Optional<NginxToken> {
   if nginx_text_is_safe(t: text) { Present { value: text as NginxToken } } else { Absent }
 }
 
-// A variable is read as ngx.var.name in Lua, so a character that is an operator there (or not part of an
-// identifier) is refused too. The refusal list is a blacklist, not an identifier whitelist: no string-character
-// helper is available to this module yet.
+// A variable name is read as ngx.var.name in Lua, so it admits only alphanumerics and _, and its first
+// character must be a letter (a Lua name). Anything else, including '-', '.' and '/', is refused.
+fn nginx_variable_code_point_allowed(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 95
+}
+
+fn nginx_variable_first_code_point_allowed(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)
+}
+
+fn nginx_variable_chars_allowed(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else if !nginx_variable_code_point_allowed(cp: code_point(c: char_at(s, i))) {
+    false
+  } else {
+    nginx_variable_chars_allowed(s: s, i: i + 1, len: len)
+  }
+}
+
 fn nginx_variable_is_safe(t: String) -> Bool {
-  nginx_text_is_safe(t: t) && !(string_contains(t, "-") || string_contains(t, ".") || string_contains(t, "/")
-    || string_contains(t, "+") || string_contains(t, "*") || string_contains(t, "(") || string_contains(t, ")")
-    || string_contains(t, "[") || string_contains(t, "]") || string_contains(t, ",") || string_contains(t, "="))
+  let len = string_length(s: t)
+  len > 0 && nginx_variable_first_code_point_allowed(cp: code_point(c: char_at(t, 0)))
+    && nginx_variable_chars_allowed(s: t, i: 1, len: len)
 }
 
 fn nginx_variable(text: String) -> Optional<NginxVariable> {
