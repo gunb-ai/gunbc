@@ -3953,6 +3953,173 @@ mod compiler_tests {
     }
 
     #[test]
+    #[ignore] // three cold release builds of the seed on the remote runner; run with
+              // `cargo test --lib -- --ignored seed_build_reproducibility_falsifier`
+    fn seed_build_reproducibility_falsifier() {
+        // WHAT THIS KEEPS HONEST. The seed-build reproducibility repair claims one commit gives one
+        // sha256, because gunbc.repo.repo_self_build repo_self_build_env_preamble normalizes the four
+        // absolute paths rustc fuses into .rodata (checkout, target dir, registry home, sysroot) and
+        // pins the build identity to the tree. That claim is worth nothing unless it can go red, so
+        // this builds the seed three ways and compares bytes.
+        //
+        //   GREEN: one commit, two INDEPENDENT clones, distinct CARGO_HOME and CARGO_TARGET_DIR each,
+        //          both built through the preamble -> equal sha256.
+        //   RED:   the same commit built WITHOUT the preamble -> must differ from the green pair.
+        //
+        // The red arm is not decoration. Measured on commit a430c878e5cf: two clean clones at
+        // different paths hashed b8c24b3d... and ec03f8ac..., while those same two clones built
+        // through the preamble hashed 442c89e5... on both. Drop a remap prefix, or drop the preamble
+        // from a step, and the green arm goes red; if the remap were silently doing nothing, the red
+        // arm goes red. A build that was already reproducible without the fix passes neither arm.
+        //
+        // THE PREAMBLE IS READ FROM THE COMMITTED WORKFLOW, NOT RE-SPELLED HERE. Re-spelling the
+        // flags in this test would make the test a second source of truth, and it would then keep
+        // passing after the authority lost a prefix. The emitted step text is what CI actually
+        // executes, so that is what gets exercised -- and reading it makes a second refusal legible
+        // for free: if the preamble is ever removed from a seed-build step, this test refuses to run.
+        // It is read from the CLONE, so the script under test and the binary it produces are the
+        // same commit even while the working tree moves.
+        let root = {
+            let out = std::process::Command::new("git")
+                .args(["rev-parse", "--show-toplevel"])
+                .output()
+                .expect("git rev-parse --show-toplevel");
+            String::from_utf8(out.stdout)
+                .expect("utf8 checkout root")
+                .trim()
+                .to_string()
+        };
+        let sha = {
+            let out = std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .expect("git rev-parse HEAD");
+            String::from_utf8(out.stdout)
+                .expect("utf8 head")
+                .trim()
+                .to_string()
+        };
+        let work = std::env::temp_dir().join(format!("gunbc-seed-repro-{sha}"));
+        let _ = std::fs::remove_dir_all(&work);
+        std::fs::create_dir_all(&work).expect("create scratch dir");
+        let build = |tag: &str, use_preamble: bool| -> String {
+            let dir = work.join(tag);
+            let cloned = std::process::Command::new("git")
+                .args([
+                    "clone",
+                    "--quiet",
+                    root.as_str(),
+                    dir.to_str().expect("utf8 clone path"),
+                ])
+                .status()
+                .expect("git clone");
+            assert!(cloned.success(), "clone {tag} failed");
+            let script = {
+                let cargo_line = "cargo build --release -p v1-compiler --bin gunbc";
+                if !use_preamble {
+                    cargo_line.to_string()
+                } else {
+                    let yaml = std::fs::read_to_string(dir.join(".github/workflows/witnesses.yml"))
+                        .expect("read the committed witnesses workflow");
+                    let mut lines = yaml.lines();
+                    let start =
+                        lines.position(|l| l.trim_start().starts_with("GUNBC_SEED_CHECKOUT="));
+                    let start = start.expect(
+                        "the seed-build preamble is absent from the witnesses floor build step: \
+                         repo_self_build_env_preamble is no longer consumed there, so the step's \
+                         seed sha256 is runner-relative again (this is the removal the falsifier \
+                         exists to catch, not a test to relax)",
+                    );
+                    // Re-read from that offset and take the block through the identity guard's `fi`.
+                    let block: Vec<&str> = yaml
+                        .lines()
+                        .skip(start)
+                        .scan(false, |done, l| {
+                            if *done {
+                                return None;
+                            }
+                            *done = l.trim() == "fi";
+                            Some(l)
+                        })
+                        .collect();
+                    let preamble = block.join("\n");
+                    for needle in [
+                        "--remap-path-prefix=$GUNBC_SEED_CHECKOUT=/build/checkout",
+                        "--remap-path-prefix=$GUNBC_SEED_TARGET=/build/target",
+                        "--remap-path-prefix=$GUNBC_SEED_CARGO_HOME=/build/cargo-home",
+                        "--remap-path-prefix=$GUNBC_SEED_SYSROOT=/build/rust",
+                    ] {
+                        assert!(
+                            preamble.contains(needle),
+                            "the committed seed-build preamble lost \
+a remap prefix ({needle}); the seed binary would keep that absolute path baked in, so its sha256 \
+would be runner-relative (gunbc.recurring_failure_mode.seed_sha256_is_runner_relative)"
+                        );
+                    }
+                    format!("{preamble}\n{cargo_line}")
+                }
+            };
+            let cargo_home = work.join(format!("cargo-home-{tag}"));
+            let target = work.join(format!("target-{tag}"));
+            std::fs::create_dir_all(&cargo_home).expect("cargo home");
+            std::fs::create_dir_all(&target).expect("target dir");
+            let status = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&script)
+                .current_dir(&dir)
+                .env("CARGO_HOME", cargo_home.as_path())
+                .env("CARGO_TARGET_DIR", target.as_path())
+                .env_remove("RUSTC_WRAPPER")
+                .env_remove("RUSTFLAGS")
+                .env_remove("GUNBC_MATERIALIZED_TREE_IDENTITY")
+                .env("CARGO_NET_OFFLINE", "false")
+                .status()
+                .expect("seed build");
+            assert!(status.success(), "seed build {tag} failed");
+            let bin = target.join("release/gunbc");
+            // Ask the same tool the receipts ask; a second in-Rust sha2 would be a second crypto
+            // authority, and sha256sum is already what the workflows hash with.
+            let out = std::process::Command::new("sha256sum")
+                .arg(&bin)
+                .output()
+                .expect("sha256sum");
+            assert!(
+                out.status.success(),
+                "sha256sum failed for {}",
+                bin.display()
+            );
+            String::from_utf8(out.stdout)
+                .expect("utf8 digest")
+                .split_whitespace()
+                .next()
+                .expect("a digest")
+                .to_string()
+        };
+        let a = build("a", true);
+        let b = build("b", true);
+        assert_eq!(
+            a, b,
+            "GREEN ARM BROKEN: commit {sha} built from two independent clones through the seed-build \
+             preamble gave {a} and {b}; one commit must give one sha256 \
+             (gunbc.recurring_failure_mode.seed_sha256_is_runner_relative)"
+        );
+        // THE MEASUREMENT ITSELF, printed rather than transcribed: three hashes over one commit,
+        // the last built the way the tree was built before this repair.
+        eprintln!(
+            "seed-build-reproducibility commit {sha}: preamble a={a} b={b} (green arm, must be equal);              no-preamble c={c} (red arm, must differ from a)"
+        );
+        let c = build("c", false);
+        assert!(
+            c != a,
+            "RED ARM NOT RED: commit {sha} built WITHOUT the seed-build preamble hashed {c}, equal \
+             to the preamble-built {a}. Either the remap prefixes do nothing, or this module's \
+             variance disappeared for a reason unrelated to the repair -- either way the falsifier \
+             has stopped discriminating and must be re-aimed, not deleted."
+        );
+        let _ = std::fs::remove_dir_all(&work);
+    }
+
+    #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()
