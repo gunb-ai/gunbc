@@ -105,6 +105,15 @@ test fn an_unsafe_token_is_absent() -> Bool {
     && match nginx_variable(text: "a_b") { Absent => false Present { value: _ } => true }
 }
 
+// The permit copied into the stream-end notice's raw request must be shaped like a token value, not just
+// non-empty: the notice interpolates the value verbatim ('header: ' .. value), so a CR/LF in it would split
+// the request. The emitted shape check refuses it at capture time, before any forwarding.
+test fn the_permit_shape_refuses_a_framing_break() -> Bool {
+  let t = render_nginx_directives(rows: rows())
+  string_contains(s: t, pattern: "string.match(v, '^[A-Za-z0-9._:/%-]+$')")
+    && !string_contains(s: t, pattern: "v ~= ''")
+}
+
 // What the brand does NOT do: it is not enforced, so a forced cast reaches a row and renders unescaped.
 // This test pins the hole the gunbc.guarantee_stall nginx_token_validator_not_constructor row carries — it is
 // expected to go red when the gap closes (constructor-only admission), not to certify the hole as fine.

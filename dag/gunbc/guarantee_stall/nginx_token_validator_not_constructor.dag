@@ -12,7 +12,7 @@ import extdeps.proxy.openresty { nginx_token }
 //
 // WHAT THE MECHANISM IS — extdeps.proxy.openresty's two token brands are admitted by whitelisted
 // CONSTRUCTORS: nginx_token and nginx_variable refuse a value whose every character is not in the
-// admitted class (alphanumeric plus - _ . / : % for tokens; letters, digits and _, starting at a
+// admitted class (alphanumeric plus - . / : _ for tokens; letters, digits and _, starting at a
 // letter, for Lua variable names). The emitted nginx/Lua text interpolates the brands verbatim, so a
 // value that got in through a constructor cannot carry a quote, a semicolon, a comment, a block
 // brace or whitespace.

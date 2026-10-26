@@ -106,11 +106,12 @@ type NginxDirective
   | ClientBodyBufferSize { size: ByteSize }
 
 // The admitted token class, as code points (the std primitive char_at + code_point, per-character, like
-// extdeps.auth.jwt's scheme check): alphanumeric plus - _ . / : %. That is exactly what the vocabulary's tokens
-// need (host, header names, the /v1/ and /_authz paths, the host:port answer shape) and excludes every character
-// that could end a quoted argument, start a comment, open a block, interpolate a variable, or introduce
-// whitespace in emitted nginx text. Admission is per character, so no character class can combine past the
-// blacklist: a value is admitted ONLY IF each of its characters is listed here.
+// extdeps.auth.jwt's scheme check): alphanumeric plus the five punctuation code points - (45) . (46) / (47)
+// : (58) _ (95). That is exactly what the vocabulary's tokens need (host, header names, the /v1/ and /_authz
+// paths, the host:port answer shape) and excludes every character that could end a quoted argument, start a
+// comment, open a block, interpolate a variable, or introduce whitespace in emitted nginx text. Admission is
+// per character and single-sourced: a value is admitted ONLY IF each of its characters is listed here, and
+// nothing else decides safety.
 fn nginx_token_code_point_allowed(cp: Int) -> Bool {
   (cp >= 48 && cp <= 57)
     || (cp >= 65 && cp <= 90)
@@ -132,12 +133,12 @@ fn nginx_token_chars_allowed(s: String, i: Int, len: Int) -> Bool {
   }
 }
 
+// Safety is ONE rule: the per-character admitted class. Every delimiter a blacklist would name (quote,
+// backslash, CR/LF, space, tab, semicolon, braces, dollar, hash, double quote) is already outside that class,
+// so restating them here would be a second representation of a constraint the model already carries (§2/§3).
 fn nginx_text_is_safe(t: String) -> Bool {
   let len = string_length(s: t)
-  len > 0 && !(string_contains(t, "'") || string_contains(t, "\\") || string_contains(t, "\n") || string_contains(t, "\r")
-    || string_contains(t, " ") || string_contains(t, ";") || string_contains(t, "\{") || string_contains(t, "}")
-    || string_contains(t, "$") || string_contains(t, "#") || string_contains(t, "\t") || string_contains(t, "\""))
-    && nginx_token_chars_allowed(s: t, i: 0, len: len)
+  len > 0 && nginx_token_chars_allowed(s: t, i: 0, len: len)
 }
 
 fn nginx_token(text: String) -> Optional<NginxToken> {
