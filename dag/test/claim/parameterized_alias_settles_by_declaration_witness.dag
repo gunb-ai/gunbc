@@ -1,0 +1,131 @@
+module test.claim.parameterized_alias_settles_by_declaration_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLASS: A PARAMETERIZED ALIAS IS JUDGED BY THE DECLARATION IT SETTLES TO, NEVER BY ITS SPELLING (DESIGN 4: compatibility keys
+// on the exact declaration). v1.compiler.infer_env settled_type chased alias_rhs only for a non-parameterized alias, so std.types
+// `type Map<key, value> = FinitelySupportedFunction<key, value>` never settled and an `if` joining a `Map<K, V>` arm with a
+// `FinitelySupportedFunction<K, V>` arm fell to the name comparison and refused (v2.std.compilers.lexing
+// lex_rule_set_insert_keyword_class, v2.compiler.tokenize lex_dispatch_by_char_add). The alias now settles to its target's
+// declaration with the use-site arguments substituted exactly.
+//
+// The fixture names its modules std.algebra and std.types so both declaration identities are the real ones (a manifest has no
+// corpus roots). Each RED is the positive control with ONE edge changed, so the join refusal it reads (an InternalError row) is
+// caused by that edge and nothing else.
+
+data pas_algebra_source: String = "module std.algebra\n\ntype FinitelySupportedFunction<K, V> {\n  support: List<K>\n}\n\ntype OtherCarrier<K, V> {\n  support: List<K>\n}\n"
+
+data pas_types_source: String = "module std.types\n\nimport std.algebra { FinitelySupportedFunction, OtherCarrier }\n\ntype Map<key, value> = FinitelySupportedFunction<key, value>\n\ntype Elsewhere<key, value> = OtherCarrier<key, value>\n\ntype OptionalKeyed<key, value> = OtherCarrier<key?, value>\n\ntype ChainMid<a, b> = FinitelySupportedFunction<a, b>\n\ntype ChainOuter<x, y> = ChainMid<x, y>\n\ntype ChainSwap<x, y> = ChainMid<y, x>\n\ntype ChainElse<x, y> = Elsewhere<x, y>\n"
+
+data pas_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { Map }\n\nfn pas_join(m: Map<String, Int>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
+// RED 1: the alias's right-hand side is a DIFFERENT declaration with the same shape.
+data pas_other_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { Elsewhere }\n\nfn pas_join(m: Elsewhere<String, Int>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
+// RED 2: a LOCAL record merely NAMED FinitelySupportedFunction, aliased as Map, joined with the std.algebra declaration.
+data pas_lookalike_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction as AlgebraFsf }\n\ntype FinitelySupportedFunction<K, V> {\n  support: List<K>\n}\n\ntype Map<key, value> = FinitelySupportedFunction<key, value>\n\nfn pas_join(m: Map<String, Int>, n: AlgebraFsf<String, Int>, c: Bool) -> AlgebraFsf<String, Int> {\n  if c { m } else { n }\n}\n"
+
+// RED 3 (cardinality, review 86027): the alias's slot carries `?`, so OptionalKeyed<String, Int> settles to
+// OtherCarrier<String?, Int>, which is NOT OtherCarrier<String, Int>. A substitution that drops the slot's outer cardinality would
+// admit this join.
+data pas_cardinality_join_source: String = "module pas.join\n\nimport std.algebra { OtherCarrier }\nimport std.types { OptionalKeyed }\n\nfn pas_join(m: OptionalKeyed<String, Int>, n: OtherCarrier<String, Int>, c: Bool) -> OtherCarrier<String, Int> {\n  if c { m } else { n }\n}\n"
+
+// THE CHAIN (side-chat REQUEST_CHANGES at 9f58e37f041): settlement is transitive across parameterized aliases. ChainOuter<x, y> =
+// ChainMid<x, y> and ChainMid<a, b> = FinitelySupportedFunction<a, b> (the intermediate alias RENAMES its parameters), so
+// ChainOuter<String, Int> settles to FinitelySupportedFunction<String, Int>. A walk that stopped after one parameterized hop settled
+// it to ChainMid<String, Int> and refused the join.
+data pas_chain_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { ChainOuter }\n\nfn pas_join(m: ChainOuter<String, Int>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
+// RED: the same two-hop chain ending at a different declaration (Elsewhere -> OtherCarrier).
+data pas_chain_else_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { ChainElse }\n\nfn pas_join(m: ChainElse<String, Int>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
+// ARGUMENTS ARE CARRIED BY POSITION, NOT BY SPELLING: ChainSwap<x, y> = ChainMid<y, x>, so ChainSwap<Int, String> settles to
+// FinitelySupportedFunction<String, Int> (positive), and ChainSwap<String, Int> settles to FinitelySupportedFunction<Int, String>,
+// which is not FinitelySupportedFunction<String, Int> (RED).
+data pas_swap_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { ChainSwap }\n\nfn pas_join(m: ChainSwap<Int, String>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
+data pas_swap_wrong_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { ChainSwap }\n\nfn pas_join(m: ChainSwap<String, Int>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
+fn pas_run(join_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("std/algebra.dag", pas_algebra_source),
+      fixture_source("std/types.dag", pas_types_source),
+      fixture_source("pas/join.dag", join_source)
+    ],
+    entry: "pas/join.dag"
+  })
+}
+
+fn pas_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn pas_join_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: "InternalError"),
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: "InternalError"),
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE POSITIVE CONTROL: Map settles to std.algebra FinitelySupportedFunction, so both arms are one declaration.
+test fn a_parameterized_alias_joins_the_declaration_it_settles_to() -> Bool {
+  pas_completed_clean(pas_run(pas_join_source))
+}
+
+// RED: an alias whose right-hand side is a different declaration still refuses at the join.
+test fn an_alias_of_a_different_declaration_refuses_at_the_join() -> Bool {
+  pas_join_refused(pas_run(pas_other_join_source))
+}
+
+// RED: a look-alike record named FinitelySupportedFunction, aliased as Map, is not the std.algebra declaration.
+test fn a_lookalike_record_aliased_as_map_refuses_at_the_join() -> Bool {
+  pas_join_refused(pas_run(pas_lookalike_join_source))
+}
+
+// RED: substitution keeps the slot's Optional cardinality, so an alias of `OtherCarrier<key?, value>` is not `OtherCarrier<String, Int>`.
+test fn an_alias_with_an_optional_slot_keeps_its_cardinality_at_the_join() -> Bool {
+  pas_join_refused(pas_run(pas_cardinality_join_source))
+}
+
+
+// THE CHAIN: a two-hop parameterized alias chain whose intermediate alias renames its parameters joins its terminal declaration.
+test fn a_parameterized_alias_chain_joins_its_terminal_declaration() -> Bool {
+  pas_completed_clean(pas_run(pas_chain_join_source))
+}
+
+// RED: the same chain shape ending at a different declaration refuses at the join.
+test fn a_parameterized_alias_chain_to_a_different_declaration_refuses_at_the_join() -> Bool {
+  pas_join_refused(pas_run(pas_chain_else_join_source))
+}
+
+// The chain carries ARGUMENTS by position: a hop that swaps them settles to the swapped target.
+test fn a_chain_hop_that_swaps_its_arguments_carries_them_by_position() -> Bool {
+  pas_completed_clean(pas_run(pas_swap_join_source))
+}
+
+// RED: the same swapping hop applied the other way round is a different instance and refuses.
+test fn a_chain_hop_that_swaps_its_arguments_refuses_the_unswapped_instance() -> Bool {
+  pas_join_refused(pas_run(pas_swap_wrong_join_source))
+}

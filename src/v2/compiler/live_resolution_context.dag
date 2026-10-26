@@ -1,0 +1,156 @@
+module v2.compiler.live_resolution_context
+
+import std.algebra { Empty, FreeMonoid, empty_map, fold_list, length, list_snoc_item, map_insert, map_lookup }
+import std.content_hash { Fnv1a64Structural }
+import std.optional { Absent, Present }
+import std.occurrence_identity { OccurrenceIdAllocator }
+import std.types { List, Map }
+import v2.compiler.name_resolve { ResolutionContext, resolution_context }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_import_bindings, normalized_tree_imported_modules }
+import v2.compiler.parse { PreparedGrammar }
+import v2.compiler.program_assembly { program_assembly_read_to_normalized_root_seeded }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.tokenize { PreparedLexRules }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.std.cross_tree.import_model { SourceRootRef }
+import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty, source_root_index_insert }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.language_model { LanguageModel }
+import v2.std.node { symbol_lexeme }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.qualified_name { QualifiedName, qualified_name_owning_module, qualified_name_to_dotted_string }
+import v2.std.resolution_policy { NameResolutionPolicy }
+
+// THE LIVE-TREE RESOLUTION CONTEXT: the one ResolutionContext a caller whose subject is the tree
+// itself (not a fixture population) resolves its citations in. It is built from exactly the modules
+// the caller names, each reached by one lookup in `by_name` (module name to the read that declares
+// it) and one normalize, never from a corpus-wide pass. `by_name` is a PARAMETER: where the reads
+// come from (a native ingest today) stays the caller's fact, so this module imports no layout and
+// no reader. A module absent from `by_name`, or whose read does not normalize, is simply not in
+// `roots`, which is what makes the resolver answer ModuleAbsent for it
+// (v2.std.decl_ref_resolution: the arm is decided by the ingest's own module roots).
+//
+// ONE RE-EXPORT HOP. A cited module that only imports a name (a relay) declares nothing: the resolver
+// answers for the name under its HOME, which is an import target of the relay. So after the named
+// targets, the home of each import that binds a name in `names` (the declaration names the caller cites)
+// is loaded too, once and not transitively: a chain
+// of relays longer than one hop is a module absent from the roots, which the resolver already
+// answers as ModuleAbsent rather than a wrong resolution.
+//
+// Extracted from from the decl-ref-census (v2.compiler.source_root_eval
+// native_decl_ref_census_output), its first consumer.
+
+type LiveContextLoad {
+  roots: FreeMonoid<NormalizedTree>
+  index: SourceRootIndex
+  alloc: OccurrenceIdAllocator
+  refused_files: List<String>
+  attempted: Map<String, Bool>
+}
+
+type LiveResolutionContext {
+  context: Outcome<ResolutionContext>
+  target_count: Int
+  refused_files: List<String>
+}
+
+fn live_context_load_target(
+  load: LiveContextLoad,
+  by_name: Map<String, DagSourceReadWitness>,
+  lex: PreparedLexRules,
+  prepared: PreparedGrammar,
+  ingest_scope: Fnv1a64Structural,
+  module: String
+) -> LiveContextLoad {
+  match map_lookup(m: load.attempted, key: module) {
+    Present { value: _ } => load
+    Absent => live_context_load_unattempted(load: LiveContextLoad { roots: load.roots, index: load.index, alloc: load.alloc, refused_files: load.refused_files, attempted: map_insert(load.attempted, module, true) }, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: module)
+  }
+}
+
+fn live_context_load_unattempted(
+  load: LiveContextLoad,
+  by_name: Map<String, DagSourceReadWitness>,
+  lex: PreparedLexRules,
+  prepared: PreparedGrammar,
+  ingest_scope: Fnv1a64Structural,
+  module: String
+) -> LiveContextLoad {
+  match map_lookup(m: by_name, key: module) {
+    Absent => load
+    Present { value: read } =>
+      let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: lex, prepared: prepared, seed: load.alloc, scope: ingest_scope)
+      let refused = LiveContextLoad { roots: load.roots, index: load.index, alloc: result.alloc, refused_files: list_snoc_item(xs: load.refused_files, item: symbol_lexeme(sym: read.compilation_unit)), attempted: load.attempted }
+      match result.produced {
+        Rejected { diagnostics: _ } => refused
+        Accepted { value: root, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: root.root) {
+            Rejected { diagnostics: _ } => refused
+            Accepted { value: qn, diagnostics: _ } =>
+              LiveContextLoad {
+                roots: list_snoc_item(xs: load.roots, item: root),
+                index: source_root_index_insert(index: load.index, module: qn, root: read.source_root),
+                alloc: result.alloc,
+                refused_files: load.refused_files,
+                attempted: load.attempted
+              }
+          }
+      }
+  }
+}
+
+fn live_context_hop_home(acc: List<String>, row: AliasBindingRow, homes: FreeMonoid<QualifiedName>, names: Map<String, Bool>) -> List<String> {
+  match map_lookup(m: names, key: symbol_lexeme(sym: row.binding)) {
+    Absent => acc
+    Present { value: _ } =>
+      match qualified_name_owning_module(roster: homes, target: row.target) {
+        Absent => acc
+        Present { value: home } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: home))
+      }
+  }
+}
+
+fn live_resolution_context(
+  by_name: Map<String, DagSourceReadWitness>,
+  targets: List<String>,
+  names: Map<String, Bool>,
+  lm: LanguageModel,
+  lex: PreparedLexRules,
+  prepared: PreparedGrammar,
+  ingest_scope: Fnv1a64Structural,
+  seed: OccurrenceIdAllocator,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
+) -> LiveResolutionContext {
+  let named = fold_list(
+    xs: targets,
+    empty: LiveContextLoad { roots: Empty, index: source_root_index_empty(), alloc: seed, refused_files: [], attempted: empty_map() },
+    cons: fn(acc, m) { live_context_load_target(load: acc, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
+  )
+  let hops = fold_list(
+    xs: named.roots,
+    empty: [],
+    cons: fn(acc, root) {
+      let homes = fold_list(
+        xs: normalized_tree_imported_modules(tree: root),
+        empty: Empty,
+        cons: fn(h, imp) { list_snoc_item(xs: h, item: imp.target) }
+      )
+      fold_list(
+        xs: normalized_tree_import_bindings(tree: root),
+        empty: acc,
+        cons: fn(inner, row) { live_context_hop_home(acc: inner, row: row, homes: homes, names: names) }
+      )
+    }
+  )
+  let loaded = fold_list(
+    xs: hops,
+    empty: named,
+    cons: fn(acc, m) { live_context_load_target(load: acc, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
+  )
+  LiveResolutionContext {
+    context: resolution_context(lm: lm, roots: loaded.roots, index: loaded.index, active_roots: active_roots, policy: policy),
+    target_count: length(xs: loaded.roots),
+    refused_files: loaded.refused_files
+  }
+}
