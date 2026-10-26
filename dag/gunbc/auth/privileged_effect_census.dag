@@ -1119,6 +1119,17 @@ data fleet_host_file_converge_edge_beside_the_broker_route: DivergenceReason = D
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the runner_host_file_converge mode files an access_request (gunbc.auth.access_request) for its re-derived per-host write and actuation set and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), with the existing post-apply readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone. A converge that stops being operator-dispatched and runs unattended on every provision is a different effect: its frequency changes, the selection re-derives the edge, and this reason no longer applies" as NonEmptyStr),
 }
 
+// THE SITE PXE EDGE CONVERGE (gunbc.fleet.site_pxe_edge_converge), absent from this census until the x86 install
+// surface made it larger: it already installed dnsmasq-base, wrote the edge config and unit and activated them,
+// and now also writes the rendered loader configuration, per-host install files under the TFTP and HTTP roots,
+// and an HTTP unit bound to srv4's onboarding address. Same shape as the fleet host file converge: a
+// workflow_dispatch naming srv4, the administrator over the fleet SSH edge, a human attending each instance, and
+// therefore the same divergence from the approval-capability selection under the 2026-10-22 ruling.
+data site_pxe_edge_converge_edge_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the site PXE edge converge installs dnsmasq-base and writes and activates the edge's dnsmasq and HTTP units, its rendered loader configuration and each admitted host's install files on srv4 as the administrator over the fleet SSH edge, under a key released only to a main-pinned dispatch naming srv4; a human attends every instance, and the operator ruling of 2026-10-22 names the approval broker route as the only approval for such an effect, which no adapter requests here" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the site_pxe_edge_converge apply mode files an access_request (gunbc.auth.access_request) for its re-derived srv4 write and activation set and executes it only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), with the existing post-apply readback of files, units, served digests and the HTTP listening socket. NOT satisfied by a GitHub environment reviewer gate or by a merry-fox-82 relay alone." as NonEmptyStr),
+}
+
 data host_primary_network_converge_edge_beside_the_broker_route: DivergenceReason = DivergenceReason {
   statement: "the primary network converge replaces a fleet host's /etc/netplan inside a netplan try and writes cloud-init's network switch, as the administrator over the fleet SSH edge from an observer host, under a key released only to a main-pinned dispatch; every instance is a dispatch in which the operator names the target and the observer, so a human attends it, and the operator ruling of 2026-10-22 names the approval broker route as the only approval for attendable host-root reach. No authority adapter requests a capability for this mode, so the dispatch click and the merge to main are its only consent" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the host_primary_network_converge mode files an access_request (gunbc.auth.access_request) for its staged files and its netplan try on the named target and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), keeping its fresh-connection readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone" as NonEmptyStr),
@@ -1221,6 +1232,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming one fleet host, as the administrator over the fleet SSH edge: write what differs among the host's declared root-evaluated files (systemd drop-ins and unit fragment, needrestart conf.d, the job user's sudoers, slot cap drop-ins) with owner and mode readback, daemon-reload, and drain, mask, restart and re-admit runner slots inside the cap bracket" as NonEmptyStr),
     realized: RealizedAdministratorEdge,
     divergence_reason: Present { value: fleet_host_file_converge_edge_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_converge_ci_wet"),
+    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming srv4, as the administrator over the fleet SSH edge: install dnsmasq-base if absent, write what differs among the edge's ProxyDHCP config and unit, the rendered loader configuration in the TFTP root, each admitted install binding's grub.cfg-01-<mac> and NoCloud seed, and the HTTP unit bound to srv4's onboarding address; daemon-reload, enable and restart both units; read back files, served digests and the listening socket" as NonEmptyStr),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: Present { value: site_pxe_edge_converge_edge_beside_the_broker_route },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host.host_primary_network_apply", decl_name: "host_primary_network_converge_ci_wet"),
