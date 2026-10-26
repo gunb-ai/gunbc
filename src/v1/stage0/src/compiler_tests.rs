@@ -3886,6 +3886,73 @@ mod compiler_tests {
     }
 
     #[test]
+    fn shared_roster_follows_the_declaration_not_the_spelling() {
+        // DISCRIMINATING RED for the last leaf-keyed consumer: the derive roster of a struct
+        // was picked by the SHARED SET keyed by SPELLING, so two declarations of one leaf took
+        // one roster -- dag/std/bit.dag's `Word64 { bytes: List<Byte> }` inherited `Copy` from
+        // std.machine_word's constant `Word64 { hi: Int, lo: Int }` (shared_by_every_declarer
+        // answers all-agree), and rustc refused `Copy` over the Rc fields: E0204 at emitted
+        // std_bit.rs:40, the refusal that closed the native roster-sweep route. probe.bits
+        // declares the non-constant Word64 (List field); probe.words declares the constant one.
+        // RED: the non-constant declaration must NOT derive Copy. CONTROL: the constant
+        // declaration keeps Copy, and the single-declarer constant type is untouched.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let sources = im::vector![
+                    source("probe_bits.dag", "module probe.bits\ntype Word64 { bytes: List<Int> }\nfn word64_of(n: Int) -> Word64 { Word64 { bytes: [n] } }\n"),
+                    source("probe_words.dag", "module probe.words\ntype Word64 { hi: Int, lo: Int }\nfn word64_pair(h: Int, l: Int) -> Word64 { Word64 { hi: h, lo: l } }\n"),
+                    source("probe_single.dag", "module probe.single\ntype Tag64 { hi: Int, lo: Int }\nfn tag_pair(h: Int, l: Int) -> Tag64 { Tag64 { hi: h, lo: l } }\n")
+                ];
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                for d in result.diagnostics.iter() {
+                    eprintln!("DIAG {} {}", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));
+                }
+                let emitted = |suffix: &str| -> String {
+                    result.files.iter()
+                        .find(|f| f.path.ends_with(suffix))
+                        .map(|f| f.content.clone())
+                        .unwrap_or_else(|| panic!("no emitted file ending {}; files: {:?}", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))
+                };
+                let bits = emitted("probe_bits.rs");
+                let words = emitted("probe_words.rs");
+                let single = emitted("probe_single.rs");
+                assert!(
+                    bits.contains("struct Word64"),
+                    "probe.bits must emit its Word64 declaration; probe_bits:\n{}",
+                    bits
+                );
+                assert!(
+                    !bits.contains("Copy"),
+                    "the non-constant Word64 (its List field is Rc-carried) must NOT derive Copy -- pre-repair it inherited Copy from the same-leaf constant declaration and rustc refused E0204; probe_bits:\n{}",
+                    bits
+                );
+                assert!(
+                    words.contains("struct Word64") && words.contains("Copy"),
+                    "the constant Word64 {{ hi: Int, lo: Int }} keeps its Copy roster; probe_words:\n{}",
+                    words
+                );
+                assert!(
+                    single.contains("struct Tag64") && single.contains("Copy"),
+                    "a single-declarer constant record is untouched by the re-key; probe_single:\n{}",
+                    single
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("shared_roster_follows_the_declaration_not_the_spelling panicked");
+    }
+
+    #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()
