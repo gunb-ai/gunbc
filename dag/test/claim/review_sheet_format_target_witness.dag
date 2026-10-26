@@ -22,6 +22,11 @@ import gunbc.review_sheet_tab_locator {
 }
 import gunbc.review_sheet_format_actuator {
   FormatRequestPlan,
+  FormatRule,
+  FormatPlanned,
+  FormatPlanRefused,
+  standing_admitted_color,
+  RuleTextContains,
   format_request_plan,
   review_sheet_format_grid_field_mask,
   review_sheet_format_meta_field_mask,
@@ -30,7 +35,6 @@ import gunbc.review_sheet_format_actuator {
   HeaderRangeWire,
   HeaderRangeUnqualifiable,
   review_sheet_header_range,
-  review_sheet_header_cells,
 }
 import gunbc.review_sheet_projection {
   ci_prospect_sheet_schema,
@@ -85,10 +89,17 @@ data witness_located_sheet_id: Int = 1836271154
 // record production really builds and the actuator declares nothing for the test's benefit.
 fn plan_sheet_ids(plan: FormatRequestPlan) -> List<Int> {
   [
-    plan.freeze.sheet_id, plan.header.sheet_id, plan.opportunity.sheet_id,
-    plan.arbitrage.sheet_id, plan.incompatible.sheet_id, plan.required.sheet_id,
-    plan.replay.sheet_id,
-  ]
+    plan.freeze.sheet_id, plan.header.sheet_id,
+  ] + map(plan.rules, r => r.sheet_id)
+}
+
+fn witness_rules() -> List<FormatRule> {
+  map(
+    ["Opportunity", "Arbitrage", "Incompatible", "Required", "Replay"],
+    f => FormatRule {
+      column: "Standing" as NonEmptyStr, condition: RuleTextContains { fragment: f }, color: standing_admitted_color()
+    }
+  )
 }
 
 // THE FORMATTER NOW REQUIRES TWO SEALED CARRIERS AND NEITHER CAN BE SUPPLIED BY ASSERTION.
@@ -97,6 +108,15 @@ fn plan_sheet_ids(plan: FormatRequestPlan) -> List<Int> {
 // by running validate_header_schema over the real production schema -- which also makes this an
 // inhabitance claim for that mint: if ci_prospect_sheet_schema ever stopped validating, every
 // claim below would report the refusal rather than silently testing a shape nothing produces.
+// The CI prospect schema is seventeen columns, so its header ends at Q: the literal is the
+// fixture's width, not a copy of the function under test.
+fn review_sheet_header_range_for_witness(tab: LocatedReviewTab) -> HeaderRangeStanding {
+  match validated_for_witness() {
+    Present { value: v } => review_sheet_header_range(tab: tab, validated: v)
+    Absent => HeaderRangeUnqualifiable { cause: "the witness schema did not validate" as NonEmptyStr }
+  }
+}
+
 fn validated_for_witness() -> ValidatedHeaderSchema? {
   match validate_header_schema(schema: ci_prospect_sheet_schema()) {
     HeaderSchemaValidated { validated: v } => Present { value: v }
@@ -114,7 +134,10 @@ fn plan_sheet_ids_for(sheet_id: Int, title: String) -> List<Int> {
 fn plan_sheet_ids_with(sheet_id: Int, title: String, validated: ValidatedHeaderSchema) -> List<Int> {
   match located_tab_for_witness(sheet_id: sheet_id, title: title) {
     TabLocated { tab: t } =>
-      plan_sheet_ids(plan: format_request_plan(tab: t, validated: validated, standing_col: 3))
+      match format_request_plan(tab: t, validated: validated, rules: witness_rules(), widths: []) {
+        FormatPlanned { plan: p } => plan_sheet_ids(plan: p)
+        FormatPlanRefused { cause: _ } => []
+      }
     TabAbsent => []
     TabAmbiguous { candidates: _ } => []
     TabUnreadable { cause: _ } => []
@@ -155,8 +178,8 @@ test fn the_witness_sheet_id_is_not_the_first_sheet_index_the_formatter_used_to_
 test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool {
   match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Prospects2026") {
     TabLocated { tab: t } =>
-      match review_sheet_header_range(tab: t) {
-        HeaderRangeWire { range: r } => r == join(["'Prospects2026'", "!", review_sheet_header_cells], "")
+      match review_sheet_header_range_for_witness(tab: t) {
+        HeaderRangeWire { range: r } => r == "'Prospects2026'!A1:Q1"
         HeaderRangeUnqualifiable { cause: _ } => false
       }
     TabAbsent => false
@@ -174,8 +197,8 @@ test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool {
 test fn a_title_with_a_space_is_quoted_by_the_codec_rather_than_declined() -> Bool {
   match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Prospects 2026") {
     TabLocated { tab: t } =>
-      match review_sheet_header_range(tab: t) {
-        HeaderRangeWire { range: r } => r == join(["'Prospects 2026'", "!", review_sheet_header_cells], "")
+      match review_sheet_header_range_for_witness(tab: t) {
+        HeaderRangeWire { range: r } => r == "'Prospects 2026'!A1:Q1"
         HeaderRangeUnqualifiable { cause: _ } => false
       }
     TabAbsent => false
@@ -192,7 +215,7 @@ test fn a_title_with_a_space_is_quoted_by_the_codec_rather_than_declined() -> Bo
 test fn a_title_with_an_apostrophe_declines_the_range_rather_than_guessing_an_escape() -> Bool {
   match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Jon's Data") {
     TabLocated { tab: t } =>
-      match review_sheet_header_range(tab: t) {
+      match review_sheet_header_range_for_witness(tab: t) {
         HeaderRangeUnqualifiable { cause: c } => string_contains(s: c as String, pattern: "apostrophe")
         HeaderRangeWire { range: _ } => false
       }

@@ -24,6 +24,7 @@ import gunbc.tools.bmc_intake_first_contact {
   classify_intake_probe,
   intake_probe_host_unreachable_cause,
 }
+import std.content_hash { sha256_hex_of_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

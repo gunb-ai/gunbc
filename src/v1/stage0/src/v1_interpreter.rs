@@ -17169,65 +17169,6 @@ fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext)
     }
 }
 
-fn unlisted_import_binding_source_value(
-    source: crate::cli_run::UnlistedImportBindingSource,
-    ctx: &InterpContext,
-) -> Value {
-    let variant = match source {
-        crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
-        crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
-        crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
-        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
-    };
-    Value::Variant {
-        type_name: ctx.sym("UnlistedImportBindingSource"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![]),
-    }
-}
-
-fn declared_import_closure_binding_value(
-    observation: crate::cli_run::DeclaredImportClosureBindingObservation,
-    ctx: &InterpContext,
-) -> Value {
-    match observation {
-        crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
-            let binding_source = match observed.binding_source {
-                Some(source) => {
-                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
-                }
-                None => optional_absent(ctx),
-            };
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingObserved"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("binding_source"), binding_source),
-                    (
-                        ctx.sym("definer_module"),
-                        str_value(observed.definer_module.unwrap_or_default()),
-                    ),
-                    (
-                        ctx.sym("symbol_resolves"),
-                        Value::Bool(observed.symbol_resolves),
-                    ),
-                    (
-                        ctx.sym("blocking_hard_diagnostic_count"),
-                        Value::Int(observed.blocking_hard_diagnostic_count),
-                    ),
-                ])),
-            }
-        }
-        crate::cli_run::DeclaredImportClosureBindingObservation::NotRunnable(cause) => {
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingNotRunnable"),
-                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-            }
-        }
-    }
-}
-
 fn argv_materialization_value(
     result: Result<Vec<String>, ArgvRefusalCause>,
     path: &str,
@@ -23913,8 +23854,8 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
-            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
-            // sha256_hex_of_text_contract).
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (the host realization
+            // of the declared seam std.content_hash sha256_hex_of_text).
             arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
                 Ok(Some(str_value(sha256_hex_of_text_digest(
                     expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
@@ -24585,26 +24526,15 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.decl_facts_at" { "decl_facts_at" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
-                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
+                let qualified_names =
+                    expect_str_list($positional.get(1).copied(), "decl_facts_at")?;
+                let type_names = expect_str_list($positional.get(2).copied(), "decl_facts_at")?;
                 Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
                     $ctx,
                     &pool_roots,
-                    qualified_name.as_str(),
+                    &qualified_names,
+                    &type_names,
                 )?))
-            },
-
-            arm "free_call.type_declarer_qualified_names" { "type_declarer_qualified_names" } => {
-                let pool_roots =
-                    expect_str_list($positional.first().copied(), "type_declarer_qualified_names")?;
-                let bare_name =
-                    expect_value_str($positional.get(1).copied(), "type_declarer_qualified_names")?;
-                Ok(Some(
-                    crate::coproduct_reflection::eval_type_declarer_qualified_names(
-                        $ctx,
-                        &pool_roots,
-                        bare_name.as_str(),
-                    )?,
-                ))
             },
 
             arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
@@ -25204,22 +25134,6 @@ macro_rules! v1_builtin_arms {
                         &pool_roots,
                         &target_leaves,
                         &exact_resolved_roots,
-                    ),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
-                let pool_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                let consumer_module = expect_str($positional.get(2).copied(), $name)?;
-                let symbol = expect_str($positional.get(3).copied(), $name)?;
-                Ok(Some(declared_import_closure_binding_value(
-                    crate::cli_run::observe_declared_import_closure_symbol_binding(
-                        &pool_roots,
-                        &entry_path,
-                        &consumer_module,
-                        &symbol,
                     ),
                     $ctx,
                 )))
@@ -26870,7 +26784,7 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
 }
 
 // SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
-// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// sha256_hex_of_text (declared at std.content_hash sha256_hex_of_text), the same RustCrypto sha2 the HMAC
 // seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
 fn sha256_hex_of_text_digest(text: &str) -> String {
     use sha2::{Digest, Sha256};

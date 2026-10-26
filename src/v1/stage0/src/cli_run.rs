@@ -107,14 +107,14 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_type_declaration_use_census_runs, run_v2_census_verb, run_v2_native_census,
-    run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier,
-    run_v2_select_spelled_modules, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
-    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
-    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
-    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
-    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
-    MEASURED_SPAWN_RECEIPT_ENV,
+    run_self_host, run_self_host_frontier, run_type_declaration_use_census_runs,
+    run_v2_census_verb, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
+    run_v2_native_cli_emit, run_v2_native_frontier, run_v2_select_spelled_modules, CensusInferRun,
+    MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured,
+    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
+    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
@@ -4336,7 +4336,7 @@ pub struct DeclaredImportClosureBindingObserved {
     pub blocking_hard_diagnostic_count: i64,
 }
 
-/// Result of [`observe_declared_import_closure_symbol_binding`]. `NotRunnable` is distinct from
+/// Result of [`declared_import_closure_binding_observation_from_resolved`]. `NotRunnable` is distinct from
 /// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclaredImportClosureBindingObservation {
@@ -4374,40 +4374,6 @@ const CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS: &[(&str, &str)] = &[
     ),
     ("src/v2/std/grounding.dag", "v2.std.verdict.VerdictTally"),
 ];
-
-/// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
-/// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
-/// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
-///
-/// MEASUREMENT ONLY — binding-source classification (`ListedImport` vs `PoolCoincidence`) is
-/// carried as data for Class B (#6985) controls; callers judge acceptance.
-pub fn observe_declared_import_closure_symbol_binding(
-    pool_roots: &[String],
-    entry_path: &str,
-    consumer_module: &str,
-    symbol: &str,
-) -> DeclaredImportClosureBindingObservation {
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compile_declared_import_closure_only_with_pool(pool_roots, entry_path, None)
-    }));
-    let resolved = match compiled {
-        Ok(Ok(r)) => r,
-        Ok(Err(cause)) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(cause);
-        }
-        Err(_) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(
-                "observe_declared_import_closure_symbol_binding: compile panicked before producing a graph"
-                    .to_string(),
-            );
-        }
-    };
-    declared_import_closure_binding_observation_from_resolved(
-        resolved.as_ref(),
-        consumer_module,
-        symbol,
-    )
-}
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<

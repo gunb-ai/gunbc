@@ -79,7 +79,6 @@ data primitive_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "de
 data primitive_decl_facts_at: PrimitiveIdentity = primitive_identity_slug(name: "decl_facts_at")
 data primitive_export_signature_facts: PrimitiveIdentity = primitive_identity_slug(name: "export_signature_facts")
 data primitive_data_decl_type_facts: PrimitiveIdentity = primitive_identity_slug(name: "data_decl_type_facts")
-data primitive_type_declarer_qualified_names: PrimitiveIdentity = primitive_identity_slug(name: "type_declarer_qualified_names")
 data primitive_concept_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts")
 data primitive_concept_decl_facts_live: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts_live")
 data primitive_symbol_lexeme: PrimitiveIdentity = primitive_identity_slug(name: "symbol_lexeme")
@@ -113,6 +112,7 @@ data primitive_list_push: PrimitiveIdentity = primitive_identity_slug(name: "lis
 data primitive_shell_materialize_operation_argv: PrimitiveIdentity = primitive_identity_slug(name: "shell_materialize_operation_argv")
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
 data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
+data primitive_sha256_hex_of_text: PrimitiveIdentity = primitive_identity_slug(name: "sha256_hex_of_text")
 data primitive_machine_word_native_operate: PrimitiveIdentity = primitive_identity_slug(name: "machine_word_native_operate")
 
 data symbol_lexeme_seam_disposition_note: String = "THE TWO SYMBOL BRIDGES WERE HOST SEAMS THAT NOTHING SAID WERE HOST SEAMS, and the cost of that silence is why they are rostered here rather than left alone. v2.std.compilers.lexing symbol_lexeme and symbol_intern_lexeme have self-call bodies -- the HostRealizedSeam shape exactly, correct by construction because reaching one recurses to the evaluation-budget refusal -- and the interpreter has carried real arms for both since they were written (gunbc.v1.v1_interpreter_primitive_surface v4_bridge.symbol_lexeme, v4_bridge.symbol_intern_lexeme). But with no roster row the RESOLVER saw an ordinary declaration, so Rust emission emitted the declaration, and `pub fn symbol_lexeme(sym: String) -> String { symbol_lexeme(sym) }` COMPILES. The emitted v2 compiler closure therefore carried two functions that type-check, pass every gate we own, and diverge from the interpreter by not terminating -- the DESIGN section 5 fabricated-plausible-output failure in its quietest form, since unlike the sibling seams (decl_facts and friends, which at least refuse loudly as unresolved v1_rt symbols) nothing anywhere reports this one.
@@ -141,7 +141,6 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_decl_facts_at, module_path: "v2.std.decl_index", decl_name: "decl_facts_at", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_export_signature_facts, module_path: "v2.std.decl_index", decl_name: "export_signature_facts", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_data_decl_type_facts, module_path: "v2.std.decl_index", decl_name: "data_decl_type_facts", fidelity: HostRealizedSeam),
-    primitive_projection_row(primitive: primitive_type_declarer_qualified_names, module_path: "v2.std.decl_index", decl_name: "type_declarer_qualified_names", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_concept_decl_facts, module_path: "v2.std.concept_index", decl_name: "concept_decl_facts", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_concept_decl_facts_live, module_path: "v2.std.concept_index", decl_name: "concept_decl_facts_live", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_empty_map, module_path: "std.algebra", decl_name: "empty_map_primitive_delegate", fidelity: HostRealizedSeam),
@@ -159,6 +158,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_shell_materialize_operation_argv, module_path: "std.operation_argv", decl_name: "shell_materialize_operation_argv", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_chars, module_path: "std.host_text", decl_name: "chars", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_sha256_hex_of_text, module_path: "std.content_hash", decl_name: "sha256_hex_of_text", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_machine_word_native_operate, module_path: "std.machine_word", decl_name: "machine_word_native_operate", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_length, module_path: "std.algebra", decl_name: "length", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_map_insert, module_path: "std.algebra", decl_name: "map_insert", fidelity: ModeledProjection),

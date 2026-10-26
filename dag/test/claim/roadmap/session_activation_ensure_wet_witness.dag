@@ -5,7 +5,7 @@ import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
 import gunbc.compute.attempt_lifecycle { AttemptRecord, UnitLifecycle, UnitStillRunning, UnitTerminatedCauseUnknown, AttemptSlotReading }
 import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable }
 import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementObservation, SessionPlacementAbsent, SessionPlacementForeign, SessionPlacementUnreadable, session_placement_record_write,
+  SessionPlacementStores, SessionPlacementObservation, SessionPlacementAbsent, SessionPlacementForeign, SessionPlacementUnreadable, session_placement_record_write,
 }
 import gunbc.roadmap.roadmap_session_activation_ensure {
   ActivationOutcome, ActivationNoop, ActivationRolledBack, ActivationCollected, ActivationRefused, ActivationRed,
@@ -46,10 +46,6 @@ fn manager(dir: String, ended_unit: String, others: AttemptUnitObservation, u: N
 
 fn mark_reset(dir: String, u: NonEmptyStr) -> Bool { Filesystem.Write(path: marker(dir: dir, unit: u as String), content: "reset").success }
 
-fn pass_outcomes(p: ActivationPass) -> List<ActivationOutcome> {
-  match p { ActivationPassRan { outcomes } => outcomes  ActivationPassRefused { detail: _ } => [] }
-}
-
 fn is_noop(o: ActivationOutcome) -> Bool {
   match o { ActivationNoop { unit: _, why: _ } => true  ActivationRolledBack { unit: _, detail: _ } => false  ActivationCollected { unit: _, detail: _ } => false  ActivationRefused { unit: _, reason: _ } => false  ActivationRed { unit: _, reason: _ } => false }
 }
@@ -63,18 +59,29 @@ fn is_refused(o: ActivationOutcome) -> Bool {
   match o { ActivationNoop { unit: _, why: _ } => false  ActivationRolledBack { unit: _, detail: _ } => false  ActivationCollected { unit: _, detail: _ } => false  ActivationRefused { unit: _, reason: _ } => true  ActivationRed { unit: _, reason: _ } => false }
 }
 
+// THE PASS KEEPS ITS REFUSAL: only a pass that RAN is judged, so a refused pass is never read as an empty one.
 fn only(p: ActivationPass, check: fn(ActivationOutcome) -> Bool) -> Bool {
-  let os = pass_outcomes(p: p)
-  os.length() == 1 && all(os, o => check(o))
+  match p {
+    ActivationPassRan { outcomes } => outcomes.length() == 1 && all(outcomes, o => check(o))
+    ActivationPassRefused { detail: _ } => false
+  }
+}
+
+// A store the mint refuses is a refused pass, which only answers false, so no control reads it as green.
+fn pass_on(dir: String, run: fn(SessionPlacementStores) -> ActivationPass) -> ActivationPass {
+  match stores_at(dir: dir) {
+    Absent => ActivationPassRefused { detail: "the witness's session slot store could not be minted" }
+    Present { value: stores } => run(stores)
+  }
 }
 
 fn pass_with(dir: String, ended_unit: String, others: AttemptUnitObservation, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle, now: EpochSecs) -> ActivationPass {
-  session_activation_ensure_pass_at(
-    stores: stores_at(dir: dir), host: host,
+  pass_on(dir: dir, run: stores => session_activation_ensure_pass_at(
+    stores: stores, host: host,
     loaded_of: u => manager(dir: dir, ended_unit: ended_unit, others: others, u: u),
     lifecycle_of: lifecycle_of,
     reset_failed: u => mark_reset(dir: dir, u: u),
-    now: now)
+    now: now))
 }
 
 // KILL 1: between the placement-record write and the unit start. Inside the launch deadline the start may be
@@ -85,7 +92,10 @@ test fn a_kill_between_record_write_and_unit_start_rolls_back_past_the_deadline_
   let rec = slot_a(opened: 1000)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let opened = opened_ok(dir: dir, rec: rec)
-  let wrote = session_placement_record_write(stores: stores_at(dir: dir), host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, slot: rec), unit_properties: ["MemoryMax=8589934592"])
+  let wrote = match stores_at(dir: dir) {
+    Absent => none
+    Present { value: stores } => Present { value: session_placement_record_write(stores: stores, host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, slot: rec), unit_properties: ["MemoryMax=8589934592"]) }
+  }
   let early = only(p: pass_with(dir: dir, ended_unit: "", others: AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: rec.launch_deadline - 1), check: is_noop)
   let early_kept = !slot_is_terminal(dir: dir)
   let late = only(p: pass_with(dir: dir, ended_unit: "", others: AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1), check: is_rolled_back)
@@ -130,12 +140,12 @@ test fn another_attempts_failed_unit_is_never_collected() -> Bool {
   let rec = slot_a(opened: 1000)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let launched = launched_ok(dir: dir, rec: rec)
-  let p = session_activation_ensure_pass_at(
-    stores: stores_at(dir: dir), host: host,
+  let p = pass_on(dir: dir, run: stores => session_activation_ensure_pass_at(
+    stores: stores, host: host,
     loaded_of: u => if (u as String) == unit_b() { AttemptUnitFinished { exit_status: "failed" } } else { manager(dir: dir, ended_unit: unit_a(), others: AttemptUnitAbsent, u: u) },
     lifecycle_of: lifecycle_absent,
     reset_failed: u => mark_reset(dir: dir, u: u),
-    now: rec.launch_deadline + 1)
+    now: rec.launch_deadline + 1))
   let verdict = charged && launched && only(p: p, check: is_collected) && reset_marked(dir: dir, unit: unit_a()) && !reset_marked(dir: dir, unit: unit_b())
   cleaned(dir: dir, verdict: verdict)
 }
@@ -146,12 +156,12 @@ test fn a_failed_reset_is_kept_and_never_reported_collected() -> Bool {
   let rec = slot_a(opened: 1000)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let launched = launched_ok(dir: dir, rec: rec)
-  let p = session_activation_ensure_pass_at(
-    stores: stores_at(dir: dir), host: host,
+  let p = pass_on(dir: dir, run: stores => session_activation_ensure_pass_at(
+    stores: stores, host: host,
     loaded_of: u => AttemptUnitFinished { exit_status: "failed" },
     lifecycle_of: lifecycle_absent,
     reset_failed: u => false,
-    now: rec.launch_deadline - 1)
+    now: rec.launch_deadline - 1))
   let verdict = charged && launched && only(p: p, check: is_refused) && slot_is_terminal(dir: dir)
   cleaned(dir: dir, verdict: verdict)
 }
