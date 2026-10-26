@@ -1345,7 +1345,10 @@ fn flow_cause_once() -> String {
   }
 }
 
-test fn probe3_no_declaration_named() -> Bool { string_contains(s: flow_cause_once(), pattern: "no declaration named") }
-test fn probe3_realization_index() -> Bool { string_contains(s: flow_cause_once(), pattern: "operation_realization_index") }
-test fn probe3_realization_duplicate() -> Bool { string_contains(s: flow_cause_once(), pattern: "operation_realization_duplicate") }
-test fn probe3_handler_selection() -> Bool { string_contains(s: flow_cause_once(), pattern: "operation_handler_selection") }
+test fn probe4_loaded_index() -> Bool { string_contains(s: flow_cause_once(), pattern: "loaded index") }
+test fn probe4_admitted_in() -> Bool { string_contains(s: flow_cause_once(), pattern: "modeled_realization_admitted_in") }
+test fn probe4_rest_exchange() -> Bool { string_contains(s: flow_cause_once(), pattern: "rest_exchange_resolution") }
+test fn probe4_clock_after() -> Bool { string_contains(s: flow_cause_once(), pattern: "virtual_clock_after") }
+test fn probe4_failure_kind() -> Bool { string_contains(s: flow_cause_once(), pattern: "filesystem_failure_kind_name") }
+test fn probe4_byte_count() -> Bool { string_contains(s: flow_cause_once(), pattern: "file_observation_byte_count") }
+test fn probe4_may_be_declared() -> Bool { string_contains(s: flow_cause_once(), pattern: "may be declared") }
