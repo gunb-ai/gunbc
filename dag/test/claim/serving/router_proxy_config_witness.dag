@@ -106,7 +106,7 @@ test fn an_unsafe_token_is_absent() -> Bool {
 }
 
 // What the brand does NOT do: it is not enforced, so a forced cast reaches a row and renders unescaped.
-// This test pins the hole the gunbc.guarantee_stall nginx_token_validator_construction row carries — it is
+// This test pins the hole the gunbc.guarantee_stall nginx_token_validator_not_constructor row carries — it is
 // expected to go red when the gap closes (constructor-only admission), not to certify the hole as fine.
 test fn a_forced_cast_bypasses_the_constructor_and_renders_unescaped() -> Bool {
   let injected = render_nginx_directives(rows: [ProxyPassToHost {
