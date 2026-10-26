@@ -1,6 +1,7 @@
 module gunbc.os_install_emit
 
 import std.logic { Bool }
+import std.optional { Absent, Present }
 import std.types { List, String }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
@@ -36,16 +37,15 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
     ])),
     kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: payload.identity))),
   ]
-  let with_ssh = if payload.install_openssh_server {
-    append(base, items: [
+  let with_ssh = match payload.ssh {
+    Present { value: ssh } => append(base, items: [
       kv(key: "ssh", value: yaml_mapping(entries: [
         kv(key: "install-server", value: yaml_bool(b: true)),
-        kv(key: "authorized-keys", value: yaml_sequence(elements: map(payload.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
-        kv(key: "allow-pw", value: yaml_bool(b: payload.ssh_password_auth)),
+        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
+        kv(key: "allow-pw", value: yaml_bool(b: ssh.password_auth)),
       ])),
     ])
-  } else {
-    base
+    Absent => base
   }
   if payload.fully_automated {
     let automated = append(with_ssh, items: [
@@ -74,10 +74,21 @@ type AutoinstallUserData
   = AutoinstallUserDataRendered { content: String }
   | AutoinstallUserDataRefused { reason: String }
 
-fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> AutoinstallUserData {
-  let top = yaml_mapping(entries: [
+// THE DOCUMENT AND ITS RENDERING ARE TWO STEPS, so a consumer that must audit the document before it is published
+// (gunbc.provisioning.public_nocloud_seed) audits the same tree this module renders, never a re-parse of its text.
+fn autoinstall_user_data_document(payload: UbuntuAutoinstallPayload) -> YamlValue {
+  yaml_mapping(entries: [
     kv(key: "autoinstall", value: yaml_mapping(entries: autoinstall_inner_entries(payload: payload))),
   ])
+}
+
+fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> AutoinstallUserData {
+  cloud_config_user_data(document: autoinstall_user_data_document(payload: payload))
+}
+
+// The one #cloud-config rendering of a user-data document.
+fn cloud_config_user_data(document: YamlValue) -> AutoinstallUserData {
+  let top = document
   match emit_yaml(v: top) {
     EmittedYaml { text: t } => AutoinstallUserDataRendered { content: concat("#cloud-config\n", t) }
     YamlEmitRefused { path: p, reason: r } =>

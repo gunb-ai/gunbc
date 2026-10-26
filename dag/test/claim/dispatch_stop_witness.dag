@@ -1,20 +1,8 @@
 module test.claim.dispatch_stop_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider }
 import extdeps.tmux { TmuxLsEntry }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  TmuxSessionScope, TmuxPaneEntry,
-  parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv,
-  tmux_session_observation_with_panes, dispatch_tmux_session_scope,
-  DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
-  DispatchLiveSession,
-  CodexDispatchProvider,
-  dispatch_provider_instance_for_kind,
-  DispatchStopRunningProcess,
-  DispatchClearRetainedSession,
-  DispatchCleanupRefused,
-  dispatch_session_cleanup,
-  dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { TmuxSessionScope, TmuxPaneEntry, parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv, tmux_session_observation_with_panes, dispatch_tmux_session_scope, DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate, DispatchLiveSession, dispatch_provider_instance_for_kind, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_tmux_process_fingerprint_observation_dissolution_trigger }
 import gunbc.dispatch_selection { dispatch_codex_process_fingerprint }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltStopResult, StopProcessStopped, StopRetainedSessionCleared,
@@ -177,7 +165,8 @@ test fn stop_client_carries_the_chip() -> Bool {
   return string_contains(s: js, pattern: "'cleanup-chip'")
     && string_contains(s: js, pattern: "session-facts")
     && string_contains(s: js, pattern: "'/cleanup/' + sess.node_id")
-    && string_contains(s: js, pattern: "{ method: 'POST' }")
+    && string_contains(s: js, pattern: "method: 'POST'")
+    && string_contains(s: js, pattern: "csrf=")
     && string_contains(s: js, pattern: "j.ok === true")
     && string_contains(s: js, pattern: "window.location.reload()")
     && string_contains(s: js, pattern: "action + ' refused'")

@@ -2,9 +2,10 @@
 // Source module: v1.compiler.expected_red_roster_join
 
 use self::BudgetVerdictCompletion::*;
+use self::EffectRefusalGround::*;
+use self::EffectRefusalMode::*;
 use self::ExpectedRedJoinDisposition::*;
 use self::ExpectedRedSuppressionGround::*;
-use self::HermeticEffectGround::*;
 use self::WitnessEvalVerdict::*;
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
@@ -27,10 +28,20 @@ pub enum BudgetVerdictCompletion {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
-pub enum HermeticEffectGround {
+pub enum EffectRefusalGround {
     UnpublishedMockCase,
     NoMockResponse,
     FilesystemRemoval,
+    FrameNotRealizableUnderMode,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum EffectRefusalMode {
+    RefusedUnderHermetic,
+    RefusedUnderWet,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -50,7 +61,7 @@ pub enum WitnessEvalVerdict {
     },
     HostEffectRefused {
         operation: String,
-        ground: HermeticEffectGround,
+        ground: EffectRefusalGround,
     },
     BudgetExceeded {
         elapsed_ms: i64,
@@ -107,14 +118,43 @@ pub struct VerdictClassification {
     pub detail: String,
 }
 
-pub fn hermetic_effect_ground_label(ground: HermeticEffectGround) -> String {
+pub fn effect_refusal_mode(ground: EffectRefusalGround) -> EffectRefusalMode {
     match ground.clone() {
-        HermeticEffectGround::UnpublishedMockCase => {
+        EffectRefusalGround::UnpublishedMockCase => EffectRefusalMode::RefusedUnderHermetic,
+        EffectRefusalGround::NoMockResponse => EffectRefusalMode::RefusedUnderHermetic,
+        EffectRefusalGround::FilesystemRemoval => EffectRefusalMode::RefusedUnderHermetic,
+        EffectRefusalGround::FrameNotRealizableUnderMode => EffectRefusalMode::RefusedUnderWet,
+    }
+}
+
+pub fn effect_refusal_ground_label(ground: EffectRefusalGround) -> String {
+    match ground.clone() {
+        EffectRefusalGround::UnpublishedMockCase => {
             "no published mock case for a corpus-governed service".to_string()
         }
-        HermeticEffectGround::NoMockResponse => "operation declares no mock_response".to_string(),
-        HermeticEffectGround::FilesystemRemoval => {
+        EffectRefusalGround::NoMockResponse => "operation declares no mock_response".to_string(),
+        EffectRefusalGround::FilesystemRemoval => {
             "filesystem removal has no mock arm; only a wet route can run it".to_string()
+        }
+        EffectRefusalGround::FrameNotRealizableUnderMode => {
+            "a modeled witness frame is admitted only under Hermetic execution".to_string()
+        }
+    }
+}
+
+pub fn effect_refusal_mode_label(mode: EffectRefusalMode) -> String {
+    match mode.clone() {
+        EffectRefusalMode::RefusedUnderHermetic => "hermetic route has no arm for".to_string(),
+        EffectRefusalMode::RefusedUnderWet => "wet run cannot realize".to_string(),
+    }
+}
+
+pub fn effect_refusal_remedy(mode: EffectRefusalMode) -> String {
+    match mode.clone() {
+        EffectRefusalMode::RefusedUnderHermetic => "re-run with --wet".to_string(),
+        EffectRefusalMode::RefusedUnderWet => {
+            "re-run under Hermetic execution (`gunbc --dry-run run`, or claim_batch without --wet)"
+                .to_string()
         }
     }
 }
@@ -169,12 +209,15 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            "hermetic route has no arm for ".to_string(),
+                            v1_rt::concat(
+                                effect_refusal_mode_label(effect_refusal_mode(ground.clone())),
+                                " ".to_string(),
+                            ),
                             operation.clone(),
                         ),
                         " (".to_string(),
                     ),
-                    hermetic_effect_ground_label(ground.clone()),
+                    effect_refusal_ground_label(ground.clone()),
                 ),
                 ") — the witness never reached its subject, so this is a route gap, not a verdict"
                     .to_string(),
@@ -331,6 +374,12 @@ pub struct UnpublishedMockCase;
 pub struct NoMockResponse;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FilesystemRemoval;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FrameNotRealizableUnderMode;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedUnderHermetic;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedUnderWet;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OutsideRequiredGate;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

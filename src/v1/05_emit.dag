@@ -1563,7 +1563,7 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
 }
 
 // ── NATIVE EFFECT REALIZATION ADMISSION ────────────────────────────────────────────────────────
-// docs/plans/demand-engine-program.md section 2.9, GAP A, carrier E3. A native entry (a
+// `gunbc.plans.demand_engine_program` section 2.9, GAP A, carrier E3. A native entry (a
 // NativeCliDriver or NativeServeDriver main) hands its entry function one handle per effect the
 // function demands: a reference per `uses` resource and per service it reaches (the parameter list
 // v1.compiler.emit_rust emit_func_params renders). Before this verdict existed the rendered main

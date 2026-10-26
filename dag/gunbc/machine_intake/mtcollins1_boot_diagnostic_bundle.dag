@@ -1,6 +1,11 @@
 module gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle
 
 import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacVersionEstablishment, MegaRacReleaseEstablishedByRead, MegaRacReleaseEstablishedByAttestation,
+  MegaRacReleaseEstablishmentRefused, MegaRacVersionFromFirmwareRead, megarac_version_establishment,
+  megarac_version_refusal_text,
+}
 import gunbc.host.host_boot_attempt_admission {
   PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_observed, BootAttemptClearance,
 }
@@ -9,10 +14,11 @@ import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.tools.coreutils_stat
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
 import std.optional { Present }
@@ -47,9 +53,12 @@ import extdeps.bmc.redfish_memory_inventory {
   RedfishSystemInventoryLinks, redfish_system_inventory_links_of, redfish_resource_odata_id, redfish_service_root_systems_link_of,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.auth.netrc_binding {
-  NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
-  place_netrc_binding_privately, shred_netrc_binding,
+import gunbc.auth.netrc_binding { netrc_binding_path, with_private_netrc_binding }
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake.sel_stimulus_listener { SelDelta, sel_read, sel_after, sel_field }
@@ -144,6 +153,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacStaleDetachNotAdmitted,
   MegaRacStaleDetachUnconfirmed,
   MegaRacRedirectionUncatalogued,
+  redirection_unread_text, unread_row_stop_refusal_text,
   MegaRacRefreshClockUnreadable,
   MegaRacListingUnparseableAfterDetach,
   MegaRacOfferedAmbiguouslyAfterDetach,
@@ -153,6 +163,12 @@ import gunbc.machine_intake.megarac_media_attach {
   PresentationReadyButSessionHeld,
   PresentationUnobserved,
   MegaRacNotEnumeratedAfterRefresh,
+  MegaRacOwnSessionEnded,
+  OwnSessionEnd,
+  OwnSessionNothingPresented,
+  OwnSessionStopped,
+  OwnSessionStopUnconfirmed,
+  OwnSessionNotStopped,
   ReadinessStarted,
   ReadinessConnecting,
   ReadinessStartedUnbound,
@@ -577,7 +593,7 @@ fn readiness_reading_text(r: AttachReadiness) -> String {
     ReadinessStartedUnbound { row: w } => concat("started with no bound session, session_index ", optional_text(v: w.session_index))
     ReadinessNotPresented { configurations: c } => concat("not presented: ", c)
     ReadinessUnanswered { detail: d } => concat("configurations GET unanswered: ", d)
-    ReadinessUncatalogued { image_name: n, wire: w, configurations: c } => concat("UNCATALOGUED redirection_status ", concat(to_string(w), concat(" on '", concat(n, concat("': ", c)))))
+    ReadinessUncatalogued { image_name: n, unread: u, configurations: c } => join(["UNCATALOGUED ", redirection_unread_text(unread: u), " on '", n, "': ", c], "")
     ReadinessMalformed { detail: d } => concat("MALFORMED configurations: ", d)
     ReadinessDuplicate { configurations: c } => concat("DUPLICATE rows present the image: ", c)
     ReadinessWrongPresentation { image_name: n, configurations: c } => concat("WRONG presentation '", concat(n, concat("': ", c)))
@@ -630,8 +646,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: concat("the stale census image '", concat(n, concat("' is presented and was NOT stopped: ", why as String))) }
     MegaRacStaleDetachUnconfirmed { detach: d, reason: why } =>
       Present { value: concat("the stale census image was not established as detached: ", concat(why as String, concat(" (", concat(detach_evidence_text(detach: d), ")")))) }
-    MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: c } =>
-      Present { value: join(["the row presenting '", n, "' reports redirection_status ", to_string(w), ", which is uncatalogued for this firmware; refusing before any write or power action: ", c], "") }
+    MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: why, configurations: c } =>
+      Present { value: join(["the row naming '", n, "' reports ", redirection_unread_text(unread: u), ", and it was not stopped: ", unread_row_stop_refusal_text(refusal: why), "; refusing before any write or power action: ", c], "") }
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
     MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: n, image_indices: ids, detach: x } =>
@@ -644,6 +660,17 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: join(["the clock cannot bound the readiness wait for '", n as String, "': window opened at ", to_string(o), ", previous look at ", match p { Present { value: v } => to_string(v)  Absent => "none" }, ", this look ", readiness_look_text(l: l), " after ", to_string(k), " looks (route: ", attach_route_text(route: rt), "). No boot-device or power handoff was made"], "") }
     MegaRacNotEnumeratedAfterRefresh { image_name: n, detach: d, standing: _ } =>
       Present { value: join(["NotEnumeratedAfterRefresh: after the stale image was stopped (", detach_evidence_text(detach: d), "), '", n as String, "' was still not offered within the declared window; check that the export on srv2 holds exactly that file"], "") }
+    MegaRacOwnSessionEnded { end: e } =>
+      Present { value: concat("an end-of-attempt release reached an attach decision; a release never attaches: ", own_session_end_text(end: e)) }
+  }
+}
+
+fn own_session_end_text(end: OwnSessionEnd) -> String {
+  match end {
+    OwnSessionNothingPresented { configurations: c } => concat("nothing presented, so nothing of this attempt was left: ", c)
+    OwnSessionStopped { detach: d } => concat("this attempt's own session stopped and read back as gone: ", detach_evidence_text(detach: d))
+    OwnSessionStopUnconfirmed { detach: d, reason: why } => join(["this attempt's own session was NOT established as stopped: ", why as String, " (", detach_evidence_text(detach: d), ")"], "")
+    OwnSessionNotStopped { reason: why, configurations: c } => join(["NOT stopped: ", why as String, ": ", c], "")
   }
 }
 
@@ -782,7 +809,93 @@ fn handoff_media_harness(h: MtCollins1HandoffMedia) -> List<HarnessFinding> {
 // historical-only one.
 type MtCollins1EndMedia
   = EndMediaNotTaken { reason: NonEmptyStr }
-  | EndMediaObserved { look: MegaRacAttachResult }
+  | EndMediaObserved { look: MegaRacAttachResult, end_release: EndMediaRelease }
+
+// WHAT THE ATTEMPT DID WITH ITS OWN SESSION AFTER THE END LOOK, decided by the power after the attempt
+// (end_release_gate). A host observed ON keeps its medium: a diskless host that stays up runs from it.
+// A host observed OFF has its session stopped (gunbc.machine_intake.megarac_boot_media_attach
+// megarac_release_boot_session), established only by the read-back. A power that was not observed
+// admits no stop. Boot run 39868779331 is the defect this closes: it ended OFF with its census row still
+// Started, and the next two attempts met that row at redirection_status 19.
+type EndMediaRelease
+  = EndReleaseKeptHostOn
+  | EndReleaseWithheld { reason: NonEmptyStr }
+  | EndReleaseRan { result: MegaRacAttachResult }
+
+type EndReleaseGate
+  = EndReleaseGateKeep
+  | EndReleaseGateWithhold { reason: NonEmptyStr }
+  | EndReleaseGateAdmit { power: ChassisPowerObservation }
+
+// PURE. The two OFF arms are minted by power_after_attempt only from a ChassisPowerRead that read off,
+// so the reading handed on is the one the poll took, not a reconstruction of it.
+fn end_release_gate(power_after: PowerAfterAttempt) -> EndReleaseGate {
+  match power_after {
+    PoweredOffAfterCensusEnd => EndReleaseGateAdmit { power: ChassisPowerRead { power_on: false } }
+    PoweredOffWithoutCensusEnd => EndReleaseGateAdmit { power: ChassisPowerRead { power_on: false } }
+    PoweredOnAfterAttempt => EndReleaseGateKeep
+    PowerAfterUnobserved { observation: o } => EndReleaseGateWithhold { reason: concat("the power after the attempt was not observed, so no stop is admitted: ", chassis_observation_text(observation: o) as String) as NonEmptyStr }
+    PowerAfterNotTaken { reason: r } => EndReleaseGateWithhold { reason: concat("the power after the attempt was not taken, so no stop is admitted: ", r as String) as NonEmptyStr }
+  }
+}
+
+// WHAT THE ATTEMPT LEFT ON THE CONTROLLER THAT IT DID NOT MEAN TO, absent only when nothing was left or
+// the host was kept on deliberately. Every other arm is residue the next attempt meets, so it is loud:
+// a stop the read-back did not establish, a row the release could not read or would not stop, a release
+// whose own login session was not released, and a power that could not say whether a stop was owed.
+fn end_release_residue(end_release: EndMediaRelease) -> NonEmptyStr? {
+  match end_release {
+    EndReleaseKeptHostOn => none
+    EndReleaseWithheld { reason: r } => Present { value: concat("this attempt's session may remain on the controller: ", r as String) as NonEmptyStr }
+    EndReleaseRan { result: res } =>
+      match res.outcome {
+        MegaRacOwnSessionEnded { end: e } =>
+          match e {
+            OwnSessionStopUnconfirmed { detach: _, reason: _ } => Present { value: own_session_end_text(end: e) as NonEmptyStr }
+            OwnSessionNotStopped { reason: _, configurations: _ } => Present { value: own_session_end_text(end: e) as NonEmptyStr }
+            OwnSessionStopped { detach: _ } => end_release_session_residue(standing: res.session_release)
+            OwnSessionNothingPresented { configurations: _ } => end_release_session_residue(standing: res.session_release)
+          }
+        other => Present { value: concat("the end-of-attempt release did not run: ", match media_attach_outcome_reason(outcome: other) { Present { value: w } => w  Absent => "no reason was rendered" }) as NonEmptyStr }
+      }
+  }
+}
+
+fn end_release_session_residue(standing: SessionRelease) -> NonEmptyStr? {
+  match standing {
+    SessionReleased => none
+    other => Present { value: concat("the end-of-attempt release's own login session was ", session_release_text(standing: other)) as NonEmptyStr }
+  }
+}
+
+fn end_release_text(end_release: EndMediaRelease) -> String {
+  match end_release {
+    EndReleaseKeptHostOn => "kept: the host is on after the attempt, and a host that stays up runs from its medium"
+    EndReleaseWithheld { reason: r } => concat("WITHHELD: ", r as String)
+    EndReleaseRan { result: res } =>
+      match res.outcome {
+        MegaRacOwnSessionEnded { end: e } => join([own_session_end_text(end: e), "; session ", session_release_text(standing: res.session_release)], "")
+        other => concat("NOT RUN: ", match media_attach_outcome_reason(outcome: other) { Present { value: w } => w  Absent => "no reason was rendered" })
+      }
+  }
+}
+
+// THE RESIDUE IS PART OF THE VERDICT. A success that left its session behind is a failure naming it; a
+// failure keeps its own cause first and carries the residue beside it.
+fn outcome_with_end_release(outcome: ProcessExit, end: MtCollins1EndMedia) -> ProcessExit {
+  match end {
+    EndMediaNotTaken { reason: _ } => outcome
+    EndMediaObserved { look: _, end_release: rel } =>
+      match end_release_residue(end_release: rel) {
+        Absent => outcome
+        Present { value: why } =>
+          match outcome {
+            ExitSuccess => exit_failure(reason: concat("mtcollins1 boot: end-of-attempt release: ", why as String))
+            ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: join([r, "; and at the end of the attempt: ", why as String], "") }
+          }
+      }
+  }
+}
 
 // PURE: the end look is owed exactly when the media attach was attempted -- a session was opened
 // against the controller, so any stop, start or presentation it reached is this attempt's to observe.
@@ -796,7 +909,7 @@ fn end_media_is_owed(media: MtCollins1MediaAttachRecord) -> Bool {
 fn end_media_text(e: MtCollins1EndMedia) -> String {
   match e {
     EndMediaNotTaken { reason: r } => concat("not taken: ", r as String)
-    EndMediaObserved { look: l } => observation_text(r: l)
+    EndMediaObserved { look: l, end_release: rel } => join([observation_text(r: l), " | release: ", end_release_text(end_release: rel)], "")
   }
 }
 
@@ -841,7 +954,7 @@ fn media_loss_after_handoff(handoff: MtCollins1HandoffMedia, end: MtCollins1EndM
         MediaLossAffirmed { phase: p, reason: r } => MediaLossAffirmed { phase: p, reason: r }
         MediaLossNotAffirmed =>
           match end {
-            EndMediaObserved { look: l } => media_loss_of_look(look: l, phase: MediaLostAtEndOfAttempt)
+            EndMediaObserved { look: l, end_release: _ } => media_loss_of_look(look: l, phase: MediaLostAtEndOfAttempt)
             EndMediaNotTaken { reason: _ } => MediaLossNotAffirmed
           }
       }
@@ -2403,17 +2516,21 @@ fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> Invento
 {
   let at = clock_now_probed_at_or_unknown()
   let endpoint = mtcollins1_redfish_url(path: mtcollins1_redfish_service_root_path as String)
-  match place_netrc_binding_privately(machine: mtcollins1_endpoint.host, login: username, password: trim(s: password) as Secret) {
-    NetrcBindingRefused { cause: c } => inventory_unread(cause: BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String })
-    NetrcBindingRefusedResidueRemains { cause: c } => {
+  match with_private_netrc_binding(
+    machine: mtcollins1_endpoint.host,
+    login: username,
+    password: trim(s: password) as Secret,
+    use: fn(binding) { read_inventory_with_netrc(netrc: netrc_binding_path(binding: binding) as NonEmptyStr) },
+  ) {
+    PrivateSecretFileNotEntered { cause: c } => inventory_unread(cause: BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String })
+    PrivateSecretFileNotEnteredResidueRemains { cause: c } => {
       let cause = BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String }
       InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: false }
     }
-    NetrcBindingPlaced { binding: binding } => {
-      let read = read_inventory_with_netrc(netrc: binding.path as NonEmptyStr)
-      let removed = shred_netrc_binding(binding: binding)
-      InventoryReading { system_id: read.system_id, memory: read.memory, processors: read.processors, credential_removed: removed }
-    }
+    PrivateSecretFileCompleted { value: read } =>
+      InventoryReading { system_id: read.system_id, memory: read.memory, processors: read.processors, credential_removed: true }
+    PrivateSecretFileCompletedResidueRemains { value: read } =>
+      InventoryReading { system_id: read.system_id, memory: read.memory, processors: read.processors, credential_removed: false }
   }
 }
 
@@ -2574,10 +2691,204 @@ fn mtcollins1_boot_hpm_check(username: NonEmptyStr, password_file: NonEmptyStr, 
     kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   if r.success {
+    let retained = Filesystem.Write(path: mtcollins1_boot_hpm_check_path(run_attempt: run_attempt), content: r.stdout)
     pre_power_firmware_observed(clearance: clearance, run_attempt: run_attempt, table: hpm_check_table_of(stdout: r.stdout), source: join(["ipmitool hpm check on ", mtcollins1_endpoint.host as String, " at ", at as String], "") as NonEmptyStr)
   } else {
     PrePowerFirmwareUnread { reason: concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr))) as NonEmptyStr }
   }
+}
+
+// THE BUILD READING, FROM THE RETAINED BYTES. The pre-power read above keeps the controller's own hpm check
+// output as a boot artifact, verbatim, so the file the run uploads is the file a later change commits to
+// artifacts/bmc/ and names in a MegaRacVersionFromFirmwareRead standing. This reads that file BACK and runs
+// the catalogue's one derivation over it (gunbc.host.bmc_release_capability_catalog
+// megarac_version_establishment, component APP), so what the receipt reports is what those bytes establish,
+// not a second reading of the tool. It is evidence for the restoration trigger of
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation and changes no
+// admission: production still admits operations through the observed build until that cutover lands.
+// THE FILE IS NAMED BY THE RUN THAT READ IT. The runner's work tree outlives a run, so a fixed name could
+// hand this run's readback a previous run's bytes after a failed read; keyed by GITHUB_RUN_ID (the
+// run_attempt the boot passes, and the attempt identity the conclusion reads), a run reads back only what
+// it wrote. It stays inside mtcollins1_boot_artifact_glob, so the run uploads it.
+fn mtcollins1_boot_hpm_check_path(run_attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["artifacts/mtcollins1-boot-hpm-check-", run_attempt as String, ".txt"], "") as NonEmptyStr
+}
+
+type MtCollins1BuildReading
+  = BuildReadRetained { path: NonEmptyStr, established: MegaRacVersionEstablishment }
+  | BuildReadNotRetained { reason: NonEmptyStr }
+
+fn mtcollins1_build_reading_of(path: NonEmptyStr, read_ok: Bool, content: String, error: String) -> MtCollins1BuildReading {
+  if !read_ok {
+    BuildReadNotRetained { reason: concat("the retained hpm check could not be read back: ", error) as NonEmptyStr }
+  } else if content == "" {
+    BuildReadNotRetained { reason: "no hpm check output was retained for this attempt" }
+  } else {
+    BuildReadRetained { path: path, established: megarac_version_establishment(standing: MegaRacVersionFromFirmwareRead { artifact_path: path, component: "APP", stdout: content }) }
+  }
+}
+
+fn mtcollins1_boot_build_reading(attempt: AttemptIdentityReading) -> MtCollins1BuildReading {
+  match attempt {
+    AttemptIdentityUnavailable { variable: v, detail: _ } => BuildReadNotRetained { reason: concat("the run identity is unavailable, so no retained file is this run's: ", v as String) as NonEmptyStr }
+    AttemptRunId { run_id: id } => {
+      let path = mtcollins1_boot_hpm_check_path(run_attempt: id)
+      let r = Filesystem.Read(path: path as String)
+      mtcollins1_build_reading_of(path: path, read_ok: r.success, content: r.content, error: r.error)
+    }
+  }
+}
+
+fn build_reading_receipt_line(r: MtCollins1BuildReading) -> String {
+  concat("build=", match r {
+    BuildReadNotRetained { reason: why } => concat("not read: ", why as String)
+    BuildReadRetained { path: p, established: e } => match e {
+      MegaRacReleaseEstablishedByRead { firmware: f } => join(["machine-read APP ", f.raw_version as String, " from ", p as String, " (uncommitted; commit it to ground the current build)"], "")
+      MegaRacReleaseEstablishedByAttestation { firmware: f } => join(["attested ", f.raw_version as String, " from ", p as String], "")
+      MegaRacReleaseEstablishmentRefused { standing: _, cause: c } => join(["retained at ", p as String, " but establishes no release: ", megarac_version_refusal_text(cause: c)], "")
+    }
+  })
+}
+
+// ── THE PRE-POWER READ-ONLY RETENTIONS: mc info AND fru print 0 ──────────────────────────────────
+// The same retention the hpm check got (#14982's shape), extended to the two other READ-ONLY controller
+// questions the boot asks before it touches power: `ipmitool mc info` (what BMC the endpoint says it is,
+// the channel's own account) and `ipmitool fru print 0` (the board/chassis inventory the identity claims
+// are made from). Both are declared `readonly` on extdeps.bmc.ipmi, both run in the pre-power phase
+// beside the hpm check BEFORE any write, and both are kept VERBATIM per run id -- the same
+// GITHUB_RUN_ID keying that makes a retained hpm check unforgeable across runs applies here: a run can
+// only ever overwrite its own files, and the run uploads them (they sit inside the mtcollins1-boot-* glob).
+// The reads answer no question the boot decides on -- the boot still resolves its build, admits, and
+// actuates exactly as before; these two artifacts exist so the run's OWN words about who it talked to
+// survive it, byte-for-byte, in the receipt and the uploaded bundle.
+fn mtcollins1_boot_mc_info_path(run_attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["artifacts/mtcollins1-boot-mc-info-", run_attempt as String, ".txt"], "") as NonEmptyStr
+}
+
+fn mtcollins1_boot_fru_print_path(run_attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["artifacts/mtcollins1-boot-fru-print-0-", run_attempt as String, ".txt"], "") as NonEmptyStr
+}
+
+type MtCollins1PrePowerRetention
+  = PrePowerRetained { path: NonEmptyStr, bytes: ByteSize }
+  | PrePowerNotRetained { reason: NonEmptyStr }
+
+// THE FOLD BOTH WAYS OF ASKING PASS THROUGH. The pre-power phase writes the bytes the tool answered; the
+// conclusion reads the file back by the run's own identity. Either way the SAME fold decides what counts
+// as retained: the answer must have come, the bytes must be more than nothing, and what is kept carries
+// the size of the VERBATIM content -- a ByteSize derived from the bytes themselves through this file's
+// ONE size authority (std.measure, the same ByteSize the console bounds use; review 86396), so a
+// retention whose number does not match its content cannot be written here. The failure arms carry the
+// cause WITH THE STAGE VERB THE CALLER NAMES (review 86381 finding 1: "could not be written: <write
+// error>" and "could not be read back: <file error>" are DIFFERENT failures and must not share a
+// message); an empty answer is not a retention (a zero-byte file would be kept and say nothing).
+fn mtcollins1_pre_power_retention_of(path: NonEmptyStr, read_ok: Bool, content: String, stage: NonEmptyStr, error: String) -> MtCollins1PrePowerRetention {
+  if !read_ok {
+    PrePowerNotRetained { reason: concat("could not be ", stage as String, ": ", error) as NonEmptyStr }
+  } else if content == "" {
+    PrePowerNotRetained { reason: concat(stage as String, " answered with no bytes at all, and an empty file is not a retention") as NonEmptyStr }
+  } else {
+    PrePowerRetained { path: path, bytes: byte_size(count: count(bytes_octets(b: utf8_encode_bytes(s: content)))) }
+  }
+}
+
+// WHY A PRE-POWER READ DID NOT ANSWER, in the transport's OWN words. exit_code and stderr are
+// exactly what the tool reported, run through the SAME typed-cause builder the firmware check and
+// every other BMC read use — so a failed read names its failure (the exit status, and the tool's
+// first stderr line) instead of a fixed shrug that could only ever mean "not read" (manager HOLD
+// on review 86433 round). Pure: it composes the cause from what the caller observed and WHEN it
+// was observed; the caller is the only thing that talks to the BMC or the clock.
+fn pre_power_read_failure_reason(capture: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> NonEmptyStr {
+  let cause = bmc_ipmitool_read_cause(
+    endpoint: mtcollins1_ipmi_endpoint(),
+    at: at,
+    exit_code: exit_code,
+    stderr: stderr,
+  )
+  concat(capture as String, " failed: ", bmc_read_cause_text(cause: cause)) as NonEmptyStr
+}
+
+// THE PRE-POWER WRITE OF `mc info`. Read-only by its operation declaration. A failed read keeps
+// the tool's OWN cause (exit status + stderr through the shared BMC typed-cause builder), never a
+// stand-in; the receipt line then reports that executed cause first and re-reads the file from
+// disk as a second, independent witness.
+fn mtcollins1_boot_mc_info_retain(username: NonEmptyStr, password_file: NonEmptyStr, run_attempt: NonEmptyStr) -> MtCollins1PrePowerRetention {
+  let r = diagnostic.ipmi.Tool.McInfo(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  if r.success {
+    let path = mtcollins1_boot_mc_info_path(run_attempt: run_attempt)
+    let retained = Filesystem.Write(path: path, content: r.stdout)
+    mtcollins1_pre_power_retention_of(path: path, read_ok: retained.success, content: r.stdout, stage: "written", error: retained.error)
+  } else {
+    PrePowerNotRetained { reason: pre_power_read_failure_reason(capture: "mc info", at: clock_now_probed_at_or_unknown(), exit_code: r.exit_code, stderr: r.transport_stderr) }
+  }
+}
+
+// THE PRE-POWER WRITE OF `fru print 0`. The id is fixed to 0 -- the board FRU the identity rows are read
+// from, the same board whose fields the current-build identity takes (gunbc.machine_intake
+// .mtcollins1_access_observation mtcollins1_current_build_identity): the boot keeps the controller's own
+// inventory answer for every run, so a later identity claim can be checked against the run's capture
+// rather than against a re-ask the controller may answer differently after a reflash.
+fn mtcollins1_boot_fru_print_retain(username: NonEmptyStr, password_file: NonEmptyStr, run_attempt: NonEmptyStr) -> MtCollins1PrePowerRetention {
+  let r = diagnostic.ipmi.Tool.FruPrint(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    fru_id: "0",
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  if r.success {
+    let path = mtcollins1_boot_fru_print_path(run_attempt: run_attempt)
+    let retained = Filesystem.Write(path: path, content: r.stdout)
+    mtcollins1_pre_power_retention_of(path: path, read_ok: retained.success, content: r.stdout, stage: "written", error: retained.error)
+  } else {
+    PrePowerNotRetained { reason: pre_power_read_failure_reason(capture: "fru print 0", at: clock_now_probed_at_or_unknown(), exit_code: r.exit_code, stderr: r.transport_stderr) }
+  }
+}
+
+// THE READ-BACK, BY THE RUN'S OWN IDENTITY -- the file this run wrote or nothing. Same keying as the
+// retained hpm check: without a run identity no file belongs to this attempt, so no file is read at all.
+// ONE fn for both artifacts (review 86381 finding 2): the artifact is a parameter -- its path is built
+// from the run id by the caller's own path function -- and the identity gate runs BEFORE any path is
+// chosen, so neither artifact can grow a fixed-path fallback that the other would have to forget.
+fn mtcollins1_boot_pre_power_retained(attempt: AttemptIdentityReading, path_of: fn(NonEmptyStr) -> NonEmptyStr) -> MtCollins1PrePowerRetention {
+  match attempt {
+    AttemptIdentityUnavailable { variable: v, detail: _ } => PrePowerNotRetained { reason: concat("the run identity is unavailable, so no retained file is this run's: ", v as String) as NonEmptyStr }
+    AttemptRunId { run_id: id } => {
+      let path = path_of(id)
+      let r = Filesystem.Read(path: path as String)
+      mtcollins1_pre_power_retention_of(path: path, read_ok: r.success, content: r.content, stage: "read back", error: r.error)
+    }
+  }
+}
+
+// THE RECEIPT LINE FOR ONE PRE-POWER CAPTURE -- the ORIGINAL cause, then the disk's own verdict
+// (review 86381 finding 1). The line leads with what the WRITE side reported, carried in the attempt
+// record from the pre-power phase that executed it: an ipmitool that refused says "not read: <cause>",
+// a write that failed says "could not be written: <write error>", and neither is laundered into the
+// read-back's file-not-found message. Only when the write side retained does the conclusion read the
+// file back -- a retained-then-lost file (emptied, shrunk, removed between write and conclusion) is
+// named as that, not reported as if nothing had been written. The Absent arm is the attempt that ENDED
+// BEFORE the pre-power phase ran: honest silence about a phase that never happened, never a read of
+// someone else's file. One fn for both artifacts; `prefix` (mc-info= / fru=) is the only difference,
+// so the pairs of this PR's first cut collapse to this (review 86381 finding 2).
+fn pre_power_retention_receipt_line(prefix: NonEmptyStr, executed: MtCollins1PrePowerRetention?, run: AttemptIdentityReading, path_of: fn(NonEmptyStr) -> NonEmptyStr) -> String {
+  concat(prefix, "=", match executed {
+    Absent => "not retained: the attempt ended before the pre-power phase ran"
+    Present { value: r } => match r {
+      PrePowerNotRetained { reason: why } => concat("not retained: ", why as String)
+      PrePowerRetained { path: p, bytes: n } => match mtcollins1_boot_pre_power_retained(attempt: run, path_of: path_of) {
+        PrePowerRetained { path: _, bytes: m } => join(["retained verbatim ", to_string(byte_size_count(b: n)), " bytes at ", p as String, ", read back at conclusion with ", to_string(byte_size_count(b: m)), " bytes"], "")
+        PrePowerNotRetained { reason: why } => join(["written at ", p as String, " but not on disk at conclusion: ", why as String], "")
+      }
+    }
+  })
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [

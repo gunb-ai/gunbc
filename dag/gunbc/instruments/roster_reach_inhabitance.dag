@@ -1,6 +1,8 @@
 module gunbc.instruments.roster_reach_inhabitance
 
+import std.optional { Optional }
 import std.types { Bool, List, String }
+import gunbc.source_layout { layout_module_storage_path }
 import std.process { ExitSuccess, ExitFailure }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
@@ -31,28 +33,27 @@ data pool_roots: List<String> = ["dag/gunbc/runner", "dag/gunbc/fleet"]
 
 data roster_read_name: String = "gunbc.fleet.organization_runner_roster_read.organization_runner_roster_live_read"
 
-fn slashes_to_dots(s: String) -> String {
-  if string_length(s: s) == 0 { "" } else {
-    let head = substring(s: s, start: 0, end: 1)
-    concat(if head == "/" { "." } else { head }, slashes_to_dots(s: substring(s: s, start: 1, end: string_length(s: s))))
-  }
-}
-
-fn entry_module(t: GunbcRunStepTarget) -> String {
-  slashes_to_dots(s: substring(s: t.entry, start: 4, end: string_length(s: t.entry) - 4))
-}
-
 fn decl_module(d: FnArrowDecl) -> String {
   substring(s: d.qualified_name, start: 0, end: string_length(s: d.qualified_name) - string_length(s: d.name) - 1)
 }
 
-fn in_pool(t: GunbcRunStepTarget) -> Bool {
-  any(pool_roots, r => string_contains(s: t.entry, pattern: r))
+fn module_is_stored_at(module: String, entry: String) -> Bool {
+  match layout_module_storage_path(module: module) {
+    Absent => false
+    Present { value: path } => path == entry
+  }
 }
 
-fn reaches_roster_read_over(t: GunbcRunStepTarget, decls: List<FnArrowDecl>) -> Bool {
+// The target's entry module, read from the pool's own modules through THE name-to-path authority
+// (gunbc.source_layout layout_module_storage_path, DESIGN §3): a target whose entry is stored at no pool
+// module is outside the pool and Absent, so pool membership is this lookup and not a second path test.
+fn entry_module_in_pool(t: GunbcRunStepTarget, decls: List<FnArrowDecl>) -> Optional<String> {
+  filter(map(decls, d => decl_module(d: d)), m => module_is_stored_at(module: m, entry: t.entry)).first()
+}
+
+fn reaches_roster_read_over(t: GunbcRunStepTarget, entry_module: String, decls: List<FnArrowDecl>) -> Bool {
   let reach = call_reachable_decls_from_root(
-    entry_module: entry_module(t: t),
+    entry_module: entry_module,
     fn_name: t.function,
     terminal_callee_symbols: [],
     closure_modules: map(decls, d => decl_module(d: d)),
@@ -61,8 +62,15 @@ fn reaches_roster_read_over(t: GunbcRunStepTarget, decls: List<FnArrowDecl>) -> 
   any(reach.reached, d => d.qualified_name == roster_read_name)
 }
 
+fn reaches_roster_read_in_pool(t: GunbcRunStepTarget, decls: List<FnArrowDecl>) -> Bool {
+  match entry_module_in_pool(t: t, decls: decls) {
+    Absent => false
+    Present { value: m } => reaches_roster_read_over(t: t, entry_module: m, decls: decls)
+  }
+}
+
 fn roster_reading_targets(decls: List<FnArrowDecl>) -> List<GunbcRunStepTarget> {
-  filter(gunbc_run_step_targets(), t => in_pool(t: t) && reaches_roster_read_over(t: t, decls: decls))
+  filter(gunbc_run_step_targets(), t => reaches_roster_read_in_pool(t: t, decls: decls))
 }
 
 fn roster_reach_holds(derived: List<GunbcRunStepTarget>) -> Bool {

@@ -24,7 +24,6 @@ import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_ro
 import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
-import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
@@ -38,11 +37,8 @@ import gunbc.live_deploy.release_locus {
   release_locus_tree_receipt_path,
   release_locus_tree_subdirs,
   approval_broker_helper_root_principal,
-  approval_broker_helper_snapshot_base,
   HelperLocus,
-  approval_broker_helper_snapshot_locus,
   helper_locus_dir,
-  approval_broker_ntfy_runtime_observe_operation_at,
 }
 import gunbc.fleet.fleet_converge_timer {
   fleet_converge_timer_on_calendar,
@@ -195,13 +191,16 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
 }
 import gunbc.roadmap.attempt_system_unit_launch {
-  attempt_system_unit_sudoers_body, attempt_system_unit_sudoers_path,
-  AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
+  attempt_system_unit_launch_gunbc_argv_at,
+  AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
   attempt_system_unit_launch_argv_refused_detail,
-  attempt_system_unit_launcher_locus, attempt_system_unit_launcher_revision_receipt_path,
+  attempt_system_unit_launcher_locus,
 }
 import gunbc.live_deploy.lab_host_plan {
-  LabPlanReady, LabPlanRefused, SystemManagerLauncherSelected,
+  LabPlanReady,
+  LabPlanRefused,
+  lab_plan_worker_sandbox_choice,
+  SystemManagerLauncherSelected,
 }
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
@@ -226,7 +225,7 @@ import gunbc.live_deploy.spec {
   ComposeOwnedArtifactKind,
   UpsertArtifactKind,
   ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -241,6 +240,8 @@ import gunbc.live_deploy.spec {
   deployment_retired_belt_timer_unit_name,
   deployment_publication_service_unit_path,
   deployment_publication_path_unit_path,
+  deployment_attempt_unit_drain_service_unit_name, deployment_attempt_unit_drain_path_unit_name,
+  deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path,
   deployment_publication_timer_unit_path,
   deployment_retired_belt_timer_unit_path,
   deployment_fleet_converge_service_unit_name,
@@ -275,7 +276,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
@@ -308,7 +309,7 @@ import gunbc.membership_reconcile {
 }
 import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv, shell_command_text_of_stmts }
 import gunbc.live_deploy.operations {
-  deploy_stage_dir_var, deploy_cap_stage_dir_var, deploy_stage_dirs_exit_trap_command, install_directory_owned_command,
+  install_directory_owned_command,
 }
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
@@ -913,6 +914,77 @@ data attempt_unit_spool_answer_mode: FileMode = FileMode {
   sticky: false,
 }
 
+// THE ROOT SIDE OF THE ATTEMPT-UNIT SPOOL IS A SYSTEM ONESHOT STARTED BY A .path UNIT, the publication
+// helper's shape (PublicationHelperPathUnit): a request was written, so the service runs the
+// launcher entry from the root-owned release and answers the spool. No requester holds a sudo grant
+// for it and none waits on it. systemd runs one activation of the service at a time, which is the
+// mutual exclusion the retired drain.lock flock provided; a request written while a drain runs
+// leaves requests/ non-empty, and the path unit starts the service again when it finishes.
+// TimeoutStartSec is the start path's own watchdog (belt_tick_run_bound): a start-wait request holds
+// the activation for one worker's whole lifetime.
+type AttemptUnitDrainServiceFile
+  = AttemptUnitDrainServiceReady { file: SystemdUnitFile }
+  | AttemptUnitDrainServiceRefused { cause: NamedArgumentAdmission }
+
+fn live_deploy_attempt_unit_drain_service_unit_file(
+  spec: DeploymentSpec,
+  instance: HostDashboardInstance,
+  revision: ReleaseRevisionBinding,
+) -> AttemptUnitDrainServiceFile {
+  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
+    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptUnitDrainServiceRefused { cause: cause }
+    AttemptSystemUnitLaunchArgvReady { argv } =>
+      AttemptUnitDrainServiceReady { file: ServiceUnitFile {
+        unit: [
+          Description { text: "gunbc attempt-unit spool drain (starts the dashboard's attempt worker units as the system manager)" as NonEmptyStr },
+          Condition { kind: ConditionDirectoryNotEmpty, negated: true, argument: attempt_unit_spool_stalled_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+        ],
+        service: [
+          ServiceType { mode: OneshotMode },
+          TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+          // THE DEPLOYMENT SLICE, like every other service that runs gunbc: without Slice= the oneshot lands in
+          // system.slice, where gunbc refuses to run (user_work_scope: UncappedSystemSlice) and the .path
+          // unit then trips its start limit. Measured on the srv1 lab, 2026-10-21.
+          ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+          ExecStart { command: join(argv, " ") as NonEmptyStr },
+        ],
+        install: NotInstallable,
+      } }
+  }
+}
+
+fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [
+      Description { text: "gunbc attempt-unit spool drain: a start request was written" as NonEmptyStr },
+    ],
+    path: [
+      PathUnit { target: deployment_attempt_unit_drain_service_unit_name(names: spec.names) },
+      DirectoryNotEmpty { path: attempt_unit_spool_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
+      TriggerLimitBurst { count: to_string(value: belt_exit_trigger_limit_burst) as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+// THE RETIRED SUDO ROUTE, REMOVED FROM HOSTS THAT CONVERGED UNDER IT. Before the root drain was a path-triggered
+// oneshot, apply installed a per-instance sudoers drop-in for the launcher, an `installed-revision` receipt in the
+// helper locus, and the requester flocked `drain.lock` in the spool. This apply deletes all three (rm -f is
+// idempotent), so a host that held the grant does not keep a standing root-by-sudo route beside the new one
+// (DESIGN section 3: the old authority ends in one motion), then `visudo -cf /etc/sudoers` validates what remains.
+// SHAPE FOLLOWS leftover_systemd_timer_retire_steps (named retired-artifact rows, rm -f, then a readback that fails
+// the apply); the dissolution is attempt_unit_sudo_route_retire_dissolution.
+data attempt_unit_sudo_route_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete retired_attempt_unit_sudo_route_paths and its apply step once every deployed instance's apply has run the removal and passed the sudoers check" as NonEmptyStr)
+
+fn retired_attempt_unit_sudo_route_paths(instance: HostDashboardInstance) -> List<String> {
+  [
+    join(["/etc/sudoers.d/gunbc-attempt-system-unit-", instance.instance_id as String], ""),
+    join([attempt_system_unit_launcher_locus(instance: instance).base, "/installed-revision"], ""),
+    join([attempt_unit_spool_root(instance_root: instance.instance_root as String), "/drain.lock"], ""),
+  ]
+}
+
 // THE BELT'S EVENT UNITS (dogfood intervention #4). Each service is one `gunbc run` entry of
 // gunbc.roadmap.roadmap_belt_tick_cli under the belt service's principal, slice and spawn root, so the two
 // event services resolve the same instance the belt service does and start obligation units in the
@@ -1120,6 +1192,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         TailscaleServeMapping => none
         DeployedTreeRemoteUnit => none
         PublicationHelperPathUnit => none
+        AttemptUnitDrainPathUnit => none
         ApprovalBrokerFrontDoor => none
       }
       ComposeOwned { kind: ck } => match ck {
@@ -1154,6 +1227,12 @@ fn step_renders_its_own_member_commands(step: DeploymentStep) -> Bool {
     Absent => false
     Present { value: member } => match member {
       DirectoryRoot { path: _ } => false
+      // WORKER-ROOT-EQUIVALENT-3: the two git-subtree members are NOT DeploymentSteps -- they ride the
+      // roster and emit their own apply through the typed group in gunbc.live_deploy.apply_legs
+      // (deploy_apply_git_worker_subtree_plan), so a step never carries them. False here is
+      // total-and-unreached, not a behaviour.
+      GitWorkerSubtree { path: _, child: _ } => false
+      RepositorySharedPosture { path: _ } => false
       TreePublication => true
       Executable => true
       UnitFile => true
@@ -1348,7 +1427,8 @@ fn path_parent_dir(path: String) -> String {
 // THE 0755 IS A SHARED CONSTANT, NOT A DERIVED FACT, and every member still on it inherits it
 // regardless of what that member's readers and writers actually need. That is why
 // /opt/gunbc/attempt-state converges world-readable while the per-attempt directories the belt
-// creates under it are 0700 (attempt_state_prepare_argv_for_instance) — the leaf states its
+// creates under it are owner-only, or group-traversable for a dedicated worker account
+// (attempt_state_prepare_argvs_for_instance) — the leaf states its
 // requirement, the root cannot, so the root is loose by default rather than by decision. Ownership
 // is already derived (-o/-g project the service user from the spec, install_d_owned_command); the
 // mode is the one field on the triple still hand-picked.
@@ -1589,134 +1669,8 @@ fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUni
   )
 }
 
-// ── THE RELEASE'S HELPER GRANT: ONE EXACT SUDOERS LINE OVER A ROOT-OWNED SNAPSHOT ───────────
-// The enrolment-code verb must read the live ntfy process as gunbc-ntfy
-// (gunbc.auth.approval_ntfy_runtime_observe). It does that by running ONE entry of a released gunbc
-// through sudo. There is deliberately no `current` symlink (see approval_broker_release_retention_note),
-// so a fixed grant names the release sha.
-//
-// THE GRANT NAMES A ROOT-OWNED SNAPSHOT, NOT THE RELEASE DIRECTORY (side-chat HOLD wall 1 on
-// fbf351ecd9). A fixed argv is no wall when the grantee can author its payload, and for `gunbc run`
-// the payload is the binary PLUS every .dag the run interprets. The release directory is owned by the
-// broker's service user, and that is the same account as the grantee (both are briansrls). So the
-// grantee could replace the binary or a source there and run the granted argv as gunbc-ntfy. The
-// grant therefore names /opt/gunbc/approval-broker-helpers/<sha>, a copy made at install by root from
-// the deploying checkout. The binary, both source roots, the entry, and every ancestor directory are
-// root-owned and not group- or world-writable, and the copy contains no symlink. The install reads
-// that back before any grant is written. approval_broker_helper_grant_admission refuses outright a
-// locus whose owner is the grantee, so pointing the grant back at the release directory emits no grant.
-//
-// ONE OPERATION, TWO RENDERINGS. The grant line and the argv the verb runs are both projections of
-// approval_broker_ntfy_runtime_observe_operation, through gunbc.executor_privileged_operation (the seam
-// every runner-host grant renders through). So the grant cannot authorize a command other than the
-// one the verb runs.
-//
-// THE DROP-IN IS REPLACED ATOMICALLY, AND ITS IDENTITY IS CHECKED (wall 2). The file holds exactly one
-// grant line, the one for this release. It is written root:root 0440 to a temp name inside
-// sudoers.d that contains a `.`. sudoers(5), "Including other files from within sudoers": files
-// in an @includedir/#includedir directory "that end in the '~' character or contain a '.' character"
-// are skipped. So sudo never reads the temp file. It is checked with `visudo -c -O -P -f` (syntax,
-// owner, group and mode), then renamed over the final path with `mv -T` (one rename(2)). The final
-// path is checked again the same way. Its bytes are read back through a privileged fixed-path copy
-// into the stage and compared. An interruption at any step before the rename leaves the previous
-// release's valid file in place. A partial file only ever exists under the ignored name. The
-// previous release's line disappears in the rename, so nothing sweeps for "other" lines.
-data approval_broker_helper_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-approval-broker-helpers"
-data approval_broker_helper_sudoers_temp_path: NonEmptyStr = "/etc/sudoers.d/gunbc-approval-broker-helpers.new"
-data approval_broker_helper_sudoers_stage_name: String = "gunbc-approval-broker-helpers.sudoers"
-data approval_broker_helper_sudoers_readback_stage_name: String = "gunbc-approval-broker-helpers.readback"
-data approval_broker_helper_sudoers_mode: NonEmptyStr = "0440"
-
-// The release locus, named only so its refusal is a control: it is owned by the broker's service
-// user.
-fn approval_broker_release_locus(spec: DeploymentSpec) -> HelperLocus {
-  HelperLocus {
-    base: release_locus_releases_dir(root: spec.approval_broker.repo_root as String),
-    owner: spec.approval_broker.service_user,
-  }
-}
-
-// THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_enrolment_code
-// runs as fleet_posix_operator_user, which owns the device store and reads the publisher token).
-fn approval_broker_helper_grantee() -> NonEmptyStr {
-  fleet_posix_operator_user.name
-}
-
-fn approval_broker_helper_sudoers_line_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> NonEmptyStr {
-  executor_privileged_operation_sudoers_line(
-    grantee: approval_broker_helper_grantee(),
-    op: approval_broker_ntfy_runtime_observe_operation_at(locus: locus, revision: revision),
-  )
-}
-
-fn approval_broker_helper_sudoers_line(revision: ReleaseRevisionBinding) -> NonEmptyStr {
-  approval_broker_helper_sudoers_line_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
-}
-
-fn approval_broker_helper_sudoers_content(revision: ReleaseRevisionBinding) -> String {
-  join([
-    "# GENERATED by gunbc.live_deploy.emit approval_broker_helper_sudoers_content for release ",
-    release_revision_execstart_text(binding: revision),
-    ". Replaced whole by each broker release install; do not hand-edit.\n",
-    approval_broker_helper_sudoers_line(revision: revision) as String,
-    "\n",
-  ], "")
-}
-
-// THE GRANT'S WORDS MUST BE PLAIN, OR THE GRANT IS NOT EMITTED. A sudoers Cmnd_Spec treats these
-// characters specially: `,` and `:` separate list items, `!`, `(` and `)` are grammar, `\`
-// escapes, whitespace splits arguments, `#` starts a comment, and `*` `?` `[` `]` are glob
-// metacharacters that would turn an exact match into a pattern. The poisoned RevisionNotInstalled
-// path contains spaces, so an unbound revision is refused here too. The rest are shell quoting and
-// expansion characters, which no path this module names verbatim contains.
-//
-// `=` IS NOT REFUSED, because it is escaped rather than forbidden. The sudoers renderer
-// (gunbc.executor_privileged_operation sudoers_argument_word) spells it `\=`, as sudoers(5) requires,
-// and the helper's argv carries one legitimately: the env(1) binding that gives the helper its
-// checkout root. `,` `:` and `\` are escaped by that same renderer but stay refused here, since
-// no helper word needs them and refusing is the narrower grant.
-data sudoers_command_word_refused_characters: List<String> = [
-  ",", ":", "!", "(", ")", "\\", " ", "\t", "\n", "#", "*", "?", "[", "]", "\"", "'", "$", "`",
-]
-
-type HelperGrantAdmission
-  = HelperGrantAdmitted
-  | HelperGrantWordRefused { word: String }
-  | HelperGrantLocusWritableByGrantee { owner: NonEmptyStr }
-
-fn approval_broker_helper_grant_admission_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> HelperGrantAdmission {
-  if locus.owner == approval_broker_helper_grantee() {
-    HelperGrantLocusWritableByGrantee { owner: locus.owner }
-  } else {
-    fold(
-      executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation_at(locus: locus, revision: revision)),
-      init: HelperGrantAdmitted,
-      f: (acc, w) =>
-        match acc {
-          HelperGrantWordRefused { word: x } => HelperGrantWordRefused { word: x }
-          HelperGrantLocusWritableByGrantee { owner: o } => HelperGrantLocusWritableByGrantee { owner: o }
-          HelperGrantAdmitted =>
-            if any(sudoers_command_word_refused_characters, c => string_contains(s: w, pattern: c)) {
-              HelperGrantWordRefused { word: w }
-            } else {
-              HelperGrantAdmitted
-            }
-        },
-    )
-  }
-}
-
-fn approval_broker_helper_grant_admission(revision: ReleaseRevisionBinding) -> HelperGrantAdmission {
-  approval_broker_helper_grant_admission_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
-}
-
-fn approval_broker_helper_grant_refusal_text(a: HelperGrantAdmission) -> String {
-  match a {
-    HelperGrantAdmitted => ""
-    HelperGrantWordRefused { word: w } => concat("a word of the helper argv carries a sudoers-special character, so its sudoers line would not mean that argv. word=", w)
-    HelperGrantLocusWritableByGrantee { owner: o } => concat("the helper locus is owned by the grantee, who could replace the code the grant executes. owner=", o as String)
-  }
-}
+// The mode of a root-owned sudoers grant file (visudo's required 0440).
+data helper_sudoers_grant_mode: NonEmptyStr = "0440"
 
 // ── THE ROOT-OWNED SNAPSHOT ──────────────────────────────────────────────────────────────────
 // Every path from / down to the snapshot base, so the readback covers the ancestors too.
@@ -1814,24 +1768,6 @@ fn helper_snapshot_intent_text(intent: Node) -> String {
 // the poison, which fails the stage.
 fn helper_snapshot_readback_command_at(ancestors: List<String>, dir: String, owner: Node) -> String {
   join(map(helper_snapshot_readback_intents(ancestors: ancestors, dir: dir, owner: owner), n => helper_snapshot_intent_text(intent: n)), "\n")
-}
-
-// THE ISSUING VERB LEARNS ITS OWN RELEASE FROM THE STEP THAT RUNS IT. The verb is invoked with
-// `gunbc run` from the release directory, and nothing in a run tells the function which release
-// that is. It cannot name its helper without that. The deployment step already binds the revision
-// (it selects the release directory by it), so it passes the same binding as `--arg
-// release_revision=<sha>`. The verb rebuilds the helper argv from it with
-// approval_ntfy_runtime_observe_helper_argv. A wrong or stale revision names a binary that is not
-// installed, or a command no grant matches. Both fail as a read failure (refuse), never as a
-// widened answer. Consumed by #12077's enrolment_code_issue_remote_argv, a declared frontier with
-// that PR as its trigger.
-data approval_broker_release_revision_argument_name: String = "release_revision"
-
-fn approval_broker_release_revision_argument(revision: ReleaseRevisionBinding) -> NamedArgumentAdmission {
-  admit_named_argument(
-    name: approval_broker_release_revision_argument_name,
-    value: release_revision_execstart_text(binding: revision),
-  )
 }
 
 // The deploying checkout's build, the one source the install copies from; the same path the planner

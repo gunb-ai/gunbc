@@ -5,7 +5,7 @@ import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResoluti
 
 import v2.std.dependency { DependencyView }
 
-import v2.std.node { Authored, NotADeclaration }
+import v2.std.node { node_same_occurrence, Authored, NotADeclaration }
 import std.types { Map }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.dependency { BindsTo, ClassifiedDependencyView, DependencyView }
@@ -55,7 +55,7 @@ fn sr_lookup_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
   let resolved = sr_lookup_resolved_facts()
   PartialFunction {
     lookup: fn(key) {
-      if key == sr_lookup_use {
+      if node_same_occurrence(a: key, b: sr_lookup_use) {
         optional_absent()
       } else {
         optional_present(value: resolved)

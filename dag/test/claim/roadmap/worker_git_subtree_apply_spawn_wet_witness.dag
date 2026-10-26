@@ -1,0 +1,1575 @@
+module test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness
+
+// WORKER-ROOT-EQUIVALENT-3, THE EXECUTED HALF OF THE APPLY AND THE SPAWN.
+//
+// WHY THESE EXIST AND THE SHAPE CLAIMS DO NOT COVER THEM. The dry witnesses in
+// test.claim.roadmap.worker_dedicated_account_witness decide on the model's ROWS -- which config keys the
+// posture writes, which walks the migration runs, which paths the spawn grants. A row can name the right
+// tool and still never run: an argv that is never executed reports the same tree as a step that was, so
+// nothing in a shape claim can tell "the grant worked" from "the grant did nothing at all". So these
+// witnesses call THE PRODUCTIONS -- dashboard_apply_provision_op's two git arms and
+// belt_worker_git_entry_grant_readback -- and grade the result with git and with find, never with the
+// builder that produced the state.
+//
+// THE PRINCIPAL, AND WHY NO NEW PRIVILEGE IS NEEDED. On the lab the apply reaches the instance as the
+// instance's DIRECTORY OWNER (HostDashboardInstance.directory_owner -- the serve account, which owns .git and
+// is a member of the attempt group; srv1 read, 2026-10-17), and the spawn's host steps run under the account
+// the actuator runs as (HostExecArgv). These witnesses therefore run as whoever executes the claim and plant
+// their throwaway .git with that account's own uid and primary gid -- the same relationship the lab has: a
+// non-owner of the group reaching the tree only because the tree grants group write. NO NEW EXEC ROUTE: the
+// apply's transport here is DashboardLocalProvision, whose realization is gunbc.WitnessBin.Run -- the route
+// this file's sibling witnesses and the belt already run -- so driving the apply arms over a local instance
+// IS executing them, not mocking them.
+//
+// WET: real processes, real trees, no network, no srv1, no GPU card, no systemd, no sudo. Excluded from the
+// hermetic discovery corpus by this file's WitnessExclusionRow in gunbc.ci.ci_layer_roots, and enrolled
+// function-by-function in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule.
+//   claim_batch --wet --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag --functions <csv>
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, CommitSha }
+import std.algebra { trim, string_contains, is_empty }
+import std.optional { Present }
+import extdeps.crypto.hash { sha256_digest }
+import std.content_hash { content_hash_atom }
+import gunbc.live_deploy.member_identity {
+  ConvergedMember, RepositorySharedPosture, MemberIdentity,
+  RepositorySharedPostureAt, RepositorySharedPostureIdentity,
+  ObservedMember, MemberAbsentOnHost, MemberUnobservable,
+  ReleaseTarget, derive_member_plan, EffectDerivation, EffectsDerived, EffectsRefused,
+  effect_labels, converged_member_eq,
+}
+import gunbc.live_deploy.member_observe {
+  ObservationArm, OnTheHostItself, observe_repository_shared_posture, posture_document_from_legs,
+  PostureReadUnobservable, PostureConfigLeg, PostureConfigPair, PostureConfigUnobservable,
+  Leg, LegOut, LegRefused, unit_document_leg, UnitDocumentAbsence,
+  AbsentIsTheStanding, AbsentContradictsListing, posture_missing_sentinel,
+}
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessObservation }
+import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe }
+import extdeps.git {
+  git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command,
+  git_worktree_add_detached_command, git_branch_command, git_rev_parse_head_command, git_checkout_revision_command,
+  git_local_config_get_command, git_core_shared_repository_config_key,
+  git_core_shared_repository_group_value, git_gc_auto_config_key, git_maintenance_auto_config_key,
+  git_disabled_config_value, git_disabled_maintenance_config_value,
+  git_absolute_git_dir_premise_argv,
+}
+import extdeps.tools.gnu_coreutils {
+  mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, install_empty_file_command,
+  install_directory_owned_argv_command,
+}
+import gunbc.managed_directory { declared_directory_mode }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_recursive_set_mode_command, chmod_binary_path }
+import extdeps.tools.findutils { find_subtree_mode_readback_command, find_path_probe_command, find_subtree_ungranted_entry_refusal_command }
+import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, DashboardLocalProvision, DashboardEnsureGitSharedRepositoryPosture,
+  DashboardMigrateGitWorkerSubtree, srv1_lab_dashboard_instance, dashboard_git_worker_subtree_walk_depth,
+  dashboard_git_subtree_readback_is_granted, dashboard_git_worker_subtree_confined_children,
+  dashboard_git_worker_objects_child,
+  dashboard_git_worker_refs_child, dashboard_git_worker_logs_child,
+  dashboard_git_worker_subtree_declared_directory_mode, dashboard_git_worker_granted_directory_mode,
+  dashboard_git_worker_subtree_path,
+  dashboard_git_worker_directory_mode_octal, dashboard_git_worker_subtree_granted_directory_mode_octal,
+}
+import gunbc.roadmap.roadmap_dashboard_instance_apply {
+  dashboard_apply_provision_op, dashboard_git_worker_subtree_is_granted,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_attempt_worker_worktree_grant,
+  DispatchSpawnCommands, DispatchSessionContainer, SystemdUnitContainer,
+  HostExecArgv,
+  dispatch_attempt_worker_git_entry_migration, dispatch_attempt_worker_git_entry_readback_command,
+  dispatch_git_owned_host_step_argv,
+}
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir }
+import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed }
+
+// THE HOST ROUTE, THE PRODUCTION ONE: run_shell_command_capture over LocalExec. An ArgvCommand goes in as an
+// ArgvCommand, which is what makes a refusal here a real refusal and not a string comparison.
+fn wet(command: ArgvCommand) -> ProcessOutcome {
+  run_shell_command_capture(command: command, transport: LocalExec)
+}
+
+fn wet_ok(command: ArgvCommand) -> Bool {
+  match wet(command: command) {
+    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+  }
+}
+
+fn wet_out(command: ArgvCommand) -> String {
+  match wet(command: command) {
+    ProcessOutputPresent { text: text } => trim(s: text)
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
+  }
+}
+
+fn wet_all(steps: List<ArgvCommand>) -> Bool {
+  all(xs: steps, predicate: step => wet_ok(command: step))
+}
+
+// THE PRINCIPAL, AS THE HOST REPORTS IT. -1 when `id` cannot be read, and every claim below refuses rather
+// than proceeding on an unknown principal: an unknown principal is exactly the state in which a confinement
+// leg decides nothing and reports that it decided something.
+// parse_int, not a cast: the row below is the authority for what a principal is, and an unreadable id is
+// -1, which every claim refuses on rather than running on an unknown principal.
+fn wet_self_uid() -> Int {
+  match parse_int(s: wet_out(command: id_uid_command())) {
+    Absent => -1
+    Present { value: uid } => uid
+  }
+}
+
+fn wet_self_gid() -> Int {
+  match parse_int(s: wet_out(command: id_gid_command())) {
+    Absent => -1
+    Present { value: gid } => gid
+  }
+}
+
+// THE GROUP TOKEN THIS WITNESS GRANTS WITH, AND THE ONE IT READS BACK: `id -gn`, the primary group of
+// the account running the claim. WHY A WITNESS SUPPLIES A GROUP AT ALL: the production grant re-groups to
+// fleet_posix_worker_shared_group_name, which on the CI host does not exist -- `find ... -chgrp
+// gunbc-attempt` prints "invalid group" and EXITS 1 (verified against find 4.10.0), so a claim that used
+// the production name here would be measuring the host's account database and not the model. Passing the
+// runner's own group is the same substitution the builder witness already makes when it groups a throwaway
+// tree to `id -g`, and it is honest for the same reason: the tree is the claim's own, in a directory the
+// claim created, and the question is whether the MODEL'S COMMANDS move a tree from ungranted to a state
+// the model's own fold accepts.
+//
+// THE SAME STRING GOES TO BOTH SIDES OF THE PAIR, WHICH IS WHY IT IS A FUNCTION AND NOT A CALL AT EACH
+// SITE: it is the `group:` argument of the model's chgrp argv AND the value the readback fold compares
+// against find's `%g`. A witness that grouped by number (`id -g`) and compared by name would refuse its
+// own correctly-granted tree, because find prints the NAME whenever the gid maps to one -- so this probe
+// asks for the name in the spelling the tool will print it in. A caller may equally pass the numeric gid
+// to both sides and it will agree; what may not happen is one side guessing.
+//
+// "" WHEN THE HOST CANNOT SAY, and every claim below refuses on it the way it refuses on an unknown uid:
+// granting to an empty token would run `chgrp ""` -- a real command, refusing, and a claim that read that
+// as evidence about ownership rather than about the host.
+fn wet_group_token() -> String {
+  trim(s: wet_out(command: id_group_name_command()))
+}
+
+// THE PRINCIPAL, AS THE HOST REPORTS IT, plus the honest note on what these claims CANNOT decide here.
+// Every leg below is decided by a claim that runs as ONE account -- the one executing the claim -- over a
+// tree that account owns. That is enough to prove what the model does (which modes it sets, which subtrees
+// it refuses, whether the apply's arms actually run), and it is NOT enough to prove what a DIFFERENT
+// account is refused: a DAC question needs two principals, and the owner of the tree answers "is this
+// writable" with its owner bits regardless of what the group bits say. So the worker-side refusals this
+// feature is about -- the worker's `git commit` on an ungranted tree, a write to .git/config, a write under
+// hooks/ -- are qualified where two real accounts exist, on the host, as the PR body's steps say. Nothing
+// here pretends to be that evidence.
+// THE INSTANCE UNDER TEST: the lab's own row, with the two fields a throwaway local run must differ on set
+// explicitly. provision_transport is DashboardLocalProvision because the witness IS the target -- there is no
+// SSH hop to a machine already running the claim. repo_root is the throwaway tree. Everything else, worker:
+// WorkerDedicatedAccount and directory_owner included, is the lab's own row, and the claims below assert the
+// lab facts they lean on rather than inheriting them silently.
+fn wet_lab_local_instance(root: String) -> HostDashboardInstance {
+  let lab = srv1_lab_dashboard_instance()
+  HostDashboardInstance {
+    deployment: lab.deployment,
+    instance_id: lab.instance_id,
+    host_identity: lab.host_identity,
+    provision_parent_root: lab.provision_parent_root,
+    instance_root: lab.instance_root,
+    local_origin_root: lab.local_origin_root,
+    local_origin_publish_ref: lab.local_origin_publish_ref,
+    repo_root: root as FilePath,
+    dispatch_base_ref: lab.dispatch_base_ref,
+    dispatch_state_scope: lab.dispatch_state_scope,
+    execution_environment: lab.execution_environment,
+    provider_state: lab.provider_state,
+    serve_binary: lab.serve_binary,
+    serve_function: lab.serve_function,
+    listen_host: lab.listen_host,
+    listen_port: lab.listen_port,
+    tmux_server: lab.tmux_server,
+    actuation: lab.actuation,
+    provision_transport: DashboardLocalProvision,
+    // THE SEED THE TWO ARMS UNDER TEST ACTUALLY REQUIRE. The lab's real row is bundle-seeded, and on
+    // srv1 its controller_repo EXISTS -- that is why the apply works there. Both arms reach the target
+    // through dashboard_target_exec -> dashboard_local_exec, whose cwd is
+    // dashboard_instance_controller_workdir(instance), which projects the bundle seed to that controller
+    // path and the existing-repo seed to repo_root (roadmap_dashboard_instance:455). Here the repository
+    // under test IS the only repository that exists, so the honest seed is the existing-repo one: a
+    // repository already on this machine, which is precisely the precondition for running a posture or a
+    // migration arm. Keeping the lab's bundle seed would run every command in a cwd that is not on this
+    // host and produce a refusal that has nothing to do with what the claim is about -- and the seed's
+    // other fields (staged_bundle, history_remote) are consulted only by the hydrate arm, which this
+    // witness does not drive. This is the shape roadmap_dashboard_instance:778 names as the stated
+    // divergence between "seeded from a bundle" and "answers for the machine it runs on".
+    source_seed: DashboardExistingRepo { anchor_ref: lab.dispatch_base_ref },
+    admitted_revision: lab.admitted_revision,
+    toolchain: lab.toolchain,
+    dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
+    directory_owner: lab.directory_owner,
+    worker: lab.worker,
+    materialization_store_root: lab.materialization_store_root,
+    publication_base_branch: lab.publication_base_branch,
+  }
+}
+
+// THE THROWAWAY REPOSITORY, planted as the running account owns it -- the lab's relationship. Directories
+// 0755 and files 0644, group-writable by nobody but the owner: a fresh `git init`, which is the state srv1
+// measured (objects, refs, logs and their existing fan-out subdirectories, all 0775 with the group able to
+// write and NO setgid, so a fan-out directory git created later inherited the creating process's primary
+// group and the worker could not write into it). Modes are STATED, not inherited from the umask, because the
+// claim's premise is the state before the grant and the umask of whatever process runs the witness is not
+// evidence for it.
+//
+// THE THREE GRANTED TOPS ARE THE ROUTE'S FACT, NOT THIS FIXTURE'S. `objects`, `refs` and `logs` are the
+// subtrees the deploy asserts through the owned-directory provider, whose provider installs each TOP with
+// `install -d -o -g -m` -- an ABSOLUTE restatement of mode, owner and group -- and only then sweeps the
+// interior. A fixture that mkdir's those three and lets the migration's ADDITIVE sweep be the only thing
+// touching them is therefore not the composition the route performs: from 0755 the sweep can only ADD bits,
+// so a top whose declared arm clears the other-triple lands at the wrong mode and the readback's exact top
+// leg refuses the route's own result. That is precisely the round-3 defect this witness went red for (see
+// gunbc.recurring_failure_mode.declared_mode_authority_split_across_model_and_witness), and the fix is not
+// to widen the readback but to plant the way the deploy plants: the same admitted install primitive, at the
+// mode the model's own arm declares, owner and group numeric from the process itself (install(1) takes
+// either spelling; the wet account is the fixture's principal, as everywhere else here). Children --
+// fan-out, pack, info, hooks, info -- stay mkdir'd at 0755 with their 0644 files, because those are NOT
+// what the route installs; they are what the route finds.
+fn wet_plant_repository(git: String, uid: Int, gid: Int, instance: HostDashboardInstance) -> Bool {
+  let directories = [
+    git, join([git, "/objects"], ""), join([git, "/objects/f9"], ""), join([git, "/objects/pack"], ""),
+    join([git, "/objects/info"], ""), join([git, "/refs"], ""), join([git, "/refs/heads"], ""),
+    join([git, "/logs"], ""), join([git, "/logs/refs"], ""), join([git, "/logs/refs/heads"], ""),
+    join([git, "/hooks"], ""), join([git, "/info"], ""),
+  ]
+  wet_all(map(xs: directories, f: d => mkdir_parents_command(path: d)))
+    && wet_all([
+      // A PRE-EXISTING FAN-OUT DIRECTORY WITH AN OBJECT IN IT -- the 0755 that broke the worker's first
+      // commit, since #14270 asserted the grant on the top-level directories only and the owned-directory
+      // provider does not recurse.
+      install_empty_file_command(
+        path: join([git, "/objects/f9/0123456789abcdef0123456789abcdef01234567"], ""),
+        octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+      install_empty_file_command(
+        path: join([git, "/refs/heads/main"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+      // THE REFLOG THE WORKER APPENDS TO, at the mode a clone leaves it in. Its 0664 afterwards is the ONE
+      // file-level grant the model makes -- a reflog is the only thing git opens in append mode -- and this
+      // witness is where that is observed rather than asserted.
+      install_empty_file_command(
+        path: join([git, "/logs/refs/heads/main"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+      // THE CONFINED CHILDREN, at the modes srv1 measured, each with a file inside so a leak shows as a
+      // changed FILE and not only a changed directory.
+      install_empty_file_command(
+        path: join([git, "/objects/pack/pack.pack"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+      install_empty_file_command(
+        path: join([git, "/objects/info/commit-graph"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+      install_empty_file_command(
+        path: join([git, "/hooks/pre-commit"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+      install_empty_file_command(
+        path: join([git, "/info/exclude"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+      install_empty_file_command(
+        path: join([git, "/config"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+      install_empty_file_command(
+        path: join([git, "/packed-refs"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+    ])
+    && wet_all(
+      map(
+        xs: directories,
+        f: d => chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0755" as NonEmptyStr, path: d),
+      ),
+    )
+    // THE THREE GRANTED TOPS, RESTATED AS THE ROUTE RESTATES THEM -- LAST, because everything above this
+    // line is the state BEFORE the deploy touched the repository (0755 everywhere, which the chmod sweep
+    // guarantees even over the mkdir'd tops), and what follows is the one fact the deploy owns. The
+    // owned-directory provider does not `chmod` these three; it installs each with `install -d -o -g -m`,
+    // which restates mode, owner and group ABSOLUTELY, at the mode
+    // dashboard_git_worker_subtree_declared_directory_mode declares for that child (objects/ the sticky
+    // arm, refs/ and logs/ the plain setgid arm) and the writable owner's account. A fixture that left
+    // these three to the migration's ADDITIVE sweep is not the composition the route performs: from 0755
+    // an additive sweep can only set bits, so a top whose declared arm clears the other-triple lands wrong
+    // and the readback's exact top leg refuses the route's own output -- which is exactly how this witness
+    // went red at the consolidation commit (the round-3 defect, and the reason a top's mode has ONE home:
+    // the same DeclaredDirectoryMode renders the install's -m, the fold's top expectation, and this line).
+    && wet_all(
+      map(
+        xs: dashboard_git_worker_directory_children,
+        f: child => install_directory_owned_argv_command(
+          mode: declared_directory_mode(m: dashboard_git_worker_subtree_declared_directory_mode(child: child)),
+          owner: to_string(uid) as NonEmptyStr,
+          group: to_string(gid) as NonEmptyStr,
+          // THE PATH FROM THE ROUTE'S OWN BUILDER: the child rows are repo-root-relative (.git/objects),
+          // so re-joining them onto the .git path this fixture was handed would double the prefix, and the
+          // wet layer is excluded on the uid-0 runner -- an error only srv1 would see.
+          path: dashboard_git_worker_subtree_path(instance: instance, child: child),
+        ),
+      ),
+    )
+}
+
+// A REPOSITORY WITH A REAL COMMIT, because git refuses to branch a repository that has none: a witness that
+// faked the base would never exercise the `git worktree add` the spawn performs.
+fn wet_repo_with_a_commit(repo: String) -> Bool {
+  wet_ok(command: git_init_quiet_command(repository_dir: repo))
+    && wet_ok(
+      command: install_empty_file_command(
+        path: join([repo, "/tracked"], ""), octal_mode: "0644" as NonEmptyStr, uid: wet_self_uid(), gid: wet_self_gid(),
+      ),
+    )
+    && wet_ok(command: git_add_all_force_command(repository_dir: repo))
+    && wet_ok(
+      command: git_commit_snapshot_command(
+        repository_dir: repo,
+        identity_name: "wre3-witness",
+        identity_email: "wre3-witness@lab.invalid",
+        message: "wre3: a commit to branch a linked worktree from",
+      ),
+    )
+}
+
+// ONE LINE OF A find_subtree_mode_readback_command RECEIPT, LOCATED BY ITS PATH. The line is taken verbatim
+// in the shape the walk prints, `<type-letter> <mode> <path>`; the DECISION on it belongs to the model's own
+// fold, which is what makes a witness that re-parsed the receipt useless.
+fn wet_receipt_line(receipt: String, path: String) -> String {
+  let wanted = join([" ", path], "")
+  let hits = filter(xs: split(s: receipt, delimiter: "\n"), predicate: line => ends_with(s: line, suffix: wanted))
+  match hits.first() {
+    Absent => ""
+    Present { value: line } => line
+  }
+}
+
+// ONE RECEIPT LINE, IN THE FORMAT find_subtree_mode_readback_command PRINTS: `<letter> <mode> <group>
+// <path>`. THE GROUP IS PART OF THE LINE COMPARISON, NOT DECORATION: a leg that asked only for kind and
+// mode would be satisfied by a subtree whose chgrp never ran, which is the half of the grant the whole
+// slice exists to deliver -- and it is the state the host reading found the lab in (briansrls:briansrls
+// at 0775: the modes the migration would produce, on the wrong group). So every mode leg below names the
+// group it expects to find beside the mode, and a chgrp that silently failed turns the claim red.
+fn wet_receipt_line_is(
+  receipt: String,
+  kind: String,
+  mode: String,
+  group: String,
+  path: String,
+) -> Bool {
+  wet_receipt_line(receipt: receipt, path: path)
+    == join([kind, " ", mode, " ", group, " ", path], "")
+}
+
+// THE SAME COMPARISON, FOR AN ENTRY GIT NEED NOT HAVE CREATED. `wet_receipt_line_is` refuses when the path
+// is missing, which is right for a loose object or a reflog line -- those MUST exist after a commit -- and
+// wrong for one that only some command sequences produce. THE ONE CALLER IS packed-refs: measured, a
+// repository with commits and a committed linked worktree has no such file at all, so requiring the line
+// would assert a state git does not promise, while ignoring the entry entirely would drop the confinement
+// claim. Absent therefore passes and a DIFFERENT line at the same path refuses, because the helper still
+// compares whole lines -- "f 664 <group> packed-refs" is not "f 644 <group> packed-refs".
+fn wet_receipt_line_is_or_absent(
+  receipt: String,
+  kind: String,
+  mode: String,
+  group: String,
+  path: String,
+) -> Bool {
+  let found = wet_receipt_line(receipt: receipt, path: path)
+  found == ""
+    || found == join([kind, " ", mode, " ", group, " ", path], "")
+}
+
+// NO LINE OF THE RECEIPT IS ONE OF THESE. The confinement side of a receipt: written as whole-line
+// comparison, not as a substring test, so "f 64 " cannot be satisfied by a line reading "f 644", and a
+// path can only be matched by its own line. Used where the claim is about a mode that must NOT be present
+// rather than one that must be.
+fn wet_receipt_has_none(out: String, forbidden_lines: List<String>) -> Bool {
+  let lines = filter(xs: split(s: out, delimiter: "\n"), predicate: l => l != "")
+  all(xs: forbidden_lines, predicate: f => !any(xs: lines, predicate: l => l == f))
+}
+
+// THE THREE SUBTREE NAMES, spelled as the model's own row spells them -- and the leg in claim TWO asserts
+// that these ARE dashboard_git_worker_directory_children, so a rename in the model turns this witness red
+// instead of silently walking a subtree nobody named.
+fn wet_receipt(target: String, pruned: List<String>) -> String {
+  wet_out(
+    command: find_subtree_mode_readback_command(
+      target: target, pruned: pruned, depth: dashboard_git_worker_subtree_walk_depth,
+    ),
+  )
+}
+
+// THE SPAWN BUNDLE THE GRANT RIDES IN, with only the two steps this claim cares about carrying real argv.
+// The others are empty HostExecArgvs on purpose: the belt gate under test reads worker_git_entry_readback
+// alone, and minting a bundle with the unrelated steps filled in would be a fixture that looks like a spawn
+// while testing none of them. The container arm is the systemd one because that is the lab's route, and it
+// is inert here -- the gate never touches it.
+fn wet_spawn_bundle(readback: HostExecArgv) -> DispatchSpawnCommands {
+  DispatchSpawnCommands {
+    worktree_add: HostExecArgv { program: "", args: [] },
+    worker_git_entry_grant: [],
+    worker_git_entry_readback: readback,
+    worker_worktree_grant: [],
+    attempt_state_prepare: [],
+    attempt_current_pointer: HostExecArgv { program: "", args: [] },
+    session_container: SystemdUnitContainer {
+      plan: DispatchWorkerUnitPlan {
+        systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+        unit: "gunbc-attempt-wre3.service" as NonEmptyStr,
+        node_id: "wre3",
+        attempt_key: "wre3wre3wre3wre3",
+        working_directory: "/tmp",
+        attempt_worktree: "/tmp",
+        stdout_path: "/tmp/wre3.stdout",
+        stderr_path: "/tmp/wre3.stderr",
+        inner_argv: ["/bin/true"],
+        exit_hook: "/bin/true" as NonEmptyStr,
+      },
+    },
+  }
+}
+
+fn wet_gate_refused(outcome: BeltExecStepsOutcome, step: String) -> Bool {
+  match outcome {
+    ExecStepsOk => false
+    ExecStepFailed { step: failed, detail: _ } => failed == step
+  }
+}
+
+fn wet_gate_passed(outcome: BeltExecStepsOutcome) -> Bool {
+  match outcome {
+    ExecStepsOk => true
+    ExecStepFailed { step: _, detail: _ } => false
+  }
+}
+
+// ONE. THE APPLY'S POSTURE ARM, RUN. The apply's config step is the only thing that puts
+// core.sharedRepository=group into the repository, and GIT'S OWN READER grades it -- not the builder. THE
+// CONTROLS, all executed:
+//   - THE THREE KEYS ARE READ BEFORE THE STEP AND MUST BE ABSENT. `git config --get` on a missing key exits
+//     1 with empty stdout, and the plant writes a config that carries none of them, so a step that wrote
+//     nothing leaves this leg red instead of quietly green;
+//   - the keys are NAMED ONCE, from the rows the config module owns, so a rename moves the write and this
+//     expectation together;
+//   - gc.auto and maintenance.auto are graded with it because the arm claims all three, and the third is what
+//     stops a later commit from spawning a repack that opens packed-refs.lock IN .git ITSELF -- a path #13942
+//     confines to the owner, and git PRINTS that refusal over an exit-0 commit;
+//   - THE REFUSAL SIDE: the arm reports failure, with a detail naming which key did not take, when the
+//     repository will not accept the config. That is exercised by making .git/config a DIRECTORY (git's own
+//     writer then fails) and requiring a refusal that says something.
+test fn the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-posture-XXXXXX" as NonEmptyStr))
+  let uid = wet_self_uid()
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || uid < 0 || gid < 0 || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let config = join([repo, "/.git/config"], "")
+    let instance = wet_lab_local_instance(root: repo)
+    let planted = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_plant_repository(git: join([repo, "/.git"], ""), uid: uid, gid: gid, instance: instance)
+      && wet_ok(command: git_init_quiet_command(repository_dir: repo))
+    let before_shared = wet_out(command: git_local_config_get_command(repo: repo as FilePath, key: git_core_shared_repository_config_key))
+    let before_gc = wet_out(command: git_local_config_get_command(repo: repo as FilePath, key: git_gc_auto_config_key))
+    let before_maintenance = wet_out(command: git_local_config_get_command(repo: repo as FilePath, key: git_maintenance_auto_config_key))
+    let applied = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardEnsureGitSharedRepositoryPosture { repo: repo as FilePath },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let shared = wet_out(command: git_local_config_get_command(repo: repo as FilePath, key: git_core_shared_repository_config_key))
+    let gc_auto = wet_out(command: git_local_config_get_command(repo: repo as FilePath, key: git_gc_auto_config_key))
+    let maintenance = wet_out(command: git_local_config_get_command(repo: repo as FilePath, key: git_maintenance_auto_config_key))
+    // THE REFUSAL CONTROL: the same arm over a repository whose config path cannot be written, which must
+    // come back as a refusal that NAMES what failed rather than as a success.
+    let wrecked = wet_ok(command: rm_recursive_force_command(path: config))
+      && wet_ok(command: mkdir_parents_command(path: config))
+    let refused = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardEnsureGitSharedRepositoryPosture { repo: repo as FilePath },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let clean = wet_ok(command: rm_recursive_force_command(path: root))
+    planted
+      // A key that is absent reads back as the empty string, which is why "" is the control's evidence.
+      && before_shared == "" && before_gc == "" && before_maintenance == ""
+      && applied.success
+      && shared == git_core_shared_repository_group_value
+      && gc_auto == git_disabled_config_value
+      && maintenance == git_disabled_maintenance_config_value
+      && wrecked && !refused.success && refused.stderr != "" && clean
+  }
+}
+
+// TWO. THE APPLY'S MIGRATION ARM, RUN -- AND THE TREE IT MUST REFUSE, REFUSED.
+// THE POSITIVE: after the arm the MODEL'S OWN readback (dashboard_git_worker_subtree_is_granted, which
+// refuses an empty receipt, a line it cannot parse, and a receipt missing the subtree's top) accepts
+// objects/, refs/ and logs/, and the specific facts are read off `find`:
+//   - objects/'s own top is the DECLARED ARM, 3770 -- the STICKY bit, which `chmod g+w` cannot produce and
+//     which is what keeps the worker from renaming the tree owner's objects/pack aside and planting a
+//     symlink for the maintenance job to write through
+//     to write packs into. The top is what the provider's `install -d -o -g -m` restates (and what this
+//     file's fixture now restates the same way); the sweep only preserves it;
+//   - the EXISTING fan-out directory objects/f9 is 3775 -- from the 0755 that made the worker's first
+//     commit fail, walked by the sweep's own `-type d` action (g+w, g+s, and the sticky term this subtree's
+//     walk adds);
+//   - the pre-existing reflog is 0664, the one file-level grant the model makes;
+//   - a fan-out directory created AFTER the grant comes up 2775, the other accepted interior shape (mkdir
+//     inherits S_ISGID and not S_ISVTX), so the readback does not demand a mode git can never produce.
+// THE CONTROLS, both executed on that same tree BEFORE the grant: the arm REFUSES with a detail naming the
+// subtree, and the model's readback refuses the same receipt -- so the pass afterwards is not the pass of a
+// tree that was already granted.
+test fn the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-migrate-XXXXXX" as NonEmptyStr))
+  let uid = wet_self_uid()
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || uid < 0 || gid < 0 || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let git = join([repo, "/.git"], "")
+    let objects = join([git, "/objects"], "")
+    let refs = join([git, "/refs"], "")
+    let logs = join([git, "/logs"], "")
+    let instance = wet_lab_local_instance(root: repo)
+    let planted = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
+    // THE CONTROL, AND WHY IT IS THIS STATE. "Require the migration to refuse a plain ungranted tree" LOOKS
+    // like the discriminating arm and is not one: the step GRANTS FIRST AND READS BACK AFTERWARDS, and every
+    // action in the walk only ADDS bits, so a 0755 tree simply becomes granted and an assertion that it
+    // refused would be a claim about a state the route cannot produce -- the first cut asserted exactly that
+    // and an instrumented run exited 0 with an EMPTY refusal. So the refusal arm has to plant a state the
+    // walk CANNOT repair, and which state that is had to be MEASURED rather than reasoned about: the first
+    // candidate, a SETGID file, turned out to be repaired under the instrument (the walk's unconditional
+    // chgrp reached the entry, and the kernel clears S_ISGID whenever a file's group changes -- the receipt
+    // came back `f 644`, the very repair review 82165 asked the migration to make). A STICKY file is the
+    // shape that survives: chgrp clears S_ISUID/S_ISGID and leaves S_ISVTX alone, the chmod actions are
+    // `-type d`-guarded so no action touches a file's mode, and the fold's file leg refuses a sticky entry
+    // outright -- a file carrying a special bit is a privilege shape, and review 82165's whole point was
+    // that the readback must not wave one through as an "interior directory". One instrument, two opposite
+    // verdicts on the same argv, decided by the state of the tree: refuse with the bit planted, grant with
+    // it removed.
+    let sticky_probe = join([objects, "/f9/sticky-probe"], "")
+    let planted_unrepairable = planted
+      && wet_ok(
+        command: install_empty_file_command(
+          path: sticky_probe, octal_mode: "1755" as NonEmptyStr, uid: uid, gid: gid,
+        ),
+      )
+    let refused = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardMigrateGitWorkerSubtree {
+        repo: repo as FilePath,
+        group: group as NonEmptyStr,
+      },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    // THE REFUSAL IS THE READBACK'S OWN VERDICT, not a message the step prints for some other reason: the
+    // fold, run over the tree that still carries the sticky entry, says NOT GRANTED -- and the entry itself
+    // is still there with its bit, which is what makes this "the grant could not land" rather than "the
+    // grant was never tried".
+    let refused_said_why = !refused.success
+      && string_contains(s: refused.stderr, pattern: "did not take")
+      && !dashboard_git_worker_subtree_is_granted(
+        instance: instance,
+        child: dashboard_git_worker_objects_child,
+        group: group as NonEmptyStr,
+      )
+      && string_contains(
+        s: wet_receipt(
+          target: objects,
+          pruned: dashboard_git_worker_subtree_confined_children(child: dashboard_git_worker_objects_child),
+        ),
+        pattern: "1755",
+      )
+    let unrepairable_removed = wet_ok(command: rm_recursive_force_command(path: sticky_probe))
+    let applied = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardMigrateGitWorkerSubtree {
+        repo: repo as FilePath,
+        group: group as NonEmptyStr,
+      },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let objects_after = wet_receipt(target: objects, pruned: dashboard_git_worker_subtree_confined_children(child: dashboard_git_worker_objects_child))
+    let refs_after = wet_receipt(target: refs, pruned: [])
+    let logs_after = wet_receipt(target: logs, pruned: [])
+    // A FAN-OUT DIRECTORY CREATED AFTER THE GRANT, the way git creates one (mkdir, then git's
+    // adjust_shared_perm adds the group triple): 2775, the interior shape the fold must also accept.
+    let later_fanout = wet_ok(command: mkdir_parents_command(path: join([objects, "/ab"], "")))
+      && wet_ok(
+        command: chmod_set_mode_command(
+          chmod_program: chmod_binary_path, mode: "2775" as NonEmptyStr, path: join([objects, "/ab"], ""),
+        ),
+      )
+      && wet_ok(
+        command: install_empty_file_command(
+          path: join([objects, "/ab/cdef"], ""), octal_mode: "0444" as NonEmptyStr, uid: uid, gid: gid,
+        ),
+      )
+    let later_read = wet_receipt(target: objects, pruned: dashboard_git_worker_subtree_confined_children(child: dashboard_git_worker_objects_child))
+    let clean = wet_ok(command: rm_recursive_force_command(path: root))
+    planted_unrepairable && refused_said_why && unrepairable_removed && applied.success
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_objects_child, group: group as NonEmptyStr, receipt: objects_after)
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_refs_child, group: group as NonEmptyStr, receipt: refs_after)
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_logs_child, group: group as NonEmptyStr, receipt: logs_after)
+      // THE TOP, DERIVED -- not a figure transcribed from a measurement. This line exists because the fold
+      // owns the DECISION and a leg owns the OBSERVATION: if the fold's verdict and this line ever disagree
+      // about what the top should be, one of them is wrong, and the only way to know which is for both to
+      // read the same arm. (Before this correction the line said "3775", copied from the interior shape,
+      // while the install and the fold said 3770 -- and a top that failed to be installed still refused.)
+      && wet_receipt_line_is(
+        receipt: objects_after, kind: "d",
+        mode: dashboard_git_worker_subtree_granted_directory_mode_octal(child: dashboard_git_worker_objects_child),
+        group: group, path: "",
+      )
+      // AN EXISTING FAN-OUT DIRECTORY READS 3775 AFTER THE APPLY'S OWN MIGRATION, not 2775: the model's
+      // objects/ walk applies `a+t` to every directory it walks, and this claim runs THAT argv (the same
+      // builder the builder witness exercises), so f9 gets the sticky bit beside the setgid one. The 2775
+      // shape belongs to a fan-out directory git mkdir's later -- it inherits setgid from the parent and
+      // nobody gives it a sticky bit -- which is why the fold accepts either inside a granted tree while a
+      // claim that OBSERVES the migration must not accept either: 2775 here would mean the sticky action
+      // had stopped reaching interior directories, leaving a worker-owned loose object renameable by a
+      // sibling attempt in the same group.
+      && wet_receipt_line_is(receipt: objects_after, kind: "d", mode: "3775", group: group, path: "f9")
+      && wet_receipt_line_is(receipt: logs_after, kind: "f", mode: "664", group: group, path: "refs/heads/main")
+      // THE LEAF REF KEEPS ITS PLANTED 0644: git replaces a ref by writing <ref>.lock and renaming, which
+      // needs write on refs/heads/ and none on the entry, and git itself creates the file at 0644 even under
+      // core.sharedRepository=group (measured, git 2.47.3). The grant on this subtree is on its DIRECTORIES;
+      // a 0664 here would mean the walk had sprayed the file grant where the model withholds it.
+      && wet_receipt_line_is(receipt: refs_after, kind: "f", mode: "644", group: group, path: "heads/main")
+      && later_fanout
+      && wet_receipt_line_is(receipt: later_read, kind: "d", mode: "2775", group: group, path: "ab")
+      && clean
+  }
+}
+
+// THREE. THE DERIVED NARROWNESS ITSELF, EXECUTED -- the claim that makes "and nothing wider" mean something
+// rather than being a promise. git creates a loose object at 0444 EVEN UNDER core.sharedRepository=group, and
+// it writes refs, indexes and HEADs by lock-and-rename, which asks the PARENT DIRECTORY for write and the
+// file for nothing (measured on git 2.47.3, 2026-10-19: real linked-worktree commits, every object and ref
+// file at 0444, all rc=0). Therefore:
+//   - a subtree whose files git never opens for writing is correctly granted with them AT 0444, and the
+//     model's fold ACCEPTS such a receipt -- a blanket "every file group-writable" would refuse a repository
+//     that is working, the moment git wrote its first object;
+//   - THE REFLOG IS THE EXCEPTION and the refusal side proves it: the same fold REFUSES a logs/ receipt whose
+//     reflog came back 0444, which is the state that kills the worker's commit with "unable to append ...
+//     Permission denied";
+//   - AND THE GRANT DID NOT OVER-REACH: no file under objects/ ended up group-writable, which is the property
+//     that stops one attempt from rewriting, IN PLACE, a base object it does not own -- an object is
+//     content-addressed, so a scribbled-on one corrupts every later attempt that reads the same hash.
+// THE CONTROL on the over-reach leg is the walk itself: the same `find` reports both the planted 0644 objects
+// (which claim TWO's refusal depends on) and the absence of any 664 file afterwards.
+test fn the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_only_replaces() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-narrow-XXXXXX" as NonEmptyStr))
+  let uid = wet_self_uid()
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || uid < 0 || gid < 0 || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let git = join([repo, "/.git"], "")
+    let objects = join([git, "/objects"], "")
+    let logs = join([git, "/logs"], "")
+    let object_path = "f9/0123456789abcdef0123456789abcdef01234567"
+    let instance = wet_lab_local_instance(root: repo)
+    let planted = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
+      // git's OWN mode for a loose object, where one lives.
+      && wet_ok(
+        command: chmod_set_mode_command(
+          chmod_program: chmod_binary_path, mode: "0444" as NonEmptyStr, path: join([objects, "/", object_path], ""),
+        ),
+      )
+    let applied = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardMigrateGitWorkerSubtree {
+        repo: repo as FilePath,
+        group: group as NonEmptyStr,
+      },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let objects_after = wet_receipt(target: objects, pruned: dashboard_git_worker_subtree_confined_children(child: dashboard_git_worker_objects_child))
+    let logs_after = wet_receipt(target: logs, pruned: [])
+    // NOTHING WIDER, READ OFF THE TREE: no group-writable file anywhere under objects/.
+    let no_group_writable_object = !string_contains(s: objects_after, pattern: "f 664 ")
+      && !string_contains(s: objects_after, pattern: "f 666 ")
+    // THE REFUSAL SIDE OF THE REFLOG LEG, over a receipt in the shape the walk prints: a logs/ subtree whose
+    // reflog sits at git's read-only mode is NOT granted. EVERY LINE CARRIES THE GRANTED GROUP ON PURPOSE:
+    // with the group correct, the ONLY thing this receipt fails on is the 0444 reflog, so a green here is
+    // evidence about the mode and not about a line the parser could not read. (A receipt with no group
+    // field at all is refused too -- as an UNPARSEABLE line, which is the right verdict for a line the walk
+    // did not print, but it would let a fold that had stopped checking modes look correct.)
+    let reflog_readonly_refused = !dashboard_git_subtree_readback_is_granted(
+      child: dashboard_git_worker_logs_child,
+      group: group as NonEmptyStr,
+      receipt: join(
+        [
+          // THE TOP AT THE ARM THE FOLD DEMANDS, THE INTERIORS AT AN ACCEPTED INTERIOR SHAPE: with every
+          // other line correct, the ONLY thing this receipt can fail on is the 0444 reflog -- which is what
+          // makes it evidence about the reflog's mode. A top spelled at 2775 here would refuse for the wrong
+          // reason and the claim would pass without ever having tested the 444.
+          join([
+            "d ", dashboard_git_worker_subtree_granted_directory_mode_octal(child: dashboard_git_worker_logs_child),
+            " ", group, " ",
+          ], ""),
+          join(["d 2775 ", group, " refs"], ""),
+          join(["d 2775 ", group, " refs/heads"], ""),
+          join(["f 444 ", group, " refs/heads/main"], ""),
+        ],
+        "\n",
+      ),
+    )
+    let clean = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && applied.success
+      && wet_receipt_line_is(receipt: objects_after, kind: "f", mode: "444", group: group, path: object_path)
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_objects_child, group: group as NonEmptyStr, receipt: objects_after)
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_logs_child, group: group as NonEmptyStr, receipt: logs_after)
+      && wet_receipt_line_is(receipt: logs_after, kind: "f", mode: "664", group: group, path: "refs/heads/main")
+      && no_group_writable_object && reflog_readonly_refused && clean
+  }
+}
+
+// FOUR. THE CONFINED INTERIOR SURVIVES THE RUN, READ OFF THE TREE BEFORE AND AFTER. #13942 keeps .git
+// itself, hooks/, config/, info/ and packed-refs out of the worker's reach, and the migration's prune group
+// is what keeps them out of the MIGRATION's reach. Each path is read twice -- before the step and after --
+// and its mode must not have moved, while the walked interior beside it must have (that comparison is claim
+// TWO's; the pair is what distinguishes "the step ran" from "nothing happened"). FILES are read as well as
+// directories, because a prune that leaked would grant a file and not only a directory.
+// THE LAST PATH SEGMENT, for turning a declared child like ".git/refs" into the name the walk prunes
+// under the directory it walks. Same fold the two model copies of this use; it is local here because the
+// witness must not import an unrelated production module to spell a string.
+fn wet_basename(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
+}
+
+// THE PRUNE SET OF A CONFINED WALK, AS A FUNCTION OF THE DIRECTORY BEING WALKED. Walking .git itself has
+// to PRUNE the children the migration exists to grant -- otherwise the walk compares 0755 against the
+// granted top and refuses a correct grant (that is what the first cut of the claim below did on the
+// runner: ap=true, unmoved=false). Every other confined path is walked whole.
+fn confined_pruned(child: String, git_dir: String, granted: List<String>) -> List<String> {
+  if child == git_dir {
+    granted
+  } else {
+    []
+  }
+}
+
+test fn the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-confine-XXXXXX" as NonEmptyStr))
+  let uid = wet_self_uid()
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || uid < 0 || gid < 0 || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let git = join([repo, "/.git"], "")
+    let objects = join([git, "/objects"], "")
+    // THE CONFINED SET IS EXACTLY THE SET THE MODEL DECLARES CONFINED
+    // (gunbc.roadmap.roadmap_dashboard_instance dashboard_git_worker_subtree_confined_children, plus the
+    // .git directory itself and its two other confined children). objects/ TOP IS NOT IN IT AND MUST NOT
+    // BE: it is the migration's own grant target, and it legitimately goes 0755 -> the declared arm (the leg that
+    // OBSERVES that change, rather than forbidding it, is the migration claim). Listing it here would make
+    // the claim refuse the very grant the PR exists to make -- the failure mode is the mirror of the one
+    // where a confined path is left OUT of this list.
+    let confined = [
+      join([objects, "/pack"], ""), join([objects, "/info"], ""), git, join([git, "/hooks"], ""),
+      join([git, "/info"], ""),
+    ]
+    let confined_files = [
+      join([objects, "/pack/pack.pack"], ""), join([objects, "/info/commit-graph"], ""),
+      join([git, "/hooks/pre-commit"], ""), join([git, "/info/exclude"], ""), join([git, "/config"], ""),
+      join([git, "/packed-refs"], ""),
+    ]
+    let instance = wet_lab_local_instance(root: repo)
+    let planted = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
+    // THE PRUNES ARE THE CLAIM. .git ITSELF is confined and must not move, but it CONTAINS the three
+    // subtrees the migration exists to grant -- so a walk of .git that descends into them would compare
+    // 0755 against the granted top, conclude the confined interior moved, and REFUSE A CORRECT GRANT. An
+    // run on the runner said exactly this (ap=true, unmoved=false), which is why the walk is bounded by the
+    // prunes rather than by depth. WHAT IS PRUNED IS NOT INVENTED HERE: it is the very children the model
+    // declares as the migration's targets (dashboard_git_worker_directory_children), each reduced to the
+    // basename it has under the directory being walked. So the set pruned from the .git walk is
+    // {objects, refs, logs}, and an arm that pruned something EXTRA -- hooks, say -- would empty the walk
+    // for the path it hid, before and after alike, and read back "unmoved" for a tree it never looked at.
+    // That is why the walk must be NON-EMPTY: see the leg below that requires a confined walk to actually
+    // have lines in it, which is what makes the prune set falsifiable rather than a free parameter.
+    let granted_basenames = map(xs: dashboard_git_worker_directory_children, f: child => wet_basename(path: child))
+    let before_directories = map(xs: confined, f: d => wet_receipt(target: d, pruned: confined_pruned(child: d, git_dir: git, granted: granted_basenames)))
+    let before_files = map(xs: confined_files, f: p => wet_receipt(target: p, pruned: []))
+    let applied = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardMigrateGitWorkerSubtree {
+        repo: repo as FilePath,
+        group: group as NonEmptyStr,
+      },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let after_directories = map(xs: confined, f: d => wet_receipt(target: d, pruned: confined_pruned(child: d, git_dir: git, granted: granted_basenames)))
+    let after_files = map(xs: confined_files, f: p => wet_receipt(target: p, pruned: []))
+    let unmoved = wet_receipts_unchanged(before: before_directories, after: after_directories)
+      && wet_receipts_unchanged(before: before_files, after: after_files)
+    // THE CONTROL THAT MAKES THE PRUNES FALSIFIABLE: every confined walk must have SEEN something, and the
+    // .git walk must have seen the confined CHILDREN while NOT seeing the granted ones. A claim that
+    // compared two empty receipts is "unmoved" about nothing -- the failure mode the prunes above could
+    // silently introduce -- so the receipts themselves are required to carry lines, and the .git receipt is
+    // required to name a confined path (hooks) and refuse to name a granted one (its objects subtree).
+    let saw_something = all(xs: concat(before_directories, before_files), predicate: r => length(xs: r) > 0)
+      // THE CONTROL THAT MAKES THE PRUNE SET FALSIFIABLE, IN BOTH DIRECTIONS. The walk of .git must show
+      // content INSIDE a confined subtree -- hooks/pre-commit is listed in confined_files, so it cannot
+      // come from a walk of any other path -- which is what refuses a prune set that quietly gained
+      // "hooks" (the walk would go empty for the path it hid and read "unmoved" about nothing). And it
+      // must show NONE of the granted subtrees' content: "logs/" below is .git/logs/'s own interior,
+      // reachable only by descending into a granted child -- which is exactly what the leg that made this
+      // claim first FAIL on the runner caught (it walked .git unpruned and compared 0755 against the
+      // granted top, refusing a correct grant)
+      && any(xs: before_directories, predicate: r => string_contains(s: r, pattern: "hooks/pre-commit"))
+      && !any(xs: before_directories, predicate: r => string_contains(s: r, pattern: "logs/"))
+    let clean = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && applied.success && unmoved && saw_something && clean
+  }
+}
+
+// WERE THE TWO SETS OF RECEIPTS THE SAME? Compared as the ONE STRING `find` printed -- bytes and line
+// count together. A confined path that vanished between the two reads changes that string, so "the walk
+// printed less this time" cannot read as "nothing changed". Joining on a newline adds no ambiguity the
+// receipt does not already have: the walk prints one line per path, so a path containing a newline would
+// already make the receipt unreadable.
+fn wet_receipts_unchanged(before: List<String>, after: List<String>) -> Bool {
+  join(before, "\n") == join(after, "\n")
+}
+
+// FIVE. THE SPAWN'S PER-ATTEMPT ENTRY GRANT, RUN, AND THE UNIT IS NOT STARTED WITHOUT IT. This drives the two
+// producers the actuator runs BETWEEN `git worktree add` AND the unit start, and grades them the way the
+// spawn does -- through belt_worker_git_entry_grant_readback, the gate the unit start sits behind. THE
+// CONTROLS, all executed:
+//   - BEFORE the grant the gate REFUSES, on the step's own name: `git worktree add` leaves the private entry
+//     0755 with a 0644 HEAD, which is not the granted state, so a spawn that started the unit here would have
+//     launched a worker whose first commit dies on the reflog;
+//   - the gate also REFUSES a walk over an entry that is not there -- the case where a silently-failing find
+//     produces an EMPTY receipt, and a predicate over the lines of an empty walk is vacuously true;
+//   - AFTER the grant it PASSES, and the entry reads the declared arm -- the rendering the gate compares,
+//     dashboard_git_worker_directory_mode_octal over dashboard_git_worker_granted_directory_mode -- with
+//     its own reflog 0664, read off the tree
+//
+// THE ARGV IS THE PRODUCTION ARGV, NOT A RE-SPELLING (the constraint bright-moth-475 set for this claim).
+// DispatchSpawnCommands' worker_git_entry_readback field is minted at
+// gunbc.roadmap.roadmap_dispatch_actuator:3977 as EXACTLY
+// dispatch_git_owned_host_step_argv(dispatch_attempt_worker_git_entry_readback_command(instance, worktree))
+// -- the two production functions called HERE, with the same two arguments, so a change to either builder
+// moves this claim and the production bundle together; the claim then hands the gate the very record the
+// production site builds, assembled the same way. worker_git_entry_grant is likewise taken from
+// dispatch_attempt_worker_git_entry_migration (line 3966 maps it through the same host-step wrapper), as a
+// LIST -- not re-assembled word by word here. A builder change therefore cannot leave this claim green.
+//
+// THE WORKTREE GRANT, ON A REAL CHECKOUT. The ungranted state is CONSTRUCTED, not inherited: `git worktree add`
+// leaves the checkout at its runner's umask, and a runner at 0002 (srv1's user manager, measured by bright-moth-475
+// at 508f36df) gets a checkout that is already group-writable and in the claim's group, so a proof walk over it
+// passes before any grant and the RED below would hold only on some hosts. So the claim takes group write off the
+// whole checkout, `.git` pointer included, before the first walk; the proof walk then REFUSES it; the grant's two
+// commands (the sweep, then the proof) both run clean; and the pointer is still not group-writable afterwards,
+// because the grant prunes it -- a worker able to rewrite that file could repoint its git directory. RED on a grant
+// that skipped files or reached the pointer, and on a proof that could not refuse. The group is the claim's own
+// (wet_group_token), for the reason stated there.
+test fn the_worktree_grant_makes_the_checkout_editable_and_its_proof_refuses_without_it() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-worktree-XXXXXX" as NonEmptyStr))
+  let group = wet_group_token()
+  if root == "" || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let worktree = join([root, "/attempt"], "")
+    let instance = wet_lab_local_instance(root: repo)
+    let seeded = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_repo_with_a_commit(repo: repo)
+      && wet_ok(command: git_worktree_add_detached_command(repository_dir: repo, path: worktree, revision: "HEAD"))
+      && wet_ok(command: chmod_recursive_set_mode_command(chmod_program: chmod_binary_path, mode: "g-w" as NonEmptyStr, path: worktree))
+    let proof = find_subtree_ungranted_entry_refusal_command(target: worktree, pruned: [".git"], group: group, depth: dashboard_git_worker_subtree_walk_depth)
+    let refused_before = !wet_ok(command: proof)
+    let grant = dispatch_attempt_worker_worktree_grant(instance: instance, attempt_worktree: worktree, group: group as NonEmptyStr)
+    let granted = count(grant) == 2 && wet_all(steps: grant) && wet_ok(command: proof)
+    let pointer_still_closed = !wet_ok(command: find_subtree_ungranted_entry_refusal_command(target: join([worktree, "/.git"], ""), pruned: [], group: group, depth: dashboard_git_worker_subtree_walk_depth))
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    seeded && refused_before && granted && pointer_still_closed && cleaned
+  }
+}
+
+// WHAT THIS CLAIM DOES NOT EXECUTE, AND WHERE THAT EXECUTION LIVES. In production the gate is reached
+// through belt_exec, whose steps run on belt_program_available -> gunbc.WitnessBin.Run, and the unit start
+// it guards runs through shell.Exec.RunArgv -- NEITHER realized on the wet route (the shell.Exec frontier;
+// the same frontier is why this file carries a WitnessExclusionRow instead of pretending coverage). So what
+// runs HERE for real is the gate's own argv over a real per-attempt entry; the ROUTE that consults the
+// gate's verdict and the REFUSAL TO START THE UNIT are observed by the lab arm, where bright-moth-475 runs
+// a real dispatch on srv1 at this head composed with main. DESIGN.md 3: the last execution of the real path
+// is never removed, only moved to where it can run.
+test fn the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-entry-XXXXXX" as NonEmptyStr))
+  let uid = wet_self_uid()
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || uid < 0 || gid < 0 || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let worktree = join([root, "/attempt"], "")
+    let instance = wet_lab_local_instance(root: repo)
+    let entry = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: worktree)
+    let seeded = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_repo_with_a_commit(repo: repo)
+      && wet_ok(command: git_worktree_add_detached_command(repository_dir: repo, path: worktree, revision: "HEAD"))
+    let bundle = wet_spawn_bundle(
+      readback: dispatch_git_owned_host_step_argv(
+        command: dispatch_attempt_worker_git_entry_readback_command(
+          instance: instance, attempt_worktree: worktree,
+        ),
+      ),
+    )
+    let before = belt_worker_git_entry_grant_readback(cmds: bundle, workdir: repo, group: group as NonEmptyStr)
+    let before_refused = wet_gate_refused(outcome: before, step: "worker-git-entry-readback")
+    // THE CONTROL ON THE PROOF ITSELF: the same gate over a subtree that does not exist. An absent top must
+    // refuse, because a walk that produced nothing has no line to fail a predicate.
+    let elsewhere = wet_spawn_bundle(
+      readback: dispatch_git_owned_host_step_argv(
+        command: dispatch_attempt_worker_git_entry_readback_command(
+          instance: instance, attempt_worktree: join([root, "/no-such-attempt"], ""),
+        ),
+      ),
+    )
+    let absent_refused = wet_gate_refused(
+      outcome: belt_worker_git_entry_grant_readback(cmds: elsewhere, workdir: repo, group: group as NonEmptyStr),
+      step: "worker-git-entry-readback",
+    )
+    let granted = wet_all(steps: dispatch_attempt_worker_git_entry_migration(
+        instance: instance,
+        attempt_worktree: worktree,
+        group: group as NonEmptyStr,
+      ))
+      && wet_gate_passed(outcome: belt_worker_git_entry_grant_readback(cmds: bundle, workdir: repo, group: group as NonEmptyStr))
+    let entry_receipt = wet_receipt(target: entry, pruned: [])
+    let clean = wet_ok(command: rm_recursive_force_command(path: root))
+    seeded && before_refused && absent_refused && granted
+      // THE ENTRY'S TOP, DERIVED FROM THE GATE'S OWN ARM. The gate decides on
+      // dashboard_git_worker_granted_directory_mode (the plain setgid arm -- no sticky bit on an entry, for
+      // the reason at dispatch_attempt_worker_git_entry_migration), and this line has to name that same
+      // arm; the entry migration installs the top with that arm too, so install, gate and leg are one fact.
+      && wet_receipt_line_is(
+        receipt: entry_receipt, kind: "d",
+        mode: dashboard_git_worker_directory_mode_octal(mode: dashboard_git_worker_granted_directory_mode),
+        group: group, path: "",
+      )
+      && wet_receipt_line_is(receipt: entry_receipt, kind: "f", mode: "664", group: group, path: "logs/HEAD")
+      && clean
+  }
+}
+
+// SIX. THE COMMIT THE WHOLE GRANT EXISTS FOR, RUN. A real `git worktree add` and a real `git commit` from the
+// linked worktree, over a repository the APPLY has granted; then every path the model says the commit writes
+// is read back with git and with find, never with the builder that set the tree up:
+//   - THE COMMIT HAPPENED, as git reports it: HEAD in the linked worktree resolves to a 40-character object
+//     id. A silently-failed commit -- the shape every green-but-unexecuted claim in this PR's history
+//     produced -- reads here as an empty string, not as a green claim over a tree nothing wrote;
+//   - THE REF AND ITS REFLOG EXIST as lines the walk printed, both at the granted 0664 -- the reflog being the
+//     file the commit APPENDED to, which is the one file-level grant doing real work;
+//   - THE CONFINED INTERIOR IS UNTOUCHED AFTER A COMMIT THAT SUCCEEDED: packed-refs is still the file that was
+//     planted, because a commit on a NEW branch does not rewrite it (only a branch delete or git pack-refs
+//     does, and this PR grants the worker neither -- which is why packed-refs.lock in .git, which #13942
+//     confines to the owner, is never needed); .git/config keeps its mode, measured: `git worktree add` on a
+//     non-bare repository does not add `worktreeconfig` when core.extensions.worktreeconfig is unset; and
+//     .git/ itself is still 0755, which is why no step in this feature touches it.
+// THE CONTROL IS CLAIM SEVEN, which runs the same commit on an UNGRANTED tree and requires git to refuse.
+test fn a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confined() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-commit-XXXXXX" as NonEmptyStr))
+  let uid = wet_self_uid()
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || uid < 0 || gid < 0 || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let git = join([repo, "/.git"], "")
+    let worktree = join([root, "/attempt"], "")
+    let instance = wet_lab_local_instance(root: repo)
+    let seeded = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
+      && wet_repo_with_a_commit(repo: repo)
+    let posture = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardEnsureGitSharedRepositoryPosture { repo: repo as FilePath },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let migrated = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardMigrateGitWorkerSubtree {
+        repo: repo as FilePath,
+        group: group as NonEmptyStr,
+      },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let add = wet_ok(
+      command: git_worktree_add_detached_command(repository_dir: repo, path: worktree, revision: "HEAD"),
+    )
+    let entry_granted = wet_all(
+      steps: dispatch_attempt_worker_git_entry_migration(
+        instance: instance,
+        attempt_worktree: worktree,
+        group: group as NonEmptyStr,
+      ),
+    )
+    let committed = wet_ok(
+      command: install_empty_file_command(
+        path: join([worktree, "/worker-wrote-this"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+    )
+      && wet_ok(command: git_add_all_force_command(repository_dir: worktree))
+      && wet_ok(command: git_branch_command(repository_dir: worktree, branch: "wre3-worker-branch" as NonEmptyStr))
+      && wet_ok(
+        command: git_commit_snapshot_command(
+          repository_dir: worktree,
+          identity_name: "wre3-worker",
+          identity_email: "wre3-worker@lab.invalid",
+          message: "wre3: a commit from a linked worktree",
+        ),
+      )
+    let head = wet_out(command: git_rev_parse_head_command(repository_dir: worktree))
+    let objects_after = wet_receipt(target: join([git, "/objects"], ""), pruned: dashboard_git_worker_subtree_confined_children(child: dashboard_git_worker_objects_child))
+    let refs_after = wet_receipt(target: join([git, "/refs"], ""), pruned: [])
+    let logs_after = wet_receipt(target: join([git, "/logs"], ""), pruned: [])
+    let git_itself = wet_receipt(target: git, pruned: ["objects", "refs", "logs", "hooks", "info"])
+    let clean = wet_ok(command: rm_recursive_force_command(path: root))
+    seeded && posture.success && migrated.success && add && entry_granted && committed
+      // A commit object id is 40 hex characters and `git rev-parse HEAD` prints nothing else.
+      && length(xs: head) == 40
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_objects_child, group: group as NonEmptyStr, receipt: objects_after)
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_refs_child, group: group as NonEmptyStr, receipt: refs_after)
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_logs_child, group: group as NonEmptyStr, receipt: logs_after)
+      && wet_receipt_line_is(receipt: refs_after, kind: "f", mode: "664", group: group, path: "heads/wre3-worker-branch")
+      && wet_receipt_line_is(receipt: logs_after, kind: "f", mode: "664", group: group, path: "refs/heads/wre3-worker-branch")
+      // PACKED-REFS: CONFINED IF PRESENT, AND ALLOWED TO BE ABSENT. Measured (git 2.47.3, 2026-10-19): a
+      // repository whose main branch has commits and whose linked worktree has committed has NO
+      // .git/packed-refs at all -- the file is written by `git pack-refs`, a branch delete, or gc, none of
+      // which a commit does. An exact line leg here would therefore assert a state git need not produce,
+      // and would go red or green on whether some earlier command happened to pack. So the leg is written
+      // the way the claim actually is: WHATEVER packed-refs line exists is at git's own 644 with the tree's
+      // group, and NO line is accepted at a group-writable mode -- which is the confinement claim, since
+      // updating packed-refs needs packed-refs.lock in .git ITSELF, a directory this grant never touches.
+      && wet_receipt_line_is_or_absent(
+        receipt: git_itself, kind: "f", mode: "644", group: group, path: "packed-refs",
+      )
+      && wet_receipt_has_none(out: git_itself, forbidden_lines: [
+        "f 664 " + group + " packed-refs", "f 777 " + group + " packed-refs",
+      ])
+      && wet_receipt_line_is(receipt: git_itself, kind: "f", mode: "644", group: group, path: "config")
+      && wet_receipt_line_is(receipt: git_itself, kind: "d", mode: "755", group: group, path: "")
+      && clean
+  }
+}
+
+// SEVEN. THE CONTROL THE POSITIVE COMMIT NEEDS, SCOPED TO WHAT ONE PRINCIPAL CAN FALSIFY. Claim SIX shows a
+// commit succeeding on a granted tree; a positive with no failing twin is the shape
+// gunbc.recurring_failure_mode.executed_conjunct_discriminates_nothing warns about, so this claim runs the
+// SAME shape of commit against the SAME kind of repository twice, with the model's two arms as the only
+// difference between the arms.
+//
+// WHAT THIS CLAIM DOES NOT CLAIM, SAID PLAINLY. The refusal this feature exists to remove is
+// DAC-decided: the worker is refused because it is NOT the owner of .git, and the apply succeeds because it
+// IS. That pair needs two different principals -- apply as the directory owner, commit as gunbc-worker --
+// and a claim that runs as one account cannot mint it. Measured (git 2.47.3, 2026-10-19): with the tree at
+// srv1's ungranted modes, the OWNER'S OWN commit still succeeds, because the owner bits are enough for it.
+// So a "the ungranted commit must fail" leg run by a single claim user would either be vacuous or would be
+// proved by a mode no real host has, and either way it would be a green nobody earned. THE WORKER-SIDE
+// REFUSALS -- `git commit` on an ungranted tree, a write to .git/config, a write under hooks/ -- are
+// therefore qualified where two principals exist: the non-root host, as the PR body's qualification steps.
+// What is left here is what one principal CAN falsify, and it is not nothing:
+//   - BEFORE the two arms, the model REFUSES the repository -- the readback refuses each subtree and the
+//     migration arm reports the refusal by name. So claim SIX's green is not the green of a tree that was
+//     already granted;
+//   - AFTER the arms, the same repository is granted AND the same shape of commit succeeds in a second
+//     linked worktree. A fixture that could not carry a commit at all (no git, no identity, an unwritable
+//     root) would fail here, which is what stops SIX's success from being an accident of the fixture;
+//   - the receipts the two arms produce are the ones the fold accepts, read off the tree by `find` rather
+//     than from the argv the arms built.
+test fn the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-control-XXXXXX" as NonEmptyStr))
+  let uid = wet_self_uid()
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || uid < 0 || gid < 0 || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let git = join([repo, "/.git"], "")
+    let ungranted_worktree = join([root, "/attempt-ungranted"], "")
+    let granted_worktree = join([root, "/attempt-granted"], "")
+    let instance = wet_lab_local_instance(root: repo)
+    let seeded = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
+      && wet_repo_with_a_commit(repo: repo)
+    // THE UNGRANTED STATE, AS THE MODEL SEES IT: not "the commit failed" (a single principal cannot decide
+    // that, see above) but "the model refuses this tree", subtree by subtree, and says why.
+    let refused_objects = !dashboard_git_worker_subtree_is_granted(
+      instance: instance, child: dashboard_git_worker_objects_child, group: group as NonEmptyStr,
+    )
+    let refused_logs = !dashboard_git_worker_subtree_is_granted(
+      instance: instance, child: dashboard_git_worker_logs_child, group: group as NonEmptyStr,
+    )
+    // NO `dashboard_apply_provision_op` REFUSAL IS ASSERTED HERE, and that is deliberate rather than an
+    // omission: this step grants and THEN reads back, and every action in the walk only ADDS bits, so no
+    // plain un-migrated tree can make it refuse -- an arm asserting that it would be a claim about a state
+    // the route cannot produce (the first cut had one, and an instrumented run showed it exiting 0 with
+    // empty refusal text). The executed refusal of the ARM lives in
+    // the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not, which plants a state the walk
+    // cannot repair. What THIS claim's ungranted half proves is the readback's own verdict on the real
+    // pre-migration tree (refused_objects / refused_logs, above) against the same tree's granted verdict
+    // below -- the same instrument, two opposite answers, decided by the migration.
+    // A worktree added BEFORE any grant, so its private entry is the mode `git worktree add` really leaves.
+    let ungranted_added = wet_ok(
+      command: git_branch_command(repository_dir: repo, branch: "wre3-ungranted" as NonEmptyStr),
+    )
+      && wet_ok(
+        command: git_worktree_add_detached_command(
+          repository_dir: repo, path: ungranted_worktree, revision: "HEAD",
+        ),
+      )
+    // THE ENTRY BEFORE ITS GRANT, AS A RECEIPT: the modes `git worktree add` really leaves (755/644), and
+    // -- deliberately -- the GRANTED group on every line, so the refusal below is a refusal of the MODES
+    // and nothing else. The real pre-grant entry is also on the wrong group; this fixture isolates the
+    // half the claim is about, and the group half is refused over its own receipt in
+    // worker_dedicated_account_witness's readback refusals and observed on a real tree by the line legs
+    // below.
+    let ungranted_entry_refused = !dashboard_git_subtree_readback_is_granted(
+      child: dashboard_git_worker_logs_child,
+      group: group as NonEmptyStr,
+      receipt: join(
+        [
+          join(["d 755 ", group, " "], ""),
+          join(["f 644 ", group, " HEAD"], ""),
+          join(["f 644 ", group, " commondir"], ""),
+          join(["f 644 ", group, " gitdir"], ""),
+          join(["f 644 ", group, " index"], ""),
+          join(["d 755 ", group, " logs"], ""),
+          join(["f 644 ", group, " logs/HEAD"], ""),
+        ],
+        "\n",
+      ),
+    )
+    // NOW THE TWO ARMS, AND THE SAME SHAPE OF COMMIT IN A SECOND WORKTREE: the fixture is shown capable of
+    // carrying a commit, which is the control SIX's positive depends on.
+    let posture = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardEnsureGitSharedRepositoryPosture { repo: repo as FilePath },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let migrated = dashboard_apply_provision_op(
+      instance: instance,
+      op: DashboardMigrateGitWorkerSubtree {
+        repo: repo as FilePath,
+        group: group as NonEmptyStr,
+      },
+      temp_bundle: join([root, "/bundle.zip"], "") as FilePath,
+      temp_verify_repo: join([root, "/verify"], "") as FilePath,
+    )
+    let granted_added = wet_ok(
+      command: git_branch_command(repository_dir: repo, branch: "wre3-granted" as NonEmptyStr),
+    )
+      && wet_ok(
+        command: git_worktree_add_detached_command(
+          repository_dir: repo, path: granted_worktree, revision: "HEAD",
+        ),
+      )
+      && wet_all(
+        steps: dispatch_attempt_worker_git_entry_migration(
+          instance: instance,
+          attempt_worktree: granted_worktree,
+          group: group as NonEmptyStr,
+        ),
+      )
+    let granted_commit = wet_ok(
+      command: install_empty_file_command(
+        path: join([granted_worktree, "/y"], ""), octal_mode: "0644" as NonEmptyStr, uid: uid, gid: gid,
+      ),
+    )
+      && wet_ok(command: git_add_all_force_command(repository_dir: granted_worktree))
+      && wet_ok(
+        command: git_commit_snapshot_command(
+          repository_dir: granted_worktree,
+          identity_name: "wre3-worker",
+          identity_email: "wre3-worker@lab.invalid",
+          message: "wre3: the commit the grant exists to allow",
+        ),
+      )
+    let head = wet_out(command: git_rev_parse_head_command(repository_dir: granted_worktree))
+    let objects_after = wet_receipt(target: join([git, "/objects"], ""), pruned: ["pack", "info"])
+    let clean = wet_ok(command: rm_recursive_force_command(path: root))
+    seeded && ungranted_added && refused_objects && refused_logs
+      && ungranted_entry_refused
+      && posture.success && migrated.success && granted_added && granted_commit
+      && length(xs: head) == 40
+      && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_objects_child, group: group as NonEmptyStr, receipt: objects_after)
+      && clean
+  }
+}
+
+// ============================================================================================
+// ROUND 8: THE POSTURE OBSERVER'S ABSENCE ARMS, EXECUTED. The re-root's first fresh-lab deploy
+// (composition f953f454) proved these arms were wrong -- a source repository that does not exist YET
+// (the same apply clones it later) was simultaneously "all keys unset" (the config legs' silent
+// sentinel for ANY nonzero git exit) and "unobservable" (the unit legs' refusal), and the refusal
+// named a unit path for a git-config failure. The repairs (member_observe.dag) are graded here over
+// REAL trees, because every one of these distinctions lives in what a real git and a real parent
+// listing print: (1) established absence -- the parent listing SUCCEEDS without the entry -- reads as
+// the member's ordinary MemberAbsentOnHost and the plan CARRIES the posture assert instead of
+// refusing; (2) a present-but-unreadable repository (a plain directory: git dies with 128 inside it)
+// still refuses, and the refusal names the git read and the path; (3) each leg refusal carries its
+// own subject -- the fold passes causes through verbatim, no "service unit:"/"timer unit:" prefix.
+// RED at 7661561e (the head the lab deploy ran): there (1) refused with "service unit: ..." wording,
+// (2) lied "all keys unset" and planned a Replace instead of refusing, and (3) prefixed both subjects
+// by guess.
+// ============================================================================================
+
+fn wre3_posture_member(root: String) -> ConvergedMember {
+  RepositorySharedPosture { path: root as NonEmptyStr }
+}
+
+fn wre3_posture_desired(root: String) -> MemberIdentity {
+  RepositorySharedPostureAt { posture: RepositorySharedPostureIdentity {
+    path: root as NonEmptyStr,
+    document: content_hash_atom(value: "wre3-desired-posture-document" as NonEmptyStr),
+  } }
+}
+
+fn wre3_release_target() -> ReleaseTarget {
+  ReleaseTarget {
+    revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha,
+    executable: sha256_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr),
+    unit: "gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr,
+  }
+}
+
+fn wre3_posture_plan(root: String, obs: ObservedMember) -> EffectDerivation {
+  derive_member_plan(
+    roster: [wre3_posture_member(root: root)],
+    desired: _ => Present { value: wre3_posture_desired(root: root) },
+    observed: _ => obs,
+    target: wre3_release_target(),
+  )
+}
+
+fn wre3_plan_labels(d: EffectDerivation) -> List<String> {
+  match d { EffectsDerived { plan } => effect_labels(plan: plan)  EffectsRefused { refusals: _ } => ["REFUSED"] }
+}
+
+// (1) A FRESH INSTANCE PLANS; IT DOES NOT REFUSE. The parent exists, the source does not: exactly the
+// state the re-root's first deploy met. The observer must establish absence by the listing, answer the
+// member's ordinary absence, and the derived plan must CARRY the posture assert (the emitted script
+// runs it after the step that creates the repository -- the artifact stage precedes the host-script
+// stage). At 7661561e this claim is RED at the first line: the legs read a path with no repository,
+// the units refused, and the member came back MemberUnobservable ("service unit: ...") -- a refusal
+// of a state that is simply not-yet-created.
+test fn the_posture_observer_reads_an_absent_source_as_absence_and_the_plan_carries_the_assert() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-posture-absent-XXXXXX" as NonEmptyStr))
+  let source = join([root, "/source"], "")
+  if root == "" || wet_self_uid() < 0 {
+    false
+  } else {
+    let inst = wet_lab_local_instance(root: source)
+    let obs = observe_repository_shared_posture(arm: OnTheHostItself, instance: inst)
+    let is_absence = match obs {
+      MemberAbsentOnHost { member } => converged_member_eq(a: member, b: wre3_posture_member(root: source))
+      _ => false
+    }
+    let labels = wre3_plan_labels(d: wre3_posture_plan(root: source, obs: obs))
+    let carries = any(xs: labels, predicate: l => string_contains(s: l, pattern: "assert-repository-shared-posture"))
+      && !string_contains(s: join(labels, ","), pattern: "REFUSED")
+    let untouched = wet_ok(command: rm_recursive_force_command(path: root))
+    is_absence && carries && untouched
+  }
+}
+
+// (2) A PRESENT-BUT-UNREADABLE REPOSITORY STILL REFUSES, NAMING THE READ AND THE PATH. The directory
+// exists (the parent listing carries it) but no repository lives inside it: `git config --local --get`
+// dies with 128 ("not a git repository") -- the very exit the old legs silently recorded as "unset",
+// letting the plan see a clean three-unset posture and Replace it. The fixed observer must call this
+// what it is: a failed read, unobservable, naming the key, the command and the path. RED at 7661561e:
+// the keys lied "unset", the member came back OBSERVED, and the plan was a Replace, not a refusal.
+test fn the_posture_observer_refuses_a_present_but_unreadable_repository_naming_the_read() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-posture-unreadable-XXXXXX" as NonEmptyStr))
+  let source = join([root, "/source"], "")
+  if root == "" || wet_self_uid() < 0 {
+    false
+  } else {
+    let planted = wet_ok(command: mkdir_parents_command(path: source))
+    let inst = wet_lab_local_instance(root: source)
+    let obs = observe_repository_shared_posture(arm: OnTheHostItself, instance: inst)
+    let named = match obs {
+      MemberUnobservable { member, cause } =>
+        converged_member_eq(a: member, b: wre3_posture_member(root: source))
+          && string_contains(s: cause, pattern: "git config --get")
+          && string_contains(s: cause, pattern: "git exited 128")
+          && string_contains(s: cause, pattern: source)
+          && !string_contains(s: cause, pattern: "service unit:")
+          && !string_contains(s: cause, pattern: "timer unit:")
+      _ => false
+    }
+    let labels2 = wre3_plan_labels(d: wre3_posture_plan(root: source, obs: obs))
+    let refused = length(xs: labels2) == 1 && string_contains(s: join(labels2, ","), pattern: "REFUSED")
+    let untouched = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && named && refused && untouched
+  }
+}
+
+// (3) EACH LEG REFUSAL NAMES ITSELF; THE FOLD PASSES CAUSES THROUGH VERBATIM. Pure, no tree: a refused
+// SERVICE leg must surface its own cause -- not a cause with a "service unit:"/"timer unit:" prefix
+// welded on by the fold. The deploy log's refusal blamed a unit path for a git-config failure; this is
+// the claim that makes such a re-label impossible for any leg. RED at 7661561e, where the fold
+// prefixed "service unit: " / "timer unit: " by position regardless of which read failed.
+test fn the_posture_fold_passes_each_leg_cause_through_verbatim() -> Bool {
+  let keys = [
+    PostureConfigPair { key: "core.sharedRepository" as NonEmptyStr, value: "group" },
+    PostureConfigPair { key: "gc.auto" as NonEmptyStr, value: "0" },
+    PostureConfigPair { key: "maintenance.auto" as NonEmptyStr, value: "false" },
+  ]
+  let marker = "the read of /somewhere/x failed: EACCES"
+  let service_refused = match posture_document_from_legs(key_legs: keys, service_leg: LegRefused { cause: marker }, timer_leg: LegOut { stdout: "t" }) {
+    PostureReadUnobservable { cause } => cause == marker
+    _ => false
+  }
+  let timer_refused = match posture_document_from_legs(key_legs: keys, service_leg: LegOut { stdout: "s" }, timer_leg: LegRefused { cause: marker }) {
+    PostureReadUnobservable { cause } => cause == marker
+    _ => false
+  }
+  let key_refused = match posture_document_from_legs(key_legs: [PostureConfigUnobservable { cause: marker }, PostureConfigPair { key: "gc.auto" as NonEmptyStr, value: "0" }, PostureConfigPair { key: "maintenance.auto" as NonEmptyStr, value: "false" }], service_leg: LegOut { stdout: "s" }, timer_leg: LegOut { stdout: "t" }) {
+    PostureReadUnobservable { cause } => cause == marker
+    _ => false
+  }
+  service_refused && timer_refused && key_refused
+}
+
+// (3b) THE SAME ABSENCE, TWO POLICIES, CHOSEN BY WHAT THE CALLER ESTABLISHED. An absent unit document
+// under AbsentIsTheStanding (the posture member's policy -- IT installs those units, so absence is the
+// pre-install standing) reads as the sentinel; under AbsentContradictsListing (the serve unit's and
+// fabric marker's policy -- their callers established presence via entry_presence) the same absence is
+// a refusal naming the contradiction. The tree is a real directory without the file, so the listing
+// genuinely succeeds without the entry -- the state the policies are about. RED at 7661561e: there was
+// no policy; absence was only ever the contradiction refusal, which killed the fresh-lab deploy.
+test fn the_unit_document_leg_reads_absence_by_what_its_caller_established() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-posture-leg-XXXXXX" as NonEmptyStr))
+  let unit_path = join([root, "/gunbc-git-maintenance.service"], "")
+  if root == "" || wet_self_uid() < 0 {
+    false
+  } else {
+    let standing_ok = match unit_document_leg(arm: OnTheHostItself, path: unit_path, absent: AbsentIsTheStanding) {
+      LegOut { stdout } => stdout == posture_missing_sentinel
+      _ => false
+    }
+    let contradiction_ok = match unit_document_leg(arm: OnTheHostItself, path: unit_path, absent: AbsentContradictsListing) {
+      LegRefused { cause } => string_contains(s: cause, pattern: "vanished between listing and read")
+      _ => false
+    }
+    let untouched = wet_ok(command: rm_recursive_force_command(path: root))
+    standing_ok && contradiction_ok && untouched
+  }
+}
+
+// ===================== WORKER-ROOT-EQUIVALENT-3: the repository premise, executed =====================
+//
+// THE PREMISE IS THE FIX'S LOAD-BEARING ARM, AND IT IS ONE EXIT STATUS, NOT A SHELL SCRIPT. It admits ONLY
+// an established repository -- one whose git resolves as a real .git directory -- and refuses every state in
+// which the git subtree legs would write against a non-repository. It is ONE test fn per planted state so a
+// red run names the state that failed (review: decompose, do not explain a whole-tree false). Each test runs
+// the apply's OWN premise ArgvCommand over the host route and asserts its EXIT CODE; the refusals also read
+// git's OWN "not a git repository" on stderr, so a refuse arm cannot go green on an unrelated failure.
+//
+// WHY AN EXIT-STATUS PREMISE, NOT A CAPTURED COMPARISON, AND WHY ONE READ DECIDES EVERY STATE:
+//  (a) the #14660 cutover (c11aa231) deleted the bash gate this claim used to render
+//      (dashboard_git_worker_repository_premise_gate_command_text) and its stdout refusal sentence. The
+//      ruling is that the premise is not a shell script at all: it is one argv, git
+//      -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir. Passing an EXPLICIT
+//      --git-dir turns OFF git's upward discovery, so a nested directory can no longer resolve to an outer
+//      repository (that is why this replaces the deleted path-EQUALITY gate, which needed the raw observer to
+//      read a stdout sentence); the EXIT STATUS is the verdict, so there is no capture, no comparison, no
+//      printf and no quoting hazard left to go wrong. run_shell_command_observe (the raw {exit_code, stdout,
+//      stderr} triple) is used because the refusals read stderr -- run_shell_command_capture discards output
+//      on a nonzero exit.
+//  (b) the single read decides every state, because git's OWN discovery rules what counts as a repository.
+//      OBSERVED on the qualification host (srv1, git 2.43.0, uid 1000): the fabricated skeleton -- .git/objects,
+//      .git/refs, .git/logs present but NO HEAD -- a plain directory, and a directory nested in a repository
+//      each exit 128 and print "not a git repository". Git accepts a directory as a .git only when it holds a
+//      valid HEAD, so the skeleton is refused on any git. (An earlier draft asserted git 2.43 resolved a
+//      HEAD-less .git with exit 0, which would have needed a second HEAD-based premise; that behaviour was
+//      NEVER observed -- it was inferred from a run whose gate text was itself broken, and the qualification
+//      host contradicts it. No consumer requires refusing a well-formed HEAD whose object is missing -- a
+//      corrupt repository no producer makes -- so the premise models ONE read, not two. DESIGN section 4d.)
+//
+// RED on main: #14660 deleted the gate builder and its command text, and the typed premise builder did not
+// exist there, so the whole gate block cannot build at main -- the discriminating arms.
+// THE PREMISE, RUN THROUGH ITS OWN TYPED ARGV. #14660 (c11aa231) deleted the bash gate this claim used
+// to render (dashboard_git_worker_repository_premise_gate_command_text) and its stdout refusal sentence;
+// the ruling (bright-moth-475, msg_dd453af6) is that the premise is not a shell script at all -- it is one
+// argv, git -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir, whose EXIT STATUS
+// is the premise. This runs the very ArgvCommand the realized ApplyLegDiagnosedCommand carries, so the wet
+fn wre3_gate_observation(repo: String) -> ProcessObservation {
+  run_shell_command_observe(
+    command: git_absolute_git_dir_premise_argv(repo: repo as NonEmptyStr),
+    transport: LocalExec,
+  )
+}
+
+// ADMIT: the premise exited 0 (git resolved <repo>/.git through the explicit --git-dir). On an admit git
+// PRINTS the resolved git-dir, so stdout is deliberately NOT asserted empty -- that check belonged to the
+// deleted gate, which printed nothing.
+fn wre3_gate_passes(repo: String) -> Bool {
+  wre3_gate_observation(repo: repo).exit_code == 0
+}
+
+// REFUSE: the premise exited NONZERO AND git itself said the directory is not a repository. The second
+// half is the discrimination that keeps a broken claim from satisfying a refuse arm by accident: a claim
+// that only checked "exit != 0" would go green on an unrelated failure (a missing git, an unwritable
+// scratch root). OBSERVED on the qualification host (srv1, git 2.43.0, uid 1000): a HEAD-less .git
+// skeleton, a plain directory and a directory nested in a repository each exit 128 and print "not a git
+// repository" -- and because the premise passes an EXPLICIT --git-dir, the nested case cannot resolve to
+// the outer repository (upward discovery is off), which is exactly why this is one exit-status premise and
+// not the deleted path-equality gate.
+fn wre3_gate_refused(repo: String) -> Bool {
+  let o = wre3_gate_observation(repo: repo)
+  o.exit_code != 0 && string_contains(s: o.stderr, pattern: "not a git repository")
+}
+
+// A fresh scratch root for one state's claim; "" if the host gave us none.
+fn wre3_scratch_root() -> String {
+  wet_out(command: mktemp_directory_command(template: "/tmp/wre3-gate-XXXXXX" as NonEmptyStr))
+}
+
+// ADMIT STATE 1 -- a repository with a commit: the premise exits 0 (git resolves <repo>/.git).
+test fn the_premise_gate_admits_a_committed_repository() -> Bool {
+  let root = wre3_scratch_root()
+  if root == "" {
+    false
+  } else {
+    let repo = join([root, "/real"], "")
+    let planted = wet_ok(command: mkdir_parents_command(path: repo)) && wet_repo_with_a_commit(repo: repo)
+    let admitted = wre3_gate_passes(repo: repo)
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && admitted && cleaned
+  }
+}
+
+// ADMIT STATE 2 -- git init, no commit yet (the bootstrap arm's own state): an unborn HEAD is still an
+// established repository (git init writes .git/HEAD -> refs/heads/<branch>), so --absolute-git-dir answers
+// <repo>/.git and the premise ADMITS it. This is a load-bearing control: the premise must not refuse a
+// freshly bootstrapped tree. Exit 0.
+test fn the_premise_gate_admits_an_unborn_repository() -> Bool {
+  let root = wre3_scratch_root()
+  if root == "" {
+    false
+  } else {
+    let repo = join([root, "/unborn"], "")
+    let planted = wet_ok(command: mkdir_parents_command(path: repo)) && wet_ok(command: git_init_quiet_command(repository_dir: repo))
+    let admitted = wre3_gate_passes(repo: repo)
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && admitted && cleaned
+  }
+}
+
+// ADMIT STATE 3 -- a DETACHED HEAD (a working tree pinned to a revision, not a branch). A source tree
+// pinned to a revision is a plausible route, and a detached HEAD is still an established repository: its
+// --absolute-git-dir is <repo>/.git, so the single premise ADMITS it. This is the control that would catch
+// a gate which wrongly required an ATTACHED branch (per git's own docs, symbolic-ref HEAD fails on a
+// detached HEAD -- a premise built on that read would have taken the whole deploy down though the tree is
+// real). Exit 0.
+test fn the_premise_gate_admits_a_detached_head_repository() -> Bool {
+  let root = wre3_scratch_root()
+  if root == "" {
+    false
+  } else {
+    let repo = join([root, "/detached"], "")
+    // The typed --detach HEAD checkout IS the state establishment.
+    let planted = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_repo_with_a_commit(repo: repo)
+      && wet_ok(command: git_checkout_revision_command(repository_dir: repo, revision: "HEAD"))
+    let admitted = wre3_gate_passes(repo: repo)
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && admitted && cleaned
+  }
+}
+
+// REFUSE STATE 1 -- the FABRICATION: a .git DIRECTORY with objects/refs/logs and NO HEAD. THE
+// discriminating arm: this is the exact skeleton the old standing pre-position fabricated, and it is the
+// state a directory test would wave through. OBSERVED on the qualification host (srv1, git 2.43.0): there
+// the premise exits 128 and prints "not a git repository" -- git accepts a directory as a .git only when it
+// holds a valid HEAD. The claim asserts a NONZERO exit AND that stderr phrase, so a premise that merely
+// broke (missing git, an unwritable scratch root, a silent admit) cannot satisfy it for the wrong reason.
+// The find below first proves the state really is HEAD-less, so this is the fabrication and not a real
+// repository.
+test fn the_premise_gate_refuses_a_headless_dot_git_skeleton() -> Bool {
+  let root = wre3_scratch_root()
+  if root == "" {
+    false
+  } else {
+    let skel = join([root, "/skel"], "")
+    let planted = wet_ok(command: mkdir_parents_command(path: join([skel, "/.git/objects/f9"], "")))
+      && wet_ok(command: mkdir_parents_command(path: join([skel, "/.git/refs/heads"], "")))
+      && wet_ok(command: mkdir_parents_command(path: join([skel, "/.git/logs/refs/heads"], "")))
+    // The state really is HEAD-less; if git had written a HEAD this would not be the fabrication.
+    let headless = !wet_ok(command: find_path_probe_command(path: join([skel, "/.git/HEAD"], ""), kind: "f", clause: []))
+    // The single premise refuses it, so assert ITS sentence exactly -- not a loose prefix a broken gate
+    // could satisfy for the wrong reason.
+    let refused = wre3_gate_refused(repo: skel)
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && headless && refused && cleaned
+  }
+}
+
+// REFUSE STATE 2 -- a plain directory, no repository at all: the premise cannot resolve it as a git dir,
+// so it exits nonzero with git's own "not a git repository". Assert BOTH, not just the exit code.
+test fn the_premise_gate_refuses_a_plain_directory() -> Bool {
+  let root = wre3_scratch_root()
+  if root == "" {
+    false
+  } else {
+    let plain = join([root, "/plain"], "")
+    let planted = wet_ok(command: mkdir_parents_command(path: plain))
+    let refused = wre3_gate_refused(repo: plain)
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && refused && cleaned
+  }
+}
+
+// REFUSE STATE 3 -- a directory NESTED INSIDE a repository. The premise passes an EXPLICIT --git-dir
+// = <nested>/.git, which turns git's upward discovery OFF, so the nested directory cannot resolve to
+// the OUTER .git; it is refused on its own merits (a directory test on the nested dir's own .git would
+// never even run). Assert exit nonzero AND git's own "not a git repository" on stderr.
+test fn the_premise_gate_refuses_a_directory_nested_in_a_repository() -> Bool {
+  let root = wre3_scratch_root()
+  if root == "" {
+    false
+  } else {
+    let outer = join([root, "/outer"], "")
+    let nested = join([outer, "/wtless"], "")
+    let planted = wet_ok(command: mkdir_parents_command(path: outer))
+      && wet_ok(command: git_init_quiet_command(repository_dir: outer))
+      && wet_ok(command: mkdir_parents_command(path: nested))
+    let refused = wre3_gate_refused(repo: nested)
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && refused && cleaned
+  }
+}

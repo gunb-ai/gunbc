@@ -89,8 +89,8 @@ import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
-import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
-import gunbc.auth.approval_device_redemption { approval_device_store_directory }
+import gunbc.managed_directory { managed_directory_admit, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
+import gunbc.auth.approval_broker_state_directories { approval_broker_state_directories, broker_state_directory_install_argv }
 import gunbc.fleet.fleet_posix_accounts { GroundedPosixPrincipal, grounded_posix_principal_name, fleet_rm_binary_path, fleet_posix_nologin_shell_path }
 import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
@@ -100,27 +100,13 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
-  approval_broker_helper_snapshot_base,
-  approval_broker_helper_snapshot_locus,
   HelperLocus,
-  HelperGrantSite,
-  HelperRevisionReceipt,
   helper_locus_dir,
 }
 import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file,
   live_deploy_approval_broker_unit_file_on,
-  approval_broker_helper_sudoers_content,
-  approval_broker_helper_sudoers_mode,
-  approval_broker_helper_sudoers_path,
-  approval_broker_helper_sudoers_temp_path,
-  approval_broker_helper_sudoers_stage_name,
-  approval_broker_helper_sudoers_readback_stage_name,
-  approval_broker_helper_grant_admission,
-  approval_broker_helper_grant_refusal_text,
-  HelperGrantAdmitted,
-  HelperGrantWordRefused,
-  HelperGrantLocusWritableByGrantee,
+  helper_sudoers_grant_mode,
   path_ancestors_inclusive,
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
@@ -233,7 +219,6 @@ import extdeps.tools.websocat {
 }
 import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
 import gunbc.srv3.srv3_actuate_shell_paths {
-  srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
   srv3_bmcweb_token_path,
 }
@@ -282,8 +267,10 @@ import gunbc.live_deploy.retract_legs {
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe, ObjectSourceServeDecideAtApplyPwd, observe_object_source_serve, object_source_serve_refusal_text }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
-  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
-  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
+  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegRootHelperSnapshot, HelperSnapshotAction, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
+  ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
+  credstore_copy_stage_command, credstore_copy_commands,
 }
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
@@ -665,7 +652,7 @@ type ResolvedHostEffectCell =
   | ReceiptEmitOnHost { node: ComputeHost, lines: List<String> }
   | BootOnceReadBackSleepOnHost { node: ComputeHost }
   | SeededInstallMediaToolchainOnHost { node: ComputeHost }
-  | BmcwebSessionLoginOnHost { node: ComputeHost }
+  | BmcwebSessionLoginOnHost { node: ComputeHost, request_body_file: NonEmptyStr }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
@@ -734,8 +721,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
     Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
     Srv3SeededInstallMediaToolchainEnsure =>
       SeededInstallMediaToolchainOnHost { node: n }
-    Srv3BmcwebSessionLogin =>
-      BmcwebSessionLoginOnHost { node: n }
+    Srv3BmcwebSessionLogin { request_body_file: f } =>
+      BmcwebSessionLoginOnHost { node: n, request_body_file: f }
     Srv3BmcwebTokenExtract =>
       BmcwebTokenExtractOnHost { node: n }
     Srv3BootOnceReadBackSleep =>
@@ -818,7 +805,7 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     Srv3SeededInstallMediaToolchainEnsure =>
       IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-    Srv3BmcwebSessionLogin =>
+    Srv3BmcwebSessionLogin { request_body_file: _ } =>
       IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     Srv3BmcwebTokenExtract =>
       IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -899,7 +886,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3InstallMediaFetch => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3SeededInstallMediaRemaster => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3SeededInstallMediaToolchainEnsure => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        Srv3BmcwebSessionLogin => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BmcwebSessionLogin { request_body_file: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3BmcwebTokenExtract => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -941,8 +928,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BootOnceReadBackSleepOnHost { node: n }
         Srv3SeededInstallMediaToolchainEnsure =>
           SeededInstallMediaToolchainOnHost { node: n }
-        Srv3BmcwebSessionLogin =>
-          BmcwebSessionLoginOnHost { node: n }
+        Srv3BmcwebSessionLogin { request_body_file: f } =>
+          BmcwebSessionLoginOnHost { node: n, request_body_file: f }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
         LiveDeployApply { warrant: w } =>
@@ -1007,7 +994,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3InstallMediaFetch => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3SeededInstallMediaRemaster => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3SeededInstallMediaToolchainEnsure => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        Srv3BmcwebSessionLogin => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BmcwebSessionLogin { request_body_file: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BmcwebTokenExtract => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1299,13 +1286,18 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
 // this site supplies only the paths its materialization bracket owns and runs the FLAGS through
 // srv3_run_tool_by_name, which resolves the program from the same cited curl_cli_tool row the
 // builder's identity carries.
+// THE BODY PATH ARRIVES ON THE EFFECT. It names the owner-only file the caller's
+// gunbc.auth.private_secret_file bracket created in a per-run private directory and removes when the
+// login returns. It used to be the fixed constant /tmp/srv3_bmcweb_login_body.json, written with
+// the ambient umask and never removed, so after a login the BMC password stayed in /tmp.
 fn realize_bmcweb_session_login_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  request_body_file: NonEmptyStr,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    request_body_file: request_body_file,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
   match srv3_run_tool_by_name(
@@ -1342,14 +1334,15 @@ fn realize_bmcweb_session_login_body(
 fn realize_bmcweb_session_login_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  request_body_file: NonEmptyStr,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     SshShell { ssh_host: _ } =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     FleetSsh { target: _, context: _ } =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebSessionLogin cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -1850,7 +1843,7 @@ fn realize_provision_codex_runtime(
     Srv3InstallMediaFetch => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaRemaster => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaToolchainEnsure => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    Srv3BmcwebSessionLogin => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin { request_body_file: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3BmcwebTokenExtract => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3672,7 +3665,7 @@ fn realize_provision_build_cache(
     Srv3InstallMediaFetch => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaRemaster => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaToolchainEnsure => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    Srv3BmcwebSessionLogin => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin { request_body_file: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3BmcwebTokenExtract => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -6022,8 +6015,8 @@ type DeployApplyPorts {
   command: fn(ArgvCommand) -> RunArgvTransportOutcome
   stdin: fn(ArgvCommand, String) -> RunArgvTransportOutcome
   ensure_directory: fn(OwnedDirectoryTarget) -> OwnedDirectoryEnsureOutcome
-  helper_grant: fn(ReleaseRevisionBinding) -> Optional<String>
-  root_helper_grant: fn(HelperGrantSite, HelperRevisionReceipt, ReleaseRevisionBinding) -> Optional<String>
+  state_directories: fn(ReleaseRevisionBinding) -> Optional<String>
+  root_helper_snapshot: fn(HelperLocus, List<String>, ReleaseRevisionBinding, HelperSnapshotAction) -> Optional<String>
   broker_tree: fn(ReleaseRevisionBinding) -> Optional<String>
   dependency: fn(DeploymentDependencyStep) -> Optional<String>
   retract: DeployRetractPorts
@@ -6042,8 +6035,8 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
     command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
     ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
-    helper_grant: fn(r) { live_deploy_apply_helper_grant_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
-    root_helper_grant: fn(site, receipt, r) { live_deploy_apply_root_helper_grant_on_host(site: site, receipt: receipt, revision: r, principal: principal, source_root: source_root, transport: transport) },
+    state_directories: fn(r) { live_deploy_apply_state_directories_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
+    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
     broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
     dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
     retract: deploy_retract_ports_on_host(transport: transport),
@@ -6053,7 +6046,8 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
 
 // C1: ONE OWNED DIRECTORY, ENSURED THROUGH THE ONE PROVIDER. The reads are the privileged list and stat
 // of the directory's parent chain (the same ones gunbc.live_deploy.member_observe makes), each keeping
-// its origin typed; the install is the provider's plan elevated; the verdict is the provider's
+// its origin typed; the install is the provider's plan as the EnsureOwnedDirectory operation, so its
+// words are exactly the ones a job user's sudoers grant names (gunbc.executor_privileged_operation); the verdict is the provider's
 // independent second stat, never the install's exit status.
 fn deploy_apply_directory_read(op: ExecutorPrivilegedOperation, transport: HostEffectTransport) -> ObserverRead {
   match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: transport) {
@@ -6081,7 +6075,9 @@ fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, tran
     target: target,
     observe: p => deploy_apply_directory_observe(path: p, transport: transport),
     run: plan => match run_argv_over_host_effect_transport(
-      command: sudo_elevate_command(command: owned_directory_install_argv(plan: plan)),
+      command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
+        path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode,
+      }),
       transport: transport,
     ) {
       RunArgvTransportRefused { reason: _ } => false
@@ -6094,21 +6090,26 @@ type DeployApplyRun
   = ApplyRunOk { legs_run: Int, reports: List<String> }
   | ApplyRunFailed { step: String, reason: String, legs_run: Int }
 
-// C3: THE HELPER GRANT, THROUGH THE SHARED STAGES. The same dark_helper_grant_install the dark install
-// runs; a DarkFailed becomes the leg's refusal naming its step.
-fn live_deploy_apply_helper_grant_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
-  match dark_helper_grant_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+// THE BROKER'S STATE DIRECTORIES, through the stage the dark install runs; a DarkFailed becomes the leg's
+// refusal naming its step.
+fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match dark_state_directories_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
     DarkOk => Absent
-    DarkFailed { step: s, reason: r } => Present { value: join(["helper grant refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+    DarkFailed { step: s, reason: r } => Present { value: join(["broker state directories refused at step ", dark_install_step_name(step: s), ": ", r], "") }
   }
 }
 
-// A ROOT-OWNED HELPER GRANT OTHER THAN THE BROKER'S (the attempt launcher's), through the same site
-// sequence the broker's helper grant runs, with the site's revision receipt.
-fn live_deploy_apply_root_helper_grant_on_host(site: HelperGrantSite, receipt: HelperRevisionReceipt, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
-  match dark_helper_site_install(site: site, receipt: Present { value: receipt }, revision: revision, principal: principal, source_root: source_root, transport: transport) {
+// A ROOT-OWNED RELEASE SNAPSHOT, installed or retired through the same two stages the broker's helper
+// grant runs (dark_helper_snapshot_at, dark_helper_retire_at). The install and the retire are separate
+// legs because the units that name the snapshot are installed between them: the superseded snapshot is
+// retired only after the new units stand.
+fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match (match action {
+    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
+    HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
+  }) {
     DarkOk => Absent
-    DarkFailed { step: s, reason: r } => Present { value: join(["root helper grant at ", site.locus.base, " refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+    DarkFailed { step: s, reason: r } => Present { value: join(["root helper snapshot at ", locus.base, " refused at step ", dark_install_step_name(step: s), ": ", r], "") }
   }
 }
 
@@ -6144,6 +6145,65 @@ fn deploy_apply_digest_env_failure(binary: String, env_name: String, dest: Strin
           }
         }
       }
+  }
+}
+
+// THE CREDSTORE COPY'S BRACKET, RUN ON THE HOST THROUGH THE COMMAND PORT (gunbc.live_deploy.apply_legs
+// ApplyLegCredstoreCopy says why it is the host-side realization of gunbc.auth.private_secret_file rather than a
+// call). The order is the bracket's: stage, owner-only copy, the one use (the root install), then the removal,
+// whose rmdir is the check. No cause carries a path or a command's stderr, because either may name the stage.
+fn credstore_copy_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
+  match outcome {
+    RunArgvTransportRefused { reason: _ } => false
+    RunArgvTransportObserved { observed: o } => o.exit_code == 0
+  }
+}
+
+fn credstore_copy_stage_path(outcome: RunArgvTransportOutcome) -> NonEmptyStr? {
+  match outcome {
+    RunArgvTransportRefused { reason: _ } => none
+    RunArgvTransportObserved { observed: o } => {
+      let path = trim(s: o.stdout)
+      if o.exit_code == 0 && starts_with(s: path, prefix: "/") && !string_contains(s: path, pattern: "\n") { Present { value: path as NonEmptyStr } } else { none }
+    }
+  }
+}
+
+fn credstore_copy_bracket(source: NonEmptyStr, dest: NonEmptyStr, file_name: NonEmptyStr, run: fn(ArgvCommand) -> RunArgvTransportOutcome) -> CredstoreCopyBracket {
+  let staged = run(credstore_copy_stage_command())
+  match credstore_copy_stage_path(outcome: staged) {
+    Absent =>
+      if credstore_copy_succeeded(outcome: staged) {
+        CredstoreCopyNotEnteredResidueRemains { cause: "mktemp -d answered but printed no single absolute path, so the stage it may have made cannot be removed" as NonEmptyStr }
+      } else {
+        CredstoreCopyNotEntered { cause: "no private stage directory could be created for the credential copy, so nothing was copied" as NonEmptyStr }
+      }
+    Present { value: stage } => {
+      let cmds = credstore_copy_commands(stage: stage, source: source, dest: dest, file_name: file_name)
+      if credstore_copy_succeeded(outcome: run(cmds.user_copy)) {
+        let installed = credstore_copy_succeeded(outcome: run(cmds.root_install))
+        let removed = credstore_copy_succeeded(outcome: run(cmds.remove_file)) && credstore_copy_succeeded(outcome: run(cmds.remove_dir))
+        if removed { CredstoreCopyCompleted { installed: installed } } else { CredstoreCopyCompletedResidueRemains { installed: installed } }
+      } else {
+        let removed = credstore_copy_succeeded(outcome: run(cmds.remove_file)) && credstore_copy_succeeded(outcome: run(cmds.remove_dir))
+        if removed {
+          CredstoreCopyNotEntered { cause: "the custody file could not be copied into the stage as the apply's principal; the stage was removed, so no copy is on disk" as NonEmptyStr }
+        } else {
+          CredstoreCopyNotEnteredResidueRemains { cause: "the custody file could not be copied into the stage AND the stage could not be removed, so material may remain and requires cleanup" as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+fn credstore_copy_failure(bracket: CredstoreCopyBracket) -> Optional<String> {
+  match bracket {
+    CredstoreCopyCompleted { installed: i } =>
+      if i { Absent } else { Present { value: "the root install of the worker credential into the credstore failed; the stage was removed" } }
+    CredstoreCopyCompletedResidueRemains { installed: i } =>
+      Present { value: if i { "the worker credential was installed, but its stage could not be removed, so a copy remains and requires cleanup" } else { "the root install of the worker credential failed AND its stage could not be removed, so a copy remains and requires cleanup" } }
+    CredstoreCopyNotEntered { cause: c } => Present { value: c as String }
+    CredstoreCopyNotEnteredResidueRemains { cause: c } => Present { value: c as String }
   }
 }
 
@@ -6232,12 +6292,13 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
         Absent => Absent
         Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
       }
-    ApplyLegHelperGrant { revision: r } => ports.helper_grant(r)
-    ApplyLegRootHelperGrant { site: g, receipt: rc, revision: r } => ports.root_helper_grant(g, rc, r)
+    ApplyLegBrokerStateDirectories { revision: r } => ports.state_directories(r)
+    ApplyLegRootHelperSnapshot { locus: l, spine: sp, revision: r, action: a } => ports.root_helper_snapshot(l, sp, r, a)
     ApplyLegBrokerTree { revision: r } => ports.broker_tree(r)
     ApplyLegRetract { step: _, leg: l } => deploy_apply_retract_leg_failure(leg: l, ports: ports.retract)
     ApplyLegDependency { dep: d } => ports.dependency(d)
     ApplyLegDigestEnvFile { step: _, binary: b, env_name: n, dest: d, owner: o } => deploy_apply_digest_env_failure(binary: b, env_name: n, dest: d, owner: o, ports: ports)
+    ApplyLegCredstoreCopy { step: _, source: s, dest: d, file_name: f } => credstore_copy_failure(bracket: credstore_copy_bracket(source: s, dest: d, file_name: f, run: command))
     ApplyLegObjectSource => {
       let observe = ports.object_source
       match observe() {
@@ -6257,12 +6318,13 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
     ApplyLegInstallFile { step: _, command: _, payload: _ } => []
-    ApplyLegHelperGrant { revision: _ } => []
-    ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => []
+    ApplyLegBrokerStateDirectories { revision: _ } => []
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
     ApplyLegBrokerTree { revision: _ } => []
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => []
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
     ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []
@@ -6736,40 +6798,23 @@ fn approval_broker_tree_receipt_write(
 }
 
 // ── THE APPROVAL BROKER DARK INSTALL, TYPED ───────────────────────────────────────────────────
-// Stage 1 of the cutover: the device store, this release's helper grant (a root-owned snapshot, then
-// the sudoers line that names it), the broker's tree, slice and unit, a daemon-reload, enable +
-// restart of ONLY the broker unit, and the slice-control caps. It touches gunbc-roadmap.service in no
+// Stage 1 of the cutover: the broker's state directories (device store, JWKS cache), the broker's
+// tree, slice and unit, a daemon-reload, enable + restart of ONLY the broker unit, and the
+// slice-control caps. It touches gunbc-roadmap.service in no
 // way: a daemon-reload does not restart running units, so the roadmap keeps its PID and incarnation.
 //
 // FAIL-FAST, ONE STEP AT A TIME. Each leg is an ArgvCommand run through
 // run_argv_over_host_effect_transport -- no shell, no quoting, no script body -- and the first leg
 // that refuses stops the line: DarkInstallRefused names the step and NO later leg runs. The retired
-// script's refusals are all preserved as typed steps: a non-owning spec, an uncovered device-store
-// writer, a refused helper grant, a snapshot that is not root-owned, a sudoers file that fails
-// visudo, a readback that differs, a slice-control plan the host cannot derive.
-//
-// THE SUDOERS FILE IS STAGED IN ONE SCRATCH DIRECTORY (mktemp -d, written unelevated) because visudo
-// -cf must read a file before it is installed and neither tee nor dd is a grantable root verb. The
-// directory is acquired after the earlier legs and removed on every path out of the sudoers stage; a
-// removal that fails is its own refusal. The installed file is read back and hashed against the
-// staged one: convergence is the independent readback, not the install's exit code.
+// script's refusals that survive the helper grant's removal (cb6548946213) are typed steps: a
+// non-owning spec, an uncovered state-directory writer, a slice-control plan the host cannot derive.
+// The root-owned snapshot steps (snapshot, readback, retire) are run by the apply's
+// root-helper-snapshot leg (live_deploy_apply_root_helper_snapshot_on_host).
 type DarkInstallStep
   = DarkStepOwner
   | DarkStepDeviceStore
-  | DarkStepGrantAdmission
   | DarkStepSnapshot
   | DarkStepSnapshotReadback
-  | DarkStepRevisionReceipt
-  | DarkStepScratchAcquire
-  | DarkStepSudoersStage
-  | DarkStepSudoersCheck
-  | DarkStepSudoersInstall
-  | DarkStepSudoersPolicyTemp
-  | DarkStepSudoersRename
-  | DarkStepSudoersPolicyFinal
-  | DarkStepSudoersReadback
-  | DarkStepSudoersCompare
-  | DarkStepScratchCleanup
   | DarkStepRetire
   | DarkStepBrokerTree
   | DarkStepSidecarDigest
@@ -6794,7 +6839,6 @@ type DarkLeg
   = DarkLegArgv { step: DarkInstallStep, command: ArgvCommand }
   | DarkLegStdin { step: DarkInstallStep, command: ArgvCommand, payload: String }
   | DarkLegExpectEmpty { step: DarkInstallStep, command: ArgvCommand }
-  | DarkLegSameHash { step: DarkInstallStep, left: String, right: String }
 
 type DarkState
   = DarkOk
@@ -6807,9 +6851,6 @@ type DarkInstallInputs {
   source_root: String
   transport: HostEffectTransport
 }
-
-data dark_scratch_template: NonEmptyStr = "/tmp/gunbc-broker-dark-install.XXXXXX" as NonEmptyStr
-data dark_scratch_prefix: String = "/tmp/gunbc-broker-dark-install."
 
 fn dark_failed_of_outcome(step: DarkInstallStep, outcome: RunArgvTransportOutcome) -> DarkState {
   match outcome {
@@ -6831,13 +6872,6 @@ fn dark_expect_empty_state(step: DarkInstallStep, outcome: RunArgvTransportOutco
   }
 }
 
-fn dark_same_hash_state(step: DarkInstallStep, left: String, right: String, agreement: Sha256Agreement) -> DarkState {
-  match sha256_disagreement_text(agreement: agreement) {
-    Absent => DarkOk
-    Present { value: why } => DarkFailed { step: step, reason: join([left, " and ", right, " differ (", why, ")"], "") }
-  }
-}
-
 fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) -> DarkState {
   match state {
     DarkFailed { step: _, reason: _ } => state
@@ -6849,8 +6883,6 @@ fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) 
           dark_failed_of_outcome(step: s, outcome: run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport))
         DarkLegExpectEmpty { step: s, command: c } =>
           dark_expect_empty_state(step: s, outcome: run_argv_over_host_effect_transport(command: c, transport: transport))
-        DarkLegSameHash { step: s, left: l, right: r } =>
-          dark_same_hash_state(step: s, left: l, right: r, agreement: tree_binary_agreement(source_path: l, installed_path: r, transport: transport))
       }
   }
 }
@@ -6872,13 +6904,6 @@ fn tree_install_step_name(step: TreeInstallStep) -> String {
   }
 }
 
-// The helper snapshot's root-ownership readback: neither the base's ancestors nor anything in the
-// snapshot may be owned by another principal, writable by group/other, or be a symlink. Bare find (not
-// grantable); an unreadable entry is an observation failure and refuses.
-fn dark_snapshot_readback_legs(dir: String) -> List<DarkLeg> {
-  dark_snapshot_readback_legs_at(locus: approval_broker_helper_snapshot_locus(), dir: dir)
-}
-
 fn dark_snapshot_readback_legs_at(locus: HelperLocus, dir: String) -> List<DarkLeg> {
   let root = locus.owner as String
   [
@@ -6891,59 +6916,6 @@ fn dark_snapshot_readback_legs_at(locus: HelperLocus, dir: String) -> List<DarkL
       command: find_untrusted_entries_command(roots: [dir], top_only: false, owner: root),
     },
   ]
-}
-
-// The sudoers file, staged -> visudo -cf -> installed beside the final name -> policy-checked ->
-// renamed over it -> policy-checked again -> read back through the applying principal and hashed
-// against the staged bytes. `scratch` is the directory the caller acquired and will remove.
-fn dark_sudoers_legs(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
-  dark_sudoers_legs_at(site: approval_broker_helper_grant_site(revision: revision), principal: principal, scratch: scratch)
-}
-
-// The approval broker's helper grant as a site: its snapshot under the one root-owned base, its one
-// sudoers file.
-fn approval_broker_helper_grant_site(revision: ReleaseRevisionBinding) -> HelperGrantSite {
-  HelperGrantSite {
-    locus: approval_broker_helper_snapshot_locus(),
-    spine: [approval_broker_helper_snapshot_base],
-    sudoers_content: approval_broker_helper_sudoers_content(revision: revision),
-    sudoers_mode: approval_broker_helper_sudoers_mode,
-    sudoers_temp_path: approval_broker_helper_sudoers_temp_path as String,
-    sudoers_path: approval_broker_helper_sudoers_path as String,
-    stage_name: approval_broker_helper_sudoers_stage_name,
-    readback_name: approval_broker_helper_sudoers_readback_stage_name,
-  }
-}
-
-fn dark_sudoers_legs_at(site: HelperGrantSite, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
-  let staged = join([scratch, "/", site.stage_name], "")
-  let readback = join([scratch, "/", site.readback_name], "")
-  let temp_path = site.sudoers_temp_path
-  let final_path = site.sudoers_path
-  let root = site.locus.owner
-  let name = grounded_posix_principal_name(p: principal)
-  [
-    DarkLegStdin { step: DarkStepSudoersStage, command: dd_overwrite_path_command(path: staged), payload: site.sudoers_content },
-    DarkLegArgv { step: DarkStepSudoersCheck, command: visudo_check_command(file: staged) },
-    DarkLegArgv {
-      step: DarkStepSudoersInstall,
-      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-        mode: site.sudoers_mode, owner: root, group: root, source: staged, dest: temp_path)),
-    },
-    DarkLegArgv { step: DarkStepSudoersPolicyTemp, command: visudo_policy_check_command(file: temp_path) },
-    DarkLegArgv { step: DarkStepSudoersRename, command: dark_elevated_of(c: mv_exact_destination_command(source: temp_path, destination: final_path)) },
-    DarkLegArgv { step: DarkStepSudoersPolicyFinal, command: visudo_policy_check_command(file: final_path) },
-    DarkLegArgv {
-      step: DarkStepSudoersReadback,
-      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-        mode: "0400" as NonEmptyStr, owner: name, group: name, source: final_path, dest: readback)),
-    },
-    DarkLegSameHash { step: DarkStepSudoersCompare, left: staged, right: readback },
-  ]
-}
-
-fn dark_elevated_of(c: ArgvCommand) -> ArgvCommand {
-  sudo_elevate_command(command: concat([c.program.invocation as String], c.arguments))
 }
 
 fn dark_unit_install_leg(step: DarkInstallStep, dest: String, text: String) -> DarkLeg {
@@ -6991,100 +6963,77 @@ fn approval_broker_dark_install(
       reason: join(["the dark install was reached with a deployment that does not own this host's broker unit; gunbc-approval-broker.service is a host singleton owned by the spec holding the prod role. instance=", spec.instance_id as String], ""),
     }
   } else {
-    match dark_helper_grant_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+    match dark_state_directories_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
       DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
       DarkOk => dark_stage_broker_tree(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
     }
   }
 }
 
-// THE HELPER-GRANT STAGES, ONE SEQUENCE, TWO CALLERS: the dark install (approval_broker_dark_install)
-// and the live_deploy apply (the helper-grant leg's port). device store -> grant admission -> root-owned
-// snapshot tree -> sudoers (stage, visudo, install, rename, readback) -> retire of the superseded snapshot.
-// Each stage yields DarkOk or the typed DarkFailed naming its step; the first failure ends the sequence.
-fn dark_helper_grant_install(i: DarkInstallInputs) -> DarkState {
-  match dark_helper_device_store(i: i) {
+// ONE CENSUS ROW AS ITS CONVERGING LEG: `sudo install -d -m <derived> -o <owner> -g <group> <path>` —
+// the same single-step ownership install as before, spelled from the row's own declaration (mode derived
+// by gunbc.managed_directory managed_directory_permissions, never a literal). Pure, like dark_unit_legs:
+// the witness can name the emitted leg without running a transport, which is what makes the census's
+// contents a CLAIM rather than a hope.
+fn dark_state_directory_leg(d: ManagedDirectory) -> DarkLeg {
+  DarkLegArgv {
+    step: DarkStepDeviceStore,
+    command: sudo_elevate_command(command: broker_state_directory_install_argv(d: d)),
+  }
+}
+
+// THE EMITTED STATE-DIRECTORY LEGS FOR A SET OF CENSUS ROWS, in census order. THE POSITIVE CONTROL:
+// called with the census (dark_state_directory_legs below), this list carries the assertion-counter
+// root's argv — delete a row from gunbc.auth.approval_broker_state_directories
+// approval_broker_state_directories and the dark-install witness's claim over this list fails.
+fn dark_state_directory_legs_for(directories: List<ManagedDirectory>) -> List<DarkLeg> {
+  list_map(xs: directories, f: fn(d) { dark_state_directory_leg(d: d) })
+}
+
+// THE EMITTED STATE-DIRECTORY LEGS, at the census.
+fn dark_state_directory_legs() -> List<DarkLeg> {
+  dark_state_directory_legs_for(directories: approval_broker_state_directories())
+}
+
+// ONE ADMIT STEP: refuse on the first row whose dependents fail to cover their writes
+// (gunbc.managed_directory managed_directory_admit); carry any earlier refusal forward unchanged.
+fn dark_state_directory_admit_step(st: DarkState, d: ManagedDirectory) -> DarkState {
+  match st {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-    DarkOk =>
-      match dark_helper_grant_admission(i: i) {
-        DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-        DarkOk =>
-          dark_helper_site_install(
-            site: approval_broker_helper_grant_site(revision: i.revision),
-            receipt: Absent,
-            revision: i.revision,
-            principal: i.principal,
-            source_root: i.source_root,
-            transport: i.transport,
-          )
-      }
+    DarkOk => match managed_directory_admit(d: d) {
+      ManagedDirectoryRefused { member: m, path: p, writer: w } =>
+        DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
+      ManagedDirectoryAdmitted { dir: _ } => DarkOk
+    }
   }
 }
 
-fn dark_helper_device_store(i: DarkInstallInputs) -> DarkState {
-  match managed_directory_admit(d: approval_device_store_directory()) {
-    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
-      DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
-    ManagedDirectoryAdmitted { dir: d } =>
-      dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
-        step: DarkStepDeviceStore,
-        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
-          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
-      })
-  }
+// THE GATE RUNS BEFORE ANY MUTATION: every census row must admit (no uncovered writer) BEFORE a single
+// install -d touches the host. The fold this replaces admitted lazily per row, so a malformed row FIVE
+// refused AFTER rows one through four had already mutated the host; fail-closed means nothing is written
+// when the plan is bad.
+fn dark_state_directories_admit(directories: List<ManagedDirectory>) -> DarkState {
+  fold(directories, init: DarkOk, f: (st, d) => dark_state_directory_admit_step(st: st, d: d))
 }
 
-fn dark_helper_grant_admission(i: DarkInstallInputs) -> DarkState {
-  match approval_broker_helper_grant_admission(revision: i.revision) {
-    HelperGrantAdmitted => DarkOk
-    HelperGrantWordRefused { word: w } =>
-      DarkFailed { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }) }
-    HelperGrantLocusWritableByGrantee { owner: o } =>
-      DarkFailed { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }) }
-  }
-}
-
-// ONE ROOT-OWNED HELPER GRANT AT ITS SITE: snapshot tree -> (the site's revision receipt, when it keeps
-// one) -> sudoers -> retire of the superseded snapshot. The approval broker's grant and the attempt
-// launcher's grant are two sites of this one sequence.
-
-fn dark_helper_site_install(
-  site: HelperGrantSite,
-  receipt: Optional<HelperRevisionReceipt>,
-  revision: ReleaseRevisionBinding,
-  principal: GroundedPosixPrincipal,
-  source_root: String,
-  transport: HostEffectTransport,
-) -> DarkState {
-  match dark_helper_snapshot_at(site: site, revision: revision, source_root: source_root, transport: transport) {
+// THE BROKER'S STATE DIRECTORIES: EVERY root the census (gunbc.auth.approval_broker_state_directories
+// approval_broker_state_directories) declares, each converged to its managed declaration (owner, group,
+// derived mode) before the broker's tree is staged. DESIGN 6b root generalization: this was a nested
+// match over the device store and the JWKS cache — two roots named by hand — and the assertion-counter
+// root 503'd on srv1 for exactly that reason: a new state root could only be provisioned by editing a
+// branch here, and nobody edited one. A root now joins by being a row of the census; the fold is the
+// only shape, and `install -d` Noops on a directory that already stands at its declaration (the srv1
+// counter root the operator created by hand converges as a no-op, not a fight).
+fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
+  let directories = approval_broker_state_directories()
+  match dark_state_directories_admit(directories: directories) {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-    DarkOk =>
-      match dark_helper_revision_receipt(site: site, receipt: receipt, transport: transport) {
-        DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-        DarkOk =>
-          match dark_helper_sudoers_at(site: site, principal: principal, transport: transport) {
-            DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-            DarkOk => dark_helper_retire_at(site: site, revision: revision, transport: transport)
-          }
-      }
+    DarkOk => dark_run_legs(legs: dark_state_directory_legs_for(directories: directories), transport: i.transport)
   }
 }
 
-fn dark_helper_revision_receipt(site: HelperGrantSite, receipt: Optional<HelperRevisionReceipt>, transport: HostEffectTransport) -> DarkState {
-  match receipt {
-    Absent => DarkOk
-    Present { value: rc } =>
-      dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegStdin {
-        step: DarkStepRevisionReceipt,
-        command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-          mode: install_file_shared_mode, owner: site.locus.owner, group: site.locus.owner, source: "/dev/stdin", dest: rc.path)),
-        payload: rc.text,
-      })
-  }
-}
-
-fn dark_helper_snapshot_at(site: HelperGrantSite, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
-  let dir = helper_locus_dir(locus: site.locus, revision: revision)
+fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
+  let dir = helper_locus_dir(locus: locus, revision: revision)
   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepSnapshot,
     command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
@@ -7092,8 +7041,8 @@ fn dark_helper_snapshot_at(site: HelperGrantSite, revision: ReleaseRevisionBindi
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
       match approval_broker_tree_install_at(
-        owner: site.locus.owner,
-        spine: site.spine,
+        owner: locus.owner,
+        spine: spine,
         locus: dir,
         source_root: source_root,
         revision: revision,
@@ -7103,47 +7052,18 @@ fn dark_helper_snapshot_at(site: HelperGrantSite, revision: ReleaseRevisionBindi
         TreeInstallRefused { step: ts, reason: r } =>
           DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
         TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: site.locus, dir: dir), transport: transport)
+          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: dir), transport: transport)
       }
   }
 }
 
-fn dark_helper_sudoers_at(site: HelperGrantSite, principal: GroundedPosixPrincipal, transport: HostEffectTransport) -> DarkState {
-  match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: dark_scratch_template), transport: transport) {
-    RunArgvTransportRefused { reason: r } => DarkFailed { step: DarkStepScratchAcquire, reason: r }
-    RunArgvTransportObserved { observed: o } =>
-      match (if o.success { admitted_scratch_path(prefix: dark_scratch_prefix, stdout: o.stdout) } else { none }) {
-        Absent => DarkFailed { step: DarkStepScratchAcquire, reason: join(["mktemp -d did not yield an admitted scratch directory (exit ", to_string(o.exit_code), "): ", o.stdout, o.stderr], "") }
-        Present { value: scratch } => {
-          let state = dark_run_legs(legs: dark_sudoers_legs_at(site: site, principal: principal, scratch: scratch), transport: transport)
-          let cleanup = dark_failed_of_outcome(
-            step: DarkStepScratchCleanup,
-            outcome: run_argv_over_host_effect_transport(command: rm_recursive_force_command(path: scratch), transport: transport),
-          )
-          match state {
-            DarkFailed { step: s, reason: r } =>
-              match cleanup {
-                DarkOk => DarkFailed { step: s, reason: r }
-                DarkFailed { step: _, reason: cr } => DarkFailed { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], "") }
-              }
-            DarkOk =>
-              match cleanup {
-                DarkFailed { step: cs, reason: cr } => DarkFailed { step: cs, reason: join(["removing scratch ", scratch, ": ", cr], "") }
-                DarkOk => DarkOk
-              }
-          }
-        }
-      }
-  }
-}
-
-// The previous release's snapshot is removed after the rename took its grant away: the sweep is
+// The previous release's snapshot is removed once the units that name the new one stand: the sweep is
 // confined to the root-owned base and keeps exactly this release's directory.
-fn dark_helper_retire_at(site: HelperGrantSite, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+fn dark_helper_retire_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
   dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepRetire,
     command: find_other_children_exec_command(
-      root: site.locus.base,
+      root: locus.base,
       keep_name: release_revision_execstart_text(binding: revision),
       exec_argv: sudo_elevate_argv(command: [fleet_rm_binary_path as String, coreutils_rm_force_recursive_flags as String, "--"]),
     ),
@@ -7254,20 +7174,8 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
   match step {
     DarkStepOwner => "owner"
     DarkStepDeviceStore => "device-store"
-    DarkStepGrantAdmission => "helper-grant-admission"
     DarkStepSnapshot => "helper-snapshot"
     DarkStepSnapshotReadback => "helper-snapshot-readback"
-    DarkStepRevisionReceipt => "helper-revision-receipt"
-    DarkStepScratchAcquire => "scratch-acquire"
-    DarkStepSudoersStage => "sudoers-stage"
-    DarkStepSudoersCheck => "sudoers-visudo-check"
-    DarkStepSudoersInstall => "sudoers-install"
-    DarkStepSudoersPolicyTemp => "sudoers-policy-check-temp"
-    DarkStepSudoersRename => "sudoers-rename"
-    DarkStepSudoersPolicyFinal => "sudoers-policy-check-final"
-    DarkStepSudoersReadback => "sudoers-readback"
-    DarkStepSudoersCompare => "sudoers-compare"
-    DarkStepScratchCleanup => "scratch-cleanup"
     DarkStepRetire => "helper-snapshot-retire"
     DarkStepBrokerTree => "broker-tree"
     DarkStepSidecarDigest => "sidecar-digest"
@@ -8014,8 +7922,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
     SeededInstallMediaToolchainOnHost { node: _ } =>
       realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
-    BmcwebSessionLoginOnHost { node: _ } =>
-      realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+    BmcwebSessionLoginOnHost { node: _, request_body_file: f } =>
+      realize_bmcweb_session_login_on_host(transport: transport, intent: intent, request_body_file: f)
     BmcwebTokenExtractOnHost { node: _ } =>
       realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
     EffectivePrincipalReadOnHost { node: _, read: r } =>
@@ -8202,7 +8110,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     Srv3InstallMediaFetch => access
     Srv3SeededInstallMediaRemaster => access
     Srv3SeededInstallMediaToolchainEnsure => access
-    Srv3BmcwebSessionLogin => access
+    Srv3BmcwebSessionLogin { request_body_file: _ } => access
     Srv3BmcwebTokenExtract => access
     Srv3NbdProxyServe { intent: _, lease_key: _ } => access
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
@@ -8273,8 +8181,8 @@ fn host_effect_apply_gated(
           realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
         SeededInstallMediaToolchainOnHost { node: _ } =>
           realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
-        BmcwebSessionLoginOnHost { node: _ } =>
-          realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+        BmcwebSessionLoginOnHost { node: _, request_body_file: f } =>
+          realize_bmcweb_session_login_on_host(transport: transport, intent: intent, request_body_file: f)
         BmcwebTokenExtractOnHost { node: _ } =>
           realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
         EffectivePrincipalReadOnHost { node: _, read: r } =>
@@ -8369,7 +8277,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            BmcwebSessionLoginOnHost { node: _, request_body_file: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SudoNopasswdExecuteProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -10539,7 +10447,7 @@ fn microvm_controller_install_steps(
               microvm_controller_argv_step(
                 name: "dispatch grant install (pending)",
                 command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-                  mode: approval_broker_helper_sudoers_mode,
+                  mode: helper_sudoers_grant_mode,
                   owner: microvm_controller_owner,
                   group: microvm_controller_owner,
                   source: grant_stage,

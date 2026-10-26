@@ -1,0 +1,130 @@
+module extdeps.ssh.openssh_remote_command
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Optional, Present }
+import std.algebra { list_head, trim }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+
+// WHAT OpenSSH DOES WITH A REMOTE COMMAND, as its source states it at each release below (V_9_6_P1 is what Ubuntu 24.04
+// ships; V_10_0_P2 is the client this repository's executors run, `ssh -V` read 2026-10-25 in a session container).
+// Client, ssh.c main(): when arguments follow the destination, "A command has been specified. Store it into the
+// buffer." -- each argument is appended with sshbuf_putf(command, "%s%s", i ? " " : "", av[i]), i.e. the arguments
+// are joined by single spaces, with nothing quoted or escaped, into ONE string sent in the exec request.
+// Server, session.c do_child(): "Execute the command using the user's shell. This uses the -c option to execute the
+// command." -- execve(shell, { shell0, "-c", command, NULL }), shell being the user's login shell from passwd.
+// So the remote words a client hands ssh after `--` reach the remote side as exactly one login-shell re-parse of
+// their space-joined string; that string is what a quoting route has to be correct against.
+data openssh_client_command_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openssh/openssh-portable/blob/V_9_6_P1/ssh.c"
+  }
+}
+
+data openssh_server_command_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openssh/openssh-portable/blob/V_9_6_P1/session.c"
+  }
+}
+
+// The client's join (ssh.c): the arguments after the destination, space-separated, unquoted.
+fn openssh_remote_command_string(arguments: List<String>) -> String {
+  join(arguments, " ")
+}
+
+// The server's execution (session.c do_child): the login shell, -c, the command string.
+fn openssh_remote_command_execution(login_shell: String, command: String) -> List<String> {
+  [login_shell, "-c", command]
+}
+
+// THE RELEASES WHOSE SOURCE STATES THESE TWO FACTS, each read at its tag: ssh.c main() joins the arguments after the
+// destination with "%s%s", i ? " " : "", and session.c do_child() runs execve(shell, { shell0, "-c", command }). The
+// text of both passages is identical at V_9_6_P1 and V_10_0_P2. A release not listed here is not assumed to behave the
+// same: it is uncovered until its source is read and a row added. The server side of 10.0p2 runs session.c inside the
+// sshd-session binary (sshd.c V_10_0_P2: "Point to the sshd-session binary instead of sshd"), shipped from the same
+// source tree and so the same release.
+type OpenSshRemoteCommandRelease {
+  release_name: NonEmptyStr
+  client_source: ExternalAuthority
+  server_source: ExternalAuthority
+  version_source: ExternalAuthority
+}
+
+data openssh_remote_command_releases: List<OpenSshRemoteCommandRelease> = [
+  OpenSshRemoteCommandRelease {
+    release_name: "9.6p1"
+    client_source: openssh_client_command_authority
+    server_source: openssh_server_command_authority
+    version_source: openssh_version_authority
+  },
+  OpenSshRemoteCommandRelease {
+    release_name: "10.0p2"
+    client_source: ExternalAuthority { uri: Uri { scheme: Https locator: "github.com/openssh/openssh-portable/blob/V_10_0_P2/ssh.c" } }
+    server_source: ExternalAuthority { uri: Uri { scheme: Https locator: "github.com/openssh/openssh-portable/blob/V_10_0_P2/session.c" } }
+    version_source: ExternalAuthority { uri: Uri { scheme: Https locator: "github.com/openssh/openssh-portable/blob/V_10_0_P2/version.h" } }
+  },
+]
+
+fn openssh_remote_command_release_covered(release_name: NonEmptyStr) -> Bool {
+  any(openssh_remote_command_releases, r => r.release_name == release_name)
+}
+
+// WHAT `-V` PRINTS: ssh.c and sshd.c, case 'V', both print fprintf(stderr, "%s, %s\n", SSH_RELEASE, SSH_OPENSSL_VERSION)
+// and exit, SSH_RELEASE being "OpenSSH_" + version + portable suffix (version.h). Distribution builds append their own
+// patch level after a space (Debian and Ubuntu: "OpenSSH_10.0p2 Debian-7+deb13u4"), so the release is the token after
+// "OpenSSH_" up to the first space or comma. Exactly one line of the output may carry it; none, or two, is no reading.
+data openssh_version_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openssh/openssh-portable/blob/V_9_6_P1/version.h"
+  }
+}
+
+fn openssh_first_field(text: String, delimiter: String) -> String {
+  match list_head(xs: split(s: text, delimiter: delimiter)) {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+fn openssh_release_token(text: String) -> String {
+  openssh_first_field(text: openssh_first_field(text: text, delimiter: " "), delimiter: ",")
+}
+
+fn openssh_release_of_version_output(output: String) -> NonEmptyStr? {
+  let lines = filter(map(split(s: output, delimiter: "\n"), l => trim(s: l)), l => starts_with(s: l, prefix: "OpenSSH_"))
+  if length(lines) != 1 { Absent } else {
+    match list_head(xs: lines) {
+      Absent => Absent
+      Present { value: line } => {
+        let release_name = openssh_release_token(text: substring(s: line, start: 8, end: string_length(s: line)))
+        if release_name == "" { Absent } else { Present { value: release_name as NonEmptyStr } }
+      }
+    }
+  }
+}
+
+// The client side of the transport, the `ssh` the transport's argv names, resolved the same way.
+service openssh.Client {
+  operation Version {
+    requires none
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["ssh", "-V"] }
+    exit {
+      0 => Unit "the client's SSH_RELEASE and OpenSSL version are on stderr"
+      nonzero => String "the ssh client did not report its version"
+    }
+  }
+}
+
+fn openssh_server_version_argv(binary: NonEmptyStr) -> List<String> {
+  [binary as String, "-V"]
+}

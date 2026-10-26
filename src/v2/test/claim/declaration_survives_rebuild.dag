@@ -15,7 +15,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected, bind_outcome, outcome_accepted }
 import std.occurrence_identity { OccurrenceId }
-import v2.std.node { Atom, Authored, Conj, DeclaresAt, Edge, Node, NotADeclaration, Positional, StructuralLabel, TypeNode, canonicalize_node_strip_provenance, content_hash, symbol_lexeme }
+import v2.std.node { node_same_occurrence, Atom, Authored, Conj, DeclaresAt, Edge, Node, NotADeclaration, Positional, StructuralLabel, TypeNode, canonicalize_node_strip_provenance, content_hash, node_equal_ignoring_provenance, symbol_lexeme }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -166,7 +166,7 @@ test fn declaration_is_outside_hash_and_erasure() -> ProcessExit {
 fn declaration_outside_hash_and_erasure() -> Bool {
   content_hash(n: declared_pair(occurrence: 7)) == content_hash(n: declared_pair(occurrence: 9))
     && content_hash(n: declared_pair(occurrence: 7)) == content_hash(n: undeclared_pair())
-    && canonicalize_node_strip_provenance(n: declared_pair(occurrence: 7)) == canonicalize_node_strip_provenance(n: undeclared_pair())
+    && node_equal_ignoring_provenance(a: canonicalize_node_strip_provenance(n: declared_pair(occurrence: 7)), b: canonicalize_node_strip_provenance(n: undeclared_pair()))
     && exact_structural_equality_zip_fold(source_facts: declared_pair(occurrence: 7), candidate: declared_pair(occurrence: 9))
 }
 
@@ -175,5 +175,5 @@ test fn derived_equality_sees_the_declaration() -> ProcessExit {
 }
 
 fn derived_equality_differs() -> Bool {
-  declared_pair(occurrence: 7) != declared_pair(occurrence: 9) && declared_pair(occurrence: 7) != undeclared_pair()
+  !node_same_occurrence(a: declared_pair(occurrence: 7), b: declared_pair(occurrence: 9)) && !node_same_occurrence(a: declared_pair(occurrence: 7), b: undeclared_pair())
 }

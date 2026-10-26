@@ -63,6 +63,16 @@ fn ssh_keygen_public_key_command(identity_file: String) -> ArgvCommand {
   argv_command(program: ssh_keygen_program(), arguments: ["-y", "-f", identity_file])
 }
 
+// GENERATION, by ssh-keygen(1)'s own flags: -t names the key type ("ed25519", the default), -N the new
+// passphrase ("The passphrase may be empty to indicate no passphrase"), -C the comment, -f the private
+// key's file (the public key is written beside it with ".pub" appended), -q silences it. An empty -N
+// means the private file is usable without a prompt, so it must only ever be written somewhere its
+// caller removes; the caller owns that.
+fn ssh_keygen_generate_command(key_type: NonEmptyStr, key_file: String, comment: String) -> ArgvCommand {
+  argv_command(program: ssh_keygen_program(), arguments: ["-q", "-t", key_type as String, "-N", "", "-C", comment, "-f", key_file])
+}
+
+data ssh_keygen_ed25519_type: NonEmptyStr = "ed25519"
 // -l prints the FINGERPRINT of the key in the named file, rather than the key. A fingerprint is what
 // a human compares and what a receipt records; the key itself is what gets installed. Two different
 // products, so two different builders.

@@ -67,6 +67,7 @@ data operation_argv_closed_unevaluated_executable_unjudged: RungDrop = RungDrop 
       "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedPostJson",
       "dag/extdeps/tools/openssl.dag openssl.Dgst.SignSha256Hex",
       "dag/extdeps/tools/openssl.dag openssl.Enc.Aes256CtrPassphrase",
+      "dag/gunbc/auth/approval_apns_publish.dag apns.Http2.Send",
     ]),
     restoration_trigger: "argv materialization evaluates closed argv elements over the declaring module's closure, in the native v2 materializer, not the seed. Observed at retirement: the population rows materialize or are refused by the wall on the evaluated value, and operation_argv_closed_unevaluated_executable_operations is empty."
   } }

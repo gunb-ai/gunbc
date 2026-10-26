@@ -1,8 +1,6 @@
 module gunbc.tools.bmc_health_reader_converge
 
 import extdeps.bmc.http
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.bmc.bmc_onboarding {
   BmcOnboardingPlan,
@@ -35,16 +33,23 @@ import gunbc.bmc.bmc_custody_read {
   bmc_custody_credential,
 }
 import gunbc.tools.bmc_onboard {
+  BmcCallAnswered,
+  BmcCallRefused,
   BmcCustodyEstablished,
   BmcCustodyRefused,
-  bmc_onboard_netrc_path,
+  BmcGetSystem,
+  bmc_authenticated_call,
   bmc_store_credential_verified,
   mint_bmc_credential,
-  netrc_failure_reason,
-  netrc_write_succeeded,
   onboarding_secret_id,
-  write_netrc_outcome,
 }
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
+}
+import gunbc.auth.netrc_binding { netrc_binding_path, with_private_netrc_binding }
 import gunbc.auth.access_token_source {
   AccessTokenEnsureRefused,
   AccessTokenReady,
@@ -56,7 +61,6 @@ import gunbc.auth.access_token_source {
   select_access_token_source,
 }
 import std.types { NonEmptyStr, Secret, String }
-import product.host_identity { HostIdentity }
 import std.logic { Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
@@ -74,28 +78,30 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 //
 // The health check itself never imports this module: it receives only the reader credential.
 //
-// The create body holds the reader's password in plaintext, so its path is per host (two hosts
-// converging at once must not share it) and a failed removal refuses whatever the POST answered.
-fn bmc_health_reader_body_path(host: HostIdentity) -> NonEmptyStr {
-  concat("/tmp/bmc_health_reader_body_", host as String, ".json") as NonEmptyStr
-}
+// The create body holds the reader's password, so it goes to CreateAccount on stdin and never has a
+// path. It used to be written owner-only to a per-host /tmp file and removed after the POST.
+//
+// The administrator's credential is in one private netrc for the whole administrator session (the
+// accounts read, the POST, the role read-back), removed when the session returns. The reader's
+// login is a separate call with its own netrc, so the two credentials never share a file. Before,
+// both used one fixed /tmp path, the reader login overwrote the administrator's file, and nothing
+// removed it afterwards.
 
-// A LOGIN THAT NEVER REACHED THE BMC IS NOT A REJECTED PASSWORD. A netrc that could not be written --
-// including one that left credential residue on disk -- is a local fault whose remedy is cleanup, so
-// it keeps netrc_failure_reason's located cause instead of reading as "does not authenticate".
+// A LOGIN THAT NEVER REACHED THE BMC IS NOT A REJECTED PASSWORD. A netrc that could not be placed or
+// removed, including one that left credential residue on disk, is a local fault whose remedy is
+// cleanup, so it keeps the bracket's located reason instead of reading as "does not authenticate".
 type BmcLoginAttempt
   = BmcLoginAccepted
   | BmcLoginRejected { body: String }
   | BmcLoginNotAttempted { reason: String }
 
-fn bmc_login_attempt(host: NonEmptyStr, account: NonEmptyStr, password: String) -> BmcLoginAttempt
+fn bmc_login_attempt(host: NonEmptyStr, account: NonEmptyStr, password: Secret) -> BmcLoginAttempt
 {
-  let w = write_netrc_outcome(host: host, account: account, password: password)
-  if netrc_write_succeeded(outcome: w) == false {
-    return BmcLoginNotAttempted { reason: netrc_failure_reason(outcome: w, stage: "reader login") }
+  match bmc_authenticated_call(stage: "reader login", host: host, account: account, password: password, call: BmcGetSystem) {
+    BmcCallRefused { reason: r } => BmcLoginNotAttempted { reason: r }
+    BmcCallAnswered { reply: probe } =>
+      if probe.success { BmcLoginAccepted } else { BmcLoginRejected { body: probe.body } }
   }
-  probe = redfish.Http.GetSystem(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
-  return if probe.success { BmcLoginAccepted } else { BmcLoginRejected { body: probe.body } }
 }
 
 fn reader_login_exit(attempt: BmcLoginAttempt, rejected_prefix: String) -> ProcessExit {
@@ -106,10 +112,10 @@ fn reader_login_exit(attempt: BmcLoginAttempt, rejected_prefix: String) -> Proce
   }
 }
 
-// Reads run under the administrator netrc, which the caller has already written.
-fn observe_reader_account(host: NonEmptyStr) -> ReaderAccountObservation
+// Reads run under the administrator netrc the caller's bracket placed.
+fn observe_reader_account(host: NonEmptyStr, netrc: NonEmptyStr) -> ReaderAccountObservation
 {
-  accounts = redfish.Http.GetAccounts(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
+  accounts = redfish.Http.GetAccounts(bmc_host: host, netrc_file: netrc)
   if accounts.success == false {
     return ReaderAccountUnreadable { cause: concat("the accounts collection could not be read: ", accounts.body) as NonEmptyStr }
   }
@@ -117,7 +123,7 @@ fn observe_reader_account(host: NonEmptyStr) -> ReaderAccountObservation
     ReaderListingUnreadable { cause: c } => ReaderAccountUnreadable { cause: c }
     ReaderNotListed => ReaderAccountAbsent
     ReaderListed => {
-      account = redfish.Http.GetAccount(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr, account_id: bmc_health_reader_username)
+      account = redfish.Http.GetAccount(bmc_host: host, netrc_file: netrc, account_id: bmc_health_reader_username)
       if account.success {
         reader_account_from_json(body: account.body)
       } else {
@@ -139,21 +145,38 @@ fn bmc_health_reader_converge(plan: BmcOnboardingPlan) -> ProcessExit
           CustodyCredentialAbsent => return exit_failure(reason: concat("reader: the administrator credential is not in custody for ", plan.bmc.host as String))
           CustodyCredentialUnreadable { cause: c } => return exit_failure(reason: concat("reader: the administrator credential could not be read from custody: ", c))
           CustodyCredentialHeld { password: admin_password } =>
-            return bmc_health_reader_converge_as_admin(plan: plan, token: t, admin_password: admin_password)
+            return bmc_health_reader_converge_as_admin(plan: plan, token: t, admin_password: admin_password as Secret)
         }
     }
   }
 }
 
-fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, token: Secret, admin_password: String) -> ProcessExit
+// THE ADMINISTRATOR SESSION RUNS INSIDE ONE BRACKET, and a netrc that could not be removed refuses
+// whatever the session concluded. When that happens the session may already have created the reader
+// account, so the reason says so instead of reading as if nothing had happened.
+fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, token: Secret, admin_password: Secret) -> ProcessExit
+{
+  match with_private_netrc_binding(
+    machine: plan.bmc.host,
+    login: plan.factory_login.username,
+    password: admin_password,
+    use: fn(binding) { bmc_health_reader_admin_session(plan: plan, token: token, netrc: netrc_binding_path(binding: binding) as NonEmptyStr) },
+  ) {
+    PrivateSecretFileCompleted { value: exit } => exit
+    PrivateSecretFileCompletedResidueRemains { value: _ } =>
+      exit_failure(reason: "reader administrator: the session ran (it may have created the reader account) but its per-run netrc could not be removed, so the administrator credential may remain on disk and requires cleanup before retry")
+    PrivateSecretFileNotEntered { cause: c } =>
+      exit_failure(reason: concat("reader administrator: the per-run netrc could not be placed, so the BMC was not called: ", c as String))
+    PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
+      exit_failure(reason: concat("reader administrator: the per-run netrc could not be placed AND credential material may remain on disk, requiring cleanup before retry: ", c as String))
+  }
+}
+
+fn bmc_health_reader_admin_session(plan: BmcOnboardingPlan, token: Secret, netrc: NonEmptyStr) -> ProcessExit
 {
   let host = plan.bmc.host
   let reader_secret = bmc_health_reader_secret_id(host: plan.host)
-  let admin_w = write_netrc_outcome(host: host, account: plan.factory_login.username, password: admin_password)
-  if netrc_write_succeeded(outcome: admin_w) == false {
-    return exit_failure(reason: netrc_failure_reason(outcome: admin_w, stage: "reader administrator"))
-  }
-  match plan_reader_account(observation: observe_reader_account(host: host)) {
+  match plan_reader_account(observation: observe_reader_account(host: host, netrc: netrc)) {
     ReaderAccountRefused { cause: c } => return exit_failure(reason: concat("reader: ", c as String))
     ReaderAccountConverged =>
       match bmc_custody_credential(secret_id: reader_secret, token: token) {
@@ -161,7 +184,7 @@ fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, token: Secret, a
         CustodyCredentialUnreadable { cause: c } => return exit_failure(reason: concat("reader: the reader credential could not be read from custody: ", c))
         CustodyCredentialHeld { password: held } =>
           return reader_login_exit(
-            attempt: bmc_login_attempt(host: host, account: bmc_health_reader_username, password: held),
+            attempt: bmc_login_attempt(host: host, account: bmc_health_reader_username, password: held as Secret),
             rejected_prefix: "reader: the account exists but the custody credential is refused: ",
           )
       }
@@ -169,36 +192,27 @@ fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, token: Secret, a
       let credential = mint_bmc_credential()
       match bmc_store_credential_verified(secret_id: reader_secret, token: token, credential: credential, host_label: host as String) {
         BmcCustodyRefused { reason: r } => return exit_failure(reason: r)
-        BmcCustodyEstablished => return bmc_health_reader_create(plan: plan, credential: credential)
+        BmcCustodyEstablished => return bmc_health_reader_create(plan: plan, credential: credential, netrc: netrc)
       }
     }
   }
 }
 
-// Runs under the administrator netrc the caller wrote. The role read-back is taken under it too,
-// BEFORE the reader login repoints the shared netrc: the reader is not entitled to read accounts.
-fn bmc_health_reader_create(plan: BmcOnboardingPlan, credential: Secret) -> ProcessExit
+// Runs under the administrator netrc the caller's bracket placed, and the role read-back is taken
+// under it too: the reader is not entitled to read accounts. The reader login places its own netrc.
+fn bmc_health_reader_create(plan: BmcOnboardingPlan, credential: Secret, netrc: NonEmptyStr) -> ProcessExit
 {
   let host = plan.bmc.host
-  let body_path = bmc_health_reader_body_path(host: plan.host)
-  let body = Filesystem.WriteOwnerOnly(path: body_path, content: reader_account_create_body(password: credential as String))
-  if body.success == false {
-    return exit_failure(reason: concat("reader: create body write failed: ", body.error))
-  }
-  created = redfish.Http.CreateAccount(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr, request_body_file: body_path)
-  let body_removed = shell.Remove.FileForce(path: body_path).success
-  if body_removed == false {
-    return exit_failure(reason: concat("reader: the request body holding the reader password could not be removed: ", body_path as String))
-  }
+  created = redfish.Http.CreateAccount(bmc_host: host, netrc_file: netrc, request_body: reader_account_create_body(password: credential))
   if created.success == false {
     return exit_failure(reason: concat("reader: account POST refused: ", created.body))
   }
-  match plan_reader_account(observation: observe_reader_account(host: host)) {
+  match plan_reader_account(observation: observe_reader_account(host: host, netrc: netrc)) {
     ReaderAccountRefused { cause: c } => return exit_failure(reason: concat("reader: created, but read back as: ", c as String))
     CreateReaderAccount => return exit_failure(reason: "reader: created, but the accounts collection does not list it")
     ReaderAccountConverged =>
       return reader_login_exit(
-        attempt: bmc_login_attempt(host: host, account: bmc_health_reader_username, password: credential as String),
+        attempt: bmc_login_attempt(host: host, account: bmc_health_reader_username, password: credential),
         rejected_prefix: "reader: the created account refuses the stored credential: ",
       )
   }

@@ -1,9 +1,11 @@
 module test.claim.roadmap.attempt_system_unit_launch_witness
 
-import std.types { Bool, NonEmptyStr, List, String, FilePath }
+import gunbc.roadmap.dispatch_worker_unit_confinement { GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_pane_working_directory, dispatch_worktree_path_for_instance }
+import std.types { Bool, NonEmptyStr, List, String, FilePath, Int }
 import std.optional { Present, Absent }
+import std.algebra { skip }
 import std.measure { kibibyte, kibibyte_count, second_count, byte_size_count }
-import extdeps.exec.command { argv_words }
+import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.systemd {
   systemd_service_unit_name,
@@ -24,67 +26,77 @@ import gunbc.live_deploy.slice_bounds {
   attempt_worker_slice_memory_high,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
+import gunbc.live_deploy.emit {
+  retired_attempt_unit_sudo_route_paths,
+  live_deploy_attempt_unit_drain_service_unit_file, AttemptUnitDrainServiceReady, AttemptUnitDrainServiceRefused, live_deploy_attempt_unit_drain_path_unit_file,
+  attempt_unit_sudo_route_retire_dissolution,
+}
+import gunbc.live_deploy.apply_legs {
+  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, ApplyLegCommand, ApplyLegInstallFile, ApplyLegRetract,
+  ApplyLegRootHelperSnapshot, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, apply_staged_leg, deploy_apply_plan_legs, deploy_apply_leg_step,
+  ApplyLegCredstoreCopy, credstore_copy_stage_command, credstore_copy_commands,
+}
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
+import gunbc.live_deploy.retract_legs { RetractRemoveForce }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
+import std.algebra { non_empty_to_list }
+import std.dissolution { UnboundDissolution, BoundDissolution }
+import gunbc.live_deploy.spec {
+  deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path,
+  deployment_attempt_unit_drain_service_unit_name, deployment_slice_unit_name,
+}
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.spec { DeploymentSpec, gunbc_attempt_worker_slice_unit_path }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
 }
+import gunbc.live_deploy.lab_host_plan { lab_plan_worker_sandbox_choice, SystemManagerLauncherSelected, LabPlanRefused, LabOsUnobserved }
+import gunbc.live_deploy.spec { deployment_attempt_unit_drain_steps }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallClaim }
 import gunbc.roadmap.attempt_system_unit_launch {
+  AttemptUnitDrainPass, attempt_unit_pass_of, AttemptUnitEntryOutcome, AttemptUnitEntryHandled, AttemptUnitEntryUnmovable, AttemptUnitEntrySkipped, AttemptUnitAnswered, AttemptUnitAnswerUnwritten,
   AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
   attempt_system_unit_start_admitted,
-  attempt_system_unit_privileged_effect, attempt_system_unit_sudoers_body,
-  AttemptSystemUnitSudoersText, AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
-  attempt_system_unit_sudoers_path, attempt_system_unit_instance_for_root,
+  attempt_system_unit_privileged_effect, attempt_system_unit_instance_for_root,
   attempt_system_unit_systemd_run_command, attempt_system_unit_plan_from_facts,
   attempt_system_unit_worker_slice,
-  attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
+  attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir, attempt_system_unit_launcher_locus,
   AttemptSystemUnitStartRequest, attempt_system_unit_start_facts_for_request,
   AttemptSystemUnitStartDerived, AttemptSystemUnitStartUnderivable,
   AttemptSystemUnitStartVerb, StartDetached, StartAndWait,
   attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
   AttemptSystemUnitStartEncoded, AttemptSystemUnitStartUnencodable,
-  AttemptSystemUnitStartUnencodableCause,
-  AttemptSystemUnitArgvEmpty, AttemptSystemUnitArgvWordContainsUnitSeparator,
-  AttemptSystemUnitArgvWordContainsNewline,
+  AttemptSystemUnitStartUnencodableCause, AttemptSystemUnitNonceUnsafe,
+  AttemptSystemUnitArgvEmpty,
   AttemptSystemUnitStartRequestDecoded, AttemptSystemUnitStartRequestMalformed,
   AttemptSystemUnitStartVerbUnknown,
   attempt_system_unit_start_verb_wire,
   attempt_system_unit_request_entry_name,
-  attempt_system_unit_decode_answer, attempt_system_unit_harness_start_from_answer,
+  attempt_system_unit_decode_answer, attempt_system_unit_harness_start_from_observation,
+  AttemptSystemUnitHarnessPending,
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
   AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
   attempt_system_unit_admit_body_kind, AttemptSystemUnitBodyRegular, AttemptSystemUnitBodyRefused,
-  attempt_system_unit_launch_gunbc_argv_at, attempt_system_unit_launch_flocked_argv_at,
-  attempt_system_unit_launch_host_argv_at,
-  AttemptSystemUnitLaunchArgv, AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
-  AttemptSystemUnitLaunchArgvRevisionUnreadable,
-  attempt_system_unit_sudoers_line, attempt_system_unit_launcher_busy_exit,
-  attempt_system_unit_launcher_flock_wait, attempt_system_unit_harness_start_from_launcher_exit,
+  attempt_system_unit_launch_gunbc_argv_at,
+  AttemptSystemUnitLaunchArgv, AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused, attempt_system_unit_launch_argv_refused_detail,
 }
-import gunbc.executor_privileged_operation { sudoers_argument_word }
 import extdeps.systemd.service_exec { exec_full_privileges_prefix }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
-  dispatch_attempt_unit_stem, dispatch_pane_working_directory, GunbcHarnessProvider,
-}
-import gunbc.host.host_layout { attempt_unit_spool_drain_lock_path }
-import extdeps.tools.util_linux_flock { flock_absolute_path }
-import extdeps.sudo.elevation { sudo_non_interactive_flag }
-import gunbc.executor_privileged_operation { sudoers_argument_word }
+import gunbc.host.host_layout { attempt_unit_spool_request_dir }
 import gunbc.cli_invoke {
   NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
-  HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ManualStepRequired, NoAdmissiblePattern,
+  HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ApprovedConvergenceGrant, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
 }
 import gunbc.auth.privileged_effect_census {
@@ -195,6 +207,7 @@ test fn the_launcher_effect_selects_federated_scoped_grant() -> Bool {
     PatternSelected { pattern: HumanOnlyStep { step: _ }, receipt: _ } => false
     PatternSelected { pattern: OperatorOwnSession, receipt: _ } => false
     PatternSelected { pattern: AdministratorEdge, receipt: _ } => false
+    PatternSelected { pattern: ApprovedConvergenceGrant, receipt: _ } => false
     ManualStepRequired { step: _, receipt: _ } => false
     NoAdmissiblePattern { causes: _, scope: _ } => false
     PatternSelectionNeedsEvidence { needs: _ } => false
@@ -217,48 +230,118 @@ test fn the_launcher_site_conforms_in_the_privileged_effect_census() -> Bool {
   }
 }
 
-fn sudoers_ready_text(reading: AttemptSystemUnitSudoersText) -> String? {
-  match reading {
-    AttemptSystemUnitSudoersRefused { cause: _ } => none
-    AttemptSystemUnitSudoersReady { text } => Present { value: text }
+// THE DEPLOY RUNS THE DRAIN UNITS (review 80299). The unit fold is the shape; whether a deploy installs it is a
+// fact of the apply plan the real producer emits (deploy_apply_plan_legs over the instance's spec, a full
+// install), so these claims read the typed legs of that plan. Each instance's apply installs its own drain and
+// never the other instance's: a lab apply never touches production's privilege surface.
+fn full_install_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
+  match deploy_apply_plan_legs(
+    spec: spec,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    authorization: CapConvergeWithheld { cause: "the drain claims are not about the cap step" },
+    source_root: "/src",
+    oidc_now: tracker_web_test_console_readback_observed_at_epoch,
+  ) {
+    ApplyPlanReady { legs: ls } => ls
+    ApplyPlanRefused { step: _, reason: _ } => []
   }
 }
 
-fn sudoers_instance_root_word(root: String) -> String {
-  sudoers_argument_word(w: join(["instance_root=", root], ""))
+fn leg_command_words(c: ArgvCommand) -> String {
+  join(c.arguments, " ")
 }
 
-test fn each_instance_gets_its_own_sudoers_file() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  let lab = srv1_lab_dashboard_instance()
-  let live_path = attempt_system_unit_sudoers_path(instance: live)
-  let lab_path = attempt_system_unit_sudoers_path(instance: lab)
-  live_path != lab_path
-    && string_contains(s: live_path, pattern: live.instance_id as String)
-    && string_contains(s: lab_path, pattern: lab.instance_id as String)
-    && !string_contains(s: live.instance_id as String, pattern: ".")
-    && !string_contains(s: lab.instance_id as String, pattern: ".")
+fn leg_text(leg: DeployApplyLeg) -> String {
+  match leg {
+    ApplyLegInstallFile { step: st, command: c, payload: p } => join([st, " ", leg_command_words(c: c), "\n", p], "")
+    ApplyLegCommand { step: st, command: c } => join([st, " ", leg_command_words(c: c)], "")
+    ApplyLegRetract { step: st, leg: RetractRemoveForce { paths: ps } } => join([st, " ", join(non_empty_to_list(xs: ps) |> map(p => p as String), " ")], "")
+    ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: _ } => join([deploy_apply_leg_step(leg: leg), " ", l.base], "")
+    _ => deploy_apply_leg_step(leg: leg)
+  }
 }
 
-test fn each_instance_sudoers_body_pins_its_named_instance_root() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  let lab = srv1_lab_dashboard_instance()
-  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
-  let live_word = sudoers_instance_root_word(root: live.instance_root as String)
-  let lab_word = sudoers_instance_root_word(root: lab.instance_root as String)
-  match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: live, revision: rev)) {
+fn full_install_apply_text(spec: DeploymentSpec) -> String {
+  join(map(full_install_legs(spec: spec), l => leg_text(leg: l)), "\n")
+}
+
+fn leg_index_from(legs: List<DeployApplyLeg>, step: String, i: Int) -> Int {
+  match legs.first() {
+    Absent => 0 - 1
+    Present { value: h } => if deploy_apply_leg_step(leg: h) == step { i } else { leg_index_from(legs: skip(legs, 1), step: step, i: i + 1) }
+  }
+}
+
+fn leg_index(legs: List<DeployApplyLeg>, step: String) -> Int {
+  leg_index_from(legs: legs, step: step, i: 0)
+}
+
+fn apply_installs_the_drain_units(spec: DeploymentSpec, own: HostDashboardInstance) -> Bool {
+  let text = full_install_apply_text(spec: spec)
+  string_contains(s: text, pattern: deployment_attempt_unit_drain_path_unit_path(names: spec.names) as String)
+    && string_contains(s: text, pattern: deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String)
+    && string_contains(s: text, pattern: join(["DirectoryNotEmpty=", attempt_unit_spool_request_dir(instance_root: own.instance_root as String)], ""))
+    && string_contains(s: text, pattern: join([attempt_system_unit_launcher_helpers_root, "/", own.instance_id as String], ""))
+}
+
+// The roster gate is the host plan's selector (lab_plan_worker_sandbox_choice): srv1's plan selects the
+// system-manager launcher for production and its lab alike, so both apply the drain; a plan that does not select it
+// (refused) installs neither unit.
+test fn the_production_full_install_apply_installs_the_drain_path_and_service() -> Bool {
+  match lab_plan_worker_sandbox_choice(plan: deployment_spec_srv1().target.lab_plan) {
+    Present { value: SystemManagerLauncherSelected } => true
     Absent => false
-    Present { value: live_body } =>
-      match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: lab, revision: rev)) {
-        Absent => false
-        Present { value: lab_body } =>
-          string_contains(s: live_body, pattern: "attempt_system_unit_launch")
-            && string_contains(s: live_body, pattern: "NOPASSWD")
-            && string_contains(s: live_body, pattern: live_word)
-            && !string_contains(s: live_body, pattern: lab_word)
-            && string_contains(s: lab_body, pattern: lab_word)
-            && !string_contains(s: lab_body, pattern: live_word)
-      }
+  }
+    && apply_installs_the_drain_units(spec: deployment_spec_srv1(), own: srv1_live_dashboard_instance())
+}
+
+test fn a_refused_lab_plan_owns_no_drain_steps_and_the_selected_plan_owns_them() -> Bool {
+  let names = deployment_spec_srv1().names
+  count(deployment_attempt_unit_drain_steps(names: names, lab_plan: LabPlanRefused { cause: LabOsUnobserved { obligation: "os unobserved" as NonEmptyStr } })) == 0
+    && count(deployment_attempt_unit_drain_steps(names: names, lab_plan: deployment_spec_srv1().target.lab_plan)) > 0
+}
+
+// The retired sudo route is deleted by the same apply that installs the drain, so a converged host keeps no
+// standing root-by-sudo grant beside the path-triggered oneshot.
+test fn the_lab_apply_deletes_the_retired_sudoers_receipt_and_lock() -> Bool {
+  let text = full_install_apply_text(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()))
+  let own = srv1_lab_dashboard_instance()
+  all(retired_attempt_unit_sudo_route_paths(instance: own), p => string_contains(s: text, pattern: p))
+    && string_contains(s: text, pattern: join(["/etc/sudoers.d/gunbc-attempt-system-unit-", own.instance_id as String], ""))
+    && leg_index(legs: full_install_legs(spec: selected_deployment_spec(row: srv1_lab_desired_deployment())), step: "attempt-unit-sudo-route-retire")
+      < leg_index(legs: full_install_legs(spec: selected_deployment_spec(row: srv1_lab_desired_deployment())), step: "attempt-unit-sudoers-check")
+    && string_contains(s: text, pattern: "visudo")
+    && (match attempt_unit_sudo_route_retire_dissolution {
+      UnboundDissolution { description } => string_contains(s: description as String, pattern: "passed the sudoers check")
+      BoundDissolution { trigger: _ } => false
+    })
+}
+
+test fn the_lab_full_install_apply_installs_the_drain_path_and_service() -> Bool {
+  apply_installs_the_drain_units(
+    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+    own: srv1_lab_dashboard_instance(),
+  )
+}
+
+// THE ROOT SIDE IS A ONESHOT RUN AS ROOT FROM THE ROOT-OWNED RELEASE, TRIGGERED BY THE REQUEST DIRECTORY.
+// No sudoers line and no flock remain on the requester path; the path unit's target is the service.
+test fn the_drain_service_runs_the_release_launcher_and_the_path_unit_targets_it() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let spec = deployment_spec_srv1()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  match live_deploy_attempt_unit_drain_service_unit_file(spec: spec, instance: live, revision: rev) {
+    AttemptUnitDrainServiceRefused { cause: _ } => false
+    AttemptUnitDrainServiceReady { file: svc } => {
+      let text = serialize_systemd_unit_file(file: svc)
+      let path_text = serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: spec))
+      string_contains(s: text, pattern: "Type=oneshot")
+        && string_contains(s: text, pattern: attempt_system_unit_launcher_dir(instance: live, revision: rev))
+        && string_contains(s: text, pattern: "attempt_system_unit_launch_cli")
+        && !string_contains(s: text, pattern: "sudo")
+        && string_contains(s: path_text, pattern: join(["Unit=", deployment_attempt_unit_drain_service_unit_name(names: spec.names) as String], ""))
+        && string_contains(s: path_text, pattern: "DirectoryNotEmpty=")
+    }
   }
 }
 
@@ -271,6 +354,24 @@ fn apply_needle_precedes(text: String, earlier: String, later: String) -> Bool {
     }
 }
 
+test fn the_full_install_apply_installs_the_attempt_worker_slice_with_bounds_before_the_drain() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let text = full_install_apply_text(spec: spec)
+  let dest = gunbc_attempt_worker_slice_unit_path() as String
+  let grant = deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String
+  match attempt_worker_slice_memory_high() {
+    UserWorkSliceHighGapExceedsMax => false
+    UserWorkSliceHighDerived { bytes: high } =>
+      string_contains(s: dest, pattern: "/etc/systemd/system/")
+        && string_contains(s: dest, pattern: attempt_worker_slice_unit_name as String)
+        && string_contains(s: text, pattern: dest)
+        && string_contains(s: text, pattern: join(["MemoryMax=", to_string(byte_size_count(b: attempt_worker_slice_memory_max))], ""))
+        && string_contains(s: text, pattern: join(["MemoryHigh=", to_string(byte_size_count(b: high))], ""))
+        && string_contains(s: text, pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], ""))
+        && apply_needle_precedes(text: text, earlier: dest, later: grant)
+  }
+}
+
 fn instance_toolchain_has_systemd_run(instance: HostDashboardInstance) -> Bool {
   match instance.toolchain.systemd_run {
     Present { value: _ } => true
@@ -278,30 +379,12 @@ fn instance_toolchain_has_systemd_run(instance: HostDashboardInstance) -> Bool {
   }
 }
 
-fn launcher_grant_exists_for(instance: HostDashboardInstance) -> Bool {
-  match dashboard_instance_for_id(instance_id: instance.instance_id as String) {
-    DashboardInstanceIdUnknown { instance_id: _ } => false
-    DashboardInstanceForId { instance: resolved } =>
-      resolved.instance_id == instance.instance_id
-        && match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(
-          instance: instance,
-          revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-        )) {
-          Absent => false
-          Present { value: body } =>
-            string_contains(s: body, pattern: instance.instance_root as String)
-              && string_contains(s: attempt_system_unit_sudoers_path(instance: instance), pattern: instance.instance_id as String)
-        }
-  }
-}
-
-test fn every_systemd_run_roster_instance_resolves_at_the_launcher_and_has_its_grant() -> Bool {
+test fn every_systemd_run_roster_instance_resolves_at_the_launcher() -> Bool {
   all(
     public_builtin_dashboard_instances() |> filter(i => instance_toolchain_has_systemd_run(instance: i)),
     i => match attempt_system_unit_instance_for_root(instance_root: i.instance_root as String) {
       Absent => false
-      Present { value: resolved } =>
-        resolved.instance_id == i.instance_id && launcher_grant_exists_for(instance: i)
+      Present { value: resolved } => resolved.instance_id == i.instance_id
     },
   )
     && match attempt_system_unit_instance_for_root(instance_root: "/not-a-declared-dashboard-instance") {
@@ -320,6 +403,7 @@ fn claim_request(node_id: String, attempt_key: String) -> AttemptSystemUnitStart
     attempt_key: attempt_key,
     granted: kibibyte(count: 1),
     inner_argv: [srv1_lab_dashboard_instance().serve_binary as String, "run"],
+    nonce: "n",
   }
 }
 
@@ -337,7 +421,7 @@ test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
   match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
     AttemptSystemUnitStartUnderivable { reason: _ } => false
     AttemptSystemUnitStartDerived { facts } =>
-      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole) {
+      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole, record_owner: inst.directory_owner) {
         AttemptExitHookRefused { reason: _ } => false
         AttemptExitHookRendered { exec_line } =>
           (facts.exit_hook as String) == (exec_line as String)
@@ -464,6 +548,7 @@ fn request_with_argv(argv: List<String>) -> AttemptSystemUnitStartRequest {
     attempt_key: "k1",
     granted: kibibyte(count: 1),
     inner_argv: argv,
+    nonce: "n",
   }
 }
 
@@ -471,31 +556,46 @@ test fn each_unencodable_argv_refuses_at_encode() -> Bool {
   match encode_refuses_cause(request: request_with_argv(argv: [])) {
     Absent => false
     Present { value: AttemptSystemUnitArgvEmpty } => true
-    Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
-    Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
+    Present { value: AttemptSystemUnitNonceUnsafe } => false
   }
-    && match encode_refuses_cause(request: request_with_argv(argv: ["a\u{1f}b"])) {
-      Absent => false
-      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => true
-      Present { value: AttemptSystemUnitArgvEmpty } => false
-      Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
-    }
-    && match encode_refuses_cause(request: request_with_argv(argv: ["a\nb"])) {
-      Absent => false
-      Present { value: AttemptSystemUnitArgvWordContainsNewline } => true
-      Present { value: AttemptSystemUnitArgvEmpty } => false
-      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
-    }
 }
 
+// A MULTI-LINE WORD IS LEGITIMATE (the node brief is passed inline). Each hostile character survives
+// encode then decode exactly, and the encoded body stays one field per line.
 test fn every_encodable_request_round_trips_exactly() -> Bool {
   let argv = ["/opt/gunbc/bin/gunbc", "run", "--arg", "k=v", "path with spaces", join(["quote", "\"", "here"], ""), "dollar$ID"]
   start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: argv))
     && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: argv))
 }
 
+test fn a_word_carrying_a_newline_or_unit_separator_round_trips_exactly() -> Bool {
+  let hostile = ["/bin/true", "brief=line one\nline two\n\nline four", "sep\u{1f}arator", "rs\u{1e}sep", "q\"uote", "back\\slash", "caf\u{e9} \u{2603}", "tab\there"]
+  start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: hostile))
+    && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: hostile))
+    && match attempt_system_unit_encode_start(verb: StartDetached, request: request_with_argv(argv: hostile)) {
+      AttemptSystemUnitStartUnencodable { cause: _ } => false
+      AttemptSystemUnitStartEncoded { body } => count(split(s: body, delimiter: "\n")) == 6
+    }
+}
+
+test fn a_malformed_argv_field_is_a_typed_malformed_refusal() -> Bool {
+  decode_with_argv_field(field: "not json")
+    && decode_with_argv_field(field: "[\"a\", 3]")
+    && decode_with_argv_field(field: "{\"a\": \"b\"}")
+    && decode_with_argv_field(field: "[]")
+    && decode_with_argv_field(field: "[\"a\"] trailing")
+}
+
+fn decode_with_argv_field(field: String) -> Bool {
+  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", field, "n"]) {
+    AttemptSystemUnitStartRequestMalformed { reason: _ } => true
+    AttemptSystemUnitStartVerbUnknown { tag: _ } => false
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
+  }
+}
+
 test fn an_unknown_verb_on_the_wire_is_a_typed_refusal() -> Bool {
-  match attempt_system_unit_start_request_decode(lines: ["stop", "n1", "k1", "1", "/bin/true"]) {
+  match attempt_system_unit_start_request_decode(lines: ["stop", "n1", "k1", "1", "[\"/bin/true\"]"]) {
     AttemptSystemUnitStartVerbUnknown { tag } => tag == "stop"
     AttemptSystemUnitStartRequestMalformed { reason: _ } => false
     AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
@@ -510,7 +610,7 @@ test fn each_start_verb_wire_round_trips() -> Bool {
 }
 
 test fn an_empty_argv_line_is_malformed() -> Bool {
-  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", ""]) {
+  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", "", "n"]) {
     AttemptSystemUnitStartRequestMalformed { reason: why } => why == "start request argv is empty"
     AttemptSystemUnitStartVerbUnknown { tag: _ } => false
     AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
@@ -603,6 +703,7 @@ test fn the_launcher_execstoppost_uses_short_property_words_and_keeps_a_single_d
     node_id: "n",
     attempt_key: "k",
     role: AttemptWorkerRole,
+    record_owner: inst.directory_owner,
   ) {
     AttemptExitHookRefused { reason: _ } => false
     AttemptExitHookRendered { exec_line } =>
@@ -618,23 +719,47 @@ test fn two_attempts_never_share_one_request_entry_name() -> Bool {
 }
 
 test fn a_refused_answer_is_not_harness_started() -> Bool {
-  match attempt_system_unit_harness_start_from_answer(
+  match attempt_system_unit_harness_start_from_observation(
+    entry: "e",
     reading: AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: "occupied" } },
   ) {
     AttemptSystemUnitHarnessStarted => false
+    AttemptSystemUnitHarnessPending { entry: _ } => false
     AttemptSystemUnitHarnessFailed { detail } => detail == "occupied"
   }
 }
 
-test fn a_missing_answer_is_not_harness_started() -> Bool {
-  match attempt_system_unit_harness_start_from_answer(reading: AttemptSystemUnitAnswerMissing) {
+// THE RED: a request with no answer yet is neither a start nor a failure. It names its entry so a
+// client can follow it; it never mints Started and never reads as a refusal.
+test fn a_missing_answer_is_pending_and_names_its_entry() -> Bool {
+  match attempt_system_unit_harness_start_from_observation(entry: "n-a.k1", reading: AttemptSystemUnitAnswerMissing) {
     AttemptSystemUnitHarnessStarted => false
-    AttemptSystemUnitHarnessFailed { detail } => string_contains(s: detail, pattern: "missing")
+    AttemptSystemUnitHarnessFailed { detail: _ } => false
+    AttemptSystemUnitHarnessPending { entry } => entry == "n-a.k1"
+  }
+}
+
+test fn a_present_started_answer_is_harness_started() -> Bool {
+  match attempt_system_unit_harness_start_from_observation(
+    entry: "e",
+    reading: AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted },
+  ) {
+    AttemptSystemUnitHarnessStarted => true
+    AttemptSystemUnitHarnessPending { entry: _ } => false
+    AttemptSystemUnitHarnessFailed { detail: _ } => false
+  }
+}
+
+test fn an_unreadable_answer_is_a_failure_not_pending() -> Bool {
+  match attempt_system_unit_harness_start_from_observation(entry: "e", reading: AttemptSystemUnitAnswerUnreadable { detail: "eio" }) {
+    AttemptSystemUnitHarnessFailed { detail } => detail == "eio"
+    AttemptSystemUnitHarnessStarted => false
+    AttemptSystemUnitHarnessPending { entry: _ } => false
   }
 }
 
 test fn a_started_answer_decodes() -> Bool {
-  match attempt_system_unit_decode_answer(content: "started\n") {
+  match attempt_system_unit_decode_answer(content: "body\u{1e}started\n", request_body: "body") {
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => true
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: _ } } => false
     AttemptSystemUnitAnswerMissing => false
@@ -660,50 +785,6 @@ test fn a_fifo_or_symlink_body_kind_is_refused() -> Bool {
   body_kind_refused_with(kind: FifoKind, needle: "fifo")
     && body_kind_refused_with(kind: SymbolicLinkKind, needle: "symlink")
     && body_kind_refused_with(kind: DirectoryKind, needle: "directory")
-}
-
-test fn the_sudoers_line_and_host_argv_pin_the_flock_wrapped_launcher() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
-  match attempt_system_unit_launch_flocked_argv_at(instance: live, revision: rev) {
-    AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
-    AttemptSystemUnitLaunchArgvRevisionUnreadable => false
-    AttemptSystemUnitLaunchArgvReady { argv: flocked } =>
-      match sudoers_ready_text(reading: attempt_system_unit_sudoers_line(instance: live, revision: rev)) {
-        Absent => false
-        Present { value: line } =>
-          match attempt_system_unit_launch_host_argv_at(instance: live, revision: rev) {
-            AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
-            AttemptSystemUnitLaunchArgvRevisionUnreadable => false
-            AttemptSystemUnitLaunchArgvReady { argv: host } => {
-              let lock = attempt_unit_spool_drain_lock_path(instance_root: live.instance_root as String)
-              let wait = to_string(value: second_count(s: attempt_system_unit_launcher_flock_wait))
-              count(flocked) > 0
-                && match flocked.first() {
-                  Absent => false
-                  Present { value: bin } => bin == (flock_absolute_path as String)
-                }
-                && any(flocked, w => w == "--wait")
-                && any(flocked, w => w == wait)
-                && any(flocked, w => w == "--conflict-exit-code")
-                && any(flocked, w => w == to_string(value: attempt_system_unit_launcher_busy_exit))
-                && any(flocked, w => w == lock)
-                && string_contains(s: line, pattern: join(map(flocked, w => sudoers_argument_word(w: w)), " "))
-                && skip(xs: host, n: 1) == concat([sudo_non_interactive_flag as String], flocked)
-            }
-          }
-      }
-  }
-}
-
-test fn flock_expiry_is_launcher_busy_past_the_bound() -> Bool {
-  match attempt_system_unit_harness_start_from_launcher_exit(
-    exit_code: attempt_system_unit_launcher_busy_exit,
-    reading: AttemptSystemUnitAnswerMissing,
-  ) {
-    AttemptSystemUnitHarnessStarted => false
-    AttemptSystemUnitHarnessFailed { detail } => string_contains(s: detail, pattern: "busy past the bound")
-  }
 }
 
 fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
@@ -742,7 +823,6 @@ fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
 fn launch_argv_refused_separator(reading: AttemptSystemUnitLaunchArgv) -> Bool {
   match reading {
     AttemptSystemUnitLaunchArgvReady { argv: _ } => false
-    AttemptSystemUnitLaunchArgvRevisionUnreadable => false
     AttemptSystemUnitLaunchArgvRefused { cause } =>
       match cause {
         NamedArgumentNameHoldsSeparator { name } => name == "instance_root"
@@ -752,16 +832,14 @@ fn launch_argv_refused_separator(reading: AttemptSystemUnitLaunchArgv) -> Bool {
   }
 }
 
-fn sudoers_refused_separator(reading: AttemptSystemUnitSudoersText) -> Bool {
-  match reading {
-    AttemptSystemUnitSudoersReady { text: _ } => false
-    AttemptSystemUnitSudoersRefused { cause } =>
-      match cause {
-        NamedArgumentNameHoldsSeparator { name } => name == "instance_root"
-        NamedArgumentNameEmpty => false
-        NamedArgumentAdmitted { argument: _ } => false
-      }
-  }
+test fn an_instance_root_holding_the_separator_refuses_at_argv_and_drain_install() -> Bool {
+  let inst = live_with_instance_root(root: "/tmp/gunbc=separator" as FilePath)
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  launch_argv_refused_separator(reading: attempt_system_unit_launch_gunbc_argv_at(instance: inst, revision: rev))
+    && match live_deploy_attempt_unit_drain_service_unit_file(spec: deployment_spec_srv1(), instance: inst, revision: rev) {
+      AttemptUnitDrainServiceRefused { cause: c } => attempt_system_unit_launch_argv_refused_detail(cause: c) == attempt_system_unit_launch_argv_refused_detail(cause: NamedArgumentNameHoldsSeparator { name: "instance_root" })
+      AttemptUnitDrainServiceReady { file: _ } => false
+    }
 }
 
 test fn a_declared_instance_launch_argv_stays_ready() -> Bool {
@@ -769,19 +847,388 @@ test fn a_declared_instance_launch_argv_stays_ready() -> Bool {
   let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
   match attempt_system_unit_launch_gunbc_argv_at(instance: live, revision: rev) {
     AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
-    AttemptSystemUnitLaunchArgvRevisionUnreadable => false
-    AttemptSystemUnitLaunchArgvReady { argv: gunbc } =>
-      match attempt_system_unit_launch_flocked_argv_at(instance: live, revision: rev) {
-        AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
-        AttemptSystemUnitLaunchArgvRevisionUnreadable => false
-        AttemptSystemUnitLaunchArgvReady { argv: flocked } =>
-          match attempt_system_unit_launch_host_argv_at(instance: live, revision: rev) {
-            AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
-            AttemptSystemUnitLaunchArgvRevisionUnreadable => false
-            AttemptSystemUnitLaunchArgvReady { argv: host } =>
-              count(gunbc) > 0 && count(flocked) > 0 && count(host) > 0
-                && !any(host, w => w == "/usr/bin/false")
+    AttemptSystemUnitLaunchArgvReady { argv: gunbc } => count(gunbc) > 0 && !any(gunbc, w => w == "/usr/bin/false")
+  }
+}
+
+// AN ANSWER ANSWERS ITS OWN REQUEST. answers/<entry> is keyed by node and attempt key and outlives the run, so
+// the answer a requester reads must echo the body it wrote. RED (fixture source): an earlier request's
+// refusal sitting at the entry reads as Missing for a request with a different nonce, never as its outcome.
+test fn an_answer_to_an_earlier_request_for_the_key_reads_as_not_yet_answered() -> Bool {
+  match attempt_system_unit_decode_answer(content: "old-body\u{1e}refused\nwhy\n", request_body: "new-body") {
+    AttemptSystemUnitAnswerMissing => true
+    AttemptSystemUnitAnswerFound { answer: _ } => false
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
+  }
+}
+
+test fn an_answer_echoing_the_request_body_is_its_outcome() -> Bool {
+  match attempt_system_unit_decode_answer(content: "new-body\u{1e}refused\nwhy\n", request_body: "new-body") {
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason } } => reason == "why"
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => false
+    AttemptSystemUnitAnswerMissing => false
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
+  }
+}
+
+test fn an_answer_that_echoes_no_body_is_unreadable_not_a_match() -> Bool {
+  match attempt_system_unit_decode_answer(content: "started\n", request_body: "") {
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => true
+    AttemptSystemUnitAnswerFound { answer: _ } => false
+    AttemptSystemUnitAnswerMissing => false
+  }
+}
+
+test fn two_requests_for_one_attempt_differ_in_their_encoded_body_by_nonce() -> Bool {
+  let a = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "1" }
+  let b = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "2" }
+  match attempt_system_unit_encode_start(verb: StartDetached, request: a) {
+    AttemptSystemUnitStartEncoded { body: ba } =>
+      match attempt_system_unit_encode_start(verb: StartDetached, request: b) {
+        AttemptSystemUnitStartEncoded { body: bb } => ba != bb
+        AttemptSystemUnitStartUnencodable { cause: _ } => false
+      }
+    AttemptSystemUnitStartUnencodable { cause: _ } => false
+  }
+}
+
+test fn a_nonce_that_is_not_one_safe_segment_is_unencodable() -> Bool {
+  let r = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "a\nb" }
+  match attempt_system_unit_encode_start(verb: StartDetached, request: r) {
+    AttemptSystemUnitStartUnencodable { cause: AttemptSystemUnitNonceUnsafe } => true
+    AttemptSystemUnitStartUnencodable { cause: _ } => false
+    AttemptSystemUnitStartEncoded { body: _ } => false
+  }
+}
+
+// EVERY SERVICE UNIT THE DEPLOYMENT EMITS THAT RUNS THE GUNBC BINARY IS PLACED IN A BOUNDED SLICE. gunbc refuses to
+// run in system.slice (user_work_scope UncappedSystemSlice), so a gunbc-running service with no Slice= starts,
+// is refused, and trips its start limit; the drain service was emitted so at e926e9f9 and a lab apply reported
+// success over it. The predicate reads the typed legs of the apply plan, the same artifact the host receives.
+fn service_body_of_payload(payload: String) -> String {
+  match split(s: payload, delimiter: "\n[").first() {
+    Present { value: body } => body
+    Absent => ""
+  }
+}
+
+fn leg_install_payload(leg: DeployApplyLeg) -> String {
+  match leg {
+    ApplyLegInstallFile { step: _, command: _, payload: p } => p
+    _ => ""
+  }
+}
+
+fn leg_install_dest(leg: DeployApplyLeg) -> String {
+  match leg {
+    ApplyLegInstallFile { step: _, command: c, payload: _ } => last_or_empty(parts: c.arguments)
+    _ => ""
+  }
+}
+
+fn gunbc_running_service_bodies(legs: List<DeployApplyLeg>) -> List<String> {
+  filter(
+    map(
+      filter(legs, l => string_contains(s: leg_install_payload(leg: l), pattern: "[Service]")),
+      l => service_body_of_payload(payload: join(skip(split(s: leg_install_payload(leg: l), delimiter: "[Service]"), 1), "")),
+    ),
+    body => string_contains(s: body, pattern: "ExecStart=") && string_contains(s: body, pattern: " run --source-root"),
+  )
+}
+
+// A Slice= that names a slice the deployment never installs gets no MemoryMax (systemd creates it unbounded),
+// and gunbc refuses in it exactly as in system.slice. So the law is "names a slice this apply installs with a
+// MemoryMax", and the installed set is read from the apply's own install legs: each `[Slice]` unit payload that
+// carries MemoryMax= is installed at `<dir>/<name>.slice`.
+fn first_or_empty(parts: List<String>) -> String {
+  match parts.first() {
+    Present { value: head } => head
+    Absent => ""
+  }
+}
+
+fn last_or_empty(parts: List<String>) -> String {
+  first_or_empty(parts: skip(parts, count(parts) - 1))
+}
+
+fn basename_of(path: String) -> String {
+  last_or_empty(parts: split(s: path, delimiter: "/"))
+}
+
+fn installed_bounded_slices(legs: List<DeployApplyLeg>) -> List<String> {
+  map(
+    filter(legs, l => string_contains(s: leg_install_payload(leg: l), pattern: "[Slice]") && string_contains(s: leg_install_payload(leg: l), pattern: "\nMemoryMax=")),
+    l => basename_of(path: leg_install_dest(leg: l)),
+  )
+}
+
+fn service_slice_name(body: String) -> String {
+  let after_key = first_or_empty(parts: skip(split(s: body, delimiter: "\nSlice="), 1))
+  first_or_empty(parts: split(s: after_key, delimiter: "\n"))
+}
+
+fn gunbc_running_services_are_all_sliced(legs: List<DeployApplyLeg>) -> Bool {
+  let installed = installed_bounded_slices(legs: legs)
+  all(
+    gunbc_running_service_bodies(legs: legs),
+    body => any(installed, sl => service_slice_name(body: body) == sl),
+  )
+}
+
+test fn every_gunbc_running_service_in_the_lab_apply_names_a_bounded_slice() -> Bool {
+  let legs = full_install_legs(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()))
+  count(gunbc_running_service_bodies(legs: legs)) > 0
+    && gunbc_running_services_are_all_sliced(legs: legs)
+}
+
+test fn the_drain_service_names_the_deployment_slice() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  string_contains(s: full_install_apply_text(spec: spec), pattern: join(["Slice=", deployment_slice_unit_name(names: spec.names) as String], ""))
+}
+
+fn fixture_apply(slice_line: String) -> List<DeployApplyLeg> {
+  [
+    apply_staged_leg(step: "s", dest: "/etc/systemd/system/gunbc-bounded.slice", payload: "[Unit]\nDescription=s\n\n[Slice]\nMemoryMax=1\n"),
+    apply_staged_leg(step: "u", dest: "/etc/systemd/system/gunbc-unbounded.slice", payload: "[Unit]\nDescription=u\n\n[Slice]\nMemoryHigh=1\n"),
+    apply_staged_leg(step: "x", dest: "/etc/systemd/system/x.service", payload: join(["[Unit]\nDescription=x\n[Service]\nType=oneshot\n", slice_line, "ExecStart=/opt/gunbc run --source-root /d --entry /e\n[Install]\nWantedBy=x\n"], "")),
+  ]
+}
+
+test fn a_gunbc_running_service_without_a_slice_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(legs: fixture_apply(slice_line: ""))
+}
+
+test fn a_gunbc_running_service_in_an_installed_bounded_slice_is_found_sliced() -> Bool {
+  let sliced = fixture_apply(slice_line: "Slice=gunbc-bounded.slice\n")
+  count(gunbc_running_service_bodies(legs: sliced)) == 1
+    && gunbc_running_services_are_all_sliced(legs: sliced)
+}
+
+test fn a_gunbc_running_service_in_system_slice_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(legs: fixture_apply(slice_line: "Slice=system.slice\n"))
+}
+
+test fn a_gunbc_running_service_in_a_slice_the_apply_never_installs_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(legs: fixture_apply(slice_line: "Slice=gunbc-never-installed.slice\n"))
+}
+
+test fn a_gunbc_running_service_in_an_installed_slice_with_no_memory_max_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(legs: fixture_apply(slice_line: "Slice=gunbc-unbounded.slice\n"))
+}
+
+// THE ROOT-OWNED RELEASE SNAPSHOT IS RETIRED PER LOCUS, AFTER EVERY UNIT THAT NAMES IT STANDS. The drain's
+// units execute the new snapshot, so the superseded releases are swept only once the units are installed and
+// the path unit restarted. RED (fixture legs): a retire ahead of the unit installs is found out of order;
+// POSITIVE CONTROL: the real plan, whose retire leg is last.
+fn snapshot_retired_after_the_units_are_installed(legs: List<DeployApplyLeg>) -> Bool {
+  let retire = leg_index(legs: legs, step: "attempt-unit-helper-snapshot-retire")
+  retire >= 0
+    && leg_index(legs: legs, step: "attempt-unit-helper-snapshot") >= 0
+    && leg_index(legs: legs, step: "attempt-unit-helper-snapshot") < leg_index(legs: legs, step: "attempt-unit-drain-service-unit")
+    && retire > leg_index(legs: legs, step: "attempt-unit-drain-service-unit")
+    && retire > leg_index(legs: legs, step: "attempt-unit-drain-path-unit")
+    && retire > leg_index(legs: legs, step: "attempt-unit-drain-restart")
+}
+
+test fn the_full_install_retires_the_launcher_snapshot_after_the_drain_units_are_installed() -> Bool {
+  snapshot_retired_after_the_units_are_installed(legs: full_install_legs(spec: deployment_spec_srv1()))
+    && snapshot_retired_after_the_units_are_installed(legs: full_install_legs(spec: selected_deployment_spec(row: srv1_lab_desired_deployment())))
+}
+
+fn snapshot_leg_fixture(step_words: List<String>) -> List<DeployApplyLeg> {
+  map(step_words, w => apply_staged_leg(step: w, dest: "/x", payload: ""))
+}
+
+test fn a_snapshot_retire_ahead_of_the_drain_unit_installs_is_found_out_of_order() -> Bool {
+  !snapshot_retired_after_the_units_are_installed(legs: snapshot_leg_fixture(step_words: [
+    "attempt-unit-helper-snapshot", "attempt-unit-helper-snapshot-retire", "attempt-unit-drain-service-unit",
+    "attempt-unit-drain-path-unit", "attempt-unit-drain-restart",
+  ]))
+}
+
+test fn a_snapshot_retire_after_the_drain_unit_installs_is_found_in_order() -> Bool {
+  snapshot_retired_after_the_units_are_installed(legs: snapshot_leg_fixture(step_words: [
+    "attempt-unit-helper-snapshot", "attempt-unit-drain-service-unit", "attempt-unit-drain-path-unit",
+    "attempt-unit-drain-restart", "attempt-unit-helper-snapshot-retire",
+  ]))
+}
+
+// THE LOCI ARE NOT SHARED, so a retire per locus cannot delete a snapshot another instance's units still name.
+// The launcher's locus is `<attempt-system-unit-helpers>/<instance>`; the retire sweeps only the children of its own
+// base, so the claim is that two instances' bases are disjoint. (The approval broker's helper locus the claim once
+// also named was deleted with the broker's helper grant, #14890.)
+fn base_is_path_prefix_of(base: String, other: String) -> Bool {
+  other == base || starts_with(s: other, prefix: join([base, "/"], ""))
+}
+
+test fn the_drain_helper_snapshots_of_two_instances_live_in_disjoint_loci() -> Bool {
+  let live_base = attempt_system_unit_launcher_locus(instance: srv1_live_dashboard_instance()).base
+  let lab_base = attempt_system_unit_launcher_locus(instance: srv1_lab_dashboard_instance()).base
+  let legs = full_install_legs(spec: deployment_spec_srv1())
+  leg_index(legs: legs, step: "attempt-unit-helper-snapshot-retire") >= 0
+    && !base_is_path_prefix_of(base: live_base, other: lab_base)
+    && !base_is_path_prefix_of(base: lab_base, other: live_base)
+}
+
+fn answered(refusal: String?) -> AttemptUnitEntryOutcome {
+  AttemptUnitEntryHandled { handled: AttemptUnitAnswered { refusal: refusal } }
+}
+
+// A refusal is an answer: the pass counts it and its exit stays success. POSITIVE CONTROL: a started request.
+test fn a_refused_request_is_counted_and_does_not_fail_the_pass() -> Bool {
+  let pass = attempt_unit_pass_of(outcomes: [answered(refusal: Present { value: "start request is truncated" })])
+  pass.refused == 1 && pass.retired == 1 && exit_is_success(e: pass.exit)
+}
+
+// RED: a refusal whose cause text is empty is still a refusal (presence is the fact, not the text).
+test fn a_refusal_with_empty_cause_text_is_still_counted() -> Bool {
+  let pass = attempt_unit_pass_of(outcomes: [answered(refusal: Present { value: "" })])
+  pass.refused == 1 && pass.retired == 1
+}
+
+test fn a_started_request_is_retired_without_a_refusal() -> Bool {
+  let pass = attempt_unit_pass_of(outcomes: [answered(refusal: Absent)])
+  pass.refused == 0 && pass.retired == 1 && exit_is_success(e: pass.exit)
+}
+
+// RED: the drain failing at its job (no answer written) fails the pass, and stays failed past later refusals.
+test fn a_request_whose_answer_cannot_be_written_fails_the_pass() -> Bool {
+  let pass = attempt_unit_pass_of(outcomes: [
+    AttemptUnitEntryHandled { handled: AttemptUnitAnswerUnwritten { reason: "k: the answer could not be written" } },
+    answered(refusal: Present { value: "x" }),
+  ])
+  match pass.exit {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "could not be written") && pass.refused == 1
+    ExitSuccess => false
+  }
+}
+
+// The FIRST failure in entry order is the exit, and unmovable entries are listed in entry order and counted
+// apart from the retired ones; a skipped (already-claimed) entry changes nothing.
+test fn the_pass_keeps_the_first_failure_and_lists_unmovable_entries_in_order() -> Bool {
+  let pass = attempt_unit_pass_of(outcomes: [
+    AttemptUnitEntrySkipped,
+    AttemptUnitEntryUnmovable { entry: "a", step: SpoolStallClaim, cause: "c1" },
+    answered(refusal: Absent),
+    AttemptUnitEntryUnmovable { entry: "b", step: SpoolStallClaim, cause: "c2" },
+  ])
+  let names = map(pass.unmovable, u => u.entry)
+  pass.retired == 1 && count(pass.unmovable) == 2 && names == ["a", "b"]
+    && match pass.exit {
+      ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "a: unmovable at claim")
+      ExitSuccess => false
+    }
+}
+
+fn exit_is_success(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// ── THE DEDICATED WORKER'S START: its git trust and its credential ─────────────────────────────────────
+
+// The request names THIS instance's binary: claim_request names the lab's, which the live instance's admission
+// refuses (ExecStart program is not the instance gunbc binary), and a refused start has no words to judge.
+fn instance_request(instance: HostDashboardInstance) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: "n1",
+    attempt_key: "k1",
+    granted: kibibyte(count: 1),
+    inner_argv: [instance.serve_binary as String, "run"],
+    nonce: "n",
+  }
+}
+
+fn worker_start_words(instance: HostDashboardInstance) -> List<String> {
+  match attempt_system_unit_start_facts_for_request(instance: instance, request: instance_request(instance: instance)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => []
+    AttemptSystemUnitStartDerived { facts } =>
+      match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
+        AttemptSystemUnitRefused { reason: _ } => []
+        AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
+          match attempt_system_unit_systemd_run_command(instance: instance, plan: attempt_system_unit_plan_from_facts(facts: admitted, unit: unit), granted: admitted.granted, user: admitted.user) {
+            SystemdRunCommandRefused { cause: _ } => []
+            SystemdRunCommandReady { command } => argv_words(command: command)
           }
       }
   }
 }
+
+// THE DEDICATED WORKER TRUSTS EXACTLY ITS OWN WORKTREE, AND NOTHING ELSE. The service user owns the worktree, so
+// every git call by a dedicated worker account was refused with "detected dubious ownership" (srv1 lab,
+// 2026-10-24); the unit is started with git's safe.directory grant naming that one worktree, in the environment so
+// the tools' git inherits it. A service-user worker owns its worktree and is started with no grant. RED on a lab
+// start without the grant, and on any grant wider than the one worktree (the wildcard, or a second path).
+test fn the_dedicated_worker_starts_trusting_only_its_own_worktree() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_words = worker_start_words(instance: lab)
+  let live_words = worker_start_words(instance: srv1_live_dashboard_instance())
+  let worktree = dispatch_worktree_path_for_instance(instance: lab, node_id: "n1" as RoadmapNodeId, attempt_key: "k1")
+  count(lab_words) > 0 && count(live_words) > 0
+    && any(lab_words, w => w == "--setenv=GIT_CONFIG_COUNT=1")
+    && any(lab_words, w => w == "--setenv=GIT_CONFIG_KEY_0=safe.directory")
+    && any(lab_words, w => w == join(["--setenv=GIT_CONFIG_VALUE_0=", worktree], ""))
+    && count(filter(lab_words, w => starts_with(s: w, prefix: "--setenv=GIT_CONFIG_"))) == 3
+    && !any(lab_words, w => w == "--setenv=GIT_CONFIG_VALUE_0=*")
+    && !any(live_words, w => starts_with(s: w, prefix: "--setenv=GIT_CONFIG_"))
+}
+
+fn credstore_copy_legs_of(legs: List<DeployApplyLeg>) -> List<DeployApplyLeg> {
+  filter(legs, l => match l {
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => true
+    _ => false
+  })
+}
+
+// THE DEPLOY INSTALLS THE FILE THE LAUNCHER LOADS, AND ONE FUNCTION SPELLS ITS PATH. The lab apply carries one
+// credstore copy per credential, after the credstore directory; its destination and name are exactly the source
+// and identifier of the LoadCredential= word in the lab worker's start, and its source is the service user's
+// custody, which no start word names. Production's service-user worker gets no copy and loads nothing. RED on a
+// deploy or a launcher that spells the credstore path on its own (the two would differ), on a deploy that installs
+// nothing for the file the launcher names, and on a start that loads the custody path itself.
+test fn the_lab_apply_installs_exactly_the_credstore_file_the_worker_start_loads() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let legs = full_install_legs(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()))
+  let copies = credstore_copy_legs_of(legs: legs)
+  let creds = dispatch_worker_credentials(instance: lab)
+  let words = worker_start_words(instance: lab)
+  let loads = filter(words, w => starts_with(s: w, prefix: "LoadCredential="))
+  count(creds) == 1 && count(copies) == count(creds) && count(loads) == count(creds)
+    && leg_index(legs: legs, step: "worker-credstore-dir") >= 0
+    && leg_index(legs: legs, step: "worker-credstore-dir") < leg_index(legs: legs, step: "worker-credstore-copy")
+    && all(copies, l => match l {
+      ApplyLegCredstoreCopy { step: _, source: s, dest: d, file_name: f } =>
+        any(loads, w => w == join(["LoadCredential=", f as String, ":", d as String], ""))
+          && !any(words, w => string_contains(s: w, pattern: s as String))
+      _ => false
+    })
+    && count(credstore_copy_legs_of(legs: full_install_legs(spec: deployment_spec_srv1()))) == 0
+    && !any(worker_start_words(instance: srv1_live_dashboard_instance()), w => starts_with(s: w, prefix: "LoadCredential="))
+}
+
+// THE COPY IS THE PRIVATE-SECRET BRACKET'S ORDER, AND ROOT NEVER NAMES THE CUSTODY PATH. Rendered at one stage:
+// the stage is a fresh mktemp -d; the principal's own copy (no sudo) reads the custody into the stage owner-only;
+// the root install (sudo, 0400, root:root) reads the STAGE file, never the custody; then rm -f of the file and
+// rmdir of the stage. RED on a root install that reads the custody path, a user copy that elevates, a copy wider
+// than 0600, or a removal that is recursive (rmdir is the check that the stage ended empty).
+test fn the_credstore_copy_stages_copies_as_the_user_installs_as_root_and_removes_the_stage() -> Bool {
+  let stage = "/tmp/gunbc-credstore.abc123" as NonEmptyStr
+  let source = "/home/svc/.config/gunbc-gpu-pod/api-key" as NonEmptyStr
+  let dest = "/etc/credstore/gunbc-gpu-pod-api-key-lab" as NonEmptyStr
+  let cmds = credstore_copy_commands(stage: stage, source: source, dest: dest, file_name: "gunbc-gpu-pod-api-key" as NonEmptyStr)
+  let staged = join([stage as String, "/gunbc-gpu-pod-api-key"], "")
+  let mk = argv_words(command: credstore_copy_stage_command())
+  let user = argv_words(command: cmds.user_copy)
+  let root = argv_words(command: cmds.root_install)
+  let rmf = argv_words(command: cmds.remove_file)
+  let rmd = argv_words(command: cmds.remove_dir)
+  (match mk.first() { Present { value: p } => p == "mktemp"  Absent => false }) && any(mk, w => w == "-d")
+    && (match user.first() { Present { value: p } => p == "install"  Absent => false })
+    && !any(user, w => ends_with(s: w, suffix: "sudo")) && any(user, w => w == (source as String)) && any(user, w => w == staged) && any(user, w => w == "0600")
+    && (match root.first() { Present { value: p } => ends_with(s: p, suffix: "/sudo")  Absent => false }) && any(root, w => w == staged) && any(root, w => w == (dest as String)) && any(root, w => w == "0400")
+    && !any(root, w => string_contains(s: w, pattern: source as String))
+    && rmf == ["rm", "-f", staged] && rmd == ["rmdir", stage as String]
+}
+

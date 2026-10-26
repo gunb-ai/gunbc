@@ -1,6 +1,6 @@
 module v2.test.claim.manual.find_witness_project_to_core_controls
 
-import v2.std.node { NotADeclaration }
+import v2.std.node { node_same_occurrence, NotADeclaration }
 
 
 
@@ -27,7 +27,7 @@ fn control_rule_accepts(source: Node, target: Node, rule: Symbol) -> Bool {
     predicate: control_predicate(source: source, rule: rule),
     multiplicity_policy: UniqueOnly
   ) {
-    Accepted { value: fw, diagnostics: _ } => fw.candidate == target
+    Accepted { value: fw, diagnostics: _ } => node_same_occurrence(a: fw.candidate, b: target)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -57,7 +57,7 @@ data witness_project_to_core_real_dispatch_accepts_sibling: Bool = match v2.std.
   derivation_algebra: task_id_api_inhabitant_node(),
   multiplicity_policy: UniqueOnly
 ) {
-  Accepted { value: fw, diagnostics: _ } => fw.candidate == task_id_db_inhabitant_node()
+  Accepted { value: fw, diagnostics: _ } => node_same_occurrence(a: fw.candidate, b: task_id_db_inhabitant_node())
   Rejected { diagnostics: _ } => false
 }
 
@@ -186,7 +186,7 @@ data witness_project_to_core_drops_nested_surface: Bool = match find_witness_der
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: fw, diagnostics: _ } =>
-    fw.candidate == nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface)
+    node_same_occurrence(a: fw.candidate, b: nested_project_to_core_node(nested_core: ^nested_inner_core, nested_surface: ^nested_candidate_surface))
   Rejected { diagnostics: _ } => false
 }
 

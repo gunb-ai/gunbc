@@ -2,7 +2,7 @@ module v2.compiler.self_host.stage0_executable_assembly
 
 import gunbc.crate_partition { Stage0PartitionCrateRow }
 
-import std.types { List }
+import std.types { List, Map }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { length }
 import v2.std.integer { Int }
@@ -15,7 +15,15 @@ import v2.compiler.self_host.stage0_crate_layout {
   wet_actuator_lib_module_registrations
 }
 import v2.compiler.self_host.seed_retention_frontier {
+  ControlsNotPassed,
+  EmittedUnexecuted,
+  GeneratedCensusArtifact,
+  SeedRetained,
   SeedRetentionFrontierRow,
+  SelfEmitted,
+  Unclassified,
+  frontier_index_scan,
+  frontier_path_standing,
   seed_retention_frontier_roster
 }
 
@@ -149,27 +157,46 @@ fn stage0_retained_module_dir_path(module_basename: String) -> String {
   concat("src/", module_basename, "/mod.rs")
 }
 
+// THE FRONTIER FOLD IS THE ONE ANSWER to "does this retained module have a retention row": the
+// module's path is classified by v2.compiler.self_host.seed_retention_frontier frontier_path_standing,
+// and only SeedRetained carries a row. A retained pub mod is by definition not in the emitted
+// population, so the emitted list is empty here rather than a second reading of it.
+fn stage0_retention_standing_path(
+  path: String,
+  roster_by_path: Map<String, SeedRetentionFrontierRow>
+) -> String {
+  match frontier_path_standing(
+    emitted_by_path: empty_map(),
+    roster_by_path: roster_by_path,
+    executed_closure_modules: [],
+    controls: ControlsNotPassed,
+    declared_divergent_paths: [],
+    path: path
+  ) {
+    SeedRetained { row: row } => row.crate_relative_path
+    SelfEmitted { crate_relative_path: _, source_module: _, observation: _ } => ""
+    EmittedUnexecuted { crate_relative_path: _, source_module: _ } => ""
+    Unclassified { crate_relative_path: _ } => ""
+    GeneratedCensusArtifact { crate_relative_path: _ } => ""
+  }
+}
+
 fn stage0_retention_row_path(
   module_basename: String,
-  roster: List<SeedRetentionFrontierRow>
+  roster_by_path: Map<String, SeedRetentionFrontierRow>
 ) -> String {
-  let file_path = stage0_retained_module_file_path(module_basename: module_basename)
-  let dir_path = stage0_retained_module_dir_path(module_basename: module_basename)
-  fold(
-    roster,
-    init: "",
-    f: fn(acc, row) {
-      if acc != "" {
-        acc
-      } else if row.crate_relative_path == file_path {
-        row.crate_relative_path
-      } else if row.crate_relative_path == dir_path {
-        row.crate_relative_path
-      } else {
-        acc
-      }
-    }
+  let file_row = stage0_retention_standing_path(
+    path: stage0_retained_module_file_path(module_basename: module_basename),
+    roster_by_path: roster_by_path
   )
+  if file_row != "" {
+    file_row
+  } else {
+    stage0_retention_standing_path(
+      path: stage0_retained_module_dir_path(module_basename: module_basename),
+      roster_by_path: roster_by_path
+    )
+  }
 }
 
 type Stage0AssemblyOwnerResolution
@@ -270,7 +297,7 @@ fn stage0_resolve_executable_module_owner(
   emitted_module_basenames: List<String>,
   retained_pub_mod_basenames: List<String>,
   wet_lib_rows: List<WetActuatorGeneratedRegistration>,
-  roster: List<SeedRetentionFrontierRow>
+  roster_by_path: Map<String, SeedRetentionFrontierRow>
 ) -> Stage0AssemblyOwnerResolution {
   let partition_packages = stage0_partition_owner_packages(
     module_basename: module_basename,
@@ -326,7 +353,7 @@ fn stage0_resolve_executable_module_owner(
       WetRouteAbsent => stage0_resolve_non_wet_module_owner(
         module_basename: module_basename,
         retained_pub_mod_basenames: retained_pub_mod_basenames,
-        roster: roster,
+        roster_by_path: roster_by_path,
         emitted_module_basenames: emitted_module_basenames
       )
     }
@@ -352,11 +379,11 @@ fn stage0_resolve_executable_module_owner(
 fn stage0_resolve_non_wet_module_owner(
   module_basename: String,
   retained_pub_mod_basenames: List<String>,
-  roster: List<SeedRetentionFrontierRow>,
+  roster_by_path: Map<String, SeedRetentionFrontierRow>,
   emitted_module_basenames: List<String>
 ) -> Stage0AssemblyOwnerResolution {
   if any(xs: retained_pub_mod_basenames, predicate: fn(m) { m == module_basename }) {
-    let retention_row = stage0_retention_row_path(module_basename: module_basename, roster: roster)
+    let retention_row = stage0_retention_row_path(module_basename: module_basename, roster_by_path: roster_by_path)
     if retention_row == "" {
       Stage0AssemblyOwnerRefused {
         cause: RetainedModuleHasNoRetentionRow { module_basename: module_basename }
@@ -398,6 +425,7 @@ fn stage0_assembly_ownership_census(
   wet_lib_rows: List<WetActuatorGeneratedRegistration>,
   roster: List<SeedRetentionFrontierRow>
 ) -> Stage0AssemblyOwnershipCensus {
+  let roster_by_path = frontier_index_scan(rows: roster, path_of: fn(row) { row.crate_relative_path }).by_path
   fold(
     declared_modules,
     init: Stage0AssemblyOwnershipCensus { owners: [], refusals: [] },
@@ -408,7 +436,7 @@ fn stage0_assembly_ownership_census(
         emitted_module_basenames: emitted_module_basenames,
         retained_pub_mod_basenames: retained_pub_mod_basenames,
         wet_lib_rows: wet_lib_rows,
-        roster: roster
+        roster_by_path: roster_by_path
       ) {
         Stage0AssemblyOwnerResolved { owner: owner } =>
           Stage0AssemblyOwnershipCensus {

@@ -1,5 +1,6 @@
 module test.claim.machine_intake.boot_artifact_delivery_witness
 
+import std.algebra { FreeSemigroup }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.board_authority { BoardFruObservation, BoardUnbound }
 import test.fixture.board_fru_observation { collins_fru_read, asrock_fru_read }
@@ -151,7 +152,6 @@ import gunbc.network_boot_delivery {
   SiteAnsweredDhcp,
   SitePxeEdge,
   SitePxeEdgeReceipt,
-  first_slice_admitted_architectures,
   network_boot_requirements_all,
 }
 import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
@@ -1147,14 +1147,13 @@ fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> N
       site: SitePxeEdgeReceipt {
         edge: SitePxeEdge {
           site: site,
-          admitted_architectures: first_slice_admitted_architectures,
           discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
-          bootstrap_transport: ArchitectureChainloader {
+          bootstrap_transports: FreeSemigroup { head: ArchitectureChainloader {
             architecture: Aarch64,
             filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
             chainloader_digest: digest,
             tftp_root: Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" },
-          },
+          }, tail: [] },
           global_endpoint_reachability: GlobalHttpsEndpointReachable {
             broker_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
             artifact_origin: Uri { scheme: Https, locator: "boot-origin.example.test" },

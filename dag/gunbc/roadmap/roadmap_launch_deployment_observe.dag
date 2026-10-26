@@ -391,7 +391,7 @@ fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
 // spool's projection of that one queue-health type.
 //
 // THE STALL RECORD COMES FIRST. `stalled` is the entries the exit drain recorded as unmovable
-// (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_read_at): while any exist the belt-exit service is
+// (gunbc.roadmap.spool_stall spool_stall_read_at): while any exist the belt-exit service is
 // held, so ageing says nothing about them and every spooled entry is waiting behind the head. This is the
 // stall record's consumer (DESIGN section 3c).
 fn event_backlog_judge(stalled: List<String>, entries: List<EventBacklogEntry>) -> EventBacklogFact {

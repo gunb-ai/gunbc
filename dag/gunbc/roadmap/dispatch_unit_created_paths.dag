@@ -1,0 +1,172 @@
+module gunbc.roadmap.dispatch_unit_created_paths
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text, file_mode_octal, file_mode_class_bits }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.managed_directory { declared_directory_mode }
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_mode }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, dispatch_worker_handed_set }
+import gunbc.roadmap.dispatch_worker_handed_set { dispatch_worker_set_exit_root, dispatch_worker_set_stream_path }
+
+// A PATH THE SYSTEM MANAGER CREATES ON THE WORKER'S BEHALF MUST BE USABLE BY ITS CONSUMER. WRE-1 moved
+// workers from the user manager to system units with a foreign User=, which changed the identity of
+// every path the manager creates for the unit (the "+" exit hook and the StandardOutput/StandardError
+// append targets run or open as root) and nothing re-derived what each consumer needs. Measured on the
+// srv1 lab, 2026-10-21: the exit record was root:root 0755, so the drain -- the service user -- could
+// not rename it from inbox to queued (mv of a directory needs write permission on the directory
+// itself, EACCES), and worker-stdout.log was root:root 0644.
+//
+// THE CONTRACT IS PURE OVER DECLARED PRINCIPALS: a created path carries the owner and mode its
+// producer creates it with, and the consumer carries its principal and the operation it performs. The
+// exit record's owner is the SAME value the hook is built from (attempt_exit_hook record_owner), so the
+// judged creation cannot diverge from the rendered one. Unlink is not a path operation (it needs the
+// parent directory) and is outside this contract; no census row needs it.
+type ConsumerOperation
+  = ConsumerRenames
+  | ConsumerReads
+  | ConsumerAppends
+
+type UnitCreatedPath {
+  path: String
+  is_directory: Bool
+  created_owner: PosixOwnerNames
+  created_mode: FileMode
+  consumer: String
+  consumer_principal: PosixOwnerNames
+  operation: ConsumerOperation
+}
+
+type DispatchUnitCreatedPathVerdict
+  = DispatchUnitCreatedPathConsumable
+  | DispatchUnitCreatedPathUnconsumable { created: UnitCreatedPath }
+
+// The class POSIX applies to the principal (extdeps.access.posix file_mode_class_bits). The principal is
+// a DECLARED account name pair, so owner is the user name and group is the declared primary group;
+// supplementary groups are not consulted here, a consumer that relies on one declares it as its group.
+// The traversal judge (gunbc.roadmap.dispatch_worker_traversal) answers the same two questions from
+// observed numeric ids because the worker's membership is observed; the class rule is the one shared.
+fn created_path_class_bits(created: UnitCreatedPath) -> PermissionBits {
+  file_mode_class_bits(
+    mode: created.created_mode,
+    caller_is_owner: created.consumer_principal.user == created.created_owner.user,
+    caller_in_group: created.consumer_principal.group == created.created_owner.group,
+  )
+}
+
+// Renaming a directory into another parent rewrites its ".." entry, so it needs write on the directory
+// itself (rename(2) EACCES); renaming a file needs only the parents. Reads need read, appends write.
+fn created_path_operation_allowed(created: UnitCreatedPath) -> Bool {
+  let bits = created_path_class_bits(created: created)
+  match created.operation {
+    ConsumerRenames => if created.is_directory { bits.write } else { true }
+    ConsumerReads => bits.read
+    ConsumerAppends => bits.write
+  }
+}
+
+fn dispatch_unit_created_path_judge(created: UnitCreatedPath) -> DispatchUnitCreatedPathVerdict {
+  if created_path_operation_allowed(created: created) {
+    DispatchUnitCreatedPathConsumable
+  } else {
+    DispatchUnitCreatedPathUnconsumable { created: created }
+  }
+}
+
+fn dispatch_unit_created_path_operation_word(operation: ConsumerOperation) -> String {
+  match operation {
+    ConsumerRenames => "rename"
+    ConsumerReads => "read"
+    ConsumerAppends => "append to"
+  }
+}
+
+fn dispatch_unit_created_path_wire(verdict: DispatchUnitCreatedPathVerdict) -> String {
+  match verdict {
+    DispatchUnitCreatedPathConsumable => "every path the system manager creates for the unit is usable by its consumer"
+    DispatchUnitCreatedPathUnconsumable { created } =>
+      join([
+        "the system manager creates ", created.path, " owned ", created.created_owner.user, ":", created.created_owner.group,
+        " with mode ", file_mode_octal(mode: created.created_mode), ", but ", created.consumer, " runs as ",
+        created.consumer_principal.user, ":", created.consumer_principal.group, " and must ",
+        dispatch_unit_created_path_operation_word(operation: created.operation),
+        " it, which that mode denies that principal; create the path owned by the consumer's principal",
+      ], "")
+  }
+}
+
+// A mode literal below is well-formed octal text; the Absent arm is the all-denied mode, so a bad
+// spelling reads as unconsumable, never as a pass.
+fn created_path_mode_of_octal(text: String) -> FileMode {
+  match file_mode_of_octal_text(text: text) {
+    Present { value: m } => m
+    Absent => FileMode {
+      owner: PermissionBits { read: false, write: false, execute: false },
+      group: PermissionBits { read: false, write: false, execute: false },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: false,
+      sticky: false,
+    }
+  }
+}
+
+// THE CENSUS of what the manager creates on a worker unit's behalf, from the unit plan:
+//  - the ExecStopPost exit record: created by the hook (root, "+") as record_owner (the drain's
+//    principal) with attempt_exit_record_mode; consumer the belt exit drain, as the service user,
+//    renaming it inbox -> queued;
+//  - the StandardOutput and StandardError append targets: opened by the manager as root, so created
+//    root:root 0644 when absent; consumer the dashboard reading the worker log as the service user. They
+//    are READ, never appended or renamed, by the service user; systemd itself appends.
+// The same path for both streams is one row.
+fn dispatch_worker_created_paths(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<UnitCreatedPath> {
+  let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+  // DERIVED FROM THE HANDED SET the unit is rendered from (gunbc.roadmap.dispatch_worker_handed_set),
+  // so a created path cannot be added beside it: the exit root and both stream targets are its roles.
+  let set = dispatch_worker_handed_set(
+    instance: instance,
+    working_directory: plan.working_directory,
+    attempt_worktree: plan.attempt_worktree,
+    stdout_path: plan.stdout_path,
+    stderr_path: plan.stderr_path,
+  )
+  let stdout = dispatch_worker_set_stream_path(set: set, stdout: true)
+  let stderr = dispatch_worker_set_stream_path(set: set, stdout: false)
+  let log_rows = [stdout, stderr]
+  concat(
+    [
+      UnitCreatedPath {
+        path: join([dispatch_worker_set_exit_root(set: set), "/", plan.node_id, "+", plan.attempt_key, "+worker+..."], ""),
+        is_directory: true,
+        created_owner: instance.directory_owner,
+        created_mode: declared_directory_mode(m: attempt_exit_record_mode),
+        consumer: "the belt exit drain",
+        consumer_principal: instance.directory_owner,
+        operation: ConsumerRenames,
+      },
+    ],
+    map(
+      if stdout == stderr { [stdout] } else { log_rows },
+      p => UnitCreatedPath {
+        path: p,
+        is_directory: false,
+        created_owner: root,
+        created_mode: created_path_mode_of_octal(text: "0644"),
+        consumer: "the dashboard's worker-log reader",
+        consumer_principal: instance.directory_owner,
+        operation: ConsumerReads,
+      },
+    ),
+  )
+}
+
+// The first created path whose consumer cannot perform its operation, or consumable.
+fn dispatch_unit_created_paths_judge(created: List<UnitCreatedPath>) -> DispatchUnitCreatedPathVerdict {
+  fold(created, init: DispatchUnitCreatedPathConsumable, f: (acc, c) =>
+    match acc {
+      DispatchUnitCreatedPathUnconsumable { created: _ } => acc
+      DispatchUnitCreatedPathConsumable => dispatch_unit_created_path_judge(created: c)
+    }
+  )
+}

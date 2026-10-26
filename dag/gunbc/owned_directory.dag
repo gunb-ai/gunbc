@@ -41,7 +41,7 @@ import std.realization_reconcile {
   classify_reconciled,
 }
 
-// THE OwnedDirectory TARGET OF D14 (docs/plans/ensure-closure-design.md section 3.1), built corpus-only
+// THE OwnedDirectory TARGET OF D14 (`gunbc.plans.ensure_closure_design` section 3.1), built corpus-only
 // for the dashboard instance's directories ahead of D14 step 4. A target is a desired environmental
 // fact at a placement: a directory at a path, owned by a principal, at a mode. The host is the
 // placement of whatever realizes the target -- the dashboard apply's target exec or the live_deploy
@@ -56,26 +56,61 @@ import std.realization_reconcile {
 // THE DISCOVERY IS NOT AUTOMATIC YET. Who demands a directory is still a composition the consumers'
 // demand functions are listed into (gunbc.roadmap.dashboard_instance_directories); D14 step 4 is what
 // derives the demand from the code that writes there.
+// WHAT A DECLARED TARGET PERMITS WHEN IT FINDS A DIRECTORY ALREADY PRESENT UNDER A DIFFERENT
+// PRINCIPAL. The base module never reads a host to decide this -- the demanding consumer declares it
+// on the target (DESIGN §3, policy travels with the consumer; §5, no fabricated default: every site
+// binds one of these two cases explicitly).
+//
+//   ForeignOwnershipRefuses        -- the historical, invariant-preserving posture: a present directory
+//       owned by anyone other than the exact demanded principal is refused, "ownership is never
+//       adopted". Re-owning someone else's tree would hand the demanding principal whatever a third
+//       party left there. This is the posture for every declared target that does not say otherwise.
+//
+//   SameUserRegroupToDeclaredGroup -- the WORKER-ROOT-EQUIVALENT-3 posture, bound ONLY by the six
+//       worker-writable directories of a dedicated-worker instance. It says: when the present
+//       directory's OWNER USER is already the demanded user and only its GROUP differs, the deploy may
+//       plan to re-apply the DECLARED group (and the declared mode) -- a regroup, not an adoption.
+//       It NEVER relaxes the user: a directory under a different USER is refused exactly as in
+//       ForeignOwnershipRefuses, and the group it may move to is ONLY the target's own declared group
+//       (the install always names owned_directory_owner(t).group, never the observed group), so no
+//       arbitrary group is ever adopted. The interior of a git subtree this regroups at the top level
+//       is carried by the instance-apply migration (dashboard_instance_worker_git_subtree_migration),
+//       which this posture unblocks by letting the plan derive instead of refuse.
+type OwnedDirectoryGroupAdoption
+  = ForeignOwnershipRefuses
+  | SameUserRegroupToDeclaredGroup
+
 type OwnedDirectoryTarget
   = OwnedDirectoryDeclared {
       member: NonEmptyStr,
       path: FilePath,
       owner: PosixOwnerNames,
       mode: DeclaredDirectoryMode,
+      group_adoption: OwnedDirectoryGroupAdoption,
     }
   | OwnedDirectoryManaged { directory: ManagedDirectory }
 
 fn owned_directory_path(t: OwnedDirectoryTarget) -> FilePath {
   match t {
-    OwnedDirectoryDeclared { member: _, path, owner: _, mode: _ } => path
+    OwnedDirectoryDeclared { member: _, path, owner: _, mode: _, group_adoption: _ } => path
     OwnedDirectoryManaged { directory } => directory.path
   }
 }
 
 fn owned_directory_member(t: OwnedDirectoryTarget) -> NonEmptyStr {
   match t {
-    OwnedDirectoryDeclared { member, path: _, owner: _, mode: _ } => member
+    OwnedDirectoryDeclared { member, path: _, owner: _, mode: _, group_adoption: _ } => member
     OwnedDirectoryManaged { directory } => directory.member
+  }
+}
+
+// THE GROUP-REGROUP POSTURE A TARGET DECLARES. A managed directory has no declared-group regroup
+// posture: its provider (gunbc.managed_directory) owns the decision and a present foreign-principal
+// managed directory is always refused, so the managed arm reads ForeignOwnershipRefuses.
+fn owned_directory_group_adoption(t: OwnedDirectoryTarget) -> OwnedDirectoryGroupAdoption {
+  match t {
+    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _, group_adoption } => group_adoption
+    OwnedDirectoryManaged { directory: _ } => ForeignOwnershipRefuses
   }
 }
 
@@ -83,7 +118,7 @@ fn owned_directory_member(t: OwnedDirectoryTarget) -> NonEmptyStr {
 // gunbc.live_deploy.emit install_d_managed_command records; a declared target names its group.
 fn owned_directory_owner(t: OwnedDirectoryTarget) -> PosixOwnerNames {
   match t {
-    OwnedDirectoryDeclared { member: _, path: _, owner, mode: _ } => owner
+    OwnedDirectoryDeclared { member: _, path: _, owner, mode: _, group_adoption: _ } => owner
     OwnedDirectoryManaged { directory } =>
       PosixOwnerNames { user: directory.owner.name, group: directory.group_principal.name }
   }
@@ -98,7 +133,7 @@ type OwnedDirectoryMode
 // managed_directory_admit).
 fn owned_directory_mode(t: OwnedDirectoryTarget) -> OwnedDirectoryMode {
   match t {
-    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode } =>
+    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode, group_adoption: _ } =>
       OwnedDirectoryModeResolved { mode: declared_directory_mode(m: mode) }
     OwnedDirectoryManaged { directory } =>
       match managed_directory_admit(d: directory) {
@@ -280,6 +315,22 @@ fn owned_directory_owner_matches(want: PosixOwnerNames, got: PosixOwnerNames) ->
   (want.user as String) == (got.user as String) && (want.group as String) == (got.group as String)
 }
 
+// IS A PRESENT DIRECTORY FOREIGN TO THIS TARGET? THE ONE PLACE THE USER/GROUP CONFLATION IS SPLIT.
+// A present directory is foreign -- and therefore refused, "ownership is never adopted" -- except under
+// the target's declared regroup posture, which narrows the test to the OWNER USER ALONE: a directory
+// the demanded user already owns may be re-grouped to that target's OWN declared group (the install
+// always names owned_directory_owner(t).group, never the observed group), but a directory under a
+// different USER is foreign under every posture. ForeignOwnershipRefuses keeps the historical test
+// that both the user and the group must match, so no target becomes reachable-by-regroup unless its
+// consumer declared that posture (no fabricated default; DESIGN §5).
+fn owned_directory_present_owner_is_foreign(t: OwnedDirectoryTarget, got: PosixOwnerNames) -> Bool {
+  let want = owned_directory_owner(t: t)
+  match owned_directory_group_adoption(t: t) {
+    ForeignOwnershipRefuses => !owned_directory_owner_matches(want: want, got: got)
+    SameUserRegroupToDeclaredGroup => (want.user as String) != (got.user as String)
+  }
+}
+
 fn owned_directory_mode_matches(t: OwnedDirectoryTarget, got: FileMode) -> Bool {
   match owned_directory_mode(t: t) {
     OwnedDirectoryModeRefused { reason: _ } => false
@@ -332,7 +383,7 @@ fn owned_directory_plan(t: OwnedDirectoryTarget, o: EnsureObservation<OwnedDirec
     EnsureObserved { evidence } =>
       if !evidence.is_directory {
         Present { value: "exists and is not a directory; it is never replaced" }
-      } else if !owned_directory_owner_matches(want: owned_directory_owner(t: t), got: evidence.owner) {
+      } else if owned_directory_present_owner_is_foreign(t: t, got: evidence.owner) {
         Present {
           value: join([
             "is owned by ", posix_owner_names_text(names: evidence.owner),

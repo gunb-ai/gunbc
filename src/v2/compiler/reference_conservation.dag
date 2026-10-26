@@ -25,6 +25,7 @@ import v2.std.diagnostic {
   ByteRange,
   Diagnostic,
   Diagnostics,
+  Extent,
   Locus,
   NodeLocus,
   NonEmptyDiagnostics,
@@ -526,14 +527,15 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
 // carries the atom's occurrence, or a byte range enclosing the atom's extent. A diagnostic at an
 // invariant port or a declaration name locates nothing in this module's tree, so it covers nothing
 // -- an unlocated refusal that swallows a module is exactly the silence this check exists to count.
-type RefusalRange {
-  start: Int
-  end: Int
-}
-
+// THE BYTE RANGE IS v2.std.diagnostic's Extent, declared once there; a local field-isomorphic
+// record (the deleted `type RefusalRange { start: Int, end: Int }`) was a structural nickname --
+// DESIGN 3's one-declaration rule names the SYMBOL's home instead (gunbc.recurring_failure_mode
+// .nominal_isomorphic_record_admitted_at_sibling_declaration). The slot carries the coproduct
+// parent Extent, not one of its arms: ByteRange is an arm, not a type (review 38602), and the
+// arm is matched where the fields are read.
 type RefusalCover {
   anchored: Map<OccurrenceId, Bool>
-  ranges: FreeMonoid<RefusalRange>
+  ranges: FreeMonoid<Extent>
 }
 
 fn refusal_cover_anchor(acc: Map<OccurrenceId, Bool>, node: Node) -> Map<OccurrenceId, Bool> {
@@ -573,17 +575,26 @@ fn refusal_cover_from(diagnostics: NonEmptyDiagnostics) -> RefusalCover {
   )
 }
 
-fn range_encloses_atom(range: RefusalRange, atom: AuthoredAtom) -> Bool {
-  match atom.locus {
-    Textual { file: _, extent: extent } =>
-      match extent {
-        ByteRange { start: s, end: e } => range.start <= s && e <= range.end
-        WholeFile => false
+fn range_encloses_atom(range: Extent, atom: AuthoredAtom) -> Bool {
+  // The ARM is matched here, where the fields are read; the slot carries the coproduct parent.
+  // A WholeFile range in a cover encloses nothing by itself: the cover is built only from
+  // byte-ranged refusals, and a whole-file arm carries no file identity to match the atom's
+  // Textual file against -- treating it as covering everything would be a silence this check
+  // exists to count, so it covers nothing (the deleted RefusalRange could not express it).
+  match range {
+    ByteRange { start: rs, end: re } =>
+      match atom.locus {
+        Textual { file: _, extent: extent } =>
+          match extent {
+            ByteRange { start: s, end: e } => rs <= s && e <= re
+            WholeFile => false
+          }
+        NodeLocus { anchor: _ } => false
+        SourcePortLocus { anchor: _, file: _, extent: _ } => false
+        InvariantPortLocus { anchor: _, invariant: _ } => false
+        DeclarationLocus { declaration: _ } => false
       }
-    NodeLocus { anchor: _ } => false
-    SourcePortLocus { anchor: _, file: _, extent: _ } => false
-    InvariantPortLocus { anchor: _, invariant: _ } => false
-    DeclarationLocus { declaration: _ } => false
+    WholeFile => false
   }
 }
 
