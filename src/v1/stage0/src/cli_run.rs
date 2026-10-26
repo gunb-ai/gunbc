@@ -35058,12 +35058,14 @@ pub fn run_regen_round_cost(
     receipt_rel: &str,
     source_roots: &[String],
     affected_scope: bool,
+    base_mirror: bool,
 ) -> Result<RegenRoundCostOutcome, String> {
     let outcome = required_regen_host::run_regen_round_cost(
         candidate_dir_rel,
         receipt_rel,
         source_roots,
         affected_scope,
+        base_mirror,
     )?;
     entry_resolve::shared_index_residency_control()
         .map_err(|e| format!("regen-round-cost refused: {e}"))?;

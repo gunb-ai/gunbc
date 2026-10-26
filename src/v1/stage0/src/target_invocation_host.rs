@@ -5631,10 +5631,14 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
         message: format!("regen-round-cost: subject unreached: {detail}"),
     };
     let roots = self_host_source_roots();
+    // NOT a heal round: an instrument prices a round on the checkout it runs on, so it asks for
+    // no base mirror and its receipt renders no base-mirror line. Which authority a round seeds
+    // from is decided by the CALLER's context, never by whether something failed.
     let round = match cli_run::run_regen_round_cost(
         "target/stage0-regen-candidate",
         "target/stage0-regen-receipt.json",
         &roots,
+        false,
         false,
     ) {
         Ok(round) => round,
