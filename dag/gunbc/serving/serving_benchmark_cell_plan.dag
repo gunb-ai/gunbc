@@ -1,7 +1,7 @@
 module gunbc.serving.serving_benchmark_cell_plan
 
 import std.types { List, NonEmptyStr, String }
-import std.measure { Mebibyte }
+import std.measure { Mebibyte, Minute }
 import std.nat { Nat }
 import product.host_identity { HostIdentity }
 import extdeps.docker { DockerMount }
@@ -40,7 +40,9 @@ type ServingBenchmarkCellPlan {
   kit: ServingKitInput
   kit_model_name: NonEmptyStr
   kit_ctx: Nat
-  kit_minutes: Nat
+  // A duration, so the carrier carries the unit; the kit's positional argv word converts it with
+  // minute_count at the command boundary (serving_benchmark_run.dag), never from the field's name.
+  kit_duration: Minute
   sampler_image: NonEmptyStr
   // A GPU whose device memory in use is above this before the engine starts, or after it is removed,
   // is held by something else.

@@ -2,7 +2,7 @@ module extdeps.nvidia.system_management_interface
 
 import std.types { NonEmptyStr, Bool, Int, List, Unit, String }
 import std.nat { Nat }
-import std.measure { Mebibyte, mebibyte, Milliwatt, milliwatt, Hertz, hertz, mega_factor, Celsius, celsius, Microsecond, microsecond, micro_per_unit, milli_per_unit, Bandwidth, bandwidth, milliwatt_count, hertz_count }
+import std.measure { Mebibyte, mebibyte, Milliwatt, milliwatt, Hertz, hertz, mega_factor, Celsius, celsius, Microsecond, microsecond, micro_per_unit, milli_per_unit, Bandwidth, bandwidth, milliwatt_count, hertz_count, Millisecond, millisecond, Second, second, millisecond_count, second_count }
 import std.optional { Present, Absent }
 import extdeps.numeric.base16 { base16_word_value }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_unix_seconds_at, iso8601_seconds_since_midnight }
@@ -287,6 +287,20 @@ fn parse_compute_apps(text: String) -> NvidiaComputeAppsRead {
 data nvidia_smi_gpu_identity_fields: String = "index,uuid,name,vbios_version,driver_version,memory.total,power.limit,pcie.link.gen.max,pcie.link.width.max"
 
 data nvidia_smi_gpu_sample_fields: String = "timestamp,uuid,power.draw,clocks.sm,clocks.mem,temperature.gpu,clocks_event_reasons.active,pcie.link.gen.gpucurrent,pcie.link.width.current"
+
+// THE TWO SAMPLER COMMANDS, RENDERED WHERE THEIR FLAGS ARE DOCUMENTED. A sampler's cadence is a
+// duration on the std.measure axis; `nvidia-smi`'s own words (`-lms` takes milliseconds, dmon's `-d`
+// takes whole seconds) are rendered here, never spelled as string literals inside a gunbc instrument.
+// The version pins the cadence (gunbc.serving.serving_benchmark), so a run's rows carry the rate they
+// were sampled at.
+
+fn nvidia_smi_gpu_sample_command(fields: String, interval: Millisecond, out_path: String) -> List<String> {
+  ["nvidia-smi", concat("--query-gpu=", fields), "--format=csv,noheader,nounits", "-lms", to_string(millisecond_count(m: interval)), "-f", out_path]
+}
+
+fn nvidia_smi_dmon_pcie_command(interval: Second, out_path: String) -> List<String> {
+  ["nvidia-smi", "dmon", "-s", "t", "-o", "DT", "-d", to_string(second_count(s: interval)), "-f", out_path]
+}
 
 type NvidiaSmiGpuIdentity {
   index: Nat

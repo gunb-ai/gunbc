@@ -3,7 +3,7 @@ module gunbc.serving.strata_ada_pair_cell
 import std.types { List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.content_hash { Sha256Digest }
-import std.measure { token_count, mebibyte, positive_slot_count, positive_measure_count }
+import std.measure { token_count, mebibyte, positive_slot_count, positive_measure_count, minute }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import extdeps.docker { BindMount }
 import extdeps.strata.serve_flags {
@@ -64,7 +64,7 @@ data srv3_strata_ada_pair_plan: ServingBenchmarkCellPlan = ServingBenchmarkCellP
   // tools/gpu-bench/runs/v4-smoke-srv3-strata.jsonl): ~0.795 tokens per CTX unit, so 250,900 aims at the
   // version's 199,466-token context. Admission's band, not this estimate, decides whether it landed.
   kit_ctx: 250900,
-  kit_minutes: 120,
+  kit_duration: minute(count: 120),
   // ubuntu:24.04 by its multi-arch index digest (Docker Hub, read 2026-10-25); the NVIDIA container
   // toolkit injects nvidia-smi from the host driver, so the sampler needs no CUDA image.
   sampler_image: "ubuntu@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac" as NonEmptyStr,

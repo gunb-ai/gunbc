@@ -4,7 +4,7 @@ import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { mebibyte_count, byte_size, kibibyte_count, token_count_value, milli_tokens_per_second_count, events_per_hour_count, millicore_count, byte_size_count, microsecond_count }
+import std.measure { mebibyte_count, byte_size, kibibyte_count, token_count_value, milli_tokens_per_second_count, events_per_hour_count, millicore_count, byte_size_count, microsecond_count, minute_count }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.docker { DockerMount, BindMount }
@@ -18,6 +18,7 @@ import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
 import extdeps.nvidia.system_management_interface {
   NvidiaSmiGpuIdentity, NvidiaSmiIdentityRowsParsed, NvidiaSmiIdentityRowUnparsed, NvidiaSmiSampleRowsParsed, NvidiaSmiSampleRowUnparsed, NvidiaSmiPcieRowsParsed, NvidiaSmiPcieRowUnparsed, NvidiaSmiMemoryUsedRowsParsed, NvidiaSmiMemoryUsedRowUnparsed, nvidia_smi_identity_rows, nvidia_smi_sample_rows, nvidia_smi_memory_used_rows,
   nvidia_smi_dmon_pcie_rows, nvidia_smi_gpu_identity_fields, nvidia_smi_gpu_sample_fields,
+  nvidia_smi_gpu_sample_command, nvidia_smi_dmon_pcie_command,
   NvidiaSmiGpuMemoryUsed, nvidia_smi_gpu_memory_used_fields,
 }
 import extdeps.strata.serve_flags { strata_serve_flag_words }
@@ -207,9 +208,9 @@ fn run_world(cgroup_dir: String, inputs: PinnedInputs) -> RunEvidence {
   let rounds = count(serving_benchmark_run_version.workload.active_levels) * (serving_benchmark_run_version.workload.warmup_rounds_per_level + serving_benchmark_run_version.workload.rounds_per_level)
   let levels = join(map(serving_benchmark_run_version.workload.active_levels, n => to_string(n)), ",")
   let gpu_sampler = create(s: spec(name: sb_gpu_sampler_name(), image: serving_benchmark_run_plan.sampler_image, gpus: true, mounts: [], env: [env(name: "TZ", value: "UTC")],
-    command: ["nvidia-smi", concat("--query-gpu=", nvidia_smi_gpu_sample_fields), "--format=csv,noheader,nounits", "-lms", "500", "-f", "/tmp/gpu.csv"]))
+    command: nvidia_smi_gpu_sample_command(fields: nvidia_smi_gpu_sample_fields, interval: serving_benchmark_run_version.gpu_sample_interval, out_path: "/tmp/gpu.csv")))
   let pcie_sampler = create(s: spec(name: sb_pcie_sampler_name(), image: serving_benchmark_run_plan.sampler_image, gpus: true, mounts: [], env: [env(name: "TZ", value: "UTC")],
-    command: ["nvidia-smi", "dmon", "-s", "t", "-o", "DT", "-d", "1", "-f", "/tmp/pcie.txt"]))
+    command: nvidia_smi_dmon_pcie_command(interval: serving_benchmark_run_version.pcie_sample_interval, out_path: "/tmp/pcie.txt")))
   let kit = create(s: spec(name: sb_kit_name(), image: inputs.kit_reference, gpus: false,
     mounts: [BindMount { host_path: cgroup_dir, container_path: sb_engine_cgroup_mount(), readonly: true }],
     env: [
@@ -219,7 +220,7 @@ fn run_world(cgroup_dir: String, inputs: PinnedInputs) -> RunEvidence {
       env(name: "ROUNDS", value: to_string(rounds)),
       env(name: "RUN_ID", value: sb_run_id()),
     ],
-    command: concat(inputs.kit_command, [sb_engine_url(), "x", serving_benchmark_run_plan.kit_model_name as String, "/tmp/run.jsonl", to_string(serving_benchmark_run_plan.kit_ctx), to_string(serving_benchmark_run_plan.kit_minutes), levels])))
+    command: concat(inputs.kit_command, [sb_engine_url(), "x", serving_benchmark_run_plan.kit_model_name as String, "/tmp/run.jsonl", to_string(serving_benchmark_run_plan.kit_ctx), to_string(minute_count(m: serving_benchmark_run_plan.kit_duration)), levels])))
   if gpu_sampler != 0 || pcie_sampler != 0 || kit != 0 { RunEvidenceFailed { step: "create samplers and kit" } } else {
     let s1 = DockerCli.Start(docker: sb_docker(), name: sb_gpu_sampler_name())
     let s2 = DockerCli.Start(docker: sb_docker(), name: sb_pcie_sampler_name())
