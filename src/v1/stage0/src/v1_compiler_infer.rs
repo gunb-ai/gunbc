@@ -13266,7 +13266,11 @@ pub fn infer_call_arguments_generic_pass(
                 let __lam_lbl = type_node_label(__lam, scope.type_env.source_indices.clone());
                 let __ac = format!("{:?}", __lbl_a);
                 let __child_lbls: Vec<String> = { let ch = crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()).children.clone(); ch.iter().map(|c| type_node_label(c.clone(), scope.type_env.source_indices.clone())).collect() };
-                eprintln!("DIAGFOLD mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} expected={} actual={:?} children={:?} lambda_ty={} subst_keys={:?}", scope.module_name, scope.caller_decl_name, pair.0, __aname, __islam, __lbl_f, __lbl_e, __ac, __child_lbls, __lam_lbl, st.subst.keys().cloned().collect::<Vec<_>>());
+                let __ac = format!("{:?}", __lbl_a);
+                let __child_lbls: Vec<String> = { let ch = crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()).children.clone(); ch.iter().map(|c| type_node_label(c.clone(), scope.type_env.source_indices.clone())).collect() };
+                let __subst_pairs: Vec<String> = st.subst.iter().map(|(k,v)| format!("{}={}", k, type_node_label(v.clone(), scope.type_env.source_indices.clone()))).collect();
+                let __init_pairs: Vec<String> = init_subst.iter().map(|(k,v)| format!("{}={}", k, type_node_label(v.clone(), scope.type_env.source_indices.clone()))).collect();
+                eprintln!("DIAGFOLD mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} expected={} actual={:?} children={:?} subst={:?} init={:?}", scope.module_name, scope.caller_decl_name, pair.0, __aname, __islam, __lbl_f, __lbl_e, __ac, __child_lbls, __subst_pairs, __init_pairs);
             }
             let next_subst = if !has_formal.clone() {
                 st.subst.clone()
