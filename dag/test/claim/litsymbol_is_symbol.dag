@@ -102,3 +102,19 @@ test fn symbol_at_float_refuses() -> Bool {
 test fn symbol_at_json_refuses() -> Bool {
   blocking_in_class(source: "module litsymbol.atjson\nfn f() -> Json { ^tag }\n", wanted_class: "TypeMismatch") >= 1
 }
+
+// ── THE MINT IS THE MINTED CARRIER: discriminators for what the hand-written Rust unit test used
+//    to hold (gunbc#14082 review 86810 advisory) ──
+//
+// If infer_literal_node regressed LitSymbol to string_type, `two_carets_compare` would still pass
+// and every refusal row above would still refuse, so the mint would silently become a string. These
+// two rows close that: a caret and a quoted string are DIFFERENT types at a comparison, while two
+// carets are the same type. The control (string vs string) keeps the pair from meaning "any
+// comparison is refused".
+test fn caret_is_not_string_at_comparison() -> Bool {
+  blocking_in_class(source: "module litsymbol.cmp_str\nfn f() -> Bool { ^a == \"a\" }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn string_against_string_comparison_is_accepted() -> Bool {
+  blocking(source: "module litsymbol.cmp_str_control\nfn f() -> Bool { \"a\" == \"a\" }\n") == 0
+}
