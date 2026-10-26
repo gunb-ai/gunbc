@@ -1,0 +1,38 @@
+module fixtures.lambda_hof_param_instantiation.probe
+
+import std.types { String, Int, Bool, List, NonEmptyStr, Optional, Pair }
+import std.list { distinct_by_key, duplicated_by_key, first_duplicate_by_key, list_map, list_sort_by_key }
+
+// p1 — THE RED SHAPE, verbatim from gunbc.durable_cas_file_store cas_slot_keys: a fold
+// accumulator is passed as the element-list argument of a generic HOF whose lambda CASTS
+// its parameter. Before the fix the parameter is unsolved when the cast is checked and the
+// emitter fabricates `panic!("unsupported cast from T to String")`.
+fn p1_red(keys: Cons<NonEmptyStr, List<NonEmptyStr>>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: keys, key: fn(k) { k as String })
+}
+
+// p2 — the same call with the list spelled through the List alias: the control for p1.
+fn p2_ctl(keys: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: keys, key: fn(k) { k as String })
+}
+
+// p3 — a lambda that FIELD-READS its parameter through a generic HOF formal.
+data probe_point {
+  name: NonEmptyStr
+  weight: Int
+}
+
+fn p3_field(keys: List<probe_point>) -> List<probe_point> {
+  distinct_by_key(xs: keys, key: fn(p) { p.name as String })
+}
+
+// p4 — a generic HOF whose lambda reads a field of its parameter and the element type is
+// carried by the accumulator spelling, as in the store's fold.
+fn p4_field_via_cons(keys: Cons<probe_point, List<probe_point>>) -> List<probe_point> {
+  duplicated_by_key(xs: keys, key: fn(p) { p.name as String })
+}
+
+// p5 — a two-parameter generic HOF: the lambda's element is the fold-shaped accumulator.
+fn p5_fold_like(cons: Int, keys: Cons<NonEmptyStr, List<NonEmptyStr>>) -> List<String> {
+  list_map(xs: keys, f: fn(k) { k as String })
+}
