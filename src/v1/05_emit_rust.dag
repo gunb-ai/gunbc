@@ -2749,6 +2749,8 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                             rust_serde_error_policy(message: concat("wire_contract: ", message))
                           TypeVariable { id: _ } =>
                             rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
+                          ArgumentsResolved =>
+                            rust_serde_error_policy(message: "wire_contract: initializer type is an applied declaration whose arguments are resolved but whose expansion was not rebuilt")
                         }
                     }
                 }
@@ -2777,6 +2779,8 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                         rust_serde_error_policy(message: concat("wire_contract: ", message))
                       TypeVariable { id: _ } =>
                         rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
+                      ArgumentsResolved =>
+                        rust_serde_error_policy(message: "wire_contract: initializer type is an applied declaration whose arguments are resolved but whose expansion was not rebuilt")
                     }
                 }
             }

@@ -1032,6 +1032,18 @@ fn node_with_children(n: Node, children: List<Node>) -> Node {
   }
 }
 
+fn node_with_children_params_inferred_basis(n: Node, children: List<Node>, params: List<Node>, inferred: InferredNode?) -> Node {
+  Node {
+    occurrence_identity: OccurrenceSynthetic, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    children: children, connective: n.connective, params: params,
+    inferred: inferred, return_cardinality: n.return_cardinality, uses: n.uses,
+    body: n.body, transport: n.transport, properties: n.properties,
+    type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+    has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
+    module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
+  }
+}
+
 fn node_with_inferred(n: Node, inferred: InferredNode?) -> Node {
   Node {
     occurrence_identity: OccurrenceSynthetic, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
@@ -1211,7 +1223,14 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
 // a different fact with its own reported reason.
 fn declaration_substitution_basis(n: Node, env: TypeEnv, generic_names: List<String>) -> Node {
   let children = n.children |> map(ch => declaration_substitution_basis(n: ch, env: env, generic_names: generic_names))
-  let with_children = node_with_children(n: n, children: children)
+  // A callable denotes its parameters in params and its return in a Resolved inferred (make_callable_type),
+  // so a parameter leaf T inside fn(T, T) -> T is stamped through them as through any other position.
+  let params = n.params |> map(p => declaration_substitution_basis(n: p, env: env, generic_names: generic_names))
+  let stamped_inferred = match n.inferred {
+    Present { value: Resolved { node: rt } } => Present { value: Resolved { node: declaration_substitution_basis(n: rt, env: env, generic_names: generic_names) } }
+    _ => n.inferred
+  }
+  let with_children = node_with_children_params_inferred_basis(n: n, children: children, params: params, inferred: stamped_inferred)
   let name = authored_name_at(source_indices: env.source_indices, node: n)
   let generic_leaf = n.connective == NoConnective
     && (n.children |> count) == 0

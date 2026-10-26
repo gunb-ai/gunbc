@@ -50,6 +50,7 @@ fn inferred_fingerprint(value: InferredNode?) -> String {
     Present { value: TypeVariable { id } } => concat("TypeVariable:", id)
     Present { value: CompilerError { message: m } } => concat("CompilerError:", m)
     Present { value: Divergent } => "Divergent"
+    Present { value: ArgumentsResolved } => "ArgumentsResolved"
   }
 }
 

@@ -55,7 +55,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, 
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value,
   service_config_field_for_property_name, ServiceConfigField, SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
-  has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
+  has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable, ArgumentsResolved,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
@@ -143,7 +143,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
-  env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
+  env_with_type_variable_bindings, node_with_children_params_inferred_basis, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
   lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
@@ -177,7 +177,7 @@ import std.termination {
   OneStep
 }
 import std.algebra { FreeSemigroup, CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
-import v1.compiler.infer_resolve {
+import v1.compiler.infer_resolve { is_declaration_body, is_applied_declaration_carrier, generic_application_reapplied,
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
@@ -2173,7 +2173,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                         Node {
                           occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
                           children: sf.children, connective: sf.connective, params: sf.params,
-                          inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: si), subst: subst, source_indices: si) } },
+                          inferred: Present { value: Resolved { node: substitute_generics(n: stamp_field_type_from_decl_params(field_type: field_substitution_carrier(sf: sf, source_indices: si), serving_decl: decl, source_indices: si), subst: subst, source_indices: si) } },
                           return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                           transport: sf.transport, properties: sf.properties,
                           type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
@@ -11227,6 +11227,18 @@ fn field_base_is_in_flight_lambda_param(base: Node, scope: InferScope) -> Bool {
   }
 }
 
+// A type node is ground when no unsolved inference variable and no solver Unit placeholder (an Absent or
+// [] seed's element) occurs anywhere in it. An actual is denoted
+// (bound by its resolved type) only when ground; the empty-list placeholder is one such variable.
+fn type_node_is_ground(n: Node) -> Bool {
+  let own_ground = match n.inferred {
+    Present { value: TypeVariable { id: _ } } => false
+    Present { value: Resolved { node: inner } } => type_node_is_ground(n: inner)
+    _ => true
+  }
+  own_ground && !cast_source_is_solver_unit_placeholder(source_node: n) && (n.children |> all(c => type_node_is_ground(n: c)))
+}
+
 fn is_unsolved_empty_list_element(n: Node) -> Bool {
   match n.inferred {
     Present { value: TypeVariable { id: id } } => id == "empty_list_element"
@@ -11391,8 +11403,8 @@ fn alias_chain_generic_decl(env: TypeEnv, carrier: Node, target: Node) -> Node {
 // (alias_chain_target_after_args, and the record branch's re-substitution over an
 // unresolved-parameter field) did not check at all. The repair is construction before validation:
 // the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed
-// downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and
-// located, at the seam that owns both the declaration and the application. SCOPE, stated rather
+// downstream by any caller; and resolve_node_bounded states the refusal ONCE, typed and
+// located, where a type application resolves in any type position. SCOPE, stated rather
 // than implied: the refused population is exactly the state `dropped_args` already computed -- both
 // counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already
 // treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched.
@@ -11432,29 +11444,6 @@ fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_ar
   }
 }
 
-fn alias_chain_arity_diagnostics(carrier: Node, carrier_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
-  let type_args = carrier.children
-  if carrier_name == "" || (type_args |> count) == 0 || is_container_type(name: carrier_name) { [] }
-  else {
-    match lookup_type_by_name(env: env, name: carrier_name) {
-      Present { value: target } =>
-        let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
-        if alias_chain_type_arg_arity_mismatch(carrier: carrier, decl: decl, type_args: type_args) {
-          [make_error_node(
-            diagnostic: TypeArgumentArityMismatch {
-              type_name: carrier_name,
-              supplied: type_args |> count,
-              declared: decl.params |> count,
-              span: carrier.span
-            },
-            module_name: module_name
-          )]
-        } else { [] }
-      Absent => []
-    }
-  }
-}
-
 fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> Node {
   let type_args = carrier.children
   if type_args |> count == 0 { target }
@@ -11466,7 +11455,10 @@ fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> N
         let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
         if is_parameterized_alias {
           match decl.inferred {
-            Present { value: Resolved { node: alias_body } } => substitute_generics(n: alias_body, subst: subst, source_indices: env.source_indices)
+            // A parameterized alias body spells its formals as bare names; substitution keys on the declaration-parameter
+            // stamp alone, so the body is stamped through the one stamper before the arguments are bound.
+            Present { value: Resolved { node: alias_body } } =>
+              substitute_generics(n: stamp_field_type_from_decl_params(field_type: alias_body, serving_decl: decl, source_indices: env.source_indices), subst: subst, source_indices: env.source_indices)
             _ => target
           }
         } else {
@@ -11481,16 +11473,34 @@ fn alias_chain_carrier(n: Node) -> Node {
   else { structural_from_expanded_type(normed: n) }
 }
 
+// A generic application that already carries a Resolved target (a call result instantiated by
+// substitute_generics) holds the DECLARATION's body there, substituted by the CALLEE's spelled
+// parameter names, which are not the declaration's parameters: a permuting return type
+// (-> Pair<B, A>) captures them, and a callee whose names differ from the declaration's leaves the
+// body uninstantiated. The application's own type arguments against the declaration's parameter
+// identity are the only sound instantiation, so the carrier is rebuilt by the one construction of an
+// application (generic_declaration_application) from its ALREADY RESOLVED arguments: sending them
+// back through resolve_node_bounded would read them as authored type names. A parameterized alias
+// has no member body to apply, so its cache is dropped and the receiver settles as an authored use.
+// An applied declaration carrier is a REFERENCE to a generic declaration: its children are the type
+// arguments, it names the declaration it applies, and it is not the declaration node itself (whose
+// children are the declaration's own members, so a record with as many fields as the declaration has
+// parameters is indistinguishable from an application by shape). The distinction is the node's own
+// item kind, set by the producer: a declaration node is a ModuleItemTypeDeclaration, a reference is not.
+// A declaration body (the declaration itself, or an application's expansion) has the declaration's
+// MEMBERS as children, not type arguments: pairing a formal's arguments with them binds a parameter to a
+// field (SortKeyed<T, K> against a body of two fields bound T to `key`), so the descent never pairs them.
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
-  let peel_result = if needs_alias_field_expansion(n: n, env: env) {
-    peel_alias_once_for_field_access(n: n, env: env, module_name: module_name)
+  let application = generic_application_reapplied(n: n, env: env)
+  let peel_result = if needs_alias_field_expansion(n: application, env: env) {
+    peel_alias_once_for_field_access(n: application, env: env, module_name: module_name)
   } else {
-    NodeResolveResult { resolved: n, diagnostics: [] }
+    NodeResolveResult { resolved: application, diagnostics: [] }
   }
   let peeled = peel_result.resolved
   let carrier = alias_chain_carrier(n: peeled)
   let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
-  let own_diags = concat(peel_result.diagnostics, alias_chain_arity_diagnostics(carrier: carrier, carrier_name: carrier_name, env: env, module_name: module_name))
+  let own_diags = peel_result.diagnostics
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
   let is_record = structural.connective == Conj || structural.connective == Disj
   if is_record {
@@ -15349,6 +15359,22 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+// Applied at a container's element position only (a bare top-level actual, such as an Absent or [] fold seed,
+// binds as authored: its resolved type carries the Unit placeholder, not a solution).
+// An actual that is a Resolved wrapper (a kernel container's element position, make_container_type)
+// denotes the type it resolves to, not the wrapper node, which is named for the container's own
+// parameter and so reads back as the callee's generic when bound as its solution. An Arrow actual
+// denotes itself (child_type_node), and so does any actual whose resolved type is not ground (an unsolved
+// inference variable occurs in it, e.g. the empty-list placeholder): denoting it would bind the callee
+// generic to the unsolved variable and lose the later solve (self-host source_root_eval: 82 Unit
+// diagnostics at every [] fold seed).
+fn unify_denoted_actual(actual: Node) -> Node {
+  match actual.inferred {
+    Present { value: Resolved { node: rt } } => if actual.connective == Arrow || !type_node_is_ground(n: rt) { actual } else { rt }
+    _ => actual
+  }
+}
+
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
@@ -15361,7 +15387,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
-  } else if formal.children |> count > 0 && formal.connective == actual.connective && (formal.children |> count) == (actual.children |> count) {
+  } else if formal.children |> count > 0 && formal.connective == actual.connective && (formal.children |> count) == (actual.children |> count) && !is_declaration_body(n: actual) {
     unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
 }
@@ -15388,7 +15414,7 @@ fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_n
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: f, actual: unify_denoted_actual(actual: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
         Absent => acc
       }
@@ -15560,24 +15586,23 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
         Absent => n
       }
     _ =>
-  let nm = type_node_label(n: n, source_indices: source_indices)
-  let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
-  if is_bare {
-    match map_get(subst, nm) {
-      Present { value: c } => preserve_outer_optional_cardinality(outer: n, inner: c)
-      Absent => n
-    }
+  // A leaf type name is never a substitution key: a type parameter is substituted only through its
+  // declaration-parameter identity (the TypeVariable arm above), so a leaf whose spelling happens to
+  // equal a parameter's name (a field label, an unrelated type) is left as authored.
+  let is_leaf = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
+  if is_leaf {
+    n
   } else {
 
     let new_children = n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices))
     let new_params = n.params |> map(p => substitute_generics_apply(n: p, subst: subst, source_indices: source_indices))
-    let new_inferred = match n.inferred {
-      Present { value: Resolved { node: rt } } =>
-        let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
-        if rc_ptr_eq(new_rt, rt) { n.inferred }
-        else { Present { value: Resolved { node: new_rt } } }
-      _ => n.inferred
-    }
+    // Only an applied declaration carrier (a declaration identity over argument children) caches an
+    // EXPANSION in its Resolved target; any other node's Resolved is its own type and substitutes. The
+    // cached expansion is spelled in the declaration's
+    // parameter names, which the callee's names are not: rewriting it captures them (a permuting
+    // return -> Pair<B, A>) or leaves a stale body. The substituted children carry the instantiation,
+    // so the cache is dropped and the reader settles through them.
+    let new_inferred = if is_applied_declaration_carrier(n: n) { generics_substituted_cache_dropped(inferred: n.inferred) } else { substitute_generics_resolved(n: n, subst: subst, source_indices: source_indices) }
     if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
       n
     } else {
@@ -15594,6 +15619,23 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
       }
     }
   }
+  }
+}
+
+fn substitute_generics_resolved(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> InferredNode? {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
+      if rc_ptr_eq(new_rt, rt) { n.inferred }
+      else { Present { value: Resolved { node: new_rt } } }
+    _ => n.inferred
+  }
+}
+
+fn generics_substituted_cache_dropped(inferred: InferredNode?) -> InferredNode? {
+  match inferred {
+    Present { value: Resolved { node: _ } } => Present { value: ArgumentsResolved }
+    _ => inferred
   }
 }
 
@@ -16653,20 +16695,16 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
   } else { binding }
 }
 
+// A generic-parameter reference is stamped with the parameter's identity (TypeVariable) wherever a type
+// expression holds it: as a bare field type, under type arguments (children), and inside a callable
+// (params, and the return carried in a Resolved inferred). Substitution keys on that stamp alone, so a
+// position the stamp misses is a position substitution cannot reach.
 fn stamp_field_type_from_decl_params(field_type: Node, serving_decl: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if (serving_decl.params |> count) == 0 || field_type.inferred != none {
+  if (serving_decl.params |> count) == 0 {
     field_type
   } else {
-    let is_bare = (field_type.children |> count) == 0 && field_type.connective == NoConnective && (field_type.params |> count) == 0
-    if is_bare {
-      let nm = type_node_label(n: field_type, source_indices: source_indices)
-      let is_param = fold(
-        serving_decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
-        init: false,
-        f: (acc, pn) => acc || pn == nm
-      )
-      if is_param { node_with_inferred(n: field_type, inferred: Present { value: TypeVariable { id: nm } }) } else { field_type }
-    } else { field_type }
+    let param_names = serving_decl.params |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, generic_param_name_at(n: p, source_indices: source_indices), true))
+    stamp_type_param_occurrences(n: field_type, param_names: param_names, source_indices: source_indices)
   }
 }
 
@@ -16681,7 +16719,13 @@ fn stamp_type_param_occurrences(n: Node, param_names: Map<String, Bool>, source_
       }
     } else { n }
   } else {
-    node_with_children(n: n, children: n.children |> map(c => stamp_type_param_occurrences(n: c, param_names: param_names, source_indices: source_indices)))
+    let children = n.children |> map(c => stamp_type_param_occurrences(n: c, param_names: param_names, source_indices: source_indices))
+    let params = n.params |> map(p => stamp_type_param_occurrences(n: p, param_names: param_names, source_indices: source_indices))
+    let inferred = match n.inferred {
+      Present { value: Resolved { node: rt } } => Present { value: Resolved { node: stamp_type_param_occurrences(n: rt, param_names: param_names, source_indices: source_indices) } }
+      _ => n.inferred
+    }
+    node_with_children_params_inferred_basis(n: n, children: children, params: params, inferred: inferred)
   }
 }
 

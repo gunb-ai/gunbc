@@ -27,7 +27,7 @@ import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 import std.coercion { SubtractionRefinement, SubtractionStaysInOperandAlgebra, SubtractionEscapesTo, SubtractionRefinementAmbiguous, dag_subtraction_refinement }
 
 import v1.std.core { Unmarked,
-  Node, make_param_node, param_node_type_expr,
+  Node, make_param_node, param_node_type_expr, InferredNode, ArgumentsResolved,
   find_child_named, NewlineIndex,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
@@ -75,7 +75,13 @@ fn resolved_type(n: Node) -> Node {
 // `function 'r' not found in scope`. An Arrow child denotes itself.
 // gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
 fn child_type_node(ch: Node) -> Node {
-  if ch.inferred != none && (ch.connective != Arrow) { resolved_type(n: ch) } else { ch }
+  // An applied carrier whose expansion cache was dropped (ArgumentsResolved) carries no Resolved type
+  // and denotes itself, as an unannotated type argument does.
+  let cache_dropped = match ch.inferred {
+    Present { value: ArgumentsResolved } => true
+    _ => false
+  }
+  if ch.inferred != none && (ch.connective != Arrow) && !cache_dropped { resolved_type(n: ch) } else { ch }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {

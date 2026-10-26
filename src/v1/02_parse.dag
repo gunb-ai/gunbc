@@ -533,6 +533,7 @@ fn absorbed_subtree_into(acc: Map<OccurrenceId, OccurrenceId>, node: Node, into:
     Present { value: CompilerError { message: _, span: _ } } => with_annotation
     Present { value: TypeVariable { id: _ } } => with_annotation
     Present { value: Divergent } => with_annotation
+    Present { value: ArgumentsResolved } => with_annotation
     Absent => with_annotation
   }
   match node.match_pattern {
@@ -1682,6 +1683,7 @@ fn occurrence_allocator_after_inferred_node(
     Present { value: CompilerError { message: _, span: _ } } => alloc
     Present { value: TypeVariable { id: _ } } => alloc
     Present { value: Divergent } => alloc
+    Present { value: ArgumentsResolved } => alloc
     Absent => alloc
   }
 }

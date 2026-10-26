@@ -212,3 +212,9 @@ data applied_alias_argument_agree_source: String = "module probe_applied_alias_a
 test fn w_applied_alias_argument_agreement_is_accepted() -> Bool {
   refusal_count(source: applied_alias_argument_agree_source) == 0
 }
+
+data free_monoid_alias_element_source: String = "module probe_alias_free_monoid_element\nimport std.types { String, List }\nimport std.algebra { FreeMonoid, list_snoc_item }\ntype Words = FreeMonoid<String>\nfn p(groups: List<Words>, item: Words) -> List<Words> { list_snoc_item(xs: groups, item: item) }\n"
+
+test fn w_free_monoid_alias_element_binds_the_generic_item() -> Bool {
+  refusal_count(source: free_monoid_alias_element_source) == 0
+}

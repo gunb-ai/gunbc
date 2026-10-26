@@ -1,10 +1,16 @@
 module gunbc.instruments.native_emission_controls_alias
 
-import std.types { String }
+import std.types { String, List }
 import std.algebra { Empty, FreeMonoid, list_snoc_item }
 
 type ControlWords = FreeMonoid<String>
 
 fn control_words_of(name: String) -> ControlWords {
   list_snoc_item(Empty, name)
+}
+
+// A list whose ELEMENT is the alias (the dependency_demand_census list_snoc_item shape): the generic callee's T binds the
+// alias element, and the item argument is the alias itself.
+fn control_words_groups_add(groups: List<ControlWords>, item: ControlWords) -> List<ControlWords> {
+  list_snoc_item(xs: groups, item: item)
 }

@@ -15,7 +15,7 @@ import v1.std.core {
   Node, param_node_name_at, param_node_type_expr,
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
   qualified_last_segment,
-  InferredNode, Resolved, TypeVariable,
+  InferredNode, Resolved, TypeVariable, ArgumentsResolved,
   Cardinality, Required,
   is_interpreter_blocking_diagnostic,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
@@ -57,7 +57,7 @@ import v1.compiler.infer_env {
   listed_import_required_bare_call_blocked
 }
 
-import v1.compiler.infer_resolve { fn_type_param_names, expand_nominal_alias_rhs }
+import v1.compiler.infer_resolve { fn_type_param_names, expand_nominal_alias_rhs, generic_application_reapplied }
 
 import v1.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -894,6 +894,13 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
       Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
+      // A substituted application dropped its cached expansion: the consumer rebuilds it from the arguments.
+      Present { value: ArgumentsResolved } =>
+        let reapplied = generic_application_reapplied(n: normed, env: env)
+        match reapplied.inferred {
+          Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
+          _ => normed
+        }
       _ => normed
     }
   } else if normed.connective == NoConnective && normed.children |> count == 0 {
