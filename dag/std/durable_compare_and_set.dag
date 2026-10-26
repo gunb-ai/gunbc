@@ -171,8 +171,9 @@ fn cas_unreadable_slot_detail(cause: CasUnreadableSlot) -> String {
 // generation space with the head it stopped at. Consumers prefix their own location; none folds an arm
 // away. Review 86411 of gunb-ai/gunbc#15105 found three local copies; two remain, each deleted for this one by a
 // named follow-up: gunbc.host.host_boot_attempt_admission cas_store_failure_text, where that module's import of this
-// one is next rewritten, and gunbc.auth.gcp_iam_bootstrap_journal journal_store_failure_text (which folds the
-// exhausted arm away), once that module's witnesses compile again.
+// one is next rewritten, and gunbc.auth.gcp_iam_bootstrap_journal journal_store_failure_text, which is a PREFIXED
+// variant rather than a copy (it prefixes two arms and hides the third behind a wildcard), once that module's
+// witnesses compile again.
 fn cas_store_failure_detail(cause: CasStoreFailure) -> String {
   match cause {
     CasSlotObservationRefused { cause: u } => cas_unreadable_slot_detail(cause: u)
