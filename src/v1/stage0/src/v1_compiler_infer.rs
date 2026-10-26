@@ -13262,7 +13262,7 @@ pub fn infer_call_arguments_generic_pass(
                 let __lbl_e = match expected.clone() { Some(e) => type_node_label(e, scope.type_env.source_indices.clone()), None => "<none>".to_string() };
                 let __aname = crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone());
                 let __islam = is_lambda_expr(crate::v1_std_core::arg_value(a.clone()));
-                let __lam = if __islam { lambda_callable_type(crate::v1_std_core::arg_value(a.clone())) } else { crate::v1_compiler_infer_method::type_variable_node("<n/a>".to_string()) };
+                let __lam = if __islam { lambda_callable_type(crate::v1_std_core::arg_value(a.clone())) } else { type_variable_node("<n/a>".to_string()) };
                 let __lam_lbl = type_node_label(__lam, scope.type_env.source_indices.clone());
                 eprintln!("DIAGFOLD {}:{} i={} arg={:?} has_formal={} is_lambda={} formal={} expected={} actual={} lambda_ty={} subst_keys={:?}", a.span.file.clone(), a.span.start_line, pair.0, __aname, has_formal, __islam, __lbl_f, __lbl_e, __lbl_a, __lam_lbl, st.subst.keys().cloned().collect::<Vec<_>>());
             }
