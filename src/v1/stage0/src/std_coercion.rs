@@ -678,7 +678,7 @@ pub fn unicode_scalar_unfold(s: String) -> Rc<Vec<i64>> {
 }
 
 pub fn unicode_scalar_fold(xs: Rc<Vec<i64>>) -> String {
-    text_of_chars(xs)
+    crate::std_host_text::text_of_chars(xs)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
