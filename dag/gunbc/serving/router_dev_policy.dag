@@ -1,7 +1,10 @@
 module gunbc.serving.router_dev_policy
 
 import std.optional { Optional, Present, Absent }
-import std.types { String, Int, Bool, List, Port }
+import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { uri_https, uri_wire }
+import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
 import std.measure { second, second_count, ByteSize, byte_size_count, mebibyte, mebibyte_to_byte_size, Second }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
@@ -242,11 +245,11 @@ fn router_dev_access_lines() -> List<String> {
     "local function serve(pick, session)",
     "  ngx.ctx.counted = pick.name",
     "  ngx.ctx.route = pick",
-    "  state:set('seen:' .. session, ngx.now(), " + to_string(second_count(s: router_dev_binding_ttl())) + "),
+    "  state:set('seen:' .. session, ngx.now(), " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
     "  ngx.req.set_header('X-Pool-Session', session)",
     "  ngx.req.set_header('X-Session-Id', session)",
     "  if pick.path_prefix and pick.path_prefix ~= '' then ngx.req.set_uri(pick.path_prefix .. ngx.var.uri, false) end",
-    "  state:set('session:' .. session, pick.name, " + to_string(second_count(s: router_dev_binding_ttl())) + "),
+    "  state:set('session:' .. session, pick.name, " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
     // The dashboard sends the effort inside chat_template_kwargs, which is where vLLM and Strata read
     // it; a name the target model does not implement is a 400 from that engine, so the row's dialect is
     // applied at the same place the engine would read it. An unmapped name is left alone and the engine
