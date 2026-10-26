@@ -2,7 +2,7 @@ module gunbc.serving.router_dev_policy
 
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
-import std.measure { second }
+import std.measure { second, ByteSize, mebibyte, mebibyte_to_byte_size }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -231,6 +231,11 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
   ] }
 }
 
+// The state dictionary's capacity, as the std.measure memory carrier: 10 MiB. The directive's own
+// rendering (LuaSharedDict -> byte_size_count) already carries how a size is written; spelling "10m" here
+// would be a second, informal way of stating a size the model has as ByteSize (§3).
+fn router_state_dict_size() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 10)) }
+
 fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: site.state_dir) { Absent => RouterDevConfigRefused { token: "state_dir" } Present { value: _ } =>
   match tok(text: site.alias) { Absent => RouterDevConfigRefused { token: "alias" } Present { value: _ } =>
@@ -239,7 +244,6 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: site.state_dir + "/tls/key.pem") { Absent => RouterDevConfigRefused { token: "certkey" } Present { value: certkey } =>
   match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => RouterDevConfigRefused { token: "ca" } Present { value: ca } =>
   match tok(text: "router_state") { Absent => RouterDevConfigRefused { token: "dict" } Present { value: dict } =>
-  match tok(text: "10m") { Absent => RouterDevConfigRefused { token: "dict_size" } Present { value: dict_size } =>
   match tok(text: "/router/stats") { Absent => RouterDevConfigRefused { token: "stats" } Present { value: stats } =>
   match tok(text: "/v1/models") { Absent => RouterDevConfigRefused { token: "models" } Present { value: models } =>
   match tok(text: "/v1/") { Absent => RouterDevConfigRefused { token: "v1" } Present { value: v1 } =>
@@ -258,7 +262,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         AccessLogOff,
         ClientMaxBodySize { size: router_request_body_limit() },
         ClientBodyBufferSize { size: router_request_body_buffer() },
-        LuaSharedDict { name: dict, size: dict_size },
+        LuaSharedDict { name: dict, size: router_state_dict_size() },
         LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, alias: site.alias) },
         ServerBlock { body: [
           ListenTlsOn { address: addr, port: site.listen_port },
@@ -348,24 +352,24 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card", retiring_names: [] }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [] },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
-    // h11-a16 (x86): one engine per GPU, named by its PCI bus (indices renumber when a card is added). Buses
-    // 05-08 and 85-88 are the two A16 boards; c1 is an RTX 2000 Ada. A single 16 GB engine serves ~10-13 warm
-    // tok/s at 200k, so cap 2. Retiring names count old-worker turns during a graceful rename;
-    // old workers decrement their original counters when those requests finish.
-    RouterDevUpstream { name: "h11-05", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-0"] },
-    RouterDevUpstream { name: "h11-06", scheme: UpstreamHttp, host: "192.168.1.202", port: 18082, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-1"] },
-    RouterDevUpstream { name: "h11-07", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-2"] },
-    RouterDevUpstream { name: "h11-08", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-3"] },
-    RouterDevUpstream { name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-4"] },
-    RouterDevUpstream { name: "h11-86", scheme: UpstreamHttp, host: "192.168.1.202", port: 18086, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
-    RouterDevUpstream { name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
-    RouterDevUpstream { name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
-    RouterDevUpstream { name: "h11-c1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18089, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
+    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [] },
+    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-c1"] },
+    // h11-a16 (x86): one engine per GPU, named by its PCI bus. The current buses are 85, 86, 87, 88, c5, c6,
+    // c7, c8 on ports 18081-18088; the RTX 2000 Ada (c1) was removed, and its in-flight turns still drain
+    // under srv3-strata's retiring list. A single 16 GB engine serves ~10-13 warm tok/s at 200k, so cap 2.
+    // Retiring names count old-worker turns during a graceful rename; old workers decrement their original
+    // counters when those requests finish, so a port's retiring list follows the engine that answers there.
+    RouterDevUpstream { name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-0", "h11-05"] },
+    RouterDevUpstream { name: "h11-86", scheme: UpstreamHttp, host: "192.168.1.202", port: 18082, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-1", "h11-06"] },
+    RouterDevUpstream { name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-2", "h11-07"] },
+    RouterDevUpstream { name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-3", "h11-08"] },
+    RouterDevUpstream { name: "h11-c5", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-4", "h11-85"] },
+    RouterDevUpstream { name: "h11-c6", scheme: UpstreamHttp, host: "192.168.1.202", port: 18086, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-86"] },
+    RouterDevUpstream { name: "h11-c7", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-87"] },
+    RouterDevUpstream { name: "h11-c8", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-88"] },
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router.
     // cap is unused for overflow: the pool's engines admit work and expose their own queue to the bidder.
-    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net", retiring_names: [] }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [] },
+    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [] },
   ]
 }
 
