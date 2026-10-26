@@ -1086,12 +1086,13 @@ fn bracket_holder_leaf(relative_path: String) -> String {
 // instance, so what comes out is exactly the name the bracket speaks in its argv and refusals.
 fn bracket_holder_unit_of_leaf(leaf: String) -> BracketHolder
 {
-  // A leaf that is empty after the slashes are trimmed is a job sitting in the slice root (or the root
-  // cgroup) -- it occupies no unit this pass manages, exactly like a dispatcher job. Named here rather
-  // than cast to a non-empty string and handed to the parser, which would turn a decidable case into a
-  // cast that has nothing to name.
+  // An empty leaf is a job whose unified line carries nothing but slashes: it sits in the root cgroup and
+  // occupies no unit this pass manages, exactly like a dispatcher job. Named here rather than cast to a
+  // non-empty string and handed to the parser, which would turn a decidable case into a cast with nothing
+  // to name. (A job in a SLICE root is not this case: the leaf fold keeps the slice's own name, and the
+  // parser calls it not-a-runner-unit.)
   if leaf == "" {
-    HolderNotOnSubject { why: "the job's own cgroup has no leaf unit: it runs at a slice root, not in a runner slot" }
+    HolderNotOnSubject { why: "the job's own cgroup has no leaf unit: it runs at the root cgroup, not in a runner slot" }
   } else {
     match read_runner_unit_name(observed: leaf as NonEmptyStr) {
       NotARunnerUnit { observed: o } => HolderNotOnSubject { why: join(["the cgroup leaf '", o as String, "' is not an actions-runner@ unit: this job runs outside every runner slot of the subject host, so there is nothing to exclude"], "") }
