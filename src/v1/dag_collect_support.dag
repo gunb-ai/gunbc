@@ -165,7 +165,7 @@ fn dag_collect_fp_memo_reset() -> Bool {
   true
 }
 
-fn dag_node_surface_fingerprint_memo(node: Node) -> String {
+fn dag_node_surface_fingerprint_memo(node: Node) -> Fnv1a64StructuralDigestHex {
   dag_node_surface_fingerprint(node: node)
 }
 
