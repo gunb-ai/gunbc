@@ -84,6 +84,7 @@ type HeaderSource
 // consumer's code, passed in as lines.
 type LuaPhase
   = | AccessPhase
+  | ContentPhase
   | LogPhase
 
 type LocationMatch
@@ -109,6 +110,7 @@ type NginxDirective
   | InternalLocationOnly
   | ProxyMethodPost
   | LuaPhaseBlock { phase: LuaPhase, lines: List<String> }
+  | LuaSharedDict { name: NginxToken, size: ByteSize }
   | ClientMaxBodySize { size: ByteSize }
   | ClientBodyBufferSize { size: ByteSize }
 
@@ -186,7 +188,7 @@ fn nginx_variable(text: String) -> Optional<NginxVariable> {
 }
 
 fn lua_phase_name(ph: LuaPhase) -> String {
-  match ph { AccessPhase => "access_by_lua_block" LogPhase => "log_by_lua_block" }
+  match ph { AccessPhase => "access_by_lua_block" ContentPhase => "content_by_lua_block" LogPhase => "log_by_lua_block" }
 }
 
 fn location_match_text(m: LocationMatch) -> String {
@@ -226,6 +228,7 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ClientBodyBufferSize { size: z } => nginx_line(text: "client_body_buffer_size " + to_string(byte_size_count(b: z)), indent: indent)
     LuaPhaseBlock { phase: ph, lines: ls } =>
       indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(ls, "\n" + indent + "  ") + "\n" + indent + "}\n"
+    LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + to_string(byte_size_count(b: z)), indent: indent)
   }
 }
 
