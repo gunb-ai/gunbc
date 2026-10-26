@@ -172,13 +172,23 @@ fn heal_checkout_step() -> Step {
   }
 }
 
+// ROUND 1 SEEDS FROM THE BASE REF'S COMMITTED MIRROR (DESIGN §5, `gunbc.recurring_failure_mode`
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963). The ref is
+// this step's ENVIRONMENT VALUE -- the same typed read the candidate step already binds -- because
+// a branch name is pull-request-controlled text: spliced into the command it would be shell. The
+// step asks for the base mirror UNCONDITIONALLY on every heal run; nothing here branches on a
+// previous failure, and the round's receipt names the base COMMIT it seeded from.
 fn heal_stage0_round_step() -> Step {
   RunStep {
     name: Present { value: "Converge the stage0 mirrors to the seed's own fixed point" },
     id: none,
     run: gunbc_ci_stage0_round_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: heal_base_ref_read))
+      ]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,

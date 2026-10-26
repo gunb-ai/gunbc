@@ -120,11 +120,41 @@ type RegenRoundCostReceipt {
   rebuild_packages: List<String>
   executable_digest: String
   second_generation_candidate_digest: String
+  base_mirror_authority: RoundOneMirrorAuthority
+}
+
+// WHICH MIRROR ROUND 1 BUILT FROM (DESIGN §5, `gunbc.recurring_failure_mode`
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM #14963). The heal
+// round's first seed build compiles the BASE ref's committed stage0 mirror, because the head's
+// mirror is the thing the PR's `.dag` edits exist to repair -- a head mirror that already carries
+// the refusal the `.dag` fixes stops the round before the regenerated seed can replace it (PR
+// #13936, run 40064940799, job 120786085841, step 7: `EmittedCompilerBuildFailed`,
+// `shared layer refused for 'Nat' ... TypeDeclNotDeclared`).
+//
+// The commit id is what this names, not the ref: a ref is a moving name and a receipt is a record
+// of what a past run did, so the only honest thing to record is the commit it resolved to. A
+// round that was not asked to bootstrap from base (an instrument, a probe) renders NO line --
+// absence is the ordinary shape of every non-heal round, and the witness fixture pins that
+// absence, so a heal line can never be assumed into a non-heal receipt.
+type RoundOneMirrorAuthority
+  = FromBaseMirror { commit: NonEmptyStr, mirror_files: Nat }
+  | SeedBuiltFromHead
+
+fn regen_round_base_mirror_line(authority: RoundOneMirrorAuthority) -> String {
+  match authority {
+    FromBaseMirror { commit: c, mirror_files: n } =>
+      concat(
+        concat(concat("regen-round-cost: base_mirror_commit=", c), concat(" files=", to_string(n))),
+        "\n"
+      )
+    SeedBuiltFromHead => ""
+  }
 }
 
 fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
   match phase {
     SeedBuild => "seed_build"
+    BaseMirrorBootstrap => "base_mirror_bootstrap"
     CorpusLoad => "corpus_load"
     Frontend => "compile.frontend"
     Normalize => "compile.normalize"
@@ -151,6 +181,7 @@ fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
 fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
   match phase {
     SeedBuild => "round.seed_build"
+    BaseMirrorBootstrap => "round.base_mirror_bootstrap"
     CorpusLoad => "regen.corpus_load"
     Frontend => "compile.frontend"
     Normalize => "compile.normalize"
@@ -170,7 +201,7 @@ fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
 }
 
 fn regen_round_phases() -> List<RegenRoundPhase> {
-  [SeedBuild, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, BuiltSeedRegen, Diff]
+  [SeedBuild, BaseMirrorBootstrap, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, BuiltSeedRegen, Diff]
 }
 
 fn regen_round_phase_of_label(label: String) -> RegenRoundPhaseAttribution {
@@ -299,8 +330,13 @@ fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
   let mark_lines = fold(receipt.marks, init: "", f: fn(acc, mark) {
     concat(concat(acc, regen_round_mark_line(mark: mark)), "\n")
   })
+  // The base-mirror line carries its own newline and is EMPTY for a round that was not asked to
+  // bootstrap from base, so a non-heal receipt renders byte-for-byte what it rendered before.
   concat(
-    concat(concat(regen_round_header_line(receipt: receipt), "\n"), mark_lines),
+    concat(
+      concat(regen_round_header_line(receipt: receipt), "\n"),
+      concat(regen_round_base_mirror_line(authority: receipt.base_mirror_authority), mark_lines)
+    ),
     concat(
       concat(regen_round_total_line(receipt: receipt), "\n"),
       concat(

@@ -4213,8 +4213,19 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // builds the seed, emits, installs, rebuilds from the installed mirrors and repeats to first_generation_equal,
 // restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
 // run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
+// THE HEAL ROUND'S INVOCATION. `--base-mirror` asks round 1 to compile the BASE ref's committed
+// stage0 mirror instead of this checkout's (DESIGN §5, `gunbc.recurring_failure_mode`
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963): the head's
+// mirror is what the PR's `.dag` edits exist to repair, so a head mirror already carrying that
+// refusal stops the round before the regenerated seed can replace it (PR #13936, run
+// 40064940799, job 120786085841, step 7 -- `EmittedCompilerBuildFailed`, `shared layer refused
+// for 'Nat' ... TypeDeclNotDeclared`). The flag carries NO value: the ref is this step's
+// `HEAL_BASE_REF` environment value, never argv, because a pull-request-controlled ref spliced
+// into a command line would be shell. It is passed unconditionally -- the round does not try the
+// head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
+// different invocation of the same producer with the flag absent, not a second path.
 fn gunbc_ci_stage0_round_invoke() -> String {
-  concat(claim_executor_relative_path(), " --regen-round-cost --source-root dag --source-root src/v2")
+  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --source-root dag --source-root src/v2")
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {

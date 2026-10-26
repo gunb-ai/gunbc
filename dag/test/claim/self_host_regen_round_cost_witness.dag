@@ -54,8 +54,33 @@ fn a_receipt(marks: List<TraceMark>) -> RegenRoundCostReceipt {
     host_shell_modules: [],
     rebuild_packages: ["v1-stage0-runtime", "v1-compiler"],
     executable_digest: "exedigest",
-    second_generation_candidate_digest: "gen2digest"
+    second_generation_candidate_digest: "gen2digest",
+    base_mirror_authority: SeedBuiltFromHead
   }
+
+// THE SAME RECEIPT ON A HEAL ROUND: round 1 compiled the base mirror, and the receipt names the
+// COMMIT (never the ref).
+fn a_bootstrapped_receipt(marks: List<TraceMark>) -> RegenRoundCostReceipt {
+  let a = a_receipt(marks: marks)
+  RegenRoundCostReceipt {
+    producer: a.producer,
+    host: a.host,
+    tree: a.tree,
+    tree_dirty: a.tree_dirty,
+    seed_build_compiled_crates: a.seed_build_compiled_crates,
+    rebuild_compiled_crates: a.rebuild_compiled_crates,
+    rustfmt_spawns: a.rustfmt_spawns,
+    marks: a.marks,
+    changed_paths: a.changed_paths,
+    convergence_stage_receipt_ids: a.convergence_stage_receipt_ids,
+    installed_mirrors: a.installed_mirrors,
+    host_shell_modules: a.host_shell_modules,
+    rebuild_packages: a.rebuild_packages,
+    executable_digest: a.executable_digest,
+    second_generation_candidate_digest: a.second_generation_candidate_digest,
+    base_mirror_authority: FromBaseMirror { commit: "2a11b317d2caf3c37d1d38a4421e8e0c06188925", mirror_files: 44 }
+  }
+}
 }
 
 fn attributed_to(attribution: RegenRoundPhaseAttribution, phase: RegenRoundPhase) -> Bool {
