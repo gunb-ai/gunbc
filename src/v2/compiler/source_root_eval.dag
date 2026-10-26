@@ -273,7 +273,8 @@ import v2.compiler.dependency_demand {
 import gunbc.non_fold_residue_scope { NfrProductionScope, NfrTestLayerExcluded, nfr_file_scope }
 import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, declares_member_named, head_module_optional, nfr_wildcard_arm_in_tokens, roster_join_keys, root_member_reads, site_join_key }
 import v2.compiler.self_host.seed_retention_frontier { self_host_frontier_report }
-import v2.compiler.decl_ref_census { ImportPair, LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
+import v2.compiler.live_resolution_context { live_resolution_context }
+import v2.compiler.decl_ref_census { ImportPair, LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, prose_target_names, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.effect_pair_census { BodyOrdered, EffectPairCensusReport, ImporteeRefusedCause, ResolveRefusedCause, ResolveUnclassifiedCause, UnobservedRoot, effect_pair_census_exit, effect_pair_census_lines, effect_pair_census_of_module, effect_reach_table, module_ordered_bodies, not_derived_keys_of, unobserved_roots_add, use_edges_of }
 import v2.compiler.value_use_dependency { value_use_dispositions }
 import v2.compiler.dependency_demand_census {
@@ -2407,7 +2408,7 @@ fn native_lane_acquire_listed(
 }
 
 fn native_lane_acquire_bound(bindings: List<SourceRootBinding>, pattern: TargetPattern) -> Outcome<NativeLaneAcquisition> {
-  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces()) {
+  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings) {
     BoundModulesRefused { subject: subject, cause: cause } =>
       native_lane_refused(reason: ^native_lane_population_unlisted, detail: concat(subject, ": ", cause))
     BoundModulesListed { modules: population } =>
@@ -2464,7 +2465,7 @@ fn native_lane_census_ingest(source_roots: FreeMonoid<String>) -> Outcome<Source
     SourceRootsBound { bindings: bindings } =>
       native_lane_census_listed(
         bindings: bindings,
-        listed: enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces())
+        listed: enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings)
       )
     SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
     SourceRootsDuplicated { argument: _ } => native_lane_roots_refusal(bindings: resolved)
@@ -3337,6 +3338,7 @@ type NativeDeclRefCensusScan {
   literals: LiteralScan
   targets: Map<String, Bool>
   target_list: List<String>
+  names: Map<String, Bool>
   aliases: List<String>
   refused_files: List<String>
   bare_heads: Int
@@ -3351,6 +3353,7 @@ fn native_decl_ref_census_scan_target(scan: NativeDeclRefCensusScan, module: Str
         literals: scan.literals,
         targets: map_insert(scan.targets, module, true),
         target_list: list_snoc_item(xs: scan.target_list, item: module),
+        names: scan.names,
         aliases: scan.aliases,
         refused_files: scan.refused_files,
         bare_heads: scan.bare_heads,
@@ -3359,11 +3362,25 @@ fn native_decl_ref_census_scan_target(scan: NativeDeclRefCensusScan, module: Str
   }
 }
 
+fn native_decl_ref_census_scan_name(scan: NativeDeclRefCensusScan, name: String) -> NativeDeclRefCensusScan {
+  NativeDeclRefCensusScan {
+    literals: scan.literals,
+    targets: scan.targets,
+    target_list: scan.target_list,
+    names: map_insert(scan.names, name, true),
+    aliases: scan.aliases,
+    refused_files: scan.refused_files,
+    bare_heads: scan.bare_heads,
+    alloc: scan.alloc
+  }
+}
+
 fn native_decl_ref_census_scan_refused(scan: NativeDeclRefCensusScan, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator) -> NativeDeclRefCensusScan {
   NativeDeclRefCensusScan {
     literals: scan.literals,
     targets: scan.targets,
     target_list: scan.target_list,
+    names: scan.names,
     aliases: scan.aliases,
     refused_files: list_snoc_item(xs: scan.refused_files, item: symbol_lexeme(sym: read.compilation_unit)),
     bare_heads: scan.bare_heads,
@@ -3396,12 +3413,13 @@ fn native_decl_ref_census_scan_speller(
             literals: LiteralScan { cited: list_append(left: scan.literals.cited, right: found.cited), unreadable: list_append(left: scan.literals.unreadable, right: found.unreadable) },
             targets: scan.targets,
             target_list: scan.target_list,
+            names: scan.names,
             aliases: if root_aliases_declaration_ref(root: root.root) { list_snoc_item(xs: scan.aliases, item: dotted) } else { scan.aliases },
             refused_files: scan.refused_files,
             bare_heads: scan.bare_heads + native_decl_ref_census_bare_heads(literals: found),
             alloc: result.alloc
           }
-          fold_list(xs: found.cited, empty: merged, cons: fn(acc, c) { native_decl_ref_census_scan_target(scan: acc, module: c.ref.module_path as String) })
+          fold_list(xs: found.cited, empty: merged, cons: fn(acc, c) { native_decl_ref_census_scan_name(scan: native_decl_ref_census_scan_target(scan: acc, module: c.ref.module_path as String), name: c.ref.decl_name as String) })
       }
   }
 }
@@ -3412,45 +3430,9 @@ fn native_decl_ref_census_scan_prose(scan: NativeDeclRefCensusScan, read: DagSou
     Accepted { value: t, diagnostics: _ } =>
       fold_list(
         xs: prose_target_modules(tokens: t.all, namespaces: namespaces, known: plan.known),
-        empty: scan,
+        empty: fold_list(xs: prose_target_names(tokens: t.all, namespaces: namespaces, known: plan.known), empty: scan, cons: fn(acc, n) { native_decl_ref_census_scan_name(scan: acc, name: n) }),
         cons: fn(acc, m) { native_decl_ref_census_scan_target(scan: acc, module: m) }
       )
-  }
-}
-
-type NativeDeclRefCensusLoad {
-  roots: FreeMonoid<NormalizedTree>
-  index: SourceRootIndex
-  alloc: OccurrenceIdAllocator
-  refused_files: List<String>
-}
-
-fn native_decl_ref_census_load_target(
-  load: NativeDeclRefCensusLoad,
-  plan: NativeDeclRefCensusPlan,
-  front: NativeTestFrontEnd,
-  ingest_scope: Fnv1a64Structural,
-  module: String
-) -> NativeDeclRefCensusLoad {
-  match map_lookup(m: plan.by_name, key: module) {
-    Absent => load
-    Present { value: read } =>
-      let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: load.alloc, scope: ingest_scope)
-      let refused = NativeDeclRefCensusLoad { roots: load.roots, index: load.index, alloc: result.alloc, refused_files: list_snoc_item(xs: load.refused_files, item: symbol_lexeme(sym: read.compilation_unit)) }
-      match result.produced {
-        Rejected { diagnostics: _ } => refused
-        Accepted { value: root, diagnostics: _ } =>
-          match qualified_name_from_module_node(root: root.root) {
-            Rejected { diagnostics: _ } => refused
-            Accepted { value: qn, diagnostics: _ } =>
-              NativeDeclRefCensusLoad {
-                roots: list_snoc_item(xs: load.roots, item: root),
-                index: source_root_index_insert(index: load.index, module: qn, root: read.source_root),
-                alloc: result.alloc,
-                refused_files: load.refused_files
-              }
-          }
-      }
   }
 }
 
@@ -3489,7 +3471,7 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
           let namespaces = top_level_namespaces(all: layout_namespaces())
           let spelled = fold_list(
             xs: plan.spellers,
-            empty: NativeDeclRefCensusScan { literals: LiteralScan { cited: [], unreadable: [] }, targets: empty_map(), target_list: [], aliases: [], refused_files: [], bare_heads: 0, alloc: occurrence_id_allocator_initial() },
+            empty: NativeDeclRefCensusScan { literals: LiteralScan { cited: [], unreadable: [] }, targets: empty_map(), target_list: [], names: empty_map(), aliases: [], refused_files: [], bare_heads: 0, alloc: occurrence_id_allocator_initial() },
             cons: fn(acc, read) { native_decl_ref_census_scan_speller(scan: acc, read: read, front: front, ingest_scope: ingest_scope) }
           )
           let scanned = fold_list(
@@ -3497,18 +3479,19 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
             empty: spelled,
             cons: fn(acc, read) { native_decl_ref_census_scan_prose(scan: acc, read: read, front: front, plan: plan, namespaces: namespaces) }
           )
-          let loaded = fold_list(
-            xs: scanned.target_list,
-            empty: NativeDeclRefCensusLoad { roots: Empty, index: source_root_index_empty(), alloc: scanned.alloc, refused_files: [] },
-            cons: fn(acc, m) { native_decl_ref_census_load_target(load: acc, plan: plan, front: front, ingest_scope: ingest_scope, module: m) }
-          )
-          match resolution_context(
+          let loaded = live_resolution_context(
+            by_name: plan.by_name,
+            targets: scanned.target_list,
+            names: scanned.names,
             lm: front.lm,
-            roots: loaded.roots,
-            index: loaded.index,
+            lex: front.lex,
+            prepared: front.prepared,
+            ingest_scope: ingest_scope,
+            seed: scanned.alloc,
             active_roots: source_root_set_from_ingest(ingest: ingest),
             policy: v2.std.resolution_policy.default_name_resolution_policy()
-          ) {
+          )
+          match loaded.context {
             Rejected { diagnostics: d } =>
               NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
             Accepted { value: context, diagnostics: _ } =>
@@ -3527,7 +3510,7 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
               NativeDeclRefCensusOutput {
                 lines: list_append(
                   left: list_append(
-                    left: [concat("[decl-ref-census] candidates=", to_string(n: length(xs: plan.spellers)), "/", to_string(n: length(xs: ingest)), " targets=", to_string(n: length(xs: loaded.roots)), " alias_modules=", to_string(n: length(xs: scanned.aliases)), " bare_heads=", to_string(n: scanned.bare_heads)), concat("[decl-ref-census] ingest_refused_files=", to_string(n: length(xs: refused)))],
+                    left: [concat("[decl-ref-census] candidates=", to_string(n: length(xs: plan.spellers)), "/", to_string(n: length(xs: ingest)), " targets=", to_string(n: loaded.target_count), " alias_modules=", to_string(n: length(xs: scanned.aliases)), " bare_heads=", to_string(n: scanned.bare_heads)), concat("[decl-ref-census] ingest_refused_files=", to_string(n: length(xs: refused)))],
                     right: fold_list(xs: refused, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ingest_refused ", f)) })
                   ),
                   right: decl_ref_census_lines(c: census)

@@ -18,7 +18,7 @@ import extdeps.rust.cargo { cargo_default_release_dir_rel }
 // reconciles the desired roster against `observed: []`, so every member is an add on every apply
 // and an already-converged host replays its whole installation -- measured 2026-09-06 at nineteen
 // minutes, of which the deploy's real mutations were seconds and the rest was five source-compiling
-// evaluators started in series by unconditional restarts. docs/plans/deploy-convergence-observed-side.md
+// evaluators started in series by unconditional restarts. `gunbc.plans.deploy_convergence_observed_side`
 // refutes the obvious repair (feed the same path-keyed roster an observed side): a member whose value
 // is a function of its own key cannot be seen to be stale, so a non-degenerate diff over paths would
 // report CONVERGED over a stale host. The member therefore needs a real identity -- the smallest fact
