@@ -3331,6 +3331,9 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     // for it: the emission must be the one a clean dag tree gives, so the specimen is neither read into
     // the verdict nor into the output, while the population parse over the same two roots still refuses it
     // by file. Reading it would change the verdict, because the acquirer refuses a read nothing requested.
+    // The v2 member sits in a declared namespace (`v2.native_lane_fixture`): a member whose namespace has no
+    // `gunbc.source_layout` row refuses at enumeration (`v2.compiler.module_acquisition`
+    // `bound_modules_admitted`) before any parse, which would mask the parse refusal this control reads.
     let outside_two_v2 = workspace.join(NATIVE_INGEST_TWO_ROOTS_V2);
     let outside_clean_dag = workspace.join(NATIVE_INGEST_TWO_ROOTS_DAG);
     let emit_v2_entry = |dag_root: &Path| {
@@ -3339,7 +3342,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             &[
                 "emit".to_string(),
                 "--entry".to_string(),
-                "v2.native_ingest.v2_other".to_string(),
+                "v2.native_lane_fixture.two_roots_other".to_string(),
                 "--source-root".to_string(),
                 dag_root.display().to_string(),
                 "--source-root".to_string(),
