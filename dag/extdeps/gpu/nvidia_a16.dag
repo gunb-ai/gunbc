@@ -110,5 +110,5 @@ data nvidia_a16_board_catalog: GpuBoardCatalogRow = GpuBoardCatalogRow {
 
 // DESIGN section 3c declared frontier.
 data nvidia_a16_board_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: a fleet card census binds each installed A16 to nvidia_a16_board_catalog, and a power policy reads board_power to bound the cap it selects and thermal to decide that the card needs a fan zone that follows it. SUFFICIENT FOR: the board row has a production consumer; until then only witnesses read it." as NonEmptyStr
+  description: "TRIGGER: a fleet card census binds each installed A16 to nvidia_a16_board_catalog, and a power policy reads board_power to bound the cap it selects and thermal to decide that the card needs a fan zone that follows it. SUFFICIENT FOR: the board row has a production consumer; until then nothing reads it, witnesses included." as NonEmptyStr
 )
