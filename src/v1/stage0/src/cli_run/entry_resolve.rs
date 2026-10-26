@@ -117,10 +117,8 @@ pub fn with_module_path_index<R>(
         .map(|r| anchor_source_root(r))
         .collect::<Vec<_>>()
         .join("\u{1f}");
-    let cached = MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow().contains_key(&key));
-    if !cached {
-        let index = build_module_path_index_uncached(source_roots);
-        MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().insert(key.clone(), index));
+    if let Err(refusals) = fill_module_path_index_cache(source_roots, &key) {
+        refuse_module_index(&refusals);
     }
     MODULE_PATH_INDEX_CACHE.with(|cache| {
         let cache = cache.borrow();
@@ -128,9 +126,45 @@ pub fn with_module_path_index<R>(
     })
 }
 
+/// The fallible fill of the cached module-path index: the typed refusal set on failure, nothing
+/// cached. `with_module_path_index` exits on it (its callers are infallible); the claim route
+/// reads it as no observation.
+pub(crate) fn try_with_module_path_index(
+    source_roots: &[String],
+) -> Result<(), Vec<ModuleIndexRefusal>> {
+    let key = source_roots
+        .iter()
+        .map(|r| anchor_source_root(r))
+        .collect::<Vec<_>>()
+        .join("\u{1f}");
+    fill_module_path_index_cache(source_roots, &key)
+}
+
+fn fill_module_path_index_cache(
+    source_roots: &[String],
+    key: &str,
+) -> Result<(), Vec<ModuleIndexRefusal>> {
+    if MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow().contains_key(key)) {
+        return Ok(());
+    }
+    let index = try_build_module_path_index_uncached(source_roots)?;
+    MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().insert(key.to_string(), index));
+    Ok(())
+}
+
 pub(crate) fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, String> {
+    try_build_module_path_index_uncached(source_roots).unwrap_or_else(|refusals| {
+        refuse_module_index(&refusals);
+        unreachable!("refuse_module_index exits on a nonempty refusal set")
+    })
+}
+
+fn try_build_module_path_index_uncached(
+    source_roots: &[String],
+) -> Result<HashMap<String, String>, Vec<ModuleIndexRefusal>> {
     let mut index: HashMap<String, String> = HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
+    let mut collisions: Vec<ModuleIndexRefusal> = Vec::new();
+    let mut refusals = for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
         let rel = module_index_path_key(path);
         if let Some(existing) = index.get(&binding.module_path) {
             if existing == &rel || same_canonical_file(existing, &rel) {
@@ -142,9 +176,23 @@ pub(crate) fn build_module_path_index_uncached(source_roots: &[String]) -> HashM
                 return;
             }
         }
-        insert_module_path(&mut index, &binding.module_path, rel);
+        match index.get(&binding.module_path) {
+            // Same name, a different file, in the primary root: one module, two authorities.
+            Some(existing) => collisions.push(ModuleIndexRefusal::ModuleCollision {
+                path: rel,
+                other: existing.clone(),
+            }),
+            None => {
+                index.insert(binding.module_path.clone(), rel);
+            }
+        }
     });
-    index
+    refusals.extend(collisions);
+    if refusals.is_empty() {
+        Ok(index)
+    } else {
+        Err(refusals)
+    }
 }
 
 /// Project `whole_tree_strict_resolve_exclusion_substrings` out of the ci_layer_roots authority.
@@ -180,20 +228,32 @@ pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
     build_module_path_index(&default_source_roots())
 }
 
-/// THE PANICKING WRAPPER, RETAINED FOR CALLERS WHOSE INPUTS ARE ALREADY
-/// INVARIANT-ESTABLISHED. New callers on a user-supplied path must use
-/// `try_build_module_index` -- a missing root, an unreadable directory or a non-UTF-8
-/// source is an ORDINARY, USER-CAUSED condition and owes a typed located refusal, not a
-/// panic four frames down (DESIGN §5).
-pub(crate) fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
-    try_build_module_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+/// The refusing form of `try_build_module_index`: a missing root, an unreadable directory, a
+/// non-UTF-8 source or a directory named like a `.dag` is an ordinary, user-caused condition and
+/// owes a typed located refusal, so it prints the cause and exits 1, the exit class the other
+/// infallible index consumers already carry (`refuse_module_index`). It never panics.
+pub(crate) fn build_module_index_or_refuse(source_roots: &[String]) -> ModuleSourceIndex {
+    match try_build_module_index(source_roots) {
+        Ok(index) => index,
+        Err(refusal) => refuse_module_index_build(&refusal),
+    }
 }
 
 /// `primary-precedence` pool indexing: the first root is authoritative; later roots
 /// fill only modules not already present (matches `gunbc compile --dependency-pool-index
 /// primary-precedence` in `dag_compile_clean_transport`).
-pub(crate) fn build_module_index_primary_precedence(source_roots: &[String]) -> ModuleSourceIndex {
-    try_build_module_index_primary_precedence(source_roots).unwrap_or_else(|e| panic!("{e}"))
+pub(crate) fn build_module_index_primary_precedence_or_refuse(
+    source_roots: &[String],
+) -> ModuleSourceIndex {
+    match try_build_module_index_primary_precedence(source_roots) {
+        Ok(index) => index,
+        Err(refusal) => refuse_module_index_build(&refusal),
+    }
+}
+
+fn refuse_module_index_build(refusal: &str) -> ! {
+    eprintln!("module index refused: {refusal}");
+    std::process::exit(1)
 }
 
 fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
@@ -823,7 +883,7 @@ pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = process_shared_index(source_roots);
+    let index = process_shared_index_or_refuse(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -858,7 +918,7 @@ pub fn load_sources_for_entry_with_pool_index(
     // (build_multi_entry_index), same canonical roots key, so sharing is a
     // cache hit, not a behavior change; primary-precedence keeps its own
     // fresh build (process_shared_index only builds strict).
-    let index = process_shared_index(source_roots);
+    let index = process_shared_index_or_refuse(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -1087,8 +1147,14 @@ pub(crate) fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<Strin
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
 #[track_caller]
-pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
-    try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+pub fn process_shared_index_or_refuse(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+    match try_process_shared_index(source_roots) {
+        Ok(index) => index,
+        Err(refusal) => {
+            eprintln!("shared index refused: {refusal}");
+            std::process::exit(1)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1448,7 +1514,7 @@ pub fn resolve_entry_graph_shared(
     // resolve_entry_with_index is proven behaviorally identical to the cold resolve_entry_graph
     // by resolve_typed_cache_equivalence_test (cached == cold across every resolve order); the
     // win is that the union of all fixed-entry closures now typechecks once per node.
-    let index = process_shared_index(source_roots);
+    let index = process_shared_index_or_refuse(source_roots);
     let resolved = resolve_entry_with_index(&index, entry_file)?;
     PROCESS_RESOLVE_STORE.with(|s| {
         s.borrow_mut().insert(key, resolved.clone());
@@ -2637,7 +2703,7 @@ pub fn whole_tree_strict_sources(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<WholeTreeStrictSources, String> {
-    let index = build_module_index(source_roots);
+    let index = build_module_index_or_refuse(source_roots);
     let total = index.len();
     let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
         .iter()
@@ -3651,15 +3717,16 @@ mod live_pool_thread_tests {
         let (root, roots) = one_module_pool("route");
         let first = {
             let roots = roots.clone();
-            on_live_pool_thread(move || process_shared_index(&roots).generation)
+            on_live_pool_thread(move || process_shared_index_or_refuse(&roots).generation)
         };
         let second = {
             let roots = roots.clone();
-            on_live_pool_thread(move || process_shared_index(&roots).generation)
+            on_live_pool_thread(move || process_shared_index_or_refuse(&roots).generation)
         };
-        let elsewhere = std::thread::spawn(move || process_shared_index(&roots).generation)
-            .join()
-            .unwrap();
+        let elsewhere =
+            std::thread::spawn(move || process_shared_index_or_refuse(&roots).generation)
+                .join()
+                .unwrap();
         let _ = std::fs::remove_dir_all(root);
         assert_eq!(first, second, "the live-pool thread kept its index");
         assert_ne!(first, elsewhere, "a fresh thread builds its own");
@@ -3677,12 +3744,12 @@ mod live_pool_thread_tests {
         let (root, roots) = one_module_pool("release");
         let (other_root, other_roots) = one_module_pool("release-other");
         let generation = |roots: Vec<String>| {
-            on_live_pool_thread(move || process_shared_index(&roots).generation)
+            on_live_pool_thread(move || process_shared_index_or_refuse(&roots).generation)
         };
         let first = generation(roots.clone());
         let held = generation(roots.clone());
         std::thread::spawn(move || {
-            process_shared_index(&other_roots);
+            process_shared_index_or_refuse(&other_roots);
         })
         .join()
         .unwrap();

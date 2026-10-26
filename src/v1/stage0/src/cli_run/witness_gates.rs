@@ -758,7 +758,7 @@ pub(crate) fn commit_witness_field_str(
 
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
     let roots = witness_layer_roots();
-    let index = process_shared_index(&roots);
+    let index = process_shared_index_or_refuse(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     matches!(
         commit_witness_claim_pair_resolvability_with_index(
@@ -848,7 +848,7 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
         )];
     };
     let roots = witness_layer_roots();
-    let index = process_shared_index(&roots);
+    let index = process_shared_index_or_refuse(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     let mut defects = Vec::new();
     for (entry, function) in pairs {
