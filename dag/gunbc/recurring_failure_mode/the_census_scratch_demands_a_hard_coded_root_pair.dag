@@ -7,9 +7,9 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THE CENSUS SCRATCH DEMANDS A ROOT PAIR IT CARRIES, NOT THE ROOTS IT RUNS OVER.
 // `scratch_index_for_fixture_closure_extension` (src/v1/stage0/src/cli_run.rs) builds the
-// fixture-closure scratch index by demanding `witness_layer_roots()` — the pair the CI layer
-// roster declares (`data witness_layer_roots: List<String> = ["dag", "src/v2"]` in
-// dag/gunbc/ci/ci_layer_roots.dag). The demand is correct for the fleet's resident pool, which
+// fixture-closure scratch index by demanding `witness_layer_roots()` — the root list the CI layer
+// roster declares in dag/gunbc/ci/ci_layer_roots.dag (its contents live there, not here). The
+// demand is correct for the fleet's resident pool, which
 // is the same pair, and it was the only caller shape when it was written. It is nonetheless a
 // SECOND authoring of the root set beside the one authority (`witness_layer_roots()` itself
 // stays the single home for the fleet pair; this row does not move that fact — it records the
@@ -25,7 +25,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // src/v2]; roots [dag, src/v2] demanded at src/v1/stage0/src/cli_run.rs`, while the same binary
 // with the fleet pair (`--source-root dag --source-root src/v2`) reports `Observed` rows and the
 // same fixtures pass. The refusal is the residency check in
-// `try_process_shared_index_over_slot` (src/v1/stage0/src/cli_run/entry_resolve.rs), doing its
+// `try_process_shared_index_for_pool` (src/v1/stage0/src/cli_run/entry_resolve.rs), doing its
 // job loudly — the class is the DEMAND's keying, not the check.
 //
 // CEILING: structurally impossible, by keying the demand to the resident pool's own roots — the
