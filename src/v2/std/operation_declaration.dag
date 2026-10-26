@@ -370,10 +370,14 @@ data operation_declaration_roster: List<OperationDeclaration> = [
 fn operation_declaration_for(
   declaration: DeclarationRef
 ) -> Optional<OperationDeclaration> {
+  // The seed is annotated (the corpus idiom, as in v2.compiler.name_resolve's closure maps): an
+  // unannotated empty_map() here leaves the fold's accumulator type params uninferable in the
+  // emitted Rust, and the module fails to compile under the instrument's emitted build.
+  let empty: Map<DeclarationRef, OperationDeclaration> = empty_map()
   map_lookup(
     m: fold_list(
       xs: operation_declaration_roster,
-      empty: empty_map(),
+      empty: empty,
       cons: fn(acc, row) { map_insert(m: acc, key: row.declaration, value: row) }
     ),
     key: declaration
