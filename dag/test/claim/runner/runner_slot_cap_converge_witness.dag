@@ -40,6 +40,7 @@ import gunbc.runner.runner_slot_cap_converge {
   SlotCapsSelfAtDesired,
   SlotCapsSelfDeferred,
   SlotCapsRefused,
+  SlotCapsHolderLedgerRefused,
   slot_cap_standing,
   slot_cap_live_of_show,
   slot_cap_outcome_settled,
@@ -739,9 +740,8 @@ test fn a_holder_deferred_past_the_bound_is_refused_not_deferred() -> Bool {
 test fn an_unreadable_ledger_refuses_instead_of_deferring_forever() -> Bool {
   let r = slot_cap_holder_deferral_outcome(ledger: LedgerUnwritable { cause: "not a JSON document" }, unit: unit(n: "02"), live: owed_live(), desired: desired())
   match r {
-    SlotCapsRefused { unit: u, step: s, reason: why } =>
+    SlotCapsHolderLedgerRefused { unit: u, cause: why } =>
       (u as String) == "actions-runner@srv3-02.service"
-        && s == "holder-deferral-ledger"
         && !slot_cap_outcome_settled(o: r)
         && !slot_cap_outcome_host_settled(o: r)
         && string_contains(s: why, pattern: "not a JSON document")

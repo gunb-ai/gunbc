@@ -296,6 +296,7 @@ type SlotCapOutcome
   | SlotCapsRestartedAndRead { unit: NonEmptyStr }
   | SlotCapsSelfAtDesired { unit: NonEmptyStr }
   | SlotCapsSelfDeferred { unit: NonEmptyStr, detail: String }
+  | SlotCapsHolderLedgerRefused { unit: NonEmptyStr, cause: String }
   | SlotCapsRefused { unit: NonEmptyStr, step: String, reason: String }
 
 fn slot_cap_outcome_settled(o: SlotCapOutcome) -> Bool {
@@ -305,6 +306,7 @@ fn slot_cap_outcome_settled(o: SlotCapOutcome) -> Bool {
     SlotCapsSelfAtDesired { unit: _ } => true
     // The per-unit answer is NO: a deferred self never claims its memory envelope.
     SlotCapsSelfDeferred { unit: _, detail: _ } => false
+    SlotCapsHolderLedgerRefused { unit: _, cause: _ } => false
     SlotCapsRefused { unit: _, step: _, reason: _ } => false
   }
 }
@@ -331,6 +333,7 @@ fn slot_cap_outcome_wire(o: SlotCapOutcome) -> String {
     SlotCapsRestartedAndRead { unit: u } => join(["caps ", u as String, " restarted-and-live-cgroup-read-back"], "")
     SlotCapsSelfAtDesired { unit: u } => join(["caps ", u as String, " holder-live-read-back-at-desired"], "")
     SlotCapsSelfDeferred { unit: u, detail: d } => join(["caps ", u as String, " DEFERRED-SELF ", d, " (this pass ran on it; the next pass from another slot brackets it)"], "")
+    SlotCapsHolderLedgerRefused { unit: u, cause: c } => join(["caps ", u as String, " REFUSED step=holder-deferral-ledger ", c], "")
     SlotCapsRefused { unit: u, step: st, reason: r } => join(["caps ", u as String, " REFUSED step=", st, " ", r], "")
   }
 }
@@ -627,7 +630,7 @@ fn slot_cap_holder_deferral_outcome(ledger: HolderDeferralLedger, unit: NonEmpty
     // so the same unreadable bytes would be read on every future pass and the bound below could never fire.
     // The refusal IS the loud step; the bracket pass then RESETS the ledger to pass 1 (see
     // holder_ledger_after_verdict), so a corrupted ledger costs one red run, not a permanent green.
-    LedgerUnwritable { cause: why } => SlotCapsRefused { unit: unit, step: "holder-deferral-ledger", reason: join(["the holder is owed caps (", detail, ") but its deferral ledger is unreadable or unwritable: ", why, " -- an UNCOUNTED deferral is a permanent green the bound can never stop, so it refuses. This red pass is the loud, counted step; the pass resets the ledger to pass 1, and the next pass is counted again."], "") }
+    LedgerUnwritable { cause: why } => SlotCapsHolderLedgerRefused { unit: unit, cause: join(["the holder is owed caps (", detail, ") but its deferral ledger is unreadable or unwritable: ", why, " -- an UNCOUNTED deferral is a permanent green the bound can never stop, so it refuses. This red pass is the loud, counted step; the pass resets the ledger to pass 1, and the next pass is counted again."], "") }
   }
 }
 

@@ -51,13 +51,12 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 // the sanctioned effect (the same production idiom as the dispatch belt's producer identity,
 // gunbc.dispatch_credential_acquisition) -- not an exec over ssh, because the holder is THIS process's
 // host and the read is of this process itself.
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
 import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, ProcPidCgroupMembershipRecord, CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed, ProcSelfCgroupLineMissingColon, ProcSelfCgroupLineMissingSecondColon, ProcSelfCgroupLineEmptyHierarchy, ProcSelfCgroupLineEmptyPath }
 import gunbc.runner.runner_unit { NotARunnerUnit, RunnerUnitInstanceMalformed, RunnerUnitInstance, read_runner_unit_name, runner_unit_name_of_registration }
 import extdeps.github.actions_environment { github_runner_name_variable_name }
 import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound }
-import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh, LedgerCount, LedgerUnwritable, SlotCapOutcome, SlotCapsSelfAtDesired, SlotCapsSelfDeferred }
+import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh, LedgerCount, LedgerUnwritable, SlotCapOutcome, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused }
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
 //
@@ -1283,19 +1282,17 @@ fn holder_ledger_after_verdict(host: String, unit: NonEmptyStr, verdict: SlotCap
         LedgerCount { prior: p } => holder_deferral_ledger_record(host: host, unit: unit, passes: p + 1)
         _ => holder_deferral_ledger_record(host: host, unit: unit, passes: 1)
       }
-    // THE RESET AFTER THE LOUD RED STEP (review 86323): the ledger refused the run by name; this pass
-    // is the counted, loud step that earns the overwrite. Rewrite it at pass 1 so the NEXT pass reads a
-    // real count and can defers normally, with the bound live again. A stale-key or corrupted file costs
-    // one red run -- not a permanent green, and not a silent widen either: the overwrite only happens
-    // behind a refusal the operator sees on the wire.
-    SlotCapsRefused { unit: _, step: s, reason: _ } =>
-      if s == "holder-deferral-ledger" {
-        match ledger {
-          LedgerUnwritable { cause: _ } => holder_deferral_ledger_record(host: host, unit: unit, passes: 1)
-          _ => none
-        }
-      } else {
-        none
+    // THE RESET AFTER THE LOUD RED STEP (review 86323, finding 1): the ledger refused the run. This
+    // pass is the counted, loud step that earns the overwrite. Rewrite it at pass 1 so the NEXT pass
+    // reads a real count and can defer normally, with the bound live again. A stale-key or corrupted
+    // file costs one red run -- not a permanent green, and not a silent widen either: the overwrite
+    // only happens behind a refusal the operator sees on the wire. Matched BY CONSTRUCTOR (review
+    // 86500): a step-name string compared here could drift from its producers and silently disable
+    // the self-heal; the type system now carries that fact.
+    SlotCapsHolderLedgerRefused { unit: _, cause: _ } =>
+      match ledger {
+        LedgerUnwritable { cause: _ } => holder_deferral_ledger_record(host: host, unit: unit, passes: 1)
+        _ => none
       }
     _ => none
   }
