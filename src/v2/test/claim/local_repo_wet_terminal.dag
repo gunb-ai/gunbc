@@ -331,7 +331,7 @@ test fn an_executor_that_ran_but_skipped_a_member_still_refuses_as_missing() -> 
             WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
             WetCrossRouteIdentityOverlap { identity: _ } => false
             WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
-    WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => false
+            WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => false
           }
       }
     }
