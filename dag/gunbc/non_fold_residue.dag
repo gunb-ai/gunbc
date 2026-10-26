@@ -394,4 +394,34 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       reason: nfr_reason_wildcard_found_by_native_census,
       dissolution: nfr_dissolve_owning_fold,
     },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_pass" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_fixed_pass" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_retry_off" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_buffering_off" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_access_hook" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_log_hook" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
 ]
