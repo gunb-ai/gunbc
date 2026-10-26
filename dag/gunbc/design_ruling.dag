@@ -374,6 +374,13 @@ data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRul
   provenance: "Operator ruling with the v1 withdrawal (gunbc#13658, second round: the required job \"requires fresh emission/build of both retained products\"): the subjects of gunbc.emitted_subject_build_gate emitted_subject_build_rows are the two retained compiler products, //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, and a third subject row is a growth the operator vetoed. Until 2026-10-24 the veto lived only as a comment on test.claim.compiler_gate_emit_build_lane_witness the_job_runs_both_retained_emit_build_subjects, which quotes the roster as remaining the two compiler products; that comment landed in gunbc#13641 and its quotation has no other source in the repository. Re-raised and confirmed on 2026-10-24 by merry-fox-82 when gunbc#14984 built a native control over gunbc.fleet.fleet_convergence_verdict: it stays run by name, and enrolling it would reverse this ruling and goes to the operator.",
 }
 
+data cross_tree_admission_is_namespace_membership: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cross_tree_admission_is_namespace_membership"),
+  decided: "2026-10-25",
+  section: "3",
+  provenance: "Operator ratified 2026-10-25 (escalation msg_6f0857a6) a decision by root coordinator sleek-owl-397, relayed by tidy-ant-251, on the per-root fundamentality defect, where native resolve denied every dag->v2 import that the seed admits: fix the model and do not move the importers. Narrowed the same day from 'rank per namespace' to membership, with no direction rule, once the namespace-grain import census showed one 23-namespace cycle spanning both trees, so any strict order would deny live edges that no ruling forbids. A crossing is admitted when both namespaces have a row in gunbc.source_layout_namespaces and refused when either has none; the storage lookup is the one enforcement site, and the population route asks the same membership read; name resolution keeps only the active-root denials. Applied in gunbc#15080 (v2.std.cross_tree.import_model cross_tree_import_admitted).",
+}
+
 data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
   decided: "2026-10-25",
@@ -383,6 +390,7 @@ data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    cross_tree_admission_is_namespace_membership,
     native_claim_route_admits_the_docker_cli,
     emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
