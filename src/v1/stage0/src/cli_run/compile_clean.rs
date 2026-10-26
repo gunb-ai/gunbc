@@ -1699,6 +1699,9 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => None,
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => None,
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => None,
+        // The refusal carries a NAME and a SPAN (`union member 'X' ... shadows the type 'X'`), never
+        // a rendered (expected, got) pair: its arm is `None`, like every pairless class.
+        CompilerDiagnostic::UnionMemberShadowsType { .. } => None,
         CompilerDiagnostic::UnlistedImportUse { .. } => None,
         CompilerDiagnostic::UnlistedVariantValueUse { .. } => None,
         CompilerDiagnostic::UnresolvedImport { .. } => None,
