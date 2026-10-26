@@ -3248,7 +3248,6 @@ pub fn census_heads_node(
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: std::option::Option::None,
         module_item_kind: node.module_item_kind.clone(),
-        application_role: node.application_role.clone(),
         declaration_marker: node.declaration_marker.clone(),
         declaration: node.declaration.clone(),
         expr_data: Rc::new(ExprData::NoExprData),

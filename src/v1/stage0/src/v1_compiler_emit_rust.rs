@@ -3689,7 +3689,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-        application_role: std::option::Option::None,
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
@@ -24136,7 +24135,6 @@ pub fn field_binding_with_pattern(field_binding: Rc<Node>, pattern: Rc<MatchPatt
         has_non_tail_self_call: field_binding.has_non_tail_self_call.clone(),
         match_pattern: Some(pattern.clone()),
         module_item_kind: field_binding.module_item_kind.clone(),
-        application_role: field_binding.application_role.clone(),
         declaration_marker: field_binding.declaration_marker.clone(),
         declaration: field_binding.declaration.clone(),
         expr_data: field_binding.expr_data.clone(),
@@ -27701,11 +27699,12 @@ pub fn rust_call_arg_function_value_adapt(
     idx: i64,
 ) -> String {
     {
-        let is_call_result = match (*arg.expr_data.clone()).clone() {
+        let is_rc_carried = match (*arg.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => true,
+            ExprData::ExprFieldAccess { summary: _, .. } => true,
             _ => false,
         };
-        if !is_call_result.clone() {
+        if !is_rc_carried.clone() {
             return arg_str.clone();
         }
         match callee.clone() {

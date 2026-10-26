@@ -7248,6 +7248,64 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
   }
 }
 
+// A ROSTER RESULT NAMED BY ITS DECLARATION (a v1.compiler.infer_method registry row whose result is
+// nominal_type_ref of a qualified name) IS THAT DECLARATION AT THE CALL, joined through the
+// closure's symbol index by declaring module and name
+// (v1.compiler.infer_env declaration_node_of_ref) and never by a homonym elsewhere. A non-generic
+// result is the declaration node itself, the shape a match reads its variants from and a field read
+// its fields from; a generic result is the use node with each argument joined the same way and the
+// declaration as its resolution, the shape an authored `-> D<A>` return type resolves to. A name the
+// closure does not declare refuses at the call, located, rather than leaving the result untyped. A
+// roster result that is not a qualified name (a kernel type, a container, a type variable) is
+// unchanged.
+type BuiltinResultAtCall
+  = BuiltinResultReady { node: Node }
+  | BuiltinResultDeclarationAbsent { qualified: String }
+
+fn builtin_result_at_call(bt: Node, scope: InferScope) -> BuiltinResultAtCall {
+  let module_path = qualified_all_but_last(name: bt.name)
+  if bt.inferred != none || bt.connective != NoConnective || module_path == "" {
+    BuiltinResultReady { node: bt }
+  } else {
+    match declaration_node_of_ref(d: decl_ref(module_path: module_path, decl_name: qualified_last_segment(name: bt.name)), env: scope.type_env) {
+      Absent => BuiltinResultDeclarationAbsent { qualified: bt.name }
+      Present { value: decl } =>
+        if bt.children |> count == 0 {
+          BuiltinResultReady { node: decl }
+        } else {
+          match builtin_result_arguments_at_call(arguments: bt.children, scope: scope) {
+            BuiltinResultArgumentsReady { nodes: args } =>
+              BuiltinResultReady { node: node_with_inferred(n: node_with_children(n: bt, children: args), inferred: Present { value: Resolved { node: decl } }) }
+            BuiltinResultArgumentAbsent { qualified: q } => BuiltinResultDeclarationAbsent { qualified: q }
+          }
+        }
+    }
+  }
+}
+
+// THE REFUSAL IS TERMINAL: the call is typed CompilerError, not left the roster's bare type variable,
+// so nothing downstream can bind the result to a type and report a second, derived error from it.
+fn builtin_result_declaration_absent_message(func_name: String, qualified: String) -> String {
+  concat("builtin '", concat(func_name, concat("' returns ", concat(qualified, ", which this module's closure does not declare: import the module that declares it"))))
+}
+
+type BuiltinResultArguments
+  = BuiltinResultArgumentsReady { nodes: List<Node> }
+  | BuiltinResultArgumentAbsent { qualified: String }
+
+fn builtin_result_arguments_at_call(arguments: List<Node>, scope: InferScope) -> BuiltinResultArguments {
+  fold(arguments, init: BuiltinResultArgumentsReady { nodes: [] }, f: (acc, a) =>
+    match acc {
+      BuiltinResultArgumentAbsent { qualified: _ } => acc
+      BuiltinResultArgumentsReady { nodes: ready } =>
+        match builtin_result_at_call(bt: a, scope: scope) {
+          BuiltinResultReady { node: r } => BuiltinResultArgumentsReady { nodes: concat(ready, [r]) }
+          BuiltinResultDeclarationAbsent { qualified: q } => BuiltinResultArgumentAbsent { qualified: q }
+        }
+    }
+  )
+}
+
 fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
   if func_name == "lookup" || func_name == "map_get" {
     Tier2bBt {
@@ -10037,7 +10095,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
-          let bt = tier2b.bt
+          let result_at_call = builtin_result_at_call(bt: tier2b.bt, scope: scope)
+          let call_inferred = match result_at_call {
+            BuiltinResultReady { node: r } => Present { value: Resolved { node: r } }
+            BuiltinResultDeclarationAbsent { qualified: q } => Present { value: CompilerError { message: builtin_result_declaration_absent_message(func_name: func_name, qualified: q), span: span } }
+          }
+          let result_declaration_diags = match result_at_call {
+            BuiltinResultReady { node: _ } => []
+            BuiltinResultDeclarationAbsent { qualified: q } => [inference_error(message: builtin_result_declaration_absent_message(func_name: func_name, qualified: q), span: span, module_name: scope.module_name)]
+          }
           let call_semantics = if func_name == "lookup" {
             Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name, projected_from: none } } }
           } else {
@@ -10047,11 +10113,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprCall { call_semantics: call_semantics, descent_evidence: none },
               children: typed_arg_nodes,
-              inferred: Present { value: Resolved { node: bt } },
+              inferred: call_inferred,
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope))))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(result_declaration_diags, concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope)))))
           }
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {

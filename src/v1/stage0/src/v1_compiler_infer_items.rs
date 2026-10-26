@@ -23,15 +23,14 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
-use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemResource, ModuleItemTypeDeclaration};
 pub use crate::v1_std_core::{
-    authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_expr_error_node,
-    make_field_node, make_param_node, no_span, node_name_span, param_node_name_at,
-    param_node_type_expr, resource_use_name_at, resource_use_resource, Cardinality, Connective,
-    ErrorNode, ExprErrorKind, InferredNode, LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
+    authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
+    make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
+    resource_use_name_at, resource_use_resource, Cardinality, Connective, ErrorNode, InferredNode,
+    LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
