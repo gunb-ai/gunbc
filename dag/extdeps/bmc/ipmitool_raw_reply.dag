@@ -1,0 +1,55 @@
+module extdeps.bmc.ipmitool_raw_reply
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.numeric.base16 { base16_word_value }
+import extdeps.uri { Uri, Https }
+
+// ── HOW ipmitool `raw` SPELLS BYTES, BOTH WAYS. ipmitool prints a raw response as two-digit hex bytes
+// separated by spaces, wrapping long responses across lines, and takes each request byte as one argv
+// word. This is the client's format, the same for every raw command, so it lives once here: each
+// command's module reads its answer and spells its request through these two functions rather than
+// carrying its own copy (two copies had already diverged on whether a line break separates bytes).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmitool_raw_reply",
+      decl_name: "ipmitool_raw_reply_bytes",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// One two-digit hex byte, either case.
+fn ipmitool_raw_byte_value(t: String) -> Int? {
+  if length(t) != 2 { none } else { base16_word_value(word: t, max_digits: 2) }
+}
+
+// The bytes of a raw response, in wire order. Line breaks separate bytes like spaces do. Every token
+// must be a two-digit hex byte and the count must be the count expected; otherwise the response is
+// refused whole.
+fn ipmitool_raw_reply_bytes(stdout: String, expected: Int) -> List<Int>? {
+  let tokens = filter(split(s: join(split(s: trim(stdout), delimiter: "\n"), " "), delimiter: " "), t => t != "")
+  let values = map(tokens, t => ipmitool_raw_byte_value(t: t))
+  if count(tokens) != expected || any(values, v => match v { Absent => true Present { value: _ } => false }) { none } else {
+    Present { value: flat_map(values, v => match v { Absent => [] Present { value: x } => [x] }) }
+  }
+}
+
+// One request byte as ipmitool takes it: "0x" and two lowercase hex digits.
+fn ipmitool_raw_byte_text(n: Int) -> String {
+  let digits = "0123456789abcdef"
+  concat("0x", char_at(s: digits, pos: n / 16), char_at(s: digits, pos: n % 16))
+}

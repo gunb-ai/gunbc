@@ -9,7 +9,7 @@ import std.measure { Percent, percent, percent_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
-import extdeps.numeric.base16 { base16_word_value, byte_hex_lower }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_reply_bytes, ipmitool_raw_byte_text }
 import extdeps.uri { Uri, Https }
 
 // ── SUPERMICRO'S OEM FAN COMMANDS, AS ipmitool `raw` CARRIES THEM. Two commands on the OEM NetFn
@@ -143,19 +143,14 @@ fn supermicro_fan_mode_name(mode: SupermicroFanMode) -> NonEmptyStr? {
   }
 }
 
-// ── ONE-BYTE ANSWERS. ipmitool prints a raw answer as space-separated hex bytes (" 01"); a get here
-// answers exactly one byte. Anything else is no reading.
+// ── ONE-BYTE ANSWERS. A get here answers exactly one byte, read through ipmitool's raw-reply format
+// (extdeps.bmc.ipmitool_raw_reply). Anything else is no reading.
 fn supermicro_one_byte_answer(stdout: String) -> Nat? {
-  let tokens = filter(split(s: trim(s: stdout), delimiter: " "), t => t != "")
-  if count(tokens) != 1 { none } else {
-    match first(tokens) {
+  match ipmitool_raw_reply_bytes(stdout: stdout, expected: 1) {
+    Absent => none
+    Present { value: bytes } => match first(bytes) {
       Absent => none
-      Present { value: t } => if length(t) != 2 { none } else {
-        match base16_word_value(word: t, max_digits: 2) {
-          Absent => none
-          Present { value: v } => checked_int_to_nat(n: v)
-        }
-      }
+      Present { value: v } => checked_int_to_nat(n: v)
     }
   }
 }
@@ -205,7 +200,7 @@ fn supermicro_fan_mode_argument(mode: SupermicroFanMode) -> SupermicroFanModeArg
 }
 
 fn supermicro_byte_wire(n: Nat) -> NonEmptyStr {
-  concat("0x", byte_hex_lower(v: n as Int)) as NonEmptyStr
+  ipmitool_raw_byte_text(n: n as Int) as NonEmptyStr
 }
 
 fn supermicro_duty_argument_wire(a: SupermicroDutyArgument) -> NonEmptyStr {

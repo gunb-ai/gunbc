@@ -6,10 +6,11 @@ import std.measure { Second }
 import std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_reply_bytes }
 import extdeps.bmc.ipmi_master_write_read {
   MasterWriteReadBus, PrivateBus, PublicBus, MasterWriteReadCompletion,
-  master_write_read_bus_byte, master_write_read_slave_byte, hex_byte_text,
-  master_write_read_completion_of, master_write_read_completion_text, master_write_read_bytes_of, master_write_read_stderr_completion,
+  master_write_read_bus_byte, master_write_read_slave_byte,
+  master_write_read_completion_of, master_write_read_completion_text, master_write_read_stderr_completion,
 }
 import extdeps.ampere.smpro_register {
   SmproRegister, SmproBootStage, SmproStageReading,
@@ -126,7 +127,7 @@ fn smpro_site_refusal_text(c: SmproSiteRefusal) -> String {
     SiteControlNotATarget { socket: s } => concat("the control socket ", to_string(s), " is not one of the site's targets")
     SiteControlAmbiguous { socket: s, matches: n } => concat("the control socket ", to_string(s), " matches ", to_string(n), " targets")
     SiteSocketRepeated { socket: s } => concat("socket ", to_string(s), " appears more than once")
-    SiteAddressRepeated { seven_bit_address: a } => concat("7-bit address ", hex_byte_text(n: a), " appears more than once")
+    SiteAddressRepeated { seven_bit_address: a } => concat("7-bit address ", ipmitool_raw_byte_text(n: a), " appears more than once")
   }
 }
 
@@ -245,7 +246,7 @@ type SmproProbeOutcome
 // controller's refusal; one that names none is the transport's failure.
 fn smpro_probe_outcome(raw: SmproProbeRaw) -> SmproProbeOutcome {
   if raw.exit_code == 0 {
-    match master_write_read_bytes_of(stdout: raw.stdout, expected: smpro_value_size_bytes) {
+    match ipmitool_raw_reply_bytes(stdout: raw.stdout, expected: smpro_value_size_bytes) {
       Absent => SmproResponseMalformed { raw: raw, detail: concat("expected ", to_string(smpro_value_size_bytes), " hex bytes on stdout") as NonEmptyStr }
       Present { value: bs } => {
         let first = match bs.first() { Absent => 0 Present { value: b } => b }
@@ -274,7 +275,7 @@ fn smpro_outcome_word(o: SmproProbeOutcome) -> Int? {
 
 fn smpro_outcome_text(o: SmproProbeOutcome) -> String {
   match o {
-    SmproWordRead { raw: _, word: w } => concat("read 0x", substring(s: hex_byte_text(n: w / 256), start: 2, end: 4), substring(s: hex_byte_text(n: w % 256), start: 2, end: 4))
+    SmproWordRead { raw: _, word: w } => concat("read 0x", substring(s: ipmitool_raw_byte_text(n: w / 256), start: 2, end: 4), substring(s: ipmitool_raw_byte_text(n: w % 256), start: 2, end: 4))
     SmproControllerRefused { raw: _, completion: c } => concat("REFUSED by the BMC: ", master_write_read_completion_text(c: c))
     SmproTransportFailed { raw: r, timed_out: t } => concat("TRANSPORT FAILED (exit ", to_string(r.exit_code), if t { ", deadline" } else { "" }, "): ", trim(r.stderr))
     SmproResponseMalformed { raw: _, detail: d } => concat("MALFORMED: ", d as String)
@@ -300,7 +301,7 @@ fn smpro_control_refusal(o: SmproProbeOutcome) -> String? {
 // ── the reads (effects) ─────────────────────────────────────────────────────────────────────────
 
 fn smpro_request_text(bus: Int, slave: Int, reg: Int) -> NonEmptyStr {
-  concat("raw 0x06 0x52 ", hex_byte_text(n: bus), " ", hex_byte_text(n: slave), " ", hex_byte_text(n: smpro_value_size_bytes), " ", hex_byte_text(n: reg), " ", hex_byte_text(n: smpro_value_size_bytes)) as NonEmptyStr
+  concat("raw 0x06 0x52 ", ipmitool_raw_byte_text(n: bus), " ", ipmitool_raw_byte_text(n: slave), " ", ipmitool_raw_byte_text(n: smpro_value_size_bytes), " ", ipmitool_raw_byte_text(n: reg), " ", ipmitool_raw_byte_text(n: smpro_value_size_bytes)) as NonEmptyStr
 }
 
 fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second) -> SmproProbeOutcome
@@ -315,11 +316,11 @@ fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: Non
           bmc_host: bmc_host,
           username: username,
           password_file: password_file,
-          bus: hex_byte_text(n: bus_byte) as NonEmptyStr,
-          slave_address: hex_byte_text(n: slave) as NonEmptyStr,
-          read_count: hex_byte_text(n: smpro_value_size_bytes) as NonEmptyStr,
-          write_first: hex_byte_text(n: reg.offset) as NonEmptyStr,
-          write_second: hex_byte_text(n: smpro_value_size_bytes) as NonEmptyStr,
+          bus: ipmitool_raw_byte_text(n: bus_byte) as NonEmptyStr,
+          slave_address: ipmitool_raw_byte_text(n: slave) as NonEmptyStr,
+          read_count: ipmitool_raw_byte_text(n: smpro_value_size_bytes) as NonEmptyStr,
+          write_first: ipmitool_raw_byte_text(n: reg.offset) as NonEmptyStr,
+          write_second: ipmitool_raw_byte_text(n: smpro_value_size_bytes) as NonEmptyStr,
           deadline: coreutils_duration_operand(d: deadline) as NonEmptyStr,
           kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
         )
@@ -619,7 +620,7 @@ fn smpro_pass_dossier_text(obs: SmproPassObservation) -> String {
   let site = obs.subject.site
   let outcomes = obs.outcomes
   join([
-    concat("location: ", obs.subject.host as String, " via controller ", obs.subject.endpoint.host as String, ", bus ", to_string(site.bus.bus_id), " ", match site.bus.bus_type { PrivateBus => "private" PublicBus => "public" }, ", ", smpro_site_evidence_text(e: site.evidence), "; control socket ", to_string(site.control.socket), "; ", join(map(smpro_site_targets(site: site), t => concat("socket ", to_string(t.socket), " at 7-bit ", hex_byte_text(n: t.seven_bit_address))), ", ")),
+    concat("location: ", obs.subject.host as String, " via controller ", obs.subject.endpoint.host as String, ", bus ", to_string(site.bus.bus_id), " ", match site.bus.bus_type { PrivateBus => "private" PublicBus => "public" }, ", ", smpro_site_evidence_text(e: site.evidence), "; control socket ", to_string(site.control.socket), "; ", join(map(smpro_site_targets(site: site), t => concat("socket ", to_string(t.socket), " at 7-bit ", ipmitool_raw_byte_text(n: t.seven_bit_address))), ", ")),
     join(map(smpro_site_targets(site: site), t => smpro_socket_stage_text(s: smpro_socket_stage(outcomes: outcomes, socket: t.socket))), "\n"),
     join(map(smpro_site_targets(site: site), t => smpro_socket_records_text(r: smpro_socket_records(outcomes: outcomes, socket: t.socket))), "\n"),
     "probes, in the order sent:",
