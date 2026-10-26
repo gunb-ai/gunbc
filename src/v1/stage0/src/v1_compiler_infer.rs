@@ -16121,7 +16121,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 Some(first_type) => Rc::new(v1_rt::list_skip(&joined_arm_types.clone(), 1))
                     .iter()
                     .cloned()
-                    .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
+                    .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
                         crate::v1_compiler_infer_types::prefer_specific_type(
                             acc,
                             t.clone(),
