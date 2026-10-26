@@ -2,9 +2,11 @@ module test.claim.serving.srv1_serving_launch_witness
 
 import std.types { String, Bool, NonEmptyStr, Port, List }
 import std.optional { Absent, Present }
+import extdeps.uri { UriScheme, Https }
+import extdeps.network.ipv4 { render_ipv4_address }
 import std.list { first_where }
 import std.algebra { length, string_contains }
-import std.dissolution { dissolution_is_bound }
+import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
 import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeySource, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
@@ -113,7 +115,7 @@ test fn the_router_launch_facts_read_the_launch_and_hold_no_policy_or_secret() -
   f.port == srv1_serving_launch.listen_port
     && f.port == 18000
     && (f.model as String) == (srv1_serving_startup_reading.served_model_name as String)
-    && (f.scheme as String) == "https"
+    && (match f.scheme { Https => true, _ => false })
     && (f.tls_name as String) == "pool-card"
     && (f.name as String) == "srv1-vllm"
 }
@@ -179,7 +181,7 @@ test fn the_key_is_a_typed_source_in_the_interface_and_shell_only_in_the_realiza
 // here converges the live container — that waits on the operator's maintenance window (merry-fox-82,
 // 2026-10-25), so it cannot claim a bound trigger it does not own.
 test fn the_unmodeled_frontier_is_keyed_and_the_relaunch_half_stays_unbounded() -> Bool {
-  length(xs: srv1_serving_unmodeled_frontier_rows) == 2
+  length(xs: srv1_serving_unmodeled_frontier_rows) == 6
     && (match first_where(xs: srv1_serving_unmodeled_frontier_rows, keep: fn(r) {
       match r.subject {
         DeclSubject { ref: d } => (d.decl_name as String) == "srv1_serving_wrapper"
@@ -198,4 +200,30 @@ test fn the_unmodeled_frontier_is_keyed_and_the_relaunch_half_stays_unbounded() 
       Present { value: r } => true
       Absent => false
     })
+}
+// The loopback host is TYPED (review 86720): octets in the model; the wire string exists only at
+// render_ipv4_address's boundary.
+test fn the_router_host_is_typed_octets_not_a_string() -> Bool {
+  (render_ipv4_address(addr: srv1_router_upstream_launch_facts.host) as String) == "127.0.0.1"
+    && srv1_router_upstream_launch_facts.host.octet1 == 127
+    && srv1_router_upstream_launch_facts.host.octet4 == 1
+}
+
+// One trigger row per retained wrapper effect (DESIGN 4b: plural loss needs plural triggers), each
+// naming its restored capability in the dissolution text.
+test fn each_retained_wrapper_effect_has_its_own_trigger_row() -> Bool {
+  has_row_naming(needle: "TLS self-mint", capability: "openssl")
+    && has_row_naming(needle: "events.log", capability: "host-event")
+    && has_row_naming(needle: "pool-key generation", capability: "secret-reference")
+    && has_row_naming(needle: "command substitution", capability: "srv1_serving_api_key_substitution_dissolve_trigger")
+}
+
+fn has_row_naming(needle: String, capability: String) -> Bool {
+  match first_where(xs: srv1_serving_unmodeled_frontier_rows, keep: fn(r) {
+    string_contains(s: r.reason as String, pattern: needle)
+      && string_contains(s: dissolution_description(condition: r.dissolution), pattern: capability)
+  }) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }

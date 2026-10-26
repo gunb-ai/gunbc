@@ -2,13 +2,16 @@ module gunbc.serving.srv1_serving_launch
 
 import std.types { String, NonEmptyStr, Port, List }
 import std.optional { Absent }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
 import extdeps.external_authority { CitedFigureStanding }
+import extdeps.uri { UriScheme, Https }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.huggingface.hub { HubCheckpointManifest }
 import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApiKeySource, LilServeApiKeyFromFile, lil_serve_launch_argv, lil_serve_profile_qwen38_flash_next, lil_serve_hardware_rtx_pro_6000_pcie, lil_serve_environment_entry }
 import extdeps.vllm.local_inference_lab_build { VllmServingImage, local_inference_lab_vllm_image }
@@ -46,7 +49,7 @@ import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, s
 // hashes to the wrapper_sha256_hex the startup receipt read off the host.
 data srv1_serving_wrapper: RetainedShellScript = RetainedShellScript {
   body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 80 GiB, no swap; LMCache RAM tier 24 GiB, which lives in /dev/shm, so 32 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=ghcr.io/local-inference-lab/vllm:karmic-kraken-beta-spark-20261007-d071fb3dde0ba979\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=all --cgroup-parent=srv1-inference.slice --memory=80g --memory-swap=80g \\\n  --shm-size 32g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 24G, L2 200G, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=24 --env LMCACHE_L2_GB=200 --env LMCACHE_L2_ROOT=/cache/kv \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"",
-  reason: "srv1's serving container entrypoint, retained verbatim from /home/briansrls/strata-test/srv1_lil_serve.sh (read off the host 2026-10-25 while the container ran from it; sha256 90f5c43d826e0d98f229360f7ebc46e00a96a245829a18003919e49b94967959, pinned in gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading). The launch tail is modeled as srv1_serving_launch (extdeps.vllm.lil_serve lil_serve_launch_argv renders it); what stays here is what no module models yet, each with the home it must retire into: the container launch itself (image by digest, restart no, srv1-inference.slice cgroup, 80g/80g memory-and-swap, 32g shm, device/env/mount flags) retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv — the dissolves_to ref; the TLS self-mint the router pins (CN=pool-card) into an exec/openssl effect row; the events.log START record into a host-event receipt row; key generation into a secret-reference row; the API key read from a file at exec time into the typed realization srv1_serving_api_key_substitution below. No secret value appears in this text, and the row deletes only when every one of these has a row and none needs the script to say it." as NonEmptyStr,
+  reason: "srv1's serving container entrypoint, retained verbatim from /home/briansrls/strata-test/srv1_lil_serve.sh (read off the host 2026-10-25 while the container ran from it; sha256 90f5c43d826e0d98f229360f7ebc46e00a96a245829a18003919e49b94967959, pinned in gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading). THE CLAIM OF THIS ROW, narrowed to match its single dissolves_to (DESIGN 4b: the trigger names the capability this row loses): the container launch itself — image by digest, restart no, srv1-inference.slice cgroup, 80g/80g memory-and-swap, 32g shm, device/env/mount flags, published port — retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv, the dissolves_to ref, together with the launch tail srv1_serving_launch already models. The OTHER effects the script still performs (the TLS self-mint at CN=pool-card, the events.log START record, the key generation, the key read at exec time) are NOT claimed by this row's trigger; each carries its own keyed trigger row in srv1_serving_unmodeled_frontier_rows below. No secret value appears in this text." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
 
@@ -123,6 +126,23 @@ fn srv1_serving_api_key_substitution(source: LilServeApiKeySource) -> String {
   }
 }
 
+// THE SCAFFOLD MARKER for the fragment above (ctrl HAND-SHELL policy; the repo form is
+// gunbc.githooks.githooks_pre_push_fmt_transport_scaffold): a Scaffold disposition bound to the fn,
+// dissolving toward RealizationDispatch, with the restored capability named in the trigger —
+// grammar-EMITTED command substitution from the bash grammar, not this hand-spelled join. DESIGN 6's
+// scaffold tell is "raw shell implementing semantics expressible in .dag": a command substitution IS
+// expressible, so the fragment is transient, marked, and has a named trigger — not silent shell.
+data srv1_serving_api_key_substitution_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.serving.srv1_serving_launch",
+    decl_name: "srv1_serving_api_key_substitution",
+    field: WholeDeclaration,
+  },
+}
+
+data srv1_serving_api_key_substitution_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the bash grammar (extdeps.languages.bash — today invocation only: bash_program_command, bash_script_argv) gains a command-substitution node plus an emit route, so the key-read token becomes a grammar-emitted node consumed by that realization. The capability restored is SHELL GRAMMAR EMIT for command substitution; when it lands, delete this fn, this trigger and the scaffold row together, and re-pin the witness token against docker inspect. Until grammar rows exist there is no .dag emission to consume — which is why the fragment could not land emitted from the start.")
+
 fn srv1_serving_launch_argv() -> List<String> {
   lil_serve_launch_argv(launch: srv1_serving_launch, api_key_wire: srv1_serving_api_key_substitution(source: srv1_serving_launch.api_key))
 }
@@ -156,10 +176,14 @@ data srv1_serving_launch_recipe: DeclarationRef = decl_ref(module_path: "product
 type Srv1RouterUpstreamLaunchFacts {
   // The router's name for the upstream, which is this container's served name.
   name: NonEmptyStr
-  // The scheme and address the launch's TLS server listens at: HTTPS on the loopback port the engine
-  // binds (srv1 and the router share the host).
-  scheme: NonEmptyStr
-  host: NonEmptyStr
+  // The scheme and address the launch's TLS server listens at: HTTPS on the loopback address the
+  // engine binds (srv1 and the router share the host). Typed, not re-invented strings (DESIGN 2):
+  // the scheme is extdeps.uri's UriScheme arm (the same carrier the router's upstream URIs and
+  // gunbc.spark use), and the address is extdeps.network.ipv4's Ipv4Address — a bare NonEmptyStr
+  // here could spell "https://" or "localhost:18000" and the type would not notice. The router row
+  // composes scheme+host+port into its Uri; render_ipv4_address gives the wire form.
+  scheme: UriScheme
+  host: Ipv4Address
   port: Port
   // The TLS name the router verifies. srv1's certificate is self-signed at CN=pool-card (the wrapper
   // mints it); the card's cert carries no SAN, so the router verifies this name. Read from the live
@@ -170,10 +194,15 @@ type Srv1RouterUpstreamLaunchFacts {
   model: NonEmptyStr
 }
 
+// The address the engine binds: IPv4 loopback (octets 127.0.0.1 — the wrapper publishes -p
+// 18000:18000 on the host stack; srv1 and the router share the host). A typed octet record, not a
+// string: 256.0.0.1 and "127.0.0." are unwritable here (extdeps.network.ipv4 Octet range).
+data srv1_serving_listen_address: Ipv4Address = ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)
+
 data srv1_router_upstream_launch_facts: Srv1RouterUpstreamLaunchFacts = Srv1RouterUpstreamLaunchFacts {
   name: "srv1-vllm" as NonEmptyStr,
-  scheme: "https" as NonEmptyStr,
-  host: "127.0.0.1" as NonEmptyStr,
+  scheme: Https,
+  host: srv1_serving_listen_address,
   port: srv1_serving_launch.listen_port,
   tls_name: "pool-card" as NonEmptyStr,
   model: srv1_serving_startup_reading.served_model_name,
@@ -192,7 +221,7 @@ data srv1_serving_route: ServingRoute = serving_replica_route(
     device_index: 0,
     served_name: srv1_router_upstream_launch_facts.name,
   },
-  address: srv1_router_upstream_launch_facts.host,
+  address: render_ipv4_address(addr: srv1_router_upstream_launch_facts.host),
   port: srv1_router_upstream_launch_facts.port,
   ceiling: CeilingByDeclaredPolicy {
     count: 4,
@@ -213,5 +242,28 @@ data srv1_serving_unmodeled_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
     reason: "the relaunch route is unmodeled and deliberately unexecutable from here: srv1 carries live bound sessions through the router and is the CI runner and approval/ntfy host, so stop/start happens only in an operator-granted maintenance window (router cap 0, drain, --restart no inside srv1-inference.slice, exact-flag restore with readback — relayed by merry-fox-82 2026-10-25). Nothing in this module converges the container.",
     dissolution: unbound_dissolution(description: "a host-convergence step executes gunbc.serving.serving_provision_derivation serving_provision_derive's vllm arm on srv1 and reads the running container's inspect and engine banner back against it (its serving_provision_derivation frontier row carries the same trigger); the window procedure itself lands as a fleet procedure. SUFFICIENT for deleting this row, at which point the wrapper dissolves per its dissolves_to."),
+  ),
+  // One trigger row PER RETAINED EFFECT (review 86720, DESIGN 4b meta-obligation 3: a plural loss
+  // needs plural triggers). The wrapper row's own dissolves_to retires only the container launch;
+  // each effect below names the capability that lets its own line leave the script.
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
+    reason: "the TLS self-mint (openssl req -x509, EC prime256v1, CN=pool-card, kept across restarts at /root/serve/tls.key|.crt) is performed by script shell; no effect row models minting a self-signed serving certificate, though the router's verification of CN=pool-card is a modeled launch fact.",
+    dissolution: unbound_dissolution(description: "an exec/openssl effect row (gunbc.host host_effect_realize vocabulary or extdeps.openssl) models generating and idempotently reusing a self-signed cert at a path, after which the wrapper's [ -s tls.key ] || openssl block is a realization of that row. SUFFICIENT for retiring this trigger row."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
+    reason: "the events.log START record (timestamped host-event line with driver version and cache shape) is shell echo into a file; no host-event receipt row models it.",
+    dissolution: unbound_dissolution(description: "a host-event receipt row (gunbc.host) models append-with-timestamp serving-lifecycle events, consumed by whatever reads events.log. SUFFICIENT for retiring this trigger row."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
+    reason: "the pool-key generation (head -c 24 /dev/urandom | base64, idempotent, umask 077) is shell; no secret-reference row models generating-and-holding a serving API key at a path.",
+    dissolution: unbound_dissolution(description: "a secret-reference row (the vault/secret vocabulary gunbc uses for deploy-time secrets) models an idempotently generated key file at a path, which is also the row LilServeApiKeyFromFile's path should point at. SUFFICIENT for retiring this trigger row and narrowing the wrapper to nothing but the docker run."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_api_key_substitution"),
+    reason: "the key READ at exec time is a hand-spelled bash command substitution — transient, marked scaffold (see srv1_serving_api_key_substitution_scaffold); its trigger row is srv1_serving_api_key_substitution_dissolve_trigger and is not duplicated here.",
+    dissolution: unbound_dissolution(description: "see srv1_serving_api_key_substitution_dissolve_trigger: grammar-emitted command substitution from extdeps.languages.bash. SUFFICIENT for retiring this row together with the scaffold rows."),
   ),
 ]
