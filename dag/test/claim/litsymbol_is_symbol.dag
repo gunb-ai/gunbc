@@ -84,7 +84,7 @@ test fn caret_symbol_named_type_is_not_the_minted_carrier() -> Bool {
 // bound the gap. The rows below are therefore the text-like and kernel formals that are NOT
 // refinements of String: a free semigroup over text, and the remaining kernel ground names.
 test fn symbol_at_free_semigroup_refuses() -> Bool {
-  blocking_in_class(source: "module litsymbol.atfsg\nfn f() -> FreeSemigroup<String> { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+  blocking_in_class(source: "module litsymbol.atfsg\nimport std.algebra { FreeSemigroup }\nfn f() -> FreeSemigroup<String> { ^tag }\n", wanted_class: "TypeMismatch") >= 1
 }
 
 test fn symbol_at_secret_refuses() -> Bool {
@@ -116,5 +116,5 @@ test fn caret_is_not_string_at_comparison() -> Bool {
 }
 
 test fn string_against_string_comparison_is_accepted() -> Bool {
-  blocking(source: "module litsymbol.cmp_str_control\nfn f() -> Bool { \"a\" == \"a\" }\n") == 0
+  blocking_count(source: "module litsymbol.cmp_str_control\nfn f() -> Bool { \"a\" == \"a\" }\n") == 0
 }
