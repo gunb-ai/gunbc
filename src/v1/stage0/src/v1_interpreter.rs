@@ -13493,8 +13493,8 @@ mod cast_scope_index_tests {
     #[ignore = "real repository scope; run explicitly on a remote worker"]
     fn real_scope_cast_index_matches_the_retired_scan() {
         use crate::cli_run::{
-            claim_scope_for, evaluation_frame, prepare_repository_closure, process_shared_index,
-            witness_exclusion_substrings,
+            claim_scope_for, evaluation_frame, prepare_repository_closure,
+            process_shared_index_or_refuse, witness_exclusion_substrings,
         };
         // Locate the runtime checkout: remote builds can remap CARGO_MANIFEST_DIR to a
         // relative compilation path, which is not a usable execution-time source root.
@@ -13515,7 +13515,7 @@ mod cast_scope_index_tests {
         std::env::set_current_dir(root).expect("enter repository root");
         let roots = ["dag", "src/v2"].map(|path| root.join(path).to_string_lossy().into_owned());
         let entry = "test.claim.compiler_frontend_program_status_witness".to_string();
-        let index = process_shared_index(&roots);
+        let index = process_shared_index_or_refuse(&roots);
         let (prepared, _) = prepare_repository_closure(
             &roots,
             &witness_exclusion_substrings(),
