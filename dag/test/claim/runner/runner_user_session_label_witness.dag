@@ -154,6 +154,11 @@ test fn the_label_is_one_constant_every_producer_reads() -> Bool {
 // process result so a single `gunbc run` of this function is the receipt for the whole file -- the run
 // refuses to map a Bool to an exit code, so without this there is no single green mark to paste.
 
+// The fold's refusal names which control was expected, so a red receipt says where to look rather than
+// just exiting 1.
+data witness_failure_reason: String =
+  "a user-session label control did not hold: the row grant, the class-argument strip, the slot grain, or the one-constant rule"
+
 fn runner_user_session_label_witness_main() -> ProcessExit {
   let passed = the_row_names_srv4_alone_as_holding_a_user_session()
     && srv4_registers_with_the_user_session_label()
@@ -165,5 +170,5 @@ fn runner_user_session_label_witness_main() -> ProcessExit {
     && a_ci_slot_label_set_follows_its_host_row()
     && the_deploy_slot_carries_no_user_session_label()
     && the_label_is_one_constant_every_producer_reads()
-  if passed { ExitSuccess {} } else { ExitFailure { code: 1 } }
+  if passed { ExitSuccess {} } else { ExitFailure { code: 1, reason: witness_failure_reason } }
 }
