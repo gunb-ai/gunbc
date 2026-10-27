@@ -1,5 +1,8 @@
 module v2.extdeps.languages.rust
-import std.types { List, Map }
+import std.types { List, Map, NonEmptyStr }
+import gunbc.rust_source_type_bindings { rust_source_type_binding_rows }
+import std.target_representation { SourceTypeTargetBinding }
+import extdeps.languages.rust.representation { RustRepresentation, rust_representation_realization_for }
 import v2.std.primitive_contract_ref { primitive_contract_declaration_ref }
 import std.error_primitives { Never }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -158,6 +161,8 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   ProducedDeclSupport,
   ProducedDeclUnwired,
   ProducedDeclWired,
+  OpaqueTypeBindings,
+  OpaqueTypeBindingsWired,
   ProducedDeclRenderRows,
   FunctionTypeAtFnBoundReturn,
   FunctionTypeAtItemReturn,
@@ -1461,7 +1466,30 @@ fn rust_produced_decl_support() -> ProducedDeclSupport {
   ProducedDeclWired {
     render_rows: rust_produced_decl_render_rows,
     scaffold_relation_rule_name: ^rust_relation_rule_fn_add,
-    scaffold_base_row: rust_fn_add_scaffold_relation_row_node()
+    scaffold_base_row: rust_fn_add_scaffold_relation_row_node(),
+    opaque_bindings: rust_opaque_type_bindings()
+  }
+}
+
+// THE DECLARATION-KEYED ROWS THE CORPUS OWNS (gunbc.rust_source_type_bindings), VIEWED THROUGH THIS
+// TARGET'S SPELLINGS and nothing more: the keys are the rows' own DeclarationRefs and the value is the
+// bound representation's grounding spelling, absent when this target has none for it. No second table.
+fn rust_opaque_type_bindings() -> OpaqueTypeBindings {
+  OpaqueTypeBindingsWired {
+    rows: fold_list(
+      xs: rust_source_type_binding_rows,
+      empty: [],
+      cons: fn(acc, b) {
+        list_snoc_item(xs: acc, item: SourceTypeTargetBinding { source: b.source, representation: rust_grounding_spelling(representation: b.representation) })
+      }
+    )
+  }
+}
+
+fn rust_grounding_spelling(representation: RustRepresentation) -> Optional<NonEmptyStr> {
+  match rust_representation_realization_for(representation: representation) {
+    Present { value: r } => optional_present(value: r.spelling.grounding_position)
+    Absent => optional_absent()
   }
 }
 

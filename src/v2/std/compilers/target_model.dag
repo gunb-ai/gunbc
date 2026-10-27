@@ -29,6 +29,8 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.target_representation { SourceTypeTargetBinding }
+import std.types { NonEmptyStr }
 import v2.std.primitive_contract_ref { primitive_contract_declaration_ref, primitive_contract_qualified_name }
 
 
@@ -201,7 +203,19 @@ type ProducedDeclSupport
       render_rows: ProducedDeclRenderRows
       scaffold_relation_rule_name: Symbol
       scaffold_base_row: Node
+      opaque_bindings: OpaqueTypeBindings
     }
+
+// THE TARGET'S VIEW OF THE CORPUS'S DECLARATION-KEYED REALIZATION ROWS, for the declarations whose
+// source states no structure (an opaque `type X`). The rows stay owned by the corpus's binding module
+// (for Rust, gunbc.rust_source_type_bindings); the target row derives this view from them once, so the
+// generic fold reads one generic shape and imports no target. The row value is the bound
+// representation's spelling, absent when the target has no spelling for that representation. A target
+// carrying no table is OpaqueTypeBindingsAbsent, and a bodyless declaration on it refuses naming the
+// target rather than being given a carrier.
+type OpaqueTypeBindings
+  = OpaqueTypeBindingsAbsent
+  | OpaqueTypeBindingsWired { rows: List<SourceTypeTargetBinding<Optional<NonEmptyStr>>> }
 
 // The decl-shaped facts one produced declaration supplies to the target's rows. The
 // rows name WHERE each of these goes; this names WHAT they are, and it is derived once
@@ -16773,7 +16787,7 @@ fn target_project_realized_closure(
 ) -> Outcome<TargetValueExpression> {
   let rows = match target.produced_decl_support {
     ProducedDeclUnwired => Empty
-    ProducedDeclWired { render_rows: r, scaffold_relation_rule_name: _, scaffold_base_row: _ } => r.function_type_realizations
+    ProducedDeclWired { render_rows: r, scaffold_relation_rule_name: _, scaffold_base_row: _, opaque_bindings: _ } => r.function_type_realizations
   }
   match function_type_realization_at(rows: rows, position: position) {
     Absent =>

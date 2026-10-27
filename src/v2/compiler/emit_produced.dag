@@ -9,6 +9,8 @@ import v2.compiler.target_carriers { emit_module_decl_separator, target_source_m
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   ProducedDeclWired,
+  OpaqueTypeBindingsAbsent,
+  OpaqueTypeBindingsWired,
   TargetModel,
   produced_decl_render_from_rows,
   render_target_text,
@@ -40,17 +42,20 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
-import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.node { Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode, symbol_lexeme, symbol_intern_lexeme }
+import v2.std.qualified_name { declaration_reference_path_optional, QualifiedName, qualified_name_to_dotted_string }
 import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
-import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
+import v2.extdeps.languages.dag { namespace_graft_node_is_module_body, qualified_name_from_module_node }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import v2.std.text { String }
+import std.decl_ref { decl_ref }
+import std.coercion { unicode_scalar_fold }
+import std.target_representation { resolve_exact_binding, ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -197,7 +202,7 @@ type ModuleMemberClass
   | ModuleMemberRefinement { name: Symbol, refinement: Node }
   | ModuleMemberRecordOrRefinement
   | ModuleMemberAlias
-  | ModuleMemberOpaque
+  | ModuleMemberOpaque { name: Symbol }
   | ModuleMemberGeneric
   | ModuleMemberUnsupported
 
@@ -215,7 +220,7 @@ fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> Modul
         _ =>
           match type_decl_view(target: edge.target) {
             TypeAlias { binders: _, aliased: _ } => ModuleMemberAlias
-            OpaqueTypeDecl { binders: _ } => ModuleMemberOpaque
+            OpaqueTypeDecl { binders: _ } => ModuleMemberOpaque { name: n }
             GenericTypeDecl { binders: _, member: _ } => ModuleMemberGeneric
             NotATypeDecl => ModuleMemberUnsupported
             PlainTypeDecl { member: m } =>
@@ -285,18 +290,7 @@ fn emit_refinement_declaration(
                   let resolve_type = produced_type_binding(target: realization_host)
                   bind_outcome(
                     o: resolve_type(carrier),
-                    f: fn(carrier_binding) {
-                      serialize_concrete_syntax_tokens_to_source(
-                        target: target,
-                        tokens: [
-                          FixedToken { token_class: classes.keyword },
-                          BoundToken { token_class: classes.name, binding: name },
-                          FixedToken { token_class: classes.assign },
-                          BoundToken { token_class: classes.name, binding: carrier_binding },
-                          FixedToken { token_class: classes.terminator }
-                        ]
-                      )
-                    }
+                    f: fn(carrier_binding) { emit_transparent_alias(name: name, carrier_binding: carrier_binding, classes: classes, target: target) }
                   )
                   }
                 }
@@ -306,6 +300,62 @@ fn emit_refinement_declaration(
       }
     }
   )
+}
+
+fn emit_transparent_alias(name: Symbol, carrier_binding: Symbol, classes: RefinementDeclarationClasses, target: TargetModel) -> Outcome<Medium<String>> {
+  serialize_concrete_syntax_tokens_to_source(
+    target: target,
+    tokens: [
+      FixedToken { token_class: classes.keyword },
+      BoundToken { token_class: classes.name, binding: name },
+      FixedToken { token_class: classes.assign },
+      BoundToken { token_class: classes.name, binding: carrier_binding },
+      FixedToken { token_class: classes.terminator }
+    ]
+  )
+}
+
+// AN OPAQUE `type X` HAS NO STRUCTURE TO RENDER; ITS REALIZATION IS THE CORPUS'S DECLARATION-KEYED
+// BINDING, read through the target's view (OpaqueTypeBindings) by the one exact-binding resolver the
+// corpus already reads (std.target_representation resolve_exact_binding, keyed as
+// gunbc.rust_declaration_realization keys it, by decl_ref). The emitted alias is the realization of the
+// bound declaration, never its meaning. The four resolver outcomes stay four refusals, and a target
+// carrying no table refuses as such; nothing is guessed from the name or the carrier.
+fn emit_opaque_declaration(name: Symbol, module_name: QualifiedName, opaque: Node, target: TargetModel, realization_host: TargetModel) -> Outcome<Medium<String>> {
+  match realization_host.produced_decl_support {
+    ProducedDeclUnwired => emit_module_member_refused(reason: ^emit_module_member_opaque_target_carries_no_binding_view, at: opaque)
+    ProducedDeclWired { render_rows: _, scaffold_relation_rule_name: _, scaffold_base_row: _, opaque_bindings: view } =>
+      match view {
+        OpaqueTypeBindingsAbsent => emit_module_member_refused(reason: ^emit_module_member_opaque_target_carries_no_binding_view, at: opaque)
+        OpaqueTypeBindingsWired { rows: rows } =>
+          match resolve_exact_binding(
+            source: Present { value: decl_ref(module_path: unicode_scalar_fold(xs: qualified_name_to_dotted_string(qn: module_name)), decl_name: unicode_scalar_fold(xs: symbol_lexeme(sym: name))) },
+            rows: rows
+          ) {
+            ExactBindingAbsent => emit_module_member_refused(reason: ^emit_module_member_opaque_binding_absent, at: opaque)
+            ExactBindingAmbiguous { candidate_count: _ } => emit_module_member_refused(reason: ^emit_module_member_opaque_binding_ambiguous, at: opaque)
+            ExactSourceIdentityUnavailable { cause: _ } => emit_module_member_refused(reason: ^emit_module_member_opaque_identity_unavailable, at: opaque)
+            ResolvedExactBinding { binding: b } =>
+              match b.representation {
+                Absent => emit_module_member_refused(reason: ^emit_module_member_opaque_representation_unspelled, at: opaque)
+                Present { value: spelling } =>
+                  bind_outcome(
+                    o: target_bundle_optional_child(target: realization_host, edge_name: ^target_model_edge_refinement_declaration),
+                    f: fn(row_optional) {
+                      match row_optional {
+                        Absent => emit_module_member_refused(reason: ^emit_module_member_opaque_alias_not_realized, at: opaque)
+                        Present { value: row } =>
+                          bind_outcome(
+                            o: refinement_declaration_row_classes(row: row),
+                            f: fn(classes) { emit_transparent_alias(name: name, carrier_binding: symbol_intern_lexeme(lexeme: spelling), classes: classes, target: target) }
+                          )
+                      }
+                    }
+                  )
+              }
+          }
+      }
+  }
 }
 
 // A REFINEMENT'S CARRIER MUST BE A LOWERED TYPE. The production route lowers it (a module member's
@@ -378,7 +428,7 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
   outcome_rejected(d: emit_produced_decl_diagnostic(reason: reason, node: at))
 }
 
-fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>, tree: InferredTree, declarations: SymbolIndex) -> Outcome<Medium<String>> {
+fn emit_module_member(edge: Edge, module_name: QualifiedName, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>, tree: InferredTree, declarations: SymbolIndex) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
     ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host, tree: tree, declarations: declarations)
     ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: n, params: [], node: c, target: target, realization_host: realization_host)
@@ -387,7 +437,7 @@ fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetM
     ModuleMemberBodylessArrow => emit_module_member_refused(reason: ^emit_module_member_arrow_has_no_body, at: edge.target)
     ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)
     ModuleMemberAlias => emit_module_member_refused(reason: ^emit_module_member_alias_not_realized, at: edge.target)
-    ModuleMemberOpaque => emit_module_member_refused(reason: ^emit_module_member_opaque_not_realized, at: edge.target)
+    ModuleMemberOpaque { name: n } => emit_opaque_declaration(name: n, module_name: module_name, opaque: edge.target, target: target, realization_host: realization_host)
     ModuleMemberGeneric => emit_module_member_refused(reason: ^emit_module_member_generic_not_realized, at: edge.target)
     ModuleMemberUnsupported => emit_module_member_refused(reason: ^emit_module_member_unsupported, at: edge.target)
   }
@@ -438,24 +488,29 @@ fn emit_module_body_members(tree: InferredTree, target: TargetModel, realization
     concat(acc, module_body_member_edges(body: b))
   })
   bind_outcome(
-    o: fold_list(
-      xs: members,
-      empty: Accepted { value: "", diagnostics: None },
-      cons: fn(acc, edge) {
-        bind_outcome(
-          o: acc,
-          f: fn(partial) {
+    o: qualified_name_from_module_node(root: tree.root),
+    f: fn(module_name) {
+      bind_outcome(
+        o: fold_list(
+          xs: members,
+          empty: Accepted { value: "", diagnostics: None },
+          cons: fn(acc, edge) {
             bind_outcome(
-              o: emit_module_member(edge: edge, target: target, realization_host: realization_host, kinds: kinds, tree: tree, declarations: declarations),
-              f: fn(medium) {
-                Accepted { value: concat(partial, medium.carried, emit_module_decl_separator), diagnostics: None }
+              o: acc,
+              f: fn(partial) {
+                bind_outcome(
+                  o: emit_module_member(edge: edge, module_name: module_name, target: target, realization_host: realization_host, kinds: kinds, tree: tree, declarations: declarations),
+                  f: fn(medium) {
+                    Accepted { value: concat(partial, medium.carried, emit_module_decl_separator), diagnostics: None }
+                  }
+                )
               }
             )
           }
-        )
-      }
-    ),
-    f: fn(joined) { target_source_medium(text: joined, target: target) }
+        ),
+        f: fn(joined) { target_source_medium(text: joined, target: target) }
+      )
+    }
   )
 }
 

@@ -10,6 +10,7 @@ import v2.compiler.self_host.closure_emission {
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
@@ -18,6 +19,9 @@ import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_sy
 import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
+import v2.std.compilers.target_model { TargetModel }
+import v2.compiler.target_serialize { serialize_facts_absent_tree }
+import v2.std.symbol_index { empty_symbol_index }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -45,6 +49,10 @@ fn member_emission_locus() -> Node {
 }
 
 fn member_emission_of(source: String) -> ClosureEmissionLocated {
+  member_emission_at(module: "v2.test.member_emission", target: rust_target_model(), source: source)
+}
+
+fn member_emission_at(module: String, target: TargetModel, source: String) -> ClosureEmissionLocated {
   emit_closure_from_ingest_located(
     ingest: [
       DagSourceReadWitness {
@@ -54,15 +62,19 @@ fn member_emission_of(source: String) -> ClosureEmissionLocated {
         source_root: DagTree
       }
     ],
-    entry: qualified_name_from_dotted_string(dotted: "v2.test.member_emission"),
+    entry: qualified_name_from_dotted_string(dotted: module),
     entry_locus: member_emission_locus(),
-    target: rust_target_model()
+    target: target
   )
 }
 
 // ONE NULLARY PRODUCER PER SPECIMEN, published portable and WARM in v2.workflow.floor_pure_producer_share.
 fn member_emission_verdict_of(source: String) -> MemberEmissionVerdict {
-  match member_emission_of(source: source).outcome {
+  member_emission_verdict_at(module: "v2.test.member_emission", target: rust_target_model(), source: source)
+}
+
+fn member_emission_verdict_at(module: String, target: TargetModel, source: String) -> MemberEmissionVerdict {
+  match member_emission_at(module: module, target: target, source: source).outcome {
     Rejected { diagnostics: d } => MemberClosureRefused { reason: diagnostics_fatal_reason(d: d) }
     Accepted { value: ce, diagnostics: _ } =>
       match first(ce.modules) {
@@ -169,9 +181,12 @@ fn member_emission_supplied_refinement() -> String {
   }
   match emit_module_member(
     edge: member,
+    module_name: Empty,
     target: rust_target_model(),
     realization_host: rust_target_model(),
-    kinds: [DeclaredRefinement { name: ^Pos }]
+    kinds: [DeclaredRefinement { name: ^Pos }],
+    tree: serialize_facts_absent_tree(root: member.target),
+    declarations: empty_symbol_index()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried
     Rejected { diagnostics: d } => concat("REFUSED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
@@ -273,10 +288,34 @@ test fn an_alias_member_refuses_under_its_own_reason_holds() -> Bool {
   }
 }
 
+// AN OPAQUE `type X` REALIZES ONLY THROUGH THE CORPUS'S DECLARATION-KEYED BINDING (gunbc.rust_source_type_bindings,
+// read through the target's view). std.float `Float` is bound to a Rust f64: the alias is the realization, the
+// opacity stays a source fact. The same bodyless shape in a module with no row refuses under its own reason, and a
+// target carrying no binding view refuses as such -- neither is given a carrier.
+fn member_emission_float_verdict_on(target: TargetModel) -> MemberEmissionVerdict {
+  member_emission_verdict_at(module: "std.float", target: target, source: "module std.float\n\ntype Float\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+test fn a_bound_opaque_member_emits_its_binding_as_a_transparent_alias_holds() -> Bool {
+  match member_emission_float_verdict_on(target: rust_target_model()) {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "type Float = f64;") && !string_contains(s: t, pattern: "struct")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn an_opaque_member_on_a_target_with_no_binding_view_refuses_by_cause_holds() -> Bool {
+  match member_emission_float_verdict_on(target: swift_target_model()) {
+    MemberEmitted { text: _ } => false
+    MemberRefused { reason: r } => r == ^emit_module_member_opaque_target_carries_no_binding_view
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
 test fn a_bodyless_member_refuses_under_its_own_reason_holds() -> Bool {
   match member_emission_opaque_verdict() {
     MemberEmitted { text: _ } => false
-    MemberRefused { reason: r } => r == ^emit_module_member_opaque_not_realized
+    MemberRefused { reason: r } => r == ^emit_module_member_opaque_binding_absent
     MemberClosureRefused { reason: _ } => false
   }
 }
