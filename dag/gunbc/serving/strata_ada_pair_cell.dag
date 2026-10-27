@@ -3,7 +3,7 @@ module gunbc.serving.strata_ada_pair_cell
 import std.types { List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.content_hash { Sha256Digest }
-import std.measure { token_count, mebibyte, positive_slot_count, positive_measure_count, minute }
+import std.measure { token_count, mebibyte, positive_slot_count, positive_measure_count, minute, second }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import extdeps.docker { BindMount }
 import extdeps.strata.serve_flags {
@@ -69,4 +69,9 @@ data srv3_strata_ada_pair_plan: ServingBenchmarkCellPlan = ServingBenchmarkCellP
   // toolkit injects nvidia-smi from the host driver, so the sampler needs no CUDA image.
   sampler_image: "ubuntu@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac" as NonEmptyStr,
   idle_gpu_memory_bound: mebibyte(count: 1024),
+  // The engine must answer /v1/models within 900 tries 2 s apart, each request bounded to 10 s:
+  // a Strata model load on this cell takes minutes (the same bound the hand-run probe used).
+  readiness_attempts: 900,
+  readiness_delay: second(count: 2),
+  readiness_max_time: second(count: 10),
 }

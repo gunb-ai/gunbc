@@ -1,7 +1,7 @@
 module gunbc.serving.serving_benchmark_cell_plan
 
 import std.types { List, NonEmptyStr, String }
-import std.measure { Mebibyte, Minute }
+import std.measure { Mebibyte, Minute, Second, second }
 import std.nat { Nat }
 import product.host_identity { HostIdentity }
 import extdeps.docker { DockerMount }
@@ -47,4 +47,12 @@ type ServingBenchmarkCellPlan {
   // A GPU whose device memory in use is above this before the engine starts, or after it is removed,
   // is held by something else.
   idle_gpu_memory_bound: Mebibyte
+  // The engine-readiness poll policy, pinned by the cell: attempts x delay bounds the wait and
+  // max_time bounds each request (curl --retry/--retry-delay/--max-time, rendered by
+  // extdeps.http.client from these carriers — the instrument never spells them as strings). A model
+  // load on this cell takes minutes; the wait is policy of the cell, so it lives here, not in argv
+  // literals in the instrument (review 86842, DESIGN.md §3).
+  readiness_attempts: Nat
+  readiness_delay: Second
+  readiness_max_time: Second
 }

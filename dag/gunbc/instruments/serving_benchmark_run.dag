@@ -314,9 +314,13 @@ fn sb_gpu_snapshot() -> GpuSnapshot {
 
 // The engine answers /v1/models once its weights are loaded: curl retries until it does, bounded.
 fn sb_engine_ready() -> Bool {
+  // The probe arguments come from extdeps.http.client, rendered from the cell plan's carriers: the
+  // retry count, retry delay and per-request bound are policy the plan pins, not argv literals.
+  // Readiness is an EXACT status: -w prints only %{http_code}, so stdout is the status itself and a
+  // substring match would let a 2000 or a 42000 answer the question (review 86842; §5 fail-closed).
   let r = DockerCli.RunRemoved(docker: sb_docker(), network: sb_host_network(), image: curlimages_curl_8_11_1_image,
-    arguments: ["-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "900", "--retry-delay", "2", "--retry-all-errors", "--max-time", "10", concat(sb_engine_url(), "/v1/models")])
-  r.exit_code == 0 && string_contains(s: r.stdout, pattern: "200")
+    arguments: http_client_probe_status_arguments(url: concat(sb_engine_url(), "/v1/models"), attempts: serving_benchmark_run_plan.readiness_attempts, delay: serving_benchmark_run_plan.readiness_delay, max_time: serving_benchmark_run_plan.readiness_max_time))
+  r.exit_code == 0 && trim(s: r.stdout) == "200"
 }
 
 fn admitted_report(inputs: PinnedInputs, principal_facts: String, before: String, after: GpuSnapshot, identity_text: String, cpuinfo_text: String, meminfo_text: String, cgroup_dir: String, gpus: List<NvidiaSmiGpuIdentity>, evidence: RunEvidence) -> NativeClaimReport {
