@@ -26190,6 +26190,7 @@ pub fn unify_generics(
             // rather than being emitted unsolved.
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
+                    eprintln!("DIAGBIND bind={:?} actual={} verdict_full={}", bind_name.clone(), type_node_label(actual.clone(), source_indices.clone()), crate::v1_compiler_infer_types::is_fully_resolved(actual.clone(), source_indices.clone()));
                     if crate::v1_compiler_infer_types::is_fully_resolved(
                         actual.clone(),
                         source_indices.clone(),
