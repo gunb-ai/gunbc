@@ -3041,8 +3041,12 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 50
-    if: github.event.inputs.mode == 'dashboard_deploy'
+    timeout-minutes: 97
+    if: github.event.inputs.mode == 'dashboard_deploy' && github.event.inputs.host == 'srv1'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     concurrency:
       group: gunbc-host-mutation-${{ github.event.inputs.host }}
       cancel-in-progress: false
@@ -3131,6 +3135,57 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
+      - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
+        id: wif_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc
+          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: "srv1 root mutation: file one approval with the broker and wait for the operator's decision; no root step runs without it"
+        id: srv1_root_mutation_approval
+        run: |
+          set -e
+          'set' '-uo' 'pipefail'
+          'umask' '077'
+          HDR_FILE="$RUNNER_TEMP"'/srv1-root-mutation-auth-header'
+          RESP_FILE="$RUNNER_TEMP"'/srv1-root-mutation-sm.json'
+          SUB_FILE="$RUNNER_TEMP"'/approval-submission-mac-key'
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"
+          ' 'EXIT'
+          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$SUB_FILE"
+          'chmod' '600' "$SUB_FILE"
+          'rm' '-f' "$HDR_FILE" "$RESP_FILE"
+          'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"
+          'mkdir' '-p' "$GITHUB_WORKSPACE"'/artifacts'
+          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
+
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/srv1_root_mutation_approval_run.dag --function srv1_root_mutation_approval_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_0: plan_workflow_run_id
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_0: ${{ inputs.plan_workflow_run_id }}
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_1: apply_workflow_run_id
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_1: ${{ inputs.apply_workflow_run_id }}
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_2: plan_artifact_hash
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_2: ${{ inputs.plan_artifact_hash }}
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_3: expected_revision
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_3: ${{ inputs.expected_revision }}
+        timeout-minutes: 32
+      - name: Upload the srv1 root-mutation approval receipt
+        id: srv1_root_mutation_approval_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: srv1-root-mutation-approval-receipts
+          path: artifacts/srv1-root-mutation-approval-*
+          if-no-files-found: warn
+          retention-days: 30
+        if: always()
+        timeout-minutes: 10
       - name: Download the plan artifact (carries the plan receipt) from the plan run
         id: dashboard_plan_receipt_download
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
@@ -3182,8 +3237,12 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 50
-    if: github.event.inputs.mode == 'approval_broker_dark_install'
+    timeout-minutes: 97
+    if: github.event.inputs.mode == 'approval_broker_dark_install' && github.event.inputs.host == 'srv1'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     concurrency:
       group: gunbc-host-mutation-${{ github.event.inputs.host }}
       cancel-in-progress: false
@@ -3272,6 +3331,49 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
+      - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
+        id: wif_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc
+          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: "srv1 root mutation: file one approval with the broker and wait for the operator's decision; no root step runs without it"
+        id: srv1_root_mutation_approval
+        run: |
+          set -e
+          'set' '-uo' 'pipefail'
+          'umask' '077'
+          HDR_FILE="$RUNNER_TEMP"'/srv1-root-mutation-auth-header'
+          RESP_FILE="$RUNNER_TEMP"'/srv1-root-mutation-sm.json'
+          SUB_FILE="$RUNNER_TEMP"'/approval-submission-mac-key'
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"
+          ' 'EXIT'
+          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$SUB_FILE"
+          'chmod' '600' "$SUB_FILE"
+          'rm' '-f' "$HDR_FILE" "$RESP_FILE"
+          'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"
+          'mkdir' '-p' "$GITHUB_WORKSPACE"'/artifacts'
+          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
+
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/srv1_root_mutation_approval_run.dag --function srv1_root_mutation_approval_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        timeout-minutes: 32
+      - name: Upload the srv1 root-mutation approval receipt
+        id: srv1_root_mutation_approval_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: srv1-root-mutation-approval-receipts
+          path: artifacts/srv1-root-mutation-approval-*
+          if-no-files-found: warn
+          retention-days: 30
+        if: always()
+        timeout-minutes: 10
       - name: Install the approval broker dark on the approval broker host (additive unit + slice; does not restart gunbc-roadmap.service)
         id: approval_broker_dark_install
         run: |-
@@ -3282,8 +3384,12 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 50
-    if: github.event.inputs.mode == 'microvm_controller_install'
+    timeout-minutes: 97
+    if: github.event.inputs.mode == 'microvm_controller_install' && github.event.inputs.host == 'srv1'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     concurrency:
       group: gunbc-host-mutation-${{ github.event.inputs.host }}
       cancel-in-progress: false
@@ -3372,6 +3478,53 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
+      - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
+        id: wif_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc
+          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: "srv1 root mutation: file one approval with the broker and wait for the operator's decision; no root step runs without it"
+        id: srv1_root_mutation_approval
+        run: |
+          set -e
+          'set' '-uo' 'pipefail'
+          'umask' '077'
+          HDR_FILE="$RUNNER_TEMP"'/srv1-root-mutation-auth-header'
+          RESP_FILE="$RUNNER_TEMP"'/srv1-root-mutation-sm.json'
+          SUB_FILE="$RUNNER_TEMP"'/approval-submission-mac-key'
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"
+          ' 'EXIT'
+          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$SUB_FILE"
+          'chmod' '600' "$SUB_FILE"
+          'rm' '-f' "$HDR_FILE" "$RESP_FILE"
+          'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"
+          'mkdir' '-p' "$GITHUB_WORKSPACE"'/artifacts'
+          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
+
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/srv1_root_mutation_approval_run.dag --function srv1_root_mutation_approval_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_0: workspace_image_run_id
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_0: ${{ inputs.workspace_image_run_id }}
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_1: revision_job_image_run_id
+          GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_1: ${{ inputs.revision_job_image_run_id }}
+        timeout-minutes: 32
+      - name: Upload the srv1 root-mutation approval receipt
+        id: srv1_root_mutation_approval_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: srv1-root-mutation-approval-receipts
+          path: artifacts/srv1-root-mutation-approval-*
+          if-no-files-found: warn
+          retention-days: 30
+        if: always()
+        timeout-minutes: 10
       - name: Download the workspace image selected for installation
         id: workspace_image_download
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
