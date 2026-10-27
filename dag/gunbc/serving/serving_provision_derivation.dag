@@ -109,12 +109,6 @@ fn serving_provision_from_ninfer(recipe: ServingRecipe, build: NinferEngineRelea
         WeightsPinnedAtHub { checkpoint: _, quantization: _ } =>
           ServingProvisionRefusedStartSource { cause: "the recipe's weights are pinned at the Hub, not placed on the object store; the ninfer phase reads placed artifacts only" as NonEmptyStr }
       }
-    // A HUB-PINNED start is unreadable to the ninfer leg the same way an observed store is: the ninfer
-    // provision fetches a placed artifact, and a Hub revision at a pinned commit is not one. This arm
-    // was the second gap #15222 owed when it added StartSourceHubPinned — enumerated here by walking
-    // every match on that sum (§6b), found before CI did.
-    StartSourceHubPinned { hub_fallback: _, standing: _ } =>
-      ServingProvisionRefusedStartSource { cause: "the start source is a pinned Hub revision, not a placed artifact; the ninfer fetch route reads placements only" as NonEmptyStr }
     StartSourceObserved { store: _, hub_fallback: _, standing: _ } =>
       ServingProvisionRefusedStartSource { cause: "the start source is an observed object store, not a placed artifact; its fetch route is unmodeled" as NonEmptyStr }
     StartSourcePlacementMissing =>
