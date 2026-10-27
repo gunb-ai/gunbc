@@ -30,7 +30,10 @@ import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_dispatch_inputs }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_workflow, fleet_converge_dispatch_inputs, fleet_converge_expected_revision_input, fleet_converge_mode_input, fleet_converge_host_input,
+  fleet_converge_workflow_mode_wire, QualificationFloor,
+}
 import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
@@ -61,7 +64,7 @@ import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import gunbc.runner.runner_host_unit_slot { HostUnitSlot, host_unit_slot_attempt }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.runner.runner_qualification_floor_job {
-  qualification_attempt_dispatch_input, qualification_revision_dispatch_input, qualification_floor_revision_guard_step,
+  qualification_attempt_dispatch_input, qualification_floor_revision_guard_step,
 }
 import gunbc.runner.runner_qualification_ref_pin {
   QualificationRefPin, QualificationBranchName, qualification_workflow_path, qualification_selected_workflow,
@@ -108,12 +111,41 @@ fn qualification_workflow_file_name() -> NonEmptyStr {
   }
 }
 
-fn qualification_dispatch_inputs(attempt: NonEmptyStr, revision: CommitSha) -> Map<String, String> {
+// THE REVISION THE FLOOR RUNS IS AN INPUT TOO (decision: eager-gull-22, 2026-10-04 -- sha-checkout).
+// A dispatch names a branch, and a branch can move between the pin's readback and the run; a ruleset
+// could not stop a delete-then-recreate, and the App that would administer it could remove it. So the
+// floor job itself checks out exactly this revision as its FIRST step and refuses before any other
+// step on a mismatch (gunbc.runner.runner_qualification_floor_job qualification_floor_revision_guard_step),
+// and collection refuses a run whose head_sha is not the pinned revision (RunRevisionNotPinned). The residual
+// -- an edit to the workflow file on the qualification branch can drop the guard -- needs repository push, and is
+// declared as gunbc.recurring_failure_mode qualification_floor_guard_skippable_by_a_workflow_file_edit.
+// THE INPUT IS THE WORKFLOW'S expected_revision (gunbc.plans.mtcollins1_ci_service_legs G1): it already means the
+// revision a run must check out, refusing on a mismatch, so a qualification_revision input beside it was a second
+// name for one fact, and the workflow's dispatch-input budget had no room for it.
+data qualification_revision_dispatch_input: DispatchInput = fleet_converge_expected_revision_input
+
+// EVERY INPUT THE WORKFLOW REQUIRES IS SUPPLIED, BY ITS DECLARED NAME: the mode that selects the floor job, the
+// executor host (the slot's host, which is where the floor runs), the attempt label its runs-on reads and the revision
+// its guard checks out. A dispatch omitting a required input is refused by GitHub before any run exists, and the
+// admission below refuses a workflow requiring one this map does not carry (SubjectRequiredInputUnsupplied).
+fn qualification_dispatch_inputs(attempt: NonEmptyStr, revision: CommitSha, host: HostIdentity) -> Map<String, String> {
   map_insert(
-    m: map_insert(m: empty_map(), key: qualification_attempt_dispatch_input.name, value: attempt as String),
+    m: map_insert(
+      m: map_insert(
+        m: map_insert(m: empty_map(), key: fleet_converge_mode_input.name, value: fleet_converge_workflow_mode_wire(mode: QualificationFloor)),
+        key: fleet_converge_host_input.name,
+        value: host as String,
+      ),
+      key: qualification_attempt_dispatch_input.name,
+      value: attempt as String,
+    ),
     key: qualification_revision_dispatch_input.name,
     value: revision as String,
   )
+}
+
+fn qualification_dispatch_input_names() -> List<String> {
+  [fleet_converge_mode_input.name, fleet_converge_host_input.name, qualification_attempt_dispatch_input.name, qualification_revision_dispatch_input.name]
 }
 
 fn step_runs_after_a_failure(step: Step) -> Bool {
@@ -152,6 +184,7 @@ type QualificationSubjectRefusal
   | SubjectFloorNameNotUnique { name: NonEmptyStr, jobs_with_name: Int }
   | SubjectFloorRevisionGuardNotFirst { job_id: NonEmptyStr }
   | SubjectFloorStepRunsPastTheGuard { job_id: NonEmptyStr }
+  | SubjectRequiredInputUnsupplied { input: String }
 
 type QualificationSubjectStanding
   = QualificationSubjectAdmitted { subject: QualificationDispatchSubject }
@@ -238,6 +271,24 @@ type QualificationFloorAdmission
   = QualificationFloorAdmitted { floor_job_name: NonEmptyStr }
   | QualificationFloorRefused { refusal: QualificationSubjectRefusal }
 
+fn workflow_dispatch_inputs_of(workflow: Workflow) -> List<DispatchInput> {
+  fold(workflow.on, init: [], f: (acc, t) => match t {
+    WorkflowDispatch { inputs: is } => concat(acc, is)
+    Push { branches: _, paths: _ } => acc
+    PullRequest { branches: _, types: _, paths: _ } => acc
+    Schedule { cron: _ } => acc
+    WorkflowCall { inputs: _ } => acc
+    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => acc
+    MergeGroup => acc
+  })
+}
+
+fn required_inputs_unsupplied(workflow: Workflow) -> List<String> {
+  workflow_dispatch_inputs_of(workflow: workflow)
+    |> filter(i => i.required && !(qualification_dispatch_input_names() |> any(n => n == i.name)))
+    |> map(i => i.name)
+}
+
 // The workflow must declare the attempt input, and its floor job's runs-on must be exactly it.
 fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) -> QualificationFloorAdmission {
   if !workflow_declares_dispatch_input(workflow: workflow, input: qualification_attempt_dispatch_input) {
@@ -245,6 +296,9 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
   } else if !workflow_declares_dispatch_input(workflow: workflow, input: qualification_revision_dispatch_input) {
     QualificationFloorRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_revision_dispatch_input.name } }
   } else {
+  match first(required_inputs_unsupplied(workflow: workflow)) {
+    Present { value: missing } => QualificationFloorRefused { refusal: SubjectRequiredInputUnsupplied { input: missing } }
+    Absent =>
     match first(filter(workflow.jobs, j => j.id == (floor_job_id as String))) {
       Absent => QualificationFloorRefused { refusal: SubjectFloorJobAbsent { job_id: floor_job_id } }
       Present { value: job } =>
@@ -259,7 +313,7 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
             match first(job.steps) {
               Absent => QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
               Present { value: s0 } =>
-                if s0 != qualification_floor_revision_guard_step() {
+                if s0 != qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input) {
                   QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
                 } else if job.steps |> any(st => step_runs_after_a_failure(step: st)) {
                   QualificationFloorRefused { refusal: SubjectFloorStepRunsPastTheGuard { job_id: floor_job_id } }
@@ -272,6 +326,7 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
           }
         }
     }
+  }
   }
 }
 
@@ -484,7 +539,7 @@ fn dispatch_qualification_floor(
             repo: gunbc_repository.name as NonEmptyStr,
             workflow_id: qualification_workflow_file_name(),
             git_ref: subject.pin.name.branch,
-            inputs: qualification_dispatch_inputs(attempt: subject.attempt, revision: subject.pin.revision),
+            inputs: qualification_dispatch_inputs(attempt: subject.attempt, revision: subject.pin.revision, host: subject.host),
           )
           match qualification_dispatch_standing(dispatch: answer.dispatch) {
             DispatchStandingSucceeded { receipt: r } => QualificationDispatched { run: DispatchedQualificationRun { subject: subject, receipt: r } }
