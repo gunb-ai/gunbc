@@ -13361,6 +13361,12 @@ pub fn infer_call_arguments_generic_pass(
             } else {
                 ar_inferred.clone()
             };
+            {
+                let __lbl_f = type_node_label(formal_raw.clone(), scope.type_env.source_indices.clone());
+                let __lbl_a = type_node_label(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), scope.type_env.source_indices.clone());
+                let __subst_pairs: Vec<String> = st.subst.iter().map(|(k,v)| format!("{}={}", k, type_node_label(v.clone(), scope.type_env.source_indices.clone()))).collect();
+                eprintln!("DIAGARG mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} actual={} subst={:?}", scope.module_name, scope.caller_decl_name, pair.0, crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()), is_lambda_expr(crate::v1_std_core::arg_value(a.clone())), __lbl_f, __lbl_a, __subst_pairs);
+            }
             let next_subst = if !has_formal.clone() {
                 st.subst.clone()
             } else {
@@ -26174,9 +26180,24 @@ pub fn unify_generics(
                 __found
             })
         {
+            // A generic parameter binds only on evidence: a type whose own type positions are all
+            // resolved. An argument that carries a type variable -- an empty-list accumulator's
+            // element, an unresolved lambda return, another call's own parameter -- is the ABSENCE
+            // of evidence, not evidence of a type; binding the parameter to it (above all to a
+            // copy of itself, T := T) fixes the parameter first and keeps it against the argument
+            // that would actually solve it. Such an argument contributes nothing, leaving the slot
+            // open for a later argument or the second pass, and stays out of the substitution
+            // rather than being emitted unsolved.
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
+                    if crate::v1_compiler_infer_types::is_fully_resolved(
+                        actual.clone(),
+                        source_indices.clone(),
+                    ) {
+                        v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
+                    } else {
+                        acc.clone()
+                    }
                 }
                 Some(_) => acc.clone(),
             }
