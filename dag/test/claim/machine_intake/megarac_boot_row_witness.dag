@@ -54,6 +54,7 @@ fn another_board_row() -> MegaRacBootRow {
     operator_host: "operator-srv9",
     label: "srv9",
     ipmi: MegaRacIpmiReadPolicy { deadline: second(count: 5), kill_after: second(count: 8), planned_reads: 6 },
+    ipmi_cipher_suite: Absent,
     redfish: MegaRacRedfishReadPolicy {
       read_deadline: second(count: 9),
       read_budget: 12,
