@@ -189,7 +189,7 @@ test fn s3_claim_10_a_recovery_needed_line_without_a_cause_refuses_typed() -> Bo
 // recorded budget, woken by a capacity observation. It never spends session_resume_bound, which counts unexplained
 // engine refusals only.
 fn wait_lines(request: String, round: Int, since: Int) -> List<String> {
-  [session_event_capacity_wait(round: round, held: 3, since: since, validation: validation_of(request: request))]
+  [session_event_capacity_wait(round: round, held: 3, since: since, validation: validation_of(request: request), status: 503)]
 }
 
 fn waiting_recovery(lines: List<String>) -> SessionRecovery {

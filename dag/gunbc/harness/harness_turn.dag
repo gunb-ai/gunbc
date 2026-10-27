@@ -27,7 +27,7 @@ import extdeps.openrouter.openrouter {
   openrouter_decode_rate_limited, openrouter_rate_limit_wire,
 }
 import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_status }
-import gunbc.harness.harness_operator_route { OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost, operator_round_fault, operator_pinned_post_request }
+import gunbc.harness.harness_operator_route { OperatorRoundFault, OperatorNoCapacity, OperatorCardUnanswered, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost, operator_round_fault, operator_pinned_post_request }
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
   session_validation_resumable, session_event_recovery_needed, session_cause_text, session_event_capacity_wait, session_event_capacity_resumed, session_capacity_wait_since_for, SessionRecoveryAwaitingCapacity,
@@ -734,8 +734,8 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
       ], "")
     TurnPoolNoCapacity { retries: r, steps_taken: n } =>
       join([
-        "after ", to_string(value: n), " tool rounds the pool front answered 503 for ", to_string(value: r + 1),
-        " attempts: no TLS card is serving, so nothing was forwarded and the request had no effect. The session",
+        "after ", to_string(value: n), " tool rounds the pool front answered 503 or 502 for ", to_string(value: r + 1),
+        " attempts: no TLS card served or the chosen card did not answer, so no output came back and the request had no effect. The session",
         " held for the transport retry policy's whole budget (each wait recorded) and is recorded as a CAPACITY WAIT, not",
         " an ended session and not an engine refusal: its conversation is intact and it resumes, in the same session,",
         " when the front reports a TLS card serving",
@@ -1499,13 +1499,14 @@ fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
   })
 }
 
-// THE POOL FRONT'S 503 IS A HOLD, NOT A FAILURE: no TLS card serving means nothing was forwarded, so the request had
+// THE POOL FRONT'S 503 AND 502 ARE HOLDS, NOT FAILURES (502: a card was chosen and did not answer; no output, no effect): no TLS card serving means nothing was forwarded, so the request had
 // no effect and the front is the one party that knows capacity will return. It waits on the same bounded,
 // recorded policy as a request that drew no response, and when that budget ends the turn is TurnPoolNoCapacity --
 // typed, resumable, not ended. A refused certificate is never retried: the same certificate fails the same way.
 fn harness_post_is_retryable(posted: HarnessPostOutcome) -> Bool {
   match posted.fault {
     Present { value: OperatorNoCapacity } => true
+    Present { value: OperatorCardUnanswered } => true
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => harness_post_drew_no_response(posted: posted)
@@ -1515,6 +1516,7 @@ fn harness_post_is_retryable(posted: HarnessPostOutcome) -> Bool {
 fn harness_post_retry_reason(posted: HarnessPostOutcome) -> String {
   match posted.fault {
     Present { value: OperatorNoCapacity } => "pool front answered 503 (no TLS card serving)"
+    Present { value: OperatorCardUnanswered } => "pool front answered 502 (the card did not answer)"
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => "certificate not pinned"
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => "certificate not verified for the front's host"
     Absent => "no response"
@@ -1778,6 +1780,25 @@ fn harness_turn_loop(
   }
 }
 
+// A POOL HOLD WHOSE RETRY BUDGET ENDED (the front's 503, or its 502 for a card that did not answer) is recorded as a
+// capacity wait the belt resumes in the same session, never an ended one.
+fn harness_pool_hold(config: HarnessTurnConfig, events: List<String>, message: String, held: Int, steps_taken: Int, messages: List<JsonValue>, status: Int) -> HarnessTurnOutcome {
+  match now_epoch_seconds() {
+    Absent => TurnTransportRefused { detail: join(["the pool front answered ", to_string(value: status), " and the clock could not be read as epoch seconds, so the capacity wait cannot record when it began; the session stops visibly rather than waiting with no budget"], "") }
+    Present { value: now } => {
+      let since = session_capacity_wait_since_for(lines: events, round: steps_taken + 1, now: now)
+      let failed = concat(events, [
+        harness_event_turn_failed(message: message),
+        session_event_capacity_wait(round: steps_taken + 1, held: held, since: since, validation: session_messages_validation(messages: messages), status: status),
+      ])
+      match harness_write_events(config: config, events: failed) {
+        HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+        HarnessEventsWritten => TurnPoolNoCapacity { retries: held, steps_taken: steps_taken }
+      }
+    }
+  }
+}
+
 fn harness_turn_after_post(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
@@ -1808,23 +1829,10 @@ fn harness_turn_after_post(
           }
           Absent =>
             match posted_round.pool_fault {
-              Present { value: OperatorNoCapacity } => {
-                let held = list_length(items: posted_round.transport_retries)
-                match now_epoch_seconds() {
-                  Absent => TurnTransportRefused { detail: "the pool front answered 503 and the clock could not be read as epoch seconds, so the capacity wait cannot record when it began; the session stops visibly rather than waiting with no budget" }
-                  Present { value: now } => {
-                    let since = session_capacity_wait_since_for(lines: events_after_wire, round: steps_taken + 1, now: now)
-                    let failed = concat(events_after_wire, [
-                      harness_event_turn_failed(message: c),
-                      session_event_capacity_wait(round: steps_taken + 1, held: held, since: since, validation: session_messages_validation(messages: messages)),
-                    ])
-                    match harness_write_events(config: config, events: failed) {
-                      HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-                      HarnessEventsWritten => TurnPoolNoCapacity { retries: held, steps_taken: steps_taken }
-                    }
-                  }
-                }
-              }
+              Present { value: OperatorNoCapacity } =>
+                harness_pool_hold(config: config, events: events_after_wire, message: c, held: list_length(items: posted_round.transport_retries), steps_taken: steps_taken, messages: messages, status: 503)
+              Present { value: OperatorCardUnanswered } =>
+                harness_pool_hold(config: config, events: events_after_wire, message: c, held: list_length(items: posted_round.transport_retries), steps_taken: steps_taken, messages: messages, status: 502)
               Present { value: OperatorCertificateNotPinned { curl_exit: x } } => {
                 let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
                 match harness_write_events(config: config, events: failed) {

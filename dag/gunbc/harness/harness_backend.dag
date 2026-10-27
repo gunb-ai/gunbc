@@ -44,7 +44,7 @@ import extdeps.http.header_dump { HeaderDumpRead, http_header_dump_status }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.harness.harness_operator_route {
   harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
-  OperatorRoundFault, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost, OperatorNoCapacity, operator_round_fault, operator_pinned_probe_request,
+  OperatorRoundFault, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost, OperatorNoCapacity, OperatorCardUnanswered, operator_round_fault, operator_pinned_probe_request,
   OperatorRouteStanding, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_route_standing, operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header,
   operator_models_url, operator_endpoint_origin,
@@ -354,6 +354,7 @@ fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorMode
               Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: x } } =>
                 OperatorFrontCertificateRefused { url: models as String, detail: join(["curl exit ", to_string(value: x), ": the certificate did not verify for the front's host (chain or missing IP SAN)"], "") }
               Present { value: OperatorNoCapacity } => OperatorModelsRefused { url: models as String, status: "503" }
+              Present { value: OperatorCardUnanswered } => OperatorModelsRefused { url: models as String, status: "502" }
               Absent =>
                 match status {
                   Present { value: st } => OperatorModelsRefused { url: models as String, status: to_string(value: st) }

@@ -156,10 +156,14 @@ fn pool_front_fingerprint_from_openssl_text(stdout: String) -> String? {
 // ── WHAT THE FRONT'S STATUS MEANS ───────────────────────────────────────────────────────────────
 // A requireTls client is only ever sent to a TLS card. With none serving, the front answers 503 and forwards
 // nothing, so a 503 is a statement about CAPACITY and carries no model output; the request had no effect and
-// may be sent again. 401 is the key. Anything else the front says is its own and stays what it was.
+// may be sent again. A 502 is the front's own "the card did not answer" (observed live 2026-10-26: type
+// pool_front, "no answer in 600s"): a card was chosen and returned nothing, so there is no model output either,
+// and a chat completion has no effect to duplicate. 401 is the key. Anything else the front says is its own and
+// stays what it was.
 type PoolFrontStatusMeaning
   = PoolFrontAnswered
   | PoolFrontNoTlsCardServing
+  | PoolFrontCardUnanswered
   | PoolFrontKeyRejected
   | PoolFrontRefused { status: HttpStatus }
 
@@ -168,6 +172,8 @@ fn pool_front_status_meaning(status: HttpStatus) -> PoolFrontStatusMeaning {
     PoolFrontAnswered
   } else if status == 503 {
     PoolFrontNoTlsCardServing
+  } else if status == 502 {
+    PoolFrontCardUnanswered
   } else if status == 401 {
     PoolFrontKeyRejected
   } else {

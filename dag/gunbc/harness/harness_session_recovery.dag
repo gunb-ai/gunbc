@@ -351,19 +351,22 @@ fn session_event_recovery_needed(round: Int, refusal: UnexplainedEngineRefusal, 
 // bound. The lab's durable wait is the session's own event stream, which already survives the worker's exit.
 data session_capacity_wait_budget_seconds: Int = 86400
 
-fn session_cause_text_no_capacity(round: Int, held: Int) -> String {
+// The front's 502 (a card was chosen and did not answer) holds on the same budget: no output came back, a chat
+// completion has no effect to duplicate, and the front is again the party that knows when a card will answer.
+fn session_cause_text_no_capacity(round: Int, held: Int, status: Int) -> String {
   join([
-    "round ", to_string(value: round), ": the pool front answered 503 (no TLS card serving) for ", to_string(value: held + 1),
-    " attempts; nothing was forwarded and the request had no effect",
+    "round ", to_string(value: round), ": the pool front answered ", to_string(value: status),
+    if status == 502 { " (the card did not answer)" } else { " (no TLS card serving)" },
+    " for ", to_string(value: held + 1), " attempts; no model output came back and the request had no effect",
   ], "")
 }
 
-fn session_event_capacity_wait(round: Int, held: Int, since: Int, validation: SessionValidation) -> String {
+fn session_event_capacity_wait(round: Int, held: Int, since: Int, validation: SessionValidation, status: Int) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "turn.capacity_wait")),
     json_kv(key: "round", value: json_int(n: round)),
-    json_kv(key: "status", value: json_int(n: 503)),
-    json_kv(key: "cause", value: json_string(s: session_cause_text_no_capacity(round: round, held: held))),
+    json_kv(key: "status", value: json_int(n: status)),
+    json_kv(key: "cause", value: json_string(s: session_cause_text_no_capacity(round: round, held: held, status: status))),
     json_kv(key: "since_epoch_seconds", value: json_int(n: since)),
     json_kv(key: "budget_seconds", value: json_int(n: session_capacity_wait_budget_seconds)),
     json_kv(key: "resumable", value: json_bool(b: session_validation_resumable(v: validation))),

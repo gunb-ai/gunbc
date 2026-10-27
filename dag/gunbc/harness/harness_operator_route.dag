@@ -17,7 +17,7 @@ import extdeps.pool.pool_front {
   PoolFrontCertificate, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
   pool_front_authorization_header_line, pool_front_session_header_line, pool_front_model_id,
   pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text, pool_front_status_meaning,
-  PoolFrontNoTlsCardServing, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
+  PoolFrontNoTlsCardServing, PoolFrontCardUnanswered, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
 }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, harness_unit_model_id, PoolBudgetPolicy, pool_budget_enforced }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
@@ -398,11 +398,13 @@ fn operator_close_header(header_dir: NonEmptyStr) -> Bool {
 
 // WHAT A POOL-FRONT ROUND CAN FAIL WITH THAT IS NEITHER AN UNEXPLAINED ENGINE REFUSAL NOR AN ENDED SESSION.
 // No capacity is the front's own 503: requireTls clients are sent only to TLS cards and none serves, so nothing
-// was forwarded, the request had no effect and may be sent again. The certificate refusal is curl's peer
+// was forwarded, the request had no effect and may be sent again. A card that did not answer is the front's own
+// 502: the request reached a card that returned nothing, so it too carries no output and may be sent again. The certificate refusal is curl's peer
 // verification failing in the handshake, before any request byte. Both are read from the post's evidence by
 // operator_round_fault, never from the body's text.
 type OperatorRoundFault
   = OperatorNoCapacity
+  | OperatorCardUnanswered
   | OperatorCertificateNotPinned { curl_exit: Int }
   | OperatorCertificateNotVerifiedForHost { curl_exit: Int }
 
@@ -422,6 +424,7 @@ fn operator_round_fault(success: Bool, curl_exit: Int, status: HttpStatus?) -> O
           Present { value: st } =>
             match pool_front_status_meaning(status: st) {
               PoolFrontNoTlsCardServing => Present { value: OperatorNoCapacity }
+              PoolFrontCardUnanswered => Present { value: OperatorCardUnanswered }
               PoolFrontAnswered => none
               PoolFrontKeyRejected => none
               PoolFrontRefused { status: _ } => none

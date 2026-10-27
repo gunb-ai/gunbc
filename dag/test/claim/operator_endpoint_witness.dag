@@ -7,7 +7,7 @@ import gunbc.harness.harness_operator_route { operator_pinned_certificate, opera
   operator_header_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorModelsRefused, OperatorModelsAnswered,
-  operator_certificate_pin_decision, operator_round_fault, OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost,
+  operator_certificate_pin_decision, operator_round_fault, OperatorRoundFault, OperatorNoCapacity, OperatorCardUnanswered, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost,
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_custody_file_path, OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
 }
@@ -35,7 +35,7 @@ import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcom
 import gunbc.harness.harness_cli { harness_turn_exit }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_session_recovery { harness_unexplained_refusal }
-import extdeps.http.header_dump { HeaderDumpRead }
+import extdeps.http.header_dump { HeaderDumpRead, http_header_dump_status }
 import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -256,7 +256,7 @@ fn w_post(success: Bool, exit_code: Int, status_line: String, body: String) -> H
     body: body,
     success: success,
     headers: Present { value: HeaderDumpRead { text: status_line } },
-    fault: operator_round_fault(success: success, curl_exit: exit_code, status: match string_contains(s: status_line, pattern: " 503") { true => Present { value: 503 } false => Absent }),
+    fault: operator_round_fault(success: success, curl_exit: exit_code, status: http_header_dump_status(dump: HeaderDumpRead { text: status_line })),
     retries: [],
   }
 }
@@ -295,6 +295,7 @@ test fn a_curl_exit_60_is_a_host_verification_refusal_typed_apart_from_a_differe
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: x } } => x == 60
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorNoCapacity } => false
+    Present { value: OperatorCardUnanswered } => false
     Absent => false
   }) && !harness_post_is_retryable(posted: p)
 }
@@ -307,6 +308,7 @@ fn peer_exit_is_typed_not_pinned_and_never_retried(code: Int) -> Bool {
     Present { value: OperatorCertificateNotPinned { curl_exit: x } } => x == code
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Present { value: OperatorNoCapacity } => false
+    Present { value: OperatorCardUnanswered } => false
     Absent => false
   }) && !harness_post_is_retryable(posted: p)
 }
@@ -331,6 +333,7 @@ test fn a_503_from_the_front_is_typed_no_capacity_and_held_not_unexplained() -> 
   let p = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 503 Service Unavailable\r\n", body: "")
   (match p.fault {
     Present { value: OperatorNoCapacity } => true
+    Present { value: OperatorCardUnanswered } => false
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false
@@ -338,11 +341,33 @@ test fn a_503_from_the_front_is_typed_no_capacity_and_held_not_unexplained() -> 
     && (harness_outcome_label(outcome: TurnPoolNoCapacity { retries: 3, steps_taken: 2 }) == "pool-no-capacity")
 }
 
+// CLAIM 3b. The front's 502 (a card was chosen and did not answer, observed live 2026-10-26) is its own typed
+// fault, held on the same retry policy; another 5xx the front did not say anything about is NOT held.
+test fn a_502_from_the_front_is_typed_card_unanswered_and_held() -> Bool {
+  let p = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 502 Bad Gateway\r\n", body: "{\"error\":{\"message\":\"the card did not answer: no answer in 600s\",\"type\":\"pool_front\"}}")
+  (match p.fault {
+    Present { value: OperatorCardUnanswered } => true
+    Present { value: OperatorNoCapacity } => false
+    Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
+    Absent => false
+  }) && harness_post_is_retryable(posted: p)
+}
+
+test fn a_500_from_the_front_is_no_pool_fault_and_not_held() -> Bool {
+  let p = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 500 Internal Server Error\r\n", body: "{\"error\":\"boom\"}")
+  (match p.fault {
+    Present { value: _ } => false
+    Absent => true
+  }) && !harness_post_is_retryable(posted: p)
+}
+
 test fn a_503_with_an_empty_body_carries_the_typed_no_capacity_fault() -> Bool {
   // asserts the fault the post carries, which the turn path consults before the unexplained-refusal classifier.
   let p = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 503 Service Unavailable\r\n", body: "")
   match p.fault {
     Present { value: OperatorNoCapacity } => true
+    Present { value: OperatorCardUnanswered } => false
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false
