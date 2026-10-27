@@ -1,0 +1,100 @@
+module test.claim.generic_element_slot_binding_witness
+
+// THE CLASS THIS FILE HOLDS OPEN. v1.compiler.infer unify_generic_child_pairs bound a callee's type variable to
+// the actual application's ELEMENT SLOT rather than to the type the slot holds. The slot is named by the
+// container declaration's own parameter (FreeMonoid's `T`) and carries the argument's type in its inferred, so
+// every reader of the substitution that keys on the bound node's name or spelling saw an unbound `T`. Two
+// shapes, one link (v1.compiler.infer generic_actual_position_type):
+//
+//   bold-koi-381 (work item adhoc-b5f23a5d-052): `fn(h) { h.digest }` keyed through a generic over
+//   `xs: List<Hash>`, `type Hash = Payload`, refused "no field 'digest' on type 'T'" -- the field-access alias
+//   chain looks its next declaration up by the bound node's NAME. The sort_by wave hit it over v2.std.node's
+//   `type Hash = Fnv1a64Structural` and worked around it with an annotated let.
+//
+//   smart-tern-402 (#15115): `skip(split(..), n: 1) |> first` left its Present arm undecided -- a kernel-built
+//   List's slot is also SPELLED `T`.
+//
+// A record element escaped by accident (its slot's inferred is the record, found structurally before the
+// name), which is why List<Payload> is a control and not a climb.
+//
+// MEASURED on main 88e8991e557 with the seed built from that tree, and again with this change: both climbs
+// refuse on main and compile clean with it; every control compiles clean on both, and the undeclared-field
+// arm refuses on both. The v2 control for the same shape is v2.test.claim.compiler.lambda_alias_field_key
+// lafk_a_lambda_key_through_an_imported_alias_types_its_field (v2 types it; DESIGN section 7: a seed defect v2
+// does not carry forward).
+//
+// HARNESS PAIRING, as in test.claim.transparent_alias_identity_witness: compile_dag_rust_emit_check returns
+// false for more than one reason, so the refusal arm is paired with the same module minus the offending read.
+
+fn slot_prelude() -> String {
+  "type Payload {\n  digest: String\n}\n\ntype Hash = Payload\n\nfn sk<Q, K>(xs: List<Q>, key: fn(Q) -> K) -> List<Q> {\n  xs\n}\n\nfn take(p: Payload) -> String {\n  p.digest\n}\n\n"
+}
+
+fn slot_source(module_leaf: String, body: String) -> String {
+  concat(concat(concat(concat("module slotbind.", module_leaf), "\n\nimport std.types { List, String }\n\n"), slot_prelude()), body)
+}
+
+fn slot_alias_key_source() -> String {
+  slot_source(module_leaf: "aliaskey", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { h.digest })\n}\n")
+}
+
+fn slot_record_key_source() -> String {
+  slot_source(module_leaf: "recordkey", body: "fn keyed(xs: List<Payload>) -> List<Payload> {\n  sk(xs: xs, key: fn(h) { h.digest })\n}\n")
+}
+
+fn slot_alias_at_formal_source() -> String {
+  slot_source(module_leaf: "aliasformal", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { take(p: h) })\n}\n")
+}
+
+fn slot_alias_undeclared_source() -> String {
+  slot_source(module_leaf: "aliasnope", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { h.nope })\n}\n")
+}
+
+fn slot_alias_undeclared_control_source() -> String {
+  slot_source(module_leaf: "aliasnope", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { 1 })\n}\n")
+}
+
+fn slot_kernel_split_source() -> String {
+  "module slotbind.kernelsplit\n\nimport std.algebra { skip }\nimport std.optional { Present, Absent }\nimport std.types { String, Bool }\n\nfn second_nonempty(s: String) -> Bool {\n  let parts = split(s: s, delimiter: \"/\")\n  match skip(parts, n: 1) |> first {\n    Present { value: v } => v != \"\"\n    Absent => false\n  }\n}\n"
+}
+
+fn slot_kernel_split_annotated_source() -> String {
+  "module slotbind.kernelsplitann\n\nimport std.algebra { skip }\nimport std.optional { Present, Absent }\nimport std.types { List, String, Bool }\n\nfn second_nonempty(s: String) -> Bool {\n  let parts: List<String> = split(s: s, delimiter: \"/\")\n  match skip(parts, n: 1) |> first {\n    Present { value: v } => v != \"\"\n    Absent => false\n  }\n}\n"
+}
+
+// THE CLIMB (bold-koi-381's RED). Refused on main: "no field 'digest' on type 'T'".
+test fn a_lambda_key_reads_a_field_through_an_alias_element_test() -> Bool {
+  compile_dag_rust_emit_check(slot_alias_key_source(), "src/slotbind_aliaskey.rs", ["keyed"], ["compile_error"])
+}
+
+// THE CLIMB (smart-tern-402's RED). Refused on main: the Present arm is undecided.
+test fn a_kernel_built_list_binds_a_declared_generic_test() -> Bool {
+  compile_dag_rust_emit_check(slot_kernel_split_source(), "src/slotbind_kernelsplit.rs", ["second_nonempty"], ["compile_error"])
+}
+
+// CONTROL: the same shape with the slot's type annotated by the author compiles on main too.
+test fn a_kernel_built_list_with_an_annotated_let_binds_test() -> Bool {
+  compile_dag_rust_emit_check(slot_kernel_split_annotated_source(), "src/slotbind_kernelsplitann.rs", ["second_nonempty"], ["compile_error"])
+}
+
+// CONTROL: a record element, which escaped by accident before this change and must stay clean.
+test fn a_lambda_key_reads_a_field_through_a_record_element_test() -> Bool {
+  compile_dag_rust_emit_check(slot_record_key_source(), "src/slotbind_recordkey.rs", ["keyed"], ["compile_error"])
+}
+
+// CONTROL: the alias element at a declared record formal, judged by the alias identity relation.
+test fn an_alias_element_inhabits_its_records_formal_test() -> Bool {
+  compile_dag_rust_emit_check(slot_alias_at_formal_source(), "src/slotbind_aliasformal.rs", ["keyed"], ["compile_error"])
+}
+
+// POSITIVE CONTROL: the slot is read as its type, not as anything -- a field the record does not declare still
+// refuses through the alias element.
+test fn an_alias_element_still_refuses_an_undeclared_field_test() -> Bool {
+  !compile_dag_rust_emit_check(slot_alias_undeclared_source(), "src/slotbind_aliasnope.rs", [], [])
+}
+
+// ITS HARNESS CONTROL: the same module without the undeclared read compiles, so the arm above measures the
+// field read and not the harness.
+test fn an_alias_element_module_without_the_undeclared_read_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(slot_alias_undeclared_control_source(), "src/slotbind_aliasnope.rs", ["keyed"], ["compile_error"])
+}
