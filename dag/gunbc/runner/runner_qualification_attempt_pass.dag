@@ -222,7 +222,10 @@ fn qualification_attempt_pass_over(
   }
 }
 
-// RETIRED MEANS BOTH HALVES OBSERVED: the registration read absent and the branch read absent.
+// THE GITHUB SIDE OF RETIREMENT, AND ONLY THAT: the registration read absent and the branch read absent. It is NOT
+// a slot retired -- the host side (the transient unit and its per-attempt tree on tmpfs observed gone, a
+// gunbc.runner.runner_teardown_receipt RunnerTeardownResult) is not an input of this fold, so nothing here may report
+// the attempt slot retired (qualification_attempt_pass_production_frontier).
 fn branch_removed(removal: QualificationRefPinRemoval) -> Bool {
   match removal {
     QualificationBranchRemoved { name: _, deleted: _ } => true
@@ -230,7 +233,7 @@ fn branch_removed(removal: QualificationRefPinRemoval) -> Bool {
   }
 }
 
-fn registration_retired(r: QualificationAttemptRetirement) -> Bool {
+fn registration_removed(r: QualificationAttemptRetirement) -> Bool {
   match r {
     AttemptNothingRegistered => true
     AttemptDeregistered { exit: _ } => true
@@ -238,14 +241,14 @@ fn registration_retired(r: QualificationAttemptRetirement) -> Bool {
   }
 }
 
-fn qualification_attempt_retired(pass: QualificationAttemptPass) -> Bool {
+fn qualification_attempt_registration_and_branch_removed(pass: QualificationAttemptPass) -> Bool {
   match pass {
     AttemptPinRefused { attempt: _, refusal: _, unpin: u } =>
       match u {
         Absent => true
         Present { value: removal } => branch_removed(removal: removal)
       }
-    AttemptPassed { run: _, retirement: r, unpin: u } => registration_retired(r: r) && branch_removed(removal: u)
+    AttemptPassed { run: _, retirement: r, unpin: u } => registration_removed(r: r) && branch_removed(removal: u)
   }
 }
 
