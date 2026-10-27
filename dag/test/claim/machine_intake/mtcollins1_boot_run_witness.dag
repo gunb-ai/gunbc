@@ -11,7 +11,7 @@ import extdeps.linux.proc_uptime { UptimeRefused }
 import gunbc.host.managed_host_boot_phase_timing { PhaseStepSkipped }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_still_allowance }
-import gunbc.machine_intake.mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
+import gunbc.machine_intake.mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, SolNoticeSourceUnreadable, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
 import gunbc.machine_intake.mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline, sol_establishment_gate, SolEstablishmentGate, GateEstablish, GateExpired, GateContinue, sol_establishment_pace, PaceAdvanced, PaceRefused, PaceClockStalled }
 import extdeps.github.log_annotations { log_annotation_message_line }
 import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
@@ -1080,6 +1080,16 @@ test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool 
     && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 1000)) { PaceClockStalled => true  _ => false })
     && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 900)) { PaceClockStalled => true  _ => false })
     && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 2000)) { PaceAdvanced => true  _ => false })
+}
+
+// Each SolNoticeKind names its own annotation level now that the arm is total: an unreadable source is
+// an error line (it was the old wildcard's answer), the collector exit stays a warning.
+test fn a_sol_notice_kind_names_its_annotation_level() -> Bool {
+  let unreadable = SolNotice { kind: SolNoticeSourceUnreadable, identity: "i", title: "t", body: "b" }
+  let exited = SolNotice { kind: SolNoticeCollectorExited, identity: "i", title: "t", body: "b" }
+  let u = match log_annotation_message_line(annotation: sol_notice_annotation(notice: unreadable)) { Present { value: l } => l  Absent => "" }
+  let e = match log_annotation_message_line(annotation: sol_notice_annotation(notice: exited)) { Present { value: l } => l  Absent => "" }
+  string_contains(s: u, pattern: "::error::") && string_contains(s: e, pattern: "::warning::")
 }
 
 // THE GATE-TO-BOOT DECISION, EXECUTED (side-chat hold 2026-10-19, the pairing obligation). fan_gate_continuation is the one decision
