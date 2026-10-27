@@ -1,6 +1,6 @@
 module product.printed_chassis.card_cooling_route
 
-import std.types {Int, List, NonEmptyStr, String}
+import std.types {Bool, Int, List, NonEmptyStr, String}
 import std.measure {Micrometer, micrometer}
 import std.optional {Present, Absent}
 import product.printed_chassis.chassis_clearances {ChassisGap, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, DeclaredConservativeByOperator, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display, gap_declared_bound, gap_is_estimate, inter_card_gap, card_to_rear_fans, power_connector_latch, outer_side_at_the_wall, gap_room_um}
@@ -360,111 +360,158 @@ fn outlet_alignment_obligation() -> NonEmptyStr {
 
 // A hypothetical blower of a chosen planform, so the corpus can ask WHAT WOULD FIT instead of only whether
 // THIS one does. Its name says what it is: a shape for a derivation, not a part anybody sells. Buying one
-// is a separate act, with its own datasheet and its own citation obligations (extdeps.fans carries the
+// is a separate act with its own datasheet and its own citation obligations (extdeps.fans carries the
 // pattern: a real fan row needs vendor, model, and the page the figures were read from).
 data hypothetical_blower_shape: NonEmptyStr = "hypothetical planform; no vendor, no datasheet, nothing to buy"
 
-// A shape's three extents: the edge that spans the slot, the edge that reaches behind the end, and the
-// thickness. Named by ROLE rather than by x/y/z because a home rotates the fan, and it is the role that has
-// to fit the gap, not the axis.
-type BlowerShape { width_across_slot: Int, reach_behind: Int, thickness: Int }
+// One extent of such a shape, and what produced it. `cap` is the gap that capped it; where no reading
+// reaches that far, the extent is reported as unmeasured rather than as a number nobody took.
+type ShapeExtent { at_most: Micrometer, capped_by: NonEmptyStr, measured: Bool }
 
-fn shape_um(m: Int) -> Micrometer { micrometer(count: m) }
+// A shape's three roles, named by what the extent DOES in the home rather than by an axis, because a home
+// rotates the fan and it is the role that has to fit the gap.
+data BlowerShape { across_the_binding_gap: ShapeExtent, along_the_row: ShapeExtent, behind_the_end: ShapeExtent }
 
-// THE LARGEST PLANFORM EACH HOME COULD TAKE, given what the chassis actually leaves. Each is a pair: the
-// largest extent, and the gap that capped it. Where a home is capped by a gap given as "a few mm" the
-// answer is zero, and the reason is written into the cap's name -- the model does not soften that to
-// "unknown", because the operator's words DID establish an order of magnitude and it is already too small.
+// A cap of this value or less means the model refuses to name one: no measurement reaches it.
+fn no_cap() -> ShapeExtent {
+  ShapeExtent { at_most: shape_um(m: 0), capped_by: "no reading reaches this extent; naming a maximum here would invent one", measured: false }
+}
+
+fn cap_of(um_value: Int, why: NonEmptyStr) -> ShapeExtent {
+  if um_value < 0 { ShapeExtent { at_most: shape_um(m: um_value), capped_by: why, measured: false } } else { ShapeExtent { at_most: shape_um(m: um_value), capped_by: why, measured: true } }
+}
+
+// THE LARGEST PLANFORM EACH HOME COULD TAKE, given what the chassis actually leaves. Every extent is derived
+// from a gap row and names it, so a reader can check any single number back to the operator's sentence that
+// produced it; nothing here is a guess about what a smaller fan might be bought.
 fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Int) -> BlowerShape {
+  let rear_room = gap_room_um(g: card_end_rear_fan_clearance)
+  let wall = um(m: d.wall)
   match home {
-    // BESIDE THE ROW: the housing's across-slot edge lies across the free lane, so the lane leaves it
-    // width = room - two walls - the band clearance on both sides (the same demand beside_the_row_demand
-    // inverts). Height behind the end is capped by the rear bound minus the sleeve; nothing here is close
-    // to that cap.
-    BesideTheRow => {
-      let lane_room = gap_room_um(g: side_lane_width)
-      BlowerShape {
-        width_across_slot: lane_room - 2 * um(m: d.wall) - 2 * um(m: d.band_clearance),
-        reach_behind: gap_room_um(g: card_end_rear_fan_clearance) - um(m: d.sleeve_clearance),
-        thickness: shortest_face_edge(b: a16_blower()),
-      }
+    // BESIDE THE ROW. The fan lies flat in the free lane: its planform spans the lane, so the lane caps the
+    // edge that crosses it, and the rear bound caps the edge that runs back behind the end. The fan's own
+    // thickness stands up toward the lid, and nothing was read between the DECK and the lid -- the 120 mm is
+    // floor-to-lid, and no deck height exists -- so this home's third extent has no cap to report.
+    BesideTheRow => BlowerShape {
+      across_the_binding_gap: cap_of(um_value: gap_room_um(g: side_lane_width) - 2 * wall - 2 * um(m: d.band_clearance), why: "the '60mm until it touches the heatsink' lane, less the 10 mm width this repository puts on a figure given by eye, less two duct walls and the band clearance on both sides"),
+      along_the_row: cap_of(um_value: rear_room - um(m: d.sleeve_clearance), why: "the operator's declared 70 mm behind the plug end, less the sleeve clearance"),
+      behind_the_end: no_cap(),
     }
-    // OVER THE ROW: the fan's thickness is what stands up, so the lid caps it directly. The card's own
-    // height across the face is inside the 120 mm, and so is the riser -- so the largest thickness in
-    // existence is what is left after them, and it is not much.
-    OverTheRow {riser: _} => {
-      let lid_room = gap_room_um(g: deck_to_lid_clearance)
-      BlowerShape {
-        width_across_slot: longest_face_edge(b: a16_blower()),
-        reach_behind: over_the_row_run_back(d: d, b: a16_blower()),
-        thickness: lid_room - um(m: a16_end_face.face_length) - riser - 3 * um(m: d.wall),
-      }
+    // OVER THE ROW. The fan's thickness is what stands up, so the lid caps it directly; the card's own height
+    // and the riser are inside the same 120 mm figure and are subtracted first. The other two extents run
+    // along and across the row, where nothing was read.
+    OverTheRow {riser: _} => BlowerShape {
+      across_the_binding_gap: cap_of(um_value: gap_room_um(g: deck_to_lid_clearance) - um(m: a16_end_face.face_length) - riser - 3 * wall, why: "'from floor to t he lid is 120mm' (an estimate, with its width taken off), less the card's own 97.84 mm, less the riser, less the three walls a leg needs"),
+      along_the_row: no_cap(),
+      behind_the_end: cap_of(um_value: rear_room, why: "the operator's declared 70 mm behind the plug end"),
     }
-    // PLANE ON END: the across-slot edge is capped by the inter-card gap, and -- because two ducts spend it
-    // -- by half of it per card (see flat_on_end_pair_need below). The reach back is capped by the
-    // operator's declared 70 mm; it is the one home whose rear cap is a ruling and not an estimate.
-    PlaneOnEnd => {
-      let pair_room = gap_room_um(g: inter_card_gap) / 2
-      BlowerShape {
-        width_across_slot: a16_slot_pitch_um() + pair_room,
-        reach_behind: gap_room_um(g: card_end_rear_fan_clearance) - 2 * um(m: d.wall),
-        thickness: thickness_extent(b: a16_blower()) + um(m: a16_blower().thickness_tolerance),
-      }
+    // FLAT ON THE PLUG END, TWO DUCTED CARDS. The planform lies in the end-face plane: one edge across the
+    // slot, the other up the card's height, and the thickness behind the end. Across the slot it may have its
+    // own pitch plus the share of the 46 mm between the cards that is left after the OTHER card's duct; up
+    // the card's height it may not exceed the card itself without overhanging into the slot above, and the
+    // card's height is the only reading there. Behind the end the declared 70 mm governs, and the 120 mm is
+    // not in this axis at all.
+    PlaneOnEnd => BlowerShape {
+      across_the_binding_gap: cap_of(um_value: flat_on_end_housing_length_cap(), why: "the lesser of two caps, both named: what the operator's declared 70 mm side lane leaves across a pitch (" + to_string(value: a16_slot_pitch_um() + 2 * gap_room_um(g: neighbour_lane_width) / 1000) + " mm), and what two ducted cards leave between them -- one pitch plus the 'between the two cards is 46mm' gap, spent as a pair of overhangs (" + to_string(value: flat_on_end_pair_span() / 1000) + " mm)"),
+      along_the_row: cap_of(um_value: um(m: a16_end_face.face_length), why: "the card's own 97.84 mm end-face height; beyond it the housing overhangs into the slot above, and no reading covers that"),
+      behind_the_end: cap_of(um_value: rear_room - 2 * wall, why: "the operator's declared 70 mm behind the plug end, less the two duct walls the stack needs"),
     }
-    // PLANE ACROSS ROW (today's duct): capped by the same rear bound, and the socket bounds its long edge.
-    PlaneAcrossRowStanding => {
-      BlowerShape {
-        width_across_slot: a16_slot_pitch_um(),
-        reach_behind: gap_room_um(g: card_end_rear_fan_clearance) - um(m: d.wall),
-        thickness: thickness_extent(b: a16_blower()),
-      }
+    // PLANE ACROSS THE ROW (today's duct): the slot bounds its long edge and the rear bound its reach.
+    PlaneAcrossRowStanding => BlowerShape {
+      across_the_binding_gap: cap_of(um_value: a16_slot_pitch_um(), why: "the 40.64 mm slot pitch; the housing may not overhang into a neighbouring card's lane"),
+      along_the_row: no_cap(),
+      behind_the_end: cap_of(um_value: rear_room - wall, why: "the operator's declared 70 mm behind the plug end, less the wall at the back"),
     }
   }
 }
 
-// WHAT BOTH-DUCTS-ACROSS-46-mm SPENDS. Two cards, one gap, two housings: each housing's overhang reaches
-// out of its own lane by plane_on_end_overhang_per_side, and with both ducted the pair's overhang has to
-// live inside the gap BETWEEN them. That pair need is what the inter-card gap is asked to cover.
+// The largest housing length the flat-on-end home may span across the slot. Two caps bind it and the honest
+// answer is the lesser: (a) a housing may overhang its lane on each side only as far as the side lane the
+// operator declared allows, giving pitch + 2 * that lane; and (b) with TWO ducted cards, the pair of
+// overhangs must fit inside the span they share, giving pitch + the pair span. The BFB1012M's 97.2 mm clears
+// both, which is why this home is admitted and the beside-the-row homes are not.
+fn flat_on_end_housing_length_cap() -> Int {
+  let by_lane = a16_slot_pitch_um() + 2 * gap_room_um(g: neighbour_lane_width)
+  let by_pair = flat_on_end_pair_span()
+  if by_lane < by_pair { by_lane } else { by_pair }
+}
+
+// WHAT TWO DUCTED CARDS SPEND BETWEEN THEM. Each housing's planform is centred on its own 40.64 mm pitch,
+// so it overhangs each side of its lane by plane_on_end_overhang_per_side. Two adjacent ducted cards put
+// those overhangs facing each other across the clear gap between the cards, and the span they share is not
+// the gap alone -- it is the gap PLUS one card's pitch, because each housing's overhang starts at the far
+// edge of its own lane. So the pair need is (housing length - pitch) = two overhangs, and it is measured
+// against pitch + gap. For the BFB1012M that is 56.56 mm of overhang against 86.64 mm of span: it fits, with
+// 30.08 mm to spare on the operator's numbers. This is worth stating plainly because the tempting wrong
+// arithmetic -- comparing 56.56 against 46 alone -- refuses a home that in fact clears, and a model that
+// over-forbids is as wrong as one that over-admits.
 fn flat_on_end_pair_need(b: RadialBlowerEnvelope) -> Int { 2 * plane_on_end_overhang_per_side(b: b) }
 
-// THE VERDICT PER HOME, AS RUN TEXT, against the 2026-10-27 readings. Not a re-derivation by hand: each
-// line runs the same ask()/finish() the published verdicts use, with the operator's own gap rows passed in
-// as the gaps. The flat-on-end line is the twin case -- it is the same home, with the inter-card gap
-// standing in for the generous side, which is what two ducted cards in one row do to each other.
-fn verdict_against_2026_10_27_readings() -> List<String> {
-  let d = a16_wall_design()
-  let b = a16_blower()
-  let slot = RouteDemand { name: "housing width across the free lane", needed: shape_um(m: beside_the_row_demand(b: b, d: d)), of_gap: "free lane beside the card row" }
-  let lane = ask(gap: side_lane_width, need: beside_the_row_demand(b: b, d: d), home: BesideTheRow, unmet: slot)
-  let wall = RouteDemand { name: "housing width across the free lane, on the wall side", needed: shape_um(m: beside_the_row_demand(b: b, d: d)), of_gap: "outer face of the outermost card to the chassis edge" }
-  let at_wall = ask(gap: outer_side_at_the_wall, need: beside_the_row_demand(b: b, d: d), home: BesideTheRow, unmet: wall)
-  let height = RouteDemand { name: "deck to lid above the row", needed: shape_um(m: over_the_row_height(f: a16_end_face, d: d, b: b, riser: shape_um(m: 6000))), of_gap: "deck to chassis lid, behind the plug end" }
-  let lid = ask(gap: deck_to_lid_clearance, need: over_the_row_height(f: a16_end_face, d: d, b: b, riser: shape_um(m: 6000)), home: OverTheRow {riser: shape_um(m: 6000)}, unmet: height)
-  let pair = RouteDemand { name: "both housings' overhang, across the gap between the two cards", needed: shape_um(m: flat_on_end_pair_need(b: b)), of_gap: "clear gap between the two cards" }
-  let twins = ask(gap: inter_card_gap, need: flat_on_end_pair_need(b: b), home: PlaneOnEnd, unmet: pair)
-  [route_admission_display(a: match lane { Present { value: r } => r Absent => RouteAdmitted { home: BesideTheRow, needs: [slot] } }),
-   route_admission_display(a: match at_wall { Present { value: r } => r Absent => RouteAdmitted { home: BesideTheRow, needs: [wall] } }),
-   route_admission_display(a: match lid { Present { value: r } => r Absent => RouteAdmitted { home: OverTheRow {riser: shape_um(m: 6000)}, needs: [height] } }),
-   route_admission_display(a: match twins { Present { value: r } => r Absent => RouteAdmitted { home: PlaneOnEnd, needs: [pair] } }),
-   "and the reading that still fits, unchanged: ",
-   route_admission_display(a: admit_home(home: PlaneOnEnd))]
+// The span two adjacent ducted cards actually share, from the outer overhang face of one housing to the
+// other's: one card's pitch plus the operator's clear gap between the cards, with the estimate's width taken
+// off the gap because that is what a by-eye figure leaves.
+fn flat_on_end_pair_span() -> Int { a16_slot_pitch_um() + gap_room_um(g: inter_card_gap) }
+
+// Does the pair clear? Reported with its margin rather than as a bare Bool, because the number is the point.
+fn flat_on_end_twin_verdict() -> String {
+  let need = flat_on_end_pair_need(b: a16_blower())
+  let span = flat_on_end_pair_span()
+  join(["two ducted cards, flat on the end: both housings' overhang is ", to_string(value: need / 1000),
+        " mm against a shared span of ", to_string(value: span / 1000),
+        " mm (one 40.64 mm pitch plus the 'between the two cards is 46mm' gap, less its width) -- ",
+        if span - need < 0 { "REFUSED, short by " } else { "clear, with " },
+        to_string(value: if span - need < 0 { 0 - (span - need) } else { span - need } ), " um to spare"], "")
+}
+
+fn extent_display(e: ShapeExtent) -> String {
+  if e.measured {
+    join(["at most ", to_string(value: measure_count(m: e.at_most) / 1000), " mm (", e.capped_by, ")"], "")
+  } else {
+    join(["no cap: ", e.capped_by], "")
+  }
 }
 
 fn shape_display(s: BlowerShape) -> String {
-  join(["across-slot ", to_string(value: s.width_across_slot / 1000), " mm; behind the end ", to_string(value: s.reach_behind / 1000),
-        " mm; thickness ", to_string(value: s.thickness / 1000), " mm"], "")
+  join(["the edge across the binding gap ", extent_display(e: s.across_the_binding_gap),
+        "; the edge along the row ", extent_display(e: s.along_the_row),
+        "; behind the end ", extent_display(e: s.behind_the_end)], "")
+}
+
+// THE VERDICT PER HOME, AS RUN TEXT, against the 2026-10-27 readings. Not a re-derivation by hand: every
+// line runs the same ask()/finish() the published verdicts use, with the operator's own gap rows passed in
+// as the gaps. The flat-on-end line is the twin case -- the same home, with the inter-card gap standing in
+// for the generous side, which is what two ducted cards in one row do to each other.
+fn verdict_against_2026_10_27_readings() -> List<String> {
+  let d = a16_wall_design()
+  let b = a16_blower()
+  let lane_need = beside_the_row_demand(b: b, d: d)
+  let lane = RouteDemand { name: "housing width across the free lane", needed: shape_um(m: lane_need), of_gap: "free lane beside the card row" }
+  let at_lane = ask(gap: side_lane_width, need: lane_need, home: BesideTheRow, unmet: lane)
+  let at_wall = ask(gap: outer_side_at_the_wall, need: lane_need, home: BesideTheRow, unmet: lane)
+  let lid_need = over_the_row_height(f: a16_end_face, d: d, b: b, riser: shape_um(m: 6000))
+  let lid = ask(gap: deck_to_lid_clearance, need: lid_need, home: OverTheRow {riser: shape_um(m: 6000)}, unmet: RouteDemand { name: "deck to lid above the row", needed: shape_um(m: lid_need), of_gap: "deck to chassis lid, behind the plug end" })
+  let pair_need = flat_on_end_pair_need(b: b)
+  let twins = ask(gap: inter_card_gap, need: pair_need, home: PlaneOnEnd, unmet: RouteDemand { name: "both housings' overhang, across the gap between the two cards", needed: shape_um(m: pair_need), of_gap: "clear gap between the two cards" })
+  [route_admission_display(a: match at_lane { Present { value: r } => r Absent => RouteAdmitted { home: BesideTheRow, needs: [lane] } }),
+   route_admission_display(a: match at_wall { Present { value: r } => r Absent => RouteAdmitted { home: BesideTheRow, needs: [lane] } }),
+   route_admission_display(a: match lid { Present { value: r } => r Absent => RouteAdmitted { home: OverTheRow {riser: shape_um(m: 6000)}, needs: [] } }),
+   route_admission_display(a: match twins { Present { value: r } => r Absent => RouteAdmitted { home: PlaneOnEnd, needs: [] } }),
+   "and the one home the operator declared a bound for, unchanged by any of this: ",
+   route_admission_display(a: admit_home(home: PlaneOnEnd))]
 }
 
 // THE ANSWER TO "WHICH BLOWER WOULD FIT": the largest planform each home can take under the 2026-10-27
-// readings. Any extent that comes out zero or negative is a home that admits no planform at all, and the
-// negative number is the honest one to report -- it is how far the home is over, not a size.
+// readings. An extent that comes out negative is a home that admits no planform at all, and the negative
+// number is the honest one to report -- it is how far the home is over, not a size it could be built to.
 fn largest_planform_per_home() -> List<String> {
   let d = a16_wall_design()
-  [join(["beside the row (the generous side, '60mm'): ", shape_display(s: shape_max_for_home(home: BesideTheRow, d: d, riser: 6000))], ""),
-   join(["beside the row (the wall side, 'a few mm' carried at 0): ", shape_display(s: shape_max_for_home(home: BesideTheRow, d: d, riser: 6000))], ""),
-   join(["over the row on a 6 mm riser ('120mm' floor-to-lid): ", shape_display(s: shape_max_for_home(home: OverTheRow {riser: shape_um(m: 6000)}, d: d, riser: 6000))], ""),
+  let b = a16_blower()
+  [join(["beside the row, against the '60mm' side: ", shape_display(s: shape_max_for_home(home: BesideTheRow, d: d, riser: 6000))], ""),
+   join(["beside the row, against the wall side ('a few mm', carried at zero): ", shape_display(s: shape_max_for_home(home: BesideTheRow, d: d, riser: 6000))], ""),
+   join(["over the row on a 6 mm riser: ", shape_display(s: shape_max_for_home(home: OverTheRow {riser: shape_um(m: 6000)}, d: d, riser: 6000))], ""),
    join(["flat on the plug end, two ducted cards across 46 mm: ", shape_display(s: shape_max_for_home(home: PlaneOnEnd, d: d, riser: 6000))], ""),
-   join(["for comparison, what the BFB1012M asks: across-slot ", to_string(value: longest_face_edge(b: a16_blower()) / 1000),
-         " mm; behind the end ", to_string(value: plane_on_end_run_back(b: a16_blower(), d: d) / 1000),
-         " mm; thickness ", to_string(value: thickness_extent(b: a16_blower()) / 1000), " mm"], "")]
+   flat_on_end_twin_verdict(),
+   join(["what the BFB1012M actually asks for: across the slot ", to_string(value: longest_face_edge(b: b) / 1000),
+         " mm; up the end face ", to_string(value: shortest_face_edge(b: b) / 1000),
+         " mm; behind the end ", to_string(value: plane_on_end_run_back(b: b, d: d) / 1000), " mm"], "")]
 }

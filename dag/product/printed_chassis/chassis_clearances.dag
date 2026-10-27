@@ -366,13 +366,15 @@ fn chassis_gaps_display() -> String {
 //                    launder a guess into a guarantee.
 //   a caliper reading  the distance itself; the instrument's grain is far below every need in this corpus.
 //   unread             nothing. Negative, so any non-negative need refuses and says which gap failed.
+fn gap_um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
+
 fn gap_room_um(g: ChassisGap) -> Int {
   match g {
     Measured {name: _, from_point: _, to_point: _, distance: dist, standing: st} =>
       if gap_is_estimate(g: g) {
-        match gap_declared_bound(g: g) { Present { value: b } => measure_count(m: dist) - measure_count(m: b) Absent => measure_count(m: dist) }
+        match gap_declared_bound(g: g) { Present { value: b } => gap_um(m: dist) - gap_um(m: b) Absent => gap_um(m: dist) }
       } else {
-        match gap_declared_bound(g: g) { Present { value: b } => measure_count(m: b) Absent => measure_count(m: dist) }
+        match gap_declared_bound(g: g) { Present { value: b } => gap_um(m: b) Absent => gap_um(m: dist) }
       }
     NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => 0 - 1
   }
