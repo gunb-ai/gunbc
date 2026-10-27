@@ -38,8 +38,9 @@ import gunbc.runner.runner_qualification_ref_pin {
   qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused,
 }
 import gunbc.runner.runner_qualification_floor_job {
-  qualification_attempt_dispatch_input, qualification_floor_revision_guard_step,
+  qualification_attempt_dispatch_input, qualification_floor_revision_guard_step, qualification_guard_script, qualification_guard_mismatch_marker,
 }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_step_orch_refused_poison }
 import gunbc.runner.runner_qualification_dispatch {
   qualification_revision_dispatch_input, qualification_dispatch_inputs, qualification_dispatch_effect, SubjectRequiredInputUnsupplied,
   SubjectFloorRevisionGuardNotFirst, SubjectFloorStepRunsPastTheGuard,
@@ -700,8 +701,8 @@ test fn the_floor_checks_out_the_pinned_revision_first_and_nothing_runs_past_a_r
     && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, tolerant]), inputs_declare_revision: true))
     && (match guard {
       RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: ce, timeout_minutes: _ } =>
-        string_contains(s: r, pattern: "git rev-parse HEAD")
-          && string_contains(s: r, pattern: "!= \"$QUALIFICATION_REVISION\"")
+        r == qualification_guard_script()
+          && string_contains(s: r, pattern: "rev-parse")
           && string_contains(s: r, pattern: "exit 1")
           && (match c { Absent => true Present { value: _ } => false })
           && (match ce { Absent => true Present { value: _ } => false })
@@ -950,4 +951,20 @@ test fn a_required_input_the_dispatch_does_not_carry_refuses_and_is_named() -> B
     Present { value: v } => v == "mtcollins1"
     Absent => false
   })
+}
+
+// THE GUARD IS EMITTED FROM ITS MODEL (review 86946): the script is the node renderer's accepted output, never the
+// refusal poison; it reads HEAD back through git rev-parse and compares it with the revision VARIABLE, and its
+// refusal names the mismatch. The readback is ASSIGNED before the comparison, so a failed rev-parse stops the step
+// under set -e rather than erroring inside the if condition, where set -e does not apply and the guard would pass;
+// the comparison reads two quoted variables. A literal revision, an unassigned substitution in the test, or a guard
+// spelled as a hand string that bypassed the renderer fails one of these.
+test fn the_revision_guard_is_rendered_from_its_model_and_compares_the_readback() -> Bool {
+  let script = qualification_guard_script()
+  script != gunbc_invoke_step_orch_refused_poison
+    && string_contains(s: script, pattern: "rev-parse")
+    && string_contains(s: script, pattern: "QUALIFICATION_OBSERVED_HEAD=$(")
+    && string_contains(s: script, pattern: "\"$QUALIFICATION_OBSERVED_HEAD\" '!=' \"$QUALIFICATION_REVISION\"")
+    && string_contains(s: script, pattern: qualification_guard_mismatch_marker)
+    && string_contains(s: script, pattern: "exit 1")
 }

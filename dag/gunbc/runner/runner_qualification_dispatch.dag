@@ -273,7 +273,7 @@ type QualificationFloorAdmission
 
 fn workflow_dispatch_inputs_of(workflow: Workflow) -> List<DispatchInput> {
   fold(workflow.on, init: [], f: (acc, t) => match t {
-    WorkflowDispatch { inputs: is } => concat(acc, is)
+    WorkflowDispatch { inputs: declared } => concat(acc, declared)
     Push { branches: _, paths: _ } => acc
     PullRequest { branches: _, types: _, paths: _ } => acc
     Schedule { cron: _ } => acc
