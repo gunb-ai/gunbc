@@ -4,17 +4,21 @@ import std.optional { Absent, Present }
 import std.types { Int, List, NonEmptyStr, String }
 import extdeps.github.actions { Job, Step, RunStep, DispatchInput, InputString, RunsOnExpression }
 import extdeps.languages.yaml.types { kv, yaml_string }
-import gunbc.witness.compiler_gate_workflow { compiler_gate_floor_steps_after_checkout }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_floor_steps_after_checkout, compiler_gate_required_job_env }
 
 // THE QUALIFICATION FLOOR JOB'S CONTRACT, BELOW BOTH OF ITS READERS. gunbc.fleet.fleet_converge_workflow emits the
 // job and gunbc.runner.runner_qualification_dispatch admits a workflow only when the job keeps this contract; the
 // dispatch module already reads the fleet-converge model, so the contract cannot live in either without a cycle.
 // Moved here unchanged from runner_qualification_dispatch (gunbc.plans.mtcollins1_ci_service_legs G1).
 
+// NOT REQUIRED AT THE WORKFLOW: the workflow carrying the floor is the shared fleet-converge workflow, where a required
+// input would be demanded of every mode's dispatch. The floor's dispatch always supplies it
+// (gunbc.runner.runner_qualification_dispatch qualification_dispatch_inputs), and an empty one leaves runs-on empty,
+// which GitHub refuses rather than placing.
 data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
   name: "runner_attempt_label",
-  description: Present { value: "the per-boot attempt label the ephemeral qualification slot registered with; the floor job's runs-on reads it" },
-  required: true,
+  description: Present { value: "qualification_floor only: the attempt label the ephemeral qualification slot registered with; the floor job's runs-on reads it" },
+  required: false,
   default: none,
   type: InputString,
 }
@@ -52,7 +56,7 @@ fn qualification_floor_revision_guard_step(revision_input: DispatchInput) -> Ste
 }
 
 // THE JOB: the guard first, then the required job's own floor (gunbc.witness.compiler_gate_workflow
-// compiler_gate_floor_steps_after_checkout), on exactly the runner the attempt registered. The condition is the
+// compiler_gate_floor_steps_after_checkout) under that job's environment, on exactly the runner the attempt registered. The condition is the
 // caller's (the workflow's mode check); nothing else of the job is a parameter.
 data qualification_floor_job_id: NonEmptyStr = "qualification-floor"
 
@@ -66,7 +70,7 @@ fn qualification_floor_job(revision_input: DispatchInput, if_condition: String, 
     environment: none,
     steps: concat([qualification_floor_revision_guard_step(revision_input: revision_input)], compiler_gate_floor_steps_after_checkout()),
     needs: [],
-    env: none,
+    env: Present { value: compiler_gate_required_job_env() },
     outputs: none,
     if_condition: Present { value: if_condition },
     timeout_minutes: Present { value: timeout_minutes },
