@@ -43,6 +43,9 @@ import std.durable_exclusive_hold {
   HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseAssessment, DurableHoldReleaseRefusal,
   durable_hold_acquire_assess, durable_hold_release_assess,
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
+  DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+  HoldRecoveryNothingHeld, HoldRecoveryHolderLive, HoldRecoveryHolderUnobservable,
+  HoldRecoverySlotUndecodable, HoldRecoveryObservationUnavailable,
   durable_hold_recovery_assess,
   DurableHoldNonHolderRelease, DurableHoldNonHolderReleaseRefusal, DurableHoldNonHolderReleaseBasis,
   NonHolderReleaseEligible, NonHolderReleaseRefused, durable_hold_nonholder_release_assess, DurableHoldRef,
@@ -556,9 +559,66 @@ fn file_hold_recovery_assess_retained(
 fn file_hold_recovery_assess(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef) -> FileHoldRecoveryAssessment
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recover_dead_holder"),
   ]
 {
   file_hold_recovery_assess_retained(root: root, slot_key: slot_key, report: report, released_by: released_by, retention: KeepAllGenerations)
+}
+
+// THE ONE DEAD-HOLDER RECOVERY, written once for every root. A consumer that found its slot
+// occupied owes three things and no more: observe WHO holds it, prove THAT holder dead, and take
+// the slot with a release naming who did the proving. Only the first differs between roots -- a
+// managed host unit names a systemd unit, the fleet printer controller names an authorization plus
+// a process -- so it arrives as a function and the other two steps stay HERE, where the report
+// mint, the eligibility check and the CAS commit each already have their own admission. This is
+// the arm the two earlier consumers each hand-carried and a third root skipped: a root that never
+// admitted the recovery ends in a slot nothing can release.
+//
+// Refusing typed is the point. A holder observed LIVE is refused as live and an unobservable one as
+// unobservable, because the thing that makes recovery sound -- a death someone actually saw -- is
+// exactly what neither of those two arms has. A caller cannot pass a dead-looking verdict in as
+// data: report lives in std.durable_exclusive_hold's closed set, and DurableHoldHolderReport has
+// no declaration outside the mint.
+// Each arm says why the slot is STILL held, in one of the store's own words, so a consumer maps its
+// typed refusal without re-telling the story: a live holder means wait, an unobservable one means go
+// look, a lost commit means the slot moved under us and a retry must re-observe from scratch.
+type FileHoldDeadHolderRecovery
+  = FileHoldDeadHolderRecovered { dead_holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
+  | FileHoldDeadHolderHolderLive { holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
+  | FileHoldDeadHolderHolderUnobservable { holder: DurableHoldOwnerRef, cause: NonEmptyStr }
+  | FileHoldDeadHolderNotEligible { refusal: DurableHoldRecoveryRefusal }
+  | FileHoldDeadHolderReleaseLost
+  | FileHoldDeadHolderReleaseStoreUnavailable { cause: NonEmptyStr }
+  | FileHoldDeadHolderReleaseKeyNotAddressable
+
+fn file_hold_recover_dead_holder(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  holder: DurableHoldOwnerRef,
+  generation: CasGeneration,
+  released_by: DurableHoldReleaseRef,
+  live_owner: fn(DurableHoldOwnerRef) -> DurableHoldHolderLiveness,
+) -> FileHoldDeadHolderRecovery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
+    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "with_execution_hold"),
+  ]
+{
+  match live_owner(h: holder) {
+    HolderObservedDead { evidence: e } =>
+      match file_hold_recovery_assess(root: root, slot_key: slot_key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: HolderObservedDead { evidence: e } }, released_by: released_by) {
+        FileHoldRecoveryPlanned { plan: p, dead_holder: d, evidence: ev } =>
+          match file_hold_release_commit(plan: p) {
+            FileHoldReleased { slot_key: _, generation: _ } => FileHoldDeadHolderRecovered { dead_holder: d, evidence: ev }
+            FileHoldReleaseLost { slot_key: _ } => FileHoldDeadHolderReleaseLost
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: c } => FileHoldDeadHolderReleaseStoreUnavailable { cause: c }
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => FileHoldDeadHolderReleaseKeyNotAddressable
+          }
+        FileHoldRecoveryNotEligible { slot_key: _, refusal: r } => FileHoldDeadHolderNotEligible { refusal: r }
+      }
+    HolderObservedLive { evidence: e } => FileHoldDeadHolderHolderLive { holder: holder, evidence: e }
+    HolderLivenessUnobservable { cause: c } => FileHoldDeadHolderHolderUnobservable { holder: holder, cause: c }
+  }
 }
 
 fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldWindowedRecoveryAssessment

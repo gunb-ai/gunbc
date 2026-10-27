@@ -7,9 +7,32 @@ import std.process {ProcessExit,ExitSuccess,exit_failure}
 import std.durable_compare_and_set {CasGeneration,cas_generation_count,CasStoreFailure,CasSlotObservationRefused,CasGenerationPublicationRefused,CasGenerationSpaceExhausted,cas_unreadable_slot_detail}
 import std.durable_exclusive_hold {DurableHoldOwnerRef,DurableHoldReleaseRef,HoldSlotHeld,durable_hold_owner_equal}
 import gunbc.durable_exclusive_hold_file_store {file_hold_acquire,FileHoldAcquired,file_hold_release_assess,FileHoldReleasePlanned,file_hold_release_commit,FileHoldReleased,observe_file_hold}
-import gunbc.process_hold_identity {process_hold_text,process_hold_marker,process_hold_decode,text_at,self_process_identity,SelfIdentified,SelfUnidentified}
+import gunbc.durable_exclusive_hold_file_store {
+  file_hold_recover_dead_holder,FileHoldDeadHolderRecovery,FileHoldDeadHolderRecovered,FileHoldDeadHolderHolderLive,
+  FileHoldDeadHolderHolderUnobservable,FileHoldDeadHolderNotEligible,FileHoldDeadHolderReleaseLost,
+  FileHoldDeadHolderReleaseStoreUnavailable,FileHoldDeadHolderReleaseKeyNotAddressable,
+  file_hold_nonholder_release_assess,FileHoldNonHolderReleaseAssessment,FileHoldNonHolderReleasePlanned,FileHoldNonHolderReleaseNotEligible,file_hold_ref,
+}
+import gunbc.process_hold_identity {process_hold_text,process_hold_marker,process_hold_decode,text_at,self_process_identity,SelfIdentified,SelfUnidentified,holder_process_liveness}
 import gunbc.build_cache.build_cache_instance {ProcessIdentity}
 import std.optional {Present,Absent}
+import std.types {Timestamp}
+import std.measure {second}
+import std.effect_grant {Write,NamespacePosition,FilesystemPathTree}
+import std.content_hash {content_hash_of_value}
+import std.scoped_authorization {
+  AuthorizationScope,AuthorizedAction,AttemptIdentity,AuthorizationRequest,OperatorGrant,
+  ScopedAuthorization,AuthorizationGranted,Unclaimed,AuthorizationDecision,AuthorizationPermitted,AuthorizationRefused,authorize,
+}
+import std.durable_exclusive_hold {
+  DurableHoldRef,DurableHoldSubject,DurableHoldHolderLiveness,HolderObservedLive,HolderObservedDead,HolderLivenessUnobservable,
+  DurableHoldNonHolderRelease,ReleasedByOperator,
+}
+import gunbc.auth.approval_gate {approval_instant_now,approval_expires_at}
+import gunbc.auth.approval_decision_store {
+  grant_from_store,GrantDerivation,GrantDerived,GrantStillPending,GrantEscalationNotFiled,GrantForAnotherIntent,GrantStoreUnreadable,
+  approval_decision_store_root,
+}
 
 // One fleet controller owns scheduling; printer lifetimes overlap inside that hold.
 // Existing single starts also acquire it, so a legacy entry cannot race a batch.

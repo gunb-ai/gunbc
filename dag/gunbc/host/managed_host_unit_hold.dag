@@ -41,6 +41,9 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit, observe_file_hold,
   FileHoldRecoveryPlanned, FileHoldRecoveryNotEligible, file_hold_recovery_assess,
+  file_hold_recover_dead_holder, FileHoldDeadHolderRecovery, FileHoldDeadHolderRecovered,
+  FileHoldDeadHolderHolderLive, FileHoldDeadHolderHolderUnobservable, FileHoldDeadHolderNotEligible,
+  FileHoldDeadHolderReleaseLost, FileHoldDeadHolderReleaseStoreUnavailable, FileHoldDeadHolderReleaseKeyNotAddressable,
 }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import std.decl_ref { decl_ref }
@@ -517,17 +520,19 @@ fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: Du
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
   ]
 {
-  let report = holder_report(holder: holder, generation: generation)
-  let released_by = join(["recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef
-  match file_hold_recovery_assess(root: root, slot_key: key, report: report, released_by: released_by) {
-    FileHoldRecoveryNotEligible { slot_key: _, refusal: r } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: r) }
-    FileHoldRecoveryPlanned { plan: p, dead_holder: h, evidence: e } =>
-      match file_hold_release_commit(plan: p) {
-        FileHoldReleased { slot_key: _, generation: _ } => DeadHolderRecovered { dead_holder: h, evidence: e }
-        FileHoldReleaseLost { slot_key: _ } => DeadHolderNotRecovered { reason: join(["unit ", key as String, " moved before the dead holder's hold was freed; re-run; controller untouched"], "") as NonEmptyStr }
-        FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => DeadHolderNotRecovered { reason: join(["unit hold store refused freeing the dead holder's hold on ", key as String, "; controller untouched"], "") as NonEmptyStr }
-        FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => DeadHolderNotRecovered { reason: join(["unit hold key ", key as String, " is not slot-addressable; controller untouched"], "") as NonEmptyStr }
-      }
+  // The observe-prove-release SEQUENCE is no longer this consumer's to write: it lives once in
+  // gunbc.durable_exclusive_hold_file_store's file_hold_recover_dead_holder, which the fleet printer
+  // root is also admitted to. What stays here is the unit root's own half -- WHICH holders this root
+  // can observe at all, and what a refusal means to a managed host -- passed in as the liveness
+  // function and the refusal sentence.
+  match file_hold_recover_dead_holder(root: root, slot_key: key, holder: holder, generation: generation, released_by: join(["recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef, live_owner: fn(h: DurableHoldOwnerRef) -> DurableHoldHolderLiveness { match holder_liveness_route(holder: h) { HolderObserveProcess { process: p, pid_namespace: n } => holder_process_liveness(p: p, pid_namespace: n) HolderNotObservable { cause: c } => HolderLivenessUnobservable { cause: c } } }) {
+    FileHoldDeadHolderRecovered { dead_holder: h, evidence: e } => DeadHolderRecovered { dead_holder: h, evidence: e }
+    FileHoldDeadHolderHolderLive { holder: h, evidence: e } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: HoldRecoveryHolderLive { generation: generation, holder: h, evidence: e }) }
+    FileHoldDeadHolderHolderUnobservable { holder: h, cause: c } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: HoldRecoveryHolderUnobservable { generation: generation, holder: h, cause: c }) }
+    FileHoldDeadHolderNotEligible { refusal: r } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: r) }
+    FileHoldDeadHolderReleaseLost => DeadHolderNotRecovered { reason: join(["unit ", key as String, " moved before the dead holder's hold was freed; re-run; controller untouched"], "") as NonEmptyStr }
+    FileHoldDeadHolderReleaseStoreUnavailable { cause: _ } => DeadHolderNotRecovered { reason: join(["unit hold store refused freeing the dead holder's hold on ", key as String, "; controller untouched"], "") as NonEmptyStr }
+    FileHoldDeadHolderReleaseKeyNotAddressable => DeadHolderNotRecovered { reason: join(["unit hold key ", key as String, " is not slot-addressable; controller untouched"], "") as NonEmptyStr }
   }
 }
 
