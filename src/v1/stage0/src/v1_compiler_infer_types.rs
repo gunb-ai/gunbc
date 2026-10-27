@@ -96,8 +96,9 @@ pub fn diag_mint_trace(tag: &str, id: &str) {
     let bt: String = std::backtrace::Backtrace::force_capture().to_string();
     let frames: Vec<String> = bt
         .lines()
-        .filter(|l| l.contains("v1_compiler") && !l.contains("diag_mint_trace"))
-        .take(9)
+        .filter(|l| l.contains("v1_") && !l.contains("diag_mint_trace")
+            && !l.contains("backtrace") && !l.contains("core::") && !l.contains("alloc::"))
+        .take(12)
         .map(|l| {
             let t = l.trim();
             let f = t.split(" at ").next().unwrap_or(t);
