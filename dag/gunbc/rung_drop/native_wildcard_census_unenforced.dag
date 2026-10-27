@@ -2,7 +2,7 @@ module gunbc.rung_drop.native_wildcard_census_unenforced
 
 import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DerivedBy, ReplacementStaged }
-import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
+import gunbc.guarantee_rung { OutsideTheLadder }
 // THE LABEL IS THE ROSTER'S OWN, IMPORTED NOT RESTATED (the witness_deferral_freeze precedent):
 // rung_drop_population_is_readable refuses this row unless the label is rostered in
 // gunbc.instrument_targets instrument_targets exactly once, so the drop and the census it points at
@@ -21,10 +21,14 @@ import gunbc.instrument_targets { nfr_wildcard_census_label }
 // CARRY AN UNROSTERED PRODUCTION WILDCARD AND STILL PASS EVERY REQUIRED CHECK. That gap is a
 // guarantee off the ladder, and §5 refuses silence about it: this row declares it.
 //
-// WHY previous IS NOT THE LADDER. The census has never been a required gate: no rung was held, so
-// the climb this row tracks starts OutsideTheLadder. temporary is MechanicallyPreventable because the
-// enforcement mechanism is already built — the instrument exits 1 on an unrostered production site —
-// and what is missing is only that a required lane RUNS it and a judgment is admitted as a row.
+// WHY BOTH RUNGS ARE OutsideTheLadder. The census has never been a required gate, so no rung was
+// held and the climb this row tracks starts OutsideTheLadder. It does not hold MechanicallyPreventable
+// now either: that rung needs a mechanism that reliably blocks the invalid state, and an ungated
+// census is measurement plus refusal machinery OFF the required path -- its exit 1 on an unrostered
+// production site blocks nothing unless someone runs it and reads it. Nor Mitigatable: the census
+// contains no harm, it only reports it. So temporary equals previous (the
+// emit_copy_qualification_without_a_consumer precedent), and the rung lifts to MechanicallyPreventable
+// only on ENROLLMENT IN THE REQUIRED GATE, below.
 //
 // THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT. Restoring the rung means THE JUDGMENT RUNS
 // NATIVELY ON THE REQUIRED PATH: the wildcard-arm census is folded from native `decl_facts` over each
@@ -43,9 +47,9 @@ data native_wildcard_census_unenforced: RungDrop = RungDrop {
 
   standing: Standing { declaration: TypedDeclaration {
     previous: OutsideTheLadder,
-    temporary: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
     reason: ReplacementStaged { replacement: "the census's exit-1-on-unrostered judgment exists but executes on no required lane; the staged replacement runs it as a required emitted-subject-build row" },
     population: DerivedBy { label: nfr_wildcard_census_label() },
-    restoration_trigger: "THE CAPABILITY: a native decl_facts wildcard-arm census fold — the production-scope wildcard sites of a head, each subject's match arms read from native decl_facts over the closed coproduct's declared constructors — judged as an emitted_subject_build_rows row of gunbc.emitted_subject_build_gate, so an unrostered production wildcard exits the required lane nonzero beside the positive control of a rostered head exiting zero"
+    restoration_trigger: "THE CAPABILITY: a native decl_facts wildcard-arm census fold — the production-scope wildcard sites of a head, each subject's match arms read from native decl_facts over the closed coproduct's declared constructors — judged as an emitted_subject_build_rows row of gunbc.emitted_subject_build_gate, so an unrostered production wildcard exits the required lane nonzero beside the positive control of a rostered head exiting zero. Enrollment in the required gate is what lifts the rung to MechanicallyPreventable; no rung is held until then, so previous equals temporary"
   } }
 }
