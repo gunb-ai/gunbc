@@ -1097,3 +1097,40 @@ fn pipe_end_to_end_control(prepared: PreparedGrammar, lex: PreparedLexRules, clo
     }
   }
 }
+
+// THE GATED ENTRY: `gunbc test //gunbc/instruments:namespace-wave-occurrence-join-controls`
+// (gunbc.instrument_targets namespace_wave_occurrence_join_controls_binding, a CliWireProgramProducer row). The gate's
+// controls run HERE, not only inside the binding-diff instrument, so a broken join is caught at the join's own label.
+// The bytes are the CONTROL REPORT, not a count copied from the tree: occurrence_join_controls_failure concatenates the
+// per-control verdicts, and an EMPTY report is the only evidence of standing -- so the held line claims nothing beyond
+// "every verdict was empty" (DESIGN section 5: completeness is the identity join inside each verdict, never a number).
+// THE EXIT IS THE STANDING, THREE-WAY like every instrument wire: 0 the join admits what it should and refuses what it
+// should; 1 a located control failure (the report names the controls); 2 UNOBSERVED -- the grammar cannot be prepared or
+// the fixture's own standing is broken (site count, generator convergence), so the gate answers nothing about a
+// population it could not see (DESIGN section 5: no absorbing answer; the host maps a code-2 wire exit to status 2).
+fn namespace_wave_occurrence_join_controls_wire() -> CliWireResponse {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } =>
+      CliWirePrintable { bytes: "occurrence-join controls UNOBSERVED: grammar-unprepared\n", exit: ExitFailure { code: 2, reason: "occurrence-join controls UNOBSERVED: grammar-unprepared" } }
+    Accepted { value: prepared, diagnostics: _ } =>
+      match occurrence_join_controls_failure(prepared: prepared, lex: dag_prepared_lex(), closures: wave_roster_closures(scopes: rows_proof_scopes(rows: join_control_rows()))) {
+        Absent =>
+          CliWirePrintable { bytes: "occurrence-join controls: every verdict empty\n", exit: ExitSuccess }
+        Present { value: report } =>
+          // THE FIXTURE-STANDING REFUSALS (site count, generator stuck, no edits) answer no observation; a per-control
+          // verdict names its control. Both carry their report; the exit says which kind of answer it is.
+          if fixture_standing_failure(report: report) {
+            CliWirePrintable { bytes: report, exit: ExitFailure { code: 2, reason: report } }
+          } else {
+            CliWirePrintable { bytes: report, exit: exit_failure(reason: report) }
+          }
+      }
+  }
+}
+
+// WHICH UNOBSERVED: the fixture's own standing (the one report occurrence_join_controls_failure emits OUTSIDE the
+// per-control verdicts) begins with this prefix; a per-control verdict begins with the control's name. Read off the
+// report text, not a parallel flag.
+fn fixture_standing_failure(report: String) -> Bool {
+  starts_with(s: report, prefix: "occurrence-join control fixture:")
+}
