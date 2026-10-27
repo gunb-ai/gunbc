@@ -8,6 +8,8 @@ import std.compiler_entry {
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision }
+import std.literal_elaboration { declaration_is_grounded_natural, kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused }
+import gunbc.structural_realization_bindings { kernel_grounding_rows }
 import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
@@ -43,7 +45,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, carried_declaration_ref }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -3386,6 +3388,36 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
   }
 }
 
+// A CAST THE GROUNDING ROWS ADMIT REALIZES AS THE IDENTITY. LEGALITY is decided before emit: a cast between
+// grounded carriers by the derived crossing (std.literal_elaboration kernel_grounding_crossing over
+// gunbc.structural_realization_bindings kernel_grounding_rows, read in v1.compiler.infer validate_cast), and a
+// grounded natural onto the kernel Int by the name-keyed chain stern-bat-401's ruling keeps for it
+// (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged). Emit adds only the realization: every carrier a
+// row grounds IS the kernel integer on every route, as the kernel Int is, so the target performs no operation.
+// Read from the rows on the exact declarations, never from how a route spells the type: std.nat Nat renders as
+// the Rust alias `Nat` (= i64), which is no host numeric ground, so a spelling comparison could not see the
+// coincidence. When a row realizes at a narrower host width the widening is a host conversion, not an identity,
+// and this realization reads the two widths instead.
+fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match expr.inferred {
+    Present { value: Resolved { node: n } } =>
+      match carried_declaration_ref(n: n, source_indices: source_indices, env: env) {
+        Present { value: d } =>
+          match type_reference_declaration_reading(n: cast_target_node, source_indices: source_indices, env: env) {
+            TypeReferenceNamesDeclaration { declaration: t } =>
+              match kernel_grounding_crossing(rows: kernel_grounding_rows, from: d, to: t) {
+                CrossingTotalWidening => true
+                CrossingRefused { cause: _ } => false
+              }
+            TypeReferenceIsKernelType { name: k } => k == "Int" && declaration_is_grounded_natural(rows: kernel_grounding_rows, d: d)
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
 // THREE MEANINGS, IN ORDER, AND THE THIRD IS UNCHANGED. Rendered-representation identity and
 // declared-carrier identity are two INDEPENDENTLY SUFFICIENT witnesses that the target has no
 // operation to perform -- neither is derived from the other, and neither is authority over the
@@ -3404,9 +3436,13 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
     expr_str
   } else if cast_source_representation_identical(expr: expr, cast_target_node: cast_target_node, env: env, target: target) {
     expr_str
+  } else if cast_source_grounded_onto_target_carrier(expr: expr, cast_target_node: cast_target_node, env: env, source_indices: source_indices) {
+    expr_str
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
+    // A cast the checker abstained on and no route here realizes aborts at runtime: the emitted-route form
+    // of gunbc.recurring_failure_mode the_checker_admits_a_cast_the_evaluator_refuses.
     emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
   }
 }
