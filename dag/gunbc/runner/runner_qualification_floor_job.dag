@@ -4,6 +4,14 @@ import std.optional { Absent, Present }
 import std.types { Int, List, NonEmptyStr, String }
 import extdeps.github.actions { Job, Step, RunStep, DispatchInput, InputString, RunsOnExpression }
 import extdeps.languages.yaml.types { kv, yaml_string }
+import v2.std.node { Node }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words, bash_build_command_from_lits, bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
+  bash_build_word_cmdsubst, bash_build_test_bracket, bash_build_if_from_stmts, bash_build_with_redir, bash_build_exit, bash_build_assign,
+}
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.git { git_init_quiet_command, git_fetch_shallow_revision_command, git_checkout_revision_command, git_rev_parse_head_command }
+import gunbc.ci.ci_spec { gunbc_ci_bash_rendered }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_floor_steps_after_checkout, compiler_gate_required_job_env }
 
 // THE QUALIFICATION FLOOR JOB'S CONTRACT, BELOW BOTH OF ITS READERS. gunbc.fleet.fleet_converge_workflow emits the
@@ -33,21 +41,76 @@ data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
 // (decision: eager-gull-22, 2026-10-04 -- sha-checkout) is recorded on
 // gunbc.runner.runner_qualification_dispatch qualification_revision_dispatch_input, which names the one input that
 // carries it. This module sits below the workflow model, so it takes that input rather than naming it.
+// THE GUARD IS MODELED, NOT A SHELL STRING (review 86946): every leg is an extdeps.git argv command rendered as a
+// bash node, the comparison is a test over the rev-parse readback and the input, and the whole is emitted by the one
+// node renderer gunbc.ci.ci_spec gunbc_ci_bash_rendered, so a rejected emission is the refusal poison in the
+// workflow and never partial text. The working tree is the runner's empty workspace, so the legs act on ".". The
+// fetch names the repository by the runner's own GITHUB_SERVER_URL and GITHUB_REPOSITORY (the repository is public,
+// so the read needs no credential), and both expanded words are variable nodes, never literals.
+data qualification_revision_env_name: String = "QUALIFICATION_REVISION"
+
+data qualification_observed_env_name: String = "QUALIFICATION_OBSERVED_HEAD"
+
+data qualification_guard_mismatch_marker: String = "QualificationRevisionMismatch: the checked-out HEAD is not the pinned revision"
+
+fn qualification_guard_revision_ref() -> String { concat("$", qualification_revision_env_name) }
+
+fn qualification_guard_remote_ref() -> String { "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" }
+
+// A modeled argv rendered as words, with the two expanded positions as variable nodes. The builder is called WITH
+// those references as its values, so the word positions are the builder's own and are found by equality, never by
+// index.
+fn qualification_guard_word(w: String) -> Node {
+  if w == qualification_guard_revision_ref() {
+    bash_build_word_var(name: qualification_revision_env_name)
+  } else if w == qualification_guard_remote_ref() {
+    bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_SERVER_URL"), bash_build_word_lit(text: "/"), bash_build_word_var(name: "GITHUB_REPOSITORY")])
+  } else {
+    bash_build_word_lit(text: w)
+  }
+}
+
+fn qualification_guard_command(command: ArgvCommand) -> Node {
+  bash_build_command_with_words(words: map(argv_words(command: command), w => qualification_guard_word(w: w)))
+}
+
+fn qualification_guard_statements() -> List<Node> {
+  [
+    qualification_guard_command(command: git_init_quiet_command(repository_dir: ".")),
+    qualification_guard_command(command: git_fetch_shallow_revision_command(repository_dir: ".", remote: qualification_guard_remote_ref(), revision: qualification_guard_revision_ref())),
+    qualification_guard_command(command: git_checkout_revision_command(repository_dir: ".", revision: "FETCH_HEAD")),
+    // THE READBACK IS ASSIGNED BEFORE IT IS COMPARED, so a rev-parse that fails stops the step under set -e: inside an
+    // if condition set -e does not apply, and an empty unquoted substitution would make the test error rather than
+    // refuse, which would let the guard pass. The comparison then reads two quoted variables.
+    bash_build_assign(name: qualification_observed_env_name, value: bash_build_word_cmdsubst(body: qualification_guard_command(command: git_rev_parse_head_command(repository_dir: ".")))),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(words: [
+        bash_build_word_var(name: qualification_observed_env_name),
+        bash_build_word_lit(text: "!="),
+        bash_build_word_var(name: qualification_revision_env_name),
+      ]),
+      then_stmts: [
+        bash_build_with_redir(
+          inner: bash_build_command_from_lits(lits: ["echo", qualification_guard_mismatch_marker]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ],
+    ),
+  ]
+}
+
+fn qualification_guard_script() -> String {
+  gunbc_ci_bash_rendered(stmts: qualification_guard_statements(), set_e: true)
+}
+
 fn qualification_floor_revision_guard_step(revision_input: DispatchInput) -> Step {
   RunStep {
     name: Present { value: "Check out the pinned qualification revision and refuse on any mismatch" },
     id: Present { value: "qualification_revision_guard" },
-    run: join([
-      "set -euo pipefail",
-      "git init -q .",
-      "git remote add origin \"https://github.com/$GITHUB_REPOSITORY\"",
-      "git fetch -q --no-tags --depth=1 origin \"$QUALIFICATION_REVISION\"",
-      "git checkout -q --force --detach FETCH_HEAD",
-      "observed=\"$(git rev-parse HEAD)\"",
-      "if [ \"$observed\" != \"$QUALIFICATION_REVISION\" ]; then echo \"QualificationRevisionMismatch: expected=$QUALIFICATION_REVISION observed=$observed\" >&2; exit 1; fi",
-    ], "\n"),
+    run: qualification_guard_script(),
     shell: none,
-    env: Present { value: [kv(key: "QUALIFICATION_REVISION", value: yaml_string(s: join(["${{ inputs.", revision_input.name, " }}"], "")))] },
+    env: Present { value: [kv(key: qualification_revision_env_name, value: yaml_string(s: join(["${{ inputs.", revision_input.name, " }}"], "")))] },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
