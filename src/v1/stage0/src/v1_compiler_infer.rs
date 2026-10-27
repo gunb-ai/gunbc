@@ -26153,6 +26153,31 @@ pub fn param_is_generic_decl(
     }
 }
 
+// A generic parameter binds only on EVIDENCE: a type, not a stand-in for one. A candidate
+// whose own head is a type variable -- reached by unwrapping the resolutions a resolved node
+// carries, which is what the verdict's container arm stops short of -- is the ABSENCE of a
+// type, and binding a parameter to it (above all T := T, a copy of itself) is what keeps the
+// parameter unsolved while letting the emitter print a panic for the cast it then checks. An
+// argument that carries no element, an unresolved lambda return, a variable standing in for a
+// container's slot: all of them contribute nothing here, leaving the slot open for a later
+// argument or the second pass.
+fn generic_binding_candidate_is_evidence(candidate: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    let mut cursor = candidate;
+    loop {
+        match cursor.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: _ }) => return false,
+            Some(InferredNode::Resolved { node }) => {
+                if node.clone() == cursor {
+                    break;
+                }
+                cursor = node;
+            }
+            _ => break,
+        }
+    }
+    crate::v1_compiler_infer_types::is_fully_resolved(cursor.clone(), source_indices.clone())
+}
+
 pub fn unify_generics(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -26190,8 +26215,7 @@ pub fn unify_generics(
             // rather than being emitted unsolved.
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    eprintln!("DIAGBIND bind={:?} actual={} verdict_full={} is_tv_actual={} nchildren={}", bind_name.clone(), type_node_label(actual.clone(), source_indices.clone()), crate::v1_compiler_infer_types::is_fully_resolved(actual.clone(), source_indices.clone()), actual.inferred.clone().map(|i| is_type_variable(i)).unwrap_or(false), actual.children.len());
-                    if crate::v1_compiler_infer_types::is_fully_resolved(
+                    if generic_binding_candidate_is_evidence(
                         actual.clone(),
                         source_indices.clone(),
                     ) {
