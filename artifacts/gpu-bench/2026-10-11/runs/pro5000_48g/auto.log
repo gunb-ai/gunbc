@@ -1,0 +1,19 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+CAPACITY_OK 1300000
+2026-10-11 20:30:24.032  INFO  pinning host context | 32.0 GiB
+2026-10-11 20:30:29.225  INFO  capacity | KV 1,300,032 tokens, nvfp4, explicit | pages 20,313/26,250 | runtime 25.8 GiB | free 1.92 GiB
+2026-10-11 20:30:29.225  INFO  context | history on | 7 active + 2 extra device states | host 32.0 GiB
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 48935 MiB, 46444 MiB, 14001 MHz
+warming 7 sessions
+warm done 511s {0: 173940, 1: 173890, 3: 173759, 5: 173858, 6: 173709, 2: 173669, 4: 173879}
+== ninfer_nvfp4_pro5000_48g short
+N= 1: rounds= 14  median     99  p90    107  p99    107  max    107 tok/s
+N= 4: rounds= 14  median    360  p90    373  p99    378  max    378 tok/s
+N= 7: rounds= 14  median    544  p90    558  p99    569  max    569 tok/s
+== ninfer_nvfp4_pro5000_48g warm ~174k
+N=1 ctx~173967: rounds=13 | aggregate med 85 p90 100 p99 117 | per-stream med 91 p99 122 | TTFT med 0.2s p90 1.1s
+N=4 ctx~173917: rounds=13 | aggregate med 156 p90 193 p99 199 | per-stream med 52 p99 65 | TTFT med 1.3s p90 3.5s
+N=7 ctx~173723: rounds=13 | aggregate med 169 p90 224 p99 251 | per-stream med 36 p99 51 | TTFT med 2.1s p90 6.4s
+RUN_EXIT=0
