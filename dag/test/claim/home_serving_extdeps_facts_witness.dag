@@ -8,7 +8,7 @@ import std.measure {
   basis_point_count, token_count_value,
 }
 import extdeps.storage.types { PcieLink, Gen3, Gen4, Gen5 }
-import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, GpuOnMultiGpuBoard, OamModule, gpu_catalog_row_eq, gpu_catalog_bandwidth_count }
+import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, GpuOnMultiGpuBoard, gpu_catalog_row_eq, gpu_catalog_bandwidth_count }
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
   nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog,
@@ -39,7 +39,6 @@ fn package_is_add_in_card(p: GpuPackageForm) -> Bool {
     SxmModule => false
     IntegratedComputePackage => false
     GpuOnMultiGpuBoard => false
-    OamModule => false
   }
 }
 
@@ -49,7 +48,6 @@ fn package_is_sxm(p: GpuPackageForm) -> Bool {
     PcieAddInCard => false
     IntegratedComputePackage => false
     GpuOnMultiGpuBoard => false
-    OamModule => false
   }
 }
 
