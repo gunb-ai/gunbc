@@ -4215,7 +4215,7 @@ fn resolve_catch_all_binder_read_gate(ctx: ResolveContext, pat: Node, walk: Reso
   }
 }
 
-fn resolve_binder_site_read(site: NodeOccurrenceIdentity, bindings: List<OccurrenceBindingEntry>) -> Bool {
+fn resolve_binder_site_read(site: NodeOccurrenceIdentity, bindings: List<OccurrenceResolutionEntry>) -> Bool {
   any(xs: bindings, predicate: fn(entry) {
     match entry.record.binding {
       BoundByLexicalBinder { binding: b } =>
@@ -4232,7 +4232,7 @@ fn resolve_binder_site_read(site: NodeOccurrenceIdentity, bindings: List<Occurre
 }
 
 // The key a binding entry carries for an occurrence: its own minted or projected id, exactly as the
-// entries are recorded (occurrence_binding_entries), so the pattern's own occurrence is excluded by the
+// entries are recorded (occurrence_resolution_entries), so the pattern's own occurrence is excluded by the
 // same key it was recorded under.
 fn resolve_binding_entry_key_optional(identity: NodeOccurrenceIdentity) -> Optional<OccurrenceId> {
   match identity {
